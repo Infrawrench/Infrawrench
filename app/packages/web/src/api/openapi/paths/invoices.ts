@@ -569,7 +569,10 @@ export function registerInvoicePaths(ctx: BuildContext) {
     description:
       "The only correction there is. The original keeps every figure it was sent with — “we " +
       "billed you this, it was wrong, here is the corrected one” is a story a customer can " +
-      "follow, and “we changed the invoice” is not.",
+      "follow, and “we changed the invoice” is not.\n\n" +
+      "With `supersede`, the void, the corrective draft and both directions of the link between " +
+      "them are one transaction. Void is irreversible, so a half-applied correction would leave " +
+      "a withdrawn invoice with no way forward; this call either applies whole or not at all.",
     request: {
       params: invoiceIdParam,
       body: { content: { "application/json": { schema: InvoiceVoidRequest } }, required: true },

@@ -17,13 +17,25 @@
  * being restated, a cost centre being renamed or moved to another customer:
  * none of them can change a number that has already been sent to a customer.
  *
+ * The figures are computed *outside* the transaction that stores them — the
+ * computation reads ClickHouse and a transaction held open across it would be
+ * a lock held across a network — so approval is **optimistically concurrent**:
+ * every input that fed the computation is re-read under a row lock at the
+ * moment of writing and compared, and any change refuses the approval rather
+ * than freezing figures that belong to a different question. See
+ * {@link figureInputsOf}.
+ *
  * **Sending** changes nothing about the figures; it records that the document
- * left the building, and who let it.
+ * left the building, who let it, and — since delivery landed — where it went
+ * and whether it arrived. Delivery only ever writes the delivery columns.
  *
  * **Void** is the only correction. There is no update path and no delete path
  * for an issued invoice — {@link managedInvoiceBlocker} refuses both here, in
  * the service, not merely in a disabled button — so a wrong invoice is voided
- * with a reason and superseded by a corrective one, and both survive.
+ * with a reason and superseded by a corrective one, and both survive. The void,
+ * the corrective draft and *both* directions of the link between them are one
+ * transaction: a void is irreversible, so a half-applied supersede would strand
+ * the user with a withdrawn invoice and no way to correct it.
  *
  * ## How a line is derived
  *
@@ -44,7 +56,7 @@
  * an invoice becomes an argument.
  */
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   buildExchangeRateTable,
   dedupeScopeCentres,
@@ -414,6 +426,7 @@ function toSummary(row: InvoiceRow): ManagedInvoiceSummary {
     totals: (row.totals as ManagedInvoiceTotals | null) ?? null,
     issuedAt: row.issuedAt?.toISOString() ?? null,
     sentAt: row.sentAt?.toISOString() ?? null,
+    delivery: toDelivery(row),
     voidedAt: row.voidedAt?.toISOString() ?? null,
     voidReason: row.voidReason,
     supersedesInvoiceId: row.supersedesInvoiceId,
@@ -495,18 +508,7 @@ export async function getInvoice(
   const row = await getInvoiceRow(organizationId, id);
   if (!row) return null;
 
-  if (row.status !== "draft") {
-    return toWire(
-      row,
-      {
-        lines: (row.lines as ManagedInvoiceLine[] | null) ?? [],
-        totals:
-          (row.totals as ManagedInvoiceTotals | null) ?? sumManagedInvoiceLines([], row.currency),
-        derivation: row.derivation as ManagedInvoiceDerivation,
-      },
-      false,
-    );
-  }
+  if (row.status !== "draft") return toWire(row, frozenFigures(row), false);
 
   const account = await getManagedAccountRow(organizationId, row.managedAccountId);
   if (!account) {
@@ -526,6 +528,121 @@ export async function getInvoice(
 /* ------------------------------------------------------------------ *
  * Writes
  * ------------------------------------------------------------------ */
+
+/** The transaction handle `db.transaction` hands its callback. */
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Read and row-lock one invoice inside a transaction.
+ *
+ * `FOR UPDATE` is what turns "check then write" into a decision: a concurrent
+ * edit either committed before this read — in which case the caller sees it and
+ * refuses — or blocks until this transaction ends, by which point its own
+ * `status = 'draft'` guard no longer matches. There is no third ordering.
+ */
+async function lockInvoice(tx: Tx, organizationId: string, id: string): Promise<InvoiceRow | null> {
+  const [row] = await tx
+    .select()
+    .from(managedInvoices)
+    .where(and(eq(managedInvoices.id, id), eq(managedInvoices.organizationId, organizationId)))
+    .limit(1)
+    .for("update");
+  return row ?? null;
+}
+
+/** Read and row-lock one customer inside a transaction. */
+async function lockManagedAccount(
+  tx: Tx,
+  organizationId: string,
+  id: string,
+): Promise<ManagedAccountRow | null> {
+  const [row] = await tx
+    .select()
+    .from(managedAccounts)
+    .where(
+      and(
+        eq(managedAccounts.id, id),
+        eq(managedAccounts.organizationId, organizationId),
+        isNull(managedAccounts.deletedAt),
+      ),
+    )
+    .limit(1)
+    .for("update");
+  return row ?? null;
+}
+
+/**
+ * Every input that decides what an invoice's figures say.
+ *
+ * The reported race was the period — edit a draft's period while an approval is
+ * mid-flight and the approval freezes the old period's lines onto a row that
+ * now claims the new one. But the period is only the instance. *Every* field
+ * below changes the figures the same way, and each is editable while a draft
+ * sits there:
+ *
+ * - `periodFrom` / `periodTo` — which days are summed (`PUT /invoices/:id`);
+ * - `costCentreIds` / `accountIds` — whose spend is summed;
+ * - `costBasis` — cash or amortized, a different number for the same days;
+ * - `applyBillingRules` — markups and fixed fees in or out;
+ * - `billingCurrency` — the conversion target *and* the stored `currency`;
+ * - `name` — frozen onto the row as `managedAccountName`;
+ * - `managedAccountId` — belt and braces; nothing edits it today.
+ *
+ * (all six of the customer's fields move together on `PUT /managed-accounts/:id`.)
+ *
+ * So the fix is stated over the whole set rather than the one field that was
+ * reported: this snapshot is taken before the figures are computed, re-taken
+ * under a row lock at the moment of writing, and any difference refuses the
+ * approval.
+ */
+interface FigureInputs {
+  managedAccountId: string;
+  periodFrom: string;
+  periodTo: string;
+  accountName: string;
+  billingCurrency: string;
+  costBasis: string;
+  applyBillingRules: boolean;
+  costCentreIds: string[];
+  accountIds: string[];
+}
+
+function figureInputsOf(row: InvoiceRow, account: ManagedAccountRow): FigureInputs {
+  return {
+    managedAccountId: row.managedAccountId,
+    periodFrom: String(row.periodFrom),
+    periodTo: String(row.periodTo),
+    accountName: account.name,
+    billingCurrency: account.billingCurrency,
+    costBasis: String(account.costBasis),
+    applyBillingRules: account.applyBillingRules,
+    costCentreIds: Array.isArray(account.costCentreIds) ? [...account.costCentreIds] : [],
+    accountIds: Array.isArray(account.accountIds) ? [...account.accountIds] : [],
+  };
+}
+
+/** What changed between two snapshots, named the way a person would say it. */
+function figureInputsChanged(before: FigureInputs, after: FigureInputs): string[] {
+  const changed: string[] = [];
+  const sameList = (a: string[], b: string[]): boolean =>
+    a.length === b.length && a.every((v, i) => v === b[i]);
+
+  if (before.managedAccountId !== after.managedAccountId) changed.push("the customer");
+  if (before.periodFrom !== after.periodFrom || before.periodTo !== after.periodTo) {
+    changed.push(`the period (now ${after.periodFrom} → ${after.periodTo})`);
+  }
+  if (before.accountName !== after.accountName) changed.push("the customer's name");
+  if (before.billingCurrency !== after.billingCurrency) changed.push("the billing currency");
+  if (before.costBasis !== after.costBasis) changed.push("the cost basis");
+  if (before.applyBillingRules !== after.applyBillingRules) {
+    changed.push("whether the billing rules apply");
+  }
+  if (!sameList(before.costCentreIds, after.costCentreIds)) {
+    changed.push("the cost centres in scope");
+  }
+  if (!sameList(before.accountIds, after.accountIds)) changed.push("the accounts in scope");
+  return changed;
+}
 
 function assertPeriod(from: string, to: string): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
@@ -553,9 +670,80 @@ function normalizeNotes(notes: string | null | undefined): string | null {
 }
 
 /**
+ * Insert a draft and, when it corrects one, link it to the original **both
+ * ways** — inside the caller's transaction.
+ *
+ * Two statements that must not be separable. `supersedes` without
+ * `superseded_by` is a correction the original does not know about, which is
+ * exactly the state a reader looking at the void invoice cannot recover from.
+ * The original is locked first, so a second corrective draft racing this one
+ * cannot overwrite the back-link.
+ */
+async function insertDraftTx(
+  tx: Tx,
+  organizationId: string,
+  account: ManagedAccountRow,
+  draft: { periodFrom: string; periodTo: string; notes: string | null },
+  supersedesInvoiceId: string | null,
+  createdByUserId: string | null,
+): Promise<InvoiceRow> {
+  const id = randomUUID();
+  const [row] = await tx
+    .insert(managedInvoices)
+    .values({
+      id,
+      organizationId,
+      managedAccountId: account.id,
+      managedAccountName: account.name,
+      number: null,
+      status: "draft",
+      periodFrom: draft.periodFrom,
+      periodTo: draft.periodTo,
+      currency: account.billingCurrency,
+      notes: draft.notes,
+      supersedesInvoiceId,
+      createdByUserId,
+    })
+    .returning();
+  if (!row) throw new Error("Failed to create invoice");
+
+  if (supersedesInvoiceId) {
+    await tx
+      .update(managedInvoices)
+      .set({ supersededByInvoiceId: id, updatedAt: new Date() })
+      .where(eq(managedInvoices.id, supersedesInvoiceId));
+  }
+  return row;
+}
+
+/** Check that `original` may be superseded, from inside a transaction. */
+function assertSupersedable(original: InvoiceRow | null): asserts original is InvoiceRow {
+  if (!original) throw new InvoiceError("The invoice being superseded was not found", 404);
+  if (original.status !== "void") {
+    throw new InvoiceError(
+      "Only a void invoice can be superseded. Void the original first — a correction that " +
+        "leaves the original standing means the customer holds two live invoices for one period.",
+      409,
+    );
+  }
+  if (original.supersededByInvoiceId) {
+    throw new InvoiceError(
+      "This invoice has already been superseded by a corrective invoice. Two corrections for one " +
+        "void invoice would leave the link pointing at only one of them, and a customer holding " +
+        "two bills for the same period.",
+      409,
+    );
+  }
+}
+
+/**
  * Raise a draft. Always `draft`, never anything else — generating and issuing
  * are two acts, and collapsing them would mean a mis-typed period could be sent
  * to a customer without anyone having looked at the numbers.
+ *
+ * The row and, when superseding, the original's back-link are written in one
+ * transaction. The figures are computed *after* it commits: a draft recomputes
+ * on every read anyway, so a failure there costs a response, not a row.
  */
 export async function createInvoice(
   organizationId: string,
@@ -568,46 +756,22 @@ export async function createInvoice(
   const account = await getManagedAccountRow(organizationId, input.managedAccountId);
   if (!account) throw new InvoiceError("Managed account not found", 404);
 
-  let supersedesInvoiceId: string | null = null;
-  if (input.supersedesInvoiceId) {
-    const original = await getInvoiceRow(organizationId, input.supersedesInvoiceId);
-    if (!original) throw new InvoiceError("The invoice being superseded was not found", 404);
-    if (original.status !== "void") {
-      throw new InvoiceError(
-        "Only a void invoice can be superseded. Void the original first — a correction that " +
-          "leaves the original standing means the customer holds two live invoices for one period.",
-        409,
-      );
+  const row = await db.transaction(async (tx) => {
+    let supersedesInvoiceId: string | null = null;
+    if (input.supersedesInvoiceId) {
+      const original = await lockInvoice(tx, organizationId, input.supersedesInvoiceId);
+      assertSupersedable(original);
+      supersedesInvoiceId = original.id;
     }
-    supersedesInvoiceId = original.id;
-  }
-
-  const id = randomUUID();
-  const [row] = await db
-    .insert(managedInvoices)
-    .values({
-      id,
+    return insertDraftTx(
+      tx,
       organizationId,
-      managedAccountId: account.id,
-      managedAccountName: account.name,
-      number: null,
-      status: "draft",
-      periodFrom: input.periodFrom,
-      periodTo: input.periodTo,
-      currency: account.billingCurrency,
-      notes,
+      account,
+      { periodFrom: input.periodFrom, periodTo: input.periodTo, notes },
       supersedesInvoiceId,
       createdByUserId,
-    })
-    .returning();
-  if (!row) throw new Error("Failed to create invoice");
-
-  if (supersedesInvoiceId) {
-    await db
-      .update(managedInvoices)
-      .set({ supersededByInvoiceId: id, updatedAt: new Date() })
-      .where(eq(managedInvoices.id, supersedesInvoiceId));
-  }
+    );
+  });
 
   const figures = await computeInvoiceFigures(
     organizationId,
@@ -682,9 +846,13 @@ export async function deleteInvoice(organizationId: string, id: string): Promise
  * Sequenced on the **period end**, not on the day the button was pressed, so
  * December's invoice approved on 3 January is still a December number.
  */
-async function nextInvoiceNumber(organizationId: string, periodTo: string): Promise<string> {
+async function nextInvoiceNumber(
+  tx: Tx,
+  organizationId: string,
+  periodTo: string,
+): Promise<string> {
   const year = Number(periodTo.slice(0, 4));
-  const rows = await db
+  const rows = await tx
     .select({ number: managedInvoices.number })
     .from(managedInvoices)
     .where(
@@ -717,6 +885,31 @@ async function nextInvoiceNumber(organizationId: string, periodTo: string): Prom
  * Refused, too, when the arithmetic does not reconcile. That should be
  * impossible — the identity is maintained line by line — which is precisely why
  * it is worth checking before anything is made permanent.
+ *
+ * ## Why this is optimistically concurrent
+ *
+ * The figures come from ClickHouse, which takes as long as it takes, so they
+ * are computed **before** the transaction that stores them: holding a Postgres
+ * transaction open across an analytics query would put a row lock behind a
+ * network call, and `computeInvoiceFigures` does not run on the transaction
+ * anyway. That leaves a window, and the window is the bug this guards:
+ *
+ * ```
+ *  A: read draft (Jan 1–31)                    A: freeze Jan's figures ─┐
+ *  B:                        edit → Feb 1–28                           │
+ *  row now says February ───────────────────────────────────────────────┘
+ * ```
+ *
+ * So {@link figureInputsOf} snapshots every input before computing, and this
+ * function re-reads all of them **under `FOR UPDATE` in the same transaction as
+ * the status write** and refuses on any difference. The lock closes the
+ * remaining gap in both directions: an editor that gets there first is seen by
+ * the comparison, and one that arrives later blocks until the row says
+ * `approved` and its own draft-only guard rejects it.
+ *
+ * Refusing rather than recomputing is deliberate. Recomputing silently would
+ * approve numbers nobody had looked at, and approval is the one act in this
+ * feature whose whole value is that a person saw the figures first.
  */
 export async function approveInvoice(
   organizationId: string,
@@ -730,11 +923,12 @@ export async function approveInvoice(
   const account = await getManagedAccountRow(organizationId, row.managedAccountId);
   if (!account) throw new InvoiceError("Managed account not found", 404);
 
+  const inputs = figureInputsOf(row, account);
   const figures = await computeInvoiceFigures(
     organizationId,
     account,
-    String(row.periodFrom),
-    String(row.periodTo),
+    inputs.periodFrom,
+    inputs.periodTo,
   );
 
   const blocker = managedInvoiceBlocker(
@@ -753,34 +947,67 @@ export async function approveInvoice(
   }
 
   const now = new Date();
-  // Two attempts: the number is derived from a read, so a concurrent approval
+  // Three attempts: the number is derived from a read, so a concurrent approval
   // in the same org and year can take it. The unique index is what actually
-  // decides, and a second read after losing gives the next free one.
+  // decides, and a duplicate rolls this transaction back — a failed statement
+  // poisons the whole transaction in Postgres — so the retry re-runs the
+  // transaction rather than continuing inside a dead one. The figures are
+  // computed once, outside the loop: they do not depend on the number.
   for (let attempt = 0; attempt < 3; attempt++) {
-    const number = await nextInvoiceNumber(organizationId, String(row.periodTo));
     try {
-      const [updated] = await db
-        .update(managedInvoices)
-        .set({
-          status: "approved",
-          number,
-          // The customer's name and currency are re-read here rather than left
-          // at whatever the draft was raised with: approval is the moment the
-          // document becomes real, so it is the moment worth recording.
-          managedAccountName: account.name,
-          currency: account.billingCurrency,
-          lines: figures.lines,
-          totals: figures.totals,
-          derivation: figures.derivation,
-          computedAt: now,
-          issuedAt: now,
-          approvedByUserId: userId,
-          updatedAt: now,
-        })
-        .where(and(eq(managedInvoices.id, id), eq(managedInvoices.status, "draft")))
-        .returning();
-      if (!updated) throw new InvoiceError("This invoice is no longer a draft", 409);
-      return toWire(updated, figures, false);
+      return await db.transaction(async (tx) => {
+        const current = await lockInvoice(tx, organizationId, id);
+        if (!current) throw new InvoiceError("Invoice not found", 404);
+        if (current.status !== "draft") {
+          throw new InvoiceError("This invoice is no longer a draft", 409);
+        }
+        const currentAccount = await lockManagedAccount(
+          tx,
+          organizationId,
+          current.managedAccountId,
+        );
+        if (!currentAccount) {
+          throw new InvoiceError(
+            "The customer this draft belongs to was retired while it was being approved. " +
+              "Nothing has been approved.",
+            409,
+          );
+        }
+
+        const changed = figureInputsChanged(inputs, figureInputsOf(current, currentAccount));
+        if (changed.length > 0) {
+          throw new InvoiceError(
+            `This invoice changed while it was being approved — ${changed.join(", ")} ` +
+              "changed after these figures were computed, so they no longer describe it. " +
+              "Nothing has been approved. Re-open the draft, check the numbers, and approve again.",
+            409,
+          );
+        }
+
+        const number = await nextInvoiceNumber(tx, organizationId, inputs.periodTo);
+        const [updated] = await tx
+          .update(managedInvoices)
+          .set({
+            status: "approved",
+            number,
+            // The customer's name and currency are stored from the same read
+            // the figures were computed from — and the comparison above is what
+            // guarantees that read is still current.
+            managedAccountName: inputs.accountName,
+            currency: inputs.billingCurrency,
+            lines: figures.lines,
+            totals: figures.totals,
+            derivation: figures.derivation,
+            computedAt: now,
+            issuedAt: now,
+            approvedByUserId: userId,
+            updatedAt: now,
+          })
+          .where(and(eq(managedInvoices.id, id), eq(managedInvoices.status, "draft")))
+          .returning();
+        if (!updated) throw new InvoiceError("This invoice is no longer a draft", 409);
+        return toWire(updated, figures, false);
+      });
     } catch (e) {
       const isDuplicate =
         typeof e === "object" && e !== null && (e as { code?: string }).code === "23505";
@@ -823,6 +1050,24 @@ export async function sendInvoice(
  * totals, rates and rules stay exactly as they were sent. That is the point —
  * "we billed you this, it was wrong, here is the corrected one" is a story a
  * customer can follow, and "we changed the invoice" is not.
+ *
+ * ## Why the whole thing is one transaction
+ *
+ * Void is irreversible by design: there is no un-void, and the corrective
+ * invoice is the only way forward. A sequence that commits the void, then
+ * inserts the draft, then writes the back-link can stop after any one of them —
+ * a crash, a failed connection, a request the client abandoned — and every
+ * stopping point strands the user somewhere they cannot get out of:
+ *
+ * - after the void: a withdrawn invoice, no correction, and `void` refuses
+ *   every action that could produce one;
+ * - after the insert: a corrective draft the original does not point at, so the
+ *   customer's copy of the story has a hole in it.
+ *
+ * All three statements therefore run in one transaction, and it either applies
+ * whole or not at all. The only work left outside is computing the new draft's
+ * figures, which reads ClickHouse — a draft recomputes on every read, so that
+ * is a display concern, not state, and the pair is already durable when it runs.
  */
 export async function voidInvoice(
   organizationId: string,
@@ -849,35 +1094,84 @@ export async function voidInvoice(
   assertAllowed(row, "void");
 
   const now = new Date();
-  const [updated] = await db
-    .update(managedInvoices)
-    .set({
-      status: "void",
-      voidedAt: now,
-      voidedByUserId: userId,
-      voidReason: trimmed,
-      updatedAt: now,
-    })
-    .where(and(eq(managedInvoices.id, id), inArray(managedInvoices.status, ["approved", "sent"])))
-    .returning();
-  if (!updated) throw new InvoiceError("This invoice is no longer issued", 409);
+  const { voided, replacement, account } = await db.transaction(async (tx) => {
+    const current = await lockInvoice(tx, organizationId, id);
+    if (!current) throw new InvoiceError("Invoice not found", 404);
+    assertAllowed(current, "void");
 
-  const invoice = (await getInvoice(organizationId, id))!;
-  if (!supersede) return { invoice, replacement: null };
+    const [updated] = await tx
+      .update(managedInvoices)
+      .set({
+        status: "void",
+        voidedAt: now,
+        voidedByUserId: userId,
+        voidReason: trimmed,
+        updatedAt: now,
+      })
+      .where(and(eq(managedInvoices.id, id), inArray(managedInvoices.status, ["approved", "sent"])))
+      .returning();
+    if (!updated) throw new InvoiceError("This invoice is no longer issued", 409);
 
-  const replacement = await createInvoice(
-    organizationId,
-    {
-      managedAccountId: updated.managedAccountId,
-      periodFrom: String(updated.periodFrom),
-      periodTo: String(updated.periodTo),
-      notes: updated.notes,
-      supersedesInvoiceId: updated.id,
-    },
-    userId,
-  );
-  // Re-read so the caller sees the link that `createInvoice` just wrote back.
-  return { invoice: (await getInvoice(organizationId, id))!, replacement };
+    if (!supersede) {
+      return { voided: updated, replacement: null, account: null as ManagedAccountRow | null };
+    }
+
+    const customer = await lockManagedAccount(tx, organizationId, updated.managedAccountId);
+    if (!customer) {
+      // Rolls the void back with it, deliberately. The caller asked for "void
+      // and correct"; half of that is the state this transaction exists to
+      // prevent, so they get an error and an invoice they can still act on.
+      throw new InvoiceError(
+        "The customer this invoice bills has been retired, so no corrective invoice can be " +
+          "raised for it. Nothing has been voided.",
+        409,
+      );
+    }
+
+    const draft = await insertDraftTx(
+      tx,
+      organizationId,
+      customer,
+      {
+        periodFrom: String(updated.periodFrom),
+        periodTo: String(updated.periodTo),
+        notes: updated.notes,
+      },
+      updated.id,
+      userId,
+    );
+    // The back-link `insertDraftTx` wrote, reflected onto the row in hand so
+    // the response does not need a re-read to show the pair.
+    return {
+      voided: { ...updated, supersededByInvoiceId: draft.id },
+      replacement: draft,
+      account: customer,
+    };
+  });
+
+  const invoice = toWire(voided, frozenFigures(voided), false);
+  if (!replacement || !account) return { invoice, replacement: null };
+
+  // Outside the transaction on purpose: this reads cost data, and the pair is
+  // already committed. A failure here costs the caller the draft's *numbers*,
+  // never the draft — which the next read recomputes anyway.
+  let figures: InvoiceFigures;
+  try {
+    figures = await computeInvoiceFigures(
+      organizationId,
+      account,
+      String(replacement.periodFrom),
+      String(replacement.periodTo),
+    );
+  } catch (e) {
+    throw new InvoiceError(
+      `${invoice.number ?? "The invoice"} was voided and its corrective draft was raised — both ` +
+        "are saved and linked. Its figures could not be computed just now " +
+        `(${e instanceof Error ? e.message : String(e)}); open the draft to see them.`,
+      409,
+    );
+  }
+  return { invoice, replacement: toWire(replacement, figures, true) };
 }
 
 /* ------------------------------------------------------------------ *

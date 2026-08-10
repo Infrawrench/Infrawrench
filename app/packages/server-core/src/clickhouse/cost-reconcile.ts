@@ -271,8 +271,9 @@ export async function reconcileCollectedChunk(
   meta: { organizationId: string; accountId: string; pluginId: string },
   range: { fromDate: string; toDate: string },
   written: CostDailyRow[],
+  options?: ReconcileOptions,
 ): Promise<CostDailyRow[]> {
   if (written.length === 0) return [];
   const stored = await getStoredCostRowKeys(meta, range.fromDate, range.toDate);
-  return supersededTombstones(meta, stored, written);
+  return supersededTombstones(meta, stored, written, options);
 }
