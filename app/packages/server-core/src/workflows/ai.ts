@@ -12,6 +12,8 @@
  * `workflow_ai_usage` row priced with the chat markup, reports to the chat
  * Stripe meter, and is refused once the org's monthly AI spend cap is reached
  * (chat and workflow spend share one pool — see ../billing/ai-usage.ts).
+ * Concurrent runs serialize on an org-scoped reservation so they cannot all
+ * clear the same below-cap check before any of them records usage.
  *
  * The spec arriving here is already validated by the runtime's `dispatch`
  * (model allowlist, prompt/system bounds, clamped maxTokens).
@@ -19,7 +21,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { WorkflowAiResult, WorkflowAiSpec } from "@infrawrench/workflow-runtime";
 
-import { getAiSpendStatus, recordWorkflowAiUsage } from "../billing/ai-usage";
+import {
+  estimateTokensFromChars,
+  finalizeWorkflowAiUsage,
+  releaseWorkflowAiReservation,
+  reserveWorkflowAiSpend,
+} from "../billing/ai-usage";
+import { computeCostMicros } from "../billing/ai-pricing";
 
 /**
  * Model calls one run may make. `infra.ai` is a step in an automation, not a
@@ -46,6 +54,29 @@ export interface WorkflowAiContext {
   workflowId: string;
   /** The run making the calls, for usage attribution. */
   runId?: string;
+  /** Abort the run (Stop) — cancels an in-flight Anthropic request. */
+  signal?: AbortSignal;
+}
+
+/** Upper-bound cost for a reservation: prompt estimate + full maxTokens output. */
+function estimateCallCostMicros(spec: WorkflowAiSpec): number {
+  const inputChars = spec.prompt.length + (spec.system?.length ?? 0);
+  return computeCostMicros(spec.model, {
+    inputTokens: estimateTokensFromChars(inputChars),
+    outputTokens: spec.maxTokens,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  });
+}
+
+function stoppedError(): Error {
+  return new Error("Workflow stopped.");
+}
+
+function isAbortError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const name = "name" in err ? String(err.name) : "";
+  return name === "AbortError" || name === "APIUserAbortError";
 }
 
 /** Make one already-validated `infra.ai(...)` call and record its usage. */
@@ -60,63 +91,81 @@ export async function aiFromWorkflow(
     );
   }
 
-  // The cap is checked before the call rather than after, so a capped org is
-  // refused at zero cost. One in-flight call can still finish past the line —
-  // the cap is a monthly budget, not a hard wire, and the overshoot is at most
-  // one call's cost.
-  const spend = await getAiSpendStatus(ctx.organizationId);
-  if (spend.exceeded) {
-    throw new Error(
-      "infra.ai() is unavailable: this organization has reached its monthly AI spend cap. " +
-        "An admin can raise it under Settings → AI Chat, or it resets when the month rolls over.",
-    );
-  }
+  if (ctx.signal?.aborted) throw stoppedError();
 
-  const client = new Anthropic({ apiKey, timeout: AI_TIMEOUT_MS, maxRetries: 1 });
-  const response = await client.messages.create({
-    model: spec.model,
-    max_tokens: spec.maxTokens,
-    ...(spec.system ? { system: spec.system } : {}),
-    messages: [{ role: "user", content: spec.prompt }],
-  });
-
-  // Record before interpreting the outcome: the provider billed these tokens
-  // whether or not the reply is usable, and the spend cap must see them.
-  const usage = {
-    inputTokens: response.usage.input_tokens,
-    outputTokens: response.usage.output_tokens,
-    cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
-    cacheWriteTokens: response.usage.cache_creation_input_tokens ?? 0,
-  };
-  const costMicros = await recordWorkflowAiUsage({
+  // Reserve estimated spend under an org lock before the provider call so
+  // concurrent runs see each other in the month-to-date sum. One call that
+  // started under the cap can still finalize past the line — the cap is a
+  // monthly budget, not a hard wire, and the overshoot is at most one call.
+  const reservationId = await reserveWorkflowAiSpend({
     organizationId: ctx.organizationId,
     workflowId: ctx.workflowId,
     ...(ctx.runId ? { runId: ctx.runId } : {}),
-    model: response.model || spec.model,
-    usage,
+    model: spec.model,
+    estimatedCostMicros: estimateCallCostMicros(spec),
   });
 
-  // Safety classifiers answer 200 with `stop_reason: "refusal"` and no
-  // content. An empty string would be a confusing non-answer to branch on, so
-  // refuse loudly; the author can catch it like any other error.
-  if (response.stop_reason === "refusal") {
-    throw new Error("infra.ai(): the model declined to answer this prompt.");
+  try {
+    if (ctx.signal?.aborted) throw stoppedError();
+
+    const client = new Anthropic({ apiKey, timeout: AI_TIMEOUT_MS, maxRetries: 1 });
+    const response = await client.messages.create(
+      {
+        model: spec.model,
+        max_tokens: spec.maxTokens,
+        ...(spec.system ? { system: spec.system } : {}),
+        messages: [{ role: "user", content: spec.prompt }],
+      },
+      ctx.signal ? { signal: ctx.signal } : undefined,
+    );
+
+    // Stop after the provider returned: drop the reservation and do not bill.
+    // The platform may still owe Anthropic for a completed response; the org
+    // should not, once they asked the run to stop.
+    if (ctx.signal?.aborted) throw stoppedError();
+
+    const usage = {
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: response.usage.cache_creation_input_tokens ?? 0,
+    };
+    const costMicros = await finalizeWorkflowAiUsage(reservationId, {
+      organizationId: ctx.organizationId,
+      workflowId: ctx.workflowId,
+      ...(ctx.runId ? { runId: ctx.runId } : {}),
+      model: response.model || spec.model,
+      usage,
+    });
+
+    // Safety classifiers answer 200 with `stop_reason: "refusal"` and no
+    // content. An empty string would be a confusing non-answer to branch on, so
+    // refuse loudly; the author can catch it like any other error.
+    if (response.stop_reason === "refusal") {
+      throw new Error("infra.ai(): the model declined to answer this prompt.");
+    }
+
+    const text = response.content
+      .filter((block): block is Anthropic.TextBlock => block.type === "text")
+      .map((block) => block.text)
+      .join("")
+      .trim();
+
+    return {
+      text,
+      model: response.model || spec.model,
+      stopReason: response.stop_reason === "max_tokens" ? "max_tokens" : "end",
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      costMicros,
+    };
+  } catch (err) {
+    await releaseWorkflowAiReservation(reservationId).catch((releaseErr) => {
+      console.error("[workflows/ai] failed to release AI spend reservation:", releaseErr);
+    });
+    if (ctx.signal?.aborted || isAbortError(err)) throw stoppedError();
+    throw err;
   }
-
-  const text = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("")
-    .trim();
-
-  return {
-    text,
-    model: response.model || spec.model,
-    stopReason: response.stop_reason === "max_tokens" ? "max_tokens" : "end",
-    inputTokens: usage.inputTokens,
-    outputTokens: usage.outputTokens,
-    costMicros,
-  };
 }
 
 /**

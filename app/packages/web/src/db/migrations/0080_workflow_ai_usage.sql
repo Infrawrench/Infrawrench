@@ -8,6 +8,10 @@
 -- `workflow_id`/`run_id` are deliberately not foreign keys: these are billing
 -- records, and deleting a workflow (or pruning its runs) must not delete the
 -- spend it caused.
+--
+-- `status` is `reserved` while a call is in flight (an estimated cost that
+-- counts toward the org cap so concurrent runs cannot all clear the same
+-- check) and `final` once the provider responds with real token counts.
 
 --> statement-breakpoint
 CREATE TABLE "workflow_ai_usage" (
@@ -21,6 +25,7 @@ CREATE TABLE "workflow_ai_usage" (
   "cache_read_tokens" integer NOT NULL,
   "cache_write_tokens" integer NOT NULL,
   "cost_micros" integer NOT NULL,
+  "status" text DEFAULT 'final' NOT NULL,
   "stripe_usage_record_id" text,
   "created_at" timestamp DEFAULT now() NOT NULL
 );

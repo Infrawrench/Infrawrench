@@ -315,7 +315,7 @@ for (const pod of await cluster.pods.list()) {
 
 The result carries `text`, the concrete `model` that answered, `stopReason` (`"end"` or `"max_tokens"`), the token counts, and `costMicros` — what the call cost in millionths of a dollar.
 
-**Billing.** Calls are metered exactly like [AI chat](./ai-chat.md) and draw from the **same monthly AI spend pool**: the org's configured cap, or the $5/month free tier for orgs without a paid plan. Once the pool is spent, `infra.ai` throws (and so does chat) until the cap is raised or the month rolls over. A prompt is billed as input tokens, so mind what a cron loop feeds it — an hourly workflow that sends 200k characters to Opus adds up.
+**Billing.** Calls are metered exactly like [AI chat](./ai-chat.md) and draw from the **same monthly AI spend pool**: the org's configured cap, or the $5/month free tier for orgs without a paid plan. Once the pool is spent, `infra.ai` throws (and so does chat) until the cap is raised or the month rolls over. Concurrent runs reserve estimated spend before the model call so they cannot all clear the same below-cap check; stopping a run cancels an in-flight request and drops its reservation. A prompt is billed as input tokens, so mind what a cron loop feeds it — an hourly workflow that sends 200k characters to Opus adds up.
 
 Limits: 20 calls per run, prompts up to 200,000 characters, and a per-call timeout of two minutes. Time spent waiting on the model does not count against the run's execution budget (like SSH waits, unlike `fetch`) — the call cap is what bounds an `infra.ai` loop.
 

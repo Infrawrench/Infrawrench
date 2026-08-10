@@ -206,6 +206,11 @@ export const workflowApprovals = pgTable(
  * a conversation/message, which a workflow run doesn't have. The org's monthly
  * AI spend cap sums both tables (see ../billing/ai-usage.ts).
  *
+ * Rows start as `status = 'reserved'` with an estimated cost so concurrent
+ * runs cannot all clear the same below-cap check, then flip to `final` with
+ * real token counts once the provider answers. A call that fails or is
+ * aborted deletes its reservation so it stops counting.
+ *
  * `workflow_id` and `run_id` are plain columns, not foreign keys, on purpose:
  * these are billing records, and deleting a workflow (or pruning its runs) must
  * not delete the spend it caused — an org could otherwise reset its free tier
@@ -227,6 +232,11 @@ export const workflowAiUsage = pgTable(
     cacheWriteTokens: integer("cache_write_tokens").notNull(),
     /** Total billable cost in micro-dollars after markup. */
     costMicros: integer("cost_micros").notNull(),
+    /**
+     * `reserved` while the provider call is in flight (estimated cost counts
+     * toward the org cap); `final` once real usage is written.
+     */
+    status: text("status").notNull().default("final"),
     /** Stripe meter-event identifier once reported; null until reported. */
     stripeUsageRecordId: text("stripe_usage_record_id"),
     createdAt: timestamp("created_at").notNull().defaultNow(),

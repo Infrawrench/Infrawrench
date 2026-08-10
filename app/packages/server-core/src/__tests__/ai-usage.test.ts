@@ -3,16 +3,28 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockSelect = vi.fn();
 const mockInsert = vi.fn();
 const mockUpdate = vi.fn();
+const mockDelete = vi.fn();
+const mockExecute = vi.fn();
+const mockTransaction = vi.fn();
+
 vi.mock("../db/client", () => ({
   db: {
     select: (...a: unknown[]) => mockSelect(...a),
     insert: (...a: unknown[]) => mockInsert(...a),
     update: (...a: unknown[]) => mockUpdate(...a),
+    delete: (...a: unknown[]) => mockDelete(...a),
+    transaction: (...a: unknown[]) => mockTransaction(...a),
   },
 }));
 vi.mock("../db/schema", () => ({
   chatUsage: { organizationId: "org", costMicros: "cost", createdAt: "ts" },
-  workflowAiUsage: { id: "id", organizationId: "org", costMicros: "cost", createdAt: "ts" },
+  workflowAiUsage: {
+    id: "id",
+    organizationId: "org",
+    costMicros: "cost",
+    createdAt: "ts",
+    status: "status",
+  },
   organizations: { id: "id", chatMonthlyCapMicros: "cap", complimentary: "complimentary" },
   subscriptions: { organizationId: "org", stripeCustomerId: "cust", status: "status" },
 }));
@@ -23,7 +35,14 @@ vi.mock("../billing/capacity-slots", () => ({
   activeCapacitySeats: () => mockActiveCapacitySeats(),
 }));
 
-const { getAiSpendStatus, recordWorkflowAiUsage } = await import("../billing/ai-usage");
+const {
+  getAiSpendStatus,
+  recordWorkflowAiUsage,
+  reserveWorkflowAiSpend,
+  finalizeWorkflowAiUsage,
+  releaseWorkflowAiReservation,
+  estimateTokensFromChars,
+} = await import("../billing/ai-usage");
 
 describe("getAiSpendStatus", () => {
   beforeEach(() => {
@@ -188,6 +207,7 @@ describe("recordWorkflowAiUsage", () => {
         runId: "run1",
         model: "claude-sonnet-5",
         costMicros: 4_500_000,
+        status: "final",
       }),
     );
   });
@@ -208,5 +228,141 @@ describe("recordWorkflowAiUsage", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(mockSelect).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
+  });
+});
+
+describe("reserve / finalize / release workflow AI spend", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockActiveCapacitySeats.mockResolvedValue(0);
+    delete process.env["INFRAWRENCH_STRIPE_CHAT_METER_EVENT"];
+    delete process.env["STRIPE_SECRET_KEY"];
+    mockExecute.mockResolvedValue(undefined);
+  });
+
+  function queueSpendSelects(cap: number | null, chatTotal: string, workflowTotal = "0") {
+    const orgLimit = vi.fn().mockResolvedValue([{ cap, complimentary: false }]);
+    const orgWhere = vi.fn().mockReturnValue({ limit: orgLimit });
+    const orgFrom = vi.fn().mockReturnValue({ where: orgWhere });
+    const subLimit = vi.fn().mockResolvedValue([{ status: "active" }]);
+    const subWhere = vi.fn().mockReturnValue({ limit: subLimit });
+    const subFrom = vi.fn().mockReturnValue({ where: subWhere });
+    const chatWhere = vi.fn().mockResolvedValue([{ total: chatTotal }]);
+    const chatFrom = vi.fn().mockReturnValue({ where: chatWhere });
+    const wfWhere = vi.fn().mockResolvedValue([{ total: workflowTotal }]);
+    const wfFrom = vi.fn().mockReturnValue({ where: wfWhere });
+    mockSelect
+      .mockReturnValueOnce({ from: orgFrom })
+      .mockReturnValueOnce({ from: subFrom })
+      .mockReturnValueOnce({ from: chatFrom })
+      .mockReturnValueOnce({ from: wfFrom });
+  }
+
+  it("reserves estimated spend under a transaction when under the cap", async () => {
+    const values = vi.fn().mockResolvedValue(undefined);
+    mockInsert.mockReturnValue({ values });
+    mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
+      queueSpendSelects(1_000_000, "100000");
+      await fn({
+        execute: mockExecute,
+        select: (...a: unknown[]) => mockSelect(...a),
+        insert: (...a: unknown[]) => mockInsert(...a),
+      });
+    });
+
+    const id = await reserveWorkflowAiSpend({
+      organizationId: "o1",
+      workflowId: "wf1",
+      runId: "run1",
+      model: "claude-haiku-4-5",
+      estimatedCostMicros: 50_000,
+    });
+
+    expect(id).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(mockExecute).toHaveBeenCalled();
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "o1",
+        workflowId: "wf1",
+        costMicros: 50_000,
+        status: "reserved",
+        inputTokens: 0,
+        outputTokens: 0,
+      }),
+    );
+  });
+
+  it("refuses a reservation when the org is already at its cap", async () => {
+    mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
+      queueSpendSelects(100_000, "100000");
+      await fn({
+        execute: mockExecute,
+        select: (...a: unknown[]) => mockSelect(...a),
+        insert: (...a: unknown[]) => mockInsert(...a),
+      });
+    });
+
+    await expect(
+      reserveWorkflowAiSpend({
+        organizationId: "o1",
+        workflowId: "wf1",
+        model: "claude-haiku-4-5",
+        estimatedCostMicros: 1,
+      }),
+    ).rejects.toThrow(/monthly AI spend cap/);
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
+  it("finalizes a reservation into real token counts", async () => {
+    const returning = vi.fn().mockResolvedValue([{ id: "res-1" }]);
+    const where = vi.fn().mockReturnValue({ returning });
+    const set = vi.fn().mockReturnValue({ where });
+    mockUpdate.mockReturnValue({ set });
+
+    const cost = await finalizeWorkflowAiUsage("res-1", {
+      organizationId: "o1",
+      workflowId: "wf1",
+      model: "claude-sonnet-5",
+      usage: { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    });
+
+    expect(cost).toBe(4_500_000);
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        costMicros: 4_500_000,
+        status: "final",
+        inputTokens: 1_000_000,
+      }),
+    );
+  });
+
+  it("treats a missing reservation as a stopped run", async () => {
+    const returning = vi.fn().mockResolvedValue([]);
+    const where = vi.fn().mockReturnValue({ returning });
+    const set = vi.fn().mockReturnValue({ where });
+    mockUpdate.mockReturnValue({ set });
+
+    await expect(
+      finalizeWorkflowAiUsage("gone", {
+        organizationId: "o1",
+        workflowId: "wf1",
+        model: "claude-haiku-4-5",
+        usage: { inputTokens: 10, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      }),
+    ).rejects.toThrow(/Workflow stopped/);
+  });
+
+  it("releases only reserved rows", async () => {
+    const where = vi.fn().mockResolvedValue(undefined);
+    mockDelete.mockReturnValue({ where });
+    await releaseWorkflowAiReservation("res-1");
+    expect(mockDelete).toHaveBeenCalled();
+    expect(where).toHaveBeenCalled();
+  });
+
+  it("estimates tokens from character length", () => {
+    expect(estimateTokensFromChars(4)).toBe(1);
+    expect(estimateTokensFromChars(5)).toBe(2);
+    expect(estimateTokensFromChars(0)).toBe(1);
   });
 });

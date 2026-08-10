@@ -340,10 +340,12 @@ export function buildOrgWorkflowHost(
     fetch: buildWorkflowFetch(),
     // One-shot model calls (infra.ai): made server-side with the deployment's
     // API key, metered against the org's monthly AI cap, capped per run.
+    // The run abort signal cancels an in-flight Anthropic request on Stop.
     ai: buildWorkflowAi({
       organizationId,
       workflowId,
       ...(extras.runId ? { runId: extras.runId } : {}),
+      ...(extras.signal ? { signal: extras.signal } : {}),
     }),
     page: (spec) =>
       pageFromWorkflow(
