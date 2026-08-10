@@ -1,0 +1,14 @@
+# Compiled provider binary, produced by `go build`.
+terraform-provider-infrawrench
+
+# Terraform working files, if you run the provider from this directory.
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Local dev override, which points Terraform at an uninstalled build.
+.terraformrc
+terraform.rc
