@@ -6,6 +6,7 @@ import { KapsuleClusterResourceType } from "./resources/kapsule-cluster.js";
 import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
 import { ObjectStorageResourceType } from "./resources/object-storage.js";
 import { BlockVolumeResourceType } from "./resources/block-volume.js";
+import { scalewayTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
   id: "scaleway",
@@ -78,4 +79,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new ScalewayClient(credentials, resourceTypes, services),
   parseStatusFeed,
+  terraformExport: scalewayTerraformExport,
 };

@@ -65,15 +65,37 @@ export function renderTerraformValue(value: TerraformValue, indent = ""): string
       });
       return `{\n${lines.join("\n")}\n${indent}}`;
     }
+    case "block": {
+      // Blocks are rendered by `renderAttributes` (they own the key); the
+      // body alone is never a free-standing expression.
+      const entries = Object.entries(value.attributes);
+      if (entries.length === 0) return "{}";
+      const inner = indent + "  ";
+      const lines = entries.map(([key, entry]) => {
+        if (entry.kind === "block") {
+          const body = renderTerraformValue(entry, inner);
+          return body === "{}" ? `${inner}${key} {}` : `${inner}${key} ${body}`;
+        }
+        const safeKey = IDENT_RE.test(key) ? key : `"${escapeHclString(key)}"`;
+        return `${inner}${safeKey} = ${renderTerraformValue(entry, inner)}`;
+      });
+      return `{\n${lines.join("\n")}\n${indent}}`;
+    }
   }
 }
 
 function renderAttributes(attributes: Record<string, TerraformValue>, indent: string): string[] {
   const entries = Object.entries(attributes);
-  const width = entries.reduce((max, [key]) => Math.max(max, key.length), 0);
-  return entries.map(
-    ([key, value]) => `${indent}${key.padEnd(width)} = ${renderTerraformValue(value, indent)}`,
-  );
+  const width = entries
+    .filter(([, value]) => value.kind !== "block")
+    .reduce((max, [key]) => Math.max(max, key.length), 0);
+  return entries.map(([key, value]) => {
+    if (value.kind === "block") {
+      const body = renderTerraformValue(value, indent);
+      return body === "{}" ? `${indent}${key} {}` : `${indent}${key} ${body}`;
+    }
+    return `${indent}${key.padEnd(width)} = ${renderTerraformValue(value, indent)}`;
+  });
 }
 
 /** Everything the serializer needs from one plugin's export. */

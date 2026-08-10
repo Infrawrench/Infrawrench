@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrenc
 import { GcpClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { gcpPreflight, buildGcpPolicyTemplate } from "./preflight.js";
+import { gcpTerraformExport } from "./terraform.js";
 import { GcpProjectResourceType } from "./resources/project.js";
 import { GceInstanceResourceType } from "./resources/gce-instance.js";
 import { GceDiskResourceType } from "./resources/gce-disk.js";
@@ -196,4 +197,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new GcpClient(credentials, resourceTypes, services),
   parseStatusFeed,
   policyTemplate: buildGcpPolicyTemplate,
+  terraformExport: gcpTerraformExport,
 };

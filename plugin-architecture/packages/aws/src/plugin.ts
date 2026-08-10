@@ -2,6 +2,7 @@ import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrenc
 import { AWSClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { awsPreflight, buildAwsPolicyTemplate } from "./preflight.js";
+import { awsTerraformExport } from "./terraform.js";
 import { AWS_REGIONS } from "./constants.js";
 import { EC2InstanceResourceType } from "./resources/ec2-instance.js";
 import { EBSVolumeResourceType } from "./resources/ebs-volume.js";
@@ -190,4 +191,5 @@ export const plugin: Plugin = {
   createClient: (credentials, services) => new AWSClient(credentials, resourceTypes, services),
   parseStatusFeed,
   policyTemplate: buildAwsPolicyTemplate,
+  terraformExport: awsTerraformExport,
 };

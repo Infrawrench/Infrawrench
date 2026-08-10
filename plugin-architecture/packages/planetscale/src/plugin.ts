@@ -7,6 +7,7 @@ import { PsBranchResourceType } from "./resources/ps-branch.js";
 import { PsPasswordResourceType } from "./resources/ps-password.js";
 import { PsDeployRequestResourceType } from "./resources/ps-deploy-request.js";
 import { PsBackupResourceType } from "./resources/ps-backup.js";
+import { planetscaleTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
   id: "planetscale",
@@ -72,4 +73,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new PlanetScaleClient(credentials, services),
   parseStatusFeed,
+  terraformExport: planetscaleTerraformExport,
 };

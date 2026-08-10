@@ -9,6 +9,7 @@ const terraformValueSchema: z.ZodType<TerraformValue> = z.lazy(() =>
     z.object({ kind: z.literal("ref"), expr: z.string().min(1) }),
     z.object({ kind: z.literal("list"), items: z.array(terraformValueSchema) }),
     z.object({ kind: z.literal("map"), entries: z.record(terraformValueSchema) }),
+    z.object({ kind: z.literal("block"), attributes: z.record(terraformValueSchema) }),
   ]),
 );
 

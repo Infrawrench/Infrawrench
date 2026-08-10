@@ -7,6 +7,7 @@ import { MachineResourceType } from "./resources/machine.js";
 import { VolumeResourceType } from "./resources/volume.js";
 import { CertificateResourceType } from "./resources/certificate.js";
 import { IpAllocationResourceType } from "./resources/ip-allocation.js";
+import { flyTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
   id: "fly",
@@ -58,4 +59,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new FlyClient(credentials, resourceTypes, services),
   parseStatusFeed,
+  terraformExport: flyTerraformExport,
 };

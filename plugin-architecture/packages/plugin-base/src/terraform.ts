@@ -45,7 +45,12 @@ export type TerraformValue =
   | { kind: "bool"; value: boolean }
   | { kind: "ref"; expr: string }
   | { kind: "list"; items: TerraformValue[] }
-  | { kind: "map"; entries: Record<string, TerraformValue> };
+  | { kind: "map"; entries: Record<string, TerraformValue> }
+  /**
+   * Nested HCL block (no `=`), e.g. azurerm's required `features {}`.
+   * Distinct from `map`, which serializes as an attribute assignment.
+   */
+  | { kind: "block"; attributes: Record<string, TerraformValue> };
 
 /** Shorthand constructors for {@link TerraformValue}. */
 export const tf = {
@@ -55,6 +60,10 @@ export const tf = {
   ref: (expr: string): TerraformValue => ({ kind: "ref", expr }),
   list: (items: TerraformValue[]): TerraformValue => ({ kind: "list", items }),
   map: (entries: Record<string, TerraformValue>): TerraformValue => ({ kind: "map", entries }),
+  block: (attributes: Record<string, TerraformValue> = {}): TerraformValue => ({
+    kind: "block",
+    attributes,
+  }),
 };
 
 /** One `resource` block in the generated configuration. */

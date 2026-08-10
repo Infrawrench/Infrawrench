@@ -7,6 +7,7 @@ import { VercelDeploymentResourceType } from "./resources/deployment.js";
 import { VercelDomainResourceType } from "./resources/domain.js";
 import { VercelEnvironmentVariableResourceType } from "./resources/environment-variable.js";
 import { VercelTeamResourceType } from "./resources/team.js";
+import { vercelTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
   id: "vercel",
@@ -59,4 +60,5 @@ export const plugin: Plugin = {
   resourceTypes,
   createClient: (credentials, services) => new VercelClient(credentials, services),
   parseStatusFeed,
+  terraformExport: vercelTerraformExport,
 };
