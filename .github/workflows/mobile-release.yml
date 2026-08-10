@@ -59,8 +59,12 @@ jobs:
       # unmerged branch cannot reach TestFlight or mint the shared mobile-v* tag.
       - name: Require main
         if: github.ref != 'refs/heads/main'
+        env:
+          # Pass via env — interpolating github.ref into the run script lets a
+          # crafted branch name inject shell metacharacters under contents:write.
+          REF: ${{ github.ref }}
         run: |
-          echo "::error::Mobile releases must run from main (got ${{ github.ref }}). Re-run Actions → Mobile Release (iOS) with the main branch selected."
+          echo "::error::Mobile releases must run from main (got ${REF}). Re-run Actions → Mobile Release (iOS) with the main branch selected."
           exit 1
 
       # Pin privileged actions by SHA — this job (and release) hold contents:write
