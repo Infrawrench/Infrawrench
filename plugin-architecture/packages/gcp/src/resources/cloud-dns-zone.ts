@@ -18,4 +18,12 @@ export const CloudDnsZoneResourceType = rt({
   ],
   supportsCreate: true,
   iconKey: "dns",
+  // `dnsName` is the apex with a trailing dot; the host strips it.
+  dnsRole: {
+    role: "zone",
+    domainKey: "dnsName",
+    recordCountKey: "recordCount",
+    privateKey: "visibility",
+    privateValues: ["private"],
+  },
 });

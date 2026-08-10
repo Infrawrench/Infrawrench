@@ -23,6 +23,16 @@ You can optionally set a **Project ID** to override the project embedded in the 
 
 <insert [GCP Add-account form with service account JSON textarea and optional project ID field] here>
 
+### Credential preflight & least-privilege role
+
+The add-account form (and **Check credentials** on the account page) tests the service account's permissions with a single `projects.testIamPermissions` call — see [Credential preflight](../core-concepts/credential-preflight.md):
+
+- **Resource inventory** — a representative sample of the list permissions the plugin uses: `compute.instances.list`, `storage.buckets.list`, `container.clusters.list`, `cloudsql.instances.list`, `run.services.list`, `pubsub.topics.list`, `bigquery.datasets.get`, `secretmanager.secrets.list`.
+- **Metrics & dashboards** — `monitoring.timeSeries.list`.
+- **Cost reporting** — `bigquery.jobs.create` and `bigquery.tables.getData`, plus the **Billing export table** field must be set; the checklist points at the [billing export setup](https://cloud.google.com/billing/docs/how-to/export-data-bigquery) when it isn't.
+
+The generator emits a custom role definition in YAML — create it with `gcloud iam roles create infrawrench --project=YOUR_PROJECT --file=role.yaml` and grant it to the service account instead of the broad Viewer role. Cost reporting additionally needs the role (or **BigQuery Data Viewer**) on the billing export dataset itself.
+
 ### Each service's API has to be enabled
 
 GCP ships every API switched off per project, and asking about a service that has never been turned on returns a permission error rather than an empty list. So a project using only Compute Engine will show sync errors for Cloud SQL, Spanner, Cloud Run, Secret Manager and the rest until those APIs are enabled — even though there is nothing there to list.

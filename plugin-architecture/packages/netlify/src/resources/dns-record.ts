@@ -19,6 +19,7 @@ export const NetlifyDnsRecordResourceType = rt({
   outputs: [o("recordId", "Record ID"), o("hostname", "Hostname")],
   dependsOn: [{ fieldKey: "zoneId", targetTypeId: "netlify-dns-zone", label: "in zone" }],
   parentTypeId: "netlify-dns-zone",
+  dnsRole: { role: "record", zoneKey: "zoneId", priorityKey: "priority" },
   supportsCreate: true,
   iconKey: "dns-record",
 });

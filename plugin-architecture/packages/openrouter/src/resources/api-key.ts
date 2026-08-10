@@ -39,6 +39,9 @@ export const ApiKeyResourceType = rt({
       description: "Plaintext key — only ever returned by the create call",
     }),
   ],
+  expiryFields: [
+    { fieldKey: "expiresAt", from: "expiry", kind: "api-token", label: "Key expires" },
+  ],
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "key",

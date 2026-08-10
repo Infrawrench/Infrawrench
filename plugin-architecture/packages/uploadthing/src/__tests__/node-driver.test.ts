@@ -116,7 +116,10 @@ describe("downloadFile", () => {
 
     await nodeDriver.downloadFile(APP_ID, KEY, API_KEY, "/tmp/out/logo.png");
 
-    expect(calls[1]?.init).toBeUndefined();
+    const storageInit = calls[1]?.init;
+    const headers = storageInit?.headers as Record<string, string> | undefined;
+    expect(headers?.["x-uploadthing-api-key"]).toBeUndefined();
+    expect(headers?.["Authorization"]).toBeUndefined();
   });
 
   it("falls back to the deprecated utfs.io url when ufsUrl is empty", async () => {

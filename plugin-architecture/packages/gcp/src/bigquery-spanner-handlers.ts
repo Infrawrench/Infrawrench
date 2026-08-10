@@ -77,8 +77,7 @@ export async function executeBigQueryQuery(
   // Parse schema + rows
   const schemaFields =
     ((data["schema"] as Record<string, unknown> | undefined)?.["fields"] as
-      | Array<Record<string, unknown>>
-      | undefined) ?? [];
+      Array<Record<string, unknown>> | undefined) ?? [];
   const columns = schemaFields.map((f) => String(f["name"]));
   const rawRows = (data["rows"] as Array<{ f: Array<{ v: unknown }> }> | undefined) ?? [];
   const rows = rawRows.map((r) => {

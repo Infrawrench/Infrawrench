@@ -3,6 +3,7 @@ import { Sha256 } from "@aws-crypto/sha256-js";
 import { HttpRequest } from "@smithy/protocol-http";
 import { SignatureV4 } from "@smithy/signature-v4";
 import { ensureArray } from "./xml.js";
+import { EC2_SSH_WORLD_OPEN } from "./constants.js";
 import type { AwsCredentials } from "./auth.js";
 import { ec2SshUsernameFromImageName } from "./ssh-username.js";
 
@@ -196,7 +197,7 @@ export async function listEC2Instances(
         sshAccess =
           "⚠ Port 22 not exposed by any attached security group — SSH will time out. Add an inbound rule for TCP/22.";
       } else if (sshCidrs.has("0.0.0.0/0") || sshCidrs.has("::/0")) {
-        sshAccess = "Port 22 open to the world (0.0.0.0/0).";
+        sshAccess = EC2_SSH_WORLD_OPEN;
       } else {
         const list = [...sshCidrs].slice(0, 4).join(", ");
         sshAccess = `Port 22 open from ${list}${sshCidrs.size > 4 ? ` (+${sshCidrs.size - 4} more)` : ""}.`;
@@ -954,8 +955,7 @@ export async function listSNSTopics(
         { TopicArn: topicArn },
       );
       const attrResult = attrData["GetTopicAttributesResult"] as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       const attrEntries = ensureArray(
         (attrResult?.["Attributes"] as Record<string, unknown> | undefined)?.["entry"],
       ) as Record<string, unknown>[];
@@ -1083,6 +1083,10 @@ export async function listSecretsManagerSecrets(
         description: String(s["Description"] ?? ""),
         lastAccessedDate: String(s["LastAccessedDate"] ?? ""),
         lastChangedDate: String(s["LastChangedDate"] ?? ""),
+        // Empty when AWS has never recorded a rotation — expiry evaluation
+        // falls back to createdDate via the type's fallbackFieldKey.
+        lastRotatedDate: String(s["LastRotatedDate"] ?? ""),
+        createdDate: String(s["CreatedDate"] ?? ""),
         rotationEnabled: s["RotationEnabled"] === true,
       },
       resolvedOutputs: {

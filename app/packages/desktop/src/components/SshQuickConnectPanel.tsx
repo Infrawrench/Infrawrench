@@ -10,6 +10,12 @@ interface SshQuickConnectPanelProps {
   defaultUsername?: string;
   preferredAppKeyId?: string | undefined;
   preferredAppKeyName?: string | undefined;
+  /**
+   * Preselect an org-managed key instead of an app key — used by agent tabs
+   * for cloud sessions, whose VM trusts the org's `infrawrench-agent` key.
+   */
+  preferredCloudKeyId?: string | undefined;
+  preferredCloudKeyName?: string | undefined;
   onConnect: (config: { username: string; privateKey: string; keySource: KeySource }) => void;
 }
 
@@ -18,6 +24,8 @@ export function SshQuickConnectPanel({
   defaultUsername,
   preferredAppKeyId,
   preferredAppKeyName,
+  preferredCloudKeyId,
+  preferredCloudKeyName,
   onConnect,
 }: SshQuickConnectPanelProps) {
   const [systemKeys, setSystemKeys] = useState<SystemKey[]>([]);
@@ -37,7 +45,13 @@ export function SshQuickConnectPanel({
 
   useEffect(() => {
     void loadKeys();
-  }, [activeCloudOrgId, preferredAppKeyId, preferredAppKeyName]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    activeCloudOrgId,
+    preferredAppKeyId,
+    preferredAppKeyName,
+    preferredCloudKeyId,
+    preferredCloudKeyName,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadKeys() {
     const [sys, db, pageant, onePassword] = await Promise.all([
@@ -54,14 +68,13 @@ export function SshQuickConnectPanel({
       [],
     );
     setAppKeys(rows);
+    let cloudRows: CloudKey[] = [];
     if (activeCloudOrgId) {
-      const cloud = await invoke<CloudKey[]>("cloud_ssh_keys_list", {
+      cloudRows = await invoke<CloudKey[]>("cloud_ssh_keys_list", {
         orgId: activeCloudOrgId,
       }).catch(() => []);
-      setCloudKeys(cloud);
-    } else {
-      setCloudKeys([]);
     }
+    setCloudKeys(cloudRows);
     // Prefer the key whose name matches the current/default username.
     const effectiveUsername = (defaultUsername ?? "root").toLowerCase();
     const sysMatch = sys.find((k) => k.name.toLowerCase() === effectiveUsername);
@@ -69,7 +82,13 @@ export function SshQuickConnectPanel({
     const preferredAppKey =
       (preferredAppKeyId ? rows.find((k) => k.id === preferredAppKeyId) : undefined) ??
       (preferredAppKeyName ? rows.find((k) => k.name === preferredAppKeyName) : undefined);
+    const preferredCloudKey =
+      (preferredCloudKeyId ? cloudRows.find((k) => k.id === preferredCloudKeyId) : undefined) ??
+      (preferredCloudKeyName ? cloudRows.find((k) => k.name === preferredCloudKeyName) : undefined);
     setSelectedKey((prev) => {
+      if (preferredCloudKey) {
+        return { type: "cloud", sshKeyId: preferredCloudKey.id, name: preferredCloudKey.name };
+      }
       if (preferredAppKey) {
         return { type: "app", id: preferredAppKey.id, name: preferredAppKey.name };
       }

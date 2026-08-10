@@ -3,11 +3,7 @@ import { Button, Card, Row } from "@/components/ui";
 
 /** What "Add a card" can add — the same choices as web's add menu. */
 export type AddCardChoice =
-  | "pin"
-  | "cost_graph"
-  | "new_budget"
-  | "existing_budget"
-  | "custom_graph";
+  "pin" | "cost_graph" | "new_budget" | "existing_budget" | "custom_graph";
 
 export function AddCardSheet({
   visible,

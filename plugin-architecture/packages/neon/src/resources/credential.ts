@@ -31,6 +31,9 @@ export const NeonCredentialResourceType = rt({
     { fieldKey: "projectId", targetTypeId: "neon-project", label: "in project" },
     { fieldKey: "branchId", targetTypeId: "neon-branch", label: "on branch" },
   ],
+  expiryFields: [
+    { fieldKey: "expiresAt", from: "expiry", kind: "api-token", label: "Credential expires" },
+  ],
   parentTypeId: "neon-branch",
   supportsCreate: true,
   supportsDelete: true,

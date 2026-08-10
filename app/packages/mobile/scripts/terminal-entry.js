@@ -7,6 +7,7 @@
  *     { type: "ready" }                 once the terminal is initialized
  *     { type: "input", b64 }            user keystrokes (base64 of utf8)
  *     { type: "resize", cols, rows }    after every fit
+ *     { type: "openUrl", url }          a link in the output was tapped
  *
  *   RN → WV (injectJavaScript):
  *     window.__terminalWrite(b64)       decode base64 → term.write(bytes)
@@ -18,6 +19,7 @@
  */
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 
 function post(msg) {
@@ -72,7 +74,18 @@ function main() {
   const root = document.getElementById("root");
   if (!root) return;
 
+  // Links printed by the remote host open in the system browser. The WebView
+  // cannot navigate itself there, so the tap is forwarded to React Native,
+  // which validates the scheme again before handing it to the OS — terminal
+  // output is remote-controlled text.
+  const linkHandler = {
+    activate(_event, uri) {
+      post({ type: "openUrl", url: uri });
+    },
+    allowNonHttpProtocols: false,
+  };
   const term = new Terminal({
+    linkHandler,
     theme: TERMINAL_THEME,
     fontFamily: 'Menlo, Monaco, "Courier New", monospace',
     fontSize: 13,
@@ -85,6 +98,8 @@ function main() {
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
+  // OSC 8 hyperlinks go through `linkHandler` above; this finds bare URLs.
+  term.loadAddon(new WebLinksAddon((event, uri) => linkHandler.activate(event, uri)));
   term.open(root);
 
   let fitTimer = null;

@@ -8,8 +8,10 @@
  * - `paging/external-pages.ts` — a server calling `POST /pages`.
  *
  * The transports are the same ones the sync-failure pager and budget alerts
- * use: Twilio SMS (plus voice on request), mobile push, and any Slack or
- * Microsoft Teams channel opted into pages.
+ * use: Twilio SMS (plus voice on request) sent directly, and push / Slack /
+ * Teams through `routeAlert`, which picks destinations from the org's routing
+ * rules. SMS stays outside the rules because its recipient list is phone
+ * numbers on `twilio_recipients`, not channels an alert rule can name.
  *
  * The cooldown lives behind {@link PageCooldownStore} because its row differs
  * per caller (keyed by workflow, or by source), but the protocol does not:
@@ -25,10 +27,8 @@ import {
   type PageSpec,
 } from "@infrawrench/workflow-runtime";
 
-import { sendPushToOrg } from "../push/dispatch";
 import type { PushData } from "../push/types";
-import { sendSlackToOrg } from "../slack";
-import { sendMsTeamsToOrg } from "../msteams";
+import { alertReached, routeAlert } from "../alerts/route";
 import { sendOneShotPage } from "../twilio-pager";
 
 /** Who is paging, and where each transport should point. */
@@ -111,30 +111,35 @@ export async function deliverPage(
   const twilio = await sendOneShotPage(audience.organizationId, smsBody(audience, spec), {
     ...(spec.voice ? { voice: true } : {}),
   });
-  const push = await sendPushToOrg(audience.organizationId, "workflowPages", {
-    title,
-    body: spec.message,
-    data: audience.pushData,
-  });
-  const alert = {
-    title,
-    body: spec.message,
-    context: audience.context,
-    ...(audience.url ? { url: audience.url } : {}),
-  };
-  const slack = await sendSlackToOrg(audience.organizationId, "workflowPages", alert);
-  const msTeams = await sendMsTeamsToOrg(audience.organizationId, "workflowPages", alert);
+  // `bypassQuietHours`: `infra.page()` is the author saying "wake someone".
+  // The org can still route it wherever it likes — and can give the rule an
+  // escalation policy, which is what makes an unanswered 3am page ring a second
+  // channel — but holding a page until morning would defeat the one call in the
+  // whole API whose entire purpose is to interrupt.
+  const routed = await routeAlert(
+    {
+      organizationId: audience.organizationId,
+      trigger: "workflowPages",
+      title,
+      body: spec.message,
+      context: audience.context,
+      url: audience.url,
+      pushData: audience.pushData,
+      facts: { key: audience.name },
+    },
+    { bypassQuietHours: true },
+  );
 
-  const delivered = twilio.succeeded + push.succeeded + slack.succeeded + msTeams.succeeded > 0;
+  const delivered = twilio.succeeded > 0 || alertReached(routed);
   if (!delivered) await store.release(prior);
 
   return {
     delivered,
     suppressed: false,
     sms: twilio.succeeded,
-    push: push.succeeded,
-    slack: slack.succeeded,
-    msTeams: msTeams.succeeded,
+    push: routed.byTransport.push,
+    slack: routed.byTransport.slack,
+    msTeams: routed.byTransport.msTeams,
   };
 }
 

@@ -58,6 +58,9 @@ const hostActionSchema = z.discriminatedUnion("type", [
     actionId: z.string(),
     confirmMessage: z.string().optional(),
     successMessage: z.string().optional(),
+    // Zod strips unknown keys, so omitting this here silently dropped the
+    // flag the change-freeze gate reads from re-validated schemas.
+    destructive: z.boolean().optional(),
   }),
   z.object({
     type: z.literal("prompt-nosql-command"),

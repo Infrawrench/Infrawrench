@@ -105,8 +105,7 @@ export const COST_RANGE_PRESETS = [
 export type CostRangePreset = (typeof COST_RANGE_PRESETS)[number];
 
 export type CostDateRange =
-  | { kind: "relative"; preset: CostRangePreset }
-  | { kind: "absolute"; from: string; to: string };
+  { kind: "relative"; preset: CostRangePreset } | { kind: "absolute"; from: string; to: string };
 
 export const COST_CHART_TYPES = ["stacked_bar", "multi_bar", "line", "area", "pie"] as const;
 export type CostChartType = (typeof COST_CHART_TYPES)[number];
@@ -324,6 +323,15 @@ export interface CostAnomaly {
   detectedAt: string;
   /** Null when delivery failed or the cooldown suppressed the notification. */
   notifiedAt: string | null;
+  /**
+   * Root-cause hints computed when the anomaly fired — what the change
+   * timeline and audit log say happened in the anomaly's window ("12
+   * gce-instance resources appeared", "Astrid ran workflow \"Nightly
+   * rebuild\""), ranked, at most three. Empty for anomalies detected before
+   * hints existed. Optional so a client a release ahead of its server still
+   * renders the row.
+   */
+  hints?: string[];
 }
 
 export const COST_ANOMALY_DIMENSION_LABELS: Record<CostAnomalyDimension, string> = {

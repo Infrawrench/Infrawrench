@@ -99,9 +99,16 @@ export async function listLocalOrphans(): Promise<OrphanListResponse> {
     })),
   });
 
+  const totalCount = countOrphans(accounts);
   return {
     accounts,
-    totalCount: countOrphans(accounts),
+    totalCount,
+    // Ownership is a cloud record; a local workspace stores none, so every
+    // flagged row is unattributed here. Reporting `totalCount` rather than 0
+    // is the honest reading of "how many of these has nobody claimed" — the
+    // local scan knows of no owners, which is not the same as knowing there
+    // are none, and the surfaces say "unattributed" for exactly that reason.
+    unownedCount: totalCount,
     costWindowDays: 0,
     costBasis: "unavailable",
     generatedAt: new Date().toISOString(),

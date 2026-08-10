@@ -7,6 +7,7 @@ import type {
   SectionNode,
   ActionNode,
   DashboardStat,
+  CreditBalance,
 } from "@infrawrench/plugin-base";
 import { jsonRestFetch } from "@infrawrench/plugin-base";
 
@@ -194,6 +195,32 @@ export class DeepSeekClient implements PluginClient {
         createdAt: now,
         updatedAt: now,
       } satisfies ResourceInstance;
+    });
+  }
+
+  /**
+   * The prepaid balance, one entry per currency.
+   *
+   * The same `GET /user/balance` the Balance resource type lists — but shaped
+   * for the host's credit tracking rather than for a resource table, so the
+   * host can collect it on a slow cadence and derive a burn rate from the
+   * series. Currency is the pot key: DeepSeek returns CNY and USD separately
+   * and summing them would produce a number that means nothing.
+   *
+   * `granted_balance` is the promotional grant, not the total ever added, so
+   * it is deliberately not reported as `granted` — a "12 of 50 remaining" bar
+   * built on it would be wrong for any account that has topped up.
+   */
+  async fetchCreditBalance(): Promise<CreditBalance[]> {
+    const body = await this.fetch<DeepSeekBalance>("/user/balance");
+    return (body.balance_infos ?? []).map((info) => {
+      const currency = str(info.currency) || "USD";
+      return {
+        key: currency,
+        label: `${currency} balance`,
+        remaining: money(info.total_balance),
+        currency,
+      } satisfies CreditBalance;
     });
   }
 

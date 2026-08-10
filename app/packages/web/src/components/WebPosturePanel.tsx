@@ -1,0 +1,122 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  RESOURCES_CHANGED_EVENT,
+  PostureSection,
+  type PostureFinding,
+  type PostureListResponse,
+} from "@infrawrench/ui";
+import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import { apiDelete, apiGet, apiPost } from "@/lib/api";
+
+interface WebPosturePanelProps {
+  orgId: string;
+  openResource: (finding: PostureFinding) => void;
+}
+
+/**
+ * Web host for the shared posture checks: fetches the org's findings from the
+ * API and refreshes when resources change. Same wiring as WebExpiryPanel — a
+ * failed *refresh* must not blank findings that are already drawn, so the
+ * last loaded data stays on screen under the section's banner.
+ */
+export function WebPosturePanel({ orgId, openResource }: WebPosturePanelProps) {
+  const [data, setData] = useState<PostureListResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  // Read directly rather than through PermissionsProvider: workspace tabs are
+  // mounted by the root viewport, which sits *outside* the org layout route
+  // that provides it. One small GET when the tab opens.
+  const [canDismiss, setCanDismiss] = useState(false);
+  // The load effect owns the refresh; dismiss/restore need to trigger one
+  // without re-running the effect's teardown, so they go through a ref the
+  // effect installs.
+  const reload = useRef<() => void>(() => {});
+
+  const retry = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  const dismiss = useCallback(
+    async (finding: PostureFinding, reason: string) => {
+      await apiPost(`/api/org/${orgId}/posture/dismissals`, {
+        resourceId: finding.resourceId,
+        ruleId: finding.ruleId,
+        reason,
+      });
+      reload.current();
+    },
+    [orgId],
+  );
+
+  const restore = useCallback(
+    async (finding: PostureFinding) => {
+      const query = new URLSearchParams({
+        resourceId: finding.resourceId,
+        ruleId: finding.ruleId,
+      });
+      await apiDelete(`/api/org/${orgId}/posture/dismissals?${query.toString()}`);
+      reload.current();
+    },
+    [orgId],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    setCanDismiss(false);
+    apiGet<{ permissions: string[] }>(`/api/org/${orgId}/team/me`)
+      .then((me) => {
+        if (!cancelled) setCanDismiss(hasPermission(me.permissions, "resources:write"));
+      })
+      // A failed permission read leaves the buttons hidden. The server
+      // enforces this anyway; guessing "allowed" would only offer an action
+      // that 403s.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Refreshes within this effect (initial load + RESOURCES_CHANGED_EVENT)
+    // can resolve out of order; only the newest request may write state.
+    let latestRequest = 0;
+    // Clear on org change: without this the previous org's findings stay on
+    // screen until the new fetch resolves, which reads as this org's feed.
+    setData(null);
+    setError(null);
+    function load() {
+      const request = ++latestRequest;
+      apiGet<PostureListResponse>(`/api/org/${orgId}/posture`)
+        .then((d) => {
+          if (!cancelled && request === latestRequest) {
+            setData(d);
+            setError(null);
+          }
+        })
+        .catch((e: unknown) => {
+          if (!cancelled && request === latestRequest)
+            setError(e instanceof Error ? e.message : "Failed to load the posture findings");
+        });
+    }
+    load();
+    reload.current = load;
+    window.addEventListener(RESOURCES_CHANGED_EVENT, load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(RESOURCES_CHANGED_EVENT, load);
+    };
+  }, [orgId, reloadKey]);
+
+  return (
+    <PostureSection
+      data={data}
+      error={error}
+      onRetry={retry}
+      onOpenResource={openResource}
+      // Members can read the screen but not silence it; without the
+      // permission the section renders without the buttons rather than
+      // offering an action that would 403.
+      onDismiss={canDismiss ? dismiss : undefined}
+      onRestore={canDismiss ? restore : undefined}
+    />
+  );
+}

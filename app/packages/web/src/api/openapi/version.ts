@@ -17,4 +17,5 @@
  * Adding or removing a plugin changes the `pluginId` / `resourceTypeId` enums,
  * which is a real change to the published surface — that counts.
  */
-export const API_VERSION = "0.28.0";
+// 1.4.0: UploadThing plugin + accountRoot / showInSidebar on ResourceTypeSummary.
+export const API_VERSION = "1.4.0";

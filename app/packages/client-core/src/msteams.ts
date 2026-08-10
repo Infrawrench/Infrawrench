@@ -1,12 +1,12 @@
 import type { CloudFetch } from "./fetch";
 
 /**
- * Microsoft Teams connection + per-channel alert routing. Server contract:
- * org-scoped `/api/org/:orgId/msteams/*` routes (see web `api/routes/msteams.ts`).
+ * Microsoft Teams connection management. Server contract: org-scoped
+ * `/api/org/:orgId/msteams/*` routes (see web `api/routes/msteams.ts`).
  *
- * A channel opts into each alert trigger independently — the same set Slack
- * channels have — so a channel can take budget crossings without also taking
- * every sync failure.
+ * A webhook is a *destination*, not a policy. Which alerts reach it is decided
+ * by the org's routing rules (`alert-routing.ts`), which reference this row by
+ * id — so the twelve trigger booleans a webhook used to carry are gone.
  *
  * Unlike Slack there is no install/OAuth step: Teams offers no app-only flow
  * for posting channel messages, so a channel is identified by the webhook URL
@@ -20,16 +20,6 @@ export interface MsTeamsWebhook {
   label: string;
   /** Non-secret hint at the stored URL, e.g. `contoso.webhook.office.com · …a7f2`. */
   urlHint: string;
-  syncIncidents: boolean;
-  budgetAlerts: boolean;
-  /** Statistical spend-spike (cost anomaly) alerts. */
-  anomalyAlerts: boolean;
-  /** Batched resource-drift digests from the change timeline. Defaults off. */
-  resourceDrift: boolean;
-  /** Pages and approval requests raised by a workflow or by `POST /pages`. */
-  workflowPages: boolean;
-  /** The Monday-morning weekly summary (only sends when the org enables it). */
-  weeklyDigest: boolean;
 }
 
 export interface MsTeamsStatus {
@@ -53,12 +43,6 @@ export interface AddMsTeamsWebhookArgs {
   label: string;
   /** The full webhook URL copied out of the Teams Workflows automation. */
   url: string;
-  syncIncidents?: boolean;
-  budgetAlerts?: boolean;
-  anomalyAlerts?: boolean;
-  resourceDrift?: boolean;
-  workflowPages?: boolean;
-  weeklyDigest?: boolean;
 }
 
 export async function addMsTeamsWebhook(
@@ -72,21 +56,16 @@ export async function addMsTeamsWebhook(
   });
 }
 
-export type MsTeamsWebhookTriggers = Pick<
-  MsTeamsWebhook,
-  | "syncIncidents"
-  | "budgetAlerts"
-  | "anomalyAlerts"
-  | "resourceDrift"
-  | "workflowPages"
-  | "weeklyDigest"
->;
-
+/**
+ * A webhook is only renameable now. Which alerts reach it is an `alert_rules`
+ * question — see `alert-routing.ts` — so the twelve trigger booleans this patch
+ * used to carry are gone rather than moved.
+ */
 export async function updateMsTeamsWebhook(
   api: CloudFetch,
   orgId: string,
   webhookId: string,
-  patch: Partial<MsTeamsWebhookTriggers & { label: string }>,
+  patch: { label?: string },
 ): Promise<MsTeamsWebhook | null> {
   return api.org<MsTeamsWebhook>(orgId, `/msteams/webhooks/${encodeURIComponent(webhookId)}`, {
     method: "PATCH",

@@ -40,18 +40,15 @@ app.get("/status", async (c) => {
 interface WebhookBody {
   label: string;
   url: string;
-  syncIncidents?: boolean;
-  budgetAlerts?: boolean;
-  anomalyAlerts?: boolean;
-  resourceDrift?: boolean;
-  workflowPages?: boolean;
-  weeklyDigest?: boolean;
 }
 
 /**
  * Add a channel by its webhook URL, or update the one already holding that URL.
  * A rejected URL (wrong host, not https) comes back as a 400 whose message is
  * written for the user — the settings form renders it verbatim.
+ *
+ * Which alerts reach the channel is an `alert_rules` question now, not a set of
+ * flags on this request — see `PUT /alert-rules`.
  */
 app.post("/webhooks", async (c) => {
   requirePermission(c, "org:settings:write");
@@ -66,12 +63,6 @@ app.post("/webhooks", async (c) => {
     const webhook = await addMsTeamsWebhook(organizationId, session?.userId ?? null, {
       label: body.label,
       url: body.url,
-      ...(body.syncIncidents != null ? { syncIncidents: body.syncIncidents } : {}),
-      ...(body.budgetAlerts != null ? { budgetAlerts: body.budgetAlerts } : {}),
-      ...(body.anomalyAlerts != null ? { anomalyAlerts: body.anomalyAlerts } : {}),
-      ...(body.resourceDrift != null ? { resourceDrift: body.resourceDrift } : {}),
-      ...(body.workflowPages != null ? { workflowPages: body.workflowPages } : {}),
-      ...(body.weeklyDigest != null ? { weeklyDigest: body.weeklyDigest } : {}),
     });
     return c.json(webhook);
   } catch (err) {
@@ -80,54 +71,27 @@ app.post("/webhooks", async (c) => {
   }
 });
 
-interface WebhookPatchBody {
-  label?: string;
-  syncIncidents?: boolean;
-  budgetAlerts?: boolean;
-  anomalyAlerts?: boolean;
-  resourceDrift?: boolean;
-  workflowPages?: boolean;
-  weeklyDigest?: boolean;
-}
-
-/** Rename a channel or change which alerts it receives. The URL is immutable. */
+/** Rename a channel. The URL is immutable; routing lives in `alert_rules`. */
 app.patch("/webhooks/:id", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
   const id = c.req.param("id");
-  const body = await c.req.json<WebhookPatchBody>();
+  const body = await c.req.json<{ label?: string }>();
 
-  const patch: Partial<typeof msteamsWebhooks.$inferInsert> = { updatedAt: new Date() };
-  if (body.label != null) {
-    const label = body.label.trim();
-    if (!label) return c.json({ error: "label cannot be empty" }, 400);
-    patch.label = label;
-  }
-  if (body.syncIncidents != null) patch.syncIncidents = body.syncIncidents;
-  if (body.budgetAlerts != null) patch.budgetAlerts = body.budgetAlerts;
-  if (body.anomalyAlerts != null) patch.anomalyAlerts = body.anomalyAlerts;
-  if (body.resourceDrift != null) patch.resourceDrift = body.resourceDrift;
-  if (body.workflowPages != null) patch.workflowPages = body.workflowPages;
-  if (body.weeklyDigest != null) patch.weeklyDigest = body.weeklyDigest;
+  // `c.req.json<T>()` is a cast, not a check: a numeric `label` would throw
+  // inside `.trim()` and surface as a 500 for what is plainly a bad request.
+  if (typeof body.label !== "string") return c.json({ error: "label must be a string" }, 400);
+  const label = body.label.trim();
+  if (!label) return c.json({ error: "label cannot be empty" }, 400);
 
   const result = await db
     .update(msteamsWebhooks)
-    .set(patch)
+    .set({ label, updatedAt: new Date() })
     .where(and(eq(msteamsWebhooks.id, id), eq(msteamsWebhooks.organizationId, organizationId)))
     .returning();
   const row = result[0];
   if (!row) return c.json({ error: "Teams channel not found" }, 404);
-  return c.json({
-    id: row.id,
-    label: row.label,
-    urlHint: row.urlHint,
-    syncIncidents: row.syncIncidents,
-    budgetAlerts: row.budgetAlerts,
-    anomalyAlerts: row.anomalyAlerts,
-    resourceDrift: row.resourceDrift,
-    workflowPages: row.workflowPages,
-    weeklyDigest: row.weeklyDigest,
-  });
+  return c.json({ id: row.id, label: row.label, urlHint: row.urlHint });
 });
 
 app.delete("/webhooks/:id", async (c) => {

@@ -18,4 +18,11 @@ export const DNSZoneResourceType = rt({
   supportsMetrics: true,
   iconKey: "dns",
   supportsCreate: true,
+  dnsRole: {
+    role: "zone",
+    domainKey: "name",
+    recordCountKey: "numberOfRecordSets",
+    privateKey: "zoneType",
+    privateValues: ["private"],
+  },
 });

@@ -49,6 +49,10 @@ suppressing on filename alone.
 
 - `[...someMap.values()].sort(...)` / `[...map.entries()].sort(...)` — the spread materializes a Map iterator into a fresh array (iterators have no `.toSorted`), not a defensive copy, so `.sort()` on that throwaway array is already immutable; `.toSorted()` would only add a second allocation. Separately, this codebase targets ES2022 — `Array.prototype.toSorted` is unavailable and fails typecheck. After verifying the sort target is a freshly-spread iterator.
 
+## `react-doctor/no-side-effect-in-state-updater-function`
+
+- A state updater whose only flagged call is a pure key/formatting helper (e.g. `logStreamKey(s.selector)` inside `setStreams((all) => all.map/filter/some(...))`) — the rule can't prove purity across module boundaries, but the helper only concatenates selector fields into a string. Updaters must stay pure; calling a pure function keeps them pure. After verifying the flagged callee has no side effects (reads args, returns a value, touches no external state).
+
 ## `react-doctor/js-cache-property-access`
 
 - A property chain (e.g. `cat.typeDef.id`) that appears multiple times but each occurrence is inside a **separate** callback (`.then`, `.catch`, distinct `.map`) with its own binding, read once per callback — there is nothing to hoist. After verifying the repeated reads are in different closures, not one loop/function body.

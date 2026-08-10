@@ -4,6 +4,11 @@ import { randomUUID } from "node:crypto";
 import { db } from "../../db/client";
 import { organizationMembers, pushDevices, pushPreferences, users } from "../../db/schema";
 import { sendTestPushToUser } from "@infrawrench/server-core/push/dispatch";
+import {
+  DEFAULT_MUTED_TRIGGERS,
+  isAlertTrigger,
+  type AlertTrigger,
+} from "@infrawrench/client-core";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
@@ -110,34 +115,18 @@ pushDeviceRoutes.delete("/devices/:id", async (c) => {
 
 const pushOrgRoutes = new Hono();
 
-interface PreferencesPayload {
-  syncIncidents: boolean;
-  budgetAlerts: boolean;
-  anomalyAlerts: boolean;
-  resourceDrift: boolean;
-  workflowPages: boolean;
-}
-
-const PREFERENCE_KEYS = [
-  "syncIncidents",
-  "budgetAlerts",
-  "anomalyAlerts",
-  "resourceDrift",
-  "workflowPages",
-] as const;
-
 /**
- * What an absent preference row (or an absent field on a PUT) means per
- * trigger. Everything is on by default except resource drift, which is
- * continuous rather than exceptional — see `db/schema.ts`.
+ * A member's mutes for this org.
+ *
+ * One array in place of eleven booleans. The shape change is the whole point of
+ * the routing refactor at this layer: a new trigger no longer needs a column, a
+ * payload field, a default, an insert value, an upsert branch and an audit key
+ * — six edits in this file alone — because "not muted" is the default for any
+ * name the member has not written down.
  */
-const PREFERENCE_DEFAULTS: PreferencesPayload = {
-  syncIncidents: true,
-  budgetAlerts: true,
-  anomalyAlerts: true,
-  resourceDrift: false,
-  workflowPages: true,
-};
+interface PreferencesPayload {
+  mutedTriggers: AlertTrigger[];
+}
 
 pushOrgRoutes.get("/preferences", async (c) => {
   const session = c.get("session");
@@ -151,12 +140,12 @@ pushOrgRoutes.get("/preferences", async (c) => {
         eq(pushPreferences.organizationId, organizationId),
       ),
     );
+  // No row means the shipped defaults, not "nothing muted" — `resourceDrift`
+  // ships muted, and returning an empty list would tell the client the opposite.
   const payload: PreferencesPayload = {
-    syncIncidents: row?.syncIncidents ?? PREFERENCE_DEFAULTS.syncIncidents,
-    budgetAlerts: row?.budgetAlerts ?? PREFERENCE_DEFAULTS.budgetAlerts,
-    anomalyAlerts: row?.anomalyAlerts ?? PREFERENCE_DEFAULTS.anomalyAlerts,
-    resourceDrift: row?.resourceDrift ?? PREFERENCE_DEFAULTS.resourceDrift,
-    workflowPages: row?.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
+    mutedTriggers: (row?.mutedTriggers as AlertTrigger[] | undefined) ?? [
+      ...DEFAULT_MUTED_TRIGGERS,
+    ],
   };
   return c.json(payload);
 });
@@ -166,11 +155,17 @@ pushOrgRoutes.put("/preferences", async (c) => {
   const organizationId = c.get("organizationId");
   const body = await c.req.json<Partial<PreferencesPayload>>();
 
-  for (const key of PREFERENCE_KEYS) {
-    if (body[key] != null && typeof body[key] !== "boolean") {
-      return c.json({ error: `${key} must be a boolean` }, 400);
-    }
+  if (!Array.isArray(body.mutedTriggers)) {
+    return c.json({ error: "mutedTriggers must be an array" }, 400);
   }
+  // Unknown names are rejected rather than stored. A mute list is small and
+  // hand-editable, and silently keeping a typo would look like it worked while
+  // the trigger it was meant to silence kept arriving.
+  const unknown = body.mutedTriggers.filter((t) => typeof t !== "string" || !isAlertTrigger(t));
+  if (unknown.length > 0) {
+    return c.json({ error: `Unknown trigger(s): ${unknown.join(", ")}` }, 400);
+  }
+  const muted = [...new Set(body.mutedTriggers)];
 
   const now = new Date();
   await db
@@ -179,22 +174,11 @@ pushOrgRoutes.put("/preferences", async (c) => {
       id: randomUUID(),
       userId: session.userId,
       organizationId,
-      syncIncidents: body.syncIncidents ?? PREFERENCE_DEFAULTS.syncIncidents,
-      budgetAlerts: body.budgetAlerts ?? PREFERENCE_DEFAULTS.budgetAlerts,
-      anomalyAlerts: body.anomalyAlerts ?? PREFERENCE_DEFAULTS.anomalyAlerts,
-      resourceDrift: body.resourceDrift ?? PREFERENCE_DEFAULTS.resourceDrift,
-      workflowPages: body.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
+      mutedTriggers: muted,
     })
     .onConflictDoUpdate({
       target: [pushPreferences.userId, pushPreferences.organizationId],
-      set: {
-        ...(body.syncIncidents != null ? { syncIncidents: body.syncIncidents } : {}),
-        ...(body.budgetAlerts != null ? { budgetAlerts: body.budgetAlerts } : {}),
-        ...(body.anomalyAlerts != null ? { anomalyAlerts: body.anomalyAlerts } : {}),
-        ...(body.resourceDrift != null ? { resourceDrift: body.resourceDrift } : {}),
-        ...(body.workflowPages != null ? { workflowPages: body.workflowPages } : {}),
-        updatedAt: now,
-      },
+      set: { mutedTriggers: muted, updatedAt: now },
     });
 
   await logAudit({
@@ -203,13 +187,7 @@ pushOrgRoutes.put("/preferences", async (c) => {
     action: "push.preferences.update",
     entityType: "push_preferences",
     entityId: session.userId,
-    metadata: {
-      syncIncidents: body.syncIncidents,
-      budgetAlerts: body.budgetAlerts,
-      anomalyAlerts: body.anomalyAlerts,
-      resourceDrift: body.resourceDrift,
-      workflowPages: body.workflowPages,
-    },
+    metadata: { mutedTriggers: muted },
   });
   return c.json({ ok: true });
 });
@@ -230,11 +208,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
       platform: pushDevices.platform,
       deviceName: pushDevices.deviceName,
       disabledAt: pushDevices.disabledAt,
-      syncIncidents: pushPreferences.syncIncidents,
-      budgetAlerts: pushPreferences.budgetAlerts,
-      anomalyAlerts: pushPreferences.anomalyAlerts,
-      resourceDrift: pushPreferences.resourceDrift,
-      workflowPages: pushPreferences.workflowPages,
+      mutedTriggers: pushPreferences.mutedTriggers,
     })
     .from(organizationMembers)
     .innerJoin(users, eq(organizationMembers.userId, users.id))
@@ -250,18 +224,15 @@ pushOrgRoutes.get("/recipients", async (c) => {
       and(eq(organizationMembers.organizationId, organizationId), isNull(pushDevices.disabledAt)),
     );
 
-  // Group devices per member; absent preference row means everything enabled.
+  // Group devices per member; an absent preference row means the shipped
+  // defaults, which is not the same as "nothing muted".
   const byUser = new Map<
     string,
     {
       userId: string;
       email: string;
       displayName: string | null;
-      syncIncidents: boolean;
-      budgetAlerts: boolean;
-      anomalyAlerts: boolean;
-      resourceDrift: boolean;
-      workflowPages: boolean;
+      mutedTriggers: AlertTrigger[];
       devices: Array<{ id: string; platform: string; deviceName: string | null }>;
     }
   >();
@@ -272,11 +243,7 @@ pushOrgRoutes.get("/recipients", async (c) => {
         userId: r.userId,
         email: r.email,
         displayName: r.displayName,
-        syncIncidents: r.syncIncidents ?? PREFERENCE_DEFAULTS.syncIncidents,
-        budgetAlerts: r.budgetAlerts ?? PREFERENCE_DEFAULTS.budgetAlerts,
-        anomalyAlerts: r.anomalyAlerts ?? PREFERENCE_DEFAULTS.anomalyAlerts,
-        resourceDrift: r.resourceDrift ?? PREFERENCE_DEFAULTS.resourceDrift,
-        workflowPages: r.workflowPages ?? PREFERENCE_DEFAULTS.workflowPages,
+        mutedTriggers: (r.mutedTriggers as AlertTrigger[] | null) ?? [...DEFAULT_MUTED_TRIGGERS],
         devices: [],
       };
       byUser.set(r.userId, entry);

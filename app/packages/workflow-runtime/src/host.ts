@@ -10,12 +10,17 @@
 
 import {
   ALLOWED_FETCH_METHODS,
+  DEFAULT_AI_MAX_TOKENS,
   DEFAULT_APPROVAL_TIMEOUT_MINUTES,
   DEFAULT_FETCH_MAX_BYTES,
   DEFAULT_FETCH_TIMEOUT_MS,
   DEFAULT_PAGE_COOLDOWN_MINUTES,
   DEFAULT_PAGE_KEY,
+  DEFAULT_WORKFLOW_AI_MODEL,
   FORBIDDEN_FETCH_HEADERS,
+  MAX_AI_MAX_TOKENS,
+  MAX_AI_PROMPT_LENGTH,
+  MAX_AI_SYSTEM_LENGTH,
   MAX_APPROVAL_MESSAGE_LENGTH,
   MAX_APPROVAL_TIMEOUT_MINUTES,
   MAX_APPROVAL_TITLE_LENGTH,
@@ -25,6 +30,7 @@ import {
   MAX_FETCH_HEADERS,
   MAX_FETCH_MAX_BYTES,
   MAX_FETCH_TIMEOUT_MS,
+  WORKFLOW_AI_MODELS,
 } from "./types.js";
 import type {
   ApprovalResult,
@@ -35,6 +41,9 @@ import type {
   PageSpec,
   PromptSpec,
   RunLogEntry,
+  WorkflowAiModel,
+  WorkflowAiResult,
+  WorkflowAiSpec,
   WorkflowCostRow,
   WorkflowCostWriteResult,
   WorkflowFetchRequest,
@@ -170,6 +179,23 @@ export interface SftpEntryLite {
 export interface WorkflowRunContext {
   /** Whether `infra.prompt` is allowed (manual/interactive runs only). */
   interactive: boolean;
+  /**
+   * Per-operation authorization gate, called by {@link dispatch} before every
+   * RPC the sandbox makes. Throw to deny; the throw surfaces inside the
+   * workflow as an ordinary error the author can see and catch.
+   *
+   * Optional, and absent means "no gate" — that is what the desktop host does,
+   * where the workflow runs as the one local user and there is nothing to
+   * authorize against. The cloud host supplies one because there a workflow
+   * runs on behalf of a *person* with a role, and `infra.…delete()` must not
+   * be a way around the permission `delete_resource` requires.
+   *
+   * Synchronous on purpose. It is called on every RPC — including the
+   * per-statement `line` hook on debug runs — so it must not be a round trip.
+   * The cloud host resolves the principal's permissions once before the isolate
+   * starts and closes over the result.
+   */
+  authorize?: (method: string) => void;
   /** Append a structured log line (also surfaced live to the UI). */
   log(entry: RunLogEntry): void;
   /** Records the value the workflow declared via `infra.output(...)`. */
@@ -320,6 +346,15 @@ export interface WorkflowHost {
    * {@link WorkflowCapabilityError}.
    */
   waitForApproval?(spec: ApprovalSpec): Promise<ApprovalResult>;
+
+  /**
+   * Ask an AI model one question on the workflow's behalf (powers `infra.ai`).
+   * The spec is already normalized and validated by {@link dispatch}. Cloud-only
+   * — the call is made server-side with the deployment's API key and metered
+   * against the org's monthly AI spend cap; the desktop host omits it and the
+   * call surfaces a {@link WorkflowCapabilityError}.
+   */
+  ai?(spec: WorkflowAiSpec): Promise<WorkflowAiResult>;
 
   /**
    * Make one outbound HTTP request on the workflow's behalf (powers the
@@ -793,6 +828,38 @@ function approvalSpec(raw: unknown): ApprovalSpec {
   };
 }
 
+/**
+ * Marshal + validate the `infra.ai(...)` argument. The model allowlist and the
+ * size bounds are settled here, once, so every host receives a spec it can hand
+ * straight to its provider; a blank prompt is rejected outright — there is no
+ * useful answer to an empty question, but there would be a bill for one.
+ */
+function aiSpec(raw: unknown): WorkflowAiSpec {
+  const spec = (raw ?? {}) as Record<string, unknown>;
+  const prompt = String(spec["prompt"] ?? "").trim();
+  if (!prompt) throw new Error("infra.ai() needs a prompt.");
+  if (prompt.length > MAX_AI_PROMPT_LENGTH) {
+    throw new Error(`infra.ai() prompts are limited to ${MAX_AI_PROMPT_LENGTH} characters.`);
+  }
+  const model = String(spec["model"] ?? DEFAULT_WORKFLOW_AI_MODEL);
+  if (!(WORKFLOW_AI_MODELS as readonly string[]).includes(model)) {
+    throw new Error(
+      `infra.ai() does not support the model ${JSON.stringify(model)} ` +
+        `(available: ${WORKFLOW_AI_MODELS.join(", ")}).`,
+    );
+  }
+  const system = String(spec["system"] ?? "").trim();
+  if (system.length > MAX_AI_SYSTEM_LENGTH) {
+    throw new Error(`infra.ai() system prompts are limited to ${MAX_AI_SYSTEM_LENGTH} characters.`);
+  }
+  return {
+    prompt,
+    ...(system ? { system } : {}),
+    model: model as WorkflowAiModel,
+    maxTokens: clamp(spec["maxTokens"], DEFAULT_AI_MAX_TOKENS, MAX_AI_MAX_TOKENS),
+  };
+}
+
 /** Bytes a base64 string decodes to, without decoding it. */
 function base64ByteLength(base64: string): number {
   const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
@@ -911,6 +978,12 @@ export async function dispatch(
   method: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
+  // Authorization first — before the args are even read, and before any
+  // branch can reach a host method. Every capability the sandbox has runs
+  // through this switch, so gating here gates all of them; a new `case` added
+  // below is covered without its author having to remember.
+  ctx.authorize?.(method);
+
   // Present only on operations against a sidecar resource (see SidecarRef);
   // every other RPC leaves it undefined and targets the account's own plugin.
   const sidecar = sidecarRef(args["sidecar"]);
@@ -1311,6 +1384,9 @@ export async function dispatch(
 
     case "fetch":
       return requireMethod(host.fetch, "fetch").call(host, fetchRequest(args["request"]));
+
+    case "ai":
+      return requireMethod(host.ai, "ai").call(host, aiSpec(args["spec"]));
 
     case "page":
       return requireMethod(host.page, "page").call(host, pageSpec(args["spec"]));

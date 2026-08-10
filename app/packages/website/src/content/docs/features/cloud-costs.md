@@ -10,6 +10,8 @@ The **Costs** panel in the sidebar is where your budgets live. Dashboards show c
 
 > **Cloud only.** Cost collection runs on Infrawrench Cloud's background pollers and time-series store. On the desktop app the widgets appear when you are signed into a cloud org; local-only mode does not collect cost data.
 
+> Costs are **billed history**. For what a resource you are about to create or resize _would_ cost, see [live cost estimates](./cost-estimates.md).
+
 ## Add a cost graph
 
 1. Open a dashboard and click the **+** tile.
@@ -56,7 +58,7 @@ Budgets alert on totals you chose. For spend you didn't see coming — a provide
 
 ## The Costs panel
 
-**Costs** in the sidebar opens month-to-date spend for the whole org — broken down by provider, account, or service — then every budget you have, then recently detected [anomalies](./cost-anomaly-alerts.md), and finally the resources that look wasted.
+**Costs** in the sidebar opens month-to-date spend for the whole org — broken down by provider, account, or service — then every budget you have, then [tag compliance, untagged spend, and showback](./tag-policy-and-showback.md), then recently detected [anomalies](./cost-anomaly-alerts.md), and finally the resources that look wasted.
 
 A budget belongs to the org, not to a dashboard. It keeps evaluating and keeps alerting whether or not anything is showing it, which is why the panel exists: it is the one place a budget is always reachable. Each row says which dashboards carry a card for it, or **On no dashboard** when none do.
 
@@ -91,6 +93,14 @@ The same budget can appear on as many dashboards as you like — one budget, man
 ### Potential savings
 
 Below the budgets, **Potential savings** lists resources that look orphaned or idle — volumes attached to nothing, IPs assigned to nothing — with the trailing 30-day spend where the provider reports cost per resource. It reads the state your accounts last synced, so it costs no provider API calls. The section also appears in local-only desktop mode, scanning this machine's workspace without a cost column. See [Orphan & idle resource finder](./orphan-finder.md) for what each provider flags.
+
+### Oversized
+
+Under Potential savings, **Oversized** covers the other half of waste: machines doing real work on more hardware than they use. Infrawrench computes each machine's p95 CPU/memory over the last 14 days of stored metrics and, where it sits well under the size, recommends the provider's cheapest smaller size that still leaves headroom — with a live-priced monthly saving and a one-click apply. See [Right-sizing](./right-sizing.md).
+
+### Sleep schedules
+
+Below that, **Sleep schedules** manages the org's off-at/on-at windows: stop a staging VM at 19:00 and start it at 08:00, Mon–Fri, with the projected monthly saving computed from its trailing spend. Schedules are created from an eligible resource's Schedule tab; this section lists them all with the next transition, the last run's outcome, and pause/edit/delete. See [Sleep/wake schedules](./sleep-schedules.md).
 
 ## On your phone
 
@@ -144,3 +154,7 @@ See each plugin's page under [Plugins](../plugins/aws.md) for what its cost inte
 ## Forecasts are trend estimates
 
 Forecasts are a least-squares fit over the trailing 30 days of daily totals, projected forward. They are a trend estimate, not a billing prediction — one-off purchases, reserved-instance charges, and tier changes will not be anticipated.
+
+## Prepaid credit
+
+Cost graphs answer "what did we spend". For providers that work off a prepaid pot rather than an invoice, the more urgent question is "how long until it runs out" — see [credit burndown](./credit-burndown.md), which sits on the same Costs panel.

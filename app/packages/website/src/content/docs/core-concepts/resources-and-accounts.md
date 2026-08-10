@@ -65,7 +65,7 @@ The [mobile app](../features/mobile-app.md) shows the same sections and the same
 
 ### Providers with a single root
 
-A few providers scope a credential so tightly that an account can only ever hold one of the top thing. [UploadThing](../plugins/uploadthing.md) is the clearest case: an API key belongs to one app, and there is no way to reach a second one with it.
+A few providers scope a credential so tightly that an account can only ever hold one top-level resource. [UploadThing](../plugins/uploadthing.md) is the clearest case: an API key belongs to one app, and there is no way to reach a second one with it.
 
 For those, the account page _is_ that resource. Opening the account lands you straight on its detail page rather than on an inventory whose only content is a section holding one item, and the sidebar expands the account directly to what lives inside it — for UploadThing, your files. Nothing else changes: it is still a normal resource with its own outputs and its own URL.
 

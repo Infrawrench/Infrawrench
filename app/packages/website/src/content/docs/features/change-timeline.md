@@ -25,9 +25,9 @@ Filter the feed by change kind or by account; results are paginated.
 
 The [mobile app](./mobile-app.md) has the same feed: open **Changes** at the top of the Resources tab. Filters are chips rather than dropdowns — change kind, account, and a time window (**Any time**, **24h**, **7d**, **30d**) — and **Load more** pages through the rest.
 
-Tap any event to open it: the full per-field before → after list, the resource's id, and a button through to the resource itself. Tapping a [drift notification](./mobile-push-notifications.md) opens this screen already filtered to the window that alert covered, with a **Since alert** chip you can clear to widen the view.
+Tap any event to open it: the full per-field before → after list, the resource's id, and a button through to the resource itself. Tapping a [drift notification](./mobile-push-notifications.md) opens the [moment view](./moment.md) centred on the window that alert covered — the digest's changes merged with everything else that happened around them.
 
-<insert [Mobile Changes screen: the filter chip rows with "Since alert" selected, a list of Appeared/Changed/Disappeared events, and one event expanded showing its before → after field values] here>
+<insert [Mobile Changes screen: the filter chip rows, a list of Appeared/Changed/Disappeared events, and one event expanded showing its before → after field values] here>
 
 ## Per-resource changes
 
@@ -111,3 +111,5 @@ If you need a permanent record of a change, export it while it is still in the w
 - History is capped at the 90-day retention window described above.
 
 The feed is also available over the [HTTP API](../team-and-billing/openapi.md): `GET /api/org/{orgId}/changes` for the paginated org feed and `GET /api/org/{orgId}/changes/resource` for a single resource.
+
+The same comparison, pointed at a different pair of snapshots, is what [environment diff](./environment-diff.md) runs: instead of one account against its own past, two accounts against each other.

@@ -4,7 +4,7 @@ description: Issue tokens for programmatic access to your infrawrench organizati
 sidebar_order: 5
 ---
 
-> **Web only. Paid plan only.**
+> **Paid plan only.** Available on the web app and, when signed in to a cloud organization, in the desktop app's Settings tab.
 
 API keys let scripts and CI jobs list resources, create them, and read outputs programmatically. They act on behalf of the user who issued them, subject to that user’s role.
 
@@ -67,3 +67,7 @@ For automation that must survive staff changes, create the key under an account 
 ## Audit
 
 Every API call is attributed to the key in the [audit log](./audit-log.md), including the key’s name.
+
+## Finding keys nobody uses
+
+Keys outlive the integrations that needed them. The [credential hygiene report](./credential-hygiene.md) lists the ones that have never authenticated, the ones that have gone quiet, the ones holding the `*` scope, and the ones carrying write scopes they never exercise — derived from `last_used_at` and the audit log, with nothing to enable.

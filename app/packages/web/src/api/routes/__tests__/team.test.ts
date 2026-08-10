@@ -256,6 +256,78 @@ describe("Team routes", () => {
     expect(body.id).toBeTruthy();
   });
 
+  /*
+   * The invite path used to accept any in-org roleId with no escalation check,
+   * while PATCH /members/:id/role had one. `team:invite` belongs to every
+   * admin, so that was an admin -> owner ladder: invite an address you control
+   * as owner, accept, and pick up billing:write and org:settings:write.
+   */
+  it("POST /invitations blocks inviting with a role the caller cannot grant", async () => {
+    vi.mocked(perms.isSubsetOfCallerPerms).mockReturnValue(false);
+    const values = vi.fn().mockResolvedValue(undefined);
+    mockInsert.mockReturnValue({ values });
+    // A custom role in this org whose permissions exceed the caller's.
+    const limit = vi.fn().mockResolvedValue([
+      {
+        id: "role-super",
+        organizationId: "org-1",
+        systemKey: null,
+        isSystem: false,
+        permissions: ["*"],
+      },
+    ]);
+    mockSelect.mockReturnValue({ from: () => ({ where: () => ({ limit }) }) });
+
+    const res = await buildApp({ permissions: ["team:invite"], roleSystemKey: "admin" }).request(
+      "/invitations",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "attacker@e.com", roleId: "role-super" }),
+      },
+    );
+
+    expect(res.status).toBe(403);
+    expect(values).not.toHaveBeenCalled();
+  });
+
+  it("POST /invitations forbids a non-owner inviting an owner", async () => {
+    // The subset check passes here (an admin with `*` would clear it), so this
+    // asserts the separate owner guard rather than riding on the same branch.
+    vi.mocked(perms.isSubsetOfCallerPerms).mockReturnValue(true);
+    const values = vi.fn().mockResolvedValue(undefined);
+    mockInsert.mockReturnValue({ values });
+
+    const res = await buildApp({ permissions: ["*"], roleSystemKey: "admin" }).request(
+      "/invitations",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "attacker@e.com", role: "owner" }),
+      },
+    );
+
+    expect(res.status).toBe(403);
+    expect(values).not.toHaveBeenCalled();
+  });
+
+  it("POST /invitations lets an owner invite an owner", async () => {
+    const values = vi.fn().mockResolvedValue(undefined);
+    mockInsert.mockReturnValue({ values });
+
+    const res = await buildApp({ permissions: ["*"], roleSystemKey: "owner" }).request(
+      "/invitations",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "cofounder@e.com", role: "owner" }),
+      },
+    );
+
+    expect(res.status).toBe(200);
+    expect(values).toHaveBeenCalled();
+  });
+
   it("POST /invitations returns 402 on a free org", async () => {
     vi.mocked(planAccess).mockResolvedValueOnce({ paid: false, reason: "none" });
     const values = vi.fn().mockResolvedValue(undefined);
@@ -289,7 +361,11 @@ describe("Team routes", () => {
   });
 
   it("POST /invitations returns the structured 409 when the plan is full", async () => {
-    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({ seatCount: 3, seatsUsed: 3 });
+    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({
+      seatCount: 3,
+      seatsUsed: 3,
+      canAddSeat: true,
+    });
     const values = vi.fn().mockResolvedValue(undefined);
     mockInsert.mockReturnValue({ values });
 
@@ -307,7 +383,11 @@ describe("Team routes", () => {
   });
 
   it("POST /invitations with addSeat buys a seat and sends the invite", async () => {
-    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({ seatCount: 3, seatsUsed: 3 });
+    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({
+      seatCount: 3,
+      seatsUsed: 3,
+      canAddSeat: true,
+    });
     const values = vi.fn().mockResolvedValue(undefined);
     mockInsert.mockReturnValue({ values });
 
@@ -323,7 +403,11 @@ describe("Team routes", () => {
   });
 
   it("POST /invitations with addSeat needs billing:write", async () => {
-    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({ seatCount: 3, seatsUsed: 3 });
+    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({
+      seatCount: 3,
+      seatsUsed: 3,
+      canAddSeat: true,
+    });
     mockHasPermission.mockImplementation((_granted, perm) => perm !== "billing:write");
     const values = vi.fn().mockResolvedValue(undefined);
     mockInsert.mockReturnValue({ values });
@@ -339,7 +423,11 @@ describe("Team routes", () => {
   });
 
   it("POST /invitations does not send the invite when the seat purchase fails", async () => {
-    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({ seatCount: 3, seatsUsed: 3 });
+    vi.mocked(checkSeatAvailability).mockResolvedValueOnce({
+      seatCount: 3,
+      seatsUsed: 3,
+      canAddSeat: true,
+    });
     vi.mocked(addSeat).mockRejectedValueOnce(new Error("stripe down"));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const values = vi.fn().mockResolvedValue(undefined);

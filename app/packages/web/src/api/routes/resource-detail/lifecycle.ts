@@ -10,15 +10,18 @@ import {
   setOutputRefSecretState,
 } from "@infrawrench/server-core/secret-states";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
+import { estimateResourceCost } from "@infrawrench/server-core/cost/estimate";
 import { normalizeResourceCreateResult, parseOutputRef } from "@infrawrench/plugin-base";
 import type { OutputRefValue } from "@infrawrench/plugin-base";
 import { requirePermission } from "../../../auth/permissions";
 import { nextAssociationSyncVersion } from "../../../services/sync-versions";
 import { checkChangeFreeze } from "../../../services/change-freezes";
+import { logAudit } from "../../../services/audit";
+import { checkTagPolicyOnCreate } from "../../../services/tag-policy";
 
 /**
  * Lifecycle routes: create / delete / picker-resources / field-action /
- * create-config / create-pricing / create-cost-estimate.
+ * create-config / create-pricing / cost-estimate.
  *
  * These cover the resource-creation form's needs (option lookups, pricing
  * estimates, action buttons) plus the create + delete endpoints. The create
@@ -91,6 +94,19 @@ export function registerLifecycleRoutes(app: Hono): void {
         resolvedFields[fieldKey] = value;
       }
     }
+
+    // Org tag policy: refuse creates missing required tags (422, code
+    // `tag_policy_unmet`) the same way the change freeze refuses destructive
+    // mutations. Types that cannot carry tags are exempt inside the check.
+    const policyBlock = await checkTagPolicyOnCreate(c, {
+      client: ctx.client,
+      pluginId: input.pluginId,
+      resourceTypeId: input.resourceTypeId,
+      accountId: input.accountId,
+      parentResourceId: input.parentResourceId,
+      fields: resolvedFields,
+    });
+    if (policyBlock) return policyBlock;
 
     let createReturn;
     try {
@@ -268,6 +284,21 @@ export function registerLifecycleRoutes(app: Hono): void {
     if (!ctx.client.updateResource)
       return c.json({ error: "Plugin does not support updates" }, 400);
 
+    // Same gate as delete: a change freeze means no provider mutations, and
+    // an edit (rename, resize) is one. The right-sizing "Apply resize" flow
+    // rides this route on purpose so it inherits the gate + the audit trail.
+    const frozen = await checkChangeFreeze(c, {
+      action: "resource.update",
+      entityType: "resource",
+      entityId: input.resourceId,
+      metadata: {
+        pluginId: input.pluginId,
+        resourceTypeId: input.resourceTypeId,
+        fieldKeys: Object.keys(input.fields ?? {}),
+      },
+    });
+    if (frozen) return frozen;
+
     let updated;
     try {
       updated = await ctx.client.updateResource(
@@ -280,6 +311,23 @@ export function registerLifecycleRoutes(app: Hono): void {
       const message = e instanceof Error ? e.message : "Resource update failed";
       return c.json({ error: message }, 400);
     }
+
+    // Every applied edit lands in the audit trail — resource updates carry
+    // real provider mutations (a resize restarts the machine).
+    void logAudit({
+      organizationId,
+      userId: (c.get("session") as { userId?: string } | undefined)?.userId,
+      action: "resource.update",
+      entityType: "resource",
+      entityId: input.resourceId,
+      metadata: {
+        pluginId: input.pluginId,
+        resourceTypeId: input.resourceTypeId,
+        // Keys only — edited values can include write-only password fields,
+        // which must never land in the audit table.
+        fieldKeys: Object.keys(input.fields ?? {}),
+      },
+    });
 
     // Mirror the refreshed fields/displayName into the DB so the next page
     // load sees the new values without waiting for a sync cycle. Peer-managed
@@ -503,30 +551,53 @@ export function registerLifecycleRoutes(app: Hono): void {
     return c.json(result);
   });
 
-  /** POST /api/resources/create-cost-estimate — get cost estimate for create form */
-  app.post("/create-cost-estimate", async (c) => {
+  /**
+   * POST /api/resources/cost-estimate — monthly cost of a configuration.
+   *
+   * One route for all three questions the UI asks: what would this create
+   * cost (`fields`), what does this resource cost (`resourceId`), and what
+   * would this edit cost (both — `fields` is merged over the resource's
+   * stored fields, so the caller sends only what changed).
+   *
+   * A peer-resource client (`pluginId` + `parentResourceId`) is resolved here
+   * rather than in server-core, because only the web host has the peer
+   * plumbing; the ordinary account path delegates so the digest and this
+   * route cannot drift in how they merge fields.
+   */
+  app.post("/cost-estimate", async (c) => {
     requirePermission(c, "resources:read");
     const organizationId = c.get("organizationId");
     const input = await c.req.json<{
       accountId: string;
       resourceTypeId: string;
-      fields: Record<string, string>;
+      fields?: Record<string, string>;
+      resourceId?: string;
       pluginId?: string;
       parentResourceId?: string;
     }>();
 
-    const ctx = input.pluginId
-      ? await getClientForResource(
-          input.pluginId,
-          input.accountId,
-          organizationId,
-          input.parentResourceId,
-        )
-      : await getClientForAccount(input.accountId, organizationId);
-    if (!ctx) return c.json({ error: "Account or peer resource not found" }, 404);
-    if (!ctx.client.getCreateCostEstimate) return c.json({ estimate: null });
+    if (!input.pluginId) {
+      const estimate = await estimateResourceCost(organizationId, {
+        accountId: input.accountId,
+        resourceTypeId: input.resourceTypeId,
+        fields: input.fields,
+        resourceId: input.resourceId,
+      });
+      return c.json({ estimate });
+    }
 
-    const estimate = await ctx.client.getCreateCostEstimate(input.resourceTypeId, input.fields);
+    const ctx = await getClientForResource(
+      input.pluginId,
+      input.accountId,
+      organizationId,
+      input.parentResourceId,
+    );
+    if (!ctx) return c.json({ error: "Account or peer resource not found" }, 404);
+    if (!ctx.client.estimateCost) return c.json({ estimate: null });
+
+    const estimate = await ctx.client
+      .estimateCost(input.resourceTypeId, input.fields ?? {})
+      .catch(() => null);
     return c.json({ estimate: estimate ?? null });
   });
 }

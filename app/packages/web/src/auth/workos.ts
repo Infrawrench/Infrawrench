@@ -15,4 +15,17 @@ export const clientId = clientIdEnv;
 // requests to api.workos.com are unsupported, so prod must set this.
 const apiHostname = process.env["WORKOS_API_HOSTNAME"];
 
-export const workos = new WorkOS({ apiKey, clientId, ...(apiHostname ? { apiHostname } : {}) });
+// Dev-only companions to WORKOS_API_HOSTNAME for the WorkOS emulator
+// (github.com/workos/emulate), which speaks plain HTTP on port 4100 — the SDK
+// otherwise assumes https on the default port. Leave both unset against real
+// WorkOS; docker-compose.dev.yml sets them.
+const apiHttps = process.env["WORKOS_API_HTTPS"];
+const apiPort = process.env["WORKOS_API_PORT"];
+
+export const workos = new WorkOS({
+  apiKey,
+  clientId,
+  ...(apiHostname ? { apiHostname } : {}),
+  ...(apiHttps ? { https: apiHttps !== "false" } : {}),
+  ...(apiPort ? { port: Number.parseInt(apiPort, 10) } : {}),
+});

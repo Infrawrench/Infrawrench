@@ -48,6 +48,17 @@ export const AppServiceResourceType = rt({
     },
   ],
   iconKey: "deployment",
+  // `<app>.azurewebsites.net`, and the SCM/Kudu sibling. App Service names are
+  // globally unique, so the name match is exact.
+  dnsServiceHosts: [
+    {
+      id: "azurewebsites",
+      label: "App Service default hostname",
+      hostPattern: String.raw`([a-z0-9][a-z0-9-]*)(?:\.scm)?\.azurewebsites\.net`,
+      reason:
+        "App Service names are globally unique and released on delete, so any Azure customer can create an app with the same name and serve it under your hostname.",
+    },
+  ],
   supportsCreate: true,
   supportsMetrics: true,
 });

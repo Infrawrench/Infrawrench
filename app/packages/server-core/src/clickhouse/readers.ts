@@ -193,6 +193,297 @@ export async function getLatestAccountCountsBatch(
   return result;
 }
 
+/** Per-series quantiles over a window — the right-sizing utilisation read. */
+export interface MetricSeriesQuantiles {
+  label: string;
+  unit: string;
+  /** 5th / 95th percentile of the per-minute averages inside the window. */
+  q05: number;
+  q95: number;
+  max: number;
+  /** Number of per-minute samples backing the quantiles. */
+  samples: number;
+}
+
+/**
+ * Batch p05/p95/max per series over the 1m rollup for many resources at once.
+ *
+ * Reads `metric_points_1m` (30-day TTL — callers must stay inside it; the
+ * right-sizing window is 14 days) rather than the 1h rollup: a p95 of hourly
+ * averages flattens the very peaks the recommendation must respect. The inner
+ * query finalizes the avg-state per minute, the outer one takes quantiles
+ * over those per-minute points. Series identity is (resource, label) — a
+ * series whose unit string changed mid-window still combines into one row,
+ * with a representative unit via `any(unit)`.
+ */
+export async function getMetricQuantilesBatch(
+  organizationId: string,
+  resourceIds: string[],
+  fromMs: number,
+  toMs: number,
+): Promise<Map<string, MetricSeriesQuantiles[]>> {
+  const result = new Map<string, MetricSeriesQuantiles[]>();
+  if (resourceIds.length === 0) return result;
+  const rows = await query<{
+    resource_id: string;
+    series_label: string;
+    unit: string;
+    q05: number;
+    q95: number;
+    vmax: number;
+    samples: string | number;
+  }>(
+    `SELECT resource_id,
+            series_label,
+            any(unit)                  AS unit,
+            quantile(0.05)(minute_avg) AS q05,
+            quantile(0.95)(minute_avg) AS q95,
+            max(minute_avg)            AS vmax,
+            count()                    AS samples
+     FROM (
+       SELECT resource_id,
+              series_label,
+              unit,
+              ts_minute,
+              avgMerge(value_avg) AS minute_avg
+       FROM metric_points_1m
+       WHERE organization_id = {orgId:String}
+         AND resource_id IN {ids:Array(String)}
+         AND ts_minute >= toDateTime({fromSec:Int64})
+         AND ts_minute <= toDateTime({toSec:Int64})
+       GROUP BY resource_id, series_label, unit, ts_minute
+     )
+     GROUP BY resource_id, series_label`,
+    {
+      orgId: organizationId,
+      ids: resourceIds,
+      fromSec: Math.floor(fromMs / 1000),
+      toSec: Math.floor(toMs / 1000),
+    },
+  );
+  for (const r of rows) {
+    let list = result.get(r.resource_id);
+    if (!list) {
+      list = [];
+      result.set(r.resource_id, list);
+    }
+    list.push({
+      label: r.series_label,
+      unit: r.unit,
+      q05: Number(r.q05),
+      q95: Number(r.q95),
+      max: Number(r.vmax),
+      samples: Number(r.samples),
+    });
+  }
+  return result;
+}
+
+/**
+ * A metric series that actually exists for the org (optionally narrowed to a
+ * plugin / resource type), for the metric-alert rule builder's key picker —
+ * the user picks from what their resources really report instead of having to
+ * know internal series labels.
+ *
+ * Reads the raw table (the only one carrying plugin/type columns) over its
+ * full 7-day TTL, so a metric only stops being offered a week after the last
+ * resource stopped reporting it.
+ */
+export interface MetricSeriesKey {
+  label: string;
+  unit: string;
+  /** How many distinct resources reported this series in the window. */
+  resourceCount: number;
+}
+
+export async function listMetricSeriesKeys(
+  organizationId: string,
+  filter: { pluginId?: string | undefined; resourceTypeId?: string | undefined } = {},
+): Promise<MetricSeriesKey[]> {
+  const conditions = [
+    "organization_id = {orgId:String}",
+    "ts > now() - INTERVAL 7 DAY",
+    ...(filter.pluginId ? ["plugin_id = {pluginId:String}"] : []),
+    ...(filter.resourceTypeId ? ["resource_type_id = {resourceTypeId:String}"] : []),
+  ];
+  const rows = await query<{ series_label: string; unit: string; resource_count: string | number }>(
+    `SELECT series_label,
+            any(unit)                AS unit,
+            uniqExact(resource_id)   AS resource_count
+     FROM metric_points_raw
+     WHERE ${conditions.join(" AND ")}
+     GROUP BY series_label
+     ORDER BY series_label ASC`,
+    {
+      orgId: organizationId,
+      ...(filter.pluginId ? { pluginId: filter.pluginId } : {}),
+      ...(filter.resourceTypeId ? { resourceTypeId: filter.resourceTypeId } : {}),
+    },
+  );
+  return rows.map((r) => ({
+    label: r.series_label,
+    unit: r.unit,
+    resourceCount: Number(r.resource_count),
+  }));
+}
+
+/** One per-minute averaged sample, as the metric-alert evaluator consumes it. */
+export interface MetricMinuteSample {
+  tsMs: number;
+  value: number;
+}
+
+/**
+ * Per-minute averages of one series for many resources over a window — the
+ * metric-alert evaluator's read. Uses the 1m rollup (30-day TTL) rather than
+ * raw points so the "held for the whole window" judgement runs over evenly
+ * bucketed samples regardless of how bursty the plugin's reporting is.
+ */
+export async function getMetricMinuteSeriesBatch(
+  organizationId: string,
+  resourceIds: string[],
+  seriesLabel: string,
+  fromMs: number,
+  toMs: number,
+): Promise<Map<string, MetricMinuteSample[]>> {
+  const result = new Map<string, MetricMinuteSample[]>();
+  if (resourceIds.length === 0) return result;
+  const rows = await query<{ resource_id: string; ts_ms: number; value: number }>(
+    `SELECT resource_id,
+            toUnixTimestamp(ts_minute) * 1000 AS ts_ms,
+            avgMerge(value_avg) AS value
+     FROM metric_points_1m
+     WHERE organization_id = {orgId:String}
+       AND resource_id IN {ids:Array(String)}
+       AND series_label = {seriesLabel:String}
+       AND ts_minute >= toDateTime({fromSec:Int64})
+       AND ts_minute <= toDateTime({toSec:Int64})
+     GROUP BY resource_id, ts_minute
+     ORDER BY ts_minute ASC`,
+    {
+      orgId: organizationId,
+      ids: resourceIds,
+      seriesLabel,
+      fromSec: Math.floor(fromMs / 1000),
+      toSec: Math.floor(toMs / 1000),
+    },
+  );
+  for (const r of rows) {
+    let list = result.get(r.resource_id);
+    if (!list) {
+      list = [];
+      result.set(r.resource_id, list);
+    }
+    list.push({ tsMs: Number(r.ts_ms), value: Number(r.value) });
+  }
+  return result;
+}
+
+/**
+ * Average of one series per resource over a window, from the 1m rollup — the
+ * probe list's uptime read (averaging the 0/1 "Up" series over 24h yields the
+ * up fraction). The inner GROUP BY finalizes the per-minute avg state first so
+ * bursty raw reporting can't weight some minutes more than others.
+ */
+export async function getMetricSeriesAverageBatch(
+  organizationId: string,
+  resourceIds: string[],
+  seriesLabel: string,
+  fromMs: number,
+  toMs: number,
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (resourceIds.length === 0) return result;
+  const rows = await query<{ resource_id: string; value: number }>(
+    `SELECT resource_id, avg(value) AS value
+     FROM (
+       SELECT resource_id, ts_minute, avgMerge(value_avg) AS value
+       FROM metric_points_1m
+       WHERE organization_id = {orgId:String}
+         AND resource_id IN {ids:Array(String)}
+         AND series_label = {seriesLabel:String}
+         AND ts_minute >= toDateTime({fromSec:Int64})
+         AND ts_minute <= toDateTime({toSec:Int64})
+       GROUP BY resource_id, ts_minute
+     )
+     GROUP BY resource_id`,
+    {
+      orgId: organizationId,
+      ids: resourceIds,
+      seriesLabel,
+      fromSec: Math.floor(fromMs / 1000),
+      toSec: Math.floor(toMs / 1000),
+    },
+  );
+  for (const r of rows) result.set(r.resource_id, Number(r.value));
+  return result;
+}
+
+/** One UTC day's average of a series for one resource. */
+export interface MetricDailyAverage {
+  resourceId: string;
+  /** `YYYY-MM-DD`, UTC. */
+  day: string;
+  value: number;
+}
+
+/**
+ * Daily averages of one series per resource, from the 1h rollup — the status
+ * page's uptime history read (averaging the 0/1 "Up" series per day yields a
+ * daily up fraction).
+ *
+ * The 1h rollup, not the 1m one, because the window is months: `metric_points_1h`
+ * keeps a year (`metric_points_1m` does not) and a 90-day span over minute rows
+ * would scan two orders of magnitude more data for the same answer.
+ *
+ * Days with no rows are simply absent rather than zero. That distinction is the
+ * whole point on a public page: a day nothing was recorded must render as a gap,
+ * never as a day of downtime, and never as a day of perfect uptime.
+ *
+ * Hours are weighted equally within a day, as minutes are within an hour in
+ * `getMetricSeriesAverageBatch` — an hour of sparse sampling counts the same as
+ * a busy one, which is what keeps a retry storm from skewing the figure.
+ */
+export async function getMetricDailyAverageBatch(
+  organizationId: string,
+  resourceIds: string[],
+  seriesLabel: string,
+  fromMs: number,
+  toMs: number,
+): Promise<MetricDailyAverage[]> {
+  if (resourceIds.length === 0) return [];
+  const rows = await query<{ resource_id: string; day: string; value: number }>(
+    `SELECT resource_id, day, avg(value) AS value
+     FROM (
+       SELECT resource_id,
+              toDate(ts_hour) AS day,
+              ts_hour,
+              avgMerge(value_avg) AS value
+       FROM metric_points_1h
+       WHERE organization_id = {orgId:String}
+         AND resource_id IN {ids:Array(String)}
+         AND series_label = {seriesLabel:String}
+         AND ts_hour >= toDateTime({fromSec:Int64})
+         AND ts_hour <= toDateTime({toSec:Int64})
+       GROUP BY resource_id, day, ts_hour
+     )
+     GROUP BY resource_id, day
+     ORDER BY day`,
+    {
+      orgId: organizationId,
+      ids: resourceIds,
+      seriesLabel,
+      fromSec: Math.floor(fromMs / 1000),
+      toSec: Math.floor(toMs / 1000),
+    },
+  );
+  return rows.map((r) => ({
+    resourceId: r.resource_id,
+    day: String(r.day).slice(0, 10),
+    value: Number(r.value),
+  }));
+}
+
 /**
  * Historical metric range. Auto-routes between raw / 1m / 1h based on span:
  *  <= 2h: raw

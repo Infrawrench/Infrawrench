@@ -13,13 +13,36 @@ import { setColorEnabled, printErr, println, c } from "./output";
 import { cmdLogin, cmdLogout, cmdWhoami } from "./commands/auth";
 import { cmdOrgs, cmdAccounts, cmdResources, cmdResource } from "./commands/listing";
 import { cmdMetrics } from "./commands/metrics";
+import { cmdExport } from "./commands/export";
+import { cmdEstimate } from "./commands/estimate";
 import { cmdCosts, cmdCostAnomalies } from "./commands/costs";
+import { cmdTags, cmdShowback } from "./commands/tags";
 import { cmdOrphans } from "./commands/orphans";
+import { cmdOversized } from "./commands/oversized";
+import { cmdAlerts, cmdAlertEvents } from "./commands/alerts";
+import { cmdRouting, cmdRoutingQueue } from "./commands/routing";
+import { cmdExpiring } from "./commands/expiring";
+import { cmdPosture, cmdPostureDismiss, cmdPostureRestore } from "./commands/posture";
+import { cmdDns } from "./commands/dns";
 import { cmdChanges } from "./commands/changes";
+import { cmdDiff } from "./commands/diff";
+import { cmdMoment } from "./commands/moment";
+import { cmdIncidents } from "./commands/incidents";
+import { cmdSchedules } from "./commands/schedules";
+import { cmdLeases } from "./commands/leases";
+import { cmdRecordings } from "./commands/recordings";
+import { cmdAccess } from "./commands/access";
+import { cmdHygiene } from "./commands/hygiene";
+import { cmdCredits } from "./commands/credits";
+import { cmdProbes } from "./commands/probes";
+import { cmdStatusPages } from "./commands/status-pages";
+import { cmdOwnership } from "./commands/ownership";
 import { cmdGraph } from "./commands/graph";
 import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCli } from "./commands/cli-install";
 import { cmdDeploy } from "./commands/deploy";
+import { cmdSshFanout } from "./commands/ssh-fanout";
+import { cmdConfig } from "./commands/config";
 import { runTui } from "./tui";
 
 const HELP = `infrawrench — manage your infrastructure from the terminal
@@ -37,14 +60,66 @@ COMMANDS
   resources           list an account's resources   --account <id|name>
   resource <id>       show one resource's fields & outputs
   metrics <id>        metric charts for a resource   [--last 6h] [--series cpu] [--local]
+  export              eject an account's inventory as Terraform HCL   --account <id|name> [--format terraform]
+  estimate <id|name>  what a resource costs per month at list price, itemized (cloud only;
+                      full id, or a name/external-id with --account)
   costs               org cost graphs   [--last 30d] [--group-by provider|account|service|region|resource]
   costs --anomalies   days a provider or service spiked past its own baseline   [--days 30]
   costs push          push your own cost rows   --source <name> [--file rows.json | stdin]
+  tags                org tag policy, per-account compliance & untagged spend   [--last 30d]
+  showback            spend by cost centre via the org's allocation rules   [--last 30d]
   orphans             likely-wasted resources (unattached volumes, idle IPs) with reasons + cost
                       (--local scans this machine's workspace; no cost column without the cloud)
+  oversized           machines whose 14-day p95 utilisation sits well under their size, with the
+                      recommended smaller size and monthly saving (cloud only)
+  alerts              metric threshold alert rules ("CPU > 90% for 15m") with live firing status
+  alerts events       recent metric alert firings & recoveries   [--limit 50]
+  routing             alert routing rules, in evaluation order
+  routing queue       alerts held for quiet hours or awaiting ack [--limit 50]
+  expiring            certificates, domains, tokens & keys approaching expiry, soonest first
+                      (--local scans this machine's workspace)
+  posture             security posture findings (public buckets, world-open ingress, unencrypted
+                      disks), ranked by severity   (--local scans this machine's workspace)
+  posture dismiss     accept a finding as a known risk — it leaves the list and the daily alerts
+                      <resourceId> <ruleId> [--reason <text>]   (ids from posture --json)
+  posture restore     put a dismissed finding back   <resourceId> <ruleId>
+  dns                 every DNS zone & record across your providers, with dangling targets
+                      (subdomain-takeover risks) flagged   (--local scans this machine's workspace)
   changes             what appeared / changed / disappeared across your providers
                       [--last 7d] [--limit 50] [--kind created|updated|deleted] [-a <account>] [--resource <id>]
+  diff                two accounts of one provider compared: resource types present in one and
+                      not the other, count deltas & field divergence   -a <account> -b <account>
+                      [--type <typeId>] [--all]  (--local compares two local accounts)
+  incidents           provider status-page incidents overlapping your resources ("is it me or is it them?")
+  moment [timestamp]  everything that happened around a timestamp, across every feed
+                      [-w/--window 15m|1h|6h]  (omit the timestamp for "around now")
+  schedules           sleep/wake schedules: windows, next transitions & projected savings
+  leases              resource leases (TTLs): deadlines, auto-delete flags & status
+  access              break-glass requests & live permission elevations
+  credits             prepaid balances with burn rate & runway ("6 days left")
+  hygiene             unused API keys, unreferenced SSH keys & unexercised
+                      write permissions   [--days 30|90|180|365]
+  access active       only the elevations in force right now
+  recordings          recorded SSH sessions: who connected, to what, for how long
+  recordings get <id> print the session's asciicast   [-f/--file <path>]
+                      (pipe it: infrawrench recordings get <id> | asciinema play -)
+  probes [id|name]    synthetic uptime/latency checks probed from outside your infra, with
+                      live status, 24h uptime & last latency (give an id/name for its chart)
+  status-pages [name] public status pages built from your probes: what each publishes and the
+                      URL it is live at (give a name/id for its components)
+  ownership [query]   who owns each resource, what it's for & its ticket (a resource absent
+                      from this list is unowned; see orphans for the wasted ones)
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
+  ssh-fanout <cmd>    run one command across many SSH hosts; identical output is collapsed and
+                      outliers are diffed against the majority   [--list] [--hosts <q>] [--plugin <id>]
+                      [--tag k:v] [--key <id|name>] [--user <name>] [--snippet <name>] [-y]
+                      (put -- before a remote command with flags of its own:
+                      infrawrench ssh-fanout -y -- uptime -p)
+  ssh-fanout snippets the organization's saved fan-out commands
+  config export       the org's dashboards, workflows, budgets, graphs, alert rules & policies
+                      as one JSON document   [--out file] [--sections a,b]  (stdout when no --out)
+  config plan         what applying a document would change, without changing it   [-f file] [--prune]
+  config apply        apply a document   [-f file] [--prune] [--sections a,b] [-y]
   page <message>      alert the org's on-call transports   --source <name> [--key k] [--voice]
   page clear          drop a page key's cooldown after a recovery   --source <name> [--key k]
   deploy              build & ship this project via its Infrafile   [-e <env>] [--plan]
@@ -67,17 +142,34 @@ FLAGS
   --days <n>          whole-day window for costs --anomalies and changes
   --limit <n>         row cap for changes (max 200)
   --kind <k>          changes filter: created | updated | deleted
+  -b, --against <x>   diff: the second account (-a supplies the first)
+  --all               diff: compare ids, addresses & timestamps too
   --resource <id>     focus one resource (graph) / filter to it (changes)
+  -w, --window <d>    moment half-window, e.g. 30m, 1h, 6h (± around the timestamp)
   --type <typeId>     filter resources by resource type
+  --format <fmt>      export format (default: terraform)
+  --reason <text>     posture dismiss: why the finding is an accepted risk
   --source <name>     who is pushing (required by page and costs push)
   --key <k>           page throttle key   --title <t>   --cooldown <min>   --voice
-  -f, --file <path>   JSON rows for costs push (stdin when omitted)
+  -f, --file <path>   JSON rows for costs push / config document (stdin when omitted)
+  --out <path>        config export: write the document here instead of stdout
+  --sections <a,b>    config: limit to these sections (budgets, workflows, dashboards, …)
+  --prune             config apply: also delete what the document doesn't name
   -e, --env <name>    environment to deploy (optional when the Infrafile has one)
   --plan              deploy: show the plan and Dockerfile, build nothing
   --set <key=value>   deploy: answer a select() without prompting (repeatable)
   --to-run <runId>    deploy rollback: which run to go back to
   --delete-created    deploy rollback: also delete resources newer runs created
   --created           deploy destroy: delete what the local ledger says the env created (needs -e)
+  --list              ssh-fanout: show the selectable hosts instead of running
+  --hosts <q>         ssh-fanout: match host name / address / tag
+  --plugin <id>       ssh-fanout: restrict to one provider
+  --tag <key:value>   ssh-fanout: restrict to hosts carrying this tag
+  --key <id|name>     ssh-fanout: org SSH key for VM hosts (also: page throttle key)
+  --user <name>       ssh-fanout: username override for VM hosts
+  --snippet <name>    ssh-fanout: run a saved command instead of a literal one
+  -y, --yes           skip the confirmation (ssh-fanout's "Run on N hosts?", config apply's plan)
+  --concurrency <n>   ssh-fanout: simultaneous connections (default 8, max 16)
   --no-color          disable ANSI colors
   -v, --version       app version
 
@@ -212,6 +304,12 @@ export async function runCli(): Promise<void> {
       case "metrics":
         await cmdMetrics(ctx, rest[0] ?? "", parsed.range);
         break;
+      case "export":
+        await cmdExport(ctx, parsed.exportFlags.format);
+        break;
+      case "estimate":
+        await cmdEstimate(ctx, rest[0] ?? "");
+        break;
       case "costs":
         if (rest[0] === "push") {
           await cmdCostsPush(ctx, parsed.push);
@@ -223,11 +321,86 @@ export async function runCli(): Promise<void> {
         }
         await cmdCosts(ctx, parsed.range);
         break;
+      case "tags":
+        await cmdTags(ctx, parsed.range);
+        break;
+      case "showback":
+        await cmdShowback(ctx, parsed.range);
+        break;
       case "orphans":
         await cmdOrphans(ctx);
         break;
+      case "oversized":
+        await cmdOversized(ctx);
+        break;
+      case "alerts":
+        if (rest[0] === "events") {
+          await cmdAlertEvents(ctx, parsed.range.limit);
+          break;
+        }
+        await cmdAlerts(ctx);
+        break;
+      case "routing":
+        if (rest[0] === "queue") {
+          await cmdRoutingQueue(ctx, parsed.range.limit);
+          break;
+        }
+        await cmdRouting(ctx);
+        break;
+      case "expiring":
+        await cmdExpiring(ctx);
+        break;
+      case "posture":
+        if (rest[0] === "dismiss") await cmdPostureDismiss(ctx, rest.slice(1));
+        else if (rest[0] === "restore") await cmdPostureRestore(ctx, rest.slice(1));
+        else await cmdPosture(ctx);
+        break;
+      case "dns":
+        await cmdDns(ctx);
+        break;
       case "changes":
         await cmdChanges(ctx, parsed.range);
+        break;
+      case "diff":
+        // `infrawrench diff staging prod` is the same as -a/-b; the two
+        // positionals are the only ones this command could take.
+        await cmdDiff(ctx, rest, parsed.diff, parsed.range);
+        break;
+      case "incidents":
+        await cmdIncidents(ctx);
+        break;
+      case "moment":
+        await cmdMoment(ctx, parsed.range);
+        break;
+      case "schedules":
+        await cmdSchedules(ctx);
+        break;
+      case "leases":
+        await cmdLeases(ctx);
+        break;
+      case "recordings":
+        await cmdRecordings(ctx, rest, { file: parsed.push.file });
+        break;
+      case "access":
+        await cmdAccess(ctx, rest);
+        break;
+      case "hygiene":
+        await cmdHygiene(ctx, { days: parsed.range.days });
+        break;
+      case "credits":
+        await cmdCredits(ctx);
+        break;
+      case "probes":
+        // `infrawrench probes <id|name>` charts one probe's latency history.
+        await cmdProbes(ctx, rest[0]);
+        break;
+      case "status-pages":
+        // `infrawrench status-pages <name|id>` details one page's components.
+        await cmdStatusPages(ctx, rest[0]);
+        break;
+      case "ownership":
+        // `infrawrench ownership <query>` filters to matching resources.
+        await cmdOwnership(ctx, rest[0]);
         break;
       case "graph":
         // `infrawrench graph <resource-id>` is the same as --resource; a
@@ -239,6 +412,12 @@ export async function runCli(): Promise<void> {
         break;
       case "deploy":
         await cmdDeploy(ctx, parsed.deploy);
+        break;
+      case "ssh-fanout":
+        await cmdSshFanout(ctx, rest, parsed.fanout);
+        break;
+      case "config":
+        await cmdConfig(ctx, rest[0], parsed.config);
         break;
       case "cli":
         await cmdCli(ctx, rest[0]);

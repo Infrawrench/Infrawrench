@@ -1,10 +1,11 @@
 /**
  * Microsoft Teams as an alert transport.
  *
- * An org adds one or more Teams *webhook URLs*; we POST an Adaptive Card to
- * each one whose trigger opt-ins match. A webhook opts into each trigger
- * independently — the same set Slack channels have — so a channel can take
- * budget crossings without also taking every sync failure.
+ * An org adds one or more Teams *webhook URLs*, and each stored webhook is a
+ * destination an `alert_rules` rule can name; we POST an Adaptive Card to every
+ * webhook the matched rules named. Like `slack.ts`, this module has no notion
+ * of a trigger — routing is decided once in `alerts/route.ts` and the webhook
+ * is addressed here by its stored row id.
  *
  * Why webhooks and not an "Add to Teams" OAuth flow like Slack
  * -----------------------------------------------------------
@@ -40,14 +41,13 @@
  * {@link ALLOWED_HOST_SUFFIXES} — without that this endpoint would be an
  * org-member-triggerable SSRF into the cluster's network.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { AddMsTeamsWebhookArgs, MsTeamsWebhook } from "@infrawrench/client-core";
 
 import { db } from "./db/client";
 import { msteamsWebhooks } from "./db/schema";
 import { buildAad, decrypt, encrypt, keyedHash } from "./encryption";
-import type { ChannelTrigger } from "./push/types";
 
 /** Abort Teams requests after 10s so a hung connection can't stall paging. */
 const MSTEAMS_REQUEST_TIMEOUT_MS = 10_000;
@@ -158,14 +158,6 @@ export async function addMsTeamsWebhook(
   const enc = await encrypt(url, buildAad("msteams", organizationId, "webhookUrl"));
   const digest = await webhookDigest(url);
 
-  const syncIncidents = args.syncIncidents ?? true;
-  const budgetAlerts = args.budgetAlerts ?? true;
-  const anomalyAlerts = args.anomalyAlerts ?? true;
-  // Drift is the one trigger that defaults off — it is continuous and
-  // high-volume where the others are exceptional. See db/schema.ts.
-  const resourceDrift = args.resourceDrift ?? false;
-  const workflowPages = args.workflowPages ?? true;
-  const weeklyDigest = args.weeklyDigest ?? true;
   const now = new Date();
 
   const [row] = await db
@@ -179,12 +171,6 @@ export async function addMsTeamsWebhook(
       urlDigest: digest,
       urlHost: host,
       urlHint: hint,
-      syncIncidents,
-      budgetAlerts,
-      anomalyAlerts,
-      resourceDrift,
-      workflowPages,
-      weeklyDigest,
       createdByUserId: userId,
     })
     .onConflictDoUpdate({
@@ -197,12 +183,6 @@ export async function addMsTeamsWebhook(
         urlIv: enc.iv,
         urlHost: host,
         urlHint: hint,
-        syncIncidents,
-        budgetAlerts,
-        anomalyAlerts,
-        resourceDrift,
-        workflowPages,
-        weeklyDigest,
         updatedAt: now,
       },
     })
@@ -213,17 +193,7 @@ export async function addMsTeamsWebhook(
 }
 
 function toRecord(row: typeof msteamsWebhooks.$inferSelect): MsTeamsWebhookRecord {
-  return {
-    id: row.id,
-    label: row.label,
-    urlHint: row.urlHint,
-    syncIncidents: row.syncIncidents,
-    budgetAlerts: row.budgetAlerts,
-    anomalyAlerts: row.anomalyAlerts,
-    resourceDrift: row.resourceDrift,
-    workflowPages: row.workflowPages,
-    weeklyDigest: row.weeklyDigest,
-  };
+  return { id: row.id, label: row.label, urlHint: row.urlHint };
 }
 
 /** Every webhook the org has added, for the settings list. URLs stay encrypted. */
@@ -382,32 +352,41 @@ async function postToWebhook(url: string, payload: unknown, label: string): Prom
   throw new Error(`${label}: rate limited by Microsoft (HTTP 429)`);
 }
 
-const TRIGGER_COLUMN = {
-  syncIncidents: msteamsWebhooks.syncIncidents,
-  budgetAlerts: msteamsWebhooks.budgetAlerts,
-  anomalyAlerts: msteamsWebhooks.anomalyAlerts,
-  resourceDrift: msteamsWebhooks.resourceDrift,
-  workflowPages: msteamsWebhooks.workflowPages,
-  weeklyDigest: msteamsWebhooks.weeklyDigest,
-} as const;
+/** Every webhook the org has added — what the default rule expands to. */
+export async function listMsTeamsWebhookIds(organizationId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: msteamsWebhooks.id })
+    .from(msteamsWebhooks)
+    .where(eq(msteamsWebhooks.organizationId, organizationId));
+  return rows.map((r) => r.id);
+}
 
 /**
- * Post one alert to every webhook opted into `trigger`. Never throws — a Teams
- * or Power Automate outage must not fail the poller, the budget evaluator, or
- * the workflow that raised the alert. Per-webhook errors are logged and counted
- * as failures so the caller can still tell whether anything landed.
+ * Post one alert to a specific set of stored webhook rows. Never throws — a
+ * Teams or Power Automate outage must not fail the poller, the budget
+ * evaluator, or the workflow that raised the alert. Per-webhook errors are
+ * logged and counted as failures so the caller can still tell whether anything
+ * landed.
+ *
+ * Addressed by row id rather than by trigger for the reason `slack.ts`
+ * explains: which alerts reach a webhook is `alert_rules`' business now, so
+ * this module has no per-trigger column map left to extend.
  */
-export async function sendMsTeamsToOrg(
+export async function sendMsTeamsToWebhooks(
   organizationId: string,
-  trigger: ChannelTrigger,
+  rowIds: string[],
   alert: MsTeamsAlert,
 ): Promise<MsTeamsFanOutResult> {
   try {
+    if (rowIds.length === 0) return NO_DELIVERY;
     const rows = await db
       .select()
       .from(msteamsWebhooks)
       .where(
-        and(eq(msteamsWebhooks.organizationId, organizationId), eq(TRIGGER_COLUMN[trigger], true)),
+        and(
+          eq(msteamsWebhooks.organizationId, organizationId),
+          inArray(msteamsWebhooks.id, rowIds),
+        ),
       );
     if (rows.length === 0) return NO_DELIVERY;
 
@@ -432,7 +411,7 @@ export async function sendMsTeamsToOrg(
 
 /**
  * Send a one-off test card to every webhook the org has added, regardless of
- * trigger opt-ins. Throws (unlike {@link sendMsTeamsToOrg}) so the settings UI
+ * routing rules. Throws (unlike {@link sendMsTeamsToWebhooks}) so the settings UI
  * can show the actual failure — a deleted or turned-off Workflow answers 404,
  * and the user needs to see that rather than a silent success.
  */

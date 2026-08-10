@@ -4,6 +4,7 @@ import { useRouterState } from "@tanstack/react-router";
 import {
   WorkspaceTabsViewport as BaseViewport,
   dashboardTabTarget,
+  environmentDiffTabTarget,
   resourceTabTarget,
   DeploymentsPanel,
   useUIStore,
@@ -11,27 +12,38 @@ import {
   type DeploymentClient,
   type WorkspaceTab,
 } from "@infrawrench/ui";
+import { invoke } from "@/lib/invoke";
 import { DashboardPanel } from "@/routes/dashboard.$dashboardId";
 import { AccountPanel } from "@/routes/accounts.$accountId";
 import { ResourcePanel } from "@/routes/resource.$accountId.$resourceId";
-import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
-import { AgentsPanel, type AgentClient } from "@infrawrench/ui/agents";
+import {
+  getWorkspaceNavigateArgs,
+  navigateToWorkspaceTarget,
+  syncWorkspaceRouteFromPath,
+} from "@/lib/workspace-tabs";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
-import { type OrphansClient } from "@infrawrench/ui";
+import { type OrphansClient, type RightsizingClient, type SchedulesClient } from "@infrawrench/ui";
 import { createDesktopCostsClient } from "@/lib/costs-client";
+import { createDesktopSchedulesClient } from "@/lib/schedules-client";
 import { createDesktopOrphansClient } from "@/lib/orphans-client";
-import { createDesktopAgentClient } from "@/lib/agent-client";
+import { createDesktopRightsizingClient } from "@/lib/rightsizing-client";
 import { createDesktopDeploymentClient } from "@/lib/cloud-deployments";
+import { createDesktopLogWorkspaceClient } from "@/lib/log-workspace-client";
+import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
 import { CloudChatPanel } from "@/components/CloudChatPanel";
 import { DesktopWorkflowsPanel } from "@/components/DesktopWorkflowsPanel";
 import { DesktopGraphPanel } from "@/components/DesktopGraphPanel";
 import { LocalDeploymentsPanel } from "@/components/LocalDeploymentsPanel";
-
-let agentClient: AgentClient | null = null;
-function getAgentClient(): AgentClient {
-  if (!agentClient) agentClient = createDesktopAgentClient();
-  return agentClient;
-}
+import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
+import { DesktopExpiryPanel } from "@/components/DesktopExpiryPanel";
+import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
+import { DesktopDnsPanel } from "@/components/DesktopDnsPanel";
+import { DesktopEnvironmentDiffPanel } from "@/components/DesktopEnvironmentDiffPanel";
+import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel";
+import { DesktopProbesPanel } from "@/components/DesktopProbesPanel";
+import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
+import { DesktopSettingsPanel } from "@/components/DesktopSettingsPanel";
+import { DesktopAgentsPanel } from "@/components/DesktopAgentsPanel";
 
 // One client for every org: it resolves the active org per call, so switching
 // org under a mounted Deploy tab reaches the new org's repos and history.
@@ -53,6 +65,31 @@ function getOrphansClient(): OrphansClient {
   return orphansClient;
 }
 
+let schedulesClient: SchedulesClient | null = null;
+function getSchedulesClient(): SchedulesClient {
+  if (!schedulesClient) schedulesClient = createDesktopSchedulesClient();
+  return schedulesClient;
+}
+
+let rightsizingClient: RightsizingClient | null = null;
+function getRightsizingClient(): RightsizingClient {
+  if (!rightsizingClient) rightsizingClient = createDesktopRightsizingClient();
+  return rightsizingClient;
+}
+
+// Keyed by mode (org id or "local") — cloud and local clients differ in both
+// transports and saved-query availability, and the panel remounts on switch.
+const logWorkspaceClients = new Map<string, LogWorkspaceClient>();
+function getLogWorkspaceClient(activeCloudOrgId: string | null): LogWorkspaceClient {
+  const key = activeCloudOrgId ?? "local";
+  let client = logWorkspaceClients.get(key);
+  if (!client) {
+    client = createDesktopLogWorkspaceClient(activeCloudOrgId);
+    logWorkspaceClients.set(key, client);
+  }
+  return client;
+}
+
 // Desktop-side glue between WorkspaceTabsViewport (in @infrawrench/ui) and the
 // per-kind panel components. Each open tab is rendered once and kept mounted
 // across tab switches — see WorkspaceTabsViewport for the rendering rules.
@@ -67,7 +104,7 @@ export function DesktopWorkspaceTabsViewport() {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
 
   // The URL is a "tab URL" when syncWorkspaceRouteFromPath returns a target.
-  // On non-tab routes (index, settings) we hide all tab panels so the route's
+  // On non-tab routes (index) we hide all tab panels so the route's
   // <Outlet/> renders alone — tabs stay mounted in the DOM.
   const showActive = syncWorkspaceRouteFromPath(pathname, hash, searchStr) !== null;
 
@@ -118,12 +155,7 @@ function renderPanel(
     case "account":
       return <AccountPanel accountId={t.accountId} />;
     case "agents":
-      return (
-        <AgentsPanel
-          client={getAgentClient()}
-          openWorkspaceTarget={(target) => void navigate(getWorkspaceNavigateArgs(target))}
-        />
-      );
+      return <DesktopAgentsPanel navigate={(args) => void navigate(args)} />;
     case "workflows":
       return <DesktopWorkflowsPanel />;
     case "costs":
@@ -133,6 +165,9 @@ function renderPanel(
           // previous org's budgets and flagged resources.
           key={activeCloudOrgId ?? "local"}
           client={getCostsClient()}
+          // Always the system browser: a provider's top-up page is a billing
+          // flow and has no business inside the app shell.
+          onOpenExternal={(url) => void invoke("open_external_url", { url })}
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs(dashboardTabTarget(dashboardId)))
           }
@@ -142,6 +177,28 @@ function renderPanel(
           // dropping the section. The client picks the store — see
           // lib/orphans-client.ts.
           orphans={getOrphansClient()}
+          // Cloud-only: the percentiles live in the cloud metrics warehouse
+          // and the size catalogs need the org's credentials, so local mode
+          // omits the section entirely (the schedules rule).
+          rightsizing={activeCloudOrgId ? getRightsizingClient() : undefined}
+          onOpenOversizedResource={(r, accountId) => {
+            if (!r.id) return;
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(accountId, r.id, r.pluginId, r.resourceTypeId),
+              ),
+            );
+          }}
+          // Cloud-only: the rows live server-side and the cloud poller runs
+          // the transitions, so local mode omits the section entirely.
+          schedules={activeCloudOrgId ? getSchedulesClient() : undefined}
+          onOpenScheduledResource={(s) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(s.accountId, s.resourceId, s.pluginId, s.resourceTypeId),
+              ),
+            )
+          }
           onOpenResource={(r, accountId) => {
             void navigate(
               getWorkspaceNavigateArgs(
@@ -163,6 +220,141 @@ function renderPanel(
           }
         />
       );
+    case "logs":
+      return (
+        <LogWorkspacePanel
+          // Keyed by mode so switching org (or dropping to local) remounts
+          // and re-discovers streams rather than tailing the previous set.
+          key={activeCloudOrgId ?? "local"}
+          client={getLogWorkspaceClient(activeCloudOrgId)}
+          onOpenResource={(selector) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  selector.accountId,
+                  selector.resourceId,
+                  selector.pluginId,
+                  selector.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "changes":
+      return <DesktopChangesPanel />;
+    case "expiring":
+      return (
+        <DesktopExpiryPanel
+          // Keyed by mode so switching org (or dropping to local) remounts
+          // and refetches rather than showing the previous mode's deadlines.
+          key={activeCloudOrgId ?? "local"}
+          openResource={(item) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  item.accountId,
+                  item.resourceId,
+                  item.pluginId,
+                  item.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "posture":
+      return (
+        <DesktopPosturePanel
+          // Keyed by mode so switching org (or dropping to local) remounts
+          // and refetches rather than showing the previous mode's findings.
+          key={activeCloudOrgId ?? "local"}
+          openResource={(finding) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  finding.accountId,
+                  finding.resourceId,
+                  finding.pluginId,
+                  finding.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "dns":
+      return (
+        <DesktopDnsPanel
+          // Keyed by mode so switching org (or dropping to local) remounts
+          // and refetches rather than showing the previous mode's zones.
+          key={activeCloudOrgId ?? "local"}
+          openRecord={(record) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  record.accountId,
+                  record.resourceId,
+                  record.pluginId,
+                  record.resourceTypeId,
+                ),
+              ),
+            )
+          }
+          openZone={(zone) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  zone.accountId,
+                  zone.resourceId,
+                  zone.pluginId,
+                  zone.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "environment-diff":
+      return (
+        <DesktopEnvironmentDiffPanel
+          // Keyed by mode so switching org (or dropping to local) remounts and
+          // recompares rather than showing the previous mode's accounts.
+          key={activeCloudOrgId ?? "local"}
+          a={t.a}
+          b={t.b}
+          // Record the pair on the tab and in the URL, so the comparison
+          // survives a restart. `replace` keeps the back button from stepping
+          // through every dropdown change.
+          onSelectionChange={(selection) =>
+            void navigateToWorkspaceTarget(
+              navigate,
+              environmentDiffTabTarget(selection.a, selection.b),
+              { replace: true },
+            )
+          }
+          openResource={(target) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  target.accountId,
+                  target.resourceId,
+                  target.pluginId,
+                  target.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "ssh-fanout":
+      return <DesktopSshFanoutPanel />;
+    case "metric-alerts":
+      return <DesktopMetricAlertsPanel />;
+    case "probes":
+      return <DesktopProbesPanel />;
+    case "settings":
+      return <DesktopSettingsPanel section={t.section ?? ""} />;
     case "chat":
       return <CloudChatPanel conversationId={t.conversationId} />;
     case "resource":

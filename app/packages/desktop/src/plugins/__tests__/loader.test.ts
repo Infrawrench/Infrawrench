@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const safeParse = vi.fn();
 vi.mock("@infrawrench/plugin-base", () => ({
   pluginManifestSchema: { safeParse: (m: unknown) => safeParse(m) },
+  validatePreflightContract: () => null,
 }));
 
 let disabled: string[] = [];

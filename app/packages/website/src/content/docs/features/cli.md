@@ -67,6 +67,15 @@ volume: 403 Forbidden — token is missing the "block_storage:read" scope
 
 The rest of the account still lists. Org accounts ask the cloud to re-sync the account from the provider first and then read the synced copy, so they reflect what exists right now too — if the sync fails (provider outage, rate limit) the CLI prints the last synced copy and says so on stderr. The TUI does the same when you open an account: the synced copy appears instantly, then refreshes in place once the live sync completes.
 
+## Exporting to Terraform
+
+```
+infrawrench export -a "Production Hetzner" > main.tf     # HCL on stdout
+infrawrench export -a prod --format terraform --json     # structured result
+```
+
+Generates the same Terraform configuration as the web app's **Export to Terraform** action — provider block, `var.*` variables for secrets, one resource block per mapped resource with its `terraform import` hint. Resources without a mapping yet are listed on stderr (or in the `unsupported` array with `--json`) so redirected stdout stays pure HCL. See [Terraform export](./terraform-export.md) for the supported providers and the adoption workflow.
+
 ## Metrics and cost charts
 
 The CLI renders metric series as terminal charts:
@@ -100,9 +109,97 @@ infrawrench costs --anomalies
 infrawrench costs --anomalies --days 7      # 1-90; --last 2w says the same thing
 ```
 
+`schedules` lists the org's [sleep/wake schedules](./sleep-schedules.md) — each window, its timezone, the next transition, the last run's outcome (including freeze skips and failures), and the projected monthly saving:
+
+```
+infrawrench schedules
+infrawrench schedules --json
+```
+
+`probes` lists the org's [synthetic probes](./synthetic-probes.md) — each endpoint's live status, check interval, trailing-24h uptime and last latency, probed from outside your infrastructure. Give it a probe's id or name for that probe's detail plus a 24-hour latency sparkline. Cloud-only, and read-only: probes are created from the web or desktop Probes tab, where the endpoint suggestions live:
+
+```
+infrawrench probes
+infrawrench probes api-health     # one probe: state, facts, latency sparkline
+infrawrench probes --json
+```
+
+`credits` is the [credit burndown](./credit-burndown.md): prepaid balances with a measured burn rate and a runway, for the providers that expose one. Worth putting in a morning check — a prepaid pot that empties is an outage, not an invoice. Needs `costs:read`:
+
+```
+infrawrench credits
+infrawrench credits --json
+```
+
+`hygiene` is the [credential hygiene](../team-and-billing/credential-hygiene.md) report: unused API keys, unreferenced SSH keys, and members holding write permissions they never exercise. The `--json` form is the one worth scheduling — these accumulate slowly and nobody opens a settings page to check. Needs `audit:read`:
+
+```
+infrawrench hygiene
+infrawrench hygiene --days 180        # 7-365; default 90
+infrawrench hygiene --json
+```
+
+`access` lists [break-glass access](../team-and-billing/break-glass-access.md) requests and the elevations in force right now. Read-only: raising a request needs a reason someone will read and deciding one is a judgement call, but "who is elevated right now" is exactly the question you type at 3am. Needs `access:read`:
+
+```
+infrawrench access                # every request, live elevations first
+infrawrench access active         # only what is in force right now
+infrawrench access --json
+```
+
+`recordings` lists the org's [recorded SSH sessions](./session-recording.md) — who connected, to what, how long for, and each session's status. `recordings get <id>` prints the asciicast itself, which is the point of the subcommand: the format is asciinema's, so a session replays on a machine that has never seen the UI. Needs `session-recordings:read`:
+
+```
+infrawrench recordings
+infrawrench recordings get 3f9c21e8 | asciinema play -
+infrawrench recordings get 3f9c21e8 --file incident-4417.cast
+infrawrench recordings --json         # list plus the org's policy and storage usage
+```
+
+`status-pages` lists the org's [public status pages](./status-pages.md) — what each publishes, whether it is live, and the URL it is live at. The URL is shown for drafts too, so you can check a page before publishing it. Give it a page's name or id for its components and their states. Cloud-only, and read-only: pages are created and published from the web or desktop Probes tab:
+
+```
+infrawrench status-pages
+infrawrench status-pages "Acme API"   # one page: settings and its components
+infrawrench status-pages --json
+```
+
+`ownership` lists [resource ownership](../core-concepts/resource-ownership.md) — who owns each resource, what it is for, and its ticket link. Only resources with something recorded appear, so a resource absent from this list is unowned; `infrawrench orphans` is where the unowned resources that also look wasted show up. Pass a query to filter by resource name, owner or purpose. Cloud-only, and read-only: owners are set from a resource's Ownership tab, where the picker offers real org members:
+
+```
+infrawrench ownership
+infrawrench ownership sam            # filter by resource, owner or purpose
+infrawrench ownership --json
+```
+
+`oversized` lists [right-sizing recommendations](./right-sizing.md) — machines whose 14-day p95 CPU/memory sits well under their size, with the recommended smaller size and the live-priced monthly saving. Cloud-only (the percentiles live in the cloud metrics store), and read-only: applying a resize is done from the web or desktop Costs panel:
+
+```
+infrawrench oversized
+infrawrench oversized --json
+```
+
+`estimate` prints one resource's [monthly cost estimate](./cost-estimates.md) at the provider's list price, itemized — the same figure the create form and the resource page quote. Cloud-only, and a projection rather than a bill: `costs` is what you were actually charged, this is the run-rate the resource's current shape implies. Pass the compound resource id, or a display name / external id scoped with `--account`:
+
+```
+infrawrench estimate acc-123:ec2-instance:i-0abc
+infrawrench estimate my-api-box --account production
+infrawrench estimate acc-123:ec2-instance:i-0abc --json
+```
+
+`tags` and `showback` are the [tag governance](./tag-policy-and-showback.md) reports: the org's required tags with per-account compliance scores and the spend missing a required key, and spend grouped by cost centre through the org's allocation rules:
+
+```
+infrawrench tags                  # policy, compliance table, untagged spend
+infrawrench tags --last 90d --json
+infrawrench showback              # spend by cost centre; unmatched spend is "unallocated"
+```
+
+<insert [Terminal showing `infrawrench tags` output with the compliance table (green/yellow/red score column) and the untagged-spend bar chart below] here>
+
 ## What changed, and what depends on what
 
-Two read commands over the organization's own history and topology:
+Four read commands over the organization's own history and topology:
 
 ```
 infrawrench changes                        # the drift feed, newest first
@@ -110,15 +207,40 @@ infrawrench changes --last 7d --kind deleted
 infrawrench changes -a "Production GCP"    # one account
 infrawrench changes --resource <id>        # one resource, with before → after diffs
 
+infrawrench diff -a staging -b prod        # two environments compared
+infrawrench diff staging prod --all        # positional, ids and timestamps included
+
+infrawrench moment                         # everything that happened around now, every feed merged
+infrawrench moment 2026-08-03T03:14 -w 1h  # ±1h around a timestamp
+
 infrawrench graph                          # the dependency tree for the whole org
 infrawrench graph --resource <id>          # what it needs, and its blast radius
 ```
 
 `changes` is the [change timeline](./change-timeline.md) in a table: when an event was seen, a `+`/`~`/`-` glyph for appeared / changed / disappeared, the resource, its type, its account, and which fields moved. `--limit` caps the rows (200 max); `--json` carries the full diffs and the `total` matching your filter.
 
+`diff` is the [environment diff](./environment-diff.md): two accounts of one provider side by side — an inventory table with per-type counts and deltas, then, per resource type, what exists on only one side and which fields two counterparts disagree on. Resources are paired by type and by name with environment words removed, so `api-staging` lines up with `api-prod`. Ids, addresses and timestamps are hidden by default because every resource has different ones; `--all` shows them, `--type <typeId>` narrows to one resource type, and `--json` carries the whole comparison. Unlike its neighbours here, `diff` also works with `--local`: it enumerates two of the desktop workspace's accounts through the provider instead of reading synced rows, and reports any resource type it couldn't list rather than counting it as missing.
+
+`moment` is the [moment view](./moment.md) in the terminal: one merged, chronological narrative of everything the platform knows happened around a timestamp — changes, provider incidents, cost anomalies, workflow runs, deployments, audit entries, freezes and alert deliveries — with per-feed permission omissions and failures reported inline rather than silently dropped. Omit the timestamp for "around now"; `-w/--window 15m|1h|6h` sets the ± half-window; `--json` carries the typed events, per-feed statuses and overlapping incident spans.
+
 `graph` prints the [dependency graph](./dependency-graph.md) as an ASCII tree rather than a picture — roots are the resources nothing depends on, and each child is something its parent depends on. Focused on one resource it becomes the terminal's **Dependencies** tab: a **Depends on** tree, and a **Depended on by** tree headed with the blast-radius count. `--json` emits the node and edge lists.
 
-Both read data the cloud poller collects, so they need an organization; `--local` says so rather than printing an empty table.
+`changes`, `moment` and `graph` read data the cloud poller collects, so they need an organization; `--local` says so rather than printing an empty table.
+
+## Running a command on many hosts
+
+`infrawrench ssh-fanout` is [Fan-out SSH](./ssh-fanout.md) in the terminal — one command over many boxes, with identical output collapsed and outliers diffed against the majority:
+
+```bash
+infrawrench ssh-fanout --list --plugin hetzner       # what can I fan out to?
+infrawrench ssh-fanout "uname -r" --tag env:prod --key ops
+infrawrench ssh-fanout --snippet kernel --hosts web- --key ops --yes --json
+infrawrench ssh-fanout snippets                      # the org's saved commands
+```
+
+Like the app, it names the host count before it runs anything — `Run on 14 hosts?` — and refuses to fan out on a non-interactive terminal unless you pass `-y/--yes`. `--hosts` matches a name, address or tag; `--plugin` and `--tag` narrow further; `--key <id|name>` supplies the org SSH key that VM hosts need; `--user` overrides the username; `--concurrency <n>` changes how many connections run at once (default 8, max 16).
+
+Text output prints one block per distinct result — `majority`, `outlier`, `failed` — with outliers rendered as a `+`/`-` diff instead of repeating output you have already read. `--json` gives the raw per-host `stdout`, `stderr` and `exitCode`. Runs are cloud-only and audit-logged; use the desktop app's Fan-out screen for local-only SSH accounts.
 
 ## Pushing back up
 
@@ -138,6 +260,32 @@ parse-invoice --json | infrawrench costs push --source colo
 ```
 
 `--source` names the system doing the pushing and is required by both. `page` also takes `--title`, `--key`, `--cooldown <minutes>`, and `--voice`; a suppressed page still exits zero and prints when the key can fire again. Both need a session (or role) carrying `pages:write` / `costs:write` — see [push from your own servers](./server-push.md) for the endpoints and their limits.
+
+When a page did not reach you, the next question is where it went. `infrawrench routing` prints the org's [alert routing rules](./alert-routing.md) as sentences, in the order the server evaluates them, and `infrawrench routing queue` lists the alerts currently held for quiet hours or waiting on an acknowledgement:
+
+```bash
+infrawrench routing            # rules, top to bottom, first match wins
+infrawrench routing queue      # held and escalating alerts   [--limit 50]
+```
+
+Both are read-only and need the **Organization settings** permission; editing rules lives on the web and desktop Notifications page.
+
+## Config as code
+
+`infrawrench config` exports the organization's dashboards, workflows, custom graphs, budgets, alert rules and policies as one JSON document — and applies one back:
+
+```bash
+# Snapshot the organization into a file you can commit.
+infrawrench config export --out infrawrench.json
+
+# What would applying it change? Writes nothing, so it's the CI check.
+infrawrench config plan -f infrawrench.json
+
+# Apply it — shows the plan, then asks. -y for unattended runs.
+infrawrench config apply -f infrawrench.json
+```
+
+`--sections budgets,workflows` narrows either direction, and `--prune` additionally deletes what the document doesn't name (within the sections it carries), which is how you make a staging organization an exact copy. See [config as code](./config-as-code.md) for what the document holds and what it deliberately leaves out.
 
 ## Deploying
 

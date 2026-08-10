@@ -14,10 +14,12 @@ import type {
   SizeOption,
   ImageOption,
   HostServices,
+  CostEstimate,
   CostFetchRange,
   CostRow,
 } from "@infrawrench/plugin-base";
 import {
+  buildCostEstimate,
   deleteS3Object,
   getS3BucketPolicy,
   jsonRestFetch,
@@ -694,29 +696,40 @@ export class DigitalOceanClient implements PluginClient {
   }
 
   /**
-   * Compute the form's estimated monthly cost. The size-picker only carries
-   * the per-node price; the cost panel needs to multiply by node count for
-   * resource types that scale horizontally (managed-database, doks-cluster).
-   * Droplet has its own per-size price already shown in the picker; for it
-   * we return the picked size's price directly so the panel matches.
+   * Monthly estimate with line items. The size picker only carries the
+   * per-node price, so the types that scale horizontally have to multiply it
+   * by their node count here — that multiplication is the whole reason the
+   * form's headline figure can't just read the picker.
+   *
+   * Droplet is deliberately absent: its picker already shows the size's own
+   * monthly price, and re-quoting the identical number in a second place adds
+   * nothing the user can't see.
    */
-  async getCreateCostEstimate(
-    typeId: string,
-    fields: Record<string, string>,
-  ): Promise<number | null> {
+  async estimateCost(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null> {
     if (typeId === "managed-database") {
       const slug = fields["size"] ?? "";
       const memMatch = /(\d+)gb/i.exec(slug);
       const memoryGb = memMatch ? Number(memMatch[1]) : 0;
       const perNode = estimateDoDatabaseMonthlyPrice(slug, memoryGb);
-      const nodes = Math.max(1, Number(fields["nodeCount"] ?? 1));
-      return perNode > 0 ? perNode * nodes : null;
-    }
-    if (typeId === "doks-cluster") {
-      // Cluster control plane is free; cost is node count × droplet size price.
-      // We don't have a size price lookup for DOKS sizes here — defer to the
-      // sidebar's picker price which the host already shows.
-      return null;
+      if (perNode <= 0) return null;
+      const nodes = Math.max(1, Math.floor(Number(fields["nodeCount"] ?? 1)) || 1);
+      return buildCostEstimate(
+        [
+          {
+            label: nodes === 1 ? `Database node (${slug})` : `Database nodes (${nodes} × ${slug})`,
+            monthlyAmount: perNode * nodes,
+            detail: `${nodes} × $${Number(perNode.toFixed(2))}/month`,
+            quantity: nodes,
+            unit: nodes === 1 ? "node" : "nodes",
+          },
+        ],
+        {
+          notes:
+            nodes > 1
+              ? ["Standby nodes are billed at the same rate as the primary."]
+              : ["Adding a standby node doubles this."],
+        },
+      );
     }
     return null;
   }
@@ -1168,6 +1181,61 @@ export class DigitalOceanClient implements PluginClient {
         externalId,
         parentResourceId: `${accountId}:domain:${domainName}`,
         createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    if (typeId === "droplet") {
+      // Rename and/or resize. Resize is DO's `resize` droplet action with
+      // `disk: false` — CPU/RAM only, reversible, and DO powers the Droplet
+      // off for it automatically. DO rejects targets whose included disk is
+      // smaller than the Droplet's current disk; that error surfaces as-is.
+      //
+      // The two actions are independent: one failing must not silently skip
+      // or hide the other, so each runs in its own guard and the failures are
+      // combined into one labelled error that makes partial success explicit.
+      const failures: string[] = [];
+      const name = fields["name"];
+      if (name !== undefined && name !== "") {
+        try {
+          await this.fetch<unknown>(`/droplets/${externalId}/actions`, {
+            method: "POST",
+            body: JSON.stringify({ type: "rename", name }),
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (e) {
+          failures.push(`rename failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      const size = fields["size"];
+      if (size !== undefined && size !== "") {
+        try {
+          await this.fetch<unknown>(`/droplets/${externalId}/actions`, {
+            method: "POST",
+            body: JSON.stringify({ type: "resize", size, disk: false }),
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (e) {
+          failures.push(`resize failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      if (failures.length > 0) {
+        throw new Error(`DigitalOcean droplet update: ${failures.join("; ")}`);
+      }
+      // Both actions are asynchronous on DO's side — an immediate re-read can
+      // still report the old name/size while the action runs. Overlay the
+      // accepted values so the returned resource reflects the requested end
+      // state (the sleep/wake "don't fight the sync" stance); the next sync
+      // reads the converged truth.
+      const refreshed = await this.getResource(typeId, resourceId, accountId);
+      return {
+        ...refreshed,
+        fields: {
+          ...refreshed.fields,
+          ...(name !== undefined && name !== "" ? { name } : {}),
+          ...(size !== undefined && size !== "" ? { size } : {}),
+        },
+        ...(name !== undefined && name !== "" ? { displayName: name } : {}),
         updatedAt: new Date().toISOString(),
       };
     }

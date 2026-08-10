@@ -30,7 +30,12 @@ function makeClient(
       status: "provisioning" as const,
       logs: [],
     })),
-    openSession: vi.fn(),
+    openSession: vi.fn(async () => ({
+      command: "bash -lc 'echo setup'",
+      cwd: "~/projects",
+      sshKeyId: "key-1",
+      sshKeyName: "infrawrench-agent",
+    })),
     reconcileSession: vi.fn(),
     deleteSession: vi.fn(async () => {}),
     ...overrides,
@@ -232,6 +237,7 @@ describe("AgentsPanel", () => {
       pluginId: "aws",
       resourceTypeId: "ec2-instance",
       tool: "codex",
+      surface: "terminal",
       fields: { instanceType: "t3.small" },
     });
   });
@@ -276,6 +282,7 @@ describe("AgentsPanel", () => {
         pluginId: "gcp",
         resourceTypeId: "gce-instance",
         tool: "codex",
+        surface: "terminal",
         fields: {},
       },
     });
@@ -783,6 +790,7 @@ describe("AgentsPanel", () => {
         pluginId: "digitalocean",
         resourceTypeId: "droplet",
         tool: "codex",
+        surface: "terminal",
         fields: {},
       },
     });
@@ -881,5 +889,99 @@ describe("AgentsPanel", () => {
     expect(await screen.findByText("No agent VMs yet.")).toBeInTheDocument();
     expect(screen.queryByText("infrawrench")).not.toBeInTheDocument();
     expect(screen.queryByText(/test \(DigitalOcean\) · VM/)).not.toBeInTheDocument();
+  });
+
+  describe("T3 Code surface", () => {
+    const account: AgentVmAccount = {
+      accountId: "acct-1",
+      accountName: "Workspace",
+      pluginId: "digitalocean",
+      pluginName: "DigitalOcean",
+      resourceTypeId: "droplet",
+      resourceTypeName: "Droplet",
+      defaultUsername: "root",
+      defaultFields: {},
+      hiddenFieldKeys: [],
+    };
+
+    function t3Settings(): AgentSettings {
+      return {
+        accountId: "acct-1",
+        pluginId: "digitalocean",
+        resourceTypeId: "droplet",
+        tool: "claude-code",
+        surface: "t3-code",
+        fields: {},
+      };
+    }
+
+    // T3 Code manages its own projects, so the repository controls don't
+    // apply and Create must not wait on them.
+    it("creates a server with no repo", async () => {
+      const client = makeClient(account, t3Settings());
+      render(<AgentsPanel client={client} />);
+
+      await screen.findByText("Workspace (DigitalOcean)");
+      expect(screen.queryByPlaceholderText("https://github.com/org/repo.git")).toBeNull();
+      fireEvent.change(screen.getByPlaceholderText("Server name"), {
+        target: { value: "team-box" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+      await waitFor(() => expect(client.createSession).toHaveBeenCalledTimes(1));
+      expect(client.createSession).toHaveBeenCalledWith({
+        repo: "",
+        projectName: "team-box",
+        workspaceName: "projects",
+        settings: t3Settings(),
+      });
+    });
+
+    // The agent still has to be installed and signed in — T3 Code drives it.
+    it("summarizes the surface alongside the tool it drives", async () => {
+      const client = makeClient(account, t3Settings());
+      render(<AgentsPanel client={client} />);
+
+      expect(await screen.findByText(/T3 Code \+ Claude Code/)).toBeInTheDocument();
+    });
+
+    it("opens the authorization terminal from the Open button", async () => {
+      const client = makeClient(account, t3Settings());
+      vi.mocked(client.listSessions).mockResolvedValue([
+        {
+          id: "session-1",
+          repo: "",
+          projectName: "team-box",
+          workspaceName: "projects",
+          accountId: "acct-1",
+          pluginId: "digitalocean",
+          resourceTypeId: "droplet",
+          tool: "claude-code",
+          surface: "t3-code",
+          branchName: "infrawrench/agent-session",
+          status: "up",
+          vmResourceId: "acct-1:droplet:123",
+          logs: [],
+        },
+      ]);
+      const openWorkspaceTarget = vi.fn();
+      render(<AgentsPanel client={client} openWorkspaceTarget={openWorkspaceTarget} />);
+
+      await screen.findByText("team-box");
+      // No branch to reconcile, and the repo line is replaced by what the
+      // server actually is.
+      expect(screen.queryByRole("button", { name: "Reconcile" })).toBeNull();
+      expect(screen.getByText(/T3 Code server driving Claude Code/)).toBeInTheDocument();
+
+      // The button says what it does: a T3 Code server has no terminal
+      // session to attach, only the one-off authorization flow.
+      fireEvent.click(screen.getByRole("button", { name: "Authorize server" }));
+
+      await waitFor(() => expect(client.openSession).toHaveBeenCalledWith("session-1"));
+      await waitFor(() => expect(openWorkspaceTarget).toHaveBeenCalledTimes(1));
+      const [target, title] = openWorkspaceTarget.mock.calls[0] ?? [];
+      expect(target).toMatchObject({ kind: "resource", view: "ssh", agentSessionId: "session-1" });
+      expect(title).toBe("T3 Code setup · team-box");
+    });
   });
 });

@@ -20,9 +20,7 @@ function findTunnelForAccount(accountId: string): { localPort: number } | null {
 }
 
 export type TunnelResolution =
-  | { status: "ok"; localPort: number }
-  | { status: "none" }
-  | { status: "error"; cause: unknown };
+  { status: "ok"; localPort: number } | { status: "none" } | { status: "error"; cause: unknown };
 
 /**
  * If the account has an ssh_tunnel_configs row, ensures the SSH tunnel is open

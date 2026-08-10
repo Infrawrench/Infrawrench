@@ -678,8 +678,18 @@ app.post("/validate-tabs", async (c) => {
       // clients that have the tab open and a panel to render it with.
       target.kind === "savings" ||
       target.kind === "graph" ||
+      target.kind === "logs" ||
+      target.kind === "changes" ||
+      target.kind === "expiring" ||
+      target.kind === "posture" ||
+      target.kind === "dns" ||
+      target.kind === "environment-diff" ||
+      target.kind === "ssh-fanout" ||
+      target.kind === "metric-alerts" ||
+      target.kind === "probes" ||
       target.kind === "workflows" ||
-      target.kind === "deployments"
+      target.kind === "deployments" ||
+      target.kind === "settings"
     ) {
       validIds.add(tab.id);
     } else if (target.kind === "chat") {

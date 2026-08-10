@@ -51,6 +51,45 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle("cloud_tag_policy", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/tag-policy");
+});
+
+ipcMain.handle("cloud_tag_compliance", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/tag-policy/compliance");
+});
+
+function rangeQs(from?: string, to?: string): string {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+ipcMain.handle(
+  "cloud_costs_untagged",
+  async (_e, { orgId, from, to }: { orgId: string; from?: string; to?: string }) => {
+    return cloudFetch(orgId, `/costs/untagged${rangeQs(from, to)}`);
+  },
+);
+
+ipcMain.handle(
+  "cloud_costs_showback",
+  async (_e, { orgId, from, to }: { orgId: string; from?: string; to?: string }) => {
+    return cloudFetch(orgId, `/costs/showback${rangeQs(from, to)}`);
+  },
+);
+
+/**
+ * Prepaid credit balances with their burn rate and runway. Cloud-only, like
+ * every other read here — the burn is derived from a server-side series of
+ * readings, and a local-only workspace has no series to derive it from.
+ */
+ipcMain.handle("cloud_credit_burndown", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/credits");
+});
+
 ipcMain.handle("cloud_list_budgets", async (_e, { orgId }: { orgId: string }) => {
   return (await cloudFetch(orgId, "/budgets")) ?? [];
 });

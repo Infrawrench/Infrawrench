@@ -167,16 +167,59 @@ export interface SubscriptionStatus {
 }
 
 /**
+ * One prepaid capacity-slot purchase, as listed in {@link CapacityStatus}.
+ *
+ * A purchase, not a seat: `quantity` slots bought together share one term, so a
+ * row is the unit that expires. Lapsed and refunded purchases stay in the list —
+ * it is purchase history — so read capacity from {@link CapacityStatus.seats}
+ * rather than summing these.
+ */
+export interface CapacitySlot {
+  id: string;
+  /** Seats this purchase grants for its whole term. */
+  quantity: number;
+  /** `"active"` or `"refunded"`. An active row can still be past `expiresAt`. */
+  status: string;
+  startsAt: string;
+  expiresAt: string;
+  termMonths: number;
+  /** What was charged, in cents. Null for rows recorded without an amount. */
+  amountPaidCents: number | null;
+}
+
+/**
+ * Prepaid seat capacity, nested in {@link BillingStatus}.
+ *
+ * Capacity slots are seats bought outright for a fixed term instead of rented
+ * monthly, so `seats` here is *additional* to `subscription.seatCount` — an
+ * org's real capacity is the two added together, and an org can hold slots with
+ * no subscription at all.
+ */
+export interface CapacityStatus {
+  /** False when the deployment has no one-time price configured; hide the offer. */
+  purchasable: boolean;
+  termMonths: number;
+  /** List price of one slot, in whole dollars, for copy. */
+  priceUsd: number;
+  /** Seats from slots still inside their term. Excludes lapsed and refunded. */
+  seats: number;
+  /** Every purchase ever made, newest first. */
+  slots: CapacitySlot[];
+}
+
+/**
  * `GET /api/org/:orgId/billing/status`.
  *
  * Note the envelope: the subscription is *nested*, and `complimentary` orgs
  * have every paid perk with `subscription === null`. Reading the response as a
- * bare subscription silently renders blanks for a paying org.
+ * bare subscription silently renders blanks for a paying org — and now also
+ * misses an org that is paid entirely through `capacity.seats`.
  */
 export interface BillingStatus {
   /** Platform-granted access: all paid perks, uncapped AI chat, never billed. */
   complimentary: boolean;
   subscription: SubscriptionStatus | null;
+  capacity: CapacityStatus;
 }
 
 /** A row of `GET /api/org/:orgId/team/members`. */

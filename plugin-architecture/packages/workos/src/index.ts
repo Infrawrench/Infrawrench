@@ -1,0 +1,12 @@
+export { plugin } from "./plugin.js";
+export { OrganizationResourceType } from "./resources/organization.js";
+export { UserResourceType } from "./resources/user.js";
+export { OrganizationMembershipResourceType } from "./resources/organization-membership.js";
+export { InvitationResourceType } from "./resources/invitation.js";
+export { ConnectionResourceType } from "./resources/connection.js";
+export { DirectoryResourceType } from "./resources/directory.js";
+export { DirectoryUserResourceType } from "./resources/directory-user.js";
+export { DirectoryGroupResourceType } from "./resources/directory-group.js";
+export { RoleResourceType } from "./resources/role.js";
+export { WebhookEndpointResourceType } from "./resources/webhook-endpoint.js";
+export { WorkosClient } from "./client.js";

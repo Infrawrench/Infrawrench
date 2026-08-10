@@ -12,9 +12,20 @@ export { WorkspaceTabProvider, useTabId } from "./workspace/WorkspaceTabContext.
 
 export { AgentsPanel } from "./agents/AgentsPanel.js";
 export {
+  AGENT_BOOTSTRAP_COMPLETE_MARKERS,
+  AGENT_CLI_INSTALL_SNIPPET,
+  AGENT_MISE_SNIPPET,
+  AGENT_NPM_PREFIX_SNIPPET,
   AGENT_SETUP_FAILED_LOG_PREFIX,
+  AGENT_SETUP_LOCK_SNIPPET,
   AGENT_SETUP_STEP_PREFIX,
+  AGENT_SYSTEM_PACKAGES_SNIPPET,
+  agentToolAuthStatusCommand,
+  agentToolCommand,
   agentToolLabel,
+  agentToolLoginCommand,
+  agentToolPackage,
+  bootstrapReportedComplete,
   buildAgentBootstrapCommand,
   buildAgentLaunchCommand,
   buildAgentRepoSetupCommand,
@@ -29,6 +40,27 @@ export {
   buildAgentEnvFile,
   resolveAgentEnvTemplate,
 } from "./agents/repo-config.js";
+export {
+  agentSurfaceOrDefault,
+  agentSurfaceRequiresRepo,
+  buildT3CodeBootstrapCommand,
+  buildT3CodeConnectCommand,
+  buildT3CodeLogoutCommand,
+  buildT3CodeStatusCommand,
+  createT3CodeSetupPlan,
+  isT3CodeSurface,
+  parseT3CodeConnectStatus,
+  t3CodeConnectNextStep,
+  T3_CODE_HOSTED_APP_URL,
+  T3_CODE_NODE_ENGINE_RANGE,
+  T3_CODE_NODE_VERSION,
+  T3_CODE_PROJECTS_DIR,
+} from "./agents/t3-code.js";
+export type {
+  T3CodeBootstrapCommandInput,
+  T3CodeConnectCommandInput,
+  T3CodeConnectStatus,
+} from "./agents/t3-code.js";
 export type {
   AgentClient,
   AgentCreateBody,
@@ -43,9 +75,12 @@ export type {
   AgentSetupPlan,
   AgentSshTarget,
   AgentStatus,
+  AgentSurface,
   AgentTool,
   AgentVmAccount,
 } from "./agents/types.js";
+export { closeSshTabsForAgentTarget, openAgentSshTerminalTab } from "./agents/open-ssh-tab.js";
+export type { AgentSshTabTarget, OpenAgentSshTerminalTabInput } from "./agents/open-ssh-tab.js";
 
 export {
   ApprovalCard,
@@ -162,7 +197,23 @@ export type {
   AccountReferenceOption,
 } from "./components/AddAccountModal.js";
 export { EditCredentialsModal } from "./components/EditCredentialsModal.js";
+export {
+  CredentialPreflightPanel,
+  CredentialPreflightModal,
+} from "./components/CredentialPreflightPanel.js";
+export type {
+  CredentialPreflightPanelProps,
+  CredentialPreflightModalProps,
+} from "./components/CredentialPreflightPanel.js";
 export { DockerActionsPanel } from "./components/DockerActionsPanel.js";
+export { SshFanoutView } from "./components/SshFanoutView.js";
+export type {
+  SshFanoutViewProps,
+  SshFanoutTargetInfo,
+  SshFanoutSnippetInfo,
+  SshFanoutRunRequest,
+  SshFanoutRunOutcome,
+} from "./components/SshFanoutView.js";
 export { KvConsole } from "./components/KvConsole.js";
 export { tokenize, formatRedisResult } from "./components/KvConsole.utils.js";
 export type { KvConsoleProps } from "./components/KvConsole.js";
@@ -270,9 +321,19 @@ export {
   agentsTabTarget,
   costsTabTarget,
   graphTabTarget,
+  logsTabTarget,
+  changesTabTarget,
+  expiringTabTarget,
+  postureTabTarget,
+  dnsTabTarget,
+  environmentDiffTabTarget,
+  sshFanoutTabTarget,
+  metricAlertsTabTarget,
+  probesTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
+  settingsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -318,6 +379,11 @@ export { GraphIcon } from "./components/graph/GraphIcon.js";
 export { CreateResourceModal } from "./components/CreateResourceModal.js";
 export type { CreateResourceModalProps } from "./components/CreateResourceModal.js";
 
+export { CostEstimateBreakdown, CostEstimateChip } from "./components/CostEstimateChip.js";
+export type {
+  CostEstimateBreakdownProps,
+  CostEstimateChipProps,
+} from "./components/CostEstimateChip.js";
 export { EditResourceModal } from "./components/EditResourceModal.js";
 export type { EditResourceModalProps } from "./components/EditResourceModal.js";
 export { TunnelSshAttachModal } from "./components/detail/TunnelSshAttachModal.js";
@@ -332,6 +398,8 @@ export type {
 
 export { CredentialExportModal } from "./components/CredentialExportModal.js";
 export type { CredentialExportModalProps } from "./components/CredentialExportModal.js";
+export { TerraformExportModal } from "./components/TerraformExportModal.js";
+export type { TerraformExportModalProps } from "./components/TerraformExportModal.js";
 export { useCreateResourceForm } from "./hooks/useCreateResourceForm.js";
 export { useWorkspaceTabHandlers } from "./hooks/useWorkspaceTabHandlers.js";
 export { useWorkspaceTabDocumentTitle } from "./hooks/useDocumentTitle.js";
@@ -381,6 +449,12 @@ export { getTerminalTheme } from "./terminal-theme.js";
 export type { TerminalThemeColors } from "./terminal-theme.js";
 export { getXtermTerminalOptions, hideXtermScrollbar } from "./xterm-options.js";
 export { attachTerminalClipboard, pastedImageFilename } from "./terminal-clipboard.js";
+export {
+  createTerminalLinkHandler,
+  normalizeTerminalLinkUrl,
+  openTerminalLinkInNewTab,
+} from "./terminal-links.js";
+export type { TerminalLinkHandler, TerminalLinkHandlerOptions } from "./terminal-links.js";
 export type {
   ClipboardTerminal,
   AttachTerminalClipboardHandle,
@@ -443,13 +517,11 @@ export type {
   SlackStatus,
   SlackInstallation,
   SlackChannel,
-  SlackChannelTriggers,
   SlackAvailableChannel,
   SlackTestResult,
   AddSlackChannelArgs,
   MsTeamsStatus,
   MsTeamsWebhook,
-  MsTeamsWebhookTriggers,
   MsTeamsTestResult,
   AddMsTeamsWebhookArgs,
   DigestSettings,
@@ -482,6 +554,148 @@ export {
   type ResourceChangeEntry,
 } from "@infrawrench/client-core";
 export { ChangesIcon } from "./components/icons/ChangesIcon.js";
+export { LogsIcon } from "./components/icons/LogsIcon.js";
+
+/**
+ * Expiry radar — the pure contract (feed computation, wire types, settings
+ * helpers) lives in `@infrawrench/client-core` so mobile and the CLI share
+ * one definition; re-exported here because web and desktop import it from
+ * `ui`.
+ */
+export {
+  computeExpiryFeed,
+  fetchExpiring,
+  getExpirySettings,
+  updateExpirySettings,
+  itemsWithinLead,
+  EXPIRY_KIND_LABELS,
+  EXPIRY_SEVERITIES,
+  DEFAULT_EXPIRY_LEAD_DAYS,
+} from "@infrawrench/client-core";
+export type {
+  ExpiryFieldRule,
+  ExpiryItem,
+  ExpiryKind,
+  ExpiryListResponse,
+  ExpiryScanAccount,
+  ExpiryScanInput,
+  ExpiryScanPlugin,
+  ExpiryScanResource,
+  ExpiryScanResourceType,
+  ExpirySettings,
+  ExpirySettingsPatch,
+  ExpirySeverity,
+} from "@infrawrench/client-core";
+export { ExpirySection, formatDaysRemaining } from "./expiry/ExpirySection.js";
+export type { ExpirySectionProps } from "./expiry/ExpirySection.js";
+export { ExpiryIcon } from "./components/icons/ExpiryIcon.js";
+
+/**
+ * Posture checks — the pure contract (finding computation, wire types,
+ * settings helpers) lives in `@infrawrench/client-core` so mobile and the CLI
+ * share one definition; re-exported here because web and desktop import it
+ * from `ui`.
+ */
+export {
+  computePostureFindings,
+  dismissPostureFinding,
+  fetchPosture,
+  getPostureSettings,
+  postureFindingKey,
+  restorePostureFinding,
+  updatePostureSettings,
+  alertablePostureFindings,
+  POSTURE_CATEGORY_LABELS,
+  POSTURE_SEVERITIES,
+  POSTURE_SEVERITY_LABELS,
+} from "@infrawrench/client-core";
+export type {
+  DismissedPostureFinding,
+  PostureCategory,
+  PostureCheckRule,
+  PostureCondition,
+  PostureDismissal,
+  PostureDismissInput,
+  PostureFinding,
+  PostureListResponse,
+  PostureScanAccount,
+  PostureScanInput,
+  PostureScanPlugin,
+  PostureScanResource,
+  PostureScanResourceType,
+  PostureSettings,
+  PostureSettingsPatch,
+  PostureSeverity,
+} from "@infrawrench/client-core";
+export { PostureSection } from "./posture/PostureSection.js";
+export type { PostureSectionProps } from "./posture/PostureSection.js";
+export { PostureIcon } from "./components/icons/PostureIcon.js";
+export {
+  DNS_CLASSIFICATION_LABELS,
+  computeDnsInventory,
+  danglingDnsRecords,
+  normalizeDnsHost,
+} from "@infrawrench/client-core";
+export type {
+  DnsInventoryResponse,
+  DnsRecordEntry,
+  DnsRecordTarget,
+  DnsScanAccount,
+  DnsScanInput,
+  DnsScanPlugin,
+  DnsScanResource,
+  DnsScanResourceType,
+  DnsSkippedNamespace,
+  DnsTargetClassification,
+  DnsZoneEntry,
+} from "@infrawrench/client-core";
+export { DnsSection } from "./dns/DnsSection.js";
+export type { DnsSectionProps } from "./dns/DnsSection.js";
+export { DomainsIcon } from "./components/icons/DomainsIcon.js";
+
+/**
+ * Environment diff — two accounts' inventories compared. The comparison is
+ * pure and lives in `@infrawrench/client-core` (a second caller of the
+ * change-timeline differ), so the CLI runs the identical computation over its
+ * own workspace; re-exported here because web and desktop import it from `ui`.
+ */
+export {
+  computeEnvironmentDiff,
+  fetchEnvironmentDiff,
+  environmentDiffSearchParams,
+  environmentTokens,
+  isIdentityChange,
+  normalizeEnvironmentName,
+  EnvironmentDiffPluginMismatchError,
+  ENVIRONMENT_NAME_TOKENS,
+} from "@infrawrench/client-core";
+export type {
+  EnvironmentDiffInput,
+  EnvironmentDiffRequest,
+  EnvironmentDiffResource,
+  EnvironmentDiffSide,
+} from "@infrawrench/client-core";
+export { EnvironmentDiffSection } from "./environment-diff/EnvironmentDiffSection.js";
+export type { EnvironmentDiffSectionProps } from "./environment-diff/EnvironmentDiffSection.js";
+export type {
+  EnvironmentDiffAccount,
+  EnvironmentDiffClient,
+  EnvironmentDiffEntry,
+  EnvironmentDiffFieldChange,
+  EnvironmentDiffQuery,
+  EnvironmentDiffResourceRef,
+  EnvironmentDiffResourceTarget,
+  EnvironmentDiffResponse,
+  EnvironmentDiffSideSummary,
+  EnvironmentDiffStatus,
+  EnvironmentDiffTotals,
+  EnvironmentDiffTypeSummary,
+  EnvironmentDiffUnavailableType,
+} from "./environment-diff/types.js";
+export { EnvironmentDiffIcon } from "./components/icons/EnvironmentDiffIcon.js";
+export { FanoutIcon } from "./components/icons/FanoutIcon.js";
+export { MetricAlertIcon } from "./components/icons/MetricAlertIcon.js";
+export { ProbesIcon } from "./components/icons/ProbesIcon.js";
 
 /**
  * SSH host-key trust handshake. Shared with mobile through client-core because
@@ -502,6 +716,13 @@ export {
  * depend on `@infrawrench/ui`, not on client-core directly.
  */
 export {
+  isSeatLimitResponse,
+  SeatLimitReachedClientError,
+  PlanRequiredClientError,
+  type SeatLimitPayload,
+} from "@infrawrench/client-core";
+
+export {
   formatProvider,
   formatAuthMethod,
   describeUserAgent,
@@ -521,7 +742,77 @@ export {
 } from "@infrawrench/client-core";
 
 export * from "./cost/index.js";
+
+// Org/user settings — shared sections rendered by the web settings routes and
+// the desktop cloud-mode settings tab (see settings/host.tsx for the contract).
+export * from "./settings/index.js";
+// Session-recording playback. The player is here rather than in a host app
+// because both web and desktop render it; the terminal it writes into is
+// injected, which is what keeps this package free of an xterm dependency.
+export { RecordingPlayer } from "./session-recordings/RecordingPlayer.js";
+export type { PlaybackTerminal, MountPlaybackTerminal } from "./session-recordings/terminal.js";
+export * from "./metric-alerts/index.js";
+export * from "./probes/index.js";
 export * from "./savings/index.js";
+export * from "./logs/index.js";
+export { SleepSchedulesSection } from "./schedules/SleepSchedulesSection.js";
+export type { SleepSchedulesSectionProps } from "./schedules/SleepSchedulesSection.js";
+export { ScheduleEditorModal } from "./schedules/ScheduleEditorModal.js";
+export type {
+  ScheduleEditorModalProps,
+  ScheduleEditorTarget,
+} from "./schedules/ScheduleEditorModal.js";
+export { ResourceSchedulePanel } from "./schedules/ResourceSchedulePanel.js";
+export type { ResourceSchedulePanelProps } from "./schedules/ResourceSchedulePanel.js";
+export type {
+  SchedulesClient,
+  SleepSchedule,
+  SleepScheduleCreate,
+  SleepScheduleListResponse,
+  SleepSchedulePatch,
+  SchedulePreview,
+  SchedulePreviewRequest,
+} from "./schedules/types.js";
+export { LeaseEditorModal } from "./leases/LeaseEditorModal.js";
+export type { LeaseEditorModalProps, LeaseEditorTarget } from "./leases/LeaseEditorModal.js";
+export { ResourceLeasePanel } from "./leases/ResourceLeasePanel.js";
+export type { ResourceLeasePanelProps } from "./leases/ResourceLeasePanel.js";
+export type {
+  LeasesClient,
+  LeaseStatus,
+  ResourceLease,
+  ResourceLeaseCreate,
+  ResourceLeaseListResponse,
+  ResourceLeasePatch,
+} from "./leases/types.js";
+export { ResourceOwnershipPanel } from "./ownership/ResourceOwnershipPanel.js";
+export type { ResourceOwnershipPanelProps } from "./ownership/ResourceOwnershipPanel.js";
+// Named rather than `export *`, for the reason spelled out below the cost
+// block: the dts bundler drops `export *` type re-exports whose names also
+// reach the declaration graph from client-core by another path.
+export type {
+  OwnershipCandidate,
+  OwnershipClient,
+  ResourceOwnership,
+  ResourceOwnershipListResponse,
+  ResourceOwnershipPatch,
+} from "./ownership/types.js";
+export { StatusPagesPanel } from "./status-pages/StatusPagesPanel.js";
+export type { StatusPagesPanelProps } from "./status-pages/StatusPagesPanel.js";
+export { StatusPageEditorModal } from "./status-pages/StatusPageEditorModal.js";
+export type { StatusPageEditorModalProps } from "./status-pages/StatusPageEditorModal.js";
+export { PublicStatusPageView } from "./status-pages/PublicStatusPageView.js";
+export type { PublicStatusPageViewProps } from "./status-pages/PublicStatusPageView.js";
+export type {
+  StatusPage,
+  StatusPageComponent,
+  StatusPageComponentInput,
+  StatusPageCreate,
+  StatusPageListResponse,
+  StatusPagePatch,
+  StatusPagesClient,
+  PublicStatusPage,
+} from "./status-pages/types.js";
 
 // Named re-exports of cost/custom-graph wire types. The tsdown (tsgo) dts
 // bundler drops some `export *` type re-exports when the same name also
@@ -547,6 +838,41 @@ export {
   type ChangeFeedPage,
   type ChangeFeedAccount,
 } from "./changes/index.js";
+
+// Moment view ("what changed around 03:14?") — panel + host contract. The
+// wire types and pure timeline logic come straight from client-core, named
+// for the same redeclaration reason as the changes block above.
+export { MomentPanel, type MomentPanelProps, type MomentClient } from "./moment/index.js";
+export {
+  buildMomentTimeline,
+  describeIncidentBadge,
+  momentSearchParams,
+  MOMENT_FEED_LABELS,
+  MOMENT_WINDOW_PRESETS,
+  DEFAULT_MOMENT_WINDOW_MINUTES,
+  type MomentEvent,
+  type MomentEventLink,
+  type MomentFeedId,
+  type MomentFeedStatus,
+  type MomentIncidentSpan,
+  type MomentRequest,
+  type MomentResponse,
+  type MomentSeverity,
+  type MomentTimelineItem,
+} from "@infrawrench/client-core";
+
+export {
+  ProviderIncidentBanner,
+  ProviderIncidentChangesSection,
+  type ProviderIncidentBannerProps,
+  type ProviderIncidentChangesSectionProps,
+  type StatusIncidentsClient,
+  type OrgStatusIncident,
+  type OrgStatusIncidentsResponse,
+  type ProviderIncidentImpact,
+  type ProviderIncidentResourceSample,
+  type ProviderIncidentState,
+} from "./status/index.js";
 
 export * from "./custom-graphs/index.js";
 

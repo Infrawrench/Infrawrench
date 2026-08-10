@@ -75,9 +75,7 @@ export async function listRoute53RecordSets(
         // unwrap, and a single record parses as a bare object.
         const resourceRecords = ensureArray(
           (record["ResourceRecords"] as Record<string, unknown> | undefined)?.["ResourceRecord"] as
-            | Record<string, unknown>
-            | Array<Record<string, unknown>>
-            | undefined,
+            Record<string, unknown> | Array<Record<string, unknown>> | undefined,
         );
         const values = resourceRecords.map((r) => String(r["Value"] ?? "")).join(", ");
 

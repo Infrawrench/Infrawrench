@@ -21,6 +21,8 @@ export {
   type BudgetConfigModalProps,
 } from "./BudgetConfigModal.js";
 export { CostsPanel, type CostsPanelProps } from "./CostsPanel.js";
+export { TagGovernanceSection } from "./TagGovernanceSection.js";
 export { CostAnomaliesSection, type CostAnomaliesSectionProps } from "./CostAnomaliesSection.js";
 export { CostsIcon } from "./CostsIcon.js";
 export { BudgetPickerModal, type BudgetPickerModalProps } from "./BudgetPickerModal.js";
+export { CreditBurndownSection } from "./CreditBurndownSection.js";

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { loadPlugins } from "@/plugins/loader";
 
 describe("plugin loader", () => {
-  it("loads all 48 plugins successfully", async () => {
+  it("loads all 49 plugins successfully", async () => {
     const plugins = await loadPlugins();
     expect(plugins).toHaveLength(48);
   });
@@ -77,6 +77,7 @@ describe("plugin loader", () => {
       "together",
       "xai",
       "uploadthing",
+      "workos",
     ];
     for (const id of expected) {
       expect(ids).toContain(id);

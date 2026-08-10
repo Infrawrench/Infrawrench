@@ -31,6 +31,18 @@ describe("OAuth callback route", () => {
     expect(await res.text()).toMatch(/Missing code/);
   });
 
+  it("renders the provider error on an error redirect, HTML-escaped", async () => {
+    const res = await buildApp().request(
+      "/?error=user_not_found&error_description=%3Cscript%3Ex%3C%2Fscript%3E",
+    );
+    expect(res.status).toBe(400);
+    const body = await res.text();
+    expect(body).toContain("user_not_found");
+    expect(body).not.toContain("<script>");
+    // The unverified flow never exchanges anything.
+    expect(mockAuthenticateWithCode).not.toHaveBeenCalled();
+  });
+
   it("restarts sign-in when the OAuth state cookie does not match the query", async () => {
     const res = await buildApp().request("/?code=abc&state=mismatch", {
       headers: { cookie: "iw_oauth_state=expected" },

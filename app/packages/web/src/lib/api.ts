@@ -6,7 +6,18 @@
  */
 
 import { isHostKeyTrustResponse, type HostKeyTrustPayload } from "./host-key-trust";
-import { REAUTHENTICATION_REQUIRED } from "@infrawrench/ui";
+import {
+  REAUTHENTICATION_REQUIRED,
+  isSeatLimitResponse,
+  SeatLimitReachedClientError,
+  PlanRequiredClientError,
+} from "@infrawrench/ui";
+
+// The transport-agnostic error classes moved to @infrawrench/client-core so
+// the shared settings sections can catch them regardless of host; re-exported
+// here so existing `@/lib/api` imports keep working.
+export { SeatLimitReachedClientError, PlanRequiredClientError };
+export type { SeatLimitPayload } from "@infrawrench/ui";
 
 const SIGN_IN_URL = "/api/auth/sign-in";
 
@@ -29,36 +40,6 @@ export class HostKeyTrustRequiredClientError extends Error {
   constructor(payload: HostKeyTrustPayload) {
     super(payload.message || "SSH host key trust required");
     this.name = "HostKeyTrustRequiredClientError";
-    this.payload = payload;
-  }
-}
-
-/** Payload of the structured 409 an invite gets when the paid plan is full. */
-export interface SeatLimitPayload {
-  error: string;
-  code: "seat_limit_reached";
-  seatCount: number;
-  seatsUsed: number;
-}
-
-function isSeatLimitResponse(parsed: unknown): parsed is SeatLimitPayload {
-  return (
-    typeof parsed === "object" &&
-    parsed !== null &&
-    (parsed as { code?: unknown }).code === "seat_limit_reached"
-  );
-}
-
-/**
- * Error thrown by `apiFetch` for the structured `seat_limit_reached` 409.
- * Callers can `catch` it to drive an "add a seat?" prompt, then retry the
- * invite with `addSeat: true`.
- */
-export class SeatLimitReachedClientError extends Error {
-  readonly payload: SeatLimitPayload;
-  constructor(payload: SeatLimitPayload) {
-    super(payload.error || "All seats are in use");
-    this.name = "SeatLimitReachedClientError";
     this.payload = payload;
   }
 }
@@ -96,18 +77,6 @@ export class ChangeFreezeBlockedClientError extends Error {
     super(payload.error || "Blocked by an active change freeze");
     this.name = "ChangeFreezeBlockedClientError";
     this.payload = payload;
-  }
-}
-
-/**
- * Error thrown by `apiFetch` for any 402 — the organization's plan does not
- * include the attempted action. Callers can `catch` it to render an upgrade
- * prompt instead of a plain error message.
- */
-export class PlanRequiredClientError extends Error {
-  constructor(message: string) {
-    super(message || "This feature requires a paid plan");
-    this.name = "PlanRequiredClientError";
   }
 }
 
@@ -172,6 +141,35 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
 export function apiGet<T>(path: string): Promise<T> {
   return apiFetch<T>(path);
+}
+
+/**
+ * GET an endpoint whose body is a document rather than a JSON payload.
+ *
+ * `apiFetch` parses, which is exactly wrong for an asciicast: the format is
+ * newline-delimited JSON and `JSON.parse` fails on the header line alone. The
+ * auth handling (401 → sign-in) is duplicated rather than shared because
+ * `apiFetch`'s error branch is all about JSON error envelopes, which a text
+ * endpoint does not have.
+ */
+export async function apiGetText(path: string): Promise<string> {
+  const res = await fetch(path, { credentials: "include" });
+  if (res.status === 401) {
+    window.location.href = SIGN_IN_URL;
+    return new Promise(() => {});
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    let message = text;
+    try {
+      const parsed = JSON.parse(text) as { error?: unknown };
+      if (typeof parsed.error === "string") message = parsed.error;
+    } catch {
+      /* not a JSON error envelope */
+    }
+    throw new Error(message || `Request failed (${res.status})`);
+  }
+  return text;
 }
 
 export function apiPost<T>(path: string, body?: unknown): Promise<T> {

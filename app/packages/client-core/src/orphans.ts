@@ -23,6 +23,10 @@ export type {
   OrphanAccountGroup,
   OrphanListResponse,
 } from "@infrawrench/plugin-base";
+// `ResourceOwnerAnnotation` (the `owner` field on a flagged row) is deliberately
+// re-exported from `./ownership` and not here: two sibling modules re-exporting
+// one name under a single barrel makes `export *` treat it as ambiguous and the
+// dts rollup drops it (see KNOWLEDGE.md, the `ShowbackReport` incident).
 
 /**
  * Scan an organization's synced resources for likely waste
@@ -45,6 +49,7 @@ export async function fetchOrphans(api: CloudFetch, orgId: string): Promise<Orph
     res ?? {
       accounts: [],
       totalCount: 0,
+      unownedCount: 0,
       costWindowDays: 0,
       generatedAt: new Date().toISOString(),
     }

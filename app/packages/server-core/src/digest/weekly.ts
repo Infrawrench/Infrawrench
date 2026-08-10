@@ -35,11 +35,15 @@ import {
   orgDigestSettings,
   organizations,
   pagingIncidents,
+  providerStatusIncidents,
   resources,
 } from "../db/schema";
+import { itemsWithinLead } from "@infrawrench/client-core";
 import { queryCosts } from "../clickhouse/cost-readers";
-import { sendSlackToOrg } from "../slack";
-import { sendMsTeamsToOrg } from "../msteams";
+import { listExpiring } from "../expiry/feed";
+import { MAX_RESOURCES_PER_PROJECTION, projectMonthlySpend } from "../cost/estimate";
+import { listPosture } from "../posture/feed";
+import { routeAlert } from "../alerts/route";
 import { isEmailConfigured, sendEmails, type EmailMessage } from "../email";
 import { generateDigestNarrative } from "./narrative";
 import {
@@ -54,6 +58,7 @@ import {
   formatDigestTeamsBody,
   isDigestDue,
   isValidTimeZone,
+  type DigestProjection,
   type DigestSchedule,
   type DigestWindow,
   type IsoWeekday,
@@ -143,38 +148,77 @@ export async function buildWeeklyDigest(
 
   const { fromDate, toDatePlusOne } = dayRange(window.weekStart, window.weekEnd);
   const count = sql<number>`count(*)::int`;
-  const [[incidents], [added], [removed]] = await Promise.all([
-    db
-      .select({ count })
-      .from(pagingIncidents)
-      .where(
-        and(
-          eq(pagingIncidents.organizationId, organizationId),
-          gte(pagingIncidents.openedAt, fromDate),
-          lt(pagingIncidents.openedAt, toDatePlusOne),
+  const [[incidents], [added], [removed], [providerIncidents], expiringSoon, postureCounts] =
+    await Promise.all([
+      db
+        .select({ count })
+        .from(pagingIncidents)
+        .where(
+          and(
+            eq(pagingIncidents.organizationId, organizationId),
+            gte(pagingIncidents.openedAt, fromDate),
+            lt(pagingIncidents.openedAt, toDatePlusOne),
+          ),
         ),
-      ),
-    db
-      .select({ count })
-      .from(resources)
-      .where(
-        and(
-          eq(resources.organizationId, organizationId),
-          gte(resources.createdAt, fromDate),
-          lt(resources.createdAt, toDatePlusOne),
+      db
+        .select({ count })
+        .from(resources)
+        .where(
+          and(
+            eq(resources.organizationId, organizationId),
+            gte(resources.createdAt, fromDate),
+            lt(resources.createdAt, toDatePlusOne),
+          ),
         ),
-      ),
-    db
-      .select({ count })
-      .from(resources)
-      .where(
-        and(
-          eq(resources.organizationId, organizationId),
-          gte(resources.deletedAt, fromDate),
-          lt(resources.deletedAt, toDatePlusOne),
+      db
+        .select({ count })
+        .from(resources)
+        .where(
+          and(
+            eq(resources.organizationId, organizationId),
+            gte(resources.deletedAt, fromDate),
+            lt(resources.deletedAt, toDatePlusOne),
+          ),
         ),
-      ),
-  ]);
+      // Provider status-page incidents whose window overlapped the reported
+      // week, on providers the org holds accounts with. Provider-level, not
+      // per-resource: the digest line is a headcount, not a blast radius.
+      db
+        .select({ count })
+        .from(providerStatusIncidents)
+        .where(
+          and(
+            lt(providerStatusIncidents.startedAt, toDatePlusOne),
+            or(
+              isNull(providerStatusIncidents.resolvedAt),
+              gte(providerStatusIncidents.resolvedAt, fromDate),
+            ),
+            sql`${providerStatusIncidents.pluginId} IN (
+            SELECT DISTINCT plugin_id FROM accounts
+            WHERE organization_id = ${organizationId} AND deleted_at IS NULL
+          )`,
+          ),
+        ),
+      // Deadlines currently inside the org's expiry lead time. A point-in-time
+      // headcount, not a weekly delta — "what needs attention now" is the useful
+      // digest line for deadlines. Defensive: a broken feed must cost the digest
+      // one line, not the whole send.
+      listExpiring(organizationId)
+        .then((feed) => itemsWithinLead(feed).length)
+        .catch((err) => {
+          console.error(`[expiry] digest feed for org ${organizationId} failed:`, err);
+          return 0;
+        }),
+      // Current critical/high posture findings. Like the expiry line, a
+      // point-in-time headcount — and defensive: a broken feed must cost the
+      // digest one line, not the whole send.
+      listPosture(organizationId)
+        .then((feed) => ({ critical: feed.counts.critical, high: feed.counts.high }))
+        .catch((err) => {
+          console.error(`[posture] digest feed for org ${organizationId} failed:`, err);
+          return { critical: 0, high: 0 };
+        }),
+    ]);
 
   return composeWeeklyDigest({
     window,
@@ -183,7 +227,78 @@ export async function buildWeeklyDigest(
     syncIncidentsOpened: incidents?.count ?? 0,
     resourcesAdded: added?.count ?? 0,
     resourcesRemoved: removed?.count ?? 0,
+    providerIncidents: providerIncidents?.count ?? 0,
+    expiringSoon,
+    postureCritical: postureCounts.critical,
+    postureHigh: postureCounts.high,
+    projection: await buildProjection(organizationId, fromDate, toDatePlusOne),
   });
+}
+
+/**
+ * The run-rate the week's churn leaves behind, from the plugins'
+ * `estimateCost`. Runs *after* the counts above rather than alongside them
+ * because it is the one part of the digest that talks to provider APIs — it
+ * is bounded (see `MAX_RESOURCES_PER_PROJECTION`), and it must never be the
+ * reason a digest fails to send, so the whole thing is wrapped.
+ *
+ * The id queries take one more row than the projection will price, which is
+ * how truncation is detected without a second count.
+ */
+async function buildProjection(
+  organizationId: string,
+  fromDate: Date,
+  toDatePlusOne: Date,
+): Promise<DigestProjection | null> {
+  try {
+    const idsIn = (column: typeof resources.createdAt | typeof resources.deletedAt) =>
+      db
+        .select({ id: resources.id })
+        .from(resources)
+        .where(
+          and(
+            eq(resources.organizationId, organizationId),
+            gte(column, fromDate),
+            lt(column, toDatePlusOne),
+          ),
+        )
+        .limit(MAX_RESOURCES_PER_PROJECTION + 1)
+        .then((rows) => rows.map((r) => r.id));
+
+    const [addedIds, removedIds] = await Promise.all([
+      idsIn(resources.createdAt),
+      idsIn(resources.deletedAt),
+    ]);
+    if (addedIds.length === 0 && removedIds.length === 0) return null;
+
+    const [addedSpend, removedSpend] = await Promise.all([
+      projectMonthlySpend(organizationId, addedIds),
+      projectMonthlySpend(organizationId, removedIds),
+    ]);
+    if (!addedSpend && !removedSpend) return null;
+
+    // Mixed currencies across the two sides would make the net meaningless,
+    // so the mismatched side is dropped to `unpriced` rather than subtracted.
+    // Count *every* resource on the discarded side (priced + unpriced) so the
+    // digest does not understate how many estimates were omitted.
+    const currency = addedSpend?.currency ?? removedSpend?.currency ?? "USD";
+    const usable = (spend: typeof addedSpend) => (spend?.currency === currency ? spend : null);
+    const add = usable(addedSpend);
+    const remove = usable(removedSpend);
+    const discardedAsUnpriced = (spend: typeof addedSpend, kept: typeof add) =>
+      kept?.unpricedCount ?? (spend ? spend.pricedCount + spend.unpricedCount : 0);
+    return {
+      currency,
+      addedMonthly: add?.monthlyAmount ?? 0,
+      removedMonthly: remove?.monthlyAmount ?? 0,
+      unpricedCount:
+        discardedAsUnpriced(addedSpend, add) + discardedAsUnpriced(removedSpend, remove),
+      truncated: (add?.truncated ?? false) || (remove?.truncated ?? false),
+    };
+  } catch (err) {
+    console.error(`[digest] projected spend for org ${organizationId} failed:`, err);
+    return null;
+  }
 }
 
 export interface DigestDeliveryResult {
@@ -241,27 +356,39 @@ export async function deliverWeeklyDigest(
     traceKey: `digest:${organizationId}:${digest.window.weekStart}:${origin}:${r.email}`,
   }));
 
-  const [slack, teams, email] = await Promise.all([
-    sendSlackToOrg(organizationId, "weeklyDigest", {
-      title,
-      body: formatDigestSlackBody(digest, narrative),
-      ...(context ? { context } : {}),
-      ...(url ? { url } : {}),
-    }),
-    sendMsTeamsToOrg(organizationId, "weeklyDigest", {
-      title,
-      body: formatDigestTeamsBody(digest, narrative),
-      ...(context ? { context } : {}),
-      ...(url ? { url } : {}),
-    }),
+  // `bypassQuietHours`: the digest already goes out at an hour the org chose
+  // in `org_digest_settings`, so letting a routing rule hold it until a
+  // *different* hour the org chose is two schedules arguing. Email is not a
+  // routable destination — the recipient list is an org-level address book
+  // that reaches people without an Infrawrench login — so it stays beside the
+  // routed transports rather than inside them.
+  const [routed, email] = await Promise.all([
+    routeAlert(
+      {
+        organizationId,
+        trigger: "weeklyDigest",
+        title,
+        body: formatDigestSlackBody(digest, narrative),
+        teamsBody: formatDigestTeamsBody(digest, narrative),
+        ...(context ? { context } : {}),
+        ...(url ? { url } : {}),
+      },
+      { bypassQuietHours: true },
+    ),
     sendEmails(emails, `digest for org ${organizationId}`),
   ]);
 
   return {
-    attempted: slack.attempted + teams.attempted + email.attempted,
-    succeeded: slack.succeeded + teams.succeeded + email.succeeded,
-    slack: { attempted: slack.attempted, succeeded: slack.succeeded },
-    teams: { attempted: teams.attempted, succeeded: teams.succeeded },
+    attempted: routed.attempted + email.attempted,
+    succeeded: routed.succeeded + email.succeeded,
+    slack: {
+      attempted: routed.attemptedByTransport.slack,
+      succeeded: routed.byTransport.slack,
+    },
+    teams: {
+      attempted: routed.attemptedByTransport.msTeams,
+      succeeded: routed.byTransport.msTeams,
+    },
     email: { attempted: email.attempted, succeeded: email.succeeded },
   };
 }

@@ -5,11 +5,16 @@ export const GceInstanceResourceType = rt({
   id: "gce-instance",
   description: "A Google Compute Engine virtual machine instance",
   fields: [
-    f("name", "Name"),
-    f("zone", "Zone"),
-    f("machineType", "Machine Type"),
-    f("status", "Status", { required: false }),
-    f("networkTier", "Network Tier", { required: false }),
+    // GCE instance names are immutable; the only editable field is
+    // machineType (the right-sizing resize path).
+    f("name", "Name", { editable: false }),
+    f("zone", "Zone", { editable: false }),
+    f("machineType", "Machine Type", {
+      description:
+        "Machine type name, e.g. e2-standard-2. Changing it resizes the instance (only allowed while it is stopped)",
+    }),
+    f("status", "Status", { required: false, editable: false }),
+    f("networkTier", "Network Tier", { required: false, editable: false }),
     f("network", "VPC Network", {
       kind: "association",
       required: false,
@@ -27,14 +32,17 @@ export const GceInstanceResourceType = rt({
     f("networkName", "Attached Network", {
       required: false,
       description: "Names of the VPC networks this instance's interfaces are attached to",
+      editable: false,
     }),
     f("subnetwork", "Subnet", {
       required: false,
       description: "Subnets this instance's interfaces sit in, as region/name",
+      editable: false,
     }),
     f("serviceAccounts", "Service Accounts", {
       required: false,
       description: "Emails of the service accounts attached to this instance",
+      editable: false,
     }),
   ],
   outputs: [o("externalIp", "External IP"), o("internalIp", "Internal IP")],
@@ -53,6 +61,15 @@ export const GceInstanceResourceType = rt({
     { fieldKey: "serviceAccounts", targetTypeId: "gcp-service-account", label: "runs as" },
   ],
   supportsMetrics: true,
+  // Sleep/wake schedules: instances.stop / instances.start. A TERMINATED VM
+  // stops compute billing (disks and reserved IPs keep billing).
+  lifecycle: {
+    startActionId: "start",
+    stopActionId: "stop",
+    statusFieldKey: "status",
+    runningValues: ["RUNNING", "PROVISIONING", "STAGING"],
+    stoppedValues: ["TERMINATED", "STOPPING", "SUSPENDED"],
+  },
   sshEndpoint: {
     hostOutputKey: "externalIp",
     privateHostOutputKey: "internalIp",
@@ -82,4 +99,20 @@ export const GceInstanceResourceType = rt({
     hiddenFieldKeys: ["sshPublicKey"],
   },
   supportsCreate: true,
+  // Edit = change machine type only (GCE instance names are immutable).
+  supportsUpdate: true,
+  // Right-sizing: the create form's machineTypes catalog carries capacity;
+  // prices hydrate through getCreateSizePricing (Cloud Billing catalog, per
+  // geo). GCE's cpu/utilization series is a 0–1 fraction; no agentless
+  // memory metric exists, so the host's unmeasured-memory floor applies.
+  rightsizing: {
+    sizeFieldKey: "machineType",
+    regionFieldKey: "zone",
+    cpuMetric: { seriesLabel: "CPU Utilization", scale: "fraction" },
+    // Family prefix before the first dash (e2, n2, t2a, c3…) — keeps arm
+    // (t2a) and generation jumps out, which setMachineType can't cross.
+    sizeFamilyPattern: "^([a-z0-9]+)-",
+    resizeNote:
+      "Google Compute Engine only changes the machine type of a stopped instance — stop it first, apply the resize, then start it again.",
+  },
 });

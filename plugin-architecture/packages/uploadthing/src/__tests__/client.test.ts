@@ -407,11 +407,31 @@ describe("createResource", () => {
       "http://192.168.1.9/x.png",
       "http://172.16.0.1/x.png",
       "http://[::1]/x.png",
+      "http://[::ffff:169.254.169.254]/x.png",
+      "http://[::ffff:127.0.0.1]/x.png",
+      "http://[::]/x.png",
     ]) {
       await expect(c.createResource("ut-file", ACCOUNT, { sourceUrl: url })).rejects.toThrow(
         /private and loopback/,
       );
     }
+    expect(calls.some((call) => call.url.includes("169.254"))).toBe(false);
+  });
+
+  it("refuses a redirect that lands on a private address", async () => {
+    installReadFetch((url) => {
+      if (url === "https://example.com/bounce") {
+        return {
+          ok: false,
+          status: 302,
+          headers: new Headers({ location: "http://169.254.169.254/latest/meta-data/" }),
+        } as unknown as Response;
+      }
+      return undefined;
+    });
+    await expect(
+      client().createResource("ut-file", ACCOUNT, { sourceUrl: "https://example.com/bounce" }),
+    ).rejects.toThrow(/private and loopback/);
     expect(calls.some((call) => call.url.includes("169.254"))).toBe(false);
   });
 

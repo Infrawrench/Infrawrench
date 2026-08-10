@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { T3_CODE_PROJECTS_DIR } from "@infrawrench/ui/agents/t3-code";
 
 // Drizzle-style chain mocks. Selects resolve queued results in call order;
 // update captures the values passed to .set().
 const selectResults: unknown[][] = [];
 const updateSetCalls: Array<Record<string, unknown>> = [];
+// Rows the next `.returning()` yields — the setup-lease claim reads this to
+// decide whether this replica won the row. Defaults to winning.
+const updateReturning: unknown[][] = [];
 
 vi.mock("@/db/client", () => ({
   db: {
@@ -15,12 +19,17 @@ vi.mock("@/db/client", () => ({
       }),
     }),
     update: () => ({
-      set: (values: Record<string, unknown>) => ({
-        where: () => {
+      set: (values: Record<string, unknown>) => {
+        const where = () => {
           updateSetCalls.push(values);
-          return Promise.resolve();
-        },
-      }),
+          const result: Promise<unknown> & { returning?: () => Promise<unknown[]> } =
+            Promise.resolve() as never;
+          result.returning = () =>
+            Promise.resolve(updateReturning.shift() ?? [{ id: "session-1" }]);
+          return result;
+        };
+        return { where };
+      },
     }),
   },
 }));
@@ -57,6 +66,7 @@ function sessionRow(overrides: Record<string, unknown> = {}) {
     pluginId: "hetzner",
     resourceTypeId: "server",
     tool: "codex",
+    surface: "terminal",
     branchName: "infrawrench/agent-session1",
     status: "setting-up",
     vmResourceId: "vm-1",
@@ -71,6 +81,7 @@ function sessionRow(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   selectResults.length = 0;
   updateSetCalls.length = 0;
+  updateReturning.length = 0;
 });
 
 describe("hasAgentSetupComplete / setupAwareAgentStatus", () => {
@@ -144,6 +155,16 @@ describe("setupPlanForRow", () => {
       expect(plan.workspaceName).toBe(row.workspaceName);
     }
   });
+
+  // A T3 Code server has no repo, so the repo-derived fallback would invent a
+  // clone URL for a session that must never clone anything.
+  it("falls back to a T3 Code plan for a t3-code session", () => {
+    const row = sessionRow({ surface: "t3-code", repo: "", setupPlanJson: "not-json" });
+    const plan = setupPlanForRow(row);
+    expect(plan.initialCloneUrl).toBeUndefined();
+    expect(plan.workspaceName).toBe(T3_CODE_PROJECTS_DIR);
+    expect(plan.runtimes.map((runtime) => runtime.language)).toEqual(["node"]);
+  });
 });
 
 describe("extractBootstrapWarning / isRetryableSshSetupError", () => {
@@ -215,7 +236,10 @@ describe("ensureAgentVmSetupForSession", () => {
     await expect(ensureAgentVmSetupForSession("session-1", "org-1")).rejects.toThrow(
       /Agent SSH key/,
     );
-    const lastUpdate = updateSetCalls[updateSetCalls.length - 1]!;
+    // The lease release writes after the failure log, so find the log write
+    // rather than assuming it is last.
+    const logWrites = updateSetCalls.filter((c) => "logs" in c);
+    const lastUpdate = logWrites[logWrites.length - 1]!;
     expect(lastUpdate.status).toBe("setting-up");
     expect(lastUpdate.logs).toEqual([
       "Preparing VM for coding session.",
@@ -227,5 +251,33 @@ describe("ensureAgentVmSetupForSession", () => {
     selectResults.push([sessionRow({ vmResourceId: null })]);
     selectResults.push([{ logs: [], status: "setting-up" }]);
     await expect(ensureAgentVmSetupForSession("session-1", "org-1")).rejects.toThrow(/has no VM/);
+  });
+
+  // The web deployment runs two replicas and `agentSetupInflight` only guards
+  // one heap, so without a DB lease both pods set up the same VM at once.
+  it("skips the run when another replica holds the setup lease", async () => {
+    selectResults.push([sessionRow()]);
+    updateReturning.push([]); // claim loses — no row came back
+    await expect(ensureAgentVmSetupForSession("session-1", "org-1")).resolves.toBeUndefined();
+    // The lease claim is the only write; setup itself never started, so no
+    // "Preparing VM…" log line was appended.
+    expect(updateSetCalls).toHaveLength(1);
+    expect(updateSetCalls[0]).toHaveProperty("setupLeaseUntil");
+    expect(updateSetCalls[0]!.setupLeaseUntil).toBeInstanceOf(Date);
+  });
+
+  it("releases the lease after a failed run so a retry can claim it", async () => {
+    selectResults.push([sessionRow()]);
+    selectResults.push([{ logs: [], status: "setting-up" }]);
+    selectResults.push([]); // no SSH key row => setup fails
+    selectResults.push([{ logs: ["Preparing VM for coding session."], status: "setting-up" }]);
+
+    await expect(ensureAgentVmSetupForSession("session-1", "org-1")).rejects.toThrow(
+      /Agent SSH key/,
+    );
+    const leaseWrites = updateSetCalls.filter((c) => "setupLeaseUntil" in c);
+    expect(leaseWrites).toHaveLength(2);
+    expect(leaseWrites[0]!.setupLeaseUntil).toBeInstanceOf(Date);
+    expect(leaseWrites[1]!.setupLeaseUntil).toBeNull();
   });
 });

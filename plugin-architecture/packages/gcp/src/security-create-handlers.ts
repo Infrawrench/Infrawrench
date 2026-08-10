@@ -133,9 +133,11 @@ export const securityCreateConfigHandlers: Record<
         })
         .catch(() => []),
       ctx
-        .paginate<
-          Record<string, unknown>
-        >(`https://iam.googleapis.com/v1/projects/${p}/roles`, "roles", { view: "BASIC", pageSize: "1000" })
+        .paginate<Record<string, unknown>>(
+          `https://iam.googleapis.com/v1/projects/${p}/roles`,
+          "roles",
+          { view: "BASIC", pageSize: "1000" },
+        )
         .catch(() => []),
     ]);
     const toOption = (r: Record<string, unknown>, category: string): PolicyOption => {

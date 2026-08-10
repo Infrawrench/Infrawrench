@@ -9,23 +9,6 @@ const MsTeamsWebhook = strict({
     description:
       "Non-secret hint at the stored webhook URL (host and last four characters). The URL itself is never returned.",
   }),
-  syncIncidents: z.boolean(),
-  budgetAlerts: z.boolean(),
-  anomalyAlerts: z
-    .boolean()
-    .openapi({ description: "Statistical spend-spike (cost anomaly) alerts" }),
-  resourceDrift: z.boolean().openapi({
-    description:
-      "Batched resource-drift digests from the change timeline. Defaults to false when a channel is added — drift is continuous where the other triggers are exceptional.",
-  }),
-  workflowPages: z.boolean().openapi({
-    description:
-      "Pages and approval requests raised by a workflow (infra.page / infra.waitForApproval) or by POST /pages",
-  }),
-  weeklyDigest: z.boolean().openapi({
-    description:
-      "The Monday-morning weekly digest. Only sends when the organization has enabled the digest (see /digest).",
-  }),
 }).openapi("MsTeamsWebhook");
 
 const MsTeamsStatus = strict({
@@ -38,24 +21,12 @@ const MsTeamsWebhookCreate = strict({
     description:
       "The webhook URL from a Teams 'Workflows' automation. Must be https and on a Microsoft-operated host (*.api.powerautomate.com, *.api.powerplatform.com, *.logic.azure.com, *.flow.microsoft.com, or a legacy *.webhook.office.com connector).",
   }),
-  syncIncidents: z.boolean().optional(),
-  budgetAlerts: z.boolean().optional(),
-  anomalyAlerts: z.boolean().optional(),
-  resourceDrift: z.boolean().optional(),
-  workflowPages: z.boolean().optional(),
-  weeklyDigest: z.boolean().optional(),
 }).openapi("MsTeamsWebhookCreate");
 
 // Registered under its own name — `.partial()` on a registered schema would
 // otherwise collapse back into the full $ref in the generated document.
 const MsTeamsWebhookUpdate = strict({
-  label: z.string().optional(),
-  syncIncidents: z.boolean().optional(),
-  budgetAlerts: z.boolean().optional(),
-  anomalyAlerts: z.boolean().optional(),
-  resourceDrift: z.boolean().optional(),
-  workflowPages: z.boolean().optional(),
-  weeklyDigest: z.boolean().optional(),
+  label: z.string(),
 }).openapi("MsTeamsWebhookUpdate");
 
 export function registerMsTeamsPaths(ctx: BuildContext) {
@@ -67,7 +38,7 @@ export function registerMsTeamsPaths(ctx: BuildContext) {
     tags: ["Microsoft Teams"],
     summary: "List the organization's Teams channels",
     description:
-      "Returns the Teams channels alerts are routed to and which triggers each takes. Webhook URLs are never included.",
+      "Returns the Teams channels alerts can be routed to. Which alerts reach each one is decided by /alert-rules. Webhook URLs are never included.",
     request: { params: OrgIdParam },
     responses: {
       200: {
@@ -81,9 +52,9 @@ export function registerMsTeamsPaths(ctx: BuildContext) {
     method: "post",
     path: "/api/org/{orgId}/msteams/webhooks",
     tags: ["Microsoft Teams"],
-    summary: "Route alerts to a Teams channel",
+    summary: "Connect a Teams channel as an alert destination",
     description:
-      "Adds a channel by webhook URL, or updates the one already holding that URL. Each trigger defaults to enabled. Responds 400 when the URL is not https or its host is not Microsoft-operated.",
+      "Adds a channel by webhook URL, or updates the one already holding that URL. Which alerts reach it is decided by /alert-rules — connecting a channel routes nothing to it on its own. Responds 400 when the URL is not https or its host is not Microsoft-operated.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: MsTeamsWebhookCreate } } },
@@ -101,7 +72,7 @@ export function registerMsTeamsPaths(ctx: BuildContext) {
     method: "patch",
     path: "/api/org/{orgId}/msteams/webhooks/{id}",
     tags: ["Microsoft Teams"],
-    summary: "Rename a Teams channel or change which alerts it receives",
+    summary: "Rename a Teams channel",
     description: "The webhook URL is immutable — remove the channel and re-add it to change it.",
     request: {
       params: OrgIdParam.extend({
@@ -123,7 +94,7 @@ export function registerMsTeamsPaths(ctx: BuildContext) {
     method: "delete",
     path: "/api/org/{orgId}/msteams/webhooks/{id}",
     tags: ["Microsoft Teams"],
-    summary: "Stop routing alerts to a Teams channel",
+    summary: "Disconnect a Teams channel",
     request: {
       params: OrgIdParam.extend({
         id: z.string().openapi({ param: { name: "id", in: "path" } }),
@@ -141,7 +112,7 @@ export function registerMsTeamsPaths(ctx: BuildContext) {
     tags: ["Microsoft Teams"],
     summary: "Post a test card to every configured Teams channel",
     description:
-      "Ignores trigger opt-ins — every channel gets the test. Fails with the error Microsoft returned when nothing could be delivered (HTTP 404 usually means the Workflow was deleted or turned off).",
+      "Ignores routing rules — every channel gets the test. Fails with the error Microsoft returned when nothing could be delivered (HTTP 404 usually means the Workflow was deleted or turned off).",
     request: { params: OrgIdParam },
     responses: {
       200: {

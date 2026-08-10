@@ -1,4 +1,5 @@
 import type {
+  ActionNode,
   PluginClient,
   ResourceInstance,
   DetailViewSchema,
@@ -458,6 +459,23 @@ export class FlyClient implements PluginClient {
     throw new Error(`Fly plugin: deleteResource not supported for type "${typeId}"`);
   }
 
+  async invokeAction(
+    typeId: string,
+    resourceId: string,
+    actionId: string,
+    _accountId: string,
+  ): Promise<void> {
+    if (typeId === "machine" && (actionId === "start" || actionId === "stop")) {
+      const parts = parseMachineId(resourceId);
+      await this.fetch<unknown>(
+        `/v1/apps/${parts.appName}/machines/${parts.machineId}/${actionId}`,
+        { method: "POST" },
+      );
+      return;
+    }
+    throw new Error(`Fly plugin: invokeAction "${actionId}" not supported for type "${typeId}"`);
+  }
+
   async attachResource(
     sourceTypeId: string,
     sourceResourceId: string,
@@ -713,6 +731,33 @@ export class FlyClient implements PluginClient {
 
     if (resource.resourceTypeId === "machine") {
       const state = String(fields["state"] ?? "unknown");
+      // Stop/Start header actions for the lifecycle pair (see the type's
+      // `lifecycle` declaration); Start also resumes a suspended machine.
+      const lifecycleActions: ActionNode[] = [];
+      if (state === "started") {
+        lifecycleActions.push({
+          kind: "action",
+          label: "Stop",
+          action: {
+            type: "plugin-action",
+            actionId: "stop",
+            confirmMessage:
+              "Stop this machine? Compute billing stops while it is stopped; rootfs storage keeps billing.",
+            successMessage: "Stop requested.",
+          },
+          variant: "danger",
+        });
+      } else if (state === "stopped" || state === "suspended") {
+        lifecycleActions.push({
+          kind: "action",
+          label: "Start",
+          action: {
+            type: "plugin-action",
+            actionId: "start",
+            successMessage: "Start requested.",
+          },
+        });
+      }
       return {
         title: resource.displayName,
         subtitle: `machine · ${formatRegion(String(fields["region"] ?? ""))}`,
@@ -741,7 +786,10 @@ export class FlyClient implements PluginClient {
             ],
           },
         ],
-        headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+        headerActions: [
+          ...lifecycleActions,
+          { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+        ],
       };
     }
 

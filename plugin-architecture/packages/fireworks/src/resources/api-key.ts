@@ -17,6 +17,9 @@ export const ApiKeyResourceType = rt({
     f("expireTime", "Expires", { required: false }),
   ],
   outputs: [o("keyId", "Key ID"), o("prefix", "Key Prefix")],
+  expiryFields: [
+    { fieldKey: "expireTime", from: "expiry", kind: "api-token", label: "Key expires" },
+  ],
   supportsCreate: true,
   iconKey: "key",
 });

@@ -24,11 +24,15 @@ On **Android** the same alerts land on a high-importance **Incidents & alerts** 
 
 **Time Sensitive is the ceiling on iOS today**, including for pages. iOS has one level above it — **Critical Alerts**, which also overrides the ringer switch and cannot be turned off per app — but Apple grants that entitlement to an app case by case, and Infrawrench does not carry it. In practice: a page will break through Focus and Do Not Disturb, but a phone set to silent stays silent. If you are on call, rely on the SMS and voice channels for the ringer, not on push alone.
 
-If you want some alerts to be loud and others not, use the per-organization trigger toggles below rather than the system switch — they are per user, per org, so you can leave sync incidents on for production and turn budget alerts off everywhere.
+If you want some alerts to be loud and others not, use the per-organization trigger toggles below rather than the system switch — they are per user, per org, so you can leave sync incidents on and turn budget alerts off. For "quiet after 10pm unless it is a page", set [quiet hours on a routing rule](./alert-routing.md#quiet-hours) instead: those hold the alert and deliver it in the morning rather than dropping it.
 
 ## Per-organization preferences
 
-Notification triggers are toggled per user, per organization, in **Settings → Notifications** — on the web app or in the mobile app's settings. Everything defaults to **on** except resource drift, which defaults to off; each member manages their own toggles. The triggers:
+Notification triggers are toggled per user, per organization, in **Settings → Notifications** — on the web app or in the mobile app's settings. Everything defaults to **on** except resource drift, which defaults to off; each member manages their own toggles.
+
+These are **mutes**, and they sit on top of the organization's [alert routing rules](./alert-routing.md). A rule decides whether the organization is told and which channels hear about it; your toggles decide whether your phone rings. An admin cannot un-mute your notifications, and turning one off here does not stop the alert reaching Slack.
+
+The triggers:
 
 | Trigger            | When it fires                                                                                                                                                                            |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -61,15 +65,15 @@ The [change timeline](./change-timeline.md) records every resource that appears,
 
 It is also the one trigger that is **off by default**, on phones and on channels alike, for the same reason: it is a continuous feed rather than an exceptional event. Which changes count — appearances, disappearances, field updates (off by default, they are the bulk of the volume), which accounts, and how few changes are too few to bother with — is set once for the whole organization under **Settings → Notifications → Resource drift alerts**, and it takes the **Organization settings** permission.
 
-Tapping a drift notification opens the **Changes** feed already filtered to the window it covered — and to the account, when every change in that window came from one. A **Since alert** chip shows the filter is on; clear it to widen the view to the whole feed.
+Tapping a drift notification opens the [moment view](./moment.md) centred on the window the digest covered — its changes merged chronologically with everything else that happened around them (deploys, incidents, anomalies). Cost-anomaly and provider-incident notifications land there too; the Changes feed itself is one tap away.
 
 ### Pages and approval requests
 
 Your own code can raise an alert — a [workflow](./workflows.md) calling `infra.page(...)` ("page me if any pod's restart count goes above 5" is a cron workflow that does exactly this), or a server outside Infrawrench [calling `POST /pages`](./server-push.md). Unlike the two triggers above, the condition is whatever its author wrote, so the dedupe is author-controlled: every page carries a **key** and repeats under the same key are suppressed for a cooldown (**default: 60 minutes**) the caller can set per call or clear when the condition recovers.
 
-Pages deliver over every channel — mobile push, any Slack or Teams channel opted into **Pages**, and SMS to the Twilio recipient list when credentials are configured. The caller can additionally request a **voice call** for something genuinely worth waking up for. Tapping a workflow's page opens that workflow in the app, where its recent runs and logs show what tripped it; a page pushed over the API opens the org home.
+Pages deliver over every destination your [alert routing rules](./alert-routing.md) select for the **Pages** trigger — mobile push, Slack channels, Teams channels — plus SMS to the Twilio recipient list when credentials are configured. (SMS is not a routing destination; it is configured separately on the Notifications page and delivers alongside whatever the rules picked.) The caller can additionally request a **voice call** for something genuinely worth waking up for. Tapping a workflow's page opens that workflow in the app, where its recent runs and logs show what tripped it; a page pushed over the API opens the org home.
 
-A run suspended on [`infra.waitForApproval(...)`](./workflows.md) shares this trigger, because an approval request is a workflow asking for a human just as a page is. It goes to the same places — push, Slack, Teams and SMS — and there is exactly one per request, so it needs no cooldown of its own: the request either gets decided or times out.
+A run suspended on [`infra.waitForApproval(...)`](./workflows.md) shares this trigger, because an approval request is a workflow asking for a human just as a page is. It goes to the same places the rules selected, plus SMS, and there is exactly one per request, so it needs no cooldown of its own: the request either gets decided or times out.
 
 Tapping an approval notification opens the app's [approvals inbox](./workflows.md#deciding-from-your-phone) with that request at the top, where you can approve or deny it — behind a confirmation step, since a decision releases or fails a run against real infrastructure.
 
@@ -77,8 +81,9 @@ Tapping an approval notification opens the app's [approvals inbox](./workflows.m
 
 The org settings page formerly titled **Paging** is now **Notifications** (the nav label changed too). It gathers every delivery channel in one place:
 
-- **Slack** — the workspace connection and the channels each kind of alert is routed to.
-- **Microsoft Teams** — the channels each kind of alert is routed to, added by webhook URL.
+- **Alert routing** — the ordered rules that decide where each alert goes, with quiet hours and escalation. See [Alert routing rules](./alert-routing.md).
+- **Slack** — the workspace connection and the channels a rule can route to.
+- **Microsoft Teams** — the channels a rule can route to, added by webhook URL.
 - **Your mobile push setup** — your per-org trigger toggles, your registered devices (with a remove button), and a **Send test push** button that delivers a test notification to your own devices.
 - **Members receiving push** — an admin-only roster (requires the `org:settings:write` permission) of org members who have at least one active device, so you can see at a glance who would actually hear an incident.
 - **SMS & voice** — last on the page, since it is opt-in: one card holding the whole Twilio setup — account SID, auth token, from-number, the threshold/window/cooldown knobs, the on-call recipient roster, and a **Send test page** button.

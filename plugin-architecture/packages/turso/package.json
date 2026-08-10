@@ -30,15 +30,15 @@
   },
   "dependencies": {
     "@infrawrench/plugin-base": "workspace:*",
-    "@tursodatabase/api": "^2.0.0"
+    "@tursodatabase/api": "^2.0.5"
   },
   "peerDependencies": {
     "@libsql/client": ">=0.6"
   },
   "devDependencies": {
     "@libsql/client": "^0.14.0",
+    "tsdown": "^0.22.14",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.8",
-    "tsdown": "^0.22.14"
+    "vitest": "^4.1.10"
   }
 }

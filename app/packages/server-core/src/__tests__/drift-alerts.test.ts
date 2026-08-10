@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { alertReachedImpl, routed, unroutedResult } from "./helpers/route-alert";
 
 /**
  * Drift notification orchestration. The pure batching and rendering is covered
@@ -101,6 +102,9 @@ vi.mock("drizzle-orm", () => ({
   eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
   gt: (a: unknown, b: unknown) => ({ gt: [a, b] }),
   inArray: (a: unknown, b: unknown) => ({ inArray: [a, b] }),
+  isNull: (c: unknown) => ({ isNull: c }),
+  lte: (a: unknown, b: unknown) => ({ lte: [a, b] }),
+  or: (...parts: unknown[]) => ({ or: parts }),
   sql: Object.assign((..._a: unknown[]) => ({ sql: true }), { raw: () => ({ sql: true }) }),
 }));
 
@@ -109,12 +113,20 @@ vi.mock("../drift/settings", () => ({
   getDriftAlertSettings: (...a: unknown[]) => getDriftAlertSettings(...a),
 }));
 
-const sendPushToOrg = vi.fn();
-const sendSlackToOrg = vi.fn();
-const sendMsTeamsToOrg = vi.fn();
-vi.mock("../push/dispatch", () => ({ sendPushToOrg: (...a: unknown[]) => sendPushToOrg(...a) }));
-vi.mock("../slack", () => ({ sendSlackToOrg: (...a: unknown[]) => sendSlackToOrg(...a) }));
-vi.mock("../msteams", () => ({ sendMsTeamsToOrg: (...a: unknown[]) => sendMsTeamsToOrg(...a) }));
+/**
+ * All three transports sit behind `routeAlert` now, so that is the single seam
+ * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * it decides whether a cooldown or claim is kept, and faking it would hide
+ * exactly the bug it exists to prevent.
+ */
+// Defaults to a successful delivery: `routeAlert` never throws and always
+// returns a result, so a mock that resolves `undefined` would fail tests in a
+// way the real function cannot.
+const routeAlert = vi.fn(async (..._args: unknown[]) => routed());
+vi.mock("../alerts/route", () => ({
+  routeAlert: (...a: unknown[]) => routeAlert(...a),
+  alertReached: alertReachedImpl,
+}));
 
 import { notifyResourceDrift } from "../drift/alerts";
 import { MAX_SCANNED_CHANGES } from "../drift/summary";
@@ -171,9 +183,7 @@ beforeEach(() => {
   releaseError = null;
   lastLimit = undefined;
   getDriftAlertSettings.mockResolvedValue(settings());
-  sendPushToOrg.mockResolvedValue({ attempted: 1, succeeded: 1 });
-  sendSlackToOrg.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
-  sendMsTeamsToOrg.mockResolvedValue({ attempted: 0, succeeded: 0, failed: 0 });
+  routeAlert.mockResolvedValue(routed());
   process.env["APP_URL"] = "https://app.example.com";
 });
 
@@ -185,13 +195,13 @@ describe("cheap guards", () => {
   it("does nothing at all when the pass recorded no changes", async () => {
     expect(await notifyResourceDrift(ORG, ACCOUNT, [], NOW)).toEqual({ status: "no-changes" });
     expect(getDriftAlertSettings).not.toHaveBeenCalled();
-    expect(sendSlackToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
   });
 
   it("skips an account outside the org's scope without claiming the window", async () => {
     getDriftAlertSettings.mockResolvedValue(settings({ accountIds: ["other"] }));
     expect(await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW)).toEqual({ status: "filtered" });
-    expect(sendSlackToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
     expect(releases).toEqual([]);
   });
 
@@ -200,7 +210,7 @@ describe("cheap guards", () => {
     expect(await notifyResourceDrift(ORG, ACCOUNT, [event("updated")], NOW)).toEqual({
       status: "filtered",
     });
-    expect(sendSlackToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
   });
 });
 
@@ -208,9 +218,7 @@ describe("cooldown claim", () => {
   it("sends once when it wins the claim", async () => {
     const result = await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW);
     expect(result).toEqual({ status: "sent", changes: 1, push: 1, slack: 1, msTeams: 0 });
-    expect(sendPushToOrg).toHaveBeenCalledWith(ORG, "resourceDrift", expect.anything());
-    expect(sendSlackToOrg).toHaveBeenCalledWith(ORG, "resourceDrift", expect.anything());
-    expect(sendMsTeamsToOrg).toHaveBeenCalledWith(ORG, "resourceDrift", expect.anything());
+    expect(routeAlert).toHaveBeenCalledWith(expect.objectContaining({ trigger: "resourceDrift" }));
   });
 
   it("stays silent when another replica already holds the window", async () => {
@@ -218,7 +226,7 @@ describe("cooldown claim", () => {
     expect(await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW)).toEqual({
       status: "cooling-down",
     });
-    expect(sendSlackToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
     // A lost claim must not roll anything back — the winner owns the row.
     expect(releases).toEqual([]);
   });
@@ -226,8 +234,7 @@ describe("cooldown claim", () => {
   it("rolls the claim back when every transport reached nobody", async () => {
     const prior = new Date("2026-07-31T08:00:00.000Z");
     getDriftAlertSettings.mockResolvedValue(settings({ lastNotifiedAt: prior }));
-    sendPushToOrg.mockResolvedValue({ attempted: 0, succeeded: 0 });
-    sendSlackToOrg.mockResolvedValue({ attempted: 0, succeeded: 0, failed: 0 });
+    routeAlert.mockResolvedValue(unroutedResult());
 
     expect(await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW)).toEqual({
       status: "undelivered",
@@ -243,7 +250,7 @@ describe("cooldown claim", () => {
       status: "below-minimum",
       matched: 2,
     });
-    expect(sendSlackToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
     expect(releases).toEqual([{ lastNotifiedAt: null }]);
   });
 });
@@ -261,41 +268,44 @@ describe("window and payload", () => {
 
     await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW);
 
-    const push = sendPushToOrg.mock.calls[0]![2] as { data: Record<string, unknown> };
-    expect(push.data.since).toBe(prior.toISOString());
-    expect(push.data.changeCount).toBe(2);
+    const push = routeAlert.mock.calls[0]![0] as { pushData: Record<string, unknown> };
+    expect(push.pushData.since).toBe(prior.toISOString());
+    expect(push.pushData.changeCount).toBe(2);
   });
 
   it("falls back to one cooldown window when the org has never been notified", async () => {
     await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW);
-    const push = sendPushToOrg.mock.calls[0]![2] as { data: Record<string, unknown> };
-    expect(push.data.since).toBe(new Date(NOW.getTime() - 60 * 60_000).toISOString());
+    const push = routeAlert.mock.calls[0]![0] as { pushData: Record<string, unknown> };
+    expect(push.pushData.since).toBe(new Date(NOW.getTime() - 60 * 60_000).toISOString());
   });
 
   it("deep-links to the change timeline and names the account when there is one", async () => {
     await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW);
-    const push = sendPushToOrg.mock.calls[0]![2] as { data: Record<string, unknown> };
-    expect(push.data).toMatchObject({
+    const push = routeAlert.mock.calls[0]![0] as { pushData: Record<string, unknown> };
+    expect(push.pushData).toMatchObject({
       type: "resource_drift",
       orgId: ORG,
       accountId: ACCOUNT,
     });
-    const slack = sendSlackToOrg.mock.calls[0]![2] as { url?: string };
+    const slack = routeAlert.mock.calls[0]![0] as { url?: string };
     expect(slack.url).toBe(`https://app.example.com/org/${ORG}/changes`);
   });
 
   it("omits accountId from the payload when the window spans several accounts", async () => {
     changeRows = [changeRow(), changeRow({ accountId: "acc-2", accountName: "do-main" })];
     await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW);
-    const push = sendPushToOrg.mock.calls[0]![2] as { data: Record<string, unknown> };
-    expect(push.data.accountId).toBeUndefined();
+    const push = routeAlert.mock.calls[0]![0] as { pushData: Record<string, unknown> };
+    expect(push.pushData.accountId).toBeUndefined();
   });
 
   it("omits the button when the server has no APP_URL", async () => {
     delete process.env["APP_URL"];
     await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW);
-    const slack = sendSlackToOrg.mock.calls[0]![2] as { url?: string };
-    expect(slack.url).toBeUndefined();
+    // `routeAlert` takes `url: string | null` and drops the button on a falsy
+    // value, so the notifier passes `changesUrl`'s null straight through rather
+    // than conditionally spreading the key.
+    const slack = routeAlert.mock.calls[0]![0] as { url?: string | null };
+    expect(slack.url).toBeFalsy();
   });
 });
 
@@ -307,8 +317,11 @@ describe("failure containment", () => {
     return vi.spyOn(console, "error").mockImplementation(() => {});
   }
 
-  it("swallows a transport throwing rather than failing the sync", async () => {
-    sendSlackToOrg.mockRejectedValue(new Error("slack exploded"));
+  it("swallows a routing failure rather than failing the sync", async () => {
+    // `routeAlert` never throws — a transport outage comes back as a result
+    // that reached nobody — but the notifier still has to survive one that
+    // does, since it sits on the poller's hot path.
+    routeAlert.mockRejectedValue(new Error("routing exploded"));
     const spy = hushErrors();
     expect(await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW)).toMatchObject({
       status: "failed",
@@ -344,9 +357,9 @@ describe("failure containment", () => {
     spy.mockRestore();
   });
 
-  it("releases when the first transport throws — nothing was delivered", async () => {
+  it("releases when routing throws — nothing was delivered", async () => {
     getDriftAlertSettings.mockResolvedValue(settings({ lastNotifiedAt: PRIOR }));
-    sendPushToOrg.mockRejectedValue(new Error("expo exploded"));
+    routeAlert.mockRejectedValue(new Error("routing exploded"));
     const spy = hushErrors();
 
     expect(await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW)).toMatchObject({
@@ -356,21 +369,24 @@ describe("failure containment", () => {
     spy.mockRestore();
   });
 
-  it("keeps the claim when a transport throws after another already delivered", async () => {
-    // Push landed, so the window's changes *were* reported. Rewinding here
-    // would re-send them in the next window; the release rule is the same one
-    // the `undelivered` branch uses — spend the window iff somebody heard.
+  it("keeps the claim for a window quiet hours held rather than delivered", async () => {
+    // A held leg has `succeeded: 0` but the changes *will* be reported. Rolling
+    // the claim back would rewind `since` past them, so the next window would
+    // re-scan the same rows and deliver a duplicate alongside the held copy.
+    // The rule is "spend the window iff somebody heard, or is guaranteed to".
     getDriftAlertSettings.mockResolvedValue(settings({ lastNotifiedAt: PRIOR }));
-    sendPushToOrg.mockResolvedValue({ attempted: 1, succeeded: 1 });
-    sendSlackToOrg.mockRejectedValue(new Error("slack exploded"));
-    const spy = hushErrors();
+    routeAlert.mockResolvedValue(
+      routed({
+        succeeded: 0,
+        byTransport: { push: 0, slack: 0, msTeams: 0 },
+        held: 1,
+      }),
+    );
 
     expect(await notifyResourceDrift(ORG, ACCOUNT, [event()], NOW)).toMatchObject({
-      status: "failed",
-      released: false,
+      status: "sent",
     });
     expect(releases).toEqual([]);
-    spy.mockRestore();
   });
 
   it("does not let a failing release mask the error that caused it", async () => {

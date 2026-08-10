@@ -47,6 +47,12 @@ const organizations = { __t: "organizations", id: "id", displayName: "displayNam
 const digestEmailRecipients = { __t: "recipients", organizationId: "organizationId" };
 const pagingIncidents = { __t: "pagingIncidents", organizationId: "organizationId" };
 const resources = { __t: "resources", organizationId: "organizationId" };
+const providerStatusIncidents = {
+  __t: "providerStatusIncidents",
+  pluginId: "pluginId",
+  startedAt: "startedAt",
+  resolvedAt: "resolvedAt",
+};
 
 vi.mock("../db/schema", () => ({
   orgDigestSettings,
@@ -54,6 +60,7 @@ vi.mock("../db/schema", () => ({
   digestEmailRecipients,
   pagingIncidents,
   resources,
+  providerStatusIncidents,
 }));
 
 // --- Mocked drizzle: predicates become functions over a fake row ---
@@ -177,11 +184,7 @@ let delivered: string[] = [];
 let maxInFlight = 0;
 let inFlight = 0;
 
-async function recordSend(organizationId: string): Promise<{
-  attempted: number;
-  succeeded: number;
-  failed: number;
-}> {
+async function recordSend(organizationId: string): Promise<ReturnType<typeof routed>> {
   inFlight += 1;
   maxInFlight = Math.max(maxInFlight, inFlight);
   // Yield so a batch that really runs concurrently overlaps here, and one that
@@ -190,19 +193,65 @@ async function recordSend(organizationId: string): Promise<{
   await new Promise((resolve) => setTimeout(resolve, 0));
   inFlight -= 1;
   delivered.push(organizationId);
-  return { attempted: 1, succeeded: 1, failed: 0 };
+  return routed();
 }
 
-vi.mock("../slack", () => ({ sendSlackToOrg: (orgId: string) => recordSend(orgId) }));
-vi.mock("../msteams", () => ({
-  sendMsTeamsToOrg: async () => ({ attempted: 0, succeeded: 0, failed: 0 }),
-}));
 vi.mock("../email", () => ({
   isEmailConfigured: () => true,
   sendEmails: async () => ({ attempted: 0, succeeded: 0, failed: 0 }),
 }));
 vi.mock("../digest/narrative", () => ({ generateDigestNarrative: async () => null }));
 vi.mock("../clickhouse/cost-readers", () => ({ queryCosts: async () => [] }));
+
+/**
+ * All three transports sit behind `routeAlert` now, so that is the single seam
+ * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * it decides whether a cooldown or claim is kept, and faking it would hide
+ * exactly the bug it exists to prevent.
+ */
+// Defaults to a successful delivery: `routeAlert` never throws and always
+// returns a result, so a mock that resolves `undefined` would fail tests in a
+// way the real function cannot.
+const routeAlert = vi.fn(async (...args: unknown[]) =>
+  recordSend((args[0] as { organizationId: string }).organizationId),
+);
+vi.mock("../alerts/route", () => ({
+  routeAlert: (...a: unknown[]) => routeAlert(...a),
+  alertReached: (r: { succeeded?: number; held?: number } | null | undefined) =>
+    (r?.succeeded ?? 0) > 0 || (r?.held ?? 0) > 0,
+}));
+
+/** A delivery that reached one Slack channel and one phone. */
+function routed(over: Record<string, unknown> = {}) {
+  return {
+    attempted: 2,
+    succeeded: 2,
+    byTransport: { push: 1, slack: 1, msTeams: 0 },
+    attemptedByTransport: { push: 1, slack: 1, msTeams: 0 },
+    held: 0,
+    unrouted: false,
+    matchedRuleIds: ["rule1"],
+    // The tracked-Slack half of the result. Present by default because
+    // `byTransport.slack` is 1 — a result claiming a Slack delivery with no
+    // message to show for it is a shape the real function never returns.
+    slackMessages: [{ installationId: "inst1", channelId: "C1", ts: "1722700000.000100" }],
+    deliveryIds: [],
+    ...over,
+  };
+}
+
+/** A delivery that reached nobody — no rule matched, or every channel failed. */
+function unroutedResult() {
+  return routed({
+    attempted: 0,
+    succeeded: 0,
+    byTransport: { push: 0, slack: 0, msTeams: 0 },
+    attemptedByTransport: { push: 0, slack: 0, msTeams: 0 },
+    matchedRuleIds: [],
+    slackMessages: [],
+    unrouted: true,
+  });
+}
 
 const { DIGESTS_PER_TICK, MAX_DIGEST_ATTEMPTS, runWeeklyDigests } =
   await import("../digest/weekly");

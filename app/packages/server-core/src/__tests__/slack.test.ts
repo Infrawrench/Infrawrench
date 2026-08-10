@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createHmac } from "node:crypto";
 
 /**
  * Slack transport tests. Two halves:
@@ -6,9 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *  - the signed install `state`, which is the only thing binding an OAuth
  *    round-trip to an org — a forgeable one would let anyone attach their
  *    workspace to someone else's org;
- *  - the fan-out, where the interesting behavior is that a channel only gets
- *    the triggers it opted into, and that alert text is escaped before it
- *    reaches Slack's mrkdwn parser.
+ *  - the fan-out, where the interesting behavior is that channels are addressed
+ *    by stored row id (routing itself is `alerts/route.ts`' job now), and that
+ *    alert text is escaped before it reaches Slack's mrkdwn parser.
  *
  * The DB is mocked with a chainable fake; `fetch` is spied on `globalThis`.
  */
@@ -33,9 +34,7 @@ const tables = {
     installationId: "installationId",
     channelId: "channelId",
     channelName: "channelName",
-    syncIncidents: "syncIncidents",
-    budgetAlerts: "budgetAlerts",
-    workflowPages: "workflowPages",
+    isPrivate: "isPrivate",
   },
 };
 vi.mock("../db/schema", () => tables);
@@ -159,13 +158,13 @@ describe("authorize URL", () => {
   });
 });
 
-describe("sendSlackToOrg", () => {
+describe("sendSlackToChannels", () => {
   const alert = { title: "Disk full", body: "node-1 at 98%" };
 
   it("is a no-op when the server has no Slack app", async () => {
     delete process.env["SLACK_CLIENT_ID"];
-    const { sendSlackToOrg } = await import("../slack");
-    expect(await sendSlackToOrg(ORG, "workflowPages", alert)).toEqual({
+    const { sendSlackToChannels } = await import("../slack");
+    expect(await sendSlackToChannels(ORG, ["row1"], alert)).toEqual({
       attempted: 0,
       succeeded: 0,
       failed: 0,
@@ -173,11 +172,11 @@ describe("sendSlackToOrg", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("is a no-op when no channel opted into the trigger", async () => {
+  it("is a no-op when the named rows resolve to nothing", async () => {
     installationRows = [installation()];
     channelRows = [];
-    const { sendSlackToOrg } = await import("../slack");
-    expect(await sendSlackToOrg(ORG, "budgetAlerts", alert)).toEqual({
+    const { sendSlackToChannels } = await import("../slack");
+    expect(await sendSlackToChannels(ORG, ["row1"], alert)).toEqual({
       attempted: 0,
       succeeded: 0,
       failed: 0,
@@ -185,14 +184,34 @@ describe("sendSlackToOrg", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("posts to every opted-in channel", async () => {
+  it("is a no-op when the rule named no channels at all, without querying", async () => {
+    // The empty-selection short circuit in `resolveSlackChannels` runs before
+    // the query. Worth its own case: a rule whose Slack destinations were all
+    // removed must not fall through to "every channel in the org", which is
+    // what an unguarded `inArray(…, [])` would risk.
     installationRows = [installation()];
+    channelRows = [{ id: "row1", channelId: "C1", channelName: "alerts", installationId: "inst1" }];
+    const { sendSlackToChannels } = await import("../slack");
+    expect(await sendSlackToChannels(ORG, [], alert)).toEqual({
+      attempted: 0,
+      succeeded: 0,
+      failed: 0,
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("posts to every named channel", async () => {
+    installationRows = [installation()];
+    // Ids match the ones requested below, so the fixture reads as the result of
+    // the `inArray(slackChannels.id, rowIds)` filter rather than as every row
+    // in the org. (The db fake ignores predicates; the filter itself is the
+    // query's job, covered by the route tests.)
     channelRows = [
-      { channelId: "C1", channelName: "alerts", installationId: "inst1" },
-      { channelId: "C2", channelName: "oncall", installationId: "inst1" },
+      { id: "row1", channelId: "C1", channelName: "alerts", installationId: "inst1" },
+      { id: "row2", channelId: "C2", channelName: "oncall", installationId: "inst1" },
     ];
-    const { sendSlackToOrg } = await import("../slack");
-    const result = await sendSlackToOrg(ORG, "syncIncidents", alert);
+    const { sendSlackToChannels } = await import("../slack");
+    const result = await sendSlackToChannels(ORG, ["row1", "row2"], alert);
     expect(result).toEqual({ attempted: 2, succeeded: 2, failed: 0 });
     expect(fetchSpy).toHaveBeenCalledTimes(2);
 
@@ -206,8 +225,8 @@ describe("sendSlackToOrg", () => {
     installationRows = [installation()];
     channelRows = [{ channelId: "C1", channelName: "secret", installationId: "inst1" }];
     fetchSpy.mockImplementation(async () => jsonResponse({ ok: false, error: "not_in_channel" }));
-    const { sendSlackToOrg } = await import("../slack");
-    expect(await sendSlackToOrg(ORG, "workflowPages", alert)).toEqual({
+    const { sendSlackToChannels } = await import("../slack");
+    expect(await sendSlackToChannels(ORG, ["row1"], alert)).toEqual({
       attempted: 1,
       succeeded: 0,
       failed: 1,
@@ -217,8 +236,8 @@ describe("sendSlackToOrg", () => {
   it("escapes mrkdwn delimiters in alert text", async () => {
     installationRows = [installation()];
     channelRows = [{ channelId: "C1", channelName: "alerts", installationId: "inst1" }];
-    const { sendSlackToOrg } = await import("../slack");
-    await sendSlackToOrg(ORG, "workflowPages", {
+    const { sendSlackToChannels } = await import("../slack");
+    await sendSlackToChannels(ORG, ["row1"], {
       title: "5 > 3",
       body: 'connect failed: <host "db" & port>',
     });
@@ -237,8 +256,8 @@ describe("sendSlackToOrg", () => {
     installationRows = [installation()];
     channelRows = [{ channelId: "C1", channelName: "alerts", installationId: "inst1" }];
     fetchSpy.mockRejectedValue(new Error("network down"));
-    const { sendSlackToOrg } = await import("../slack");
-    expect(await sendSlackToOrg(ORG, "workflowPages", alert)).toEqual({
+    const { sendSlackToChannels } = await import("../slack");
+    expect(await sendSlackToChannels(ORG, ["row1"], alert)).toEqual({
       attempted: 1,
       succeeded: 0,
       failed: 1,
@@ -246,12 +265,12 @@ describe("sendSlackToOrg", () => {
   });
 
   it("skips a channel whose install has been disconnected", async () => {
-    // resolveTargets joins on a live install, but the token map is built
+    // resolveSlackChannels joins on a live install, but the token map is built
     // separately — a row that survives the join without a token must not post.
     installationRows = [];
     channelRows = [{ channelId: "C1", channelName: "alerts", installationId: "gone" }];
-    const { sendSlackToOrg } = await import("../slack");
-    expect(await sendSlackToOrg(ORG, "workflowPages", alert)).toEqual({
+    const { sendSlackToChannels } = await import("../slack");
+    expect(await sendSlackToChannels(ORG, ["row1"], alert)).toEqual({
       attempted: 1,
       succeeded: 0,
       failed: 1,
@@ -328,9 +347,243 @@ describe("listSlackChannels", () => {
     channelRows = [
       { channelId: "C1", channelName: "alerts", installationId: "inst1", workflowPages: true },
     ];
-    const { sendSlackToOrg } = await import("../slack");
-    await sendSlackToOrg(ORG, "workflowPages", { title: "t", body: "b" });
+    const { sendSlackToChannels } = await import("../slack");
+    await sendSlackToChannels(ORG, ["row1"], { title: "t", body: "b" });
     const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
     expect((init.headers as Record<string, string>)["Content-Type"]).toMatch(/application\/json/);
+  });
+});
+
+/**
+ * Inbound request authentication. The signature is the *only* thing standing
+ * between the public /api/slack/* endpoints and anyone on the internet, so
+ * the scheme is pinned exactly: HMAC-SHA256 over `v0:<timestamp>:<raw body>`,
+ * hex, `v0=` prefix, constant-time compare, 5-minute replay window.
+ */
+describe("verifySlackRequestSignature", () => {
+  const SECRET = "8f742231b10e8888abcd99yyyzzz85a5";
+  const BODY = "token=x&team_id=T1&user_id=U1&command=%2Finfrawrench&text=costs";
+
+  function sign(secret: string, timestamp: string, body: string): string {
+    return "v0=" + createHmac("sha256", secret).update(`v0:${timestamp}:${body}`).digest("hex");
+  }
+
+  beforeEach(() => {
+    process.env["SLACK_SIGNING_SECRET"] = SECRET;
+  });
+  afterEach(() => {
+    delete process.env["SLACK_SIGNING_SECRET"];
+  });
+
+  it("accepts a correctly signed, fresh request", async () => {
+    const { verifySlackRequestSignature } = await import("../slack");
+    const now = 1_722_700_000_000;
+    const ts = String(Math.floor(now / 1000) - 30);
+    expect(
+      verifySlackRequestSignature({
+        rawBody: BODY,
+        timestamp: ts,
+        signature: sign(SECRET, ts, BODY),
+        nowMs: now,
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects a signature made with a different secret", async () => {
+    const { verifySlackRequestSignature } = await import("../slack");
+    const now = 1_722_700_000_000;
+    const ts = String(Math.floor(now / 1000));
+    expect(
+      verifySlackRequestSignature({
+        rawBody: BODY,
+        timestamp: ts,
+        signature: sign("some-other-secret", ts, BODY),
+        nowMs: now,
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects a tampered body", async () => {
+    const { verifySlackRequestSignature } = await import("../slack");
+    const now = 1_722_700_000_000;
+    const ts = String(Math.floor(now / 1000));
+    expect(
+      verifySlackRequestSignature({
+        rawBody: BODY.replace("costs", "status prod-db"),
+        timestamp: ts,
+        signature: sign(SECRET, ts, BODY),
+        nowMs: now,
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects a replayed (stale) timestamp even with a valid signature", async () => {
+    const { verifySlackRequestSignature } = await import("../slack");
+    const now = 1_722_700_000_000;
+    const ts = String(Math.floor(now / 1000) - 6 * 60);
+    expect(
+      verifySlackRequestSignature({
+        rawBody: BODY,
+        timestamp: ts,
+        signature: sign(SECRET, ts, BODY),
+        nowMs: now,
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects missing headers and refuses everything without the secret", async () => {
+    const { verifySlackRequestSignature } = await import("../slack");
+    const now = 1_722_700_000_000;
+    const ts = String(Math.floor(now / 1000));
+    const good = sign(SECRET, ts, BODY);
+    expect(
+      verifySlackRequestSignature({ rawBody: BODY, timestamp: undefined, signature: good }),
+    ).toBe(false);
+    expect(
+      verifySlackRequestSignature({ rawBody: BODY, timestamp: ts, signature: undefined }),
+    ).toBe(false);
+    delete process.env["SLACK_SIGNING_SECRET"];
+    expect(
+      verifySlackRequestSignature({ rawBody: BODY, timestamp: ts, signature: good, nowMs: now }),
+    ).toBe(false);
+  });
+
+  it("rejects malformed signatures — truncated or missing the v0= prefix — without throwing", async () => {
+    const { verifySlackRequestSignature } = await import("../slack");
+    const now = 1_722_700_000_000;
+    const ts = String(Math.floor(now / 1000));
+    const good = sign(SECRET, ts, BODY);
+    // Truncated: different length must fail cleanly, not trip timingSafeEqual.
+    expect(
+      verifySlackRequestSignature({
+        rawBody: BODY,
+        timestamp: ts,
+        signature: good.slice(0, 12),
+        nowMs: now,
+      }),
+    ).toBe(false);
+    // Right length, wrong scheme prefix: the digest may match but the version
+    // marker is part of what is signed and compared.
+    expect(
+      verifySlackRequestSignature({
+        rawBody: BODY,
+        timestamp: ts,
+        signature: `v1=${good.slice(3)}`,
+        nowMs: now,
+      }),
+    ).toBe(false);
+    // Prefixless hex of the right digest, same length as `v0=` + digest minus
+    // the marker: still refused.
+    expect(
+      verifySlackRequestSignature({
+        rawBody: BODY,
+        timestamp: ts,
+        signature: good.slice(3),
+        nowMs: now,
+      }),
+    ).toBe(false);
+  });
+});
+
+/**
+ * Account-link tokens: the ephemeral "link your account" URL a slash command
+ * hands an unknown Slack user. A forgeable token would let anyone attach their
+ * Slack identity to someone else's org, so tamper and expiry both refuse.
+ */
+describe("slack link tokens", () => {
+  beforeEach(() => {
+    process.env["SLACK_SIGNING_SECRET"] = "signing-secret";
+  });
+  afterEach(() => {
+    delete process.env["SLACK_SIGNING_SECRET"];
+  });
+
+  const REQ = { organizationId: ORG, teamId: "T1", slackUserId: "U42" };
+
+  it("round-trips org, workspace and Slack user", async () => {
+    const { signSlackLinkToken, verifySlackLinkToken } = await import("../slack");
+    expect(verifySlackLinkToken(signSlackLinkToken(REQ))).toEqual(REQ);
+  });
+
+  it("expires after 15 minutes", async () => {
+    const { signSlackLinkToken, verifySlackLinkToken } = await import("../slack");
+    const now = 1_722_700_000_000;
+    const token = signSlackLinkToken(REQ, now);
+    expect(verifySlackLinkToken(token, now + 14 * 60_000)).toEqual(REQ);
+    expect(verifySlackLinkToken(token, now + 16 * 60_000)).toBeNull();
+  });
+
+  it("rejects a tampered payload", async () => {
+    const { signSlackLinkToken, verifySlackLinkToken } = await import("../slack");
+    const [, mac] = signSlackLinkToken(REQ).split(".");
+    const forged = Buffer.from(
+      JSON.stringify({ o: "other-org", t: "T1", s: "U42", e: Date.now() + 60_000 }),
+    ).toString("base64url");
+    expect(verifySlackLinkToken(`${forged}.${mac}`)).toBeNull();
+  });
+
+  it("rejects a token signed under a rotated secret", async () => {
+    const { signSlackLinkToken, verifySlackLinkToken } = await import("../slack");
+    const token = signSlackLinkToken(REQ);
+    process.env["SLACK_SIGNING_SECRET"] = "rotated";
+    expect(verifySlackLinkToken(token)).toBeNull();
+  });
+});
+
+/**
+ * The tracked fan-out behind interactive approval messages: buttons render as
+ * a Block Kit actions block, and each delivered message comes back with its
+ * channel + ts so a decision can rewrite it later.
+ */
+describe("sendSlackToChannelsTracked", () => {
+  it("renders buttons and returns the posted message refs", async () => {
+    installationRows = [installation()];
+    channelRows = [{ channelId: "C1", channelName: "approvals", installationId: "inst1" }];
+    fetchSpy.mockImplementation(async () =>
+      jsonResponse({ ok: true, ts: "1722700000.000100", channel: "C1" }),
+    );
+    const { sendSlackToChannelsTracked } = await import("../slack");
+    const result = await sendSlackToChannelsTracked(ORG, ["row1"], {
+      title: "Approval needed",
+      body: "Roll the API to v42?",
+      buttons: [
+        {
+          text: "Approve",
+          actionId: "infrawrench_approval_approve",
+          value: "v1",
+          style: "primary",
+        },
+        { text: "Deny", actionId: "infrawrench_approval_deny", value: "v1", style: "danger" },
+      ],
+    });
+
+    expect(result).toMatchObject({ attempted: 1, succeeded: 1, failed: 0 });
+    expect(result.messages).toEqual([
+      { installationId: "inst1", channelId: "C1", ts: "1722700000.000100" },
+    ]);
+
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    const sent = JSON.parse(String(init.body)) as {
+      blocks: Array<{ type: string; elements?: Array<Record<string, unknown>> }>;
+    };
+    const actions = sent.blocks.find((b) => b.type === "actions");
+    expect(actions?.elements).toHaveLength(2);
+    expect(actions?.elements?.[0]).toMatchObject({
+      type: "button",
+      action_id: "infrawrench_approval_approve",
+      value: "v1",
+      style: "primary",
+    });
+  });
+
+  it("keeps sendSlackToChannels' shape for untracked callers", async () => {
+    installationRows = [installation()];
+    channelRows = [{ channelId: "C1", channelName: "alerts", installationId: "inst1" }];
+    const { sendSlackToChannels } = await import("../slack");
+    expect(await sendSlackToChannels(ORG, ["row1"], { title: "t", body: "b" })).toEqual({
+      attempted: 1,
+      succeeded: 1,
+      failed: 0,
+    });
   });
 });

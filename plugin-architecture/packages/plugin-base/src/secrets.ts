@@ -37,9 +37,7 @@ export interface PlaintextSecretResolution {
 }
 
 export type SecretResolution =
-  | LiteralSecretResolution
-  | OutputRefSecretResolution
-  | PlaintextSecretResolution;
+  LiteralSecretResolution | OutputRefSecretResolution | PlaintextSecretResolution;
 
 /** Stored per secret/association field per resource instance */
 export interface SecretFieldState {

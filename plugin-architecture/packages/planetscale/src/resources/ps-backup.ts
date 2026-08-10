@@ -29,6 +29,7 @@ export const PsBackupResourceType = rt({
       label: "backs up",
     },
   ],
+  expiryFields: [{ fieldKey: "expiresAt", from: "expiry", kind: "other", label: "Backup expires" }],
   parentTypeId: "ps-branch",
   iconKey: "planetscale",
 });

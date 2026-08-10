@@ -9,6 +9,21 @@ import {
   filterVisiblePeerIntegrations,
 } from "../services/plugin-clients";
 import { setLiteralSecretState } from "@infrawrench/server-core/secret-states";
+import { getOrgStatusIncidents } from "@infrawrench/server-core/status/match";
+import { listExpiring } from "@infrawrench/server-core/expiry/feed";
+import { listPosture } from "@infrawrench/server-core/posture/feed";
+import {
+  dismissPostureFinding,
+  restorePostureFinding,
+} from "@infrawrench/server-core/posture/dismissals";
+import { listDns } from "@infrawrench/server-core/dns/feed";
+import { listOwnership } from "@infrawrench/server-core/ownership/store";
+import { listStatusPages } from "@infrawrench/server-core/status-pages/store";
+import {
+  loadEnvironmentDiff,
+  EnvironmentDiffAccountNotFoundError,
+  EnvironmentDiffPluginMismatchError,
+} from "@infrawrench/server-core/environment-diff";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
 import { resolveStoredSshPublicKey } from "./ssh-key-lookup";
 import { logAudit } from "../services/audit";
@@ -127,6 +142,390 @@ export function genericTools(): ToolDefinition[] {
           .from(accounts)
           .where(and(eq(accounts.organizationId, auth.organizationId), isNull(accounts.deletedAt)));
         return ok(rows);
+      },
+    },
+
+    {
+      name: "list_provider_incidents",
+      title: "List provider incidents affecting you",
+      description:
+        "Provider status-page incidents overlapping the organization's resources — \"is it me " +
+        "or is it them?\". The poller watches each provider plugin's public status feed and " +
+        "this correlates active incidents (plus those resolved in the last 24h) against the " +
+        "resources the org holds, by region, resource type, or provider-wide scope. Each " +
+        "incident includes how many of your resources it overlaps and how many change-timeline " +
+        "events were recorded during its window. Check this before debugging a sudden failure " +
+        "or unexplained drift.",
+      inputSchema: {},
+      risk: "read",
+      // Mirrors `GET /status-incidents` — correlation reads the org's resource set.
+      permission: "resources:read",
+      handler: async (_input, auth) => {
+        return ok(await getOrgStatusIncidents(auth.organizationId));
+      },
+    },
+
+    {
+      name: "list_expiring",
+      title: "List expiring resources",
+      description:
+        "The expiry radar: every deadline plugins declared on the organization's synced " +
+        "resources — TLS certificate expiries, domain registrations, API token expirations, " +
+        "access keys past their rotation budget, kubeconfig/SSH key ages — soonest first, " +
+        "bucketed by severity against the org's lead time (expired, critical <7d, warning " +
+        "<30d, upcoming within lead, ok beyond it). Purely a read over already-synced state; " +
+        "no provider API calls. Check this before certificates lapse or tokens rotate out.",
+      inputSchema: {
+        severity: z
+          .enum(["expired", "critical", "warning", "upcoming", "ok"])
+          .optional()
+          .describe("Only return deadlines in this severity bucket."),
+        kind: z
+          .enum([
+            "tls-cert",
+            "domain",
+            "api-token",
+            "access-key",
+            "k8s-cert",
+            "ssh-key",
+            "secret-version",
+            "other",
+          ])
+          .optional()
+          .describe("Only return deadlines of this kind."),
+      },
+      risk: "read",
+      // Mirrors `GET /expiring` — the feed is computed over the org's resource set.
+      permission: "resources:read",
+      handler: async (input, auth) => {
+        const severity = input["severity"] as string | undefined;
+        const kind = input["kind"] as string | undefined;
+        const feed = await listExpiring(auth.organizationId);
+        const items = feed.items.filter(
+          (i) => (!severity || i.severity === severity) && (!kind || i.kind === kind),
+        );
+        // Counts always describe the whole feed so a filtered view still shows
+        // what else is on the radar. matchedCount is the filtered length.
+        return ok({
+          items,
+          matchedCount: items.length,
+          totalCount: feed.items.length,
+          counts: feed.counts,
+          leadDays: feed.leadDays,
+          generatedAt: feed.generatedAt,
+        });
+      },
+    },
+
+    {
+      name: "diff_environments",
+      title: "Compare two accounts' inventories",
+      description:
+        "Compares two accounts of the same provider — typically staging against production — " +
+        "over already-synced state: which resource types exist in one and not the other, the " +
+        "per-type count deltas, and the fields on which two corresponding resources disagree " +
+        "(instance class, engine version, replica count, feature flags). Resources are paired " +
+        "by type and by name with environment words stripped, so `api-staging` lines up with " +
+        '`api-prod`. This is the tool for "why does staging work and prod doesn\u2019t" and for ' +
+        "checking that a new environment matches the one it was cloned from. Purely a read " +
+        "over synced state; no provider API calls.",
+      inputSchema: {
+        a: z.string().describe("Baseline account: its id, or its exact display name."),
+        b: z
+          .string()
+          .describe("Compared account: its id, or its exact display name. Same provider as `a`."),
+        resourceTypeId: z.string().optional().describe("Compare one resource type only."),
+        includeIdentityFields: z
+          .boolean()
+          .optional()
+          .describe(
+            "Compare ids, links, network addresses and timestamps too. Off by default because " +
+              "every resource has different ones, which buries the fields that actually diverged.",
+          ),
+      },
+      risk: "read",
+      // Mirrors `GET /environment-diff` — it reads the same rows as the account pages.
+      permission: "resources:read",
+      handler: async (input, auth) => {
+        const rows = await db
+          .select({ id: accounts.id, displayName: accounts.displayName })
+          .from(accounts)
+          .where(and(eq(accounts.organizationId, auth.organizationId), isNull(accounts.deletedAt)));
+        // Agents reach for names before ids; resolve exact names so a diff
+        // doesn't need a list_accounts round trip first.
+        const resolve = (wanted: string): string =>
+          rows.find((r) => r.id === wanted)?.id ??
+          rows.find((r) => r.displayName.toLowerCase() === wanted.toLowerCase())?.id ??
+          wanted;
+
+        const a = resolve(input["a"] as string);
+        const b = resolve(input["b"] as string);
+        if (a === b) return err("`a` and `b` must be two different accounts.");
+        try {
+          return ok(
+            await loadEnvironmentDiff(auth.organizationId, a, b, {
+              resourceTypeId: input["resourceTypeId"] as string | undefined,
+              includeIdentityFields: input["includeIdentityFields"] === true,
+            }),
+          );
+        } catch (e) {
+          if (
+            e instanceof EnvironmentDiffAccountNotFoundError ||
+            e instanceof EnvironmentDiffPluginMismatchError
+          ) {
+            return err(e.message);
+          }
+          throw e;
+        }
+      },
+    },
+
+    {
+      name: "list_posture_findings",
+      title: "List security posture findings",
+      description:
+        "Plugin-declared security checks evaluated over the organization's synced resources — " +
+        "public buckets, security groups and firewall rules open to 0.0.0.0/0, unencrypted " +
+        "disks and databases, publicly reachable database endpoints, stale credentials, " +
+        "missing backup/deletion protection — ranked by severity (critical, high, medium, " +
+        "low). Purely a read over already-synced state; no provider API calls. Check this " +
+        "when auditing an account's exposure or before opening something to the internet. " +
+        "Findings the organization has dismissed as accepted risks are excluded unless you " +
+        "ask for them.",
+      inputSchema: {
+        severity: z
+          .enum(["critical", "high", "medium", "low"])
+          .optional()
+          .describe("Only return findings of this severity."),
+        category: z
+          .enum(["public-exposure", "encryption", "credential-age", "data-protection", "other"])
+          .optional()
+          .describe("Only return findings in this category."),
+        includeDismissed: z
+          .boolean()
+          .optional()
+          .describe(
+            "Also return the findings the organization has dismissed, each with who accepted " +
+              "it, when, and why. They stay out of `findings` either way.",
+          ),
+      },
+      risk: "read",
+      // Mirrors `GET /posture` — the findings are computed over the org's resource set.
+      permission: "resources:read",
+      handler: async (input, auth) => {
+        const severity = input["severity"] as string | undefined;
+        const category = input["category"] as string | undefined;
+        const includeDismissed = input["includeDismissed"] === true;
+        const feed = await listPosture(auth.organizationId);
+        const matches = (f: { severity: string; category: string }) =>
+          (!severity || f.severity === severity) && (!category || f.category === category);
+        const findings = feed.findings.filter(matches);
+        // Counts always describe the whole feed so a filtered view still shows
+        // the overall picture. matchedCount is the filtered length.
+        return ok({
+          findings,
+          matchedCount: findings.length,
+          totalCount: feed.findings.length,
+          counts: feed.counts,
+          // Always reported as a number so a reader can tell "clean" from
+          // "quiet because somebody silenced it"; the rows are opt-in.
+          dismissedCount: feed.dismissedCount,
+          ...(includeDismissed ? { dismissed: feed.dismissed.filter(matches) } : {}),
+          generatedAt: feed.generatedAt,
+        });
+      },
+    },
+
+    {
+      name: "dismiss_posture_finding",
+      title: "Dismiss a posture finding",
+      description:
+        "Accept a security finding as a known, intentional risk: it leaves the posture list " +
+        "and stops feeding the daily posture alerts. Use only when the user has said the " +
+        "exposure is deliberate — this silences a security warning. The rule keeps being " +
+        "evaluated and the dismissal is reversible with restore_posture_finding, so nothing " +
+        "is destroyed. Identify the finding by the resourceId and ruleId that " +
+        "list_posture_findings returns.",
+      inputSchema: {
+        // `.min(1)` so a blank id is a tool-input error rather than the plain
+        // `Error` `dismissPostureFinding` throws past the handler — the HTTP
+        // route guards this, and this second entry point has to as well.
+        resourceId: z.string().min(1).describe("Infrawrench resource id the finding is on."),
+        ruleId: z.string().min(1).describe("The matched rule's id, as returned on the finding."),
+        reason: z
+          .string()
+          .max(500)
+          .optional()
+          .describe("Why this exposure is acceptable — recorded with the dismissal."),
+      },
+      risk: "write",
+      // Mirrors `POST /posture/dismissals`: a statement about one resource,
+      // the same trust level as changing it.
+      permission: "resources:write",
+      handler: async (input, auth) => {
+        const dismissal = await dismissPostureFinding(auth.organizationId, {
+          resourceId: input["resourceId"] as string,
+          ruleId: input["ruleId"] as string,
+          reason: (input["reason"] as string | undefined) ?? null,
+          userId: auth.userId,
+        });
+        void logAudit({
+          organizationId: auth.organizationId,
+          userId: auth.userId,
+          action: "posture.finding.dismissed",
+          entityType: "resource",
+          entityId: dismissal.resourceId,
+          metadata: { ruleId: dismissal.ruleId, reason: dismissal.reason, source: auth.source },
+        });
+        return ok({ dismissed: dismissal });
+      },
+    },
+
+    {
+      name: "restore_posture_finding",
+      title: "Restore a dismissed posture finding",
+      description:
+        "Undo a dismissal — the finding returns to the posture list and to the daily alerts. " +
+        "Use when an accepted risk is no longer acceptable, or when a finding was dismissed " +
+        "by mistake.",
+      inputSchema: {
+        resourceId: z.string().min(1).describe("Infrawrench resource id the finding is on."),
+        ruleId: z.string().min(1).describe("The matched rule's id."),
+      },
+      risk: "write",
+      permission: "resources:write",
+      handler: async (input, auth) => {
+        const resourceId = input["resourceId"] as string;
+        const ruleId = input["ruleId"] as string;
+        const restored = await restorePostureFinding(auth.organizationId, resourceId, ruleId);
+        if (!restored) return err("That finding is not dismissed.");
+        void logAudit({
+          organizationId: auth.organizationId,
+          userId: auth.userId,
+          action: "posture.finding.restored",
+          entityType: "resource",
+          entityId: resourceId,
+          metadata: { ruleId, source: auth.source },
+        });
+        return ok({ restored: { resourceId, ruleId } });
+      },
+    },
+
+    {
+      name: "list_dns_records",
+      title: "List DNS zones and records",
+      description:
+        "Every DNS zone and record across the organization's connected providers (Cloudflare, " +
+        "Route 53, Cloud DNS, DigitalOcean, Netlify, Azure DNS, Vercel), with each record's " +
+        "target classified against the rest of the workspace: `owned` (resolves to a synced " +
+        "resource), `dangling` (points into a provider namespace the workspace manages that " +
+        "nothing synced claims — the subdomain-takeover signature), `external`, or " +
+        "`not-analysed`. Purely a read over already-synced state: no provider API calls and no " +
+        'DNS resolution. Use it to answer "what points at this?", to audit a domain before ' +
+        "handing it over, or to find takeover risks — those also appear in " +
+        "`list_posture_findings` as `dns-dangling-target`.",
+      inputSchema: {
+        status: z
+          .enum(["owned", "dangling", "external", "not-analysed"])
+          .optional()
+          .describe("Only return records with this status."),
+        domain: z
+          .string()
+          .optional()
+          .describe("Only return zones and records under this domain (suffix match)."),
+      },
+      risk: "read",
+      // Mirrors `GET /dns` — the inventory is computed over the org's resource set.
+      permission: "resources:read",
+      handler: async (input, auth) => {
+        const status = input["status"] as string | undefined;
+        const domain = (input["domain"] as string | undefined)?.trim().toLowerCase();
+        const inventory = await listDns(auth.organizationId);
+
+        const inDomain = (value: string | null) =>
+          !domain || (value !== null && (value === domain || value.endsWith(`.${domain}`)));
+        const zones = inventory.zones.filter((z) => inDomain(z.domain));
+        const records = inventory.records.filter(
+          (r) => (!status || r.status === status) && (inDomain(r.name) || inDomain(r.zoneDomain)),
+        );
+
+        // Counts always describe the whole inventory so a filtered view still
+        // shows the overall picture; matchedCount is the filtered length.
+        return ok({
+          zones,
+          records,
+          matchedCount: records.length,
+          counts: inventory.counts,
+          skippedNamespaces: inventory.skippedNamespaces,
+          generatedAt: inventory.generatedAt,
+        });
+      },
+    },
+
+    {
+      name: "list_resource_ownership",
+      title: "List resource ownership",
+      description:
+        "Who owns each resource, what it is for, and the ticket that authorized it. Only " +
+        "resources somebody has recorded something about appear — a resource absent from this " +
+        "list is unowned, which is itself the answer to 'who do I ask before deleting this?'. " +
+        "Ownership also decides who resource-scoped alerts are delivered to, so an owner with " +
+        "`ownerUserId` set is reachable and one with only `ownerLabel` (a team name) is not. " +
+        "Use this before proposing a deletion, or to attribute waste from list_orphaned_resources.",
+      inputSchema: {
+        ownerUserId: z
+          .string()
+          .optional()
+          .describe("Only return resources owned by this org member."),
+        unownedOnly: z
+          .boolean()
+          .optional()
+          .describe(
+            "Return only records that name nobody — a purpose or ticket with no owner set.",
+          ),
+      },
+      risk: "read",
+      // Mirrors `GET /ownership`.
+      permission: "resources:read",
+      handler: async (input, auth) => {
+        const ownerUserId = input["ownerUserId"] as string | undefined;
+        const unownedOnly = input["unownedOnly"] === true;
+        const { ownership } = await listOwnership(auth.organizationId);
+        const records = ownership.filter((r) => {
+          if (ownerUserId && r.ownerUserId !== ownerUserId) return false;
+          if (unownedOnly && (r.ownerUserId || r.ownerLabel)) return false;
+          return true;
+        });
+        // `totalCount` always describes every record so a filtered view still
+        // shows the overall picture — the list_posture_findings stance.
+        return ok({
+          ownership: records,
+          matchedCount: records.length,
+          totalCount: ownership.length,
+        });
+      },
+    },
+
+    {
+      name: "list_status_pages",
+      title: "List public status pages",
+      description:
+        "The organization's public status pages: what each one publishes, whether it is live, " +
+        "and the slug its public URL is built from (`<app origin>/status/<slug>`). A page is " +
+        "readable by anyone with that link and no sign-in, so treat a `published: true` page as " +
+        "externally visible. Check this when asked what monitoring is public, or before " +
+        "changing a probe that a page publishes.",
+      inputSchema: {},
+      risk: "read",
+      // Mirrors `GET /status-pages`.
+      permission: "resources:read",
+      handler: async (_input, auth) => {
+        const { pages } = await listStatusPages(auth.organizationId);
+        return ok({
+          pages,
+          totalCount: pages.length,
+          publishedCount: pages.filter((p) => p.published).length,
+        });
       },
     },
 

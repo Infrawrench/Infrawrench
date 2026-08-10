@@ -38,6 +38,11 @@ export interface RunWorkflowOptions {
   /** Abort the run (Stop): the interrupt handler ends execution when aborted. */
   signal?: AbortSignal;
   /**
+   * Per-operation authorization gate — see `WorkflowRunContext.authorize`.
+   * Omitted by hosts with nothing to authorize against (desktop).
+   */
+  authorize?: (method: string) => void;
+  /**
    * What started this run, exposed to the body as `infra.event`. Defaults to
    * `{ kind: "manual" }`.
    */
@@ -88,6 +93,7 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> 
 
   const ctx: WorkflowRunContext = {
     interactive: opts.interactive,
+    ...(opts.authorize ? { authorize: opts.authorize } : {}),
     log: (entry) => {
       logs.push(entry);
       opts.onLog?.(entry);

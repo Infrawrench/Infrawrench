@@ -1,5 +1,12 @@
-import type { AssociationSource } from "@infrawrench/plugin-base";
-import type { DependencyGraphData, ResourcePickerOption } from "@infrawrench/ui";
+import type { AssociationSource, CostEstimate } from "@infrawrench/plugin-base";
+import type {
+  DependencyGraphData,
+  DnsInventoryResponse,
+  EnvironmentDiffResponse,
+  ExpiryListResponse,
+  PostureListResponse,
+  ResourcePickerOption,
+} from "@infrawrench/ui";
 import { invoke } from "./invoke";
 
 /**
@@ -12,6 +19,67 @@ export async function fetchCloudDependencyGraph(
   resourceId?: string,
 ): Promise<DependencyGraphData> {
   return invoke("cloud_dependency_graph", resourceId ? { orgId, resourceId } : { orgId });
+}
+
+/**
+ * The org expiry feed, computed server-side over synced rows. The local-mode
+ * counterpart is `loadLocalExpiring` in lib/local-expiring.ts.
+ */
+export async function fetchCloudExpiring(orgId: string): Promise<ExpiryListResponse> {
+  return invoke("cloud_expiring", { orgId });
+}
+
+/**
+ * The org posture findings, computed server-side over synced rows. The
+ * local-mode counterpart is `loadLocalPosture` in lib/local-posture.ts.
+ */
+export async function fetchCloudPosture(orgId: string): Promise<PostureListResponse> {
+  return invoke("cloud_posture", { orgId });
+}
+
+/**
+ * Accept a posture finding for the org. Recorded server-side — a dismissal is
+ * a decision about the organization's exposure, not about this machine, so
+ * every surface sees the same one. Local mode's counterpart is
+ * `dismissLocalPostureFinding` in lib/local-posture.ts.
+ */
+export async function dismissCloudPostureFinding(
+  orgId: string,
+  resourceId: string,
+  ruleId: string,
+  reason: string,
+): Promise<void> {
+  await invoke("cloud_posture_dismiss", { orgId, resourceId, ruleId, reason });
+}
+
+/** Undo a dismissal, putting the finding back on the list and in the alerts. */
+export async function restoreCloudPostureFinding(
+  orgId: string,
+  resourceId: string,
+  ruleId: string,
+): Promise<void> {
+  await invoke("cloud_posture_restore", { orgId, resourceId, ruleId });
+}
+
+export async function fetchCloudDns(orgId: string): Promise<DnsInventoryResponse> {
+  return invoke("cloud_dns", { orgId });
+}
+
+/**
+ * Two of the org's accounts compared, computed server-side over synced rows.
+ * The local-mode counterpart is `loadLocalEnvironmentDiff` in
+ * lib/local-environment-diff.ts, which lists both accounts live instead.
+ */
+export async function fetchCloudEnvironmentDiff(
+  orgId: string,
+  query: { a: string; b: string; includeIdentityFields?: boolean },
+): Promise<EnvironmentDiffResponse> {
+  return invoke("cloud_environment_diff", {
+    orgId,
+    a: query.a,
+    b: query.b,
+    includeIdentityFields: query.includeIdentityFields === true,
+  });
 }
 
 export async function getCloudResourceDetail(
@@ -126,22 +194,30 @@ export async function getCloudCreatePricing(
   });
 }
 
-export async function getCloudCreateCostEstimate(
+/**
+ * Monthly cost estimate for a configuration. Pass `fields` to price a
+ * proposed create, `resourceId` to price an existing resource, or both to
+ * price a proposed edit — the server merges `fields` over the resource's
+ * stored fields, so only the changed keys have to be sent.
+ */
+export async function getCloudCostEstimate(
   orgId: string,
   accountId: string,
   resourceTypeId: string,
-  fields: Record<string, string>,
-  pluginId?: string,
-  parentResourceId?: string,
-): Promise<{ estimate: unknown } | null> {
-  return invoke("cloud_get_create_cost_estimate", {
+  options: {
+    fields?: Record<string, string>;
+    resourceId?: string;
+    pluginId?: string;
+    parentResourceId?: string;
+  } = {},
+): Promise<CostEstimate | null> {
+  const res = await invoke<{ estimate: CostEstimate | null }>("cloud_get_cost_estimate", {
     orgId,
     accountId,
     resourceTypeId,
-    fields,
-    pluginId,
-    parentResourceId,
+    ...options,
   });
+  return res?.estimate ?? null;
 }
 
 export async function deleteCloudResource(

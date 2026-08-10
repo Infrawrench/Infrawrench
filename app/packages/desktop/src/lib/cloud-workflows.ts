@@ -60,8 +60,15 @@ export async function listCloudGithubRepos(orgId: string): Promise<GitRepoOption
   return invoke("cloud_github_repos", { orgId });
 }
 
-export async function getCloudGithubInstallUrl(orgId: string): Promise<string | null> {
-  return invoke("cloud_github_install_url", { orgId, returnTo: "workflows" });
+/**
+ * `returnTo` is where the GitHub App install flow sends the user back to —
+ * "workflows" for git triggers, "agents" for the session repo picker.
+ */
+export async function getCloudGithubInstallUrl(
+  orgId: string,
+  returnTo: "workflows" | "agents" = "workflows",
+): Promise<string | null> {
+  return invoke("cloud_github_install_url", { orgId, returnTo });
 }
 
 /**

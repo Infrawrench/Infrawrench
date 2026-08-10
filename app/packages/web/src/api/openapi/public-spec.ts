@@ -47,6 +47,11 @@ const INTERNAL_PATHS: ReadonlySet<string> = new Set([
   "/api/auth/sign-in",
   "/api/auth/sign-out",
   "/callback",
+  // Inbound Slack — called by Slack (signature-verified) and, for the link
+  // landing, by a browser redirect; never by API clients.
+  "/api/slack/commands",
+  "/api/slack/interactions",
+  "/api/slack/link",
   "/api/org/{orgId}/ws-token",
   "/api/org/{orgId}/push/preferences",
   "/api/org/{orgId}/push/recipients",

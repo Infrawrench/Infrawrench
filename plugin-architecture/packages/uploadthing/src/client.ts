@@ -219,6 +219,12 @@ function quotaPercent(used: number, limit: number): number | null {
  */
 const MAX_URL_UPLOAD_BYTES = 256 * 1024 * 1024;
 
+/** Cap how long a URL-sourced upload may spend downloading or PUTting bytes. */
+const URL_UPLOAD_TIMEOUT_MS = 60_000;
+
+/** How many redirects `downloadFromUrl` will follow before giving up. */
+const MAX_DOWNLOAD_REDIRECTS = 5;
+
 /**
  * Reject a source URL that would make the server fetch something on its own
  * behalf rather than the user's.
@@ -246,13 +252,25 @@ function assertFetchableUrl(raw: string): void {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error(`Only http and https URLs can be uploaded from (got "${parsed.protocol}").`);
   }
-  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  let host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  // `[::ffff:169.254.169.254]` and `[::ffff:a9fe:a9fe]` both reach the same
+  // address; fold them to dotted-quad so the IPv4 rules below apply.
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(host);
+  if (mapped) {
+    const hi = parseInt(mapped[1]!, 16);
+    const lo = parseInt(mapped[2]!, 16);
+    host = `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
+  } else if (host.toLowerCase().startsWith("::ffff:")) {
+    host = host.slice("::ffff:".length);
+  }
   const blocked =
     host === "localhost" ||
     host.endsWith(".localhost") ||
     host === "::1" ||
+    host === "::" ||
     host === "0.0.0.0" ||
     /^127\./.test(host) ||
+    /^0\./.test(host) ||
     /^10\./.test(host) ||
     /^192\.168\./.test(host) ||
     /^172\.(1[6-9]|2[0-9]|3[01])\./.test(host) ||
@@ -266,6 +284,34 @@ function assertFetchableUrl(raw: string): void {
       `Refusing to upload from "${parsed.hostname}" — private and loopback addresses are not reachable sources.`,
     );
   }
+}
+
+/**
+ * Fetch a user-supplied URL for upload, re-checking every redirect hop.
+ *
+ * `redirect: "follow"` would defeat `assertFetchableUrl` — a public host can
+ * 302 to the metadata service and the denylist never sees the final address.
+ * Manual hops keep the same scheme/host rules on each Location.
+ */
+async function downloadFromUrl(sourceUrl: string): Promise<Response> {
+  let current = sourceUrl;
+  for (let hop = 0; hop <= MAX_DOWNLOAD_REDIRECTS; hop++) {
+    assertFetchableUrl(current);
+    const res = await fetch(current, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(URL_UPLOAD_TIMEOUT_MS),
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (!location) {
+        throw new Error(`Could not download ${sourceUrl}: redirect ${res.status} with no Location`);
+      }
+      current = new URL(location, current).href;
+      continue;
+    }
+    return res;
+  }
+  throw new Error(`Could not download ${sourceUrl}: more than ${MAX_DOWNLOAD_REDIRECTS} redirects`);
 }
 
 /** Read a response body, aborting past `limit` rather than buffering it all. */
@@ -635,9 +681,8 @@ export class UploadThingClient implements PluginClient {
 
     const sourceUrl = (fields["sourceUrl"] ?? "").trim();
     if (!sourceUrl) throw new Error("A file URL is required");
-    assertFetchableUrl(sourceUrl);
 
-    const download = await fetch(sourceUrl, { redirect: "follow" });
+    const download = await downloadFromUrl(sourceUrl);
     if (!download.ok) {
       throw new Error(`Could not download ${sourceUrl}: HTTP ${download.status}`);
     }
@@ -711,12 +756,17 @@ export class UploadThingClient implements PluginClient {
       ...(opts.acl ? { acl: opts.acl } : {}),
     });
 
+    // UploadThing's own docs use multipart FormData for this PUT
+    // (https://docs.uploadthing.com/uploading-files). The presigned URL carries
+    // its own signature; sending the API key here would be wrong, and setting
+    // Content-Type by hand would strip the multipart boundary fetch generates.
     const form = new FormData();
     form.append("file", blob, name);
-    // The presigned URL carries its own signature and headers; sending the API
-    // key here as well would be wrong, and setting Content-Type by hand would
-    // strip the multipart boundary fetch generates.
-    const res = await fetch(prepared.url, { method: "PUT", body: form });
+    const res = await fetch(prepared.url, {
+      method: "PUT",
+      body: form,
+      signal: AbortSignal.timeout(URL_UPLOAD_TIMEOUT_MS),
+    });
     if (!res.ok) {
       throw new Error(`UploadThing upload failed: HTTP ${res.status} ${await res.text()}`);
     }
@@ -734,6 +784,7 @@ export class UploadThingClient implements PluginClient {
       throw new Error(`UploadThing plugin: updateResource not supported for type "${typeId}"`);
     }
     const key = externalIdOf(resourceId);
+    if (!key) throw new Error("UploadThing plugin: cannot parse file key from resource id");
     const newName = (fields["name"] ?? "").trim();
     if (!newName) throw new Error("A file name is required");
 
@@ -771,6 +822,7 @@ export class UploadThingClient implements PluginClient {
   ): Promise<void> {
     if (typeId === "ut-file" && (actionId === "make-public" || actionId === "make-private")) {
       const key = externalIdOf(resourceId);
+      if (!key) throw new Error("UploadThing plugin: cannot parse file key from resource id");
       const acl = actionId === "make-public" ? "public-read" : "private";
       await this.post<{ success: boolean; updatedCount: number }>("/v6/updateACL", {
         updates: [{ fileKey: key, acl }],

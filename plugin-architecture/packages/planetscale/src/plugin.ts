@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { PlanetScaleClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { PsDatabaseResourceType } from "./resources/ps-database.js";
 import { PsBranchResourceType } from "./resources/ps-branch.js";
 import { PsPasswordResourceType } from "./resources/ps-password.js";
@@ -55,6 +56,7 @@ const manifest: PluginManifest = {
     restatementDays: 5,
     periodNative: true,
   },
+  statusFeed,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -69,4 +71,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new PlanetScaleClient(credentials, services),
+  parseStatusFeed,
 };

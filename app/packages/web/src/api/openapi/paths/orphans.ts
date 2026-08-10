@@ -10,6 +10,18 @@ export function registerOrphanPaths(ctx: BuildContext) {
     currency: z.string().openapi({ example: "USD" }),
   }).openapi("OrphanCostAnnotation");
 
+  // Shared with the ownership paths, which register it. Declared here too
+  // because the orphan response is the surface most clients meet it on.
+  const ResourceOwnerAnnotation = strict({
+    userId: Uuid.nullable().describe("Set when a routable org member owns it."),
+    displayName: z.string().describe("The member's name, or the free-text owner."),
+    isLabel: z
+      .boolean()
+      .describe("True when the owner is free text — nothing can be routed to it."),
+    ticketUrl: z.string().nullable(),
+    purpose: z.string().nullable(),
+  }).openapi("ResourceOwnerAnnotation");
+
   const OrphanedResource = strict({
     id: z.string().describe("Infrawrench resource id."),
     pluginId: enums.PluginId,
@@ -26,6 +38,11 @@ export function registerOrphanPaths(ctx: BuildContext) {
         "null when the provider reports no per-resource cost. The flag itself never " +
         "depends on billing data.",
     ),
+    owner: ResourceOwnerAnnotation.nullable().describe(
+      "Who owns this resource, or null when nobody has claimed it. Present only " +
+        "when the owner can be named: a resource carrying a purpose but no owner " +
+        "reads as null, because the question this answers is who to tell.",
+    ),
     lastSyncedAt: IsoDateTime.nullable(),
   }).openapi("OrphanedResource");
 
@@ -40,6 +57,10 @@ export function registerOrphanPaths(ctx: BuildContext) {
   const OrphanListResponse = strict({
     accounts: z.array(OrphanAccountGroup).describe("Groups sorted by account name."),
     totalCount: z.number().int(),
+    unownedCount: z
+      .number()
+      .int()
+      .describe("Flagged resources with no recorded owner — the 'nobody to ask' count."),
     costWindowDays: z.number().int().describe("Days of trailing spend the annotations cover."),
     generatedAt: IsoDateTime,
   }).openapi("OrphanListResponse");

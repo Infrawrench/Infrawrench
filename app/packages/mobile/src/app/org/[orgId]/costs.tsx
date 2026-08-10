@@ -4,11 +4,14 @@ import type { CostGraphConfig } from "@infrawrench/client-core";
 import { CostCollectionNotice } from "@/components/CostCollectionNotice";
 import { EmptyView, ErrorView, LoadingView, Screen, SectionTitle } from "@/components/ui";
 import { CostAnomaliesSection } from "@/features/costs/CostAnomaliesSection";
+import { TagGovernanceSection } from "@/features/costs/TagGovernanceSection";
 import { BudgetCard } from "@/features/dashboard/BudgetCard";
 import { CostGraphCard } from "@/features/dashboard/CostGraphCard";
 import { useBudgets } from "@/features/dashboard/useBudgets";
 import { useCostStatus } from "@/features/dashboard/useCostStatus";
+import { OversizedSection } from "@/features/savings/OversizedSection";
 import { SavingsSection } from "@/features/savings/SavingsSection";
+import { SchedulesSection } from "@/features/schedules/SchedulesSection";
 
 /**
  * The org's spend, budgets, anomalies, and potential savings — the Costs panel
@@ -53,7 +56,11 @@ export default function CostsScreen() {
         void queryClient.invalidateQueries({ queryKey: ["cost-status"] });
         void queryClient.invalidateQueries({ queryKey: ["cost-query"] });
         void queryClient.invalidateQueries({ queryKey: ["cost-anomalies"] });
+        void queryClient.invalidateQueries({ queryKey: ["tag-compliance"] });
+        void queryClient.invalidateQueries({ queryKey: ["untagged-spend"] });
         void queryClient.invalidateQueries({ queryKey: ["orphans"] });
+        void queryClient.invalidateQueries({ queryKey: ["rightsizing"] });
+        void queryClient.invalidateQueries({ queryKey: ["schedules"] });
       }}
       refreshing={budgets.isRefetching}
     >
@@ -76,9 +83,15 @@ export default function CostsScreen() {
         rows.map((b) => <BudgetCard key={b.id} budget={b} />)
       )}
 
+      <TagGovernanceSection />
+
       <CostAnomaliesSection />
 
       <SavingsSection />
+
+      <OversizedSection />
+
+      <SchedulesSection />
     </Screen>
   );
 }

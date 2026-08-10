@@ -1,5 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import type { CreateResourceConfig, CreateFieldConfig } from "@infrawrench/plugin-base";
+import type {
+  CostEstimate,
+  CreateResourceConfig,
+  CreateFieldConfig,
+} from "@infrawrench/plugin-base";
+import { formatMonthlyEstimate } from "@infrawrench/client-core";
 import { evaluateShowWhen, buildDefaultFields, formatErrorMessage } from "../utils.js";
 
 /** Callback signatures that each platform provides */
@@ -11,8 +16,13 @@ export interface CreateResourceCallbacks {
     regionId?: string;
     sizes: Array<{ id: string; vcpus: number; memoryMb: number }>;
   }) => Promise<Record<string, number>>;
-  /** Get a full cost estimate given the current fields */
-  loadCostEstimate?: (fields: Record<string, string>) => Promise<number | null>;
+  /**
+   * Get a full cost estimate — total plus line items — for the current field
+   * values. Called on a debounce as the user edits, so a host that fetches
+   * over the network gets at most one request per pause, not one per
+   * keystroke.
+   */
+  loadCostEstimate?: (fields: Record<string, string>) => Promise<CostEstimate | null>;
   /** Submit the create form — platform handles the result via its own callback */
   create: (fields: Record<string, string>) => Promise<void>;
   /**
@@ -41,6 +51,12 @@ export interface CreateResourceFormState {
   visibleFields: CreateFieldConfig[];
   isValid: boolean;
   estimatedMonthlyPriceLabel: string | null;
+  /**
+   * The plugin's itemized estimate, when it supplied one. Null when only the
+   * size picker's price is available (which still gives a
+   * `estimatedMonthlyPriceLabel`) or when nothing could be priced at all.
+   */
+  costEstimate: CostEstimate | null;
   handleCreate: () => Promise<void>;
   /** Whether an action on this field is currently running (keyed by field key). */
   fieldActionRunning: Record<string, boolean>;
@@ -78,7 +94,7 @@ export function useCreateResourceForm(
   const [sizePricingByRegion, setSizePricingByRegion] = useState<
     Record<string, Record<string, number>>
   >({});
-  const [costEstimateMonthly, setCostEstimateMonthly] = useState<number | null>(null);
+  const [costEstimate, setCostEstimate] = useState<CostEstimate | null>(null);
   const pricingAttemptedRef = useRef<Map<string, Set<string>> | null>(null);
   if (pricingAttemptedRef.current === null) pricingAttemptedRef.current = new Map();
   const pricingInFlightRef = useRef<Set<string> | null>(null);
@@ -167,7 +183,7 @@ export function useCreateResourceForm(
         setLoadingConfig(true);
         setConfigError(null);
         setSizePricingByRegion({});
-        setCostEstimateMonthly(null);
+        setCostEstimate(null);
         pricingAttemptedRef.current!.clear();
         pricingInFlightRef.current!.clear();
 
@@ -277,7 +293,7 @@ export function useCreateResourceForm(
     if (!configWithPricing) return;
     const loadCostEstimate = callbacksRef.current.loadCostEstimate;
     if (!loadCostEstimate) {
-      setCostEstimateMonthly(null);
+      setCostEstimate(null);
       return;
     }
     let cancelled = false;
@@ -289,10 +305,10 @@ export function useCreateResourceForm(
       }
       void loadCostEstimate(visibleFields)
         .then((value) => {
-          if (!cancelled) setCostEstimateMonthly(value ?? null);
+          if (!cancelled) setCostEstimate(value ?? null);
         })
         .catch(() => {
-          if (!cancelled) setCostEstimateMonthly(null);
+          if (!cancelled) setCostEstimate(null);
         });
     }, 220);
     return () => {
@@ -302,7 +318,9 @@ export function useCreateResourceForm(
   }, [configWithPricing, fields]);
 
   const estimatedMonthlyPrice = useMemo(() => {
-    if (costEstimateMonthly != null) return costEstimateMonthly;
+    // The plugin's own estimate wins: it accounts for the components the size
+    // picker's per-size price cannot see (boot disks, node counts, storage).
+    if (costEstimate != null) return costEstimate.monthlyAmount;
     if (!configWithPricing) return null;
     const vf = configWithPricing.fields.filter((f) => evaluateShowWhen(f, fields));
     const sf = vf.find((f) => f.kind === "size-picker" && f.sizes?.length);
@@ -312,17 +330,12 @@ export function useCreateResourceForm(
     const selectedSize = sf.sizes.find((size) => size.id === sid);
     if (selectedSize?.priceMonthly == null) return null;
     return selectedSize.priceMonthly;
-  }, [configWithPricing, fields, costEstimateMonthly]);
+  }, [configWithPricing, fields, costEstimate]);
 
   const estimatedMonthlyPriceLabel = useMemo(() => {
     if (estimatedMonthlyPrice == null) return null;
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: estimatedMonthlyPrice % 1 === 0 ? 0 : 2,
-      maximumFractionDigits: 2,
-    }).format(estimatedMonthlyPrice);
-  }, [estimatedMonthlyPrice]);
+    return formatMonthlyEstimate(estimatedMonthlyPrice, costEstimate?.currency ?? "USD");
+  }, [estimatedMonthlyPrice, costEstimate]);
 
   const visibleFields = useMemo(() => {
     if (!configWithPricing) return [];
@@ -414,6 +427,7 @@ export function useCreateResourceForm(
     visibleFields,
     isValid,
     estimatedMonthlyPriceLabel,
+    costEstimate,
     handleCreate,
     fieldActionRunning,
     fieldActionError,

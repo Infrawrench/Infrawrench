@@ -22,8 +22,38 @@ export type {
   RateLimitDeclaration,
 } from "./manifest.js";
 
-export type { CostCapabilityDeclaration, CostFetchRange, CostHelpLink, CostRow } from "./cost.js";
-export { CostSetupError } from "./cost.js";
+export type {
+  CostCapabilityDeclaration,
+  CostEstimate,
+  CostEstimateLineItem,
+  CostFetchRange,
+  CostHelpLink,
+  CostRow,
+} from "./cost.js";
+export { buildCostEstimate, costEstimateDelta, CostSetupError } from "./cost.js";
+export type { CreditBalance, CreditsCapabilityDeclaration } from "./credits.js";
+export { CreditAccessError } from "./credits.js";
+
+export type {
+  PolicyTemplate,
+  PreflightCapability,
+  PreflightCapabilityCheck,
+  PreflightDeclaration,
+  PreflightPermission,
+  PreflightResult,
+} from "./preflight.js";
+export { validatePreflightContract } from "./preflight.js";
+
+export type {
+  StatusFeedDeclaration,
+  StatusIncident,
+  StatusIncidentImpact,
+  StatusIncidentState,
+  StatusComponentMapping,
+  StatuspageParseOptions,
+  StatusFeedXmlItem,
+} from "./status-feed.js";
+export { parseStatuspageIncidents, parseStatusFeedXml, stripStatusHtml } from "./status-feed.js";
 
 export type {
   ResourceTypeDefinition,
@@ -40,6 +70,16 @@ export type {
   AgentVmCapability,
   OrphanCondition,
   OrphanRule,
+  ExpiryKind,
+  ExpiryFieldRule,
+  DnsRoleDeclaration,
+  DnsZoneRole,
+  DnsRecordRole,
+  DnsServiceHostRule,
+  LifecycleActionsDeclaration,
+  RightsizingDeclaration,
+  RightsizingCpuMetric,
+  RightsizingMemoryMetric,
 } from "./resource.js";
 
 export type {
@@ -51,13 +91,25 @@ export type {
 export { normalizeResourceCreateResult } from "./instance.js";
 export { evaluatePeerIntegrationUnreachable, evaluateOrphanRule } from "./resource.js";
 
+// Posture checks — declarative security-exposure rules over already-synced
+// fields, the security sibling of `orphanRule`. The workspace-wide aggregation
+// lives in `@infrawrench/client-core` (`computePostureFindings`).
+export { evaluatePostureRule, evaluatePostureCondition, parsePostureInstant } from "./posture.js";
+export type {
+  PostureCheckRule,
+  PostureCondition,
+  PostureSeverity,
+  PostureCategory,
+} from "./posture.js";
+
 // Orphan aggregation — the host-side scan over already-stored resources, plus
 // the shape every surface renders. Shared so the web server, the desktop app
 // and the CLI classify a workspace identically.
-export { collectOrphanGroups, countOrphans } from "./orphans.js";
+export { collectOrphanGroups, countOrphans, countUnownedOrphans } from "./orphans.js";
 export type {
   OrphanCostAnnotation,
   OrphanCostBasis,
+  ResourceOwnerAnnotation,
   OrphanedResource,
   OrphanAccountGroup,
   OrphanListResponse,
@@ -242,8 +294,40 @@ export type {
   RewriterContext,
 } from "./host-types.js";
 
+export type {
+  TerraformProviderRequirement,
+  TerraformVariable,
+  TerraformValue,
+  TerraformResourceBlock,
+  TerraformExportResult,
+  TerraformExportCapability,
+} from "./terraform.js";
+export { tf } from "./terraform.js";
+export {
+  sanitizeTerraformName,
+  renderTerraformValue,
+  renderTerraformBundle,
+} from "./terraform-hcl.js";
+export type {
+  TerraformProviderSection,
+  RenderedTerraformResource,
+  RenderedTerraformBundle,
+} from "./terraform-hcl.js";
+export {
+  exportResourcesToTerraform,
+  fieldString,
+  fieldNumber,
+  fieldBool,
+} from "./terraform-export.js";
+export type {
+  TerraformExportOutcome,
+  TerraformExportedResource,
+  TerraformUnsupportedResource,
+} from "./terraform-export.js";
+
 export {
   pluginManifestSchema,
+  terraformExportCapabilitySchema,
   resourceTypeDefinitionSchema,
   fieldDefinitionSchema,
   schemaNodeSchema,

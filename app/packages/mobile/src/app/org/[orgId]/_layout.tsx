@@ -140,7 +140,13 @@ export default function OrgLayout() {
       <Tabs.Screen name="agents" options={{ href: null, title: "Agents" }} />
       <Tabs.Screen name="deployments" options={{ href: null, title: "Deploys" }} />
       <Tabs.Screen name="changes" options={{ href: null, title: "Changes" }} />
+      <Tabs.Screen name="moment" options={{ href: null, title: "Moment" }} />
       <Tabs.Screen name="dependencies" options={{ href: null, title: "Dependencies" }} />
+      <Tabs.Screen name="expiring" options={{ href: null, title: "Expiring" }} />
+      <Tabs.Screen name="posture" options={{ href: null, title: "Posture" }} />
+      <Tabs.Screen name="dns" options={{ href: null, title: "Domains" }} />
+      <Tabs.Screen name="probes" options={{ href: null, title: "Probes" }} />
+      <Tabs.Screen name="log-workspaces" options={{ href: null, title: "Log workspace" }} />
     </Tabs>
   );
 }

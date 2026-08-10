@@ -113,6 +113,15 @@ const CostAnomaly = strict({
     "When the anomaly was delivered to a notification channel; null when delivery " +
       "failed or a recent anomaly for the same key suppressed it.",
   ),
+  hints: z
+    .array(z.string())
+    .describe(
+      "Root-cause hints computed when the anomaly fired: human-readable facts from the " +
+        "change timeline and audit log for the anomalous day and the day before (e.g. " +
+        '"12 gce-instance resources appeared", a workflow run, a lifted change freeze), ' +
+        "ranked by likely relevance and capped at three. Empty when nothing notable " +
+        "happened in the window or the anomaly predates hint collection.",
+    ),
 }).openapi("CostAnomaly");
 
 const CostAnomalySettings = strict({

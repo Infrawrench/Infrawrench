@@ -22,13 +22,13 @@
   "dependencies": {
     "@infrawrench/client-core": "workspace:*",
     "@infrawrench/plugin-base": "workspace:*",
-    "@sebastianwessel/quickjs": "^3.0.1",
-    "@jitl/quickjs-ng-wasmfile-release-asyncify": "^0.31.0",
+    "@jitl/quickjs-ng-wasmfile-release-asyncify": "^0.32.0",
+    "@sebastianwessel/quickjs": "^3.1.0",
     "@typescript/typescript6": "^6.0.2"
   },
   "devDependencies": {
-    "@types/node": "^22.10.1",
-    "vitest": "^4.1.8",
-    "typescript": "^7.0.2"
+    "@types/node": "^22.20.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }

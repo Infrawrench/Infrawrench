@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AGENT_BOOTSTRAP_COMPLETE_MARKERS,
+  bootstrapReportedComplete,
   buildAgentBootstrapCommand,
   buildAgentLaunchCommand,
   buildAgentRepoSetupCommand,
@@ -224,6 +226,24 @@ describe("buildAgentBootstrapCommand", () => {
     expect(bootstrap).toContain('touch "$MARKER"');
   });
 
+  // Regression: a dropped SSH channel makes the client retry the whole
+  // command while the previous run is still going on the VM. Overlapping
+  // `npm install -g` runs corrupt the shared prefix and strand a launcher
+  // symlink on a rolled-back package. Same guard as the T3 Code bootstrap.
+  it("serializes concurrent bootstrap runs before checking the marker", () => {
+    const bootstrap = unwrap(
+      buildAgentBootstrapCommand({
+        tool: "claude-code",
+        workspaceName: "my-app",
+        branchName: "infrawrench/agent-6f9619ff",
+        repo: "https://example.com/org/my-app.git",
+        setupPlan: plan(),
+      }),
+    );
+    expect(bootstrap).toContain('exec 9>"$MARKER_DIR/setup.lock"');
+    expect(bootstrap.indexOf("flock")).toBeLessThan(bootstrap.indexOf('[ -f "$MARKER" ]'));
+  });
+
   it("waits for the dpkg lock instead of failing on fresh VMs", () => {
     const bootstrap = unwrap(
       buildAgentBootstrapCommand({
@@ -266,10 +286,11 @@ describe("buildAgentBootstrapCommand", () => {
       }),
     );
     // Without allow-scripts, npm skips the CLI's postinstall and the `claude`
-    // launcher never lands in PATH.
-    expect(bootstrap).toContain(
-      'npm install -g --allow-scripts="$TOOL_PACKAGE" "$TOOL_PACKAGE@latest"',
-    );
+    // launcher never lands in PATH. The list starts at the tool package and
+    // grows by the caller's transitive script-deps (npm has no wildcard).
+    expect(bootstrap).toContain('allow_scripts="$TOOL_PACKAGE"');
+    expect(bootstrap).toContain('allow_scripts="$TOOL_PACKAGE,$TOOL_SCRIPT_DEPS"');
+    expect(bootstrap).toContain('npm install -g --allow-scripts="$allow_scripts"');
   });
 
   it("falls back to the Claude Code native installer when npm produces no CLI", () => {
@@ -390,5 +411,37 @@ describe("isCloneableGitRepo", () => {
     expect(isCloneableGitRepo("git@github.com:org/repo.git")).toBe(true);
     expect(isCloneableGitRepo("/Users/me/projects/repo")).toBe(false);
     expect(isCloneableGitRepo("C:\\projects\\repo")).toBe(false);
+  });
+});
+
+describe("bootstrapReportedComplete", () => {
+  // A bootstrap that announced completion provisioned the VM. A non-zero exit
+  // after that point (dropped channel, login-shell exit quirk) must not strand
+  // a ready machine in "failed" behind a Retry button.
+  it("recognises both completion markers", () => {
+    expect(bootstrapReportedComplete("INFRAWRENCH_AGENT_STEP:Bootstrap complete.")).toBe(true);
+    expect(bootstrapReportedComplete("INFRAWRENCH_AGENT_STEP:Bootstrap already complete.")).toBe(
+      true,
+    );
+  });
+
+  it("requires the step prefix, so remote output cannot fake completion", () => {
+    expect(bootstrapReportedComplete("Bootstrap complete.")).toBe(false);
+    expect(bootstrapReportedComplete("echo Bootstrap already complete.")).toBe(false);
+  });
+
+  it("is false for output that never reached the end", () => {
+    expect(
+      bootstrapReportedComplete("INFRAWRENCH_AGENT_STEP:Installing T3 Code CLI.\nnpm error code 1"),
+    ).toBe(false);
+    expect(bootstrapReportedComplete("")).toBe(false);
+  });
+
+  // The markers are what the generated scripts actually print — a reworded
+  // log_step would silently break the guard, so pin them against both builders.
+  it("matches what the bootstrap scripts emit", () => {
+    for (const marker of AGENT_BOOTSTRAP_COMPLETE_MARKERS) {
+      expect(bootstrapReportedComplete(`INFRAWRENCH_AGENT_STEP:${marker}`)).toBe(true);
+    }
   });
 });

@@ -46,6 +46,12 @@ const organizations = { __t: "organizations", id: "id", displayName: "displayNam
 const digestEmailRecipients = { __t: "recipients", organizationId: "organizationId" };
 const pagingIncidents = { __t: "pagingIncidents", organizationId: "organizationId" };
 const resources = { __t: "resources", organizationId: "organizationId" };
+const providerStatusIncidents = {
+  __t: "providerStatusIncidents",
+  pluginId: "pluginId",
+  startedAt: "startedAt",
+  resolvedAt: "resolvedAt",
+};
 
 vi.mock("../db/schema", () => ({
   orgDigestSettings,
@@ -53,6 +59,7 @@ vi.mock("../db/schema", () => ({
   digestEmailRecipients,
   pagingIncidents,
   resources,
+  providerStatusIncidents,
 }));
 
 // --- Mocked drizzle: predicates become functions over the fake row ---
@@ -199,8 +206,6 @@ let teamsResult = { attempted: 0, succeeded: 0, failed: 0 };
 let emailResult = { attempted: 0, succeeded: 0, failed: 0 };
 let buildShouldThrow = false;
 
-vi.mock("../slack", () => ({ sendSlackToOrg: async () => slackResult }));
-vi.mock("../msteams", () => ({ sendMsTeamsToOrg: async () => teamsResult }));
 vi.mock("../email", () => ({
   isEmailConfigured: () => true,
   sendEmails: async () => emailResult,
@@ -212,6 +217,68 @@ vi.mock("../clickhouse/cost-readers", () => ({
     return [];
   },
 }));
+
+/**
+ * All three transports sit behind `routeAlert` now, so that is the single seam
+ * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * it decides whether a cooldown or claim is kept, and faking it would hide
+ * exactly the bug it exists to prevent.
+ */
+// Defaults to a successful delivery: `routeAlert` never throws and always
+// returns a result, so a mock that resolves `undefined` would fail tests in a
+// way the real function cannot.
+// Driven by the same `slackResult`/`teamsResult` knobs the transport mocks used
+// to be, so the retry state machine's inputs are unchanged: what varies across
+// these tests is how much of the fan-out landed, not how it was addressed.
+const routeAlert = vi.fn(async (..._args: unknown[]) =>
+  routed({
+    attempted: slackResult.attempted + teamsResult.attempted,
+    succeeded: slackResult.succeeded + teamsResult.succeeded,
+    byTransport: { push: 0, slack: slackResult.succeeded, msTeams: teamsResult.succeeded },
+    attemptedByTransport: {
+      push: 0,
+      slack: slackResult.attempted,
+      msTeams: teamsResult.attempted,
+    },
+  }),
+);
+vi.mock("../alerts/route", () => ({
+  routeAlert: (...a: unknown[]) => routeAlert(...a),
+  alertReached: (r: { succeeded?: number; held?: number } | null | undefined) =>
+    (r?.succeeded ?? 0) > 0 || (r?.held ?? 0) > 0,
+}));
+
+/** A delivery that reached one Slack channel and one phone. */
+function routed(over: Record<string, unknown> = {}) {
+  return {
+    attempted: 2,
+    succeeded: 2,
+    byTransport: { push: 1, slack: 1, msTeams: 0 },
+    attemptedByTransport: { push: 1, slack: 1, msTeams: 0 },
+    held: 0,
+    unrouted: false,
+    matchedRuleIds: ["rule1"],
+    // The tracked-Slack half of the result. Present by default because
+    // `byTransport.slack` is 1 — a result claiming a Slack delivery with no
+    // message to show for it is a shape the real function never returns.
+    slackMessages: [],
+    deliveryIds: [],
+    ...over,
+  };
+}
+
+/** A delivery that reached nobody — no rule matched, or every channel failed. */
+function unroutedResult() {
+  return routed({
+    attempted: 0,
+    succeeded: 0,
+    byTransport: { push: 0, slack: 0, msTeams: 0 },
+    attemptedByTransport: { push: 0, slack: 0, msTeams: 0 },
+    matchedRuleIds: [],
+    slackMessages: [],
+    unrouted: true,
+  });
+}
 
 const {
   MAX_DIGEST_ATTEMPTS,

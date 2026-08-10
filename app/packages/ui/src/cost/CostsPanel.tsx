@@ -2,20 +2,25 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import { Modal } from "../components/Modal.js";
 import { SavingsSection } from "../savings/SavingsSection.js";
-import type { OrphanedResource, OrphansClient } from "../savings/types.js";
+import { OversizedSection } from "../savings/OversizedSection.js";
+import { CreditBurndownSection } from "./CreditBurndownSection.js";
+import type {
+  OrphanedResource,
+  OrphansClient,
+  OversizedResource,
+  RightsizingClient,
+} from "../savings/types.js";
+import { SleepSchedulesSection } from "../schedules/SleepSchedulesSection.js";
+import type { SchedulesClient, SleepSchedule } from "../schedules/types.js";
 import { BudgetCard } from "./BudgetCard.js";
 import { CostAnomaliesSection } from "./CostAnomaliesSection.js";
+import { TagGovernanceSection } from "./TagGovernanceSection.js";
 import { BudgetConfigModal, DEFAULT_BUDGET_INPUT } from "./BudgetConfigModal.js";
 import { CostGraphCard } from "./CostGraphCard.js";
 import { CostCollectionNotice } from "./CostCollectionNotice.js";
 import { DEFAULT_COST_GRAPH_CONFIG, DIMENSION_LABELS } from "./CostGraphConfigModal.js";
-import type { BudgetInput, CostDimensionId, CostGraphConfig } from "./config.js";
-import type {
-  BudgetWithStatus,
-  CostAccountStatus,
-  CostsClient,
-  CostsPanelDashboard,
-} from "./types.js";
+import type { BudgetInput, CostAccountStatus, CostDimensionId, CostGraphConfig } from "./config.js";
+import type { BudgetWithStatus, CostsClient, CostsPanelDashboard } from "./types.js";
 
 /**
  * The overview chart is deliberately not configurable the way a dashboard cost
@@ -65,6 +70,28 @@ export interface CostsPanelProps {
   orphans?: OrphansClient | undefined;
   /** Open a flagged resource's detail view from the savings section. */
   onOpenResource?: ((resource: OrphanedResource, accountId: string) => void) | undefined;
+  /**
+   * Data access for the "Oversized" right-sizing section. Cloud-only — the
+   * percentiles live in the metrics warehouse — so desktop leaves it off in
+   * local mode, same rule as schedules.
+   */
+  rightsizing?: RightsizingClient | undefined;
+  /** Open an oversized resource's detail view. */
+  onOpenOversizedResource?: ((resource: OversizedResource, accountId: string) => void) | undefined;
+  /**
+   * Data access for the "Sleep schedules" section. Omitted when the host has
+   * no schedule store (desktop in local-only mode) — the section is then left
+   * out rather than shown empty.
+   */
+  schedules?: SchedulesClient | undefined;
+  /** Open a scheduled resource's detail view from the schedules section. */
+  onOpenScheduledResource?: ((schedule: SleepSchedule) => void) | undefined;
+  /**
+   * Open a URL outside the app shell — new tab on web, system browser on
+   * desktop. Used by the credit burndown section for the provider's top-up
+   * page and for the "your key can't see this balance" help link.
+   */
+  onOpenExternal?: ((url: string) => void) | undefined;
 }
 
 /**
@@ -78,7 +105,17 @@ export interface CostsPanelProps {
  * views onto the rows listed here, and each row says which dashboards it
  * appears on.
  */
-export function CostsPanel({ client, onOpenDashboard, orphans, onOpenResource }: CostsPanelProps) {
+export function CostsPanel({
+  client,
+  onOpenDashboard,
+  orphans,
+  onOpenResource,
+  rightsizing,
+  onOpenOversizedResource,
+  schedules,
+  onOpenScheduledResource,
+  onOpenExternal,
+}: CostsPanelProps) {
   const uid = useId();
   const [budgets, setBudgets] = useState<BudgetWithStatus[] | null>(null);
   const [statuses, setStatuses] = useState<CostAccountStatus[]>([]);
@@ -257,9 +294,20 @@ export function CostsPanel({ client, onOpenDashboard, orphans, onOpenResource }:
           </div>
         </section>
 
+        <TagGovernanceSection client={client} />
+
         <CostAnomaliesSection client={client} />
+        {/* Above the savings sections on purpose: those are about spending
+            less, this is about not stopping. A pot running dry is an outage. */}
+        <CreditBurndownSection client={client} {...(onOpenExternal ? { onOpenExternal } : {})} />
 
         {orphans && <SavingsSection client={orphans} onOpenResource={onOpenResource} />}
+        {rightsizing && (
+          <OversizedSection client={rightsizing} onOpenResource={onOpenOversizedResource} />
+        )}
+        {schedules && (
+          <SleepSchedulesSection client={schedules} onOpenResource={onOpenScheduledResource} />
+        )}
       </div>
 
       {editing && (

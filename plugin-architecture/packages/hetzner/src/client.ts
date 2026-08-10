@@ -1,4 +1,5 @@
 import type {
+  ActionNode,
   PluginClient,
   ResourceInstance,
   DetailViewSchema,
@@ -659,6 +660,120 @@ export class HetznerClient implements PluginClient {
     }
   }
 
+  /**
+   * Edit a server: rename (`name`) and/or change its type (`serverType`).
+   *
+   * The type change is Hetzner's `change_type` action with
+   * `upgrade_disk: false` — the disk keeps its current size, which is what
+   * keeps a later downgrade possible. Hetzner rejects the action with
+   * `server_not_stopped` (422) unless the server is powered off, and refuses
+   * targets whose included disk is smaller than the server's current disk or
+   * whose architecture differs; those provider errors are surfaced as-is.
+   */
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId !== "server") {
+      throw new Error(`Hetzner plugin: updateResource not supported for type "${typeId}"`);
+    }
+    const externalId = resourceId.split(":").pop();
+    if (!externalId) throw new Error("Cannot parse server ID");
+
+    // Rename and change_type are independent calls: one failing must not
+    // silently skip or hide the other. Each runs in its own guard and the
+    // failures are combined into one labelled error, so partial success is
+    // explicit rather than reported as a clean failure.
+    const failures: string[] = [];
+    const name = fields["name"];
+    if (name !== undefined && name !== "") {
+      try {
+        await this.fetch<unknown>(`/servers/${externalId}`, {
+          method: "PUT",
+          body: JSON.stringify({ name }),
+        });
+      } catch (e) {
+        failures.push(`rename failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    const serverType = fields["serverType"];
+    if (serverType !== undefined && serverType !== "") {
+      try {
+        await this.fetch<unknown>(`/servers/${externalId}/actions/change_type`, {
+          method: "POST",
+          body: JSON.stringify({ server_type: serverType, upgrade_disk: false }),
+        });
+      } catch (e) {
+        failures.push(`change type failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    if (failures.length > 0) {
+      throw new Error(`Hetzner server update: ${failures.join("; ")}`);
+    }
+
+    // change_type is asynchronous on Hetzner's side — an immediate re-read
+    // can still report the old server type while the action runs. Overlay the
+    // accepted values so the returned resource reflects the requested end
+    // state; the next sync reads the converged truth (the disk keeps its size
+    // because upgrade_disk is false).
+    const refreshed = await this.getResource(typeId, resourceId, accountId);
+    return {
+      ...refreshed,
+      fields: {
+        ...refreshed.fields,
+        ...(name !== undefined && name !== "" ? { name } : {}),
+        ...(serverType !== undefined && serverType !== "" ? { serverType } : {}),
+      },
+      ...(name !== undefined && name !== "" ? { displayName: name } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Per-location monthly prices for server types. `/server_types` carries a
+   * price per location, so unlike the create-config catalog (which quotes the
+   * first location's price) this resolves the one the caller asked for.
+   */
+  async getCreateSizePricing(
+    typeId: string,
+    request: { regionId?: string; sizes: Array<{ id: string }> },
+  ): Promise<Record<string, number>> {
+    if (typeId !== "server") return {};
+    const serverTypes = await this.fetchAll<HetznerServerType>("/server_types", "server_types");
+    const wanted = new Set(request.sizes.map((s) => s.id));
+    const out: Record<string, number> = {};
+    for (const st of serverTypes) {
+      if (!wanted.has(st.name)) continue;
+      const price =
+        (request.regionId ? st.prices?.find((p) => p.location === request.regionId) : undefined) ??
+        st.prices?.[0];
+      const monthly = price?.price_monthly?.gross ? parseFloat(price.price_monthly.gross) : NaN;
+      if (Number.isFinite(monthly)) out[st.name] = monthly;
+    }
+    return out;
+  }
+
+  async invokeAction(
+    typeId: string,
+    resourceId: string,
+    actionId: string,
+    _accountId: string,
+  ): Promise<void> {
+    if (typeId === "server" && (actionId === "poweron" || actionId === "poweroff")) {
+      const externalId = resourceId.split(":").pop();
+      if (!externalId) throw new Error("Cannot parse server ID");
+      await this.fetch<unknown>(`/servers/${externalId}/actions/${actionId}`, { method: "POST" });
+      return;
+    }
+    throw new Error(
+      `Hetzner plugin: invokeAction "${actionId}" not supported for type "${typeId}"`,
+    );
+  }
+
   async attachResource(
     sourceTypeId: string,
     sourceResourceId: string,
@@ -995,6 +1110,37 @@ export class HetznerClient implements PluginClient {
         ? serverStatusToDot(String(fields["status"] ?? "unknown"))
         : ("info" as const);
 
+    // Power off/on header actions for the server lifecycle pair (see the
+    // type's `lifecycle` declaration).
+    const lifecycleActions: ActionNode[] = [];
+    if (resource.resourceTypeId === "server") {
+      const s = String(fields["status"] ?? "");
+      if (s === "running") {
+        lifecycleActions.push({
+          kind: "action",
+          label: "Power off",
+          action: {
+            type: "plugin-action",
+            actionId: "poweroff",
+            confirmMessage:
+              "Power off this server? This is a hard poweroff (like pulling the plug); Hetzner keeps billing a powered-off server.",
+            successMessage: "Power off requested.",
+          },
+          variant: "danger",
+        });
+      } else if (s === "off") {
+        lifecycleActions.push({
+          kind: "action",
+          label: "Power on",
+          action: {
+            type: "plugin-action",
+            actionId: "poweron",
+            successMessage: "Power on requested.",
+          },
+        });
+      }
+    }
+
     return {
       title: resource.displayName,
       subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} · ${String(fields["location"] ?? "")}`,
@@ -1011,7 +1157,10 @@ export class HetznerClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      headerActions: [
+        ...lifecycleActions,
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+      ],
     };
   }
 
@@ -1064,6 +1213,9 @@ export class HetznerClient implements PluginClient {
         placementGroupId: s.placement_group?.id != null ? String(s.placement_group.id) : "",
         firewallIds: firewallIds.join(", "),
         networkIds: networkIds.join(", "),
+        // Straight off the payload. Feeds the right-sizing disk guard: a
+        // resize target's included disk must be >= this.
+        primaryDiskGb: s.primary_disk_size ?? s.server_type?.disk ?? 0,
       },
       resolvedOutputs: {
         ipv4: publicIpv4,
@@ -1385,6 +1537,8 @@ interface HetznerServer {
   /** One entry per attached Network; `network` is the Network id. */
   private_net?: Array<{ ip: string; network?: number }>;
   server_type?: { name: string; cores: number; memory: number; disk: number };
+  /** Actual root disk size in GB — stays put on change_type with upgrade_disk=false. */
+  primary_disk_size?: number;
   datacenter?: { name: string; location?: { name: string; city: string } };
   image?: { name: string; description: string };
   placement_group?: { id?: number; name?: string; type?: string } | null;

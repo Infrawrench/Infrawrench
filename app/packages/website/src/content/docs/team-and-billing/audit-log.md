@@ -4,7 +4,7 @@ description: See who did what across your organization.
 sidebar_order: 4
 ---
 
-> **Web only. Paid plan only.**
+> **Paid plan only.** Available on the web app and, when signed in to a cloud organization, in the desktop app's Settings tab.
 
 The audit log records every state-changing action in the organization — resource created, account added, SSH session opened, secret exported, member invited, role changed, API key issued. Read-only views (listing a sidebar, opening a dashboard) are not recorded.
 

@@ -145,6 +145,68 @@ describe("compute-engine create", () => {
     expect(boot!.source).toBe("dsl1");
   });
 
+  // Regression: instances.insert returns an Operation, not the instance. A
+  // 200 means GCP queued the work — the VM may still never exist. Reporting
+  // that as a created VM made a zone stockout surface much later as
+  // "resource ... not found" against a machine that was never created.
+  it("gce-instance create surfaces an async operation failure", async () => {
+    const c = ctx({
+      get: vi.fn(async () => ({
+        status: "DONE",
+        error: {
+          errors: [
+            {
+              code: "ZONE_RESOURCE_POOL_EXHAUSTED",
+              message: "The zone does not have enough resources available.",
+            },
+          ],
+        },
+      })),
+    });
+    fetchSpy.mockResolvedValue(ok({ name: "operation-1" }));
+    await expect(
+      gcpCreateResource(c, "gce-instance", "acct", {
+        name: "vm1",
+        zone: "us-central1-f",
+        machineType: "e2-standard-2",
+      }),
+    ).rejects.toThrow(/ZONE_RESOURCE_POOL_EXHAUSTED: The zone does not have enough resources/);
+  });
+
+  it("gce-instance create returns once the operation reports DONE", async () => {
+    const get = vi.fn(async () => ({ status: "DONE" }));
+    const c = ctx({ get });
+    fetchSpy.mockResolvedValue(ok({ name: "operation-2" }));
+    const out = await gcpCreateResource(c, "gce-instance", "acct", {
+      name: "vm-ok",
+      zone: "us-central1-a",
+      machineType: "e2-medium",
+    });
+    expect(out.displayName).toBe("vm-ok");
+    expect(get).toHaveBeenCalledWith(
+      expect.stringContaining("/zones/us-central1-a/operations/operation-2"),
+    );
+  });
+
+  // An httpErrorMessage with no structured errors[] must still abort.
+  it("gce-instance create surfaces an operation http error", async () => {
+    const c = ctx({
+      get: vi.fn(async () => ({
+        status: "DONE",
+        httpErrorStatusCode: 403,
+        httpErrorMessage: "QUOTA_EXCEEDED",
+      })),
+    });
+    fetchSpy.mockResolvedValue(ok({ name: "operation-3" }));
+    await expect(
+      gcpCreateResource(c, "gce-instance", "acct", {
+        name: "vm1",
+        zone: "z",
+        machineType: "m",
+      }),
+    ).rejects.toThrow(/403 QUOTA_EXCEEDED/);
+  });
+
   it("gce-instance create fails fast when no zone is given", async () => {
     await expect(
       gcpCreateResource(ctx(), "gce-instance", "acct", { name: "v", machineType: "m" }),

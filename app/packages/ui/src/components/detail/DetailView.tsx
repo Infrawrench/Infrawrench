@@ -3,6 +3,7 @@ import type {
   ChatMessage,
   ChatStreamEvent,
   ChildGroupSchema,
+  CostEstimate,
   DashboardCardSchema,
   DetailViewSchema,
   KvListResult,
@@ -19,7 +20,9 @@ import type {
   TranscribeAudioPayload,
   TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
+import { formatMonthlyEstimate } from "@infrawrench/client-core";
 import { MetricChart } from "../charts/MetricChart.js";
+import { CostEstimateChip } from "../CostEstimateChip.js";
 import { SchemaRenderer, StatusDotNodeRenderer } from "../renderer/SchemaRenderer.js";
 import { AssociationPicker } from "./AssociationPicker.js";
 import { ChildResourceTable } from "./ChildResourceTable.js";
@@ -111,6 +114,14 @@ interface DetailViewProps {
   ) => Promise<SecretVersion>;
   /** Open a console/exec terminal for the resource — when set, renders a "Console" button in the header */
   onOpenConsole?: () => void;
+  /**
+   * The resource's standing monthly cost estimate, from the plugin's
+   * `estimateCost`. Rendered as an expandable chip in the header — the same
+   * component and the same number the create form quotes, so what the user
+   * was promised at create time and what they see afterwards are one figure.
+   * Omit when the plugin cannot price this type.
+   */
+  costEstimate?: CostEstimate | null | undefined;
   /** Additional panes from peer plugins — rendered as extra tabs */
   peerPanes?: PeerPaneData[];
   renderPeerPane?: (pane: PeerPaneData, index: number) => React.ReactNode;
@@ -137,6 +148,26 @@ interface DetailViewProps {
    * plugin, and only hosts with a change store (web today) wire it.
    */
   renderChangesTab?: (() => React.ReactNode) | undefined;
+  /**
+   * When set, a "Schedule" tab renders the resource's sleep/wake schedule via
+   * this render prop. Host-driven like `renderChangesTab` — hosts wire it only
+   * for types whose plugin declares lifecycle start/stop actions and only
+   * when a schedule store exists (cloud mode).
+   */
+  renderScheduleTab?: (() => React.ReactNode) | undefined;
+  /**
+   * When set, a "Lease" tab renders the resource's TTL lease via this render
+   * prop. Host-driven like `renderScheduleTab` — leases apply to any
+   * resource, so hosts wire it whenever a lease store exists (cloud mode).
+   */
+  renderLeaseTab?: (() => React.ReactNode) | undefined;
+  /**
+   * When set, an "Ownership" tab renders who owns the resource, what it is
+   * for, and its authorizing ticket. Host-driven like `renderLeaseTab`, and
+   * ungated for the same reason: any resource can have an owner, so hosts
+   * wire it whenever an ownership store exists (cloud mode).
+   */
+  renderOwnershipTab?: (() => React.ReactNode) | undefined;
   /**
    * When `schema.noSqlBrowser` is set, the host provides the actual browser
    * UI via this render prop. The detail view renders it inside a dedicated
@@ -198,6 +229,9 @@ type Tab =
   | "logs"
   | "metrics"
   | "changes"
+  | "schedule"
+  | "lease"
+  | "ownership"
   | "artifacts"
   | "kv-browser"
   | "secret-versions"
@@ -236,6 +270,7 @@ export function DetailView({
   onAddSecretVersion,
   onModifySecretVersion,
   onOpenConsole,
+  costEstimate,
   peerPanes = EMPTY_PEER_PANES,
   renderPeerPane,
   onPeerPaneOpen,
@@ -247,6 +282,9 @@ export function DetailView({
   renderChildResource,
   metricSeries,
   renderChangesTab,
+  renderScheduleTab,
+  renderLeaseTab,
+  renderOwnershipTab,
   renderNoSqlBrowser,
   renderStorageBrowser,
   onChatStream,
@@ -271,6 +309,9 @@ export function DetailView({
   const hasMetrics = !!schema.metricsCapability;
   const metricSeriesEmpty = !metricSeries || metricSeries.length === 0;
   const hasChangesTab = !!renderChangesTab;
+  const hasScheduleTab = !!renderScheduleTab;
+  const hasLeaseTab = !!renderLeaseTab;
+  const hasOwnershipTab = !!renderOwnershipTab;
   const hasArtifacts = !!schema.artifactRegistry && !!onListArtifacts;
   const hasKvBrowser =
     !!schema.kvBrowser && !!onListKvKeys && !!onGetKvValue && !!onPutKvValue && !!onDeleteKvKey;
@@ -308,6 +349,8 @@ export function DetailView({
     hasLogs ||
     hasMetrics ||
     hasChangesTab ||
+    hasScheduleTab ||
+    hasLeaseTab ||
     hasArtifacts ||
     hasKvBrowser ||
     hasSecretVersions ||
@@ -335,6 +378,9 @@ export function DetailView({
   if (hasLogs) tabKeys.push("logs");
   if (hasMetrics) tabKeys.push("metrics");
   if (hasChangesTab) tabKeys.push("changes");
+  if (hasScheduleTab) tabKeys.push("schedule");
+  if (hasLeaseTab) tabKeys.push("lease");
+  if (hasOwnershipTab) tabKeys.push("ownership");
   if (hasArtifacts) tabKeys.push("artifacts");
   if (hasKvBrowser) tabKeys.push("kv-browser");
   if (hasSecretVersions) tabKeys.push("secret-versions");
@@ -437,6 +483,12 @@ export function DetailView({
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 pt-1">
+            {costEstimate && (
+              <CostEstimateChip
+                label={formatMonthlyEstimate(costEstimate.monthlyAmount, costEstimate.currency)}
+                estimate={costEstimate}
+              />
+            )}
             {schema.status && <StatusDotNodeRenderer node={schema.status} />}
             {onOpenConsole && (
               <button
@@ -551,6 +603,27 @@ export function DetailView({
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("changes")}>
                     Changes
+                  </TabButton>
+                );
+              }
+              if (key === "schedule") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("schedule")}>
+                    Schedule
+                  </TabButton>
+                );
+              }
+              if (key === "lease") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("lease")}>
+                    Lease
+                  </TabButton>
+                );
+              }
+              if (key === "ownership") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("ownership")}>
+                    Ownership
                   </TabButton>
                 );
               }
@@ -825,6 +898,42 @@ export function DetailView({
           className="flex-1 overflow-auto"
         >
           {renderChangesTab!()}
+        </div>
+      )}
+
+      {hasScheduleTab && activeTab === "schedule" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("schedule")}
+          aria-labelledby={tabIdFor("schedule")}
+          tabIndex={0}
+          className="flex-1 overflow-auto"
+        >
+          {renderScheduleTab!()}
+        </div>
+      )}
+
+      {hasLeaseTab && activeTab === "lease" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("lease")}
+          aria-labelledby={tabIdFor("lease")}
+          tabIndex={0}
+          className="flex-1 overflow-auto"
+        >
+          {renderLeaseTab!()}
+        </div>
+      )}
+
+      {hasOwnershipTab && activeTab === "ownership" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("ownership")}
+          aria-labelledby={tabIdFor("ownership")}
+          tabIndex={0}
+          className="flex-1 overflow-auto"
+        >
+          {renderOwnershipTab!()}
         </div>
       )}
 

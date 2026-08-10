@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
+import {
+  isValidCronTimezone,
+  nextCronOccurrences,
+  validateCronExpression,
+} from "@infrawrench/client-core";
 
 import { ApprovalCard } from "./ApprovalCard.js";
 import { WorkflowEditorView } from "./WorkflowEditorView.js";
@@ -736,45 +741,7 @@ function TriggerEditor({
         {/* Budgets are a cloud feature; the crossing is evaluated server-side. */}
         {(budgetIntegration || kind === "budget") && <option value="budget">Budget</option>}
       </select>
-      {trigger.kind === "cron" && (
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={
-              CRON_PRESETS.some((p) => p.value === trigger.expression.trim())
-                ? trigger.expression.trim()
-                : "custom"
-            }
-            onChange={(e) => {
-              if (e.target.value !== "custom") onChange({ ...trigger, expression: e.target.value });
-            }}
-            className="bg-transparent border border-white/15 rounded px-2 py-1"
-            aria-label="Schedule preset"
-          >
-            {CRON_PRESETS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-            <option value="custom">Custom…</option>
-          </select>
-          <div className="flex flex-col items-center leading-none">
-            <input
-              value={trigger.expression}
-              onChange={(e) => onChange({ ...trigger, expression: e.target.value })}
-              placeholder="* * * * *"
-              spellCheck={false}
-              aria-label="Cron expression"
-              className="bg-surface-overlay border border-white/15 rounded px-2 py-1 font-mono w-36 text-center tracking-[0.3em]"
-            />
-            <span className="mt-0.5 text-[9px] text-on-surface-faint tracking-tight">
-              min&nbsp;&nbsp;hour&nbsp;&nbsp;day&nbsp;&nbsp;mon&nbsp;&nbsp;wkday
-            </span>
-          </div>
-          <span className="text-[11px] text-blue-300/80" title={trigger.expression}>
-            {describeCron(trigger.expression)}
-          </span>
-        </div>
-      )}
+      {trigger.kind === "cron" && <CronTriggerFields trigger={trigger} onChange={onChange} />}
       {trigger.kind === "git" && (
         <div className="flex flex-wrap items-center gap-2">
           {!gitIntegration?.configured ? (
@@ -855,6 +822,120 @@ function TriggerEditor({
         />
       )}
       {kind === "manual" && <span className="opacity-50">infra.prompt() available</span>}
+    </div>
+  );
+}
+
+/**
+ * Cron-trigger controls: preset picker, raw 5-field expression, optional IANA
+ * timezone, and a live preview of the next few run times. The preview is
+ * computed by the same shared cron engine the schedulers (cloud poller,
+ * desktop cron runner) fire from, so what it shows is what will happen.
+ */
+function CronTriggerFields({
+  trigger,
+  onChange,
+}: {
+  trigger: Extract<WorkflowTrigger, { kind: "cron" }>;
+  onChange: (t: WorkflowTrigger) => void;
+}) {
+  const expression = trigger.expression;
+  const timezone = trigger.timezone?.trim() ?? "";
+
+  const cronError = useMemo(() => validateCronExpression(expression), [expression]);
+  const timezoneError = useMemo(
+    () => (timezone && !isValidCronTimezone(timezone) ? `Unknown timezone "${timezone}"` : null),
+    [timezone],
+  );
+
+  const nextRuns = useMemo(() => {
+    if (cronError || timezoneError) return [];
+    try {
+      return nextCronOccurrences(expression, 3, timezone ? { timezone } : {});
+    } catch {
+      return [];
+    }
+  }, [expression, timezone, cronError, timezoneError]);
+
+  const formatRun = useMemo(() => {
+    try {
+      // Show run times in the zone the schedule is evaluated in (UTC when
+      // unset) — a "daily at 09:00" cron previews as 09:00, not the viewer's
+      // local rendering of it.
+      const dtf = new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: timezone || "UTC",
+      });
+      return (d: Date) => dtf.format(d);
+    } catch {
+      return (d: Date) => d.toISOString();
+    }
+  }, [timezone]);
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        value={
+          CRON_PRESETS.some((p) => p.value === expression.trim()) ? expression.trim() : "custom"
+        }
+        onChange={(e) => {
+          if (e.target.value !== "custom") onChange({ ...trigger, expression: e.target.value });
+        }}
+        className="bg-transparent border border-white/15 rounded px-2 py-1"
+        aria-label="Schedule preset"
+      >
+        {CRON_PRESETS.map((p) => (
+          <option key={p.value} value={p.value}>
+            {p.label}
+          </option>
+        ))}
+        <option value="custom">Custom…</option>
+      </select>
+      <div className="flex flex-col items-center leading-none">
+        <input
+          value={expression}
+          onChange={(e) => onChange({ ...trigger, expression: e.target.value })}
+          placeholder="* * * * *"
+          spellCheck={false}
+          aria-label="Cron expression"
+          className="bg-surface-overlay border border-white/15 rounded px-2 py-1 font-mono w-36 text-center tracking-[0.3em]"
+        />
+        <span className="mt-0.5 text-[9px] text-on-surface-faint tracking-tight">
+          min&nbsp;&nbsp;hour&nbsp;&nbsp;day&nbsp;&nbsp;mon&nbsp;&nbsp;wkday
+        </span>
+      </div>
+      <input
+        value={trigger.timezone ?? ""}
+        onChange={(e) => {
+          const tz = e.target.value;
+          // Keep the property absent (not "") when cleared, matching storage.
+          const { timezone: _drop, ...rest } = trigger;
+          onChange(tz ? { ...rest, timezone: tz } : rest);
+        }}
+        placeholder="UTC"
+        spellCheck={false}
+        aria-label="Timezone (IANA name, defaults to UTC)"
+        title="IANA timezone the schedule runs in, e.g. Europe/London. Leave empty for UTC."
+        className="bg-transparent border border-white/15 rounded px-2 py-1 w-32 font-mono"
+      />
+      {cronError || timezoneError ? (
+        <span className="text-[11px] text-red-400">{cronError ?? timezoneError}</span>
+      ) : (
+        <span className="text-[11px] text-blue-300/80" title={expression}>
+          {describeCron(expression)}
+          {nextRuns.length > 0 && (
+            <>
+              {" "}
+              Next: {nextRuns.map(formatRun).join(" · ")}
+              {timezone ? ` (${timezone})` : " (UTC)"}
+            </>
+          )}
+          {nextRuns.length === 0 && " This schedule never matches a run time."}
+        </span>
+      )}
     </div>
   );
 }

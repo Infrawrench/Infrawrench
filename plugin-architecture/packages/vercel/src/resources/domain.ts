@@ -21,8 +21,14 @@ export const VercelDomainResourceType = rt({
   // domain↔project association lives on `/v9/projects/{id}/domains`, which the
   // lister doesn't fetch.
   dependsOn: [{ fieldKey: "teamId", targetTypeId: "vercel-team", label: "owned by" }],
+  expiryFields: [
+    { fieldKey: "expiresAt", from: "expiry", kind: "domain", label: "Registration expires" },
+  ],
   supportsCreate: true,
   iconKey: "domain",
+  // Vercel's API lists domains but not their records, so the domain shows on
+  // the Domains surface as a zone with no records of its own.
+  dnsRole: { role: "zone", domainKey: "name" },
   attachTargets: [
     {
       pluginId: "vercel",

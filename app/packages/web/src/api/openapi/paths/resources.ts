@@ -11,6 +11,7 @@ import {
 } from "../common";
 import type { BuildContext } from "../context";
 import { FreezeLockedResponse } from "./change-freezes";
+import { TagPolicyUnmetResponse } from "./tag-policy";
 
 const StatusDot = strict({
   kind: z.literal("status-dot"),
@@ -85,6 +86,7 @@ const ResourceDetailResponse = strict({
   canEdit: z.boolean(),
   editableFields: z.array(EditableField),
   credentialFormats: z.array(CredentialFormat),
+  supportsTerraformExport: z.boolean(),
   hasManifestEditor: z.boolean(),
   hasSecretVersions: z.boolean(),
   resourceDisplayName: z.string(),
@@ -107,6 +109,11 @@ const ResourceDetailResponse = strict({
   databaseName: z.string(),
   storageBucketName: z.string(),
   supportsMetrics: z.boolean(),
+  schedulable: z
+    .boolean()
+    .describe(
+      "The type declares lifecycle start/stop actions, so this resource can carry a sleep/wake schedule.",
+    ),
 }).openapi("ResourceDetail");
 
 const ManifestResponse = strict({ manifest: z.string() }).openapi("Manifest");
@@ -240,6 +247,38 @@ const CredentialExport = strict({
   warning: z.string().optional(),
 }).openapi("CredentialExport");
 
+const ExportTerraformRequest = strict({
+  resourceId: ResourceId,
+  accountId: Uuid,
+}).openapi("ExportTerraformRequest");
+
+export const TerraformExport = strict({
+  /** The generated HCL document — empty string when nothing could be mapped. */
+  hcl: z.string(),
+  exported: z.array(
+    strict({
+      id: ResourceId,
+      displayName: z.string(),
+      pluginId: z.string(),
+      resourceTypeId: z.string(),
+      /** Terraform address, e.g. `hcloud_server.web_1`. */
+      address: z.string(),
+      /** `terraform import` ID when known. */
+      importId: z.string().optional(),
+    }),
+  ),
+  /** Resources that have no Terraform mapping yet, with the reason. */
+  unsupported: z.array(
+    strict({
+      id: ResourceId,
+      displayName: z.string(),
+      pluginId: z.string(),
+      resourceTypeId: z.string(),
+      reason: z.string(),
+    }),
+  ),
+}).openapi("TerraformExport");
+
 const CreateRequest = strict({
   accountId: Uuid,
   pluginId: z.string(),
@@ -315,13 +354,36 @@ const CreatePricingRequest = strict({
   parentResourceId: ResourceId.optional(),
 }).openapi("CreatePricingRequest");
 
-const CreateCostEstimateRequest = strict({
+const CostEstimateRequest = strict({
   accountId: Uuid,
   resourceTypeId: z.string(),
-  fields: z.record(z.string()),
+  /**
+   * Field values to price, keyed the way the create form keys them. Omit it
+   * together with `resourceId` to price an existing resource from its stored
+   * fields; supply both to price a proposed edit of one.
+   */
+  fields: z.record(z.string()).optional(),
+  /** An existing resource to price. Its stored fields seed the estimate. */
+  resourceId: ResourceId.optional(),
   pluginId: z.string().optional(),
   parentResourceId: ResourceId.optional(),
-}).openapi("CreateCostEstimateRequest");
+}).openapi("CostEstimateRequest");
+
+const CostEstimateLineItem = strict({
+  label: z.string(),
+  monthlyAmount: z.number(),
+  detail: z.string().optional(),
+  quantity: z.number().optional(),
+  unit: z.string().optional(),
+}).openapi("CostEstimateLineItem");
+
+const CostEstimate = strict({
+  monthlyAmount: z.number(),
+  currency: z.string(),
+  lineItems: z.array(CostEstimateLineItem),
+  partial: z.boolean().optional(),
+  notes: z.array(z.string()).optional(),
+}).openapi("CostEstimate");
 
 const FieldActionRequest = strict({
   accountId: Uuid,
@@ -692,6 +754,28 @@ export function registerResourcePaths(ctx: BuildContext) {
 
   registry.registerPath({
     method: "post",
+    path: "/api/org/{orgId}/resources/{pluginId}/{typeId}/export-terraform",
+    tags: ["Resources"],
+    summary: "Generate Terraform HCL for a resource (and its direct children) from stored state",
+    request: {
+      params: pluginTypeParams,
+      body: {
+        content: { "application/json": { schema: ExportTerraformRequest } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "Generated Terraform configuration",
+        content: { "application/json": { schema: TerraformExport } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
     path: "/api/org/{orgId}/resources/create",
     tags: ["Resources"],
     summary: "Create a new resource via its plugin",
@@ -703,6 +787,7 @@ export function registerResourcePaths(ctx: BuildContext) {
       200: { description: "Created", content: { "application/json": { schema: CreateResponse } } },
       400: ErrorResponses[400],
       404: ErrorResponses[404],
+      422: TagPolicyUnmetResponse,
     },
   });
 
@@ -712,7 +797,7 @@ export function registerResourcePaths(ctx: BuildContext) {
     tags: ["Resources"],
     summary: "Update a resource via its plugin",
     description:
-      "Applies the supplied field changes upstream and persists the refreshed fields/display name to the DB. The body's `fields` map only carries the keys the caller actually changed.",
+      "Applies the supplied field changes upstream and persists the refreshed fields/display name to the DB. The body's `fields` map only carries the keys the caller actually changed. Blocked with `423` while an org change freeze is in effect (this is also the path that applies right-sizing recommendations); every applied update is audit-logged.",
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: UpdateRequest } }, required: true },
@@ -721,6 +806,7 @@ export function registerResourcePaths(ctx: BuildContext) {
       200: { description: "Updated", content: { "application/json": { schema: UpdateResponse } } },
       400: ErrorResponses[400],
       404: ErrorResponses[404],
+      423: FreezeLockedResponse,
     },
   });
 
@@ -800,21 +886,29 @@ export function registerResourcePaths(ctx: BuildContext) {
 
   registry.registerPath({
     method: "post",
-    path: "/api/org/{orgId}/resources/create-cost-estimate",
+    path: "/api/org/{orgId}/resources/cost-estimate",
     tags: ["Resources"],
-    summary: "Cost estimate for the current create form values",
+    summary: "Estimated monthly cost of a configuration",
+    description:
+      "Calls the plugin's `estimateCost` and returns a monthly total with the line items behind " +
+      "it. Price a proposed resource by passing `fields`, an existing one by passing " +
+      "`resourceId`, or a proposed change to an existing one by passing both — `fields` is " +
+      "merged over the resource's stored fields, so the caller only sends what changed. " +
+      "`estimate` is null when the plugin cannot price the configuration; that is not the same " +
+      "as an estimate of zero, and it should not be rendered as one.",
     request: {
       params: OrgIdParam,
       body: {
-        content: { "application/json": { schema: CreateCostEstimateRequest } },
+        content: { "application/json": { schema: CostEstimateRequest } },
         required: true,
       },
     },
     responses: {
       200: {
-        description: "Estimate",
-        content: { "application/json": { schema: strict({ estimate: JsonObject.nullable() }) } },
+        description: "Estimate, or null when the plugin cannot price this configuration",
+        content: { "application/json": { schema: strict({ estimate: CostEstimate.nullable() }) } },
       },
+      404: ErrorResponses[404],
     },
   });
 

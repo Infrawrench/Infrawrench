@@ -128,9 +128,7 @@ export interface ShowWhenCondition {
  * express conditions like "show when type is A/AAAA/CNAME AND mode is custom".
  */
 export type ShowWhenRule =
-  | ShowWhenCondition
-  | { allOf: ShowWhenCondition[] }
-  | { anyOf: ShowWhenCondition[] };
+  ShowWhenCondition | { allOf: ShowWhenCondition[] } | { anyOf: ShowWhenCondition[] };
 
 export interface CreateFieldConfig {
   /** Key used in the `fields` map passed to `createResource` */

@@ -40,6 +40,15 @@ const manifest: PluginManifest = {
   // No `costs` capability: DeepSeek exposes a point-in-time balance and
   // nothing else — no usage series, no invoices, no per-day spend. A cost
   // chart built from a balance snapshot would be a fabrication.
+  //
+  // `credits` is the right shape for what it *does* expose. The host collects
+  // the balance on a slow cadence and derives the burn rate from the series,
+  // which is a measurement rather than an invention — and running a DeepSeek
+  // balance to zero is an outage, not an invoice.
+  credits: {
+    label: "Balance",
+    topUpUrl: "https://platform.deepseek.com/top_up",
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [ModelResourceType, BalanceResourceType];

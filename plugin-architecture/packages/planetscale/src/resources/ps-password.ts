@@ -31,6 +31,9 @@ export const PsPasswordResourceType = rt({
       label: "on branch",
     },
   ],
+  expiryFields: [
+    { fieldKey: "expiresAt", from: "expiry", kind: "api-token", label: "Password expires" },
+  ],
   parentTypeId: "ps-branch",
   supportsCreate: true,
   supportsUpdate: true,

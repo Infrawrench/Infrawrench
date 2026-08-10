@@ -3,6 +3,7 @@ import {
   dashboardTabTarget,
   accountTabTarget,
   deploymentsTabTarget,
+  probesTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -57,6 +58,11 @@ describe("getWorkspaceNavigateArgs", () => {
     const args = getWorkspaceNavigateArgs(accountTabTarget("acc-1"));
     expect(args.to).toBe("/accounts/$accountId");
     expect(args.params).toEqual({ accountId: "acc-1" });
+  });
+
+  it("returns probes route args", () => {
+    const args = getWorkspaceNavigateArgs(probesTabTarget());
+    expect(args.to).toBe("/probes");
   });
 
   it("returns resource route args for details view", () => {
@@ -124,10 +130,39 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(getWorkspaceNavigateArgs(deploymentsTabTarget())).toEqual({ to: "/deployments" });
   });
 
+  it("returns posture route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "posture" })).toEqual({ to: "/posture" });
+  });
+
+  it("returns dns route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "dns" })).toEqual({ to: "/dns" });
+  });
+
+  it("carries the environment diff pair as search params", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "environment-diff" })).toEqual({
+      to: "/environment-diff",
+    });
+    expect(getWorkspaceNavigateArgs({ kind: "environment-diff", a: "acc-a", b: "acc-b" })).toEqual({
+      to: "/environment-diff",
+      search: { a: "acc-a", b: "acc-b" },
+    });
+  });
+
   it("carries a hotlinked repo through as a search param", () => {
     expect(getWorkspaceNavigateArgs(deploymentsTabTarget("owner/name"))).toEqual({
       to: "/deployments",
       search: { repo: "owner/name" },
+    });
+  });
+
+  it("returns settings route args, clearing the section param for General", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "settings" })).toEqual({
+      to: "/settings",
+      search: {},
+    });
+    expect(getWorkspaceNavigateArgs({ kind: "settings", section: "team" })).toEqual({
+      to: "/settings",
+      search: { section: "team" },
     });
   });
 });
@@ -153,6 +188,35 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the deployments path", () => {
     expect(syncWorkspaceRouteFromPath("/deployments")).toEqual({ kind: "deployments" });
+  });
+
+  it("parses the posture path", () => {
+    expect(syncWorkspaceRouteFromPath("/posture")).toEqual({ kind: "posture" });
+  });
+
+  it("parses the dns path", () => {
+    expect(syncWorkspaceRouteFromPath("/dns")).toEqual({ kind: "dns" });
+  });
+
+  it("parses the probes path", () => {
+    expect(syncWorkspaceRouteFromPath("/probes")).toEqual({ kind: "probes" });
+  });
+
+  it("parses the environment diff path, with and without a pair", () => {
+    expect(syncWorkspaceRouteFromPath("/environment-diff")).toEqual({ kind: "environment-diff" });
+    expect(syncWorkspaceRouteFromPath("/environment-diff", undefined, "a=acc-a&b=acc-b")).toEqual({
+      kind: "environment-diff",
+      a: "acc-a",
+      b: "acc-b",
+    });
+  });
+
+  it("parses the settings path with its section param", () => {
+    expect(syncWorkspaceRouteFromPath("/settings")).toEqual({ kind: "settings" });
+    expect(syncWorkspaceRouteFromPath("/settings", undefined, "section=billing")).toEqual({
+      kind: "settings",
+      section: "billing",
+    });
   });
 
   // Under hash history the query lives inside the fragment, so the repo a
@@ -243,7 +307,7 @@ describe("syncWorkspaceRouteFromPath", () => {
   });
 
   it("returns null for unknown paths", () => {
-    expect(syncWorkspaceRouteFromPath("/settings")).toBeNull();
+    expect(syncWorkspaceRouteFromPath("/moment")).toBeNull();
   });
 
   it("returns null for incomplete paths", () => {

@@ -26,6 +26,10 @@ export function SavingsSection() {
   // emits — but it is part of the contract, and a column of blanks reads as
   // "this costs nothing", so honour it here too rather than assume.
   const showCost = data !== null && data.costBasis !== "unavailable";
+  // Ownership is a cloud record, and `costBasis: "unavailable"` marks the one
+  // store that has none. Mobile is cloud-only, but the signal is part of the
+  // contract, so honour it rather than label every row "Unowned".
+  const showOwner = showCost;
 
   function openResource(resource: OrphanedResource) {
     router.push(
@@ -73,6 +77,7 @@ export function SavingsSection() {
                   key={r.id}
                   resource={r}
                   showCost={showCost}
+                  showOwner={showOwner}
                   costWindowDays={data.costWindowDays}
                   onPress={() => openResource(r)}
                 />
@@ -87,6 +92,9 @@ export function SavingsSection() {
           {showCost
             ? `Cost figures are best-effort, matched from collected per-resource billing rows over the last ${data.costWindowDays} days; most providers don't report cost at resource granularity.`
             : "No cost figures here — the flags themselves never depend on billing data."}{" "}
+          {showOwner && data.unownedCount > 0
+            ? `${data.unownedCount} of ${data.totalCount} have no recorded owner. `
+            : ""}
           Confirm a resource really is unused before deleting it.
         </Text>
       )}
@@ -97,11 +105,13 @@ export function SavingsSection() {
 function OrphanRow({
   resource,
   showCost,
+  showOwner,
   costWindowDays,
   onPress,
 }: {
   resource: OrphanedResource;
   showCost: boolean;
+  showOwner: boolean;
   costWindowDays: number;
   onPress: () => void;
 }) {
@@ -121,6 +131,16 @@ function OrphanRow({
         <Text style={styles.subtitle} numberOfLines={2}>
           {resource.resourceTypeName} · {resource.reason}
         </Text>
+        {showOwner && (
+          // "Unowned" is rendered rather than omitted: it is the finding, and a
+          // missing line on a phone reads as "not loaded" rather than "nobody
+          // has claimed this".
+          <Text style={resource.owner ? styles.owner : styles.unowned} numberOfLines={1}>
+            {resource.owner
+              ? `${resource.owner.displayName}${resource.owner.isLabel ? " (team)" : ""}`
+              : "Unowned"}
+          </Text>
+        )}
       </View>
       {cost && (
         <View style={styles.costCell}>
@@ -142,6 +162,8 @@ const styles = StyleSheet.create({
   rowMain: { flex: 1, gap: 2 },
   title: { color: colors.text, fontSize: 15, fontWeight: "500" },
   subtitle: { color: colors.textMuted, fontSize: 12 },
+  owner: { color: colors.textMuted, fontSize: 12 },
+  unowned: { color: colors.textFaint, fontSize: 12, fontStyle: "italic" },
   costCell: { alignItems: "flex-end" },
   cost: { color: colors.text, fontSize: 14, fontWeight: "500" },
   costWindow: { color: colors.textFaint, fontSize: 11 },

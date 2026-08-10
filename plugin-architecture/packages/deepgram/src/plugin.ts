@@ -52,6 +52,13 @@ const manifest: PluginManifest = {
     },
     caCertCredentialField,
   ],
+  credits: {
+    label: "Balance",
+    topUpUrl: "https://console.deepgram.com/",
+    // Balances are an admin/owner-scoped read; a `member` key sees none, which
+    // is a permission gap rather than an empty pot.
+    requiresElevatedCredential: true,
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

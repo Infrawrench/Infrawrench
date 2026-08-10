@@ -1,0 +1,1 @@
+ALTER TABLE "cost_anomalies" ADD COLUMN "hints" jsonb;

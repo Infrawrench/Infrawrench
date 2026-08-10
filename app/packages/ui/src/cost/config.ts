@@ -24,6 +24,11 @@ import {
   type CostQueryRequest,
   type CustomGraphWidgetConfig,
   type DashboardWidgetKind,
+  TAG_POLICY_LIMITS,
+  type AllocationRuleInput,
+  type AllocationRuleMatch,
+  type RequiredTag,
+  type TagPolicy,
 } from "@infrawrench/client-core";
 
 export {
@@ -68,6 +73,22 @@ export {
   type CostQuerySeries,
   type CostQueryResponse,
   type CustomGraphWidgetConfig,
+  TAG_POLICY_LIMITS,
+  ALLOCATION_RULE_LIMITS,
+  UNALLOCATED_KEY,
+  taggedSpendPercent,
+  type RequiredTag,
+  type TagPolicy,
+  type TagPolicyViolation,
+  type AccountTagCompliance,
+  type TagComplianceReport,
+  type CostCentre,
+  type AllocationRuleMatch,
+  type AllocationRule,
+  type AllocationRuleInput,
+  type UntaggedSpendReport,
+  type ShowbackReportCentre,
+  type ShowbackReport,
 } from "@infrawrench/client-core";
 
 export const costFilterSchema = z.object({
@@ -174,6 +195,46 @@ export function widgetConfigSchemaFor(kind: DashboardWidgetKind) {
   return widgetConfigSchemas[kind];
 }
 
+/** One required tag in the org policy: a key, optionally with allowed values. */
+export const requiredTagSchema = z.object({
+  key: z.string().min(1).max(TAG_POLICY_LIMITS.maxKeyLength),
+  allowedValues: z
+    .array(z.string().min(1).max(TAG_POLICY_LIMITS.maxValueLength))
+    .max(TAG_POLICY_LIMITS.maxAllowedValues)
+    .optional(),
+});
+
+/** The org tag policy (PUT /tag-policy). */
+export const tagPolicySchema = z.object({
+  requiredTags: z.array(requiredTagSchema).max(TAG_POLICY_LIMITS.maxRequiredTags),
+  enforceOnCreate: z.boolean(),
+});
+
+export const costCentreInputSchema = z.object({
+  name: z.string().min(1).max(120),
+  description: z.string().max(2000).optional(),
+});
+
+/** All set fields must match; an empty match is a catch-all. */
+export const allocationRuleMatchSchema = z
+  .object({
+    tagKey: z.string().min(1).max(TAG_POLICY_LIMITS.maxKeyLength).optional(),
+    tagValue: z.string().max(TAG_POLICY_LIMITS.maxValueLength).optional(),
+    accountId: z.string().min(1).optional(),
+    pluginId: z.string().min(1).optional(),
+    service: z.string().min(1).optional(),
+  })
+  .refine((m) => !m.tagValue?.trim() || !!m.tagKey?.trim(), {
+    message: "tagValue requires tagKey",
+    path: ["tagValue"],
+  });
+
+export const allocationRuleInputSchema = z.object({
+  costCentreId: z.string().min(1),
+  priority: z.number().int().min(0).max(100_000),
+  match: allocationRuleMatchSchema,
+});
+
 /** The cost query the API accepts — a graph config resolved to concrete dates. */
 export const costQueryRequestSchema = z.object({
   from: isoDate,
@@ -202,4 +263,8 @@ export type SchemasMatchCostContract = [
   Exact<z.infer<typeof costAnomalySettingsSchema>, CostAnomalySettings>,
   Exact<z.infer<typeof costQueryRequestSchema>, CostQueryRequest>,
   Exact<z.infer<typeof customGraphWidgetConfigSchema>, CustomGraphWidgetConfig>,
+  Exact<z.infer<typeof requiredTagSchema>, RequiredTag>,
+  Exact<z.infer<typeof tagPolicySchema>, TagPolicy>,
+  Exact<z.infer<typeof allocationRuleMatchSchema>, AllocationRuleMatch>,
+  Exact<z.infer<typeof allocationRuleInputSchema>, AllocationRuleInput>,
 ];

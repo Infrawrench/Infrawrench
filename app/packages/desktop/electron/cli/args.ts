@@ -2,6 +2,9 @@
 // subcommand routing happens in main.ts over the returned positionals.
 import { parseArgs } from "node:util";
 import { CliError, type CliFlags } from "./context";
+import type { FanoutFlags } from "./commands/ssh-fanout";
+import type { DiffFlags } from "./commands/diff";
+import type { ConfigFlags } from "./commands/config";
 
 export interface RangeFlags {
   last?: string | undefined;
@@ -23,6 +26,11 @@ export interface RangeFlags {
   kind?: string | undefined;
   /** Resource id to filter/focus on (`changes`, `graph`). */
   resource?: string | undefined;
+  /**
+   * `moment` half-window, in `parseDuration` form (`30m`, `6h`). Named apart
+   * from `--last` because it is a ± around a centre, not a lookback.
+   */
+  window?: string | undefined;
 }
 
 /** Flags for the push-up commands (`page`, `costs push`). */
@@ -65,11 +73,21 @@ export interface DeployFlags {
   created: boolean;
 }
 
+/** Flags for `export`. */
+export interface ExportFlags {
+  /** Export format. Only "terraform" today; validated in the command. */
+  format?: string | undefined;
+}
+
 export interface ParsedCli {
   flags: CliFlags;
   range: RangeFlags;
   push: PushFlags;
   deploy: DeployFlags;
+  exportFlags: ExportFlags;
+  fanout: FanoutFlags;
+  diff: DiffFlags;
+  config: ConfigFlags;
   positionals: string[];
   version: boolean;
   /** `costs --anomalies` — the spend-spike list instead of the spend chart. */
@@ -104,8 +122,12 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         limit: { type: "string" },
         kind: { type: "string" },
         resource: { type: "string" },
+        // `moment` half-window (± around the timestamp).
+        window: { type: "string", short: "w" },
         // `costs --anomalies` — same command, different question.
         anomalies: { type: "boolean", default: false },
+        // `posture dismiss` — why the finding is an accepted risk.
+        reason: { type: "string" },
         // Push-up flags (`page`, `costs push`).
         source: { type: "string" },
         key: { type: "string" },
@@ -113,6 +135,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         cooldown: { type: "string" },
         voice: { type: "boolean", default: false },
         file: { type: "string", short: "f" },
+        // Export flags (`export`).
+        format: { type: "string" },
         // Deploy flags (`deploy`).
         env: { type: "string", short: "e" },
         plan: { type: "boolean", default: false },
@@ -121,6 +145,25 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         "to-run": { type: "string" },
         "delete-created": { type: "boolean", default: false },
         created: { type: "boolean", default: false },
+        // Fan-out SSH flags (`ssh-fanout`). `--list` and `--yes` are booleans;
+        // the rest narrow the host set or supply credentials.
+        list: { type: "boolean", default: false },
+        hosts: { type: "string" },
+        plugin: { type: "string" },
+        tag: { type: "string" },
+        user: { type: "string" },
+        snippet: { type: "string" },
+        yes: { type: "boolean", short: "y", default: false },
+        concurrency: { type: "string" },
+        // Environment diff (`diff`). `-a` is the existing account flag, so the
+        // second side needs one of its own.
+        against: { type: "string", short: "b" },
+        all: { type: "boolean", default: false },
+        // Config-as-code flags (`config`). `--file` doubles as the export
+        // destination; `--out` is the name that reads right when writing.
+        out: { type: "string" },
+        sections: { type: "string" },
+        prune: { type: "boolean", default: false },
       },
     });
   } catch (e) {
@@ -180,6 +223,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       org: str("org") ?? null,
       local: values.local === true,
       account: str("account") ?? null,
+      reason: str("reason") ?? null,
       help: values.help === true,
     },
     range: {
@@ -193,6 +237,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       limit: positiveInt("limit"),
       kind: str("kind"),
       resource: str("resource"),
+      window: str("window"),
     },
     deploy: {
       env: str("env"),
@@ -201,6 +246,31 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       toRun: str("to-run"),
       deleteCreated: values["delete-created"] === true,
       created: values.created === true,
+    },
+    exportFlags: {
+      format: str("format"),
+    },
+    diff: {
+      against: str("against"),
+      all: values.all === true,
+    },
+    fanout: {
+      list: values.list === true,
+      hosts: str("hosts"),
+      plugin: str("plugin"),
+      tag: str("tag"),
+      key: str("key"),
+      user: str("user"),
+      snippet: str("snippet"),
+      yes: values.yes === true,
+      concurrency: positiveInt("concurrency"),
+    },
+    config: {
+      file: str("file"),
+      out: str("out"),
+      sections: str("sections"),
+      prune: values.prune === true,
+      yes: values.yes === true,
     },
     push: {
       source: str("source"),

@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 
 vi.mock("../../db/client", () => ({ db: {} }));
+// The active-freeze query itself now lives in server-core (so the poller's
+// schedule pass can respect freezes); mock it out the same way as the db.
+vi.mock("@infrawrench/server-core/change-freezes", () => ({
+  findActiveChangeFreeze: vi.fn(),
+}));
 vi.mock("../audit", () => ({ logAudit: vi.fn() }));
 
 const { schemaDeclaresDestructiveAction, freezeBlockedPayload, describeFreeze } =

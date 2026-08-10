@@ -1,0 +1,33 @@
+## Build-context excludes for every image built from the repo root
+## (infra/docker/service.Dockerfile, infra/docker/dev.Dockerfile).
+## Dependencies are installed and dist/ built inside the containers, so host
+## artifacts (macOS-native node_modules especially) must never leak in.
+
+.git
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+**/out
+**/release
+**/*.tsbuildinfo
+
+# Secrets — env files stay on the host; the example files are documentation.
+**/.env
+**/.env.*
+!**/.env.example
+**/*.local
+**/.dev.vars
+
+# Generated SDKs, framework caches, misc
+/sdk
+**/.astro
+**/.wrangler
+**/.next
+src-tauri/target
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+.reviews
+.claude/worktrees

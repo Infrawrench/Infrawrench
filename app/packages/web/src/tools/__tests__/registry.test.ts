@@ -15,6 +15,21 @@ vi.mock("../costs", () => ({
     { name: "k1", title: "K1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
+vi.mock("../schedules", () => ({
+  scheduleTools: () => [
+    { name: "sc1", title: "SC1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
+vi.mock("../rightsizing", () => ({
+  rightsizingTools: () => [
+    { name: "rz1", title: "RZ1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
+vi.mock("../moment", () => ({
+  momentTools: () => [
+    { name: "m1", title: "M1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 vi.mock("../workflows", () => ({
   workflowTools: () => [
     { name: "w1", title: "W1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
@@ -67,6 +82,7 @@ describe("getToolRegistry", () => {
     expect(names).toContain("g1");
     expect(names).toContain("c1");
     expect(names).toContain("k1");
+    expect(names).toContain("m1");
     expect(names).toContain("w1");
     expect(names).toContain("cg1");
     expect(names).toContain("d1");

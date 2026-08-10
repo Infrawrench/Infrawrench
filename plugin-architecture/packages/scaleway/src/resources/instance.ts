@@ -32,6 +32,15 @@ export const InstanceResourceType = rt({
   ],
   outputs: [o("publicIp", "Public IP"), o("privateIp", "Private IP")],
   iconKey: "instance",
+  // Sleep/wake schedules: serverAction poweron / poweroff. A powered-off
+  // instance stops compute billing (volumes and reserved IPs keep billing).
+  lifecycle: {
+    startActionId: "poweron",
+    stopActionId: "poweroff",
+    statusFieldKey: "state",
+    runningValues: ["running", "starting"],
+    stoppedValues: ["stopped", "stopped in place", "stopping"],
+  },
   sshEndpoint: {
     hostOutputKey: "publicIp",
     privateHostOutputKey: "privateIp",

@@ -69,17 +69,10 @@ vi.mock("../db/schema", () => tables);
 // --- push dispatch mock ----------------------------------------------------
 // The pager fans out to mobile push alongside Twilio; tests control the
 // result to exercise the combined pagedAt accounting.
-const sendPushToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0 }));
-vi.mock("../push/dispatch", () => ({ sendPushToOrg }));
 
 // Slack and Teams are sibling transports with their own tests; stub them out
 // so the schema mock below doesn't have to satisfy their module-level column
 // lookups.
-const sendSlackToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0, failed: 0 }));
-vi.mock("../slack", () => ({ sendSlackToOrg }));
-
-const sendMsTeamsToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0, failed: 0 }));
-vi.mock("../msteams", () => ({ sendMsTeamsToOrg }));
 
 // select() needs to know which logical query is running. We infer from the
 // selected projection columns and the from() table.
@@ -130,6 +123,54 @@ const db = {
   }),
 };
 vi.mock("../db/client", () => ({ db }));
+
+/**
+ * All three transports sit behind `routeAlert` now, so that is the single seam
+ * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * it decides whether a cooldown or claim is kept, and faking it would hide
+ * exactly the bug it exists to prevent.
+ */
+// Defaults to a successful delivery: `routeAlert` never throws and always
+// returns a result, so a mock that resolves `undefined` would fail tests in a
+// way the real function cannot.
+const routeAlert = vi.fn(async (..._args: unknown[]) => routed());
+vi.mock("../alerts/route", () => ({
+  routeAlert: (...a: unknown[]) => routeAlert(...a),
+  alertReached: (r: { succeeded?: number; held?: number } | null | undefined) =>
+    (r?.succeeded ?? 0) > 0 || (r?.held ?? 0) > 0,
+}));
+
+/** A delivery that reached one Slack channel and one phone. */
+function routed(over: Record<string, unknown> = {}) {
+  return {
+    attempted: 2,
+    succeeded: 2,
+    byTransport: { push: 1, slack: 1, msTeams: 0 },
+    attemptedByTransport: { push: 1, slack: 1, msTeams: 0 },
+    held: 0,
+    unrouted: false,
+    matchedRuleIds: ["rule1"],
+    // The tracked-Slack half of the result. Present by default because
+    // `byTransport.slack` is 1 — a result claiming a Slack delivery with no
+    // message to show for it is a shape the real function never returns.
+    slackMessages: [],
+    deliveryIds: [],
+    ...over,
+  };
+}
+
+/** A delivery that reached nobody — no rule matched, or every channel failed. */
+function unroutedResult() {
+  return routed({
+    attempted: 0,
+    succeeded: 0,
+    byTransport: { push: 0, slack: 0, msTeams: 0 },
+    attemptedByTransport: { push: 0, slack: 0, msTeams: 0 },
+    matchedRuleIds: [],
+    slackMessages: [],
+    unrouted: true,
+  });
+}
 
 let pager: typeof import("../twilio-pager");
 let fetchSpy: MockInstance<typeof fetch>;
@@ -237,7 +278,7 @@ describe("notePollOutcome — early exits", () => {
     });
     expect(inserts).toHaveLength(0);
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(sendPushToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
   });
 
   it("swallows credential decryption failures (creds become null => disabled path)", async () => {
@@ -374,6 +415,7 @@ describe("notePollOutcome — error / threshold", () => {
 
   it("does not set pagedAt when every delivery fails", async () => {
     fetchSpy.mockResolvedValue(errResponse(500, "twilio is down"));
+    routeAlert.mockResolvedValue(unroutedResult());
     queues.settings = [[settingsRow()]];
     queues.count = [[{ count: 3 }]];
     queues.incident = [[]];
@@ -387,11 +429,15 @@ describe("notePollOutcome — error / threshold", () => {
     });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     // Incident insert happened, but no pagedAt update on pagingIncidents.
-    expect(updates.some((u) => u.table === "pagingIncidents")).toBe(false);
+    expect(
+      updates.some(
+        (u) => u.table === "pagingIncidents" && "pagedAt" in (u.set as Record<string, unknown>),
+      ),
+    ).toBe(false);
   });
 
   it("delivers push-only when Twilio creds are missing, and sets pagedAt on push success", async () => {
-    sendPushToOrg.mockResolvedValueOnce({ attempted: 2, succeeded: 2 });
+    routeAlert.mockResolvedValueOnce(routed());
     // No creds stored at all — previously this org silently skipped incidents.
     queues.settings = [
       [
@@ -416,7 +462,7 @@ describe("notePollOutcome — error / threshold", () => {
     });
     expect(inserts.filter((i) => i.table === "pagingIncidents")).toHaveLength(1);
     expect(fetchSpy).not.toHaveBeenCalled(); // no Twilio without creds
-    expect(sendPushToOrg).toHaveBeenCalledTimes(1);
+    expect(routeAlert).toHaveBeenCalledTimes(1);
     // pagedAt set from the push success alone
     expect(updates.some((u) => u.table === "pagingIncidents")).toBe(true);
   });
@@ -433,24 +479,24 @@ describe("notePollOutcome — error / threshold", () => {
       resourceTypeId: "vm",
       outcome: "error",
     });
-    expect(sendPushToOrg).toHaveBeenCalledWith(
-      "org1",
-      "syncIncidents",
+    expect(routeAlert).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
+        organizationId: "org1",
+        trigger: "syncIncidents",
+        pushData: expect.objectContaining({
           type: "sync_incident",
-          orgId: "org1",
           accountId: "a1",
           resourceTypeId: "vm",
-          incidentId: expect.any(String),
         }),
+        // The account is what an "only prod pages me" rule matches on.
+        facts: expect.objectContaining({ accountId: "a1", resourceTypeId: "vm" }),
       }),
     );
   });
 
   it("sets pagedAt when Twilio fails but push succeeds", async () => {
     fetchSpy.mockResolvedValue(errResponse(500, "twilio down"));
-    sendPushToOrg.mockResolvedValueOnce({ attempted: 1, succeeded: 1 });
+    routeAlert.mockResolvedValueOnce(routed());
     queues.settings = [[settingsRow()]];
     queues.count = [[{ count: 3 }]];
     queues.incident = [[]];

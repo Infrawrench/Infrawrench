@@ -580,3 +580,11 @@ export const EC2_SIZES: SizeOption[] = [
     category: "R7g · Memory-optimized (Graviton3)",
   },
 ];
+
+/**
+ * The exact `sshAccess` string the EC2 lister stores when an attached security
+ * group opens TCP/22 to 0.0.0.0/0 (or ::/0). The `ec2-ssh-world-open` posture
+ * check matches this field with `equals`, so both sides must reference this
+ * constant — copy drift would silently disarm the check.
+ */
+export const EC2_SSH_WORLD_OPEN = "Port 22 open to the world (0.0.0.0/0).";

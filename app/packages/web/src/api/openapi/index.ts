@@ -15,14 +15,36 @@ import { registerAccountPaths } from "./paths/accounts";
 import { registerDashboardPaths } from "./paths/dashboards";
 import { registerCostPaths } from "./paths/costs";
 import { registerOrphanPaths } from "./paths/orphans";
+import { registerEnvironmentDiffPaths } from "./paths/environment-diff";
+import { registerRightsizingPaths } from "./paths/rightsizing";
 import { registerBudgetPaths } from "./paths/budgets";
+import { registerMetricAlertPaths } from "./paths/metric-alerts";
 import { registerChangeFreezePaths } from "./paths/change-freezes";
+import { registerTagPolicyPaths } from "./paths/tag-policy";
+import { registerCostCentrePaths } from "./paths/cost-centres";
 import { registerCustomGraphPaths } from "./paths/custom-graphs";
+import { registerOrgConfigPaths } from "./paths/org-config";
 import { registerWorkflowApprovalPaths } from "./paths/workflow-approvals";
+import { registerWorkflowPaths } from "./paths/workflows";
 import { registerDeploymentPaths } from "./paths/deployments";
 import { registerPagePaths } from "./paths/pages";
 import { registerResourcePaths } from "./paths/resources";
 import { registerResourceChangePaths } from "./paths/resource-changes";
+import { registerStatusIncidentPaths } from "./paths/status-incidents";
+import { registerExpiringPaths } from "./paths/expiring";
+import { registerPosturePaths } from "./paths/posture";
+import { registerDnsPaths } from "./paths/dns";
+import { registerMomentPaths } from "./paths/moment";
+import { registerSchedulePaths } from "./paths/schedules";
+import { registerLeasePaths } from "./paths/leases";
+import { registerSessionRecordingPaths } from "./paths/session-recordings";
+import { registerAccessRequestPaths } from "./paths/access-requests";
+import { registerCredentialHygienePaths } from "./paths/credential-hygiene";
+import { registerCreditPaths } from "./paths/credits";
+import { registerProbePaths } from "./paths/probes";
+import { registerStatusPagePaths } from "./paths/status-pages";
+import { registerOwnershipPaths } from "./paths/ownership";
+import { registerLogWorkspacePaths } from "./paths/log-workspaces";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
 import { registerAssociationPaths } from "./paths/associations";
 import { registerDependencyGraphPaths } from "./paths/dependency-graph";
@@ -32,6 +54,7 @@ import { registerStorageUploadPaths } from "./paths/storage-upload";
 import { registerSftpUploadPaths } from "./paths/sftp-upload";
 import { registerSshKeyPaths } from "./paths/ssh-keys";
 import { registerSshTunnelPaths } from "./paths/ssh-tunnels";
+import { registerSshFanoutPaths } from "./paths/ssh-fanout";
 import { registerBastionPaths } from "./paths/bastions";
 import { registerAgentPaths } from "./paths/agents";
 import { registerTeamPaths } from "./paths/team";
@@ -43,6 +66,7 @@ import { registerSyncPaths } from "./paths/sync";
 import { registerWebhookPaths } from "./paths/webhooks";
 import { registerAdminPaths } from "./paths/admin";
 import { registerPushPaths } from "./paths/push";
+import { registerAlertRulePaths } from "./paths/alert-rules";
 import { registerSlackPaths } from "./paths/slack";
 import { registerMsTeamsPaths } from "./paths/msteams";
 import { registerDigestPaths } from "./paths/digest";
@@ -94,14 +118,36 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerDashboardPaths(ctx);
   registerCostPaths(ctx);
   registerOrphanPaths(ctx);
+  registerRightsizingPaths(ctx);
   registerBudgetPaths(ctx);
+  registerMetricAlertPaths(ctx);
   registerChangeFreezePaths(ctx);
+  registerTagPolicyPaths(ctx);
+  registerCostCentrePaths(ctx);
   registerCustomGraphPaths(ctx);
+  registerOrgConfigPaths(ctx);
   registerWorkflowApprovalPaths(ctx);
+  registerWorkflowPaths(ctx);
   registerDeploymentPaths(ctx);
   registerPagePaths(ctx);
   registerResourcePaths(ctx);
   registerResourceChangePaths(ctx);
+  registerStatusIncidentPaths(ctx);
+  registerExpiringPaths(ctx);
+  registerPosturePaths(ctx);
+  registerDnsPaths(ctx);
+  registerEnvironmentDiffPaths(ctx);
+  registerMomentPaths(ctx);
+  registerSchedulePaths(ctx);
+  registerLeasePaths(ctx);
+  registerSessionRecordingPaths(ctx);
+  registerAccessRequestPaths(ctx);
+  registerCredentialHygienePaths(ctx);
+  registerCreditPaths(ctx);
+  registerProbePaths(ctx);
+  registerStatusPagePaths(ctx);
+  registerOwnershipPaths(ctx);
+  registerLogWorkspacePaths(ctx);
   registerConnectionFeaturePaths(ctx);
   registerAssociationPaths(ctx);
   registerDependencyGraphPaths(ctx);
@@ -111,6 +157,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerSftpUploadPaths(ctx);
   registerSshKeyPaths(ctx);
   registerSshTunnelPaths(ctx);
+  registerSshFanoutPaths(ctx);
   registerBastionPaths(ctx);
   registerAgentPaths(ctx);
   registerTeamPaths(ctx);
@@ -122,6 +169,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerWebhookPaths(ctx);
   registerAdminPaths(ctx);
   registerPushPaths(ctx);
+  registerAlertRulePaths(ctx);
   registerSlackPaths(ctx);
   registerMsTeamsPaths(ctx);
   registerDigestPaths(ctx);
@@ -157,8 +205,9 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       {
         name: "Workflows",
         description:
-          "Workflow (runbook) surface exposed over HTTP — currently the approval requests " +
-          "raised by infra.waitForApproval(...) inside runs.",
+          "Workflow (runbook) surface exposed over HTTP — the approval requests " +
+          "raised by infra.waitForApproval(...) inside runs, and the cron-schedule " +
+          "sub-resource. Full workflow CRUD is managed in the app.",
       },
       {
         name: "Resources",
@@ -180,11 +229,70 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         description:
           "Likely-orphaned and idle resources flagged by plugin heuristics, with best-effort cost.",
       },
+      {
+        name: "DNS",
+        description:
+          "Cross-provider DNS inventory — every synced zone and record, with dangling targets flagged as subdomain-takeover candidates.",
+      },
+      {
+        name: "Sleep schedules",
+        description:
+          "Off-at/on-at weekly windows on resources whose plugin declares lifecycle start/stop actions; the poller executes due transitions server-side.",
+      },
+      {
+        name: "Resource leases",
+        description:
+          "Optional TTLs on resources ('a test cluster for 3 days'). Active leases ride the expiry radar; auto-delete leases are announced twice and then deleted at expiry by the poller, deferring during change freezes.",
+      },
+      {
+        name: "Credit burndown",
+        description:
+          "Prepaid credit balances with a burn rate measured from the server's own series of readings and a runway bounded by both the burn and the credit's own expiry. Only providers that expose a balance appear; most bill in arrears and have no pot to burn down.",
+      },
+      {
+        name: "Credential hygiene",
+        description:
+          "Unused API keys, unreferenced SSH keys, and members holding write permissions they never exercise — derived from the audit log and the credential tables, with no provider call. Only writes are audit-logged, so the report deliberately draws no conclusion about read permissions.",
+      },
+      {
+        name: "Break-glass access",
+        description:
+          "Time-boxed permission elevation: ask for specific permissions for a specific number of minutes with a reason, someone else approves, the elevation lapses on its own. Grants are unioned into the requester's permissions at resolution time, so they reach every surface at once — and are deliberately excluded from API keys, which are not people.",
+      },
+      {
+        name: "Session recordings",
+        description:
+          "Replayable asciicasts of SSH sessions opened through the cloud. Cloud SSH is already proxied server-side, so recording tees a stream the server holds rather than needing an agent on the host; casts download in asciinema's own format. Opt-in per organization, retained on a per-organization window.",
+      },
+      {
+        name: "Synthetic probes",
+        description:
+          "HTTP uptime/latency checks run on an interval from an edge proxy outside the cluster; results land in the shared metric store and alert after N consecutive failures.",
+      },
+      {
+        name: "Status pages",
+        description:
+          "Public, unauthenticated views of a chosen set of synthetic probes. A page is created unpublished and reachable only via an unguessable slug; the public payload carries labels, states and uptime history — never probe URLs, resource ids or account names.",
+      },
+      {
+        name: "Ownership",
+        description:
+          "Owner, purpose and authorizing ticket on any resource. The orphan finder annotates every flagged resource with its owner and counts the unowned ones; resource-scoped alerts are additionally delivered to the owning person.",
+      },
+      {
+        name: "Log workspaces",
+        description:
+          "Saved multi-resource log tails: a named set of log streams plus a search expression, optionally alert-evaluated server-side.",
+      },
       { name: "Connect", description: "Helpers for shipping credentials into other services." },
       { name: "Storage", description: "Object storage helpers (uploads via API key)." },
       { name: "SFTP", description: "SFTP helpers (uploads via API key)." },
       { name: "SSH keys", description: "Org SSH keys for tunnel/SSH access." },
       { name: "SSH tunnels", description: "Server-side SSH tunnel lifecycle." },
+      {
+        name: "SSH fan-out",
+        description: "Run one command across many SSH hosts, with saved snippets.",
+      },
       {
         name: "Bastions",
         description:
@@ -214,10 +322,20 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "On-call alerts raised by your own systems, fanned out over the org's SMS, push, Slack, and Teams transports.",
       },
       { name: "Push", description: "Mobile push notification devices and preferences." },
-      { name: "Slack", description: "Slack workspace connection and per-channel alert routing." },
+      {
+        name: "Alerts",
+        description:
+          "Ordered alert routing rules — which alerts reach which destinations, with quiet hours and escalation — plus the held and awaiting-acknowledgement delivery queue.",
+      },
+      {
+        name: "Slack",
+        description:
+          "Slack workspace connection and the channels alert rules can name as destinations.",
+      },
       {
         name: "Microsoft Teams",
-        description: "Microsoft Teams webhook connections and per-channel alert routing.",
+        description:
+          "Microsoft Teams webhook connections and the channels alert rules can name as destinations.",
       },
     ],
   });
@@ -256,6 +374,9 @@ function injectOperationIds(doc: { paths?: Record<string, unknown> }) {
 const REQUIRED_PERMISSION: Record<string, string | null> = {
   // accounts
   "GET /accounts/plugins": "accounts:read",
+  "GET /accounts/plugins/{pluginId}/policy-template": "accounts:read",
+  "POST /accounts/preflight": "accounts:write",
+  "POST /accounts/{id}/preflight": "accounts:write",
   "GET /accounts": "accounts:read",
   "POST /accounts": "accounts:write",
   "DELETE /accounts/{id}": "accounts:delete",
@@ -264,6 +385,7 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /accounts/{id}/credentials": "secrets:write",
   "GET /accounts/{id}/resources": "resources:read",
   "POST /accounts/{id}/sync": "resources:read",
+  "GET /accounts/{id}/export-terraform": "resources:read",
   "GET /accounts/{id}/detail": "accounts:read",
   "POST /accounts/{id}/sync-type/{typeId}": "resources:read",
   // deployments
@@ -307,6 +429,10 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /custom-graphs/{id}": "dashboards:write",
   "DELETE /custom-graphs/{id}": "dashboards:write",
   "POST /custom-graphs/{id}/render": "dashboards:read",
+  // workflows (share the dashboards permissions, like custom graphs)
+  "GET /workflows/{id}/schedule": "dashboards:read",
+  "PUT /workflows/{id}/schedule": "dashboards:write",
+  "DELETE /workflows/{id}/schedule": "dashboards:write",
   // agents
   "GET /agents/accounts": "accounts:read",
   "GET /agents/settings": "accounts:read",
@@ -319,6 +445,130 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // change timeline
   "GET /changes": "resources:read",
   "GET /changes/resource": "resources:read",
+  // provider status correlation — reads the same resource set the incidents
+  // are matched against, so it rides the resources read scope
+  "GET /status-incidents": "resources:read",
+  // expiry radar — the feed is a read over the org's resource set; the alert
+  // settings decide what the org's channels hear, the same trust level as the
+  // drift alert settings
+  "GET /expiring": "resources:read",
+  // The moment union spans six read scopes; `resources:read` is the floor —
+  // feeds needing more (costs, workflows, deployments, audit, freezes) are
+  // omitted per-feed rather than gating the whole endpoint.
+  "GET /moment": "resources:read",
+  "GET /expiring/settings": "org:settings:write",
+  "PUT /expiring/settings": "org:settings:write",
+  "GET /posture": "resources:read",
+  "POST /posture/dismissals": "resources:write",
+  "DELETE /posture/dismissals": "resources:write",
+  "GET /dns": "resources:read",
+  // Environment diff — pure read over two accounts' already-synced inventories.
+  "GET /environment-diff": "resources:read",
+  "GET /posture/settings": "org:settings:write",
+  "PUT /posture/settings": "org:settings:write",
+  // sleep/wake schedules — reads ride the resource read scope (the list is
+  // derived from the org's resource set, like orphans); mutations are a
+  // standing instruction to invoke the same actions `resources:write` already
+  // gates on /resources/invoke-action
+  "GET /schedules": "resources:read",
+  "POST /schedules": "resources:write",
+  "POST /schedules/preview": "resources:read",
+  "PUT /schedules/{scheduleId}": "resources:write",
+  "DELETE /schedules/{scheduleId}": "resources:write",
+  // resource leases — the schedules stance: reads are a view over the org's
+  // resource set; mutations are resources:write. Setting autoDelete: true
+  // additionally requires resources:delete (checked in the handler — the
+  // lease becomes a standing deletion), which this one-permission-per-route
+  // map cannot express.
+  "GET /leases": "resources:read",
+  "GET /leases/resource": "resources:read",
+  "POST /leases": "resources:write",
+  "PUT /leases/{leaseId}": "resources:write",
+  "POST /leases/{leaseId}/cancel": "resources:write",
+  "DELETE /leases/{leaseId}": "resources:write",
+  // session recordings — their own permission family rather than `audit:read`
+  // or `ssh-keys:*`: watching a colleague's terminal back is a sharper
+  // capability than either, and the people who should hold it (compliance,
+  // security) are often not the people who administer keys. Deliberately
+  // absent from the `member` system role — recording exists to watch
+  // operators, so handing every operator the ability to watch defeats it.
+  // break-glass access — three verbs held by genuinely different people.
+  // `access:approve` is deliberately not implied by `team:role:write`: granting
+  // a role is a considered change, approving an elevation happens mid-incident.
+  // `revoke` has no entry because its permission depends on who is calling —
+  // the holder may always end their own grant — which this one-permission-per
+  // -route map cannot express; the handler owns it.
+  // credential hygiene — `audit:read`, not a family of its own. Every fact in
+  // the report is already reachable by anyone who can read the audit log, so a
+  // separate permission would only mean granting two things to get one view.
+  // credit burndown — `costs:read`. A prepaid balance is spend information,
+  // and the permission that already governs "what is this costing us" is the
+  // one that should govern "how much is left".
+  "GET /credits": "costs:read",
+  "GET /credential-hygiene": "audit:read",
+  "GET /access-requests": "access:read",
+  "GET /access-requests/catalog": "access:read",
+  "POST /access-requests": "access:request",
+  "POST /access-requests/{requestId}/approve": "access:approve",
+  "POST /access-requests/{requestId}/deny": "access:approve",
+  "POST /access-requests/{requestId}/withdraw": "access:request",
+  "GET /session-recordings": "session-recordings:read",
+  "GET /session-recordings/settings": "session-recordings:read",
+  "PUT /session-recordings/settings": "session-recordings:write",
+  "GET /session-recordings/{recordingId}": "session-recordings:read",
+  "GET /session-recordings/{recordingId}/cast": "session-recordings:read",
+  "DELETE /session-recordings/{recordingId}": "session-recordings:write",
+  // synthetic probes — the schedules stance: reads (list, suggestions mined
+  // from resource outputs, recorded series) ride the resource read scope;
+  // mutations are resources:write
+  "GET /probes": "resources:read",
+  "GET /probes/suggestions": "resources:read",
+  "GET /probes/{probeId}/metrics": "resources:read",
+  "POST /probes": "resources:write",
+  "PUT /probes/{probeId}": "resources:write",
+  "DELETE /probes/{probeId}": "resources:write",
+  // status pages — a page is a view over probes, so it rides the probe stance:
+  // whoever may create the monitoring may decide what of it is public.
+  // GET /api/status/{slug} is deliberately absent: it is mounted outside the
+  // org tree and takes no credentials at all.
+  "GET /status-pages": "resources:read",
+  "POST /status-pages": "resources:write",
+  "PUT /status-pages/{id}": "resources:write",
+  "POST /status-pages/{id}/rotate-slug": "resources:write",
+  "DELETE /status-pages/{id}": "resources:write",
+  // resource ownership — the leases stance. Note /ownership/members is
+  // resources:read, not team:read: the person who can create a resource must
+  // be able to say it is theirs.
+  "GET /ownership": "resources:read",
+  "GET /ownership/members": "resources:read",
+  "GET /ownership/resource": "resources:read",
+  "PUT /ownership": "resources:write",
+  "DELETE /ownership": "resources:write",
+  // log workspace saved queries — the schedules stance: reads are a view over
+  // the org's resource logs (which resources:read already gates via
+  // /resources/{pluginId}/{typeId}/logs); mutations are resources:write
+  "GET /log-workspaces": "resources:read",
+  "GET /log-workspaces/resources": "resources:read",
+  "POST /log-workspaces": "resources:write",
+  "PUT /log-workspaces/{queryId}": "resources:write",
+  "DELETE /log-workspaces/{queryId}": "resources:write",
+  // tag policy & showback — policy is org settings; compliance/untagged ride
+  // the resource/cost read scopes their data is computed over
+  "GET /tag-policy": "resources:read",
+  "PUT /tag-policy": "org:settings:write",
+  "GET /tag-policy/compliance": "resources:read",
+  "GET /costs/untagged": "costs:read",
+  "GET /costs/showback": "costs:read",
+  // cost centres & allocation rules
+  "GET /cost-centres": "costs:read",
+  "POST /cost-centres": "costs:write",
+  "PUT /cost-centres/{id}": "costs:write",
+  "DELETE /cost-centres/{id}": "costs:write",
+  "GET /cost-centres/rules": "costs:read",
+  "POST /cost-centres/rules": "costs:write",
+  "POST /cost-centres/rules/swap": "costs:write",
+  "PUT /cost-centres/rules/{id}": "costs:write",
+  "DELETE /cost-centres/rules/{id}": "costs:write",
   // resources
   "GET /resources/{pluginId}/{typeId}/detail": "resources:read",
   "GET /resources/{pluginId}/{typeId}/manifest": "resources:read",
@@ -335,11 +585,12 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /resources/nosql-command": "resources:execute",
   "POST /resources/attach": "resources:write",
   "POST /resources/{pluginId}/{typeId}/export-credential": "secrets:read",
+  "POST /resources/{pluginId}/{typeId}/export-terraform": "resources:read",
   "POST /resources/create": "resources:write",
   "POST /resources/create-config": "resources:write",
   "POST /resources/picker-resources": "resources:read",
   "POST /resources/create-pricing": "resources:read",
-  "POST /resources/create-cost-estimate": "resources:read",
+  "POST /resources/cost-estimate": "resources:read",
   "POST /resources/{pluginId}/{typeId}/peer-panes": "resources:read",
   "POST /resources/{pluginId}/{typeId}/metrics": "resources:read",
   // costs
@@ -385,6 +636,9 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /search": "resources:read",
   // orphans
   "GET /orphans": "resources:read",
+  // right-sizing — the list is derived from the org's resource set like
+  // orphans; prices are provider catalog rates, not the org's billing data
+  "GET /rightsizing": "resources:read",
   // ssh keys
   "GET /ssh-keys": "ssh-keys:read",
   "POST /ssh-keys": "ssh-keys:write",
@@ -392,6 +646,13 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "DELETE /ssh-keys/{id}": "ssh-keys:write",
   // ssh tunnels
   "POST /ssh-tunnels/create-account": "accounts:write",
+  // ssh fan-out
+  "GET /ssh-fanout/targets": "resources:read",
+  "POST /ssh-fanout/run": "resources:execute",
+  "GET /ssh-fanout/snippets": "resources:read",
+  "POST /ssh-fanout/snippets": "resources:execute",
+  "PUT /ssh-fanout/snippets/{id}": "resources:execute",
+  "DELETE /ssh-fanout/snippets/{id}": "resources:execute",
   "POST /ssh-tunnels/open": "resources:execute",
   "POST /ssh-tunnels/close": "resources:execute",
   "GET /ssh-tunnels/active": "resources:execute",
@@ -433,6 +694,11 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /api-keys": "apikeys:read",
   "POST /api-keys/{id}/revoke": "apikeys:write",
   "POST /api-keys/{id}/rotate": "apikeys:write",
+  // config as code (each route additionally checks the per-section permission
+  // of every section involved — see api/routes/org-config.ts)
+  "GET /config/export": "config:read",
+  "POST /config/plan": "config:read",
+  "POST /config/apply": "config:write",
   // sync (bearer-auth, scopes mirror permissions)
   "POST /v1/sync/pull": "resources:read",
   "POST /v1/sync/push": "resources:write",

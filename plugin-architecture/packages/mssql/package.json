@@ -35,10 +35,10 @@
     "mssql": ">=12"
   },
   "devDependencies": {
-    "@types/mssql": "^9.1.5",
-    "mssql": "^12.5.2",
+    "@types/mssql": "^9.1.11",
+    "mssql": "^12.7.0",
+    "tsdown": "^0.22.14",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.8",
-    "tsdown": "^0.22.14"
+    "vitest": "^4.1.10"
   }
 }

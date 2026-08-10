@@ -16,3 +16,9 @@ routeTree.gen.ts
 # only produces a false format:check failure right after you deploy.
 *.tfstate
 *.tfstate.*
+
+# Generator-owned artifacts — `generate:openapi` and `drizzle-kit generate`
+# write these wholesale in their own style. Formatting them just guarantees a
+# spurious mega-diff on the next regeneration.
+app/packages/web/openapi.json
+app/packages/web/src/db/migrations/

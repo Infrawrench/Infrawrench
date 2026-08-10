@@ -7,6 +7,7 @@ export const DropletResourceType = rt({
   fields: [
     f("name", "Name"),
     f("region", "Region", {
+      editable: false,
       kind: "enum",
       enumValues: [
         "nyc1",
@@ -22,11 +23,32 @@ export const DropletResourceType = rt({
         "syd1",
       ],
     }),
-    f("size", "Size", { description: "Droplet size slug, e.g. s-1vcpu-1gb" }),
-    f("image", "Image", { description: "Image slug or ID, e.g. ubuntu-24-04-x64" }),
+    f("size", "Size", {
+      description:
+        "Droplet size slug, e.g. s-1vcpu-1gb. Changing it resizes the Droplet (CPU/RAM-only resize; DO powers it off for the change)",
+    }),
+    f("image", "Image", {
+      description: "Image slug or ID, e.g. ubuntu-24-04-x64",
+      editable: false,
+    }),
     f("vpcUuid", "VPC", {
       required: false,
       description: "UUID of the VPC network this Droplet is attached to",
+      editable: false,
+    }),
+    f("status", "Status", { required: false, editable: false }),
+    f("nextBackupStart", "Next Backup Window", {
+      required: false,
+      editable: false,
+      description:
+        "Start of the next scheduled backup window; empty when automated backups are disabled",
+    }),
+    f("diskGb", "Disk (GB)", {
+      kind: "number",
+      required: false,
+      description:
+        "Actual disk size. A CPU/RAM-only resize keeps it, and the target size's included disk must be at least this big",
+      editable: false,
     }),
   ],
   outputs: [o("ipv4", "Public IPv4"), o("ipv4Private", "Private IPv4"), o("ipv6", "Public IPv6")],
@@ -42,6 +64,17 @@ export const DropletResourceType = rt({
     defaultUsername: "root",
     runningWhen: { fieldKey: "status", value: "active" },
   },
+  // Sleep/wake schedules: the existing droplet power actions. Stop is the
+  // hard power_off rather than the ACPI shutdown — a scheduled sleep must not
+  // depend on the guest OS honouring the event. (DO bills stopped droplets;
+  // the savings quote is an upper bound for this provider.)
+  lifecycle: {
+    startActionId: "power_on",
+    stopActionId: "power_off",
+    statusFieldKey: "status",
+    runningValues: ["active"],
+    stoppedValues: ["off"],
+  },
   agentVm: {
     sshKeyFieldKey: "sshPublicKey",
     defaultUsername: "root",
@@ -56,4 +89,35 @@ export const DropletResourceType = rt({
     hiddenFieldKeys: ["sshPublicKey"],
   },
   supportsCreate: true,
+  // Edit = rename + resize (the right-sizing apply path).
+  supportsUpdate: true,
+  // Right-sizing: /v2/sizes is the real catalog (capacity + USD prices +
+  // per-region availability). CPU is always reported; the memory series only
+  // exists on Droplets running the DO Metrics Agent — without it,
+  // recommendations fall back to the host's unmeasured-memory floor.
+  rightsizing: {
+    sizeFieldKey: "size",
+    regionFieldKey: "region",
+    diskFieldKey: "diskGb",
+    cpuMetric: { seriesLabel: "CPU Utilization" },
+    memoryMetric: { seriesLabel: "Memory Available", interpretation: "available-bytes" },
+    // Slug prefix before the first dash is the family (s-, c-, c2-, m3-,
+    // so1_5-, …) — staying inside it keeps the resize like-for-like.
+    sizeFamilyPattern: "^([a-z0-9_]+)-",
+    resizeNote:
+      "DigitalOcean powers the Droplet off for the resize and boots it again afterwards. CPU/RAM only — the disk is unchanged, so the change can be reverted.",
+  },
+  // The lister always writes `nextBackupStart` ("" when backups are off), so
+  // `equals ""` can't flag rows synced before the field existed.
+  postureChecks: [
+    {
+      id: "droplet-backups-disabled",
+      title: "Backups disabled",
+      severity: "low",
+      category: "data-protection",
+      conditions: [{ fieldKey: "nextBackupStart", when: "equals", value: "" }],
+      reason:
+        "The Droplet has no scheduled backup window — automated backups are off, so recovery depends entirely on manual snapshots.",
+    },
+  ],
 });

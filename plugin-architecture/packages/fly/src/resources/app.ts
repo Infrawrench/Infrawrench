@@ -30,6 +30,18 @@ export const AppResourceType = rt({
     }),
   ],
   iconKey: "app",
+  // `<app>.fly.dev`. App names are globally unique on Fly, so the name match
+  // is exact; the hostname itself is an output, not a field, so it isn't
+  // available as a `hostKeys` source.
+  dnsServiceHosts: [
+    {
+      id: "fly-dev",
+      label: "Fly.io app hostname",
+      hostPattern: String.raw`([a-z0-9][a-z0-9-]*)\.fly\.dev`,
+      reason:
+        "Fly app names are globally unique and released when the app is destroyed, so anyone can create an app with the same name and serve it under your hostname.",
+    },
+  ],
   supportsCreate: true,
   supportsMetrics: true,
 });

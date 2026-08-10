@@ -3,7 +3,9 @@ import "@xterm/xterm/css/xterm.css";
 import {
   attachAltBufferScrollHandler,
   attachTerminalClipboard,
+  createTerminalLinkHandler,
   getXtermTerminalOptions,
+  openTerminalLinkInNewTab,
 } from "@infrawrench/ui";
 
 interface K8sExecTerminalProps {
@@ -37,12 +39,16 @@ export function K8sExecTerminal({
     async function init() {
       const { Terminal } = await import("@xterm/xterm");
       const { FitAddon } = await import("@xterm/addon-fit");
+      const { WebLinksAddon } = await import("@xterm/addon-web-links");
       if (!containerRef.current || disposed) return;
 
-      term = new Terminal(getXtermTerminalOptions());
+      // Same link policy as the SSH terminal — a pod shell prints URLs too.
+      const linkHandler = createTerminalLinkHandler({ openExternal: openTerminalLinkInNewTab });
+      term = new Terminal({ ...getXtermTerminalOptions(), linkHandler });
 
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
+      term.loadAddon(new WebLinksAddon((event, uri) => linkHandler.activate(event, uri)));
       term.open(containerRef.current);
 
       const clipboard = attachTerminalClipboard(term);

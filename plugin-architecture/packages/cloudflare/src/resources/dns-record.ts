@@ -18,6 +18,12 @@ export const DnsRecordResourceType = rt({
   outputs: [],
   dependsOn: [{ fieldKey: "zoneName", targetTypeId: "zone", targetKey: "name", label: "in zone" }],
   parentTypeId: "zone",
+  dnsRole: {
+    role: "record",
+    zoneKey: "zoneName",
+    priorityKey: "priority",
+    proxiedKey: "proxied",
+  },
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "dns-record",

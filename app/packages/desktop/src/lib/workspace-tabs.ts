@@ -6,9 +6,19 @@ import {
   agentsTabTarget,
   costsTabTarget,
   graphTabTarget,
+  logsTabTarget,
+  changesTabTarget,
+  expiringTabTarget,
+  postureTabTarget,
+  dnsTabTarget,
+  environmentDiffTabTarget,
+  sshFanoutTabTarget,
+  metricAlertsTabTarget,
+  probesTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
+  settingsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -23,9 +33,19 @@ export {
   agentsTabTarget,
   costsTabTarget,
   graphTabTarget,
+  logsTabTarget,
+  changesTabTarget,
+  expiringTabTarget,
+  postureTabTarget,
+  dnsTabTarget,
+  environmentDiffTabTarget,
+  sshFanoutTabTarget,
+  metricAlertsTabTarget,
+  probesTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
+  settingsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -68,6 +88,43 @@ export function getWorkspaceNavigateArgs(
       return { to: "/costs", ...(replace ? { replace: true } : {}) };
     case "graph":
       return { to: "/graph", ...(replace ? { replace: true } : {}) };
+    case "logs":
+      return { to: "/logs", ...(replace ? { replace: true } : {}) };
+    case "changes":
+      return { to: "/changes", ...(replace ? { replace: true } : {}) };
+    case "expiring":
+      return { to: "/expiring", ...(replace ? { replace: true } : {}) };
+    case "posture":
+      return { to: "/posture", ...(replace ? { replace: true } : {}) };
+    case "dns":
+      return { to: "/dns", ...(replace ? { replace: true } : {}) };
+    // The two accounts ride as query parameters rather than path segments:
+    // they are a pair of optional ids, not a hierarchy, and the panel is
+    // reachable with neither of them chosen.
+    case "environment-diff": {
+      const search: Record<string, string> = {};
+      if (target.a) search["a"] = target.a;
+      if (target.b) search["b"] = target.b;
+      return {
+        to: "/environment-diff",
+        ...(Object.keys(search).length > 0 ? { search } : {}),
+        ...(replace ? { replace: true } : {}),
+      };
+    }
+    case "ssh-fanout":
+      return { to: "/ssh-fanout", ...(replace ? { replace: true } : {}) };
+    case "metric-alerts":
+      return { to: "/metric-alerts", ...(replace ? { replace: true } : {}) };
+    case "probes":
+      return { to: "/probes", ...(replace ? { replace: true } : {}) };
+    case "settings":
+      // Like chat: search passed explicitly so navigating back to the General
+      // section CLEARS the ?section= param instead of resolving back to it.
+      return {
+        to: "/settings",
+        search: target.section ? { section: target.section } : {},
+        ...(replace ? { replace: true } : {}),
+      };
     case "chat":
       // Always pass search explicitly: navigating from a conversation
       // (?conversation=x) to the list must CLEAR the param, or the route
@@ -153,9 +210,41 @@ export function syncWorkspaceRouteFromPath(
   if (segments[0] === "graph") {
     return graphTabTarget();
   }
+  if (segments[0] === "logs") {
+    return logsTabTarget();
+  }
+  if (segments[0] === "changes") {
+    return changesTabTarget();
+  }
+  if (segments[0] === "expiring") {
+    return expiringTabTarget();
+  }
+  if (segments[0] === "posture") {
+    return postureTabTarget();
+  }
+  if (segments[0] === "dns") {
+    return dnsTabTarget();
+  }
+  if (segments[0] === "environment-diff") {
+    const params = new URLSearchParams(search ?? "");
+    return environmentDiffTabTarget(params.get("a") ?? undefined, params.get("b") ?? undefined);
+  }
+  if (segments[0] === "ssh-fanout") {
+    return sshFanoutTabTarget();
+  }
+  if (segments[0] === "metric-alerts") {
+    return metricAlertsTabTarget();
+  }
+  if (segments[0] === "probes") {
+    return probesTabTarget();
+  }
   if (segments[0] === "chat") {
     const params = new URLSearchParams(search ?? "");
     return chatTabTarget(params.get("conversation") ?? undefined);
+  }
+  if (segments[0] === "settings") {
+    const params = new URLSearchParams(search ?? "");
+    return settingsTabTarget(params.get("section") ?? undefined);
   }
   if (segments[0] === "dashboard" && segments[1]) {
     return dashboardTabTarget(segments[1]);
@@ -179,4 +268,21 @@ export function syncWorkspaceRouteFromPath(
     return resourceTabTarget(segments[1], segments.slice(2).join("/"));
   }
   return null;
+}
+
+/**
+ * Document title for *plain* routes — pages that render outside the
+ * workspace-tab system, where `syncWorkspaceRouteFromPath` returns null and
+ * the active tab's title would therefore go stale in the window title.
+ * Labels match the sidebar tiles the pages are opened from. Returns null on
+ * tab routes (the tab title applies) and on unknown paths.
+ */
+export function plainRouteDocumentTitle(pathname: string): string | null {
+  const segments = pathname.split("/").filter(Boolean);
+  switch (segments[0]) {
+    case "moment":
+      return "Moment";
+    default:
+      return null;
+  }
 }

@@ -168,6 +168,271 @@ describe("dependsOn declarations", () => {
   });
 });
 
+/**
+ * Same silent-failure class as `dependsOn`: an `expiryFields` rule over a
+ * field the lister never stores simply yields no item on the expiry radar —
+ * no compile error, no runtime error, just a deadline nobody is watching.
+ */
+describe("expiryFields declarations", () => {
+  it("declare a field the type actually knows about", async () => {
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        for (const rule of type.expiryFields ?? []) {
+          const known = type.fields.some((f) => f.key === rule.fieldKey);
+          if (!known) suspicious.push(`${plugin.manifest.id}/${type.id}.${rule.fieldKey}`);
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+  });
+
+  it("only set an age budget on from:'created' rules", async () => {
+    const loaded = await loader.loadPlugins();
+    const bad: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        for (const rule of type.expiryFields ?? []) {
+          if (rule.from !== "created" && rule.maxAgeDays !== undefined) {
+            bad.push(`${plugin.manifest.id}/${type.id}.${rule.fieldKey}`);
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});
+
+/**
+ * Same silent-failure class again: a `postureChecks` condition over a field
+ * the lister never stores simply never matches — no compile error, no runtime
+ * error, just a security check that silently watches nothing.
+ */
+describe("postureChecks declarations", () => {
+  it("condition on a field the type actually knows about", async () => {
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        for (const rule of type.postureChecks ?? []) {
+          for (const cond of rule.conditions) {
+            const known = type.fields.some((f) => f.key === cond.fieldKey);
+            if (!known) {
+              suspicious.push(`${plugin.manifest.id}/${type.id}/${rule.id}.${cond.fieldKey}`);
+            }
+          }
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+  });
+
+  it("use rule ids unique within their plugin", async () => {
+    const loaded = await loader.loadPlugins();
+    const dupes: string[] = [];
+    for (const { plugin } of loaded) {
+      const seen = new Set<string>();
+      for (const type of plugin.resourceTypes) {
+        for (const rule of type.postureChecks ?? []) {
+          if (seen.has(rule.id)) dupes.push(`${plugin.manifest.id}/${rule.id}`);
+          seen.add(rule.id);
+        }
+      }
+    }
+    expect(dupes).toEqual([]);
+  });
+});
+
+/**
+ * Same silent-failure class once more, twice over. A `dnsRole` key over a
+ * field the lister never stores yields a record whose name, type or target
+ * reads as empty — the row shows up on the Domains surface saying nothing. And
+ * a `dnsServiceHosts` pattern whose claimant can never be matched turns every
+ * record pointing into that namespace into a false takeover finding, which is
+ * the one failure mode this feature cannot afford.
+ */
+describe("dnsRole declarations", () => {
+  it("name fields the type actually knows about", async () => {
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const role = type.dnsRole;
+        if (!role) continue;
+        const keys =
+          role.role === "zone"
+            ? [role.domainKey, role.recordCountKey, role.statusKey, role.privateKey]
+            : [
+                role.nameKey,
+                role.typeKey,
+                role.contentKey,
+                role.ttlKey,
+                role.priorityKey,
+                role.proxiedKey,
+                role.zoneKey,
+              ];
+        for (const key of keys) {
+          if (key && !type.fields.some((f) => f.key === key)) {
+            suspicious.push(`${plugin.manifest.id}/${type.id}.${key}`);
+          }
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+  });
+
+  it("leave every defaulted record key pointing at a real field", async () => {
+    // The record role defaults `name`/`type`/`content`/`ttl`; a type that
+    // stores its target under another name and forgets to say so reads as a
+    // record with no target at all.
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        if (type.dnsRole?.role !== "record") continue;
+        for (const [declared, fallback] of [
+          [type.dnsRole.nameKey, "name"],
+          [type.dnsRole.typeKey, "type"],
+          [type.dnsRole.contentKey, "content"],
+        ] as const) {
+          const key = declared ?? fallback;
+          if (!type.fields.some((f) => f.key === key)) {
+            suspicious.push(`${plugin.manifest.id}/${type.id}.${key}`);
+          }
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+  });
+});
+
+describe("dnsServiceHosts declarations", () => {
+  it("compile to an anchored pattern with a capture group", async () => {
+    const loaded = await loader.loadPlugins();
+    const bad: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        for (const rule of type.dnsServiceHosts ?? []) {
+          try {
+            new RegExp(`^(?:${rule.hostPattern})$`, "i");
+            if ((new RegExp(`${rule.hostPattern}|`).exec("")?.length ?? 1) <= 1) {
+              bad.push(`${plugin.manifest.id}/${type.id}/${rule.id}: no capture group`);
+            }
+          } catch {
+            bad.push(`${plugin.manifest.id}/${type.id}/${rule.id}: does not compile`);
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("name hostKeys the type actually knows about", async () => {
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        for (const rule of type.dnsServiceHosts ?? []) {
+          for (const key of rule.hostKeys ?? []) {
+            if (!type.fields.some((f) => f.key === key)) {
+              suspicious.push(`${plugin.manifest.id}/${type.id}/${rule.id}.${key}`);
+            }
+          }
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+  });
+
+  it("give an opaque namespace a hostKeys source to be claimed by", async () => {
+    // Without one, no synced resource can ever claim a provider-minted
+    // hostname and every record into the namespace reads as dangling.
+    const loaded = await loader.loadPlugins();
+    const bad: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        for (const rule of type.dnsServiceHosts ?? []) {
+          if (rule.labelIs === "opaque" && !rule.hostKeys?.length) {
+            bad.push(`${plugin.manifest.id}/${type.id}/${rule.id}`);
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("use rule ids unique within their plugin", async () => {
+    const loaded = await loader.loadPlugins();
+    const dupes: string[] = [];
+    for (const { plugin } of loaded) {
+      const seen = new Set<string>();
+      for (const type of plugin.resourceTypes) {
+        for (const rule of type.dnsServiceHosts ?? []) {
+          if (seen.has(rule.id)) dupes.push(`${plugin.manifest.id}/${rule.id}`);
+          seen.add(rule.id);
+        }
+      }
+    }
+    expect(dupes).toEqual([]);
+  });
+});
+
+/**
+ * The rightsizing declaration names stored fields and relies on host paths
+ * (updateResource, metrics) that nothing type-checks across the boundary —
+ * validate the whole registry so a typo'd field key or a declaration on a
+ * type whose resize can't actually be applied fails the build, not the user.
+ */
+describe("rightsizing declarations", () => {
+  it("name fields the type actually declares", async () => {
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const decl = type.rightsizing;
+        if (!decl) continue;
+        for (const key of [decl.sizeFieldKey, decl.regionFieldKey, decl.diskFieldKey]) {
+          if (key === undefined) continue;
+          if (!type.fields.some((f) => f.key === key)) {
+            suspicious.push(`${plugin.manifest.id}/${type.id}.${key}`);
+          }
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+  });
+
+  it("only appear on types whose resize is actually appliable (update + metrics)", async () => {
+    const loaded = await loader.loadPlugins();
+    const bad: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        if (!type.rightsizing) continue;
+        // The Apply button submits sizeFieldKey through updateResource, and
+        // the recommendation itself needs stored metric series.
+        if (!type.supportsUpdate) bad.push(`${plugin.manifest.id}/${type.id}: no supportsUpdate`);
+        if (!type.supportsMetrics) bad.push(`${plugin.manifest.id}/${type.id}: no supportsMetrics`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("keep the size field editable so the edit form can apply a resize", async () => {
+    const loaded = await loader.loadPlugins();
+    const bad: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const decl = type.rightsizing;
+        if (!decl) continue;
+        const field = type.fields.find((f) => f.key === decl.sizeFieldKey);
+        if (field?.editable === false) bad.push(`${plugin.manifest.id}/${type.id}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});
+
 describe("getPlugin", () => {
   it("returns a loaded plugin by id", async () => {
     const p = await loader.getPlugin("aws");

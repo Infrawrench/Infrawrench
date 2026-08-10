@@ -1,4 +1,5 @@
 import type {
+  ActionNode,
   DetailViewSchema,
   DetailViewTab,
   ResourceInstance,
@@ -73,6 +74,87 @@ const SIDEBAR_STATUS_MAP: Record<string, ResourceStatus> = {
   alarm: "error",
 };
 
+/** Per-type confirm copy and stop suppression for the lifecycle pair. */
+interface LifecycleActionCopy {
+  stopConfirm: string;
+  /**
+   * Row-level guard — return false to hide Stop for resources the provider
+   * would reject the call on.
+   */
+  canStop?: (fields: ResourceInstance["fields"]) => boolean;
+}
+
+const LIFECYCLE_ACTION_COPY: Record<string, LifecycleActionCopy> = {
+  "ec2-instance": {
+    stopConfirm:
+      "Stop this EC2 instance? Compute billing stops while it is stopped; EBS volumes and Elastic IPs keep billing.",
+  },
+  "rds-instance": {
+    stopConfirm:
+      "Stop this RDS instance? Connections drop and instance-hour billing stops; storage keeps billing, and AWS restarts a stopped instance after 7 days.",
+    // StopDBInstance is rejected for Aurora/DocumentDB/Neptune cluster
+    // members (stop the cluster instead) and for Multi-AZ SQL Server
+    // deployments — don't offer an action the API will refuse. (Read
+    // replicas are also unstoppable, but the lister carries no field that
+    // identifies them, so that rejection still surfaces as the provider's
+    // own error.)
+    canStop: (fields) => {
+      if (String(fields["dbClusterIdentifier"] ?? "") !== "") return false;
+      const multiAz = fields["multiAZ"] === true || String(fields["multiAZ"]) === "true";
+      if (multiAz && String(fields["engine"] ?? "").startsWith("sqlserver")) return false;
+      return true;
+    },
+  },
+};
+
+/**
+ * Build the Stop/Start header actions from the type's `lifecycle`
+ * declaration — action ids and state matching come from the declaration
+ * (all declared running/stopped values), never from per-type conditionals.
+ */
+function buildLifecycleActions(
+  resource: ResourceInstance,
+  resourceTypes: ResourceTypeDefinition[],
+  state: string,
+  fields: ResourceInstance["fields"],
+): ActionNode[] {
+  const lifecycle = resourceTypes.find((t) => t.id === resource.resourceTypeId)?.lifecycle;
+  if (!lifecycle) return [];
+  const s = state.toLowerCase();
+  const matches = (values?: string[]) => values?.some((v) => v.toLowerCase() === s) ?? false;
+  const copy = LIFECYCLE_ACTION_COPY[resource.resourceTypeId];
+  if (matches(lifecycle.runningValues)) {
+    if (copy?.canStop && !copy.canStop(fields)) return [];
+    return [
+      {
+        kind: "action",
+        label: "Stop",
+        action: {
+          type: "plugin-action",
+          actionId: lifecycle.stopActionId,
+          ...(copy ? { confirmMessage: copy.stopConfirm } : {}),
+          successMessage: "Stop requested.",
+        },
+        variant: "danger",
+      },
+    ];
+  }
+  if (matches(lifecycle.stoppedValues)) {
+    return [
+      {
+        kind: "action",
+        label: "Start",
+        action: {
+          type: "plugin-action",
+          actionId: lifecycle.startActionId,
+          successMessage: "Start requested.",
+        },
+      },
+    ];
+  }
+  return [];
+}
+
 export function renderDetail(
   resource: ResourceInstance,
   resourceTypes: ResourceTypeDefinition[],
@@ -110,6 +192,12 @@ export function renderDetail(
       ? [buildDynamoSchemaTab(decodeIndexesField(fields["_indexesJson"]))]
       : [];
 
+  // Stop/Start header actions driven by the type's own `lifecycle`
+  // declaration: Stop while the state matches a declared running value,
+  // Start while it matches a stopped one. Only the confirm copy (and any
+  // per-resource stop suppression) is type-specific, keyed here.
+  const lifecycleActions = buildLifecycleActions(resource, resourceTypes, state, fields);
+
   return {
     title: resource.displayName,
     subtitle: `${resourceTypeDisplayName(resourceTypes, resource.resourceTypeId)} · ${region}`,
@@ -144,7 +232,10 @@ export function renderDetail(
           : [];
       })(),
     ],
-    headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    headerActions: [
+      ...lifecycleActions,
+      { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+    ],
     ...(resource.resourceTypeId === "ecr-repository"
       ? {
           artifactRegistry: {

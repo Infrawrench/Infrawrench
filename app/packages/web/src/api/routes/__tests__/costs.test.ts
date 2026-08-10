@@ -45,6 +45,20 @@ vi.mock("@infrawrench/server-core/twilio-pager", () => ({
   isSmsPagingConfigured: (...args: unknown[]) => mockIsSmsPagingConfigured(...args),
 }));
 
+// Same reason again: the tag-policy modules reach the db client at import
+// time via the services/tag-policy chain.
+vi.mock("@infrawrench/server-core/cost/tag-policy", () => ({
+  getOrgTagPolicy: vi.fn().mockResolvedValue(null),
+  setOrgTagPolicy: vi.fn(),
+}));
+vi.mock("../../../services/tag-policy", () => ({
+  getUntaggedSpendReport: vi.fn(),
+  getAccountTagCompliance: vi.fn(),
+}));
+vi.mock("../../../services/showback", () => ({
+  getShowbackReport: vi.fn(),
+}));
+
 vi.mock("@/plugins/loader", () => ({
   getPlugin: vi.fn().mockResolvedValue({
     plugin: { manifest: { id: "aws", displayName: "AWS", costs: { dimensions: ["service"] } } },

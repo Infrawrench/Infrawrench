@@ -24,4 +24,22 @@ export const FirewallRuleResourceType = rt({
   iconKey: "shield",
   supportsCreate: true,
   attachTargets: [{ pluginId: "gcp", resourceTypeId: "gce-instance", verb: "Apply firewall" }],
+  // `sourceRanges` is a ", "-joined list; a single world-open range stores
+  // exactly "0.0.0.0/0" (multi-range rules are not matchable with equals).
+  postureChecks: [
+    {
+      id: "gcp-firewall-world-open-ingress",
+      title: "Ingress allowed from 0.0.0.0/0",
+      severity: "critical",
+      category: "public-exposure",
+      conditions: [
+        { fieldKey: "sourceRanges", when: "equals", value: "0.0.0.0/0" },
+        { fieldKey: "action", when: "equals", value: "ALLOW" },
+        { fieldKey: "direction", when: "equals", value: "INGRESS" },
+        { fieldKey: "disabled", when: "falsy" },
+      ],
+      reason:
+        "This enabled ingress rule allows traffic from 0.0.0.0/0 — the entire internet — to every target it applies to.",
+    },
+  ],
 });

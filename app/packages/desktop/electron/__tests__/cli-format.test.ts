@@ -1,6 +1,13 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { anomalyDeltaPercent, formatChangeTime, renderTree, type TreeChild } from "../cli/format";
+import {
+  anomalyDeltaPercent,
+  formatChangeTime,
+  formatMetricAlertCondition,
+  formatMetricAlertSelector,
+  renderTree,
+  type TreeChild,
+} from "../cli/format";
 import { setColorEnabled } from "../cli/output";
 
 // Colors would wrap every assertion in escape sequences; the CLI turns them off
@@ -95,5 +102,53 @@ describe("formatChangeTime", () => {
 
   it("passes an unparseable value through rather than printing Invalid Date", () => {
     expect(formatChangeTime("not a date")).toBe("not a date");
+  });
+});
+
+describe("formatMetricAlertCondition", () => {
+  it("renders the one-line condition", () => {
+    expect(
+      formatMetricAlertCondition({
+        metricKey: "CPU %",
+        comparator: ">",
+        threshold: 90,
+        forMinutes: 15,
+      }),
+    ).toBe("CPU % > 90 for 15m");
+  });
+});
+
+describe("formatMetricAlertSelector", () => {
+  it("joins the set parts with a middle dot", () => {
+    expect(
+      formatMetricAlertSelector({
+        pluginId: "aws",
+        resourceTypeId: "ec2-instance",
+        tagKey: "env",
+        tagValue: "prod",
+      }),
+    ).toBe("aws · ec2-instance · env=prod");
+  });
+
+  it("renders a value-less tag as just the key", () => {
+    expect(
+      formatMetricAlertSelector({
+        pluginId: null,
+        resourceTypeId: null,
+        tagKey: "env",
+        tagValue: null,
+      }),
+    ).toBe("env");
+  });
+
+  it("says all resources for an empty selector", () => {
+    expect(
+      formatMetricAlertSelector({
+        pluginId: null,
+        resourceTypeId: null,
+        tagKey: null,
+        tagValue: null,
+      }),
+    ).toBe("all resources");
   });
 });

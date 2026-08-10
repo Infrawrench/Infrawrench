@@ -6,6 +6,12 @@ export {
   type TokenManagerOptions,
 } from "./tokens";
 export { createCloudFetch, CloudApiError, type CloudFetch, type CloudFetchOptions } from "./fetch";
+export {
+  isSeatLimitResponse,
+  SeatLimitReachedClientError,
+  PlanRequiredClientError,
+  type SeatLimitPayload,
+} from "./api-errors";
 export { parseSseStream, parseNdjsonStream } from "./sse";
 export { fetchOrgs, fetchMe, type CloudOrg, type CloudMe } from "./orgs";
 export {
@@ -30,6 +36,8 @@ export {
   unregisterPushDevice,
   getPushPreferences,
   updatePushPreferences,
+  pushTriggerEnabled,
+  withPushTrigger,
   type RegisterPushTokenArgs,
   type PushDeviceSummary,
   type PushNotificationData,
@@ -47,7 +55,6 @@ export {
   type SlackStatus,
   type SlackInstallation,
   type SlackChannel,
-  type SlackChannelTriggers,
   type SlackAvailableChannel,
   type SlackTestResult,
   type AddSlackChannelArgs,
@@ -60,7 +67,6 @@ export {
   sendMsTeamsTestMessage,
   type MsTeamsStatus,
   type MsTeamsWebhook,
-  type MsTeamsWebhookTriggers,
   type MsTeamsTestResult,
   type AddMsTeamsWebhookArgs,
 } from "./msteams";
@@ -172,6 +178,54 @@ export {
   type CostQueryResponse,
 } from "./costs";
 export {
+  describeMonthlyDelta,
+  fetchResourceCostEstimate,
+  formatMonthlyDelta,
+  formatMonthlyEstimate,
+  partialEstimatePrefix,
+} from "./cost-estimate";
+export {
+  buildPreflightChecklist,
+  summarizePreflight,
+  defaultTemplateCapabilityIds,
+  runAccountPreflight,
+  type PolicyTemplate,
+  type PreflightCapability,
+  type PreflightCheck,
+  type PreflightChecklistRow,
+  type PreflightDeclaration,
+  type PreflightPermission,
+  type PreflightReport,
+  type PreflightSummary,
+} from "./preflight";
+export {
+  DEFAULT_TAG_POLICY,
+  TAG_POLICY_LIMITS,
+  TAG_POLICY_UNMET_CODE,
+  TAG_POLICY_OVERRIDE_HEADER,
+  ALLOCATION_RULE_LIMITS,
+  UNALLOCATED_KEY,
+  fieldsDeclareTagField,
+  extractRecordTags,
+  tagPolicyViolations,
+  describeTagViolations,
+  complianceScore,
+  taggedSpendPercent,
+  type RequiredTag,
+  type TagPolicy,
+  type TagViolationReason,
+  type TagPolicyViolation,
+  type AccountTagCompliance,
+  type TagComplianceReport,
+  type CostCentre,
+  type AllocationRuleMatch,
+  type AllocationRule,
+  type AllocationRuleInput,
+  type UntaggedSpendReport,
+  type ShowbackReportCentre,
+  type ShowbackReport,
+} from "./tag-policy";
+export {
   CUSTOM_GRAPH_CHART_TYPES,
   CUSTOM_GRAPH_MIN_REFRESH_SECONDS,
   CUSTOM_GRAPH_MAX_REFRESH_SECONDS,
@@ -214,6 +268,19 @@ export {
 } from "./account-sections";
 export { deriveSSHUsername, pickQuickConnectKeyId } from "./ssh-quick-connect";
 export {
+  FANOUT_DEFAULT_CONCURRENCY,
+  FANOUT_MAX_TARGETS,
+  normalizeFanoutOutput,
+  groupFanoutResults,
+  diffLines,
+  compactDiff,
+  runWithConcurrency,
+  type FanoutHostStatus,
+  type FanoutHostResult,
+  type FanoutOutputGroup,
+  type DiffLine,
+} from "./ssh-fanout";
+export {
   CHANGE_KIND_LABELS,
   DEFAULT_DRIFT_ALERT_SETTINGS,
   DRIFT_ALERT_LIMITS,
@@ -222,14 +289,31 @@ export {
   changeFeedSearchParams,
   fetchOrgChanges,
   fetchResourceChanges,
+  computeResourceChangeEvents,
+  diffResourceRecords,
+  valuesEqual,
   type ChangeFeedRequest,
   type ChangeFeedResult,
+  type ComputeChangeEventsArgs,
   type DriftAlertSettings,
   type DriftAlertSettingsPatch,
+  type FetchedResourceSnapshot,
+  type PriorResourceSnapshot,
+  type ResourceChangeEvent,
   type ResourceChangeKind,
   type ResourceFieldChange,
   type ResourceChangeEntry,
 } from "./resource-changes";
+export {
+  fetchOrgStatusIncidents,
+  compareStatusIncidents,
+  summarizeStatusIncident,
+  type ProviderIncidentImpact,
+  type ProviderIncidentState,
+  type ProviderIncidentResourceSample,
+  type OrgStatusIncident,
+  type OrgStatusIncidentsResponse,
+} from "./status-incidents";
 export {
   isHostKeyTrustResponse,
   trustPayloadFromFrame,
@@ -299,7 +383,37 @@ export {
   type MongoCommand,
 } from "./mongo-browser";
 export * from "./api-types";
+export { normalizeTerminalLinkUrl } from "./terminal-links";
+export * from "./moment";
 export * from "./orphans";
+export * from "./expiry";
+export * from "./leases";
+export * from "./posture";
+export * from "./dns";
+export * from "./environment-diff";
+export * from "./schedules";
+export * from "./probes";
+export * from "./status-pages";
+export * from "./ownership";
+export * from "./log-workspaces";
+export * from "./log-discovery";
+export * from "./alert-routing";
+export * from "./metric-alerts";
+export * from "./org-config";
+export * from "./rightsizing";
+export * from "./session-recordings";
+export * from "./access-requests";
+export * from "./credential-hygiene";
+export * from "./credits";
 export * from "./chat/types";
 export { createBearerChatClient } from "./chat/bearer-client";
 export * from "./ws-protocol";
+export {
+  parseCronExpression,
+  validateCronExpression,
+  isValidCronTimezone,
+  nextCronOccurrence,
+  nextCronOccurrences,
+  type ParsedCron,
+  type CronOccurrenceOptions,
+} from "./cron";

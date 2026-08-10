@@ -6,9 +6,14 @@ export default defineConfig({
     // Standalone React-free entry so server-side consumers (the web API) can
     // import the agent shell-command builders without loading UI components.
     "agents/launch-command": "src/agents/launch-command.ts",
+    // Same split for the T3 Code session helpers: the web API builds its
+    // bootstrap/connect commands and its setup plan server-side.
+    "agents/t3-code": "src/agents/t3-code.ts",
     // React-free cost widget config schemas — imported by the web API for
     // request/config validation as well as by the widget editors.
     "cost/config": "src/cost/config.ts",
+    // React-free metric alert rule schemas — same split, same consumer.
+    "metric-alerts/config": "src/metric-alerts/config.ts",
     // React-free prompt bridge. Data-layer modules (the desktop cloud client,
     // the web workflow transport) raise prompts without pulling in the whole
     // component barrel — importing that into a Node context drags Monaco and

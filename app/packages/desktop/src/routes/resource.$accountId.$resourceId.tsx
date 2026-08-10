@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import type {
   ResourceInstance,
@@ -42,6 +42,7 @@ import type { AccountRow } from "../db/rows";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices, persistPlaintextSecret } from "../lib/sql-drivers";
 import { createPluginClient } from "../lib/plugin-client";
+import { makeResourceCostEstimator } from "../lib/cost-estimate";
 import { applyCredentialRewriters } from "../lib/credential-rewriters";
 import { invoke } from "../lib/invoke";
 import type { PluginClient, PeerPaneContext, AssociationSource } from "@infrawrench/plugin-base";
@@ -188,6 +189,21 @@ export function ResourcePanel({
   const [credentialFormats, setCredentialFormats] = useState<CredentialFormat[]>([]);
   const [showExportCredential, setShowExportCredential] = useState(false);
   const [resourceTypeLabel, setResourceTypeLabel] = useState<string>("Resource");
+
+  // One estimator for both surfaces that quote a monthly figure — the detail
+  // header's standing estimate and the edit modal's change delta — so the two
+  // are always the same plugin call over the same fields.
+  const loadCostEstimate = useMemo(
+    () =>
+      makeResourceCostEstimator({
+        resource,
+        accountId,
+        resourceId: decodedResourceId,
+        getLocalClient: () => clientRef.current,
+        getCloudCtx: () => cloudCtxRef.current,
+      }),
+    [resource, accountId, decodedResourceId],
+  );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
@@ -347,6 +363,29 @@ export function ResourcePanel({
     setAgentLaunchError(null);
 
     async function resolveAgentLaunchDefaults() {
+      // Cloud sessions live in the org, not this machine's SQLite, and the
+      // server owns the launch command and the managed org key — the same
+      // `POST /agents/sessions/:id/open` web rehydrates from. Reading the
+      // local table here would report "session no longer exists" for every
+      // agent tab opened against an org.
+      if (activeCloudOrgId) {
+        const result = await invoke<{
+          command: string;
+          cwd: string;
+          sshKeyId?: string;
+          sshKeyName?: string;
+        }>("cloud_agents_open_session", { orgId: activeCloudOrgId, sessionId: agentSessionId });
+        if (cancelled) return;
+        const cloudNext: AgentLaunchDefaults = {};
+        if (!sshKeyId && result.sshKeyId) cloudNext.sshKeyId = result.sshKeyId;
+        if (!sshKeyName && result.sshKeyName) cloudNext.sshKeyName = result.sshKeyName;
+        if (!initialCommand) cloudNext.initialCommand = result.command;
+        if (!initialCwd) cloudNext.initialCwd = result.cwd;
+        setAgentLaunchDefaults(cloudNext);
+        setResolvedAgentLaunchLookupKey(agentLaunchLookupKey);
+        return;
+      }
+
       const db = await getDb();
       // Look up the exact session this tab was opened for — never "the
       // latest session on this VM", which could belong to another tab.
@@ -404,6 +443,7 @@ export function ResourcePanel({
     };
   }, [
     accountId,
+    activeCloudOrgId,
     agentSessionId,
     agentLaunchLookupKey,
     decodedResourceId,
@@ -1114,6 +1154,7 @@ export function ResourcePanel({
               activeCloudOrgId={activeCloudOrgId}
               cloudParentResourceId={cloudCtxRef.current?.parentResourceId}
               accountPluginId={account?.plugin_id}
+              loadCostEstimate={loadCostEstimate}
               onPeerPaneOpen={handlePeerPaneOpen}
               onRunQuery={handleRunQuery}
               onExecute={handleExecute}
@@ -1172,6 +1213,9 @@ export function ResourcePanel({
             initialCommand={effectiveInitialCommand}
             initialCwd={effectiveInitialCwd}
             autoConnectReady={agentAutoConnectReady}
+            // An agent tab opened while an org is active is one of the org's
+            // sessions, so its key is the org's — see SshViewPane.
+            agentKeyScope={activeCloudOrgId ? "cloud" : "app"}
             agentLaunchError={agentLaunchError ?? undefined}
           />
         )}

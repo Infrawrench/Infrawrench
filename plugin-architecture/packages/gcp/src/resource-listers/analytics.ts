@@ -108,14 +108,12 @@ async function hydrateBqTable(
 
   const schema = full["schema"] as { fields?: Array<Record<string, unknown>> } | undefined;
   const tableConstraints = full["tableConstraints"] as
-    | { primaryKey?: { columns?: string[] } }
-    | undefined;
+    { primaryKey?: { columns?: string[] } } | undefined;
   const primaryKeys = tableConstraints?.primaryKey?.columns?.join(", ") ?? "";
 
   const timePart = full["timePartitioning"] as Record<string, unknown> | undefined;
   const rangePart = full["rangePartitioning"] as
-    | { field?: string; range?: { start?: string; end?: string; interval?: string } }
-    | undefined;
+    { field?: string; range?: { start?: string; end?: string; interval?: string } } | undefined;
   let partitioning = "";
   if (timePart) {
     const type = String(timePart["type"] ?? "DAY");

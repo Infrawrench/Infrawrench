@@ -10,7 +10,7 @@ type OnboardingStep = "create" | "plan";
 
 const FREE_FEATURES = [
   "1 user, 3 connected accounts",
-  "All 48 plugins",
+  "All 49 plugins",
   "Dashboards, SSH terminal & SQL editor",
   "$5/mo of AI chat included",
 ];

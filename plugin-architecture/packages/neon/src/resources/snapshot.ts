@@ -21,6 +21,9 @@ export const NeonSnapshotResourceType = rt({
     { fieldKey: "projectId", targetTypeId: "neon-project", label: "in project" },
     { fieldKey: "sourceBranchId", targetTypeId: "neon-branch", label: "taken from branch" },
   ],
+  expiryFields: [
+    { fieldKey: "expiresAt", from: "expiry", kind: "other", label: "Snapshot expires" },
+  ],
   parentTypeId: "neon-branch",
   supportsCreate: true,
   supportsDelete: true,

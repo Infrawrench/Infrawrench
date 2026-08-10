@@ -71,6 +71,39 @@ vi.mock("@infrawrench/plugin-base", () => ({
   normalizeResourceCreateResult: (r: unknown) => ({ resource: r, warnings: [] }),
   evaluatePeerIntegrationUnreachable: () => null,
 }));
+// The status correlation and expiry feed modules load the whole plugin
+// registry (and, transitively, the db client) at import time — stub them;
+// both have their own server-core tests.
+vi.mock("@infrawrench/server-core/status/match", () => ({
+  getOrgStatusIncidents: vi.fn().mockResolvedValue([]),
+}));
+const mockListExpiring = vi.fn();
+vi.mock("@infrawrench/server-core/expiry/feed", () => ({
+  listExpiring: (...a: unknown[]) => mockListExpiring(...a),
+}));
+
+const mockListPosture = vi.fn();
+vi.mock("@infrawrench/server-core/posture/feed", () => ({
+  listPosture: (...a: unknown[]) => mockListPosture(...a),
+}));
+const mockDismissPosture = vi.fn();
+const mockRestorePosture = vi.fn();
+vi.mock("@infrawrench/server-core/posture/dismissals", () => ({
+  dismissPostureFinding: (...a: unknown[]) => mockDismissPosture(...a),
+  restorePostureFinding: (...a: unknown[]) => mockRestorePosture(...a),
+}));
+const mockListDns = vi.fn();
+vi.mock("@infrawrench/server-core/dns/feed", () => ({
+  listDns: (...a: unknown[]) => mockListDns(...a),
+}));
+const mockLoadEnvironmentDiff = vi.fn();
+class MockEnvironmentDiffAccountNotFoundError extends Error {}
+class MockEnvironmentDiffPluginMismatchError extends Error {}
+vi.mock("@infrawrench/server-core/environment-diff", () => ({
+  loadEnvironmentDiff: (...a: unknown[]) => mockLoadEnvironmentDiff(...a),
+  EnvironmentDiffAccountNotFoundError: MockEnvironmentDiffAccountNotFoundError,
+  EnvironmentDiffPluginMismatchError: MockEnvironmentDiffPluginMismatchError,
+}));
 const mockResolveSshKey = vi.fn();
 vi.mock("../ssh-key-lookup", () => ({
   resolveStoredSshPublicKey: (...a: unknown[]) => mockResolveSshKey(...a),
@@ -133,6 +166,256 @@ describe("genericTools", () => {
     expect(out[0].supportsCreate).toBe(true);
     expect(out[0].supportsDelete).toBe(false);
     expect(out[0].supportsMetrics).toBe(true);
+  });
+
+  describe("diff_environments", () => {
+    const accountRows = [
+      { id: "acc-stg", displayName: "Staging" },
+      { id: "acc-prd", displayName: "Production" },
+    ];
+    const selectAccounts = () => {
+      mockSelect.mockReturnValue({ from: () => ({ where: () => accountRows }) });
+    };
+
+    it("resolves display names to ids before comparing", async () => {
+      selectAccounts();
+      mockLoadEnvironmentDiff.mockResolvedValue({ entries: [] });
+      const r = await tool("diff_environments").handler({ a: "staging", b: "Production" }, auth);
+      expect(r.isError).toBeFalsy();
+      expect(mockLoadEnvironmentDiff).toHaveBeenCalledWith("o1", "acc-stg", "acc-prd", {
+        resourceTypeId: undefined,
+        includeIdentityFields: false,
+      });
+    });
+
+    it("passes ids through untouched and forwards the options", async () => {
+      selectAccounts();
+      mockLoadEnvironmentDiff.mockResolvedValue({ entries: [] });
+      await tool("diff_environments").handler(
+        { a: "acc-stg", b: "acc-prd", resourceTypeId: "droplet", includeIdentityFields: true },
+        auth,
+      );
+      expect(mockLoadEnvironmentDiff).toHaveBeenCalledWith("o1", "acc-stg", "acc-prd", {
+        resourceTypeId: "droplet",
+        includeIdentityFields: true,
+      });
+    });
+
+    it("refuses to compare an account with itself, however it was named", async () => {
+      selectAccounts();
+      const r = await tool("diff_environments").handler({ a: "Staging", b: "acc-stg" }, auth);
+      expect(r.isError).toBe(true);
+      expect(mockLoadEnvironmentDiff).not.toHaveBeenCalled();
+    });
+
+    it("reports a provider mismatch as a tool error, not a throw", async () => {
+      selectAccounts();
+      mockLoadEnvironmentDiff.mockRejectedValue(
+        new MockEnvironmentDiffPluginMismatchError("different providers"),
+      );
+      const r = await tool("diff_environments").handler({ a: "acc-stg", b: "acc-prd" }, auth);
+      expect(r.isError).toBe(true);
+      expect(r.content[0]!.text).toContain("different providers");
+    });
+  });
+
+  it("list_posture_findings filters by severity but keeps whole-feed counts", async () => {
+    const finding = (ruleId: string, severity: string, category: string) => ({
+      resourceId: `r-${ruleId}`,
+      pluginId: "aws",
+      pluginName: "AWS",
+      resourceTypeId: "bucket",
+      resourceTypeName: "S3 Bucket",
+      accountId: "a1",
+      accountName: "Prod",
+      displayName: "b",
+      externalId: null,
+      ruleId,
+      title: "t",
+      severity,
+      category,
+      reason: "because",
+    });
+    mockListPosture.mockResolvedValue({
+      findings: [
+        finding("crit", "critical", "public-exposure"),
+        finding("med", "medium", "encryption"),
+      ],
+      totalCount: 2,
+      counts: { critical: 1, high: 0, medium: 1, low: 0 },
+      generatedAt: "2026-08-01T00:00:00.000Z",
+    });
+    const r = await tool("list_posture_findings").handler({ severity: "critical" }, auth);
+    const out = JSON.parse(r.content[0]!.text);
+    expect(mockListPosture).toHaveBeenCalledWith("o1");
+    expect(out.findings).toHaveLength(1);
+    expect(out.findings[0].ruleId).toBe("crit");
+    expect(out.matchedCount).toBe(1);
+    // Counts describe the whole feed, not the filtered view.
+    expect(out.totalCount).toBe(2);
+    expect(out.counts).toEqual({ critical: 1, high: 0, medium: 1, low: 0 });
+  });
+
+  it("list_dns_records filters by status and domain, keeping whole-inventory counts", async () => {
+    const record = (name: string, status: string, zoneDomain: string) => ({
+      resourceId: `r-${name}`,
+      pluginId: "cloudflare",
+      pluginName: "Cloudflare",
+      resourceTypeId: "dns-record",
+      resourceTypeName: "DNS Record",
+      accountId: "a1",
+      accountName: "Prod",
+      zoneResourceId: "z1",
+      zoneDomain,
+      name,
+      type: "CNAME",
+      ttl: 300,
+      priority: null,
+      proxied: false,
+      targets: [],
+      status,
+    });
+    mockListDns.mockResolvedValue({
+      zones: [
+        { resourceId: "z1", domain: "example.com" },
+        { resourceId: "z2", domain: "other.com" },
+      ],
+      records: [
+        record("www.example.com", "dangling", "example.com"),
+        record("api.example.com", "owned", "example.com"),
+        record("www.other.com", "dangling", "other.com"),
+      ],
+      counts: { zones: 2, records: 3, owned: 1, dangling: 2, external: 0, notAnalysed: 0 },
+      skippedNamespaces: [],
+      generatedAt: "2026-08-01T00:00:00.000Z",
+    });
+    const r = await tool("list_dns_records").handler(
+      { status: "dangling", domain: "example.com" },
+      auth,
+    );
+    const out = JSON.parse(r.content[0]!.text);
+    expect(mockListDns).toHaveBeenCalledWith("o1");
+    expect(out.records.map((x: { name: string }) => x.name)).toEqual(["www.example.com"]);
+    expect(out.zones.map((x: { domain: string }) => x.domain)).toEqual(["example.com"]);
+    expect(out.matchedCount).toBe(1);
+    // Counts describe the whole inventory, not the filtered view.
+    expect(out.counts.dangling).toBe(2);
+  });
+
+  it("list_posture_findings filters by category", async () => {
+    mockListPosture.mockResolvedValue({
+      findings: [
+        {
+          resourceId: "r1",
+          ruleId: "a",
+          severity: "high",
+          category: "encryption",
+        },
+        {
+          resourceId: "r2",
+          ruleId: "b",
+          severity: "high",
+          category: "public-exposure",
+        },
+      ],
+      totalCount: 2,
+      counts: { critical: 0, high: 2, medium: 0, low: 0 },
+      generatedAt: "2026-08-01T00:00:00.000Z",
+    });
+    const r = await tool("list_posture_findings").handler({ category: "encryption" }, auth);
+    const out = JSON.parse(r.content[0]!.text);
+    expect(out.findings.map((f: { ruleId: string }) => f.ruleId)).toEqual(["a"]);
+  });
+
+  it("list_posture_findings reports the dismissed count and hides the rows by default", async () => {
+    const dismissed = {
+      resourceId: "r-public",
+      ruleId: "public",
+      severity: "critical",
+      category: "public-exposure",
+      dismissal: {
+        resourceId: "r-public",
+        ruleId: "public",
+        dismissedAt: "2026-07-01T00:00:00.000Z",
+        dismissedBy: "Ada",
+        reason: "static site",
+      },
+    };
+    const feed = {
+      findings: [{ resourceId: "r1", ruleId: "a", severity: "high", category: "encryption" }],
+      totalCount: 1,
+      counts: { critical: 0, high: 1, medium: 0, low: 0 },
+      dismissed: [dismissed],
+      dismissedCount: 1,
+      generatedAt: "2026-08-01T00:00:00.000Z",
+    };
+
+    mockListPosture.mockResolvedValue(feed);
+    const quiet = JSON.parse(
+      (await tool("list_posture_findings").handler({}, auth)).content[0]!.text,
+    );
+    // The count is always there — "clean" must be distinguishable from
+    // "quiet because somebody silenced it" — but the rows are opt-in.
+    expect(quiet.dismissedCount).toBe(1);
+    expect(quiet.dismissed).toBeUndefined();
+    expect(quiet.findings).toHaveLength(1);
+
+    mockListPosture.mockResolvedValue(feed);
+    const loud = JSON.parse(
+      (await tool("list_posture_findings").handler({ includeDismissed: true }, auth)).content[0]!
+        .text,
+    );
+    expect(loud.dismissed).toHaveLength(1);
+    expect(loud.dismissed[0].dismissal.reason).toBe("static site");
+    // A filter applies to the dismissed rows too.
+    mockListPosture.mockResolvedValue(feed);
+    const filtered = JSON.parse(
+      (
+        await tool("list_posture_findings").handler(
+          { includeDismissed: true, category: "encryption" },
+          auth,
+        )
+      ).content[0]!.text,
+    );
+    expect(filtered.dismissed).toEqual([]);
+  });
+
+  it("dismiss_posture_finding records the acceptance with its author", async () => {
+    mockDismissPosture.mockResolvedValue({
+      resourceId: "r1",
+      ruleId: "public",
+      reason: "static site",
+      dismissedBy: "Ada",
+      dismissedAt: "2026-08-01T00:00:00.000Z",
+    });
+    const r = await tool("dismiss_posture_finding").handler(
+      { resourceId: "r1", ruleId: "public", reason: "static site" },
+      auth,
+    );
+    expect(mockDismissPosture).toHaveBeenCalledWith("o1", {
+      resourceId: "r1",
+      ruleId: "public",
+      reason: "static site",
+      userId: "u1",
+    });
+    expect(JSON.parse(r.content[0]!.text).dismissed.ruleId).toBe("public");
+  });
+
+  it("restore_posture_finding says so when nothing was dismissed", async () => {
+    mockRestorePosture.mockResolvedValue(false);
+    const missing = await tool("restore_posture_finding").handler(
+      { resourceId: "r1", ruleId: "public" },
+      auth,
+    );
+    expect(missing.isError).toBe(true);
+
+    mockRestorePosture.mockResolvedValue(true);
+    const r = await tool("restore_posture_finding").handler(
+      { resourceId: "r1", ruleId: "public" },
+      auth,
+    );
+    expect(r.isError).toBeUndefined();
+    expect(JSON.parse(r.content[0]!.text).restored).toEqual({ resourceId: "r1", ruleId: "public" });
   });
 
   it("list_accounts queries the org's accounts", async () => {

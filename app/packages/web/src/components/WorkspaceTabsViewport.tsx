@@ -10,7 +10,11 @@ import {
 import { DashboardPanel } from "@/routes/org.$orgId.dashboard.$dashboardId";
 import { AccountPanel } from "@/routes/org.$orgId.accounts.$accountId";
 import { ResourcePanel } from "@/routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId";
-import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
+import {
+  getWorkspaceNavigateArgs,
+  navigateToWorkspaceTarget,
+  syncWorkspaceRouteFromPath,
+} from "@/lib/workspace-tabs";
 import { type WorkflowClient } from "@infrawrench/ui/workflows";
 import { type DeploymentClient } from "@infrawrench/ui";
 import { createWebDeploymentClient } from "@/lib/deployment-client";
@@ -24,8 +28,26 @@ import { WebAgentsPanel } from "./WebAgentsPanel";
 import { WebChatPanel } from "./WebChatPanel";
 import { WebGraphPanel } from "./WebGraphPanel";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
-import { resourceTabTarget, type OrphansClient } from "@infrawrench/ui";
+import {
+  environmentDiffTabTarget,
+  resourceTabTarget,
+  type OrphansClient,
+  type RightsizingClient,
+  type SchedulesClient,
+} from "@infrawrench/ui";
 import { createWebOrphansClient } from "@/lib/orphans-client";
+import { createWebRightsizingClient } from "@/lib/rightsizing-client";
+import { createWebSchedulesClient } from "@/lib/schedules-client";
+import { createWebLogWorkspaceClient } from "@/lib/log-workspace-client";
+import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
+import { WebChangesPanel } from "./WebChangesPanel";
+import { WebExpiryPanel } from "./WebExpiryPanel";
+import { WebPosturePanel } from "./WebPosturePanel";
+import { WebDnsPanel } from "./WebDnsPanel";
+import { WebEnvironmentDiffPanel } from "./WebEnvironmentDiffPanel";
+import { WebMetricAlertsPanel } from "./WebMetricAlertsPanel";
+import { WebProbesPanel } from "./WebProbesPanel";
+import { WebSshFanoutPanel } from "./WebSshFanoutPanel";
 
 interface WebWorkspaceTabsViewportProps {
   orgId: string;
@@ -48,10 +70,13 @@ export function WebWorkspaceTabsViewport({ orgId, tabsValidated }: WebWorkspaceT
   const tabsHydrated = useUIStore((s) => s.tabsHydrated);
 
   // The URL is a "tab URL" when syncWorkspaceRouteFromPath returns a target.
-  // On non-tab routes (settings, onboarding) we hide all tab panels so the
-  // route's <Outlet/> renders alone — tabs stay mounted in the DOM.
+  // On non-tab routes (onboarding) we hide all tab panels so the route's
+  // <Outlet/> renders alone — tabs stay mounted in the DOM. Settings is a
+  // hybrid: it lives in the tab strip like any other tab, but its content is
+  // route-rendered (the section pages are a router subtree), so its panel here
+  // is empty and the viewport steps aside for the <Outlet/> the same way.
   const routeTarget = syncWorkspaceRouteFromPath(pathname, hash);
-  const showActive = routeTarget !== null;
+  const showActive = routeTarget !== null && routeTarget.kind !== "settings";
 
   // Direct URL navigation (deep link, browser back/forward) needs to add the
   // matching tab to the workspace if it isn't already open. The viewport
@@ -131,6 +156,36 @@ function getOrphansClient(orgId: string): OrphansClient {
   return client;
 }
 
+const rightsizingClients = new Map<string, RightsizingClient>();
+function getRightsizingClient(orgId: string): RightsizingClient {
+  let client = rightsizingClients.get(orgId);
+  if (!client) {
+    client = createWebRightsizingClient(orgId);
+    rightsizingClients.set(orgId, client);
+  }
+  return client;
+}
+
+const schedulesClients = new Map<string, SchedulesClient>();
+function getSchedulesClient(orgId: string): SchedulesClient {
+  let client = schedulesClients.get(orgId);
+  if (!client) {
+    client = createWebSchedulesClient(orgId);
+    schedulesClients.set(orgId, client);
+  }
+  return client;
+}
+
+const logWorkspaceClients = new Map<string, LogWorkspaceClient>();
+function getLogWorkspaceClient(orgId: string): LogWorkspaceClient {
+  let client = logWorkspaceClients.get(orgId);
+  if (!client) {
+    client = createWebLogWorkspaceClient(orgId);
+    logWorkspaceClients.set(orgId, client);
+  }
+  return client;
+}
+
 function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<typeof useNavigate>) {
   const t = tab.target;
   switch (t.kind) {
@@ -164,6 +219,7 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           // resources.
           key={orgId}
           client={getCostsClient(orgId)}
+          onOpenExternal={(url) => window.open(url, "_blank", "noopener,noreferrer")}
           onOpenDashboard={(dashboardId) =>
             void navigate(getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId }))
           }
@@ -181,6 +237,33 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
               }),
             );
           }}
+          rightsizing={getRightsizingClient(orgId)}
+          onOpenOversizedResource={(r, accountId) => {
+            if (!r.id) return;
+            void navigate(
+              getWorkspaceNavigateArgs({
+                kind: "resource",
+                accountId,
+                resourceId: r.id,
+                view: "details",
+                pluginId: r.pluginId,
+                resourceTypeId: r.resourceTypeId,
+              }),
+            );
+          }}
+          schedules={getSchedulesClient(orgId)}
+          onOpenScheduledResource={(s) =>
+            void navigate(
+              getWorkspaceNavigateArgs({
+                kind: "resource",
+                accountId: s.accountId,
+                resourceId: s.resourceId,
+                view: "details",
+                pluginId: s.pluginId,
+                resourceTypeId: s.resourceTypeId,
+              }),
+            )
+          }
         />
       );
     case "graph":
@@ -196,8 +279,149 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           }
         />
       );
+    case "logs":
+      return (
+        <LogWorkspacePanel
+          // Keyed by org so switching org remounts the panel and refetches
+          // rather than tailing the previous org's streams.
+          key={orgId}
+          client={getLogWorkspaceClient(orgId)}
+          onOpenResource={(selector) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  selector.accountId,
+                  selector.resourceId,
+                  selector.pluginId,
+                  selector.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "changes":
+      return <WebChangesPanel key={orgId} orgId={orgId} />;
+    case "expiring":
+      return (
+        <WebExpiryPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's deadlines.
+          key={orgId}
+          orgId={orgId}
+          openResource={(item) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  item.accountId,
+                  item.resourceId,
+                  item.pluginId,
+                  item.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "posture":
+      return (
+        <WebPosturePanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's findings.
+          key={orgId}
+          orgId={orgId}
+          openResource={(finding) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  finding.accountId,
+                  finding.resourceId,
+                  finding.pluginId,
+                  finding.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "dns":
+      return (
+        <WebDnsPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's zones.
+          key={orgId}
+          orgId={orgId}
+          openRecord={(record) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  record.accountId,
+                  record.resourceId,
+                  record.pluginId,
+                  record.resourceTypeId,
+                ),
+              ),
+            )
+          }
+          openZone={(zone) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  zone.accountId,
+                  zone.resourceId,
+                  zone.pluginId,
+                  zone.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "environment-diff":
+      return (
+        <WebEnvironmentDiffPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // comparing this org's accounts against the previous one's ids.
+          key={orgId}
+          orgId={orgId}
+          a={t.a}
+          b={t.b}
+          // Record the pair on the tab and in the URL, so the comparison
+          // survives a reload and can be shared as a link. `replace` keeps the
+          // back button from stepping through every dropdown change.
+          onSelectionChange={(selection) =>
+            void navigateToWorkspaceTarget(
+              navigate,
+              environmentDiffTabTarget(selection.a, selection.b),
+              { replace: true },
+            )
+          }
+          openResource={(target) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  target.accountId,
+                  target.resourceId,
+                  target.pluginId,
+                  target.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "ssh-fanout":
+      return <WebSshFanoutPanel key={orgId} orgId={orgId} />;
+    case "metric-alerts":
+      return <WebMetricAlertsPanel key={orgId} orgId={orgId} />;
+    case "probes":
+      return <WebProbesPanel key={orgId} orgId={orgId} />;
     case "chat":
       return <WebChatPanel orgId={orgId} conversationId={t.conversationId} />;
+    case "settings":
+      // Route-rendered (see showActive above) — the tab only marks the place
+      // in the strip; the settings router subtree draws the content.
+      return null;
     case "resource":
       if (!t.pluginId || !t.resourceTypeId) {
         // Without pluginId/resourceTypeId we can't construct the detail URL.

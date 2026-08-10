@@ -57,8 +57,7 @@ export async function listGceInstances(
     // Extract SSH username from instance metadata ssh-keys entry
     let sshUsername = "";
     const metadataItems = (inst["metadata"] as Record<string, unknown> | undefined)?.["items"] as
-      | Array<Record<string, string>>
-      | undefined;
+      Array<Record<string, string>> | undefined;
     const sshKeysEntry = metadataItems?.find((m) => m["key"] === "ssh-keys");
     if (sshKeysEntry?.["value"]) {
       // Format: "username:ssh-rsa AAAA..." — extract the username before the colon

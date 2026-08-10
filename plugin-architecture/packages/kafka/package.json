@@ -36,8 +36,8 @@
   },
   "devDependencies": {
     "kafkajs": "^2.2.4",
+    "tsdown": "^0.22.14",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.8",
-    "tsdown": "^0.22.14"
+    "vitest": "^4.1.10"
   }
 }

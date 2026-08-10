@@ -39,5 +39,8 @@ export async function listRecentCostAnomalies(
     thresholdCents: row.thresholdAmountCents,
     detectedAt: row.detectedAt.toISOString(),
     notifiedAt: row.notifiedAt ? row.notifiedAt.toISOString() : null,
+    // Rows written before hints existed (or whose hint queries failed at
+    // detection time) hold null; the wire contract is always an array.
+    hints: row.hints ?? [],
   }));
 }

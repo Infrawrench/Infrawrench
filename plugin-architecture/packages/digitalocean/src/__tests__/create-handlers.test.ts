@@ -62,7 +62,7 @@ const PROJECTS = {
  */
 function routeFetch(path: string): unknown {
   if (path === "/regions") return REGIONS;
-  if (path === "/sizes") return SIZES;
+  if (path.startsWith("/sizes")) return SIZES;
   if (path.startsWith("/images")) return IMAGES;
   if (path === "/projects") return PROJECTS;
   if (path === "/kubernetes/options")

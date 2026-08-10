@@ -196,8 +196,7 @@ export async function listLoadBalancers(
     const props = lb["properties"] as Record<string, unknown> | undefined;
     const sku = lb["sku"] as Record<string, unknown> | undefined;
     const frontendIps = props?.["frontendIPConfigurations"] as
-      | Array<Record<string, unknown>>
-      | undefined;
+      Array<Record<string, unknown>> | undefined;
     const backendPools = props?.["backendAddressPools"] as unknown[] | undefined;
     const rules = props?.["loadBalancingRules"] as unknown[] | undefined;
 
@@ -334,11 +333,9 @@ export async function listAppGateways(
     const backendPools = props?.["backendAddressPools"] as unknown[] | undefined;
     const httpListeners = props?.["httpListeners"] as unknown[] | undefined;
     const frontendIps = props?.["frontendIPConfigurations"] as
-      | Array<Record<string, unknown>>
-      | undefined;
+      Array<Record<string, unknown>> | undefined;
     const gatewayIpConfigs = props?.["gatewayIPConfigurations"] as
-      | Array<Record<string, unknown>>
-      | undefined;
+      Array<Record<string, unknown>> | undefined;
     const sslCerts = props?.["sslCertificates"] as Array<Record<string, unknown>> | undefined;
     const firstFrontend = frontendIps?.[0];
     const frontendProps = firstFrontend?.["properties"] as Record<string, unknown> | undefined;

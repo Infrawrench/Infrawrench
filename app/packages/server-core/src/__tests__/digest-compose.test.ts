@@ -60,6 +60,10 @@ function input(overrides: Partial<DigestInput> = {}): DigestInput {
     syncIncidentsOpened: 0,
     resourcesAdded: 0,
     resourcesRemoved: 0,
+    providerIncidents: 0,
+    expiringSoon: 0,
+    postureCritical: 0,
+    postureHigh: 0,
     ...overrides,
   };
 }
@@ -378,6 +382,76 @@ describe("formatting", () => {
   it("explains an empty cost week instead of printing zeros", () => {
     const lines = digestLines(composeWeeklyDigest(input()), (s) => s);
     expect(lines[0]).toContain("No cost data was recorded for last week");
+  });
+
+  it("adds an expiring-soon line only when deadlines are inside the lead time", () => {
+    const withDeadlines = formatDigestSlackBody(composeWeeklyDigest(input({ expiringSoon: 3 })));
+    expect(withDeadlines).toContain("*Expiring soon*: 3 deadlines within your lead time");
+    const one = formatDigestSlackBody(composeWeeklyDigest(input({ expiringSoon: 1 })));
+    expect(one).toContain("1 deadline within your lead time");
+    const without = formatDigestSlackBody(composeWeeklyDigest(input()));
+    expect(without).not.toContain("Expiring soon");
+  });
+
+  it("projects the run-rate the week's churn leaves behind", () => {
+    const body = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({
+          resourcesAdded: 4,
+          resourcesRemoved: 1,
+          projection: {
+            currency: "USD",
+            addedMonthly: 520,
+            removedMonthly: 180,
+            unpricedCount: 0,
+            truncated: false,
+          },
+        }),
+      ),
+    );
+    // The net is the headline; both sides are shown so a churn-heavy week
+    // that nets out flat still reads as churn rather than as nothing.
+    expect(body).toContain(
+      "*Projected spend*: +$340.00/month from last week's changes ($520.00/mo added, $180.00/mo removed)",
+    );
+  });
+
+  it("qualifies a projection that could not price everything", () => {
+    const body = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({
+          projection: {
+            currency: "USD",
+            addedMonthly: 100,
+            removedMonthly: 0,
+            unpricedCount: 3,
+            truncated: true,
+          },
+        }),
+      ),
+    );
+    expect(body).toContain("at least; 3 resources could not be priced");
+  });
+
+  it("omits the projection line rather than claiming a week changed nothing", () => {
+    // Every changed resource was unpriceable, so both sides are zero. Saying
+    // "no change" there would assert knowledge the estimates do not have.
+    const allUnpriced = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({
+          resourcesAdded: 9,
+          projection: {
+            currency: "USD",
+            addedMonthly: 0,
+            removedMonthly: 0,
+            unpricedCount: 9,
+            truncated: false,
+          },
+        }),
+      ),
+    );
+    expect(allUnpriced).not.toContain("Projected spend");
+    expect(formatDigestSlackBody(composeWeeklyDigest(input()))).not.toContain("Projected spend");
   });
 
   it("labels currencies when an org spends in more than one", () => {

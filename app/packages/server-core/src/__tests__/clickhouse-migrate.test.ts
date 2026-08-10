@@ -39,4 +39,48 @@ describe("migrateMetrics", () => {
     command.mockRejectedValueOnce(new Error("ddl fail"));
     await expect(migrate.migrateMetrics()).rejects.toThrow("ddl fail");
   });
+
+  it("keeps plain engines unless CLICKHOUSE_METRICS_REPLICATED=1", async () => {
+    await migrate.migrateMetrics();
+    const queries = command.mock.calls.map((c) => (c[0] as unknown as { query: string }).query);
+    for (const q of queries) expect(q).not.toContain("Replicated");
+  });
+
+  it("emits Replicated* engines when CLICKHOUSE_METRICS_REPLICATED=1", async () => {
+    process.env["CLICKHOUSE_METRICS_REPLICATED"] = "1";
+    try {
+      await migrate.migrateMetrics();
+    } finally {
+      delete process.env["CLICKHOUSE_METRICS_REPLICATED"];
+    }
+    const queries = command.mock.calls.map((c) => (c[0] as unknown as { query: string }).query);
+    const engines = queries.flatMap((q) => q.match(/ENGINE = \w+/g) ?? []);
+    expect(engines.length).toBeGreaterThan(0);
+    for (const e of engines) expect(e).toMatch(/^ENGINE = Replicated\w*MergeTree$/);
+  });
+});
+
+describe("withReplicatedEngines", () => {
+  it("rewrites plain MergeTree", () => {
+    expect(migrate.withReplicatedEngines("ENGINE = MergeTree\nORDER BY ts")).toBe(
+      "ENGINE = ReplicatedMergeTree\nORDER BY ts",
+    );
+  });
+
+  it("rewrites AggregatingMergeTree", () => {
+    expect(migrate.withReplicatedEngines(") ENGINE = AggregatingMergeTree\nPARTITION BY x")).toBe(
+      ") ENGINE = ReplicatedAggregatingMergeTree\nPARTITION BY x",
+    );
+  });
+
+  it("rewrites ReplacingMergeTree and keeps its version argument", () => {
+    expect(migrate.withReplicatedEngines(") ENGINE = ReplacingMergeTree(ingested_at)")).toBe(
+      ") ENGINE = ReplicatedReplacingMergeTree(ingested_at)",
+    );
+  });
+
+  it("leaves statements without a MergeTree engine alone", () => {
+    const mv = "CREATE MATERIALIZED VIEW IF NOT EXISTS mv_x TO x AS SELECT 1";
+    expect(migrate.withReplicatedEngines(mv)).toBe(mv);
+  });
 });

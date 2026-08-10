@@ -5,6 +5,10 @@ import type {
   CostAnomalySettings,
   CostAnomalySettingsView,
   CostDimensionOption,
+  CreditBurndown,
+  ShowbackReport,
+  TagComplianceReport,
+  UntaggedSpendReport,
 } from "@infrawrench/client-core";
 import type { BudgetInput, CostQueryRequest, CostQueryResponse } from "./config.js";
 
@@ -13,23 +17,18 @@ import type { BudgetInput, CostQueryRequest, CostQueryResponse } from "./config.
  * this package) shares one definition of it; re-exported for web and desktop.
  */
 export type {
-  CostAccountStatus,
-  CostPollError,
+  CreditBurndown,
   BudgetWithStatus,
   BudgetPlacement,
   /** A detected spend anomaly, as listed on the Costs panel. */
   CostAnomaly,
   CostAnomalyDimension,
   CostAnomalyKind,
-  /** The per-org detection thresholds the Anomalies section edits. */
-  CostAnomalySettings,
-  /** Those thresholds plus whether SMS paging could actually be delivered. */
-  CostAnomalySettingsView,
-  /** Which anomaly kinds page by SMS: off / new sources only / everything. */
-  CostAnomalySmsMode,
-  /** One selectable value in a dimension picker. */
-  CostDimensionOption,
 } from "@infrawrench/client-core";
+// The rest of the cost/tag-policy contract (CostAccountStatus, the anomaly
+// settings, ShowbackReport, TagComplianceReport, …) is re-exported by
+// `./config.js`, which shares this barrel — re-exporting the same names from
+// two modules makes the bundled d.ts drop them from `export *` as ambiguous.
 
 /**
  * Host-injected data access for the cost components. Web wraps `apiFetch`;
@@ -89,4 +88,22 @@ export interface CostsClient extends CostApi {
   addBudgetToDashboard?(dashboardId: string, budgetId: string, title: string): Promise<void>;
   /** Remove one budget card, identified by the widget id from `placements`. */
   removeBudgetPlacement?(widgetId: string): Promise<void>;
+  /**
+   * Tag governance reads, optional the way `listAnomalies` is: a host that
+   * hasn't wired them simply doesn't render the tag governance section.
+   * `getTagCompliance` also carries the policy, so one call answers both
+   * "what is required" and "who complies".
+   */
+  getTagCompliance?(): Promise<TagComplianceReport>;
+  /** Untagged spend over the required keys; dates are inclusive YYYY-MM-DD. */
+  getUntaggedSpend?(from?: string, to?: string): Promise<UntaggedSpendReport>;
+  /** Spend grouped by cost centre through the org's allocation rules. */
+  getShowback?(from?: string, to?: string): Promise<ShowbackReport>;
+  /**
+   * Prepaid credit balances with their burn rate and runway. Optional the way
+   * `listAnomalies` is: a host that hasn't wired it simply doesn't render the
+   * burndown section — and the section renders nothing anyway for an org with
+   * no credit-capable accounts, which is the common case.
+   */
+  getCreditBurndown?(): Promise<CreditBurndown>;
 }

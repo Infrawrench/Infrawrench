@@ -63,6 +63,7 @@ const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-together"),
   () => import("@infrawrench/plugin-xai"),
   () => import("@infrawrench/plugin-uploadthing"),
+  () => import("@infrawrench/plugin-workos"),
 ];
 
 export interface LoadedPlugin {

@@ -100,8 +100,7 @@ export async function listCloudTasksQueueTasks(
     const name = String(t["name"] ?? "");
     const shortName = name.split("/").pop() ?? name;
     const httpRequest = (t["httpRequest"] ?? t["appEngineHttpRequest"]) as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     return {
       name,
       shortName,
@@ -190,6 +189,63 @@ export async function fetchCloudNatRouterStatus(
   return ctx.get<Record<string, unknown>>(
     `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${region}/routers/${router}/getRouterStatus`,
   );
+}
+
+/**
+ * Start or stop a GCE VM instance — the detail-page power actions and the
+ * sleep/wake schedule lifecycle pair. `stop` moves the VM to TERMINATED
+ * (compute billing stops; disks and static IPs keep billing), `start` boots
+ * a TERMINATED VM again.
+ */
+export async function setGceInstancePower(
+  ctx: GcpClientContext,
+  resource: ResourceInstance,
+  verb: "start" | "stop",
+): Promise<void> {
+  const p = ctx.project;
+  const zone = String(resource.fields["zone"] ?? "");
+  const name = String(resource.fields["name"] ?? "");
+  if (!zone || !name) {
+    throw new Error("Cannot determine zone/name for VM instance");
+  }
+  const tok = await ctx.token();
+  const res = await fetch(
+    `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instances/${name}/${verb}`,
+    { method: "POST", headers: { Authorization: `Bearer ${tok}` } },
+  );
+  if (!res.ok) {
+    throw new Error(await formatGcpError(verb === "start" ? "Start VM" : "Stop VM", res));
+  }
+}
+
+/**
+ * Change a stopped instance's machine type — the right-sizing apply path.
+ * GCE only accepts `setMachineType` while the instance is TERMINATED; a
+ * running instance gets the API's own 400, surfaced as-is.
+ */
+export async function setGceInstanceMachineType(
+  ctx: GcpClientContext,
+  resource: ResourceInstance,
+  machineType: string,
+): Promise<void> {
+  const p = ctx.project;
+  const zone = String(resource.fields["zone"] ?? "");
+  const name = String(resource.fields["name"] ?? "");
+  if (!zone || !name) {
+    throw new Error("Cannot determine zone/name for VM instance");
+  }
+  const tok = await ctx.token();
+  const res = await fetch(
+    `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instances/${name}/setMachineType`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ machineType: `zones/${zone}/machineTypes/${machineType}` }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(await formatGcpError("Set machine type", res));
+  }
 }
 
 /**

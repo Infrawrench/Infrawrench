@@ -67,6 +67,25 @@ vi.mock("@/services/host-services", () => ({
 vi.mock("@/services/ssh-agent", () => ({ buildInProcessAgent: vi.fn().mockReturnValue(null) }));
 vi.mock("@/services/audit", () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
 
+/**
+ * The session-recording tee. Mocked here rather than exercised: it owns its
+ * own database access and has its own tests. What this suite cares about is
+ * that the proxy drives it correctly and never lets it affect the terminal.
+ */
+function fakeRecorder() {
+  return {
+    recordingId: "rec-1",
+    onOutput: vi.fn(),
+    onInput: vi.fn(),
+    onResize: vi.fn(),
+    finish: vi.fn().mockResolvedValue(undefined),
+  };
+}
+const mockStartSessionRecording = vi.fn().mockResolvedValue(null);
+vi.mock("@infrawrench/server-core/ssh-recording/recorder", () => ({
+  startSessionRecording: (...a: unknown[]) => mockStartSessionRecording(...a),
+}));
+
 class HostKeyTrustRequiredError extends Error {
   constructor(
     readonly host: string,
@@ -128,11 +147,24 @@ function fakeWs() {
 
 const DIRECT = { sshKeyId: "k1", host: "target.example", username: "root" };
 
+/**
+ * Wait for `conn.shell` to be called after a "ready".
+ *
+ * The shell opens one tick behind the handshake now: the recorder is opened
+ * first so a prompt or MOTD arriving mid-insert isn't missing from the top of
+ * the cast. That makes the ordering asynchronous even when nothing is being
+ * recorded.
+ */
+async function openedShell(conn: FakeSshClient): Promise<void> {
+  await vi.waitFor(() => expect(conn.shellCalled).toBe(true));
+}
+
 describe("handleSshSession", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sshClients.length = 0;
     mockMakeHostKeyVerifier.mockReturnValue(() => {});
+    mockStartSessionRecording.mockResolvedValue(null);
   });
 
   it("refuses a direct-SSH host in blocked address space", async () => {
@@ -245,6 +277,7 @@ describe("handleSshSession", () => {
 
     // A "ready" arriving after teardown must not open a shell.
     conn.emit("ready");
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(conn.shellCalled).toBe(false);
   });
 
@@ -255,7 +288,7 @@ describe("handleSshSession", () => {
 
     const conn = sshClients[0]!;
     conn.emit("ready");
-    expect(conn.shellCalled).toBe(true);
+    await openedShell(conn);
     ws.close();
 
     const stream = new FakeShellStream();
@@ -271,6 +304,7 @@ describe("handleSshSession", () => {
 
     const conn = sshClients[0]!;
     conn.emit("ready");
+    await openedShell(conn);
     conn.shellCb!(new Error("shell failed"), undefined as never);
     expect(ws.sent).toContainEqual({ type: "ssh:error", error: "shell failed" });
     expect(conn.ended).toBe(true);
@@ -283,6 +317,7 @@ describe("handleSshSession", () => {
 
     const conn = sshClients[0]!;
     conn.emit("ready");
+    await openedShell(conn);
     const stream = new FakeShellStream();
     conn.shellCb!(undefined, stream);
 
@@ -304,6 +339,99 @@ describe("handleSshSession", () => {
     expect(conn.ended).toBe(false);
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(conn.ended).toBe(true);
+  });
+
+  it("tees output, input and resizes into the recorder, and settles it on close", async () => {
+    selectRows([KEY_ROW]);
+    const recorder = fakeRecorder();
+    mockStartSessionRecording.mockResolvedValue(recorder);
+    const ws = fakeWs();
+    await handleSshSession(ws as never, "org-1", "acct-1", "res-9", DIRECT, 120, 40, false, "u-1");
+
+    const conn = sshClients[0]!;
+    conn.emit("ready");
+    await openedShell(conn);
+
+    // The recording is opened with the session's identity and geometry, so a
+    // tape can be attributed without joining anything that may since be gone.
+    expect(mockStartSessionRecording).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "org-1",
+        userId: "u-1",
+        accountId: "acct-1",
+        resourceId: "res-9",
+        host: "target.example",
+        username: "root",
+        hopCount: 1,
+        cols: 120,
+        rows: 40,
+      }),
+    );
+
+    const stream = new FakeShellStream();
+    conn.shellCb!(undefined, stream);
+
+    stream.emit("data", Buffer.from("stdout"));
+    stream.stderr.emit("data", Buffer.from("stderr"));
+    expect(recorder.onOutput).toHaveBeenCalledTimes(2);
+
+    ws.emit("message", JSON.stringify({ type: "ssh:data", data: btoa("ls\r") }));
+    expect(recorder.onInput).toHaveBeenCalledTimes(1);
+    // The keystroke still reaches the host — the tee is a second consumer,
+    // never a filter.
+    expect(stream.written).toHaveLength(1);
+
+    ws.emit("message", JSON.stringify({ type: "ssh:resize", cols: 100, rows: 30 }));
+    expect(recorder.onResize).toHaveBeenCalledWith(100, 30);
+
+    ws.close();
+    expect(recorder.finish).toHaveBeenCalled();
+  });
+
+  it("keeps the terminal working when the recorder cannot be opened", async () => {
+    selectRows([KEY_ROW]);
+    // `startSessionRecording` returns null for every not-recording case — opted
+    // out, settings unreadable, insert failed — so the proxy has one branch and
+    // a broken recorder is indistinguishable from recording being off.
+    mockStartSessionRecording.mockResolvedValue(null);
+    const ws = fakeWs();
+    await handleSshSession(ws as never, "org-1", "acct-1", undefined, DIRECT);
+
+    const conn = sshClients[0]!;
+    conn.emit("ready");
+    await openedShell(conn);
+    const stream = new FakeShellStream();
+    conn.shellCb!(undefined, stream);
+
+    expect(ws.sent).toContainEqual({ type: "ssh:connected" });
+    stream.emit("data", Buffer.from("hello"));
+    expect(ws.sent).toContainEqual({
+      type: "ssh:data",
+      data: Buffer.from("hello").toString("base64"),
+    });
+  });
+
+  it("settles an empty recording when the ws closes while it is opening", async () => {
+    selectRows([KEY_ROW]);
+    const recorder = fakeRecorder();
+    let release: (() => void) | null = null;
+    mockStartSessionRecording.mockReturnValue(
+      new Promise((resolve) => {
+        release = () => resolve(recorder);
+      }),
+    );
+    const ws = fakeWs();
+    await handleSshSession(ws as never, "org-1", "acct-1", undefined, DIRECT);
+
+    const conn = sshClients[0]!;
+    conn.emit("ready");
+    await vi.waitFor(() => expect(release).not.toBeNull());
+    ws.close();
+    release!();
+
+    // No shell — but the row must not be left saying "recording" forever.
+    await vi.waitFor(() => expect(recorder.finish).toHaveBeenCalled());
+    expect(conn.shellCalled).toBe(false);
   });
 
   it("verifies intermediate hops and cleans them up when the ws closes mid-chain", async () => {

@@ -30,6 +30,8 @@ import type {
   PageResult,
   PageSpec,
   PromptSpec,
+  WorkflowAiResult,
+  WorkflowAiSpec,
   WorkflowCostRow,
   WorkflowCostWriteResult,
   WorkflowFetchRequest,
@@ -100,6 +102,13 @@ export interface ClientHostDeps {
    * through an egress proxy outside the cluster, desktop calls directly.
    */
   fetch?(request: WorkflowFetchRequest): Promise<WorkflowFetchResponse>;
+
+  /**
+   * Ask an AI model one already-validated question (powers `infra.ai`).
+   * Cloud-only: the call is made server-side with the deployment's API key and
+   * metered against the org's monthly AI spend cap.
+   */
+  ai?(spec: WorkflowAiSpec): Promise<WorkflowAiResult>;
 
   /** Deliver an alert and enforce its per-key cooldown (powers `infra.page`). */
   page?(spec: PageSpec): Promise<PageResult>;
@@ -368,6 +377,7 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
     ...(deps.sftpDelete ? { sftpDelete: deps.sftpDelete } : {}),
     ...(deps.writeCosts ? { writeCosts: deps.writeCosts } : {}),
     ...(deps.fetch ? { fetch: deps.fetch } : {}),
+    ...(deps.ai ? { ai: deps.ai } : {}),
     ...(deps.page ? { page: deps.page } : {}),
     ...(deps.clearPage ? { clearPage: deps.clearPage } : {}),
     ...(deps.waitForApproval ? { waitForApproval: deps.waitForApproval } : {}),

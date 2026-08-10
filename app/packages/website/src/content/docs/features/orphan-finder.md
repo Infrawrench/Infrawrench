@@ -53,6 +53,29 @@ Heuristics are declared by each plugin, so coverage grows as plugins do — a pr
 
 > **Freshness.** The finder reads the last synced state of each resource. If you detached a volume a minute ago, it appears after the next account sync — open the account page or wait for the background poller.
 
+## Who owns each flagged resource
+
+A list of waste nobody can be attributed to is a list nobody acts on. Every flagged resource carries
+its [owner](../core-concepts/resource-ownership.md), and the ones with nobody attached say
+**Unowned** rather than leaving the cell blank:
+
+| Resource        | Reason                               | Owner                  |
+| --------------- | ------------------------------------ | ---------------------- |
+| `backups-old`   | Volume is not attached to any server | Sam Reyes              |
+| `staging-lb-ip` | Floating IP is not assigned          | Platform team _(team)_ |
+| `vol-8823a1`    | Volume is not attached to any server | _Unowned_              |
+
+Under the list is the number that drives the work: **"12 of 34 have no recorded owner — nobody to
+ask before deleting, and nobody an alert can reach."** Set an owner on a resource's **Ownership**
+tab and it comes off that count.
+
+A free-text owner ("Platform team") is marked as such, because the distinction that matters is
+whether an alert can actually be _routed_ — only a real org member can be sent anything.
+
+**Local mode drops the owner column**, for the same reason it drops cost: ownership is a cloud
+record, so a local scan knows of no owners. That is not the same claim as "nobody owns these", and
+labelling every row `Unowned` would say the wrong thing.
+
 ## Cost annotations
 
 When an account has [cost collection](./cloud-costs.md) enabled and the provider reports per-resource cost rows, each flagged resource shows its spend over the trailing 30 days — a concrete number for what deleting it saves. Resources without matching cost rows simply show no figure; the flag itself does not depend on billing data.
@@ -70,6 +93,12 @@ infrawrench orphans --json          # stable JSON for scripting
 infrawrench orphans --org <org-id>  # pick an organization explicitly
 ```
 
-`--json` reports which mode produced the output: local scans carry `"costBasis": "unavailable"` and `"costWindowDays": 0`, so a script can tell "nothing was spent on this" apart from "spend is unknown here".
+`--json` includes `unownedCount` alongside `totalCount`, and an `owner` object on each flagged
+resource (`null` when nobody has claimed it) — enough to script "open a ticket for every unowned
+orphan". It also reports which mode produced the output: local scans carry `"costBasis": "unavailable"` and `"costWindowDays": 0`, so a script can tell "nothing was spent on this" apart from "spend is unknown here".
 
 <insert [Terminal showing `infrawrench orphans` text output: account headings with flagged resource rows, reasons, and a cost column] here>
+
+## Beyond orphans: oversized machines
+
+Waste is not always a resource doing nothing — sometimes it is a machine doing real work on twice the hardware it needs. The **Oversized** section directly below Potential savings covers that half: [right-sizing recommendations](./right-sizing.md) computed from two weeks of stored p95 CPU/memory utilisation, each with the provider's cheapest smaller size that still leaves headroom and a one-click resize.

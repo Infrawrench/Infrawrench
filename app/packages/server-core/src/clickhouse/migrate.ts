@@ -135,16 +135,37 @@ const STATEMENTS: string[] = [
 ];
 
 /**
+ * Rewrites MergeTree-family engines to their Replicated* counterparts.
+ * ClickHouse Cloud replicates plain MergeTree DDL transparently, but on the
+ * self-hosted 2-replica cluster (infra/terraform/clickhouse.tf) only
+ * Replicated* engines replicate data. Engine arguments are preserved —
+ * `ReplacingMergeTree(ingested_at)` becomes
+ * `ReplicatedReplacingMergeTree(ingested_at)` — and the ZooKeeper
+ * path/replica arguments are deliberately omitted: the tables live in a
+ * `Replicated` database, which derives them.
+ *
+ * Exported for tests only.
+ */
+export function withReplicatedEngines(stmt: string): string {
+  return stmt.replace(/ENGINE = (?=\w*MergeTree)/, "ENGINE = Replicated");
+}
+
+/**
  * Idempotently create the metrics schema. Safe to call on every boot.
  * No-op when CLICKHOUSE_METRICS_* is not configured (local dev / tests).
+ *
+ * CLICKHOUSE_METRICS_REPLICATED=1 switches the DDL to Replicated* engines.
+ * Set it for the in-cluster deployment; never against ClickHouse Cloud,
+ * which rejects ReplicatedMergeTree.
  */
 export async function migrateMetrics(): Promise<void> {
   if (!isClickHouseConfigured()) {
     console.log("[clickhouse] metrics not configured — skipping migrate");
     return;
   }
+  const replicated = process.env["CLICKHOUSE_METRICS_REPLICATED"] === "1";
   const ch = getClickHouseClient();
   for (const stmt of STATEMENTS) {
-    await ch.command({ query: stmt });
+    await ch.command({ query: replicated ? withReplicatedEngines(stmt) : stmt });
   }
 }

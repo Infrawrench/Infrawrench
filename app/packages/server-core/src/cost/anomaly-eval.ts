@@ -44,9 +44,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "../db/client";
 import { costAnomalies } from "../db/schema";
 import { getCostCoverage, queryCosts } from "../clickhouse/cost-readers";
-import { sendPushToOrg } from "../push/dispatch";
-import { sendSlackToOrg } from "../slack";
-import { sendMsTeamsToOrg } from "../msteams";
+import { alertReached, routeAlert } from "../alerts/route";
 import {
   detectNewSpendSource,
   detectSpike,
@@ -54,6 +52,7 @@ import {
   optionsForCurrency,
   type AnomalyDetectionOptions,
 } from "./anomaly-detect";
+import { buildAnomalyHints } from "./anomaly-hints";
 import {
   anomalyOptionsFor,
   getOrgAnomalySettings,
@@ -392,6 +391,28 @@ export async function detectCostAnomaliesForOrg(
 
     for (const anomaly of pending) {
       try {
+        // Root-cause hints: what the change timeline and audit log say
+        // happened in the anomaly's window. Computed before the cooldown
+        // check on purpose — a suppressed anomaly still renders in the list
+        // UI and should carry its hints there. Stored on the row so clients
+        // read them without re-running the window queries; failures degrade
+        // to an un-annotated alert (`buildAnomalyHints` never throws, but the
+        // store is guarded too — hints must never cost a delivery).
+        let hints: string[] = [];
+        try {
+          hints = await buildAnomalyHints(organizationId, {
+            day: anomaly.day,
+            dimension: anomaly.dimension,
+            dimensionKey: anomaly.dimensionKey,
+          });
+          if (hints.length > 0) {
+            await db.update(costAnomalies).set({ hints }).where(eq(costAnomalies.id, anomaly.id));
+          }
+        } catch (err) {
+          console.error(`[anomaly-eval] hint build failed for anomaly ${anomaly.id}:`, err);
+          hints = [];
+        }
+
         if (await inCooldown(organizationId, anomaly)) continue;
 
         const label = dimension === "provider" ? "provider" : "service";
@@ -412,10 +433,29 @@ export async function detectCostAnomaliesForOrg(
               `${formatAmount(anomaly.mean, anomaly.currency)}/day baseline over the prior ${BASELINE_DAYS} days`;
         const context = `${anomaly.day} · ${label}${anomaly.kind === "new_source" ? " · new" : ""}`;
 
-        const pushed = await sendPushToOrg(organizationId, "anomalyAlerts", {
+        // Slack and Teams have room for the full list; a push notification is
+        // one or two lines on a lock screen, so it carries only the top hint.
+        // The batched SMS carries none — its 320-character budget is already
+        // spent naming the anomalies themselves (`anomaly-sms.ts`).
+        const hintedBody = hints.length > 0 ? `${body}\n\nAround then: ${hints.join("; ")}.` : body;
+        const pushBody = hints.length > 0 ? `${body}\nLikely related: ${hints[0]}.` : body;
+
+        const url = costsUrl(organizationId);
+        // `facts` is what routing rules match on, and this is the trigger the
+        // feature was designed around: "anomalies over $500 on the prod account
+        // → #incidents" is `amountCents >= 50000` AND `accountId in [prod]`.
+        // The amount is the *actual* spend rather than the excess over
+        // baseline, because that is the number in the message and the one a
+        // person means when they say "over $500".
+        const routed = await routeAlert({
+          organizationId,
+          trigger: "anomalyAlerts",
           title,
-          body,
-          data: {
+          body: hintedBody,
+          pushBody,
+          context,
+          url,
+          pushData: {
             type: "cost_anomaly",
             orgId: organizationId,
             day: anomaly.day,
@@ -423,21 +463,18 @@ export async function detectCostAnomaliesForOrg(
             dimension,
             dimensionKey: anomaly.dimensionKey,
           },
+          facts: {
+            amountCents: Math.round(anomaly.actual * 100),
+            currency: anomaly.currency,
+            key: anomaly.dimensionKey,
+            ...(dimension === "provider" ? { pluginId: anomaly.dimensionKey } : {}),
+          },
         });
-        const url = costsUrl(organizationId);
-        const slacked = await sendSlackToOrg(organizationId, "anomalyAlerts", {
-          title,
-          body,
-          context,
-          ...(url ? { url } : {}),
-        });
-        const teamed = await sendMsTeamsToOrg(organizationId, "anomalyAlerts", {
-          title,
-          body,
-          context,
-          ...(url ? { url } : {}),
-        });
-        const delivered = pushed.succeeded > 0 || slacked.succeeded > 0 || teamed.succeeded > 0;
+        // `alertReached`, not `succeeded > 0`: a quiet-hours hold is a delivery
+        // that has not happened yet, and stamping `notifiedAt` is what keeps
+        // the next pass from raising the same anomaly again. Treating a held
+        // alert as a failure would re-detect it and deliver twice.
+        const delivered = alertReached(routed);
         if (delivered) {
           await db
             .update(costAnomalies)

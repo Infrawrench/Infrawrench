@@ -11,6 +11,12 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type {
+  AlertCondition,
+  AlertDestination,
+  EscalationPolicy,
+  QuietHours,
+} from "@infrawrench/client-core";
 
 import { accounts, dashboards, organizations, users } from "./core-schema.js";
 
@@ -162,6 +168,12 @@ export const resourceChanges = pgTable(
       .$type<{ field: string; from: unknown; to: unknown }[]>()
       .notNull()
       .default([]),
+    /**
+     * Who caused the change, when a non-sync writer knows: `"schedule"` for
+     * sleep/wake schedule transitions. Null = observed by sync (drift, or a
+     * user mutation the differ can't attribute).
+     */
+    origin: text("origin").$type<"schedule">(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({
@@ -400,6 +412,91 @@ export const changeFreezes = pgTable(
 );
 
 /**
+ * Org tag policy: the required tag keys (optionally with allowed values) every
+ * resource should carry, and whether resource creation through the app is
+ * refused when they are missing. One row per org, the same missing-row-means-
+ * defaults protocol as `org_cost_anomaly_settings`. Enforcement mirrors the
+ * change-freeze pattern: blocked creates get a 422 with code
+ * `tag_policy_unmet`, overridable via the `x-tag-policy-override` header by
+ * callers holding `tag-policy:override`; blocks and overrides land in
+ * `audit_logs`.
+ */
+export const orgTagPolicies = pgTable("org_tag_policies", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  /** `[{ key, allowedValues? }]` — see `RequiredTag` in client-core. */
+  requiredTags: jsonb("required_tags")
+    .$type<Array<{ key: string; allowedValues?: string[] | undefined }>>()
+    .notNull()
+    .default([]),
+  enforceOnCreate: boolean("enforce_on_create").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * Named cost centres spend is allocated to for showback ("Platform", "Data",
+ * "Growth"…). Purely org-defined labels — the mapping from spend to centre is
+ * the allocation rules table below.
+ */
+export const costCentres = pgTable(
+  "cost_centres",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("cost_centres_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * Ordered rules mapping cost rows to cost centres. `match` is an AND of the
+ * fields it sets (tag key/value, account, provider, service); a rule with an
+ * empty match is a catch-all. Evaluation is first-match-wins by ascending
+ * `priority` — the showback reader compiles the ordered list into one
+ * ClickHouse `multiIf` over `cost_daily`, so rows no rule claims fall into the
+ * synthetic "Unallocated" bucket rather than disappearing.
+ */
+export const costAllocationRules = pgTable(
+  "cost_allocation_rules",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    costCentreId: text("cost_centre_id")
+      .notNull()
+      .references(() => costCentres.id, { onDelete: "cascade" }),
+    /** Lower fires first; first matching rule wins. */
+    priority: integer("priority").notNull().default(0),
+    match: jsonb("match")
+      .$type<{
+        tagKey?: string | undefined;
+        tagValue?: string | undefined;
+        accountId?: string | undefined;
+        pluginId?: string | undefined;
+        service?: string | undefined;
+      }>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("cost_allocation_rules_org_idx").on(t.organizationId),
+    centreIdx: index("cost_allocation_rules_centre_idx").on(t.costCentreId),
+  }),
+);
+
+/**
  * Detected spend anomalies: a day whose spend for one (dimension, key) —
  * a provider or a service — cleared the trailing-window statistical threshold,
  * or where a key with no prior spend at all started costing money (see
@@ -444,6 +541,15 @@ export const costAnomalies = pgTable(
     thresholdAmountCents: integer("threshold_amount_cents").notNull(),
     detectedAt: timestamp("detected_at").notNull().defaultNow(),
     notifiedAt: timestamp("notified_at"),
+    /**
+     * Root-cause hints computed when the anomaly first fired: a small ranked
+     * list of human-readable facts from the change timeline and audit log for
+     * the anomalous day and the day before ("12 gce-instance resources
+     * appeared", "Astrid ran workflow \"Nightly rebuild\"") — see
+     * `cost/anomaly-hints.ts`. Null for rows written before hints existed and
+     * for passes where the hint queries failed; capped at three entries.
+     */
+    hints: jsonb("hints").$type<string[]>(),
   },
   (t) => ({
     onceUnique: uniqueIndex("cost_anomalies_once_unique").on(
@@ -454,6 +560,356 @@ export const costAnomalies = pgTable(
       t.currency,
     ),
     orgDayIdx: index("cost_anomalies_org_day_idx").on(t.organizationId, t.day),
+  }),
+);
+
+/**
+ * Metric threshold alert rules — "CPU > 90% for 15 minutes on these
+ * resources". Resources are selected by *query* (plugin + resource type +
+ * tag), never by id list, so a rule automatically covers resources created
+ * after it was written; the selector is resolved against the live `resources`
+ * table on every evaluation pass (`server-core/src/metric-alerts/`).
+ *
+ * `nextEvalAt` is the due-time column AND the claim lease, exactly like
+ * `accounts.next_poll_at`: the poller claims due rules with
+ * `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)` writing
+ * `now() + lease` into it, so N replicas never double-evaluate, and the
+ * normal completion path overwrites the lease with the true next cadence.
+ */
+export const metricAlertRules = pgTable(
+  "metric_alert_rules",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** Selector: null means "any plugin". */
+    pluginId: text("plugin_id"),
+    /** Selector: null means "any resource type". Only meaningful with pluginId. */
+    resourceTypeId: text("resource_type_id"),
+    /** Selector: tag key the resource must carry (matched case-insensitively). */
+    tagKey: text("tag_key"),
+    /** Selector: exact value `tagKey` must have; null means "any value". */
+    tagValue: text("tag_value"),
+    /** The metric series label as written to ClickHouse (e.g. "CPU %"). */
+    metricKey: text("metric_key").notNull(),
+    comparator: text("comparator").$type<">" | ">=" | "<" | "<=">().notNull(),
+    threshold: doublePrecision("threshold").notNull(),
+    /** Trailing window the condition must hold for before the rule fires. */
+    forMinutes: integer("for_minutes").notNull().default(15),
+    /**
+     * Least minutes between notified firings for one (rule, resource) — the
+     * flap suppressor. Follows the anomaly cooldown convention: a firing
+     * inside the cooldown is still recorded, just not notified.
+     */
+    cooldownMinutes: integer("cooldown_minutes").notNull().default(60),
+    enabled: boolean("enabled").notNull().default(true),
+    /** Due time + claim lease; null means "due now" (fresh rules evaluate promptly). */
+    nextEvalAt: timestamp("next_eval_at"),
+    lastEvalAt: timestamp("last_eval_at"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("metric_alert_rules_org_idx").on(t.organizationId),
+    dueIdx: index("metric_alert_rules_due_idx").on(t.nextEvalAt),
+    forMinutesPositive: check("metric_alert_rules_for_minutes_positive", sql`${t.forMinutes} > 0`),
+    cooldownNonNegative: check(
+      "metric_alert_rules_cooldown_non_negative",
+      sql`${t.cooldownMinutes} >= 0`,
+    ),
+  }),
+);
+
+/**
+ * Firing state and history for metric alert rules — one row per continuous
+ * breach of one rule on one resource. The partial unique index on
+ * (ruleId, resourceId) WHERE status = 'firing' is the claim, mirroring
+ * `paging_incidents_open_unique`: the replica whose `onConflictDoNothing`
+ * insert lands owns opening (and notifying) the incident, and a firing stays
+ * open until an evaluation observes the condition clear, which flips it to
+ * `resolved` and sends the recovery notification.
+ *
+ * `resourceId` is deliberately not a FK (the `resource_changes` stance):
+ * resource rows are churned by sync, and the history must keep rendering for
+ * resources that disappeared upstream. `notifiedAt` stays null when delivery
+ * failed or the firing was suppressed by the rule's cooldown.
+ *
+ * Rules only ever soft-delete (`deletedAt`), so `ruleId`'s FK is `restrict`
+ * rather than `cascade`: history is an audit surface, and a stray hard delete
+ * of a rule must fail loudly instead of silently erasing its firings.
+ * `ruleName` is denormalized at firing time for the same reason
+ * `resourceName` is — the event renders on its own, whatever happens to the
+ * rule row later.
+ */
+export const metricAlertEvents = pgTable(
+  "metric_alert_events",
+  {
+    id: text("id").primaryKey(),
+    ruleId: text("rule_id")
+      .notNull()
+      .references(() => metricAlertRules.id, { onDelete: "restrict" }),
+    /** The rule's name when the firing opened, snapshotted (see above). */
+    ruleName: text("rule_name").notNull(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    resourceId: text("resource_id").notNull(),
+    /** Denormalized so resolved firings still render after resource churn. */
+    resourceName: text("resource_name").notNull(),
+    status: text("status").$type<"firing" | "resolved">().notNull().default("firing"),
+    /** Worst sample observed in the breaching window, in the metric's unit. */
+    observedValue: doublePrecision("observed_value").notNull(),
+    firedAt: timestamp("fired_at").notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at"),
+    /** When the firing notification was delivered; null = suppressed or failed. */
+    notifiedAt: timestamp("notified_at"),
+    /** When the recovery notification was delivered. */
+    resolvedNotifiedAt: timestamp("resolved_notified_at"),
+  },
+  (t) => ({
+    openUnique: uniqueIndex("metric_alert_events_open_unique")
+      .on(t.ruleId, t.resourceId)
+      .where(sql`status = 'firing'`),
+    ruleFiredIdx: index("metric_alert_events_rule_fired_idx").on(t.ruleId, t.firedAt),
+    orgFiredIdx: index("metric_alert_events_org_fired_idx").on(t.organizationId, t.firedAt),
+  }),
+);
+
+/**
+ * Synthetic HTTP probes — "is this endpoint up, and how fast?" checks run on
+ * an interval from the egress-proxy Cloudflare Worker, i.e. from *outside* the
+ * cluster, so a probe measures what a user on the internet would see rather
+ * than pod-to-pod latency. Results land in ClickHouse as ordinary metric
+ * points (`resource_id = "probe:<id>"`, series "Latency"/"Up"), which is what
+ * lets the existing metric readers and chart components render them unchanged.
+ *
+ * `nextProbeAt` is the due-time column AND the claim lease, exactly like
+ * `metric_alert_rules.next_eval_at`: the poller claims due probes with
+ * `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)` writing
+ * `now() + interval` into it, so N replicas never double-probe. Null means
+ * "due now" — fresh probes fire promptly.
+ *
+ * The linked resource identity (`accountId`/`resourceId`/`pluginId`/
+ * `resourceTypeId`/`outputKey`) remembers which resource output suggested the
+ * URL. `resourceId` is deliberately not a FK (the `resource_changes` stance):
+ * resource rows are churned by sync, and a probe must keep running for an
+ * endpoint whose resource row disappeared upstream.
+ *
+ * State machine: every failed probe increments `consecutiveFailures`; reaching
+ * `failureThreshold` flips `status` to "down" and notifies (`probeAlerts`
+ * trigger); any success resets the counter and flips back to "up", notifying
+ * only if the probe was previously "down".
+ */
+export const syntheticProbes = pgTable(
+  "synthetic_probes",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    url: text("url").notNull(),
+    method: text("method").notNull().default("GET"),
+    /** Seconds between probes; floored at 60 (see `PROBE_LIMITS`). */
+    intervalSeconds: integer("interval_seconds").notNull().default(60),
+    timeoutMs: integer("timeout_ms").notNull().default(10_000),
+    /** Consecutive failures before the probe flips to "down" and notifies. */
+    failureThreshold: integer("failure_threshold").notNull().default(3),
+    enabled: boolean("enabled").notNull().default(true),
+    /** Linked resource identity — which output suggested the URL. All nullable. */
+    accountId: text("account_id").references(() => accounts.id, { onDelete: "set null" }),
+    /** Not a FK — see above. */
+    resourceId: text("resource_id"),
+    pluginId: text("plugin_id"),
+    resourceTypeId: text("resource_type_id"),
+    /** The output/field key the URL was suggested from (e.g. "endpoint"). */
+    outputKey: text("output_key"),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    status: text("status").$type<"up" | "down" | "unknown">().notNull().default("unknown"),
+    lastProbeAt: timestamp("last_probe_at"),
+    /** Due time + claim lease; null means "due now". */
+    nextProbeAt: timestamp("next_probe_at"),
+    lastStatusCode: integer("last_status_code"),
+    lastLatencyMs: integer("last_latency_ms"),
+    /** Failure detail for the last failed probe; null after a success. */
+    lastError: text("last_error"),
+    /** When `status` last flipped up↔down — "down for 23 minutes" rendering. */
+    lastStateChangeAt: timestamp("last_state_change_at"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("synthetic_probes_org_idx").on(t.organizationId),
+    dueIdx: index("synthetic_probes_due_idx").on(t.nextProbeAt),
+    intervalMin: check("synthetic_probes_interval_min", sql`${t.intervalSeconds} >= 60`),
+    timeoutPositive: check("synthetic_probes_timeout_positive", sql`${t.timeoutMs} > 0`),
+    thresholdPositive: check("synthetic_probes_threshold_positive", sql`${t.failureThreshold} > 0`),
+  }),
+);
+
+/**
+ * Public status pages — a read-only view of a chosen set of synthetic probes,
+ * served unauthenticated at `/status/:slug` for anyone the org gives the link
+ * to. The monitoring already exists (`synthetic_probes`); this table only
+ * decides which of it is publishable and under what words.
+ *
+ * Two safety properties are structural rather than remembered:
+ *
+ * - `published` defaults to **false**. A page is created, previewed by the
+ *   org, and only then made reachable — creating one can never accidentally
+ *   expose an endpoint.
+ * - The slug is the only credential, so it is generated with real entropy
+ *   (`generateStatusPageSlug`) rather than derived from the title. It is
+ *   globally unique, not per-org: the public URL has no org in it, because
+ *   putting one there would leak the organization id to every visitor.
+ *
+ * What a visitor may learn is bounded by the *wire assembly*, not by this
+ * table: labels, current state, and uptime history. Probe URLs, resource ids,
+ * account names and error text never leave the org-scoped API.
+ */
+export const statusPages = pgTable(
+  "status_pages",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** The public URL segment; the page's only access credential. */
+    slug: text("slug").notNull(),
+    /** Headline shown to visitors, e.g. "Acme API status". */
+    title: text("title").notNull(),
+    /** Optional paragraph under the headline. */
+    description: text("description"),
+    /** False until someone deliberately publishes — see the note above. */
+    published: boolean("published").notNull().default(false),
+    /** Render the 90-day uptime bars, or just the current state. */
+    showHistory: boolean("show_history").notNull().default(true),
+    /** Show the per-component 24h uptime percentage. */
+    showUptime: boolean("show_uptime").notNull().default(true),
+    /** Optional "contact support" link rendered in the footer. */
+    supportUrl: text("support_url"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("status_pages_org_idx").on(t.organizationId),
+    slugUnique: uniqueIndex("status_pages_slug_unique").on(t.slug),
+  }),
+);
+
+/**
+ * Which probes a status page publishes, and what it calls them.
+ *
+ * `label` exists because a probe's internal name ("prod-api-lb health, eu-w1")
+ * is an operations detail, and the public equivalent ("API") is a product one.
+ * The public payload always renders `label`, falling back to the probe name
+ * only when the org left it blank — that fallback is a deliberate choice by
+ * the org, not an accident of the schema.
+ *
+ * `probeId` IS a FK with cascade, unlike the `resource_id` sidecars elsewhere:
+ * a deleted probe has no state left to publish, so the component must vanish
+ * with it rather than render a permanent "unknown" tile to the public.
+ */
+export const statusPageComponents = pgTable(
+  "status_page_components",
+  {
+    id: text("id").primaryKey(),
+    statusPageId: text("status_page_id")
+      .notNull()
+      .references(() => statusPages.id, { onDelete: "cascade" }),
+    probeId: text("probe_id")
+      .notNull()
+      .references(() => syntheticProbes.id, { onDelete: "cascade" }),
+    /** Public name; null falls back to the probe's own name. */
+    label: text("label"),
+    /** Optional heading this component sits under, e.g. "Core services". */
+    groupName: text("group_name"),
+    /** Ascending display order within the page. */
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pageIdx: index("status_page_components_page_idx").on(t.statusPageId, t.position),
+    pageProbeUnique: uniqueIndex("status_page_components_page_probe_unique").on(
+      t.statusPageId,
+      t.probeId,
+    ),
+  }),
+);
+
+/**
+ * Ownership metadata on a resource — who owns it, what it is for, and the
+ * ticket that authorized it.
+ *
+ * This is the sidecar stance `resource_schedules` and `resource_leases`
+ * established, for the same reason: `resource_id` is deliberately **not** a
+ * foreign key. Resource rows are churned by sync, and the answer to "whose is
+ * this?" must survive a resource disappearing and coming back — losing it on
+ * every re-sync would make the field useless exactly when someone needs it.
+ * Cleanup rides the `account_id` cascade instead.
+ *
+ * Owner is modelled twice on purpose:
+ *
+ * - `owner_user_id` is a real org member, and is what makes an alert
+ *   *routable* — the orphan finder can name a person and the notifier can
+ *   reach them. `onDelete: "set null"` so removing a user orphans the
+ *   ownership row rather than deleting the purpose and ticket with it.
+ * - `owner_label` is free text for the cases a user id cannot express — a
+ *   team, a squad rota, a contractor. It is display-only and never routed.
+ *
+ * A row with neither is still worth keeping: purpose and ticket alone answer
+ * most of "why does this exist?".
+ */
+export const resourceOwnership = pgTable(
+  "resource_ownership",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    /** Not a FK — see above. */
+    resourceId: text("resource_id").notNull(),
+    pluginId: text("plugin_id").notNull(),
+    resourceTypeId: text("resource_type_id").notNull(),
+    /** Denormalized so an owner report can name a resource that has gone. */
+    resourceName: text("resource_name").notNull(),
+    /** The routable owner: an org member. Null = owned by nobody in-app. */
+    ownerUserId: text("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+    /** Free-text owner for teams/externals; display-only, never routed. */
+    ownerLabel: text("owner_label"),
+    /** What the resource is for, in the org's own words. */
+    purpose: text("purpose"),
+    /** Link to the ticket/issue/PR that authorized it. */
+    ticketUrl: text("ticket_url"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgResourceUnique: uniqueIndex("resource_ownership_org_resource_unique").on(
+      t.organizationId,
+      t.resourceId,
+    ),
+    orgIdx: index("resource_ownership_org_idx").on(t.organizationId),
+    ownerIdx: index("resource_ownership_owner_idx").on(t.organizationId, t.ownerUserId),
+    accountIdx: index("resource_ownership_account_idx").on(t.accountId),
   }),
 );
 
@@ -487,6 +943,34 @@ export const sshKeys = pgTable(
     orgIdx: index("ssh_keys_org_idx").on(t.organizationId),
     userIdx: index("ssh_keys_user_idx").on(t.userId),
     userNameUnique: uniqueIndex("ssh_keys_user_name_unique").on(t.userId, t.name),
+  }),
+);
+
+/**
+ * Saved fan-out SSH command snippets — org-shared, so the whole team reuses
+ * the same "check kernel", "disk usage" one-liners from the fan-out screen,
+ * the desktop app, and the CLI. Commands are not secret (they run over hosts
+ * the org already administers), so they are stored in plaintext.
+ */
+export const sshSnippets = pgTable(
+  "ssh_snippets",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    command: text("command").notNull(),
+    description: text("description"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("ssh_snippets_org_idx").on(t.organizationId),
+    orgNameUnique: uniqueIndex("ssh_snippets_org_name_unique").on(t.organizationId, t.name),
   }),
 );
 
@@ -565,6 +1049,57 @@ export const subscriptions = pgTable(
     orgUnique: uniqueIndex("subscriptions_org_unique").on(t.organizationId),
     stripeCustomerIdx: index("subscriptions_stripe_customer_idx").on(t.stripeCustomerId),
     stripeSubIdx: index("subscriptions_stripe_sub_idx").on(t.stripeSubscriptionId),
+  }),
+);
+
+/**
+ * Prepaid seat capacity, bought outright for a fixed term instead of rented by
+ * the month.
+ *
+ * One row per completed one-time Stripe payment, not per seat: a purchase of
+ * three slots is one row with `quantity` 3, because they were paid for together
+ * and therefore expire together. Rows are additive and never mutated by seat
+ * accounting — capacity is a `sum(quantity)` over the rows that are still
+ * `active` and not yet past `expiresAt`, so an expiring term needs no sweep job
+ * to take effect.
+ *
+ * Unlike `subscriptions` there is no unique index on the organization: an org
+ * accumulates slots, and each purchase carries its own term.
+ */
+export const capacitySlots = pgTable(
+  "capacity_slots",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Seats this purchase grants for the whole of its term. */
+    quantity: integer("quantity").notNull().default(1),
+    /**
+     * "active" | "refunded". A refunded slot stops granting capacity
+     * immediately; the row is kept so the purchase history stays honest.
+     */
+    status: text("status").notNull().default("active"),
+    /**
+     * The Checkout Session that paid for it. Unique, and that is what makes the
+     * webhook idempotent — Stripe redelivers events, and without this a retry
+     * would grant the same seats twice.
+     */
+    stripeCheckoutSessionId: text("stripe_checkout_session_id").notNull(),
+    stripePaymentIntentId: text("stripe_payment_intent_id"),
+    /** What was actually charged, in cents, for the purchase-history line. */
+    amountPaidCents: integer("amount_paid_cents"),
+    /** Term length as sold, recorded per row so changing the offer is safe. */
+    termMonths: integer("term_months").notNull(),
+    startsAt: timestamp("starts_at").notNull().defaultNow(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    sessionUnique: uniqueIndex("capacity_slots_session_unique").on(t.stripeCheckoutSessionId),
+    orgIdx: index("capacity_slots_org_idx").on(t.organizationId),
+    paymentIntentIdx: index("capacity_slots_payment_intent_idx").on(t.stripePaymentIntentId),
   }),
 );
 
@@ -720,9 +1255,15 @@ export const slackInstallations = pgTable(
 );
 
 /**
- * A Slack channel an org routes alerts to, with one opt-in per trigger. The
- * three flags mirror `pushPreferences` so a channel can take budget alerts
- * without also taking every sync incident.
+ * A Slack channel an org can route alerts to.
+ *
+ * The row is now **identity only** — which channel, in which install. It used
+ * to carry one boolean per trigger, which made it half of a routing table with
+ * no way to express a condition: a channel could take "all budget alerts" or
+ * none, never "budget alerts over $500 on prod". Routing moved to
+ * `alert_rules`, which references this row by id; see
+ * `client-core/src/alert-routing.ts` for why that also made adding a trigger a
+ * one-line change instead of a six-file one.
  */
 export const slackChannels = pgTable(
   "slack_channels",
@@ -739,25 +1280,6 @@ export const slackChannels = pgTable(
     /** Channel name at the time it was added, refreshed when we list channels. */
     channelName: text("channel_name").notNull(),
     isPrivate: boolean("is_private").notNull().default(false),
-    syncIncidents: boolean("sync_incidents").notNull().default(true),
-    budgetAlerts: boolean("budget_alerts").notNull().default(true),
-    /** Statistical spend-spike alerts (see `cost/anomaly-eval.ts`). */
-    anomalyAlerts: boolean("anomaly_alerts").notNull().default(true),
-    /**
-     * Batched resource-drift digests (see `drift/alerts.ts`). The one trigger
-     * that defaults **off**: drift is continuous and high-volume where the
-     * other alerts are exceptional, so shipping it default-on would start
-     * posting into every channel an org already connected.
-     */
-    resourceDrift: boolean("resource_drift").notNull().default(false),
-    /** Alerts raised by a workflow calling `infra.page(...)`. */
-    workflowPages: boolean("workflow_pages").notNull().default(true),
-    /**
-     * The Monday-morning weekly summary. Channel opt-in defaults on like the
-     * other triggers, but nothing sends until the org enables the digest in
-     * `org_digest_settings`.
-     */
-    weeklyDigest: boolean("weekly_digest").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -771,9 +1293,90 @@ export const slackChannels = pgTable(
 );
 
 /**
- * A Microsoft Teams channel an org routes alerts to, identified by the webhook
- * URL of a Teams "Workflows" automation (or a legacy Office 365 connector).
- * The three flags mirror `slackChannels` and `pushPreferences`.
+ * Slack identity ↔ org member mapping, created by the signed link flow
+ * (`GET /api/slack/link`). Inbound Slack requests (slash commands, approval
+ * buttons) carry only a Slack `user_id`; nothing is honoured until that id
+ * resolves through this table to a member of the org, so the row is the whole
+ * trust boundary for two-way Slack.
+ *
+ * Keyed per (org, workspace, Slack user): one Slack account maps to exactly
+ * one Infrawrench account within an org, and re-linking overwrites — the link
+ * token proves control of the Slack account, the session proves the
+ * Infrawrench one, so whoever holds both decides the pairing.
+ */
+export const slackUserLinks = pgTable(
+  "slack_user_links",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Slack workspace id (`T…`) the link was made from. */
+    teamId: text("team_id").notNull(),
+    /** Slack user id (`U…`/`W…`). */
+    slackUserId: text("slack_user_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgTeamSlackUnique: uniqueIndex("slack_user_links_org_team_slack_unique").on(
+      t.organizationId,
+      t.teamId,
+      t.slackUserId,
+    ),
+    teamUserIdx: index("slack_user_links_team_user_idx").on(t.teamId, t.slackUserId),
+    orgIdx: index("slack_user_links_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * Where an approval request's interactive Slack message landed, so a decision
+ * — from a Slack button or the web UI — can update every copy in place and
+ * thread the outcome under it. One row per (approval, channel) message.
+ *
+ * `approvalId` is deliberately not a FK: it points at `workflow_approvals` for
+ * kind "workflow" and `chat_pending_actions` for kind "chat", and a stale row
+ * is harmless (the update loop just no-ops when the message is gone).
+ */
+export const slackApprovalMessages = pgTable(
+  "slack_approval_messages",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /**
+     * Which table `approval_id` points at: "workflow" (`workflow_approvals`),
+     * "chat" (`chat_pending_actions`) or "access" (`access_requests`).
+     * Widening this is a `$type` change only — the column is already `text`.
+     */
+    kind: text("kind").$type<"workflow" | "chat" | "access">().notNull(),
+    approvalId: text("approval_id").notNull(),
+    installationId: text("installation_id")
+      .notNull()
+      .references(() => slackInstallations.id, { onDelete: "cascade" }),
+    /** Slack channel id (`C…`/`G…`) the message was posted to. */
+    channelId: text("channel_id").notNull(),
+    /** Slack message timestamp — the id `chat.update` and threads key on. */
+    messageTs: text("message_ts").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    approvalIdx: index("slack_approval_messages_approval_idx").on(t.kind, t.approvalId),
+    orgIdx: index("slack_approval_messages_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * A Microsoft Teams channel an org can route alerts to, identified by the
+ * webhook URL of a Teams "Workflows" automation (or a legacy Office 365
+ * connector).
+ *
+ * Like `slackChannels`, this row is identity and credential only; which alerts
+ * reach it is decided by `alert_rules`.
  *
  * There is no installation table above this one, as there is for Slack: Teams
  * has no app-only OAuth flow we can use, so each channel stands alone with its
@@ -805,20 +1408,6 @@ export const msteamsWebhooks = pgTable(
     urlHost: text("url_host").notNull(),
     /** Non-secret display hint, e.g. `contoso.webhook.office.com · …a7f2`. */
     urlHint: text("url_hint").notNull(),
-    syncIncidents: boolean("sync_incidents").notNull().default(true),
-    budgetAlerts: boolean("budget_alerts").notNull().default(true),
-    /** Statistical spend-spike alerts (see `cost/anomaly-eval.ts`). */
-    anomalyAlerts: boolean("anomaly_alerts").notNull().default(true),
-    /** Batched resource-drift digests. Defaults off — see `slackChannels`. */
-    resourceDrift: boolean("resource_drift").notNull().default(false),
-    /** Alerts raised by a workflow calling `infra.page(...)`. */
-    workflowPages: boolean("workflow_pages").notNull().default(true),
-    /**
-     * The Monday-morning weekly summary. Channel opt-in defaults on like the
-     * other triggers, but nothing sends until the org enables the digest in
-     * `org_digest_settings`.
-     */
-    weeklyDigest: boolean("weekly_digest").notNull().default(true),
     createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -1017,6 +1606,323 @@ export const orgDriftAlertSettings = pgTable("org_drift_alert_settings", {
 });
 
 /**
+ * Per-org settings and throttle state for expiry-radar alerts, modelled on
+ * `org_drift_alert_settings`. One row per org that has either tuned the
+ * settings or been through an alert scan; no row means the shipped defaults
+ * (enabled, 60-day lead time).
+ *
+ * `lastNotifiedAt` is a claim, not bookkeeping, and it records the last
+ * *completed alert scan*, not necessarily a delivered message: `expiry/alerts.ts`
+ * advances it with one conditional upsert (`last_notified_at IS NULL OR
+ * <= now - 24h`), exactly like the drift cooldown, so N poller replicas
+ * evaluating the same org produce one scan per day. A scan that finds nothing
+ * due keeps the window spent — deadlines move by whole days, so re-scanning a
+ * quiet org every tick would buy nothing — while a scan whose message reached
+ * nobody is rolled back so the next tick can retry.
+ */
+export const orgExpirySettings = pgTable("org_expiry_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  /** Whether the poller sends expiry alerts for this org at all. */
+  enabled: boolean("enabled").notNull().default(true),
+  /** Days of lead time before a deadline counts as `upcoming` and alertable. */
+  leadDays: integer("lead_days").notNull().default(60),
+  /** The cooldown claim — when this org's expiry alert scan last completed. */
+  lastNotifiedAt: timestamp("last_notified_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * Per-org settings and throttle state for posture-check alerts, modelled on
+ * `org_expiry_settings` minus the lead time (findings have no clock). One row
+ * per org that has either tuned the settings or been through an alert scan;
+ * no row means the shipped defaults (enabled).
+ *
+ * `lastNotifiedAt` is a claim, not bookkeeping, and it records the last
+ * *completed alert scan*, not necessarily a delivered message:
+ * `posture/alerts.ts` advances it with one conditional upsert
+ * (`last_notified_at IS NULL OR <= now - 24h`), exactly like the expiry
+ * cooldown, so N poller replicas evaluating the same org produce one scan per
+ * day. A scan that finds nothing alertable keeps the window spent, while a
+ * scan whose message reached nobody is rolled back so the next tick can
+ * retry.
+ */
+export const orgPostureSettings = pgTable("org_posture_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  /** Whether the poller sends posture alerts for this org at all. */
+  enabled: boolean("enabled").notNull().default(true),
+  /** The cooldown claim — when this org's posture alert scan last completed. */
+  lastNotifiedAt: timestamp("last_notified_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * Accepted posture findings — "yes, that bucket is public on purpose".
+ *
+ * Keyed by `(organization, resource, rule)` rather than by a finding row:
+ * findings have no identity, they are recomputed from stored fields on every
+ * read. Both halves of the key are stable — resource ids come from the
+ * plugin's lister and are the id upserted on every sync, rule ids are
+ * declared in the plugin manifest — so a dismissal survives syncs and stops
+ * applying by itself the moment the rule stops matching.
+ *
+ * `resourceId` is not a FK, the `resource_changes` stance: resource rows are
+ * churned by sync and soft-deleted, and a dismissal that outlives its
+ * resource is inert anyway (the feed only reports dismissals whose rule still
+ * matches). Cleanup rides the organization cascade.
+ *
+ * `dismissedBy` is nulled rather than cascaded when the user is deleted — the
+ * decision stays on the record even when the person who made it is gone.
+ */
+export const postureDismissals = pgTable(
+  "posture_dismissals",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Infrawrench resource id, as the plugin's lister reports it. */
+    resourceId: text("resource_id").notNull(),
+    /** The matched rule's id, unique within its plugin. */
+    ruleId: text("rule_id").notNull(),
+    /** The operator's note, when they left one. */
+    reason: text("reason"),
+    dismissedBy: text("dismissed_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("posture_dismissals_org_idx").on(t.organizationId),
+    /** One decision per (resource, rule) — dismissing twice is an update. */
+    findingUnique: uniqueIndex("posture_dismissals_finding_idx").on(
+      t.organizationId,
+      t.resourceId,
+      t.ruleId,
+    ),
+  }),
+);
+
+/**
+ * Sleep/wake schedules — "off at 19:00, on at 08:00, Mon–Fri" windows on
+ * resources whose plugin declares a `lifecycle` start/stop action pair.
+ *
+ * `nextTransitionAt` is the due-time column AND the claim lease, exactly like
+ * `accounts.next_poll_at`: the poller's schedule pass claims due rows with
+ * `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)` writing
+ * `now() + lease` into it, so N replicas never double-fire, and the normal
+ * completion path overwrites the lease with the true next transition.
+ *
+ * `lastTransitionKey` (`"<ISO instant>:<stop|start>"`) is the idempotency
+ * record: the due transition is recomputed from the timing at claim time, and
+ * a key that matches means the transition already ran (or was deliberately
+ * skipped for a freeze) — the pass reschedules without re-invoking, so a
+ * restart mid-lease can't fire the same window twice.
+ *
+ * `resourceId` is not a FK (the `resource_changes` stance) — resource rows
+ * are churned by sync; cleanup rides the account cascade, and the pass skips
+ * schedules whose resource row is gone.
+ */
+export const resourceSchedules = pgTable(
+  "resource_schedules",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    resourceId: text("resource_id").notNull(),
+    pluginId: text("plugin_id").notNull(),
+    resourceTypeId: text("resource_type_id").notNull(),
+    /** ISO weekdays 1 (Mon) – 7 (Sun) the resource is worked on. */
+    daysOfWeek: jsonb("days_of_week").$type<number[]>().notNull(),
+    /** Wall-clock "HH:MM" in `timezone` at which the resource is stopped. */
+    stopTime: text("stop_time").notNull(),
+    /** Wall-clock "HH:MM" in `timezone` at which the resource is started. */
+    startTime: text("start_time").notNull(),
+    /** IANA zone the wall-clock times are computed in (DST-safe). */
+    timezone: text("timezone").notNull(),
+    paused: boolean("paused").notNull().default(false),
+    /** Due time + claim lease; null while paused. */
+    nextTransitionAt: timestamp("next_transition_at"),
+    /** "stop" | "start" — what fires at `nextTransitionAt`. */
+    nextTransitionAction: text("next_transition_action").$type<"stop" | "start">(),
+    /** Idempotency record of the last executed/skipped transition. */
+    lastTransitionKey: text("last_transition_key"),
+    lastRunAt: timestamp("last_run_at"),
+    lastRunAction: text("last_run_action").$type<"stop" | "start">(),
+    /** "ok" | "failed" | "skipped_freeze" — failures are never silent. */
+    lastRunStatus: text("last_run_status").$type<"ok" | "failed" | "skipped_freeze">(),
+    lastRunError: text("last_run_error"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("resource_schedules_org_idx").on(t.organizationId),
+    dueIdx: index("resource_schedules_due_idx").on(t.nextTransitionAt),
+    /** One schedule per resource — two windows on one VM would fight. */
+    resourceUnique: uniqueIndex("resource_schedules_org_resource_idx").on(
+      t.organizationId,
+      t.resourceId,
+    ),
+  }),
+);
+
+/**
+ * Resource leases (TTL) — an optional "expires at" on any resource ("give me
+ * a test cluster for 3 days"). Active leases ride the expiry radar (kind
+ * `"lease"`), so the owner is nagged through the existing alert pass; a lease
+ * with `autoDelete` additionally opts into the poller's lease pass, which
+ * announces the deletion twice and then calls the plugin's `deleteResource`
+ * at expiry (freeze-aware — a delete during a change freeze is deferred and
+ * surfaced, never silently executed).
+ *
+ * `nextCheckAt` is the due-time column AND the claim lease for auto-delete
+ * leases, the `resource_schedules.next_transition_at` protocol: the pass
+ * claims due rows with `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP
+ * LOCKED)` writing `now() + lease` into it. Null means "due now" — a fresh
+ * auto-delete lease is picked up on the next tick, which computes the first
+ * warning instant and reschedules. Non-auto-delete leases keep it null and
+ * are never claimed (the pass filters on `autoDelete`).
+ *
+ * `firstWarningAt` / `finalWarningAt` record the two mandatory announcements
+ * (null until sent) — the pass never deletes until both are non-null AND the
+ * expiry has passed, even when that pushes the delete later.
+ *
+ * `resourceId` is not a FK (the `resource_schedules` stance) — resource rows
+ * are churned by sync; cleanup rides the account cascade. `displayName` is
+ * denormalized so completion messages can name the resource after its row is
+ * gone.
+ */
+export const resourceLeases = pgTable(
+  "resource_leases",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    resourceId: text("resource_id").notNull(),
+    pluginId: text("plugin_id").notNull(),
+    resourceTypeId: text("resource_type_id").notNull(),
+    /** Resource display name at lease time — survives the resource's deletion. */
+    displayName: text("display_name").notNull(),
+    /** The lease deadline. */
+    expiresAt: timestamp("expires_at").notNull(),
+    /** Opt-in: delete the resource at expiry (after two announcements). */
+    autoDelete: boolean("auto_delete").notNull().default(false),
+    /** Why/who-for, shown on the radar and in the announcements. */
+    note: text("note"),
+    /** "active" | "deleted" | "failed" | "canceled". */
+    status: text("status")
+      .$type<"active" | "deleted" | "failed" | "canceled">()
+      .notNull()
+      .default("active"),
+    /** First announcement instant; null until sent. */
+    firstWarningAt: timestamp("first_warning_at"),
+    /** Final (second) announcement instant; null until sent. */
+    finalWarningAt: timestamp("final_warning_at"),
+    /** Due time + claim lease for the auto-delete pass; null = due. */
+    nextCheckAt: timestamp("next_check_at"),
+    deleteAttempts: integer("delete_attempts").notNull().default(0),
+    /** Last failure/deferral detail — failures are never silent. */
+    lastError: text("last_error"),
+    /** When the lease reached a terminal status. */
+    completedAt: timestamp("completed_at"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("resource_leases_org_idx").on(t.organizationId),
+    dueIdx: index("resource_leases_due_idx").on(t.nextCheckAt),
+    /** One lease per resource — two TTLs on one resource would fight. */
+    resourceUnique: uniqueIndex("resource_leases_org_resource_idx").on(
+      t.organizationId,
+      t.resourceId,
+    ),
+  }),
+);
+
+/**
+ * Log workspace saved queries — a named set of log-capable resources plus a
+ * search expression, so a multi-resource tail workspace can be reopened.
+ *
+ * `alertEnabled` opts the query into the poller's log-alert pass:
+ * `nextEvalAt` is the due-time column AND the claim lease (the
+ * `resource_schedules.next_transition_at` protocol — `UPDATE … WHERE id IN
+ * (SELECT … FOR UPDATE SKIP LOCKED)` writes `now() + lease` into it), so N
+ * poller replicas never evaluate the same query twice. It is null while the
+ * alert is off. `lastAlertedAt` anchors the notification cooldown so a query
+ * that keeps matching doesn't re-fire every pass.
+ *
+ * `resources` is a jsonb array of stream selectors (`LogStreamSelector` in
+ * client-core), not FK rows — resource rows are churned by sync (the
+ * `resource_changes` stance); the pass and the UI simply report streams whose
+ * resource is gone instead of breaking the whole query.
+ */
+export const logWorkspaceQueries = pgTable(
+  "log_workspace_queries",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** Stream selectors: {resourceId, accountId, pluginId, resourceTypeId, container?}. */
+    resources: jsonb("resources")
+      .$type<
+        {
+          resourceId: string;
+          accountId: string;
+          pluginId: string;
+          resourceTypeId: string;
+          container?: string;
+        }[]
+      >()
+      .notNull(),
+    /** Search expression (client-core `compileLogSearch` syntax); "" = match all. */
+    search: text("search").notNull().default(""),
+    alertEnabled: boolean("alert_enabled").notNull().default(false),
+    /** Due time + claim lease for the alert pass; null while alerts are off. */
+    nextEvalAt: timestamp("next_eval_at"),
+    lastEvalAt: timestamp("last_eval_at"),
+    /** Last evaluation that found at least one matching line. */
+    lastMatchAt: timestamp("last_match_at"),
+    /** Last dispatched notification — the cooldown anchor. */
+    lastAlertedAt: timestamp("last_alerted_at"),
+    /** Failure detail from the last evaluation; never silent. */
+    lastEvalError: text("last_eval_error"),
+    /** Truncated sample of the most recent matching line. */
+    lastMatchSample: text("last_match_sample"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("log_workspace_queries_org_idx").on(t.organizationId),
+    dueIdx: index("log_workspace_queries_due_idx").on(t.nextEvalAt),
+    /** Names are the reopen handle — duplicates would be ambiguous. */
+    nameUnique: uniqueIndex("log_workspace_queries_org_name_idx").on(t.organizationId, t.name),
+  }),
+);
+
+/**
  * Rolling-window record of poller sync failures, used by the Twilio pager to
  * decide whether a (account, resourceType) has crossed its threshold. Rows
  * older than the org's `windowMinutes` are deleted on each tick.
@@ -1110,8 +2016,22 @@ export const pushDevices = pgTable(
 );
 
 /**
- * Per-(user, org) push trigger opt-outs. No row means everything is enabled —
+ * Per-(user, org) push trigger opt-outs. No row means the shipped defaults —
  * registering a device is the opt-in act.
+ *
+ * This is the one half of the old boolean matrix that did **not** become a
+ * routing rule, and the distinction is the point. An `alert_rules` row is an
+ * org decision about where the org is told; this is a member's decision about
+ * whether their own phone rings at 3am. Folding it into the org table would
+ * have let an admin un-mute somebody else's notifications, so it stayed
+ * personal — it just stopped being one column per trigger.
+ *
+ * `mutedTriggers` names the triggers this member has turned **off**; an unknown
+ * or new trigger is therefore on by default, which is why adding one needs no
+ * migration here. The shipped defaults for a member with no row live in
+ * `DEFAULT_MUTED_TRIGGERS` (`client-core/src/alert-routing.ts`) — currently
+ * just `resourceDrift`, which is the same decision its `false` column default
+ * used to encode.
  */
 export const pushPreferences = pgTable(
   "push_preferences",
@@ -1123,20 +2043,152 @@ export const pushPreferences = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    syncIncidents: boolean("sync_incidents").notNull().default(true),
-    budgetAlerts: boolean("budget_alerts").notNull().default(true),
-    /** Statistical spend-spike alerts (see `cost/anomaly-eval.ts`). */
-    anomalyAlerts: boolean("anomaly_alerts").notNull().default(true),
-    /** Batched resource-drift digests. Defaults off — see `slackChannels`. */
-    resourceDrift: boolean("resource_drift").notNull().default(false),
-    /** Alerts raised by a workflow calling `infra.page(...)`. */
-    workflowPages: boolean("workflow_pages").notNull().default(true),
+    /** Trigger ids this member has muted. Empty array = everything on. */
+    mutedTriggers: text("muted_triggers")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => ({
     userOrgUnique: uniqueIndex("push_preferences_user_org_unique").on(t.userId, t.organizationId),
     orgIdx: index("push_preferences_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * An org's alert routing table: ordered rules that decide which destinations
+ * hear about an alert, evaluated by `routeAlertRules` in
+ * `client-core/src/alert-routing.ts`.
+ *
+ * **No row means the shipped default**, the same contract `org_digest_settings`
+ * and `org_cost_anomaly_settings` use: an org that has never opened the editor
+ * behaves as if it had one "everything except drift → every channel and every
+ * phone" rule, which is exactly what the boolean matrix did with every box
+ * ticked. That is what keeps "connect Slack, get alerts" true on day one.
+ *
+ * Everything variable about a rule is JSON rather than columns, deliberately.
+ * Conditions and destinations are a discriminated union that will grow; columns
+ * would put us back where we started, adding one per new idea. The shapes are
+ * validated by `validateAlertRule` on the way in, so the JSON is never
+ * unchecked — it is just not the database's job to check it.
+ */
+export const alertRules = pgTable(
+  "alert_rules",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    /** Ascending evaluation order. Ties break on id so the order is total. */
+    position: integer("position").notNull().default(0),
+    /**
+     * Empty matches every alert.
+     *
+     * `$type` here documents the shape and spares every reader a cast; it is
+     * *not* a guarantee. These columns outlive the build that wrote them, so
+     * `alerts/rules.ts` still re-checks each one on the way out — see `toRule`.
+     */
+    conditions: jsonb("conditions").$type<AlertCondition[]>().notNull().default([]),
+    /** Empty is legal: a rule that swallows alerts. */
+    destinations: jsonb("destinations").$type<AlertDestination[]>().notNull().default([]),
+    /** False (the default) makes the list first-match-wins. */
+    continueOnMatch: boolean("continue_on_match").notNull().default(false),
+    /** Hold matching alerts until the window closes. */
+    quietHours: jsonb("quiet_hours").$type<QuietHours>(),
+    /** Re-send elsewhere if nobody acknowledges. */
+    escalation: jsonb("escalation").$type<EscalationPolicy>(),
+    createdByUserId: text("created_by_user_id"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgPositionIdx: index("alert_rules_org_position_idx").on(t.organizationId, t.position),
+  }),
+);
+
+/**
+ * The follow-up queue: one row per (rule, alert) that is not finished when
+ * `routeAlert` returns.
+ *
+ * Two features share it because they are the same shape — an alert with a
+ * deadline and a claim column:
+ *
+ *   * **held** — quiet hours caught it. `deliverAfter` is when the window
+ *     closes, and the flush pass claims it exactly the way the poller claims a
+ *     due account: `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)`,
+ *     writing a lease into the due column itself. N replicas send once.
+ *   * **awaiting_ack** — the rule asked to escalate. `escalateAt` is the second
+ *     deadline and is claimed by the same statement shape.
+ *
+ * `payload` is the whole `AlertEvent` because the pass that sends it runs
+ * minutes or hours after the thing that raised it, in a different process, and
+ * re-deriving an anomaly's wording from the cost tables at flush time would be
+ * a second implementation of the message. Storing the rendered alert means the
+ * held copy says exactly what the immediate copy would have said.
+ *
+ * This table is **not** part of the cooldown/claim protocol that decides
+ * whether an alert is raised at all — those live with each detector
+ * (`inCooldown`, `PageCooldownStore`, `org_drift_alert_settings`) and are
+ * untouched. A row only ever appears here after such a claim was already won.
+ */
+export const alertDeliveries = pgTable(
+  "alert_deliveries",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /**
+     * The rule that produced this leg. Nulled rather than cascaded when the
+     * rule is deleted: a held alert must still be delivered, and an escalation
+     * already in flight must still be able to complete.
+     */
+    ruleId: text("rule_id").references(() => alertRules.id, { onDelete: "set null" }),
+    /** Snapshot of the rule's name, so a deleted rule still explains the row. */
+    ruleName: text("rule_name"),
+    trigger: text("trigger").notNull(),
+    severity: text("severity").notNull(),
+    /**
+     * `held` | `awaiting_ack` | `sent` | `acknowledged` | `escalated` |
+     * `expired` — the `AlertDeliveryState` union in client-core. `sent` is what
+     * `flushHold` writes for a released hold whose rule does not escalate;
+     * everything else is terminal or waiting on one of the two deadlines.
+     */
+    state: text("state").notNull(),
+    /**
+     * The full `AlertEvent`, rendered — see the note above. Left untyped
+     * because `AlertEvent` is declared in `alerts/route.ts`, which imports this
+     * module; naming it here would close the cycle.
+     */
+    payload: jsonb("payload").notNull(),
+    /** The destinations this leg is for. */
+    destinations: jsonb("destinations").$type<AlertDestination[]>().notNull().default([]),
+    /** Snapshotted at raise time, so a later rule edit cannot change it. */
+    escalation: jsonb("escalation").$type<EscalationPolicy>(),
+    /** Quiet-hours release instant, and the flush pass's claim column. */
+    deliverAfter: timestamp("deliver_after"),
+    /** Escalation deadline, and the escalation pass's claim column. */
+    escalateAt: timestamp("escalate_at"),
+    acknowledgedAt: timestamp("acknowledged_at"),
+    acknowledgedByUserId: text("acknowledged_by_user_id"),
+    /** How the acknowledgement arrived, e.g. `slack`. For the audit line. */
+    acknowledgedVia: text("acknowledged_via"),
+    /** Bumped by every claim, so a permanently failing row can be given up on. */
+    attemptCount: integer("attempt_count").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("alert_deliveries_org_idx").on(t.organizationId, t.createdAt),
+    // Partial-shaped in practice: both passes scan one state and one timestamp,
+    // so leading with `state` keeps each claim an index range scan even when
+    // the table is mostly finished rows.
+    dueIdx: index("alert_deliveries_due_idx").on(t.state, t.deliverAfter),
+    escalateIdx: index("alert_deliveries_escalate_idx").on(t.state, t.escalateAt),
   }),
 );
 
@@ -1338,8 +2390,122 @@ export const externalPages = pgTable(
   }),
 );
 
+/**
+ * Poll bookkeeping for provider status feeds — one row per plugin whose
+ * manifest declares `statusFeed`. Global, not org-scoped: a provider's status
+ * page is the same for everyone, so the cache is shared and correlation with
+ * an org's resources happens at read time.
+ *
+ * `nextFetchAt` doubles as the claim lease, exactly like `accounts.nextPollAt`:
+ * the poller claims due feeds with `UPDATE … WHERE plugin_id IN (SELECT … FOR
+ * UPDATE SKIP LOCKED)`, so replicas never fetch the same feed twice in a tick.
+ *
+ * `lastStatus`/`lastError` exist because poller failures are otherwise
+ * invisible: a feed that 500s or changes shape must leave a durable record a
+ * UI or operator can read, not just a stdout line.
+ */
+export const providerStatusFeeds = pgTable(
+  "provider_status_feeds",
+  {
+    pluginId: text("plugin_id").primaryKey(),
+    nextFetchAt: timestamp("next_fetch_at"),
+    lastFetchedAt: timestamp("last_fetched_at"),
+    /** "ok" | "error" — outcome of the most recent fetch+parse attempt. */
+    lastStatus: text("last_status"),
+    /** Truncated fetch/parse error message from the most recent failure. */
+    lastError: text("last_error"),
+    failureCount: integer("failure_count").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    dueIdx: index("provider_status_feeds_due_idx").on(t.nextFetchAt),
+  }),
+);
+
+/**
+ * Cached provider incidents, normalized by each plugin's `parseStatusFeed`.
+ * One row per (plugin, provider-native incident id); the poller upserts on
+ * every fetch. An incident the feed stops reporting without an explicit
+ * `resolvedAt` is closed by the collector (feeds like Statuspage's
+ * `unresolved.json` simply drop resolved incidents).
+ *
+ * `regions` hold plugin-native region ids (the strings plugins write into
+ * `fields_json.region`), `resourceTypeIds` plugin resource type ids — the two
+ * axes correlation matches on, plus `providerWide`.
+ */
+export const providerStatusIncidents = pgTable(
+  "provider_status_incidents",
+  {
+    id: text("id").primaryKey(),
+    pluginId: text("plugin_id").notNull(),
+    /** Provider-native incident id, stable across polls. */
+    externalId: text("external_id").notNull(),
+    title: text("title").notNull(),
+    /** "investigating" | "identified" | "monitoring" | "resolved" */
+    state: text("state").notNull(),
+    /** "maintenance" | "minor" | "major" | "critical" */
+    impact: text("impact").notNull(),
+    url: text("url"),
+    startedAt: timestamp("started_at").notNull(),
+    resolvedAt: timestamp("resolved_at"),
+    lastUpdateAt: timestamp("last_update_at"),
+    lastUpdateText: text("last_update_text"),
+    regions: jsonb("regions").$type<string[]>().notNull().default([]),
+    services: jsonb("services").$type<string[]>().notNull().default([]),
+    resourceTypeIds: jsonb("resource_type_ids").$type<string[]>().notNull().default([]),
+    providerWide: boolean("provider_wide").notNull().default(false),
+    /** Last poll that still reported this incident — staleness marker. */
+    lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pluginExternalUnique: uniqueIndex("provider_status_incidents_plugin_external_unique").on(
+      t.pluginId,
+      t.externalId,
+    ),
+    activeIdx: index("provider_status_incidents_active_idx").on(t.resolvedAt, t.pluginId),
+    startedIdx: index("provider_status_incidents_started_idx").on(t.startedAt),
+  }),
+);
+
+/**
+ * Exactly-once bookkeeping for provider-incident notifications: one row per
+ * (incident, org) that has been fanned out. The insert is the claim — the
+ * replica whose `ON CONFLICT DO NOTHING` insert actually lands owns delivery,
+ * mirroring the conditional-UPDATE claims in `drift/alerts.ts`. When no
+ * transport delivers, the row is deleted so a later tick can retry
+ * (`releaseUnlessDelivered` invariant).
+ */
+export const providerStatusNotifications = pgTable(
+  "provider_status_notifications",
+  {
+    id: text("id").primaryKey(),
+    incidentId: text("incident_id")
+      .notNull()
+      .references(() => providerStatusIncidents.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** How many of the org's resources matched at notification time. */
+    affectedResourceCount: integer("affected_resource_count").notNull().default(0),
+    notifiedAt: timestamp("notified_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    incidentOrgUnique: uniqueIndex("provider_status_notifications_incident_org_unique").on(
+      t.incidentId,
+      t.organizationId,
+    ),
+    orgIdx: index("provider_status_notifications_org_idx").on(t.organizationId),
+  }),
+);
+
 export * from "./core-schema.js";
 export * from "./workflow-schema.js";
+export * from "./ssh-recording-schema.js";
+export * from "./access-schema.js";
+export * from "./credit-schema.js";
 export * from "./custom-graph-schema.js";
 export * from "./deployment-schema.js";
 export * from "./agent-schema.js";

@@ -29,6 +29,11 @@
  * `WorkflowFetchRequest` from @infrawrench/workflow-runtime, already validated
  * there. This Worker re-validates anyway — it is reachable by anyone holding the
  * token, so it can't assume a well-behaved caller.
+ *
+ * A second endpoint (POST /probe, same token) serves synthetic uptime/latency
+ * probes for `server-core/probes/pass.ts`: time the request from the edge —
+ * an external vantage point the cluster cannot provide — and return only the
+ * verdict, never the body. See {@link probeFetch}.
  */
 
 export interface Env {
@@ -334,6 +339,73 @@ async function proxyFetch(body: ProxyRequestBody): Promise<Response> {
   }
 }
 
+interface ProbeRequestBody {
+  url?: unknown;
+  method?: unknown;
+  timeoutMs?: unknown;
+}
+
+/** Ceiling on a probe's timeout — a probe is a health check, not a download. */
+const MAX_PROBE_TIMEOUT_MS = 60_000;
+
+/**
+ * Perform one synthetic probe (POST /probe): time the request, discard the
+ * body, report the verdict. Unlike /fetch, a failing endpoint is *data*, not a
+ * proxy error — the response is always HTTP 200 with
+ * `{ result: { ok, status?, latencyMs, error? } }`, and only caller mistakes
+ * (bad URL, blocked host) surface as ProxyError.
+ *
+ * `ok` means the request completed AND the status was below 500: a 4xx says
+ * the endpoint is alive and answering (an auth wall in front of a healthy
+ * service must not page anyone), while a 5xx says the service itself is
+ * failing, which is exactly what an uptime check exists to catch.
+ *
+ * Redirects are followed with the same per-hop re-validation as /fetch — a
+ * probe target is free to redirect at the metadata server too.
+ */
+async function probeFetch(body: ProbeRequestBody): Promise<Response> {
+  let url = assertAllowedUrl(String(body.url ?? ""));
+  const method = String(body.method ?? "GET").toUpperCase();
+  const timeoutMs = clamp(body.timeoutMs, 10_000, MAX_PROBE_TIMEOUT_MS);
+
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const startedAt = Date.now();
+  const fail = (error: string) =>
+    json(200, { result: { ok: false, latencyMs: Date.now() - startedAt, error } });
+
+  for (let hop = 0; ; hop++) {
+    let upstream: Response;
+    try {
+      upstream = await fetch(url, { method, redirect: "manual", signal: deadline });
+    } catch {
+      return fail(deadline.aborted ? "timeout" : "request_failed");
+    }
+
+    const location = upstream.headers.get("location");
+    const isRedirect = upstream.status >= 300 && upstream.status < 400 && location;
+    if (!isRedirect) {
+      // Latency is measured to headers-received; the body is dropped unread —
+      // a probe cares whether the endpoint answers, not what it says.
+      const latencyMs = Date.now() - startedAt;
+      await upstream.body?.cancel().catch(() => {});
+      return json(200, {
+        result: { ok: upstream.status < 500, status: upstream.status, latencyMs },
+      });
+    }
+
+    if (hop >= MAX_REDIRECTS) return fail("too_many_redirects");
+    await upstream.body?.cancel().catch(() => {});
+    // Re-validate each hop, exactly like /fetch. A refused hop is a caller
+    // problem (the target redirected somewhere private) — report it as a
+    // failed probe rather than a proxy error, since it recurs every interval.
+    try {
+      url = assertAllowedUrl(new URL(location, url).toString());
+    } catch {
+      return fail("blocked_redirect");
+    }
+  }
+}
+
 function json(status: number, value: unknown): Response {
   return new Response(JSON.stringify(value), {
     status,
@@ -368,7 +440,9 @@ export default {
     if (request.method === "GET" && url.pathname === "/health") {
       return json(200, { ok: true });
     }
-    if (url.pathname !== "/fetch") return json(404, { error: { code: "not_found" } });
+    if (url.pathname !== "/fetch" && url.pathname !== "/probe") {
+      return json(404, { error: { code: "not_found" } });
+    }
     if (request.method !== "POST") {
       return json(405, { error: { code: "method_not_allowed" } });
     }
@@ -381,7 +455,7 @@ export default {
       } catch {
         throw new ProxyError("invalid_body", "Request body must be JSON.");
       }
-      return await proxyFetch(body);
+      return url.pathname === "/probe" ? await probeFetch(body) : await proxyFetch(body);
     } catch (err) {
       if (err instanceof ProxyError) {
         return json(err.status, { error: { code: err.code, message: err.message } });

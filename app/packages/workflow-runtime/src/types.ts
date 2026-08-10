@@ -395,6 +395,65 @@ export interface WorkflowFetchResponse {
   redirected: boolean;
 }
 
+/**
+ * Models `infra.ai(...)` may ask for. Kept to the chat picker's Claude models
+ * so pricing and the monthly AI spend cap ride the same rails (the codegen
+ * union in codegen.ts's AI_INTERFACES must list exactly these ids).
+ */
+export const WORKFLOW_AI_MODELS = ["claude-sonnet-5", "claude-haiku-4-5", "claude-opus-5"] as const;
+
+export type WorkflowAiModel = (typeof WORKFLOW_AI_MODELS)[number];
+
+/** Model used when the author doesn't choose one: capable, not the priciest. */
+export const DEFAULT_WORKFLOW_AI_MODEL: WorkflowAiModel = "claude-sonnet-5";
+
+/** Reply-length budget (tokens) when the caller doesn't set one. */
+export const DEFAULT_AI_MAX_TOKENS = 1024;
+
+/** Ceiling for `maxTokens`. A longer answer belongs in chat, not a run log. */
+export const MAX_AI_MAX_TOKENS = 8192;
+
+/**
+ * Longest prompt we carry across the bridge (characters). Generous because the
+ * point of the capability is handing the model real material — a log tail, a
+ * diff, a batch of alerts — but bounded because the whole prompt is buffered
+ * through the JSON bridge and billed as input tokens.
+ */
+export const MAX_AI_PROMPT_LENGTH = 200_000;
+
+/** Longest system prompt. Framing, not payload — the payload is the prompt. */
+export const MAX_AI_SYSTEM_LENGTH = 10_000;
+
+/**
+ * One `infra.ai(...)` call, normalized by {@link file://./host.ts} `dispatch`
+ * so every host receives the same validated shape (model checked against
+ * {@link WORKFLOW_AI_MODELS}, `maxTokens` clamped, blank prompt rejected).
+ */
+export interface WorkflowAiSpec {
+  /** What to ask. The model sees only this and `system` — nothing of the run. */
+  prompt: string;
+  /** Optional system prompt framing how the model should answer. */
+  system?: string;
+  /** A {@link WorkflowAiModel}; defaulted by dispatch. */
+  model: WorkflowAiModel;
+  /** Clamped to {@link MAX_AI_MAX_TOKENS}. */
+  maxTokens: number;
+}
+
+/** What `infra.ai(...)` resolves with. */
+export interface WorkflowAiResult {
+  /** The model's reply text. */
+  text: string;
+  /** The concrete model id that answered. */
+  model: string;
+  /** "end" when the model finished; "max_tokens" when it ran out of budget. */
+  stopReason: "end" | "max_tokens";
+  inputTokens: number;
+  outputTokens: number;
+  /** What the call cost in micro-dollars (1 USD = 1_000_000), after markup. */
+  costMicros: number;
+}
+
 /** Lightweight account descriptor exposed to the bridge + codegen. */
 export interface WorkflowAccountInfo {
   id: string;

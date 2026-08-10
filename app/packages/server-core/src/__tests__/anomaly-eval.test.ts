@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { alertReachedImpl, routed, unroutedResult } from "./helpers/route-alert";
 
 /**
  * Anomaly evaluation tests that exercise the *pipeline*, not the maths.
@@ -14,15 +15,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * `budget-eval.test.ts`.
  */
 
-const sendPushToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0 }));
-vi.mock("../push/dispatch", () => ({ sendPushToOrg }));
-
-const sendSlackToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0, failed: 0 }));
-vi.mock("../slack", () => ({ sendSlackToOrg }));
-
-const sendMsTeamsToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0, failed: 0 }));
-vi.mock("../msteams", () => ({ sendMsTeamsToOrg }));
-
 const queryCosts = vi.fn();
 const getCostCoverage = vi.fn();
 vi.mock("../clickhouse/cost-readers", () => ({ queryCosts, getCostCoverage }));
@@ -30,6 +22,15 @@ vi.mock("../clickhouse/cost-readers", () => ({ queryCosts, getCostCoverage }));
 /** The batched anomaly SMS rides this; the rest of `anomaly-sms.ts` runs real. */
 const sendOneShotPage = vi.fn(async () => ({ attempted: 0, succeeded: 0, failed: 0 }));
 vi.mock("../twilio-pager", () => ({ sendOneShotPage }));
+
+/**
+ * Root-cause hints are mocked at the module boundary: their queries have
+ * their own suite (`anomaly-hints.test.ts`), and the fake db below only
+ * understands the evaluator's own query shapes. Default: no hints, which is
+ * also what a real failure degrades to.
+ */
+const buildAnomalyHints = vi.fn(async (): Promise<string[]> => []);
+vi.mock("../cost/anomaly-hints", () => ({ buildAnomalyHints }));
 
 const ORG_COST_ANOMALY_SETTINGS = {
   organizationId: "organization_id",
@@ -64,6 +65,9 @@ let settingsRow: Record<string, unknown> | null = null;
 
 /** How many anomaly rows were stamped with `notifiedAt` this pass. */
 let stampedCount = 0;
+
+/** Every `hints` array written onto an anomaly row this pass. */
+let hintWrites: string[][] = [];
 
 /** Whether the conditional UPDATE that claims the SMS window finds a row. */
 let smsWindowFree = true;
@@ -105,11 +109,27 @@ const db = {
         };
       }
       if (patch["notifiedAt"] instanceof Date) stampedCount += 1;
+      if (Array.isArray(patch["hints"])) hintWrites.push(patch["hints"] as string[]);
       return { where: () => Promise.resolve() };
     },
   }),
 };
 vi.mock("../db/client", () => ({ db }));
+
+/**
+ * All three transports sit behind `routeAlert` now, so that is the single seam
+ * these tests mock. `alertReached` is the real predicate rather than a stub —
+ * it decides whether a cooldown or claim is kept, and faking it would hide
+ * exactly the bug it exists to prevent.
+ */
+// Defaults to a successful delivery: `routeAlert` never throws and always
+// returns a result, so a mock that resolves `undefined` would fail tests in a
+// way the real function cannot.
+const routeAlert = vi.fn(async (..._args: unknown[]) => routed());
+vi.mock("../alerts/route", () => ({
+  routeAlert: (...a: unknown[]) => routeAlert(...a),
+  alertReached: alertReachedImpl,
+}));
 
 let anomalyEval: typeof import("../cost/anomaly-eval");
 let addDays: typeof import("../cost/dates").addDays;
@@ -148,6 +168,8 @@ beforeEach(async () => {
   vi.clearAllMocks();
   inserted = [];
   stampedCount = 0;
+  hintWrites = [];
+  buildAnomalyHints.mockResolvedValue([]);
   smsClaimWrites = [];
   smsWindowFree = true;
   settingsRow = null;
@@ -178,9 +200,7 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
     await anomalyEval.detectCostAnomaliesForOrg("org-young", NOW, OPTS, true);
 
     expect(inserted).toEqual([]);
-    expect(sendPushToOrg).not.toHaveBeenCalled();
-    expect(sendSlackToOrg).not.toHaveBeenCalled();
-    expect(sendMsTeamsToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
   });
 
   it("stays silent on the very first day of collection", async () => {
@@ -192,7 +212,7 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
     await anomalyEval.detectCostAnomaliesForOrg("org-day-one", NOW, OPTS, true);
 
     expect(inserted).toEqual([]);
-    expect(sendPushToOrg).not.toHaveBeenCalled();
+    expect(routeAlert).not.toHaveBeenCalled();
   });
 
   it("still flags a key that first appears inside an established org", async () => {
@@ -212,14 +232,7 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
       dimensionKey: "gcp",
       actualAmountCents: 500_000,
     });
-    expect(sendPushToOrg).toHaveBeenCalledWith(
-      "org-established",
-      "anomalyAlerts",
-      expect.objectContaining({
-        title: "New spend source: gcp",
-        data: expect.objectContaining({ kind: "new_source", dimensionKey: "gcp" }),
-      }),
-    );
+    expect(routeAlert).toHaveBeenCalledWith(expect.objectContaining({ trigger: "anomalyAlerts" }));
   });
 
   it("fires at exactly minBaselineDays of coverage and not a day sooner", async () => {
@@ -479,7 +492,7 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
 
   it("does not double-stamp what push already delivered", async () => {
     settings("all");
-    sendPushToOrg.mockResolvedValue({ attempted: 1, succeeded: 1 });
+    routeAlert.mockResolvedValue(routed());
     sendOneShotPage.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
     manyNewSources(3);
 
@@ -488,9 +501,21 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
     expect(stampedCount).toBe(3);
   });
 
+  it("keeps the SMS free of hints — its length budget is spent on the anomalies", async () => {
+    settings("all");
+    buildAnomalyHints.mockResolvedValue(["47 gce-instance resources appeared"]);
+    sendOneShotPage.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
+    manyNewSources(2);
+
+    await anomalyEval.detectCostAnomaliesForOrg("org-sms-no-hints", NOW, OPTS, true);
+
+    const [, body] = sendOneShotPage.mock.calls[0]! as unknown as [string, string];
+    expect(body).not.toContain("gce-instance");
+  });
+
   it("cannot break the pass, or the stamping, when Twilio throws", async () => {
     settings("all");
-    sendPushToOrg.mockResolvedValue({ attempted: 1, succeeded: 1 });
+    routeAlert.mockResolvedValue(routed());
     sendOneShotPage.mockRejectedValue(new Error("twilio down"));
     manyNewSources(3);
 
@@ -500,5 +525,87 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
 
     expect(inserted).toHaveLength(3);
     expect(stampedCount).toBe(3);
+  });
+});
+
+/**
+ * The hints leg. `buildAnomalyHints` itself is tested in
+ * `anomaly-hints.test.ts`; what matters here is what the evaluator does with
+ * its answer — store it, put it in the right transports' bodies, and survive
+ * it failing.
+ */
+describe("detectCostAnomaliesForOrg — root-cause hints", () => {
+  const HINTS = ["12 gce-instance resources appeared", 'Astrid ran workflow "Nightly rebuild"'];
+
+  /** One new spend source inside an established org — one pending anomaly. */
+  function oneNewSource() {
+    getCostCoverage.mockResolvedValue(coverage("2026-01-01"));
+    providerCosts([{ key: "gcp", currency: "USD", points: [{ bucket: YESTERDAY, amount: 5000 }] }]);
+  }
+
+  it("stores the hints on the anomaly row and asks with the anomaly's own scope", async () => {
+    buildAnomalyHints.mockResolvedValue(HINTS);
+    oneNewSource();
+
+    await anomalyEval.detectCostAnomaliesForOrg("org-hints-stored", NOW, OPTS, true);
+
+    expect(buildAnomalyHints).toHaveBeenCalledWith("org-hints-stored", {
+      day: YESTERDAY,
+      dimension: "provider",
+      dimensionKey: "gcp",
+    });
+    expect(hintWrites).toEqual([HINTS]);
+  });
+
+  it("appends every hint to the Slack and Teams bodies", async () => {
+    buildAnomalyHints.mockResolvedValue(HINTS);
+    oneNewSource();
+
+    await anomalyEval.detectCostAnomaliesForOrg("org-hints-body", NOW, OPTS, true);
+
+    // Slack and Teams share `body`; only push gets the shortened `pushBody`.
+    const [event] = routeAlert.mock.calls[0]! as unknown as [{ body: string; teamsBody?: string }];
+    for (const body of [event.body, event.teamsBody ?? event.body]) {
+      expect(body).toContain("Around then:");
+      expect(body).toContain(HINTS[0]);
+      expect(body).toContain(HINTS[1]);
+    }
+  });
+
+  it("gives the push notification only the top hint", async () => {
+    buildAnomalyHints.mockResolvedValue(HINTS);
+    oneNewSource();
+
+    await anomalyEval.detectCostAnomaliesForOrg("org-hints-push", NOW, OPTS, true);
+
+    const [event] = routeAlert.mock.calls[0]! as unknown as [{ pushBody: string }];
+    expect(event.pushBody).toContain(HINTS[0]);
+    expect(event.pushBody).not.toContain(HINTS[1]);
+  });
+
+  it("leaves the bodies un-annotated when nothing notable happened", async () => {
+    buildAnomalyHints.mockResolvedValue([]);
+    oneNewSource();
+
+    await anomalyEval.detectCostAnomaliesForOrg("org-hints-none", NOW, OPTS, true);
+
+    expect(hintWrites).toEqual([]);
+    const [event] = routeAlert.mock.calls[0]! as unknown as [{ body: string }];
+    expect(event.body).not.toContain("Around then:");
+  });
+
+  it("still delivers the alert when the hint build rejects", async () => {
+    // The module contract is "never throws", but the evaluator guards anyway:
+    // hints must never cost a delivery.
+    buildAnomalyHints.mockRejectedValue(new Error("hint query exploded"));
+    routeAlert.mockResolvedValue(routed());
+    oneNewSource();
+
+    await expect(
+      anomalyEval.detectCostAnomaliesForOrg("org-hints-fail", NOW, OPTS, true),
+    ).resolves.toBeUndefined();
+
+    expect(routeAlert).toHaveBeenCalledTimes(1);
+    expect(stampedCount).toBe(1);
   });
 });

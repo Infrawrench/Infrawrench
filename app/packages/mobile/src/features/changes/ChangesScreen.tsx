@@ -11,6 +11,7 @@ import {
 } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { Button, Card, EmptyView, ErrorView, LoadingView, Screen } from "@/components/ui";
+import { ProviderIncidentNotice } from "@/components/ProviderIncidentNotice";
 import { Chip, ChipRow } from "@/components/form";
 import { colors, spacing } from "@/lib/theme";
 import { ChangeDiffList, ChangeKindBadge } from "./ChangeParts";
@@ -181,6 +182,14 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
 
   return (
     <Screen onRefresh={() => void feed.refetch()} refreshing={feed.isRefetching}>
+      <ProviderIncidentNotice showResolvedCorrelation />
+
+      <Button
+        label="Investigate a moment"
+        variant="secondary"
+        onPress={() => router.push(`/org/${orgId}/moment`)}
+      />
+
       {filters}
 
       {entries.length === 0 ? (
@@ -265,6 +274,9 @@ function ChangeEntryRow({
       {expanded && (
         <View style={styles.detail}>
           <ChangeDiffList entry={entry} />
+          {entry.origin === "schedule" && (
+            <Text style={styles.hint}>Executed by a sleep/wake schedule.</Text>
+          )}
           {entry.changeKind !== "updated" && (
             <Text style={styles.hint}>
               {entry.changeKind === "created"

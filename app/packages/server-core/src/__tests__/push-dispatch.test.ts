@@ -22,9 +22,7 @@ const tables = {
     id: "id",
     userId: "u",
     organizationId: "o",
-    syncIncidents: "s",
-    budgetAlerts: "b",
-    workflowPages: "w",
+    mutedTriggers: "muted",
   },
 };
 vi.mock("../db/schema", () => tables);
@@ -169,6 +167,25 @@ describe("sendPushToOrg", () => {
       (c) => JSON.parse(String((c[1] as RequestInit).body))[0].interruptionLevel,
     );
     expect(levels).toEqual(["time-sensitive", "time-sensitive"]);
+  });
+
+  it("dispatches the postureAlerts trigger like the other alert triggers", async () => {
+    targets = [device(1)];
+    fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }]));
+    const out = await dispatch.sendPushToOrg("org1", "postureAlerts", msg);
+    expect(out).toEqual({ attempted: 1, succeeded: 1 });
+    const body = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body));
+    expect(body[0].interruptionLevel).toBe("time-sensitive");
+  });
+
+  it("dispatches the probeAlerts trigger through its preference column", async () => {
+    targets = [device(1)];
+    fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }]));
+    const out = await dispatch.sendPushToOrg("org1", "probeAlerts", msg);
+    expect(out).toEqual({ attempted: 1, succeeded: 1 });
+    const body = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body));
+    // Probe alerts are ordinary alerts, not pages: time-sensitive, never critical.
+    expect(body[0].interruptionLevel).toBe("time-sensitive");
   });
 
   it("chunks requests at 100 messages", async () => {

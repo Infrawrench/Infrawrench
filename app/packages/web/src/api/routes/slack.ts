@@ -91,12 +91,6 @@ app.get("/status", async (c) => {
               channelId: ch.channelId,
               channelName: ch.channelName,
               isPrivate: ch.isPrivate,
-              syncIncidents: ch.syncIncidents,
-              budgetAlerts: ch.budgetAlerts,
-              anomalyAlerts: ch.anomalyAlerts,
-              resourceDrift: ch.resourceDrift,
-              workflowPages: ch.workflowPages,
-              weeklyDigest: ch.weeklyDigest,
             },
           ]
         : [],
@@ -154,15 +148,17 @@ interface ChannelBody {
   channelId: string;
   channelName: string;
   isPrivate?: boolean;
-  syncIncidents?: boolean;
-  budgetAlerts?: boolean;
-  anomalyAlerts?: boolean;
-  resourceDrift?: boolean;
-  workflowPages?: boolean;
-  weeklyDigest?: boolean;
 }
 
-/** Route a channel's alerts. Re-adding an existing channel updates its opt-ins. */
+/**
+ * Connect a channel as a possible destination. Re-adding an existing channel
+ * refreshes its cached name.
+ *
+ * Adding a channel no longer decides what it receives: that is an
+ * `alert_rules` row (`PUT /alert-rules`). An org with no rules yet falls back
+ * to the synthesized default — everything except drift, everywhere — so a
+ * freshly added channel still starts receiving alerts without a second step.
+ */
 app.post("/channels", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
@@ -181,14 +177,6 @@ app.post("/channels", async (c) => {
     return c.json({ error: "Slack workspace not found" }, 404);
   }
 
-  const syncIncidents = body.syncIncidents ?? true;
-  const budgetAlerts = body.budgetAlerts ?? true;
-  const anomalyAlerts = body.anomalyAlerts ?? true;
-  // Drift is the one trigger that defaults off — it is continuous and
-  // high-volume where the others are exceptional. See server-core db/schema.ts.
-  const resourceDrift = body.resourceDrift ?? false;
-  const workflowPages = body.workflowPages ?? true;
-  const weeklyDigest = body.weeklyDigest ?? true;
   const now = new Date();
   const [row] = await db
     .insert(slackChannels)
@@ -199,24 +187,12 @@ app.post("/channels", async (c) => {
       channelId,
       channelName,
       isPrivate: body.isPrivate ?? false,
-      syncIncidents,
-      budgetAlerts,
-      anomalyAlerts,
-      resourceDrift,
-      workflowPages,
-      weeklyDigest,
     })
     .onConflictDoUpdate({
       target: [slackChannels.installationId, slackChannels.channelId],
       set: {
         channelName,
-        isPrivate: body.isPrivate ?? false,
-        syncIncidents,
-        budgetAlerts,
-        anomalyAlerts,
-        resourceDrift,
-        workflowPages,
-        weeklyDigest,
+        ...(body.isPrivate != null ? { isPrivate: body.isPrivate } : {}),
         updatedAt: now,
       },
     })
@@ -224,32 +200,24 @@ app.post("/channels", async (c) => {
   return c.json(row);
 });
 
-interface ChannelPatchBody {
-  syncIncidents?: boolean;
-  budgetAlerts?: boolean;
-  anomalyAlerts?: boolean;
-  resourceDrift?: boolean;
-  workflowPages?: boolean;
-  weeklyDigest?: boolean;
-}
-
+/** Refresh a channel's cached name after a Slack-side rename. */
 app.patch("/channels/:id", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
   const id = c.req.param("id");
-  const body = await c.req.json<ChannelPatchBody>();
+  const body = await c.req.json<{ channelName?: string }>();
 
-  const patch: Partial<typeof slackChannels.$inferInsert> = { updatedAt: new Date() };
-  if (body.syncIncidents != null) patch.syncIncidents = body.syncIncidents;
-  if (body.budgetAlerts != null) patch.budgetAlerts = body.budgetAlerts;
-  if (body.anomalyAlerts != null) patch.anomalyAlerts = body.anomalyAlerts;
-  if (body.resourceDrift != null) patch.resourceDrift = body.resourceDrift;
-  if (body.workflowPages != null) patch.workflowPages = body.workflowPages;
-  if (body.weeklyDigest != null) patch.weeklyDigest = body.weeklyDigest;
+  // `c.req.json<T>()` is a cast, not a check: a numeric `channelName` would
+  // throw inside `.trim()` and surface as a 500 for a plainly bad request.
+  if (typeof body.channelName !== "string") {
+    return c.json({ error: "channelName must be a string" }, 400);
+  }
+  const channelName = body.channelName.trim().replace(/^#/, "");
+  if (!channelName) return c.json({ error: "channelName is required" }, 400);
 
   const result = await db
     .update(slackChannels)
-    .set(patch)
+    .set({ channelName, updatedAt: new Date() })
     .where(and(eq(slackChannels.id, id), eq(slackChannels.organizationId, organizationId)))
     .returning();
   if (result.length === 0) return c.json({ error: "Channel not found" }, 404);

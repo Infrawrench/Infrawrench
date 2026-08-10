@@ -33,7 +33,27 @@ vi.mock("@/plugins/loader", () => ({
   ]),
 }));
 
+// Building the whole spec is genuinely expensive — every path module, every
+// schema, and a plugin-enum pass — and it grows with the API. The default 5s
+// per-test budget was never sized for several full builds under a loaded
+// parallel run.
+vi.setConfig({ testTimeout: 30_000 });
+
 const { buildOpenApiDocument, getPublicOpenApiDocument } = await import("@/api/openapi/index");
+
+/**
+ * The default document, built once and shared.
+ *
+ * `buildOpenApiDocument` is uncached by design (the cached reader is
+ * `getOpenApiDocument`), so every call rebuilds the spec from scratch. Tests
+ * that only read the default document have no reason to pay for that more than
+ * once; the ones that depend on options or on environment still build their own.
+ */
+let sharedDoc: Awaited<ReturnType<typeof buildOpenApiDocument>> | null = null;
+async function fullDocument() {
+  sharedDoc ??= await buildOpenApiDocument();
+  return sharedDoc;
+}
 
 const METHODS = ["get", "post", "put", "patch", "delete"] as const;
 
@@ -50,7 +70,7 @@ function operations(doc: { paths?: Record<string, unknown> }) {
 
 describe("buildOpenApiDocument", () => {
   it("produces a 3.1.0 document with security schemes and tags", async () => {
-    const doc = await buildOpenApiDocument();
+    const doc = await fullDocument();
     expect(doc.openapi).toBe("3.1.0");
     expect(doc.info.title).toBe("Infrawrench API");
     expect(doc.components?.securitySchemes).toHaveProperty("sessionCookie");
@@ -59,7 +79,7 @@ describe("buildOpenApiDocument", () => {
   });
 
   it("derives operationIds for every operation", async () => {
-    const doc = await buildOpenApiDocument();
+    const doc = await fullDocument();
     const ops: string[] = [];
     for (const item of Object.values(doc.paths ?? {})) {
       for (const method of ["get", "post", "put", "patch", "delete"] as const) {
@@ -73,7 +93,7 @@ describe("buildOpenApiDocument", () => {
   });
 
   it("injects x-required-permission and a description note for guarded routes", async () => {
-    const doc = await buildOpenApiDocument();
+    const doc = await fullDocument();
     let guardedFound = false;
     for (const item of Object.values(doc.paths ?? {})) {
       for (const method of ["get", "post", "put", "patch", "delete"] as const) {
@@ -126,7 +146,7 @@ describe("buildOpenApiDocument", () => {
   });
 
   it("marks internal routes with x-internal but keeps them in the full document", async () => {
-    const doc = await buildOpenApiDocument();
+    const doc = await fullDocument();
     expect(doc.paths?.["/api/admin/organizations"]).toBeDefined();
     expect(doc.paths?.["/api/v1/sync/pull"]).toBeDefined();
     const internal = operations(doc).filter((o) => o.op["x-internal"] === true);
@@ -171,7 +191,7 @@ describe("getPublicOpenApiDocument", () => {
     const named = JSON.stringify(pub).includes("sessionCookie");
     expect(named).toBe(false);
     // The full document still documents it — the cookie still works.
-    const full = await buildOpenApiDocument();
+    const full = await fullDocument();
     expect(full.components?.securitySchemes).toHaveProperty("sessionCookie");
   });
 

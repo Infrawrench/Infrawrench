@@ -1,6 +1,7 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { NetlifyClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { NetlifySiteResourceType } from "./resources/site.js";
 import { NetlifyDeployResourceType } from "./resources/deploy.js";
 import { NetlifyFormResourceType } from "./resources/form.js";
@@ -33,6 +34,7 @@ const manifest: PluginManifest = {
     },
     caCertCredentialField,
   ],
+  statusFeed,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -49,4 +51,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new NetlifyClient(credentials, services),
+  parseStatusFeed,
 };

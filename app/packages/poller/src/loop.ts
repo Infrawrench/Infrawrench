@@ -1,20 +1,36 @@
 import { eq } from "drizzle-orm";
-import { CronExpressionParser } from "cron-parser";
+import { nextCronOccurrence } from "@infrawrench/client-core";
 import { db } from "@infrawrench/server-core/db/client";
 import { workflows } from "@infrawrench/server-core/db/schema";
 import { runOrgWorkflow } from "@infrawrench/server-core/workflows/runner";
 import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
 import { runWeeklyDigests } from "@infrawrench/server-core/digest/weekly";
+import { runStatusFeedCollection } from "@infrawrench/server-core/status/collect";
+import { runExpiryAlerts } from "@infrawrench/server-core/expiry/alerts";
+import { runPostureAlerts } from "@infrawrench/server-core/posture/alerts";
+import { runSchedulePass } from "@infrawrench/server-core/schedules/pass";
+import { runLeasePass } from "@infrawrench/server-core/leases/pass";
+import { runLogAlertPass } from "@infrawrench/server-core/log-workspaces/pass";
+import { runMetricAlertPass } from "@infrawrench/server-core/metric-alerts/pass";
+import { runProbePass } from "@infrawrench/server-core/probes/pass";
+import { pruneAlertDeliveries, runAlertFollowUpPass } from "@infrawrench/server-core/alerts/pass";
 import {
   pruneResourceChanges,
   CHANGE_RETENTION_INTERVAL_MS,
 } from "@infrawrench/server-core/resource-changes";
+import {
+  pruneSessionRecordings,
+  settleAbandonedRecordings,
+} from "@infrawrench/server-core/ssh-recording/retention";
+import { pruneCreditSnapshots } from "@infrawrench/server-core/credits/feed";
 import { TickLoop } from "@infrawrench/server-core/tick-loop";
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { pollAccountCosts } from "./cost-poll";
+import { pollAccountCredits } from "./credit-poll";
 import {
   claimDueAccounts,
   claimDueCostAccounts,
+  claimDueCreditAccounts,
   claimDueWorkflows,
   type DueWorkflowRow,
 } from "./claim";
@@ -41,11 +57,10 @@ function nextRunAtFromTrigger(trigger: unknown, from: Date): Date | null {
   const t = trigger as CronTrigger | null;
   if (!t || t.kind !== "cron" || !t.expression) return null;
   try {
-    const interval = CronExpressionParser.parse(t.expression, {
-      currentDate: from,
-      ...(t.timezone ? { tz: t.timezone } : {}),
+    return nextCronOccurrence(t.expression, {
+      from,
+      ...(t.timezone ? { timezone: t.timezone } : {}),
     });
-    return interval.next().toDate();
   } catch {
     return null;
   }
@@ -66,6 +81,8 @@ export class PollerLoop extends TickLoop {
   private readonly concurrency: number;
   /** Plugin IDs whose manifest declares a `costs` capability; resolved lazily on first tick. */
   private costCapablePluginIds: string[] | null = null;
+  /** Plugin IDs whose manifest declares a `credits` capability; likewise lazy. */
+  private creditCapablePluginIds: string[] | null = null;
   /** Epoch ms of the last retention pass; 0 means "run on the first tick". */
   private lastRetentionAt = 0;
 
@@ -88,6 +105,13 @@ export class PollerLoop extends TickLoop {
     // defensive — billing-API problems never affect resource polling.
     await this.tickCosts();
 
+    // Prepaid credit balances (twice-daily cadence per account). Separate from
+    // the cost pass rather than folded into it: the capabilities are
+    // independent — most prepaid providers bill nothing in arrears and expose
+    // no cost API at all — and a provider whose billing endpoint is down must
+    // not stop us reading a balance that is about to hit zero.
+    await this.tickCredits();
+
     // Fourth pass: weekly digests. A no-op outside the Monday-morning send
     // window; the conditional-UPDATE claim inside makes it replica- and
     // restart-safe, and it claims a bounded batch per call (see
@@ -100,6 +124,67 @@ export class PollerLoop extends TickLoop {
     // idempotent, so replicas and restarts just repeat cheap no-ops. Defensive
     // like the others.
     await this.tickRetention();
+
+    // Sixth pass: provider status feeds. Claims due feeds with the same
+    // SKIP LOCKED lease protocol as accounts (the lease lives in
+    // `provider_status_feeds.next_fetch_at`), so replicas share the work.
+    // Defensive like the others.
+    await this.tickStatusFeeds();
+
+    // Seventh pass: expiry alerts. A bounded batch of orgs whose 24h scan
+    // window has elapsed; the conditional-upsert claim inside
+    // (`org_expiry_settings.last_notified_at`) makes it replica- and
+    // restart-safe. Defensive like the others.
+    await this.tickExpiryAlerts();
+
+    // Posture alerts: a bounded batch of orgs whose 24h posture-scan window
+    // has elapsed; the conditional-upsert claim inside
+    // (`org_posture_settings.last_notified_at`) makes it replica- and
+    // restart-safe. Defensive like the others.
+    await this.tickPostureAlerts();
+
+    // Eighth pass: sleep/wake schedules. Claims due transitions with the
+    // accounts lease protocol (`resource_schedules.next_transition_at`
+    // doubles as the lease) and executes the plugin's declared lifecycle
+    // action; idempotency keys make restarts safe. Defensive like the others.
+    await this.tickSchedules();
+
+    // Lease pass: resource leases with auto-delete. Claims due leases with
+    // the accounts lease protocol (`resource_leases.next_check_at` doubles as
+    // the lease), sends the two mandatory announcements and deletes the
+    // resource at expiry, deferring during change freezes. Defensive like the
+    // others.
+    await this.tickLeases();
+
+    // Ninth pass: log-match alerts. Claims due alert-enabled saved log
+    // queries with the same lease protocol (`log_workspace_queries.
+    // next_eval_at` doubles as the lease), fetches a bounded tail per stream
+    // through the plugin `getLogs` contract and notifies on match, with a
+    // per-query cooldown. Defensive like the others.
+    await this.tickLogAlerts();
+
+    // Tenth pass: metric threshold alert rules. Claims due rules with the
+    // accounts lease protocol (`metric_alert_rules.next_eval_at` doubles as
+    // the lease), judges each rule's trailing window against ClickHouse, and
+    // opens/resolves firing events. Defensive like the others.
+    await this.tickMetricAlerts();
+
+    // Eleventh pass: synthetic probes. Claims due probes with the accounts
+    // lease protocol (`synthetic_probes.next_probe_at` doubles as the lease —
+    // the claim writes the probe's own interval), runs each through the
+    // egress proxy's /probe endpoint from outside the cluster, records the
+    // result as metric points and runs the up/down state machine. Skips
+    // silently when the proxy env isn't configured. Defensive like the
+    // others.
+    await this.tickProbes();
+
+    // Twelfth pass: alert follow-up. Releases quiet-hours holds whose window
+    // has closed and escalates alerts nobody acknowledged, both claimed with
+    // the same `FOR UPDATE SKIP LOCKED` lease the account claim uses (the
+    // lease lives in the row's own deadline column). Cheap when idle — two
+    // indexed range scans that usually return nothing. Defensive like the
+    // others.
+    await this.tickAlertFollowUp();
   }
 
   private async runOne(row: PollAccountRow): Promise<void> {
@@ -141,6 +226,95 @@ export class PollerLoop extends TickLoop {
     }
   }
 
+  /** Claim accounts due a credit-balance read and run them. */
+  private async tickCredits(): Promise<void> {
+    try {
+      if (!this.creditCapablePluginIds) {
+        const loaded = await loadPlugins();
+        this.creditCapablePluginIds = loaded
+          .filter((l) => l.plugin.manifest.credits)
+          .map((l) => l.plugin.manifest.id);
+      }
+      const claimed = await claimDueCreditAccounts(COST_LIMIT, this.creditCapablePluginIds);
+      if (claimed.length === 0) return;
+      await Promise.allSettled(claimed.map((row) => pollAccountCredits(row)));
+    } catch (e) {
+      console.error("[poller] credit tick failed:", e);
+    }
+  }
+
+  /** Fetch any provider status feeds that have come due. */
+  private async tickStatusFeeds(): Promise<void> {
+    try {
+      await runStatusFeedCollection();
+    } catch (e) {
+      console.error("[poller] status feed tick failed:", e);
+    }
+  }
+
+  /** Scan a bounded batch of orgs whose expiry-alert window has come due. */
+  private async tickExpiryAlerts(): Promise<void> {
+    try {
+      await runExpiryAlerts({ limit: 4 });
+    } catch (e) {
+      console.error("[poller] expiry alert tick failed:", e);
+    }
+  }
+
+  /** Scan a bounded batch of orgs whose posture-alert window has come due. */
+  private async tickPostureAlerts(): Promise<void> {
+    try {
+      await runPostureAlerts({ limit: 4 });
+    } catch (e) {
+      console.error("[poller] posture alert tick failed:", e);
+    }
+  }
+
+  /** Execute any sleep/wake schedule transitions that have come due. */
+  private async tickSchedules(): Promise<void> {
+    try {
+      await runSchedulePass({ limit: 4 });
+    } catch (e) {
+      console.error("[poller] schedule tick failed:", e);
+    }
+  }
+
+  /** Advance any due auto-delete resource leases (announce / defer / delete). */
+  private async tickLeases(): Promise<void> {
+    try {
+      await runLeasePass({ limit: 4 });
+    } catch (e) {
+      console.error("[poller] lease tick failed:", e);
+    }
+  }
+
+  /** Evaluate any alert-enabled saved log queries that have come due. */
+  private async tickLogAlerts(): Promise<void> {
+    try {
+      await runLogAlertPass({ limit: 4 });
+    } catch (e) {
+      console.error("[poller] log alert tick failed:", e);
+    }
+  }
+
+  /** Evaluate any metric threshold alert rules that have come due. */
+  private async tickMetricAlerts(): Promise<void> {
+    try {
+      await runMetricAlertPass({ limit: 8 });
+    } catch (e) {
+      console.error("[poller] metric alert tick failed:", e);
+    }
+  }
+
+  /** Run any synthetic probes that have come due. */
+  private async tickProbes(): Promise<void> {
+    try {
+      await runProbePass({ limit: 8 });
+    } catch (e) {
+      console.error("[poller] probe tick failed:", e);
+    }
+  }
+
   /** Send any weekly digests that have come due. */
   private async tickDigests(): Promise<void> {
     try {
@@ -169,6 +343,51 @@ export class PollerLoop extends TickLoop {
       await pruneResourceChanges();
     } catch (e) {
       console.error("[poller] retention tick failed:", e);
+    }
+    // Session recordings ride the same hourly slot rather than a clock of their
+    // own: both are idempotent whole-table prunes with nothing to coordinate,
+    // and a second timer would only make "when does old data actually go" two
+    // answers instead of one. Their windows differ (recordings are per-org
+    // policy, changes are a fixed 90 days) but their cadence has no reason to.
+    try {
+      await pruneSessionRecordings();
+      // Rows the recorder never got to close — a web replica killed mid-session
+      // leaves one saying "recording" forever. The list view derives the same
+      // thing for display; this makes it true in the table so a SQL-level
+      // reader (the CLI's `--json`, an export) agrees with the UI.
+      await settleAbandonedRecordings();
+    } catch (e) {
+      console.error("[poller] session-recording retention tick failed:", e);
+    }
+    // Credit snapshots keep a year rather than the 30-day burn window: the
+    // rows are tiny, and a longer series is the only way to answer "what did
+    // this cost us last quarter" if anyone ever asks.
+    try {
+      await pruneCreditSnapshots();
+    } catch (e) {
+      console.error("[poller] credit snapshot retention tick failed:", e);
+    }
+    // Delivery rows ride the same hourly clock rather than their own: the work
+    // is idempotent and tiny, and a second in-process timer would be a second
+    // thing to reason about for no benefit.
+    try {
+      await pruneAlertDeliveries();
+    } catch (e) {
+      console.error("[poller] alert delivery retention failed:", e);
+    }
+  }
+
+  /** Release held alerts and escalate unacknowledged ones. */
+  private async tickAlertFollowUp(): Promise<void> {
+    try {
+      const stats = await runAlertFollowUpPass();
+      if (stats.flushed > 0 || stats.escalated > 0) {
+        console.log(
+          `[poller] alert follow-up: released ${stats.flushed} held, escalated ${stats.escalated}`,
+        );
+      }
+    } catch (e) {
+      console.error("[poller] alert follow-up tick failed:", e);
     }
   }
 

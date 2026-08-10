@@ -65,6 +65,7 @@ interface ResourceDetailResponse {
     enumValues?: string[];
   }>;
   credentialFormats?: CredentialFormat[];
+  supportsTerraformExport?: boolean;
   hasManifestEditor: boolean;
   hasSecretVersions?: boolean;
   resourceDisplayName: string;
@@ -87,6 +88,7 @@ interface ResourceDetailResponse {
   databaseName?: string;
   storageBucketName?: string;
   supportsMetrics?: boolean;
+  schedulable?: boolean;
 }
 
 export const Route = createFileRoute("/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId")(
@@ -317,6 +319,7 @@ export function ResourcePanel({
         canEdit={data.canEdit}
         editableFields={data.editableFields}
         credentialFormats={data.credentialFormats}
+        supportsTerraformExport={data.supportsTerraformExport}
         hasManifestEditor={data.hasManifestEditor}
         hasSecretVersions={data.hasSecretVersions}
         resourceDisplayName={data.resourceDisplayName}
@@ -344,6 +347,7 @@ export function ResourcePanel({
         initialCommand={initialCommand}
         initialCwd={initialCwd}
         supportsMetrics={data.supportsMetrics}
+        schedulable={data.schedulable}
         resourceFields={data.resourceFields}
         parentResourceId={parent}
       />

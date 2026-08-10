@@ -5,6 +5,7 @@ import {
   DraggableChildPill,
   ConfirmDeleteModal,
   CredentialExportModal,
+  TerraformExportModal,
   EditResourceModal,
   dispatchResourcesChanged,
   buildChildResourceGroups,
@@ -26,6 +27,9 @@ import {
   type ChildResourceGroup,
   type NavigateToResourceDetail,
   type PeerPaneData,
+  ResourceSchedulePanel,
+  ResourceLeasePanel,
+  ResourceOwnershipPanel,
 } from "@infrawrench/ui";
 import type {
   ArtifactEntry,
@@ -35,6 +39,7 @@ import type {
   CredentialExport,
   DetailViewSchema,
   FieldDefinition,
+  CostEstimate,
   KvListResult,
   LogsFetchParams,
   LogsFetchResult,
@@ -46,6 +51,7 @@ import type {
   SecretVersion,
   SecretVersionMutation,
   SynthesizeSpeechResult,
+  TerraformExportOutcome,
   TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
@@ -70,6 +76,9 @@ import { FirestoreDocumentBrowser } from "@/components/FirestoreDocumentBrowser"
 import { FirestoreMongoPeerBrowser } from "@/components/FirestoreMongoPeerBrowser";
 import { StorageBrowser } from "@/components/StorageBrowser";
 import { ResourceChangesPanel } from "@/components/ResourceChangesPanel";
+import { createWebSchedulesClient } from "@/lib/schedules-client";
+import { createWebLeasesClient } from "@/lib/leases-client";
+import { createWebOwnershipClient } from "@/lib/ownership-client";
 import { SftpBrowser } from "@/components/SftpBrowser";
 import { WebTerminal } from "@/components/WebTerminal";
 import { SshQuickConnectPanel } from "@/components/SshQuickConnectPanel";
@@ -128,6 +137,7 @@ interface Props {
   canEdit?: boolean | undefined;
   editableFields?: FieldDefinition[] | undefined;
   credentialFormats?: CredentialFormat[] | undefined;
+  supportsTerraformExport?: boolean | undefined;
   hasManifestEditor: boolean;
   hasSecretVersions?: boolean | undefined;
   resourceDisplayName: string;
@@ -155,6 +165,7 @@ interface Props {
   initialCommand?: string | undefined;
   initialCwd?: string | undefined;
   supportsMetrics?: boolean | undefined;
+  schedulable?: boolean | undefined;
   resourceFields?: Record<string, string | number | boolean> | undefined;
   parentResourceId?: string | undefined;
 }
@@ -174,6 +185,7 @@ export function ResourceDetailClient({
   canEdit,
   editableFields,
   credentialFormats,
+  supportsTerraformExport,
   hasManifestEditor,
   hasSecretVersions,
   resourceDisplayName,
@@ -201,15 +213,50 @@ export function ResourceDetailClient({
   initialCommand,
   initialCwd,
   supportsMetrics,
+  schedulable,
   resourceFields,
   parentResourceId,
 }: Props) {
   const navigate = useNavigate();
   const router = useRouter();
   const orgId = useOrgId();
+  const schedulesClient = useMemo(() => createWebSchedulesClient(orgId), [orgId]);
+  const leasesClient = useMemo(() => createWebLeasesClient(orgId), [orgId]);
+  const ownershipClient = useMemo(() => createWebOwnershipClient(orgId), [orgId]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // The resource's standing monthly estimate, from the plugin's
+  // `estimateCost`. Same call the create form makes, so the figure quoted
+  // here is the one the user was shown when they created it. Null whenever
+  // the plugin can't price this type, which is most of them — the header chip
+  // simply doesn't render.
+  const [costEstimate, setCostEstimate] = useState<CostEstimate | null>(null);
+  const loadCostEstimate = useCallback(
+    (fields: Record<string, string>) =>
+      apiPost<{ estimate: CostEstimate | null }>(`/api/org/${orgId}/resources/cost-estimate`, {
+        accountId,
+        resourceTypeId,
+        resourceId,
+        ...(Object.keys(fields).length > 0 ? { fields } : {}),
+      }).then(({ estimate }) => estimate),
+    [orgId, accountId, resourceTypeId, resourceId],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void loadCostEstimate({})
+      .then((estimate) => {
+        if (!cancelled) setCostEstimate(estimate);
+      })
+      .catch(() => {
+        if (!cancelled) setCostEstimate(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadCostEstimate]);
   const [showExportCredential, setShowExportCredential] = useState(false);
+  const [showTerraformExport, setShowTerraformExport] = useState(false);
   const [metricSeries, setMetricSeries] = useState<MetricSeries[] | undefined>(undefined);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [consoleToken, setConsoleToken] = useState<string | null>(null);
@@ -1179,6 +1226,7 @@ export function ResourceDetailClient({
               schema={detailSchema}
               resourceId={resourceId}
               pluginLogoSvg={pluginLogoSvg}
+              costEstimate={costEstimate}
               {...(hasSqlEditor
                 ? {
                     onRunQuery: handleRunQuery,
@@ -1332,6 +1380,29 @@ export function ResourceDetailClient({
               renderChangesTab={() => (
                 <ResourceChangesPanel orgId={orgId} resourceId={resourceId} />
               )}
+              {...(schedulable
+                ? {
+                    renderScheduleTab: () => (
+                      <ResourceSchedulePanel
+                        client={schedulesClient}
+                        target={{ resourceId, accountId, resourceName: resourceDisplayName }}
+                      />
+                    ),
+                  }
+                : {})}
+              renderLeaseTab={() => (
+                <ResourceLeasePanel
+                  client={leasesClient}
+                  target={{ resourceId, accountId, resourceName: resourceDisplayName }}
+                />
+              )}
+              renderOwnershipTab={() => (
+                <ResourceOwnershipPanel
+                  client={ownershipClient}
+                  resourceId={resourceId}
+                  resourceName={resourceDisplayName}
+                />
+              )}
             />
           </div>
         </div>
@@ -1377,10 +1448,22 @@ export function ResourceDetailClient({
       )}
 
       {/* Bottom action row */}
-      {(canDelete || canEdit || (credentialFormats && credentialFormats.length > 0)) &&
+      {(canDelete ||
+        canEdit ||
+        supportsTerraformExport ||
+        (credentialFormats && credentialFormats.length > 0)) &&
         !isSshView &&
         !isSftpView && (
           <div className="shrink-0 px-4 py-2 border-t border-border flex items-center justify-end gap-3">
+            {supportsTerraformExport && (
+              <button
+                type="button"
+                onClick={() => setShowTerraformExport(true)}
+                className="text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
+              >
+                Export to Terraform…
+              </button>
+            )}
             {credentialFormats && credentialFormats.length > 0 && (
               <button
                 type="button"
@@ -1428,6 +1511,7 @@ export function ResourceDetailClient({
             Object.entries(resourceFields ?? {}).map(([k, v]) => [k, String(v ?? "")]),
           )}
           onClose={() => setShowEditModal(false)}
+          loadCostEstimate={loadCostEstimate}
           onSubmit={async (changed) => {
             await handleUpdate(changed);
             // Server-rendered page: a full reload picks up the new fields.
@@ -1453,6 +1537,19 @@ export function ResourceDetailClient({
             )
           }
           onClose={() => setShowExportCredential(false)}
+        />
+      )}
+
+      {showTerraformExport && (
+        <TerraformExportModal
+          subjectDisplayName={resourceDisplayName}
+          generate={() =>
+            apiPost<TerraformExportOutcome>(
+              `/api/org/${orgId}/resources/${pluginId}/${resourceTypeId}/export-terraform`,
+              { resourceId, accountId },
+            )
+          }
+          onClose={() => setShowTerraformExport(false)}
         />
       )}
 

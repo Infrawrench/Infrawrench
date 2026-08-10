@@ -1382,6 +1382,15 @@ export class NeonClient implements PluginClient {
       return;
     }
 
+    if (typeId === "neon-endpoint" && (actionId === "start" || actionId === "suspend")) {
+      // resource ID format: {accountId}:neon-endpoint:{projectId}/{endpointId}
+      const [projectId, endpointId] = externalIdOf(resourceId).split("/");
+      if (!projectId || !endpointId) throw new Error("Neon plugin: cannot parse endpoint ID");
+      if (actionId === "start") await this.api.startProjectEndpoint(projectId, endpointId);
+      else await this.api.suspendProjectEndpoint(projectId, endpointId);
+      return;
+    }
+
     throw new Error(`Neon plugin: unknown action "${actionId}" for type "${typeId}"`);
   }
 
@@ -1907,7 +1916,40 @@ export class NeonClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      headerActions: [
+        // Start only from "idle", Suspend only from "active" — transitional
+        // states ("init" and friends) get neither: the API would reject or
+        // race the in-flight transition, so wait for Refresh to settle it.
+        ...(state === "idle"
+          ? [
+              {
+                kind: "action" as const,
+                label: "Start",
+                action: {
+                  type: "plugin-action" as const,
+                  actionId: "start",
+                  successMessage: "Start requested — the compute is warming up.",
+                },
+              },
+            ]
+          : state === "active"
+            ? [
+                {
+                  kind: "action" as const,
+                  label: "Suspend",
+                  action: {
+                    type: "plugin-action" as const,
+                    actionId: "suspend",
+                    confirmMessage:
+                      "Suspend this compute endpoint? Open connections drop; the next connection wakes it (or a scheduled start does).",
+                    successMessage: "Suspend requested.",
+                  },
+                  variant: "danger" as const,
+                },
+              ]
+            : []),
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+      ],
     };
   }
 

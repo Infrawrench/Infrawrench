@@ -77,13 +77,24 @@ export function StorageBrowser({
       // Chunked at MAX_BULK_KEYS: the server rejects a larger selection
       // outright, and FileBrowser expands a selected folder to a flat key list
       // first, so one folder of >100 files would otherwise fail wholesale
-      // rather than download.
+      // rather than download. Later `window.open` calls can return null when the
+      // browser blocks additional tabs; surface that instead of silently
+      // dropping the rest of the selection.
       for (let i = 0; i < keys.length; i += MAX_BULK_DOWNLOAD_KEYS) {
         const batch = keys.slice(i, i + MAX_BULK_DOWNLOAD_KEYS);
-        window.open(
+        const opened = window.open(
           `/api/org/${orgId}/v1/storage/download?accountId=${encodeURIComponent(accountId)}&bucket=${encodeURIComponent(bucketName)}&keys=${encodeURIComponent(JSON.stringify(batch))}`,
           "_blank",
         );
+        if (!opened) {
+          const downloaded = i;
+          const remaining = keys.length - downloaded;
+          throw new Error(
+            downloaded === 0
+              ? "Your browser blocked the download. Allow pop-ups for this site and try again."
+              : `Downloaded ${downloaded} of ${keys.length} files, then the browser blocked further tabs (${remaining} left). Allow pop-ups and download the rest.`,
+          );
+        }
       }
     },
     [accountId, bucketName, orgId],

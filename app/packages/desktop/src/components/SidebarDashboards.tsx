@@ -6,8 +6,16 @@ import {
   CHAT_CONVERSATIONS_CHANGED_EVENT,
   DEFAULT_CHAT_MODEL,
   ChangesIcon,
+  MetricAlertIcon,
+  ProbesIcon,
   DeployIcon,
+  ExpiryIcon,
+  PostureIcon,
+  DomainsIcon,
+  EnvironmentDiffIcon,
+  FanoutIcon,
   GraphIcon,
+  LogsIcon,
   DroppableDashboardItem,
   emitChatConversationsChanged,
   SidebarNavGrid,
@@ -21,9 +29,12 @@ import {
   agentsTabTarget,
   costsTabTarget,
   graphTabTarget,
+  logsTabTarget,
   chatTabTarget,
   dashboardTabTarget,
   deploymentsTabTarget,
+  dnsTabTarget,
+  environmentDiffTabTarget,
   workflowsTabTarget,
   navigateToWorkspaceTarget,
 } from "../lib/workspace-tabs";
@@ -170,9 +181,9 @@ export function SidebarDashboards() {
   // Deploy is here in both modes: with an org it is the full deploy screen,
   // and without one it is the history of what `infrawrench deploy` did on this
   // machine. Costs and Changes have no local half — spend is collected
-  // server-side, change events are recorded by the cloud poller — so the grid
-  // is four tiles locally and six with an org; SidebarNavGrid squares off an
-  // odd count itself.
+  // server-side, change events are recorded by the cloud poller — so the tile
+  // count differs between local and org mode; SidebarNavGrid balances its
+  // icon rows for whatever count it gets.
   const navTiles: SidebarNavTileDef[] = [
     {
       key: "agents",
@@ -204,6 +215,15 @@ export function SidebarDashboards() {
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, costsTabTarget(), { label: "Costs" }),
           },
+          // Cloud-only for the same reason as Costs: rules are evaluated by
+          // the cloud poller against the cloud metric store. Not a workspace
+          // tab — same as web, a plain route.
+          {
+            key: "metric-alerts",
+            label: "Alerts",
+            icon: <MetricAlertIcon />,
+            onClick: () => void navigate({ to: "/metric-alerts" }),
+          },
           // Cloud-only for the same reason as Costs: change events are recorded
           // by the cloud poller, and there is no poller in local-only mode.
           // Not a workspace tab — same as web, a plain route.
@@ -212,6 +232,14 @@ export function SidebarDashboards() {
             label: "Changes",
             icon: <ChangesIcon />,
             onClick: () => void navigate({ to: "/changes" }),
+          },
+          // Cloud-only like Changes: probes run in the cloud poller through
+          // the egress proxy, and results live in the cloud metric store.
+          {
+            key: "probes",
+            label: "Probes",
+            icon: <ProbesIcon />,
+            onClick: () => void navigate({ to: "/probes" }),
           },
         ]
       : []),
@@ -222,6 +250,61 @@ export function SidebarDashboards() {
       label: "Graph",
       icon: <GraphIcon />,
       onClick: () => void navigateToWorkspaceTarget(navigate, graphTabTarget(), { label: "Graph" }),
+    },
+    // Expiring also has a local half — the feed is computed from stored state
+    // and the locally loaded plugins' expiry declarations. Not a workspace
+    // tab — same as web and Changes, a plain route.
+    {
+      key: "expiring",
+      label: "Expiring",
+      icon: <ExpiryIcon />,
+      onClick: () => void navigate({ to: "/expiring" }),
+    },
+    // Posture also has a local half — findings are computed from stored state
+    // and the locally loaded plugins' posture declarations. A plain route,
+    // same as Expiring.
+    {
+      key: "posture",
+      label: "Posture",
+      icon: <PostureIcon />,
+      onClick: () => void navigate({ to: "/posture" }),
+    },
+    // Domains also has a local half — the inventory is computed from stored
+    // state and the locally loaded plugins' DNS declarations. A workspace-tab
+    // kind (same as Logs), so the strip stays in sync with the active panel.
+    {
+      key: "dns",
+      label: "Domains",
+      icon: <DomainsIcon />,
+      onClick: () => void navigateToWorkspaceTarget(navigate, dnsTabTarget(), { label: "Domains" }),
+    },
+    // Env diff also has a local half — local mode enumerates both accounts
+    // through the plugin, since the local workspace has no synced store to
+    // read. Workspace-tab kind so a/b selection survives restart.
+    {
+      key: "environment-diff",
+      label: "Env diff",
+      icon: <EnvironmentDiffIcon />,
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, environmentDiffTabTarget(), { label: "Env diff" }),
+    },
+    // Fan-out SSH has a local half — local SSH accounts exec through the
+    // machine's own ssh machinery — so, like Graph, it shows in both modes.
+    // A plain route, same as web.
+    {
+      key: "ssh-fanout",
+      label: "Fan-out",
+      icon: <FanoutIcon />,
+      onClick: () => void navigate({ to: "/ssh-fanout" }),
+    },
+    // Logs also has a local half — the in-renderer plugin clients fetch tails
+    // directly — so like Graph the tile shows in both modes (saved queries
+    // and alerting are the cloud-only part, hidden by the panel locally).
+    {
+      key: "logs",
+      label: "Logs",
+      icon: <LogsIcon />,
+      onClick: () => void navigateToWorkspaceTarget(navigate, logsTabTarget(), { label: "Logs" }),
     },
   ];
 

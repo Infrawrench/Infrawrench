@@ -12,9 +12,7 @@ interface ShowWhenConditionLike {
 }
 
 export type ShowWhenRuleLike =
-  | ShowWhenConditionLike
-  | { allOf: ShowWhenConditionLike[] }
-  | { anyOf: ShowWhenConditionLike[] };
+  ShowWhenConditionLike | { allOf: ShowWhenConditionLike[] } | { anyOf: ShowWhenConditionLike[] };
 
 function evaluateShowWhenCondition(
   cond: ShowWhenConditionLike,

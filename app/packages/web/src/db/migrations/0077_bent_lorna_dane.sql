@@ -1,0 +1,2 @@
+ALTER TABLE "ssh_session_recordings" ADD COLUMN "last_activity_at" timestamp DEFAULT now() NOT NULL;--> statement-breakpoint
+CREATE INDEX "ssh_session_recordings_org_last_activity_idx" ON "ssh_session_recordings" USING btree ("organization_id","last_activity_at");

@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
-import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
+import { Linking, Pressable, ScrollView, StyleSheet, Text } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
+import { normalizeTerminalLinkUrl } from "@infrawrench/client-core";
 import { terminalHtml } from "../../../assets/generated/terminal-html";
 import { utf8ToBase64 } from "@/lib/base64";
 import { colors, radii, spacing } from "@/lib/theme";
@@ -50,7 +51,7 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, TerminalWebView
 
     const handleMessage = useCallback(
       (event: WebViewMessageEvent) => {
-        let msg: { type?: string; b64?: string; cols?: number; rows?: number };
+        let msg: { type?: string; b64?: string; cols?: number; rows?: number; url?: string };
         try {
           msg = JSON.parse(event.nativeEvent.data) as typeof msg;
         } catch {
@@ -66,6 +67,12 @@ export const TerminalWebView = forwardRef<TerminalWebViewHandle, TerminalWebView
           typeof msg.rows === "number"
         ) {
           onResize(msg.cols, msg.rows);
+        } else if (msg.type === "openUrl" && typeof msg.url === "string") {
+          // Re-validate on this side of the bridge. The WebView already
+          // refuses non-http schemes, but the URL originated in remote
+          // terminal output and this is the boundary that hands it to the OS.
+          const url = normalizeTerminalLinkUrl(msg.url);
+          if (url) void Linking.openURL(url);
         }
       },
       [onReady, onInput, onResize],

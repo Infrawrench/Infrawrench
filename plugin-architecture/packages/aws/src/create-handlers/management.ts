@@ -342,6 +342,8 @@ export async function managementCreateResource(
         description: fields["description"] ?? "",
         lastAccessedDate: "",
         lastChangedDate: "",
+        lastRotatedDate: "",
+        createdDate: new Date().toISOString(),
         rotationEnabled: false,
       },
       resolvedOutputs: {

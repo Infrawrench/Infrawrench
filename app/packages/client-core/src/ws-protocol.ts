@@ -175,6 +175,4 @@ export interface ServerStatusFrame {
 }
 
 export type ServerFrame =
-  | ServerDataFrame
-  | ServerStatusFrame
-  | { type: string; [k: string]: unknown };
+  ServerDataFrame | ServerStatusFrame | { type: string; [k: string]: unknown };

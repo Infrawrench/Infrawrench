@@ -32,6 +32,9 @@ export const ApiKeyResourceType = rt({
   dependsOn: [
     { fieldKey: "memberEmail", targetTypeId: "member", targetKey: "email", label: "owned by" },
   ],
+  expiryFields: [
+    { fieldKey: "expirationDate", from: "expiry", kind: "api-token", label: "Key expires" },
+  ],
   parentTypeId: "project",
   showInSidebar: true,
   supportsCreate: true,

@@ -17,6 +17,7 @@ import type {
   PublishMessageResult,
   CostFetchRange,
   CostRow,
+  PreflightResult,
 } from "@infrawrench/plugin-base";
 import {
   streamOpenAiSseChat,
@@ -58,6 +59,7 @@ import {
   renderAiGatewayDetail,
 } from "./detail-renderers.js";
 import { CloudflareApi, withCloudflareErrors } from "./clients/shared.js";
+import { runCloudflarePreflight } from "./preflight.js";
 import { fetchCloudflareCostData } from "./cost-data.js";
 import { getCreateConfig as getCreateConfigImpl } from "./create-configs.js";
 import { fetchMetricSeries as fetchMetricSeriesImpl } from "./metric-series.js";
@@ -118,6 +120,10 @@ export class CloudflareClient implements PluginClient {
     if (!token) throw new Error("Cloudflare plugin: missing apiToken credential");
     this.api = new CloudflareApi(token);
     this.resourceTypes = resourceTypes;
+  }
+
+  async verifyCredentials(): Promise<PreflightResult> {
+    return runCloudflarePreflight(this.api.apiToken);
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {

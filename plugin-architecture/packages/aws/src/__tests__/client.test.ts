@@ -81,7 +81,13 @@ vi.mock("../dashboard-metrics.js", () => ({
   fetchMetricSeries: (...a: unknown[]) =>
     (fetchMetricSeries as (...args: unknown[]) => unknown)(...a),
 }));
-vi.mock("../cost-estimate.js", () => ({ getCreateCostEstimate: vi.fn(async () => 12.5) }));
+vi.mock("../cost-estimate.js", () => ({
+  estimateAwsCost: vi.fn(async () => ({
+    monthlyAmount: 12.5,
+    currency: "USD",
+    lineItems: [{ label: "Instance", monthlyAmount: 12.5 }],
+  })),
+}));
 
 const attachResource = vi.fn(async () => undefined);
 vi.mock("../attach-handlers.js", () => ({
@@ -241,11 +247,11 @@ describe("AWSClient delegating methods", () => {
     await c.makeStorageFolder("b", "k");
     await c.deleteStorageObject("b", "k");
   });
-  it("getCreateConfig / createResource / getCreateCostEstimate delegate", async () => {
+  it("getCreateConfig / createResource / estimateCost delegate", async () => {
     const c = new AWSClient(credMap);
     expect(await c.getCreateConfig("ec2-instance")).toEqual({ fields: [] });
     expect((await c.createResource("ec2-instance", "acct", {})).id).toBe("created");
-    expect(await c.getCreateCostEstimate("ec2-instance", {})).toBe(12.5);
+    expect((await c.estimateCost("ec2-instance", {}))?.monthlyAmount).toBe(12.5);
   });
   it("executeFieldAction delegates", async () => {
     const c = new AWSClient(credMap);
@@ -318,9 +324,7 @@ describe("AWSClient.updateResource", () => {
   });
   it("throws for unsupported update types", async () => {
     const c = new AWSClient(credMap);
-    await expect(c.updateResource("ec2-instance", "r", "acct", {})).rejects.toThrow(
-      /not supported/,
-    );
+    await expect(c.updateResource("s3-bucket", "r", "acct", {})).rejects.toThrow(/not supported/);
   });
 });
 

@@ -1,5 +1,5 @@
 import type { Plugin } from "@infrawrench/plugin-base";
-import { pluginManifestSchema } from "@infrawrench/plugin-base";
+import { pluginManifestSchema, validatePreflightContract } from "@infrawrench/plugin-base";
 
 // Static imports — keep plugin registration eager so esbuild bundles them all
 import { plugin as awsPlugin } from "@infrawrench/plugin-aws";
@@ -50,6 +50,7 @@ import { plugin as speechmaticsPlugin } from "@infrawrench/plugin-speechmatics";
 import { plugin as togetherPlugin } from "@infrawrench/plugin-together";
 import { plugin as xaiPlugin } from "@infrawrench/plugin-xai";
 import { plugin as uploadthingPlugin } from "@infrawrench/plugin-uploadthing";
+import { plugin as workosPlugin } from "@infrawrench/plugin-workos";
 
 const PLUGINS: Plugin[] = [
   awsPlugin,
@@ -100,6 +101,7 @@ const PLUGINS: Plugin[] = [
   togetherPlugin,
   xaiPlugin,
   uploadthingPlugin,
+  workosPlugin,
 ];
 
 export interface LoadedPlugin {
@@ -123,6 +125,13 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
       console.error(
         `[plugin-loader] Invalid manifest for "${plugin.manifest?.id ?? "unknown"}":`,
         result.error.flatten(),
+      );
+      continue;
+    }
+    const contractProblem = validatePreflightContract(plugin);
+    if (contractProblem) {
+      console.error(
+        `[plugin-loader] Invalid preflight contract for "${plugin.manifest.id}": ${contractProblem}`,
       );
       continue;
     }

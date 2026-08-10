@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { summarizeChange } from "@infrawrench/client-core";
 import { ChangeDiffList, ChangeKindBadge } from "./ChangeParts.js";
+import { ProviderIncidentChangesSection } from "../status/ProviderIncidentChangesSection.js";
+import type { StatusIncidentsClient } from "../status/types.js";
 import type {
   ChangeFeedAccount,
   ChangesClient,
@@ -20,6 +22,19 @@ export interface ChangesPanelProps {
   client: ChangesClient;
   /** Jump to a changed resource's detail view. Omitted, names are plain text. */
   onOpenResource?: ((entry: ResourceChangeEntry) => void) | undefined;
+  /**
+   * Provider status correlation. When present, incidents overlapping the org
+   * render as a section above the feed ("these N changes happened during an
+   * incident"). Optional so hosts adopt it independently.
+   */
+  statusClient?: StatusIncidentsClient | undefined;
+  /** Open an external URL (provider status page). */
+  onOpenUrl?: ((url: string) => void) | undefined;
+  /**
+   * Open the moment view ("what changed around 03:14?"). When present, an
+   * "Investigate a moment" button renders in the filter row.
+   */
+  onInvestigateMoment?: (() => void) | undefined;
 }
 
 /**
@@ -30,7 +45,13 @@ export interface ChangesPanelProps {
  * host with no org has nothing to show. Hosts guard the entry point rather than
  * rendering this with a dead client.
  */
-export function ChangesPanel({ client, onOpenResource }: ChangesPanelProps) {
+export function ChangesPanel({
+  client,
+  onOpenResource,
+  statusClient,
+  onOpenUrl,
+  onInvestigateMoment,
+}: ChangesPanelProps) {
   const [entries, setEntries] = useState<ResourceChangeEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -99,6 +120,10 @@ export function ChangesPanel({ client, onOpenResource }: ChangesPanelProps) {
         providers.
       </p>
 
+      {statusClient && (
+        <ProviderIncidentChangesSection client={statusClient} onOpenUrl={onOpenUrl} />
+      )}
+
       <div className="flex gap-3 mb-4">
         <label htmlFor="changes-kind-filter" className="sr-only">
           Filter by change kind
@@ -138,6 +163,16 @@ export function ChangesPanel({ client, onOpenResource }: ChangesPanelProps) {
             </option>
           ))}
         </select>
+        {onInvestigateMoment && (
+          <button
+            type="button"
+            onClick={onInvestigateMoment}
+            className="ml-auto px-3 py-1.5 text-sm border border-border-strong rounded-lg text-on-surface-tertiary hover:text-on-surface-secondary whitespace-nowrap"
+            title="Merge every feed around one timestamp — changes, incidents, anomalies, runs, deployments, audit entries and freezes."
+          >
+            Investigate a moment
+          </button>
+        )}
       </div>
 
       {error !== null && (
@@ -173,6 +208,14 @@ export function ChangesPanel({ client, onOpenResource }: ChangesPanelProps) {
                     {new Date(entry.createdAt).toLocaleString()}
                   </span>
                   <ChangeKindBadge kind={entry.changeKind} />
+                  {entry.origin === "schedule" && (
+                    <span
+                      className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary whitespace-nowrap"
+                      title="This transition was executed by a sleep/wake schedule."
+                    >
+                      via schedule
+                    </span>
+                  )}
                   {onOpenResource ? (
                     <button
                       type="button"

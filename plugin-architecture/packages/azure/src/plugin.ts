@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { AzureClient } from "./client.js";
+import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { VMResourceType } from "./resources/vm.js";
 import { DiskResourceType } from "./resources/disk.js";
 import { VNetResourceType } from "./resources/vnet.js";
@@ -83,6 +84,7 @@ const manifest: PluginManifest = {
   // Reader" role — plain "Reader" is not enough. Azure serves ~13 months
   // of cost history.
   costs: { dimensions: ["service", "region"], maxHistoryDays: 395, restatementDays: 3 },
+  statusFeed,
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
@@ -124,4 +126,5 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials) => new AzureClient(credentials, resourceTypes),
+  parseStatusFeed,
 };

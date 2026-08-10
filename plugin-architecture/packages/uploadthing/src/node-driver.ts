@@ -22,6 +22,9 @@ import type { StorageNodeDriver } from "@infrawrench/plugin-base";
 
 const API_BASE = "https://api.uploadthing.com";
 
+/** Bound outbound UploadThing fetches so a hung host cannot wedge the process. */
+const FETCH_TIMEOUT_MS = 60_000;
+
 /** `POST /v6/requestFileAccess` — presigned GET URL for a single file key. */
 async function requestFileUrl(key: string, apiKey: string): Promise<string> {
   const res = await fetch(`${API_BASE}/v6/requestFileAccess`, {
@@ -31,6 +34,7 @@ async function requestFileUrl(key: string, apiKey: string): Promise<string> {
       "x-uploadthing-api-key": apiKey,
     },
     body: JSON.stringify({ fileKey: key }),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     throw new Error(
@@ -60,7 +64,7 @@ async function downloadFile(
 
   // Plain `fetch` rather than `https.get`: presigned UploadThing URLs redirect
   // to the backing store, and fetch follows that for us.
-  const res = await fetch(href);
+  const res = await fetch(href, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok || !res.body) {
     throw new Error(`UploadThing download failed for "${key}": HTTP ${res.status}`);
   }

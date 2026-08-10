@@ -18,6 +18,13 @@ interface SshViewPaneProps {
   initialCommand?: string | undefined;
   initialCwd?: string | undefined;
   autoConnectReady?: boolean | undefined;
+  /**
+   * Where the agent session's managed SSH key lives. Local sessions use an
+   * app key from this machine's DB, whose private key we can read; an org's
+   * sessions use the org's `infrawrench-agent` key, whose private key never
+   * leaves the server, so those connect through the cloud WS proxy instead.
+   */
+  agentKeyScope?: "app" | "cloud" | undefined;
   /** Agent launch metadata failed to resolve — show why and fall back to quick connect. */
   agentLaunchError?: string | undefined;
 }
@@ -40,6 +47,7 @@ export function SshViewPane({
   initialCommand,
   initialCwd,
   autoConnectReady = true,
+  agentKeyScope = "app",
   agentLaunchError,
 }: SshViewPaneProps) {
   const storageKey = agentForwardStorageKey(accountId, decodedResourceId);
@@ -62,7 +70,10 @@ export function SshViewPane({
   }, [storageKey]);
 
   useEffect(() => {
-    if (!agentSessionId || sshKeyId) {
+    // Cloud sessions never fall back to a local key: the org's agent key is
+    // what the VM actually trusts, and ensuring a *local* `infrawrench-agent`
+    // key here would hand the terminal a key the VM has never seen.
+    if (!agentSessionId || sshKeyId || agentKeyScope === "cloud") {
       setResolvedAgentKey(null);
       return;
     }
@@ -78,7 +89,7 @@ export function SshViewPane({
     return () => {
       cancelled = true;
     };
-  }, [agentSessionId, sshKeyId]);
+  }, [agentSessionId, sshKeyId, agentKeyScope]);
 
   useEffect(() => {
     if (!sshHost || sshConfig || quickSshConnection || !effectiveSshKeyId || !autoConnectReady)
@@ -86,17 +97,31 @@ export function SshViewPane({
     setAutoConnectError(null);
     setAutoConnectPending(true);
     let cancelled = false;
-    invoke<string>("ssh_key_get_private_key", { keyId: effectiveSshKeyId })
+    // An org's agent key has no private half on this machine — SshTerminal
+    // dispatches `cloud` key sources through the WS proxy, which signs with
+    // the key server-side, so there is nothing to read here.
+    const resolvePrivateKey =
+      agentKeyScope === "cloud"
+        ? Promise.resolve("")
+        : invoke<string>("ssh_key_get_private_key", { keyId: effectiveSshKeyId });
+    resolvePrivateKey
       .then((privateKey) => {
         if (cancelled) return;
         onConnect({
           username: sshDefaultUsername ?? "root",
           privateKey,
-          keySource: {
-            type: "app",
-            id: effectiveSshKeyId,
-            name: effectiveSshKeyName ?? effectiveSshKeyId,
-          },
+          keySource:
+            agentKeyScope === "cloud"
+              ? {
+                  type: "cloud",
+                  sshKeyId: effectiveSshKeyId,
+                  name: effectiveSshKeyName ?? effectiveSshKeyId,
+                }
+              : {
+                  type: "app",
+                  id: effectiveSshKeyId,
+                  name: effectiveSshKeyName ?? effectiveSshKeyId,
+                },
         });
       })
       .catch((error) => {
@@ -118,6 +143,7 @@ export function SshViewPane({
     sshDefaultUsername,
     onConnect,
     autoConnectReady,
+    agentKeyScope,
   ]);
 
   const hasTerminal = !!sshConfig;
@@ -183,8 +209,15 @@ export function SshViewPane({
             <SshQuickConnectPanel
               host={sshHost}
               {...(sshDefaultUsername ? { defaultUsername: sshDefaultUsername } : {})}
-              preferredAppKeyId={effectiveSshKeyId}
-              preferredAppKeyName={effectiveSshKeyName}
+              {...(agentKeyScope === "cloud"
+                ? {
+                    preferredCloudKeyId: effectiveSshKeyId,
+                    preferredCloudKeyName: effectiveSshKeyName,
+                  }
+                : {
+                    preferredAppKeyId: effectiveSshKeyId,
+                    preferredAppKeyName: effectiveSshKeyName,
+                  })}
               onConnect={onConnect}
             />
           </>
