@@ -121,7 +121,7 @@ Either kind of paid seat lifts the cap: a monthly subscription or a [prepaid cap
 
 ### Monthly cap
 
-Each org can set `chatMonthlyCapMicros` (in micro-dollars; 1 USD = 1,000,000). When the org's month-to-date AI cost — chat plus workflow `infra.ai` calls — crosses the cap, the agent refuses to start new turns and `infra.ai` throws, until the next month or the cap is raised. Set the cap in **Settings → Billing → Chat cap**, or via SQL on the `organizations` row. On the free tier, a configured cap below $5 still applies; caps above $5 take effect once the org is on a paid plan.
+Each org can set `chatMonthlyCapMicros` (in micro-dollars; 1 USD = 1,000,000). When the org's month-to-date AI cost — chat plus workflow `infra.ai` calls — crosses the cap, the agent refuses to start new turns and `infra.ai` throws, until the next month or the cap is raised. Chat and workflow calls share one reservation lock before each model request so concurrent consumers cannot race past the line; abandoned in-flight holds expire within minutes if a process dies mid-call. Set the cap in **Settings → Billing → Chat cap**, or via SQL on the `organizations` row. On the free tier, a configured cap below $5 still applies; caps above $5 take effect once the org is on a paid plan.
 
 The header of every chat shows month-to-date spend and remaining headroom against the cap.
 

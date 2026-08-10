@@ -23,7 +23,12 @@ vi.mock("../db/schema", () => ({
     organizationId: "org",
     costMicros: "cost",
     createdAt: "ts",
-    status: "status",
+  },
+  aiSpendReservations: {
+    id: "id",
+    organizationId: "org",
+    estimatedCostMicros: "est",
+    createdAt: "ts",
   },
   organizations: { id: "id", chatMonthlyCapMicros: "cap", complimentary: "complimentary" },
   subscriptions: { organizationId: "org", stripeCustomerId: "cust", status: "status" },
@@ -38,10 +43,10 @@ vi.mock("../billing/capacity-slots", () => ({
 const {
   getAiSpendStatus,
   recordWorkflowAiUsage,
-  reserveWorkflowAiSpend,
-  finalizeWorkflowAiUsage,
-  releaseWorkflowAiReservation,
+  reserveAiSpend,
+  releaseAiSpendReservation,
   estimateTokensFromChars,
+  AiSpendCapExceededError,
 } = await import("../billing/ai-usage");
 
 describe("getAiSpendStatus", () => {
@@ -52,13 +57,14 @@ describe("getAiSpendStatus", () => {
   });
 
   /**
-   * Queue the four selects in call order: the org row, the subscription row,
-   * the chat_usage month sum, and the workflow_ai_usage month sum.
+   * Queue the five selects in call order: org, subscription, chat_usage sum,
+   * workflow_ai_usage sum, and active ai_spend_reservations sum.
    */
   function setup(
     cap: number | null,
     chatTotal: string,
     workflowTotal = "0",
+    reservationTotal = "0",
     subStatus: string | null = "active",
     complimentary = false,
   ) {
@@ -72,11 +78,14 @@ describe("getAiSpendStatus", () => {
     const chatFrom = vi.fn().mockReturnValue({ where: chatWhere });
     const wfWhere = vi.fn().mockResolvedValue([{ total: workflowTotal }]);
     const wfFrom = vi.fn().mockReturnValue({ where: wfWhere });
+    const resWhere = vi.fn().mockResolvedValue([{ total: reservationTotal }]);
+    const resFrom = vi.fn().mockReturnValue({ where: resWhere });
     mockSelect
       .mockReturnValueOnce({ from: orgFrom })
       .mockReturnValueOnce({ from: subFrom })
       .mockReturnValueOnce({ from: chatFrom })
-      .mockReturnValueOnce({ from: wfFrom });
+      .mockReturnValueOnce({ from: wfFrom })
+      .mockReturnValueOnce({ from: resFrom });
   }
 
   it("reports month-to-date and cap", async () => {
@@ -88,13 +97,11 @@ describe("getAiSpendStatus", () => {
     expect(s.freeTier).toBe(false);
   });
 
-  it("sums chat and workflow AI spend into one month-to-date figure", async () => {
-    // The cap is a single pool: a workflow must not get $5 of AI on top of
-    // everything chat already spent.
-    setup(1_000_000, "600000", "500000");
+  it("sums chat, workflow, and in-flight reservations into one figure", async () => {
+    setup(1_000_000, "400000", "300000", "200000");
     const s = await getAiSpendStatus("o1");
-    expect(s.monthToDateMicros).toBe(1_100_000);
-    expect(s.exceeded).toBe(true);
+    expect(s.monthToDateMicros).toBe(900_000);
+    expect(s.exceeded).toBe(false);
   });
 
   it("flags exceeded when spend >= cap", async () => {
@@ -111,7 +118,7 @@ describe("getAiSpendStatus", () => {
   });
 
   it("applies the $5 free-tier cap when there is no subscription", async () => {
-    setup(null, "4999999", "0", null);
+    setup(null, "4999999", "0", "0", null);
     const s = await getAiSpendStatus("o1");
     expect(s.monthlyCapMicros).toBe(5_000_000);
     expect(s.freeTier).toBe(true);
@@ -119,13 +126,13 @@ describe("getAiSpendStatus", () => {
   });
 
   it("blocks free-tier orgs at $5 even with no org cap", async () => {
-    setup(null, "5000000", "0", null);
+    setup(null, "5000000", "0", "0", null);
     const s = await getAiSpendStatus("o1");
     expect(s.exceeded).toBe(true);
   });
 
   it("treats a canceled subscription as free tier", async () => {
-    setup(null, "6000000", "0", "canceled");
+    setup(null, "6000000", "0", "0", "canceled");
     const s = await getAiSpendStatus("o1");
     expect(s.monthlyCapMicros).toBe(5_000_000);
     expect(s.freeTier).toBe(true);
@@ -133,13 +140,13 @@ describe("getAiSpendStatus", () => {
   });
 
   it("keeps an org cap below $5 for free-tier orgs", async () => {
-    setup(2_000_000, "1000000", "0", null);
+    setup(2_000_000, "1000000", "0", "0", null);
     const s = await getAiSpendStatus("o1");
     expect(s.monthlyCapMicros).toBe(2_000_000);
   });
 
   it("treats complimentary orgs as paid and uncapped even without a subscription", async () => {
-    setup(null, "999999999", "0", null, true);
+    setup(null, "999999999", "0", "0", null, true);
     const s = await getAiSpendStatus("o1");
     expect(s.monthlyCapMicros).toBeNull();
     expect(s.exceeded).toBe(false);
@@ -148,7 +155,7 @@ describe("getAiSpendStatus", () => {
   });
 
   it("still honors a self-set org cap on complimentary orgs", async () => {
-    setup(1_000_000, "1500000", "0", null, true);
+    setup(1_000_000, "1500000", "0", "0", null, true);
     const s = await getAiSpendStatus("o1");
     expect(s.monthlyCapMicros).toBe(1_000_000);
     expect(s.exceeded).toBe(true);
@@ -156,10 +163,8 @@ describe("getAiSpendStatus", () => {
   });
 
   it("treats a prepaid capacity slot as paid, with no subscription at all", async () => {
-    // The org bought two years of seats outright. Handing it the $5 free-tier
-    // cap would contradict every other paid check.
     mockActiveCapacitySeats.mockResolvedValue(1);
-    setup(null, "6000000", "0", null);
+    setup(null, "6000000", "0", "0", null);
     const s = await getAiSpendStatus("o1");
     expect(s.monthlyCapMicros).toBeNull();
     expect(s.freeTier).toBe(false);
@@ -167,14 +172,14 @@ describe("getAiSpendStatus", () => {
   });
 
   it("does not query slots when the subscription already settles it", async () => {
-    setup(null, "1000", "0", "active");
+    setup(null, "1000", "0", "0", "active");
     await getAiSpendStatus("o1");
     expect(mockActiveCapacitySeats).not.toHaveBeenCalled();
   });
 
   it("falls back to the free tier once every slot has lapsed", async () => {
     mockActiveCapacitySeats.mockResolvedValue(0);
-    setup(null, "6000000", "0", null);
+    setup(null, "6000000", "0", "0", null);
     const s = await getAiSpendStatus("o1");
     expect(s.monthlyCapMicros).toBe(5_000_000);
     expect(s.freeTier).toBe(true);
@@ -207,7 +212,6 @@ describe("recordWorkflowAiUsage", () => {
         runId: "run1",
         model: "claude-sonnet-5",
         costMicros: 4_500_000,
-        status: "final",
       }),
     );
   });
@@ -223,7 +227,6 @@ describe("recordWorkflowAiUsage", () => {
       model: "claude-haiku-4-5",
       usage: { inputTokens: 1000, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 },
     });
-    // The report is fire-and-forget; give it a microtask turn to (not) run.
     await new Promise((r) => setTimeout(r, 0));
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(mockSelect).not.toHaveBeenCalled();
@@ -231,16 +234,23 @@ describe("recordWorkflowAiUsage", () => {
   });
 });
 
-describe("reserve / finalize / release workflow AI spend", () => {
+describe("reserve / release AI spend", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockActiveCapacitySeats.mockResolvedValue(0);
     delete process.env["INFRAWRENCH_STRIPE_CHAT_METER_EVENT"];
     delete process.env["STRIPE_SECRET_KEY"];
     mockExecute.mockResolvedValue(undefined);
+    const deleteWhere = vi.fn().mockResolvedValue(undefined);
+    mockDelete.mockReturnValue({ where: deleteWhere });
   });
 
-  function queueSpendSelects(cap: number | null, chatTotal: string, workflowTotal = "0") {
+  function queueSpendSelects(
+    cap: number | null,
+    chatTotal: string,
+    workflowTotal = "0",
+    reservationTotal = "0",
+  ) {
     const orgLimit = vi.fn().mockResolvedValue([{ cap, complimentary: false }]);
     const orgWhere = vi.fn().mockReturnValue({ limit: orgLimit });
     const orgFrom = vi.fn().mockReturnValue({ where: orgWhere });
@@ -251,11 +261,14 @@ describe("reserve / finalize / release workflow AI spend", () => {
     const chatFrom = vi.fn().mockReturnValue({ where: chatWhere });
     const wfWhere = vi.fn().mockResolvedValue([{ total: workflowTotal }]);
     const wfFrom = vi.fn().mockReturnValue({ where: wfWhere });
+    const resWhere = vi.fn().mockResolvedValue([{ total: reservationTotal }]);
+    const resFrom = vi.fn().mockReturnValue({ where: resWhere });
     mockSelect
       .mockReturnValueOnce({ from: orgFrom })
       .mockReturnValueOnce({ from: subFrom })
       .mockReturnValueOnce({ from: chatFrom })
-      .mockReturnValueOnce({ from: wfFrom });
+      .mockReturnValueOnce({ from: wfFrom })
+      .mockReturnValueOnce({ from: resFrom });
   }
 
   it("reserves estimated spend under a transaction when under the cap", async () => {
@@ -267,95 +280,42 @@ describe("reserve / finalize / release workflow AI spend", () => {
         execute: mockExecute,
         select: (...a: unknown[]) => mockSelect(...a),
         insert: (...a: unknown[]) => mockInsert(...a),
+        delete: (...a: unknown[]) => mockDelete(...a),
       });
     });
 
-    const id = await reserveWorkflowAiSpend({
-      organizationId: "o1",
-      workflowId: "wf1",
-      runId: "run1",
-      model: "claude-haiku-4-5",
-      estimatedCostMicros: 50_000,
-    });
+    const id = await reserveAiSpend("o1", 50_000);
 
     expect(id).toMatch(/^[0-9a-f-]{36}$/i);
     expect(mockExecute).toHaveBeenCalled();
+    expect(mockDelete).toHaveBeenCalled(); // expired-reservation purge
     expect(values).toHaveBeenCalledWith(
       expect.objectContaining({
         organizationId: "o1",
-        workflowId: "wf1",
-        costMicros: 50_000,
-        status: "reserved",
-        inputTokens: 0,
-        outputTokens: 0,
+        estimatedCostMicros: 50_000,
       }),
     );
   });
 
-  it("refuses a reservation when the org is already at its cap", async () => {
+  it("throws AiSpendCapExceededError when the org is already at its cap", async () => {
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
       queueSpendSelects(100_000, "100000");
       await fn({
         execute: mockExecute,
         select: (...a: unknown[]) => mockSelect(...a),
         insert: (...a: unknown[]) => mockInsert(...a),
+        delete: (...a: unknown[]) => mockDelete(...a),
       });
     });
 
-    await expect(
-      reserveWorkflowAiSpend({
-        organizationId: "o1",
-        workflowId: "wf1",
-        model: "claude-haiku-4-5",
-        estimatedCostMicros: 1,
-      }),
-    ).rejects.toThrow(/monthly AI spend cap/);
+    await expect(reserveAiSpend("o1", 1)).rejects.toBeInstanceOf(AiSpendCapExceededError);
     expect(mockInsert).not.toHaveBeenCalled();
   });
 
-  it("finalizes a reservation into real token counts", async () => {
-    const returning = vi.fn().mockResolvedValue([{ id: "res-1" }]);
-    const where = vi.fn().mockReturnValue({ returning });
-    const set = vi.fn().mockReturnValue({ where });
-    mockUpdate.mockReturnValue({ set });
-
-    const cost = await finalizeWorkflowAiUsage("res-1", {
-      organizationId: "o1",
-      workflowId: "wf1",
-      model: "claude-sonnet-5",
-      usage: { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
-    });
-
-    expect(cost).toBe(4_500_000);
-    expect(set).toHaveBeenCalledWith(
-      expect.objectContaining({
-        costMicros: 4_500_000,
-        status: "final",
-        inputTokens: 1_000_000,
-      }),
-    );
-  });
-
-  it("treats a missing reservation as a stopped run", async () => {
-    const returning = vi.fn().mockResolvedValue([]);
-    const where = vi.fn().mockReturnValue({ returning });
-    const set = vi.fn().mockReturnValue({ where });
-    mockUpdate.mockReturnValue({ set });
-
-    await expect(
-      finalizeWorkflowAiUsage("gone", {
-        organizationId: "o1",
-        workflowId: "wf1",
-        model: "claude-haiku-4-5",
-        usage: { inputTokens: 10, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 },
-      }),
-    ).rejects.toThrow(/Workflow stopped/);
-  });
-
-  it("releases only reserved rows", async () => {
+  it("releases a reservation by id", async () => {
     const where = vi.fn().mockResolvedValue(undefined);
     mockDelete.mockReturnValue({ where });
-    await releaseWorkflowAiReservation("res-1");
+    await releaseAiSpendReservation("res-1");
     expect(mockDelete).toHaveBeenCalled();
     expect(where).toHaveBeenCalled();
   });

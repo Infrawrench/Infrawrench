@@ -23,9 +23,10 @@ import type { SpendStatus } from "@infrawrench/ui";
 /**
  * The org's month-to-date AI spend against its monthly cap. Since `infra.ai()`
  * arrived in workflows this is org-wide AI spend, not just chat: the sum covers
- * `chat_usage` and `workflow_ai_usage` alike, and both features check the same
- * cap — the canonical logic lives in server-core's billing/ai-usage.ts (the
- * poller needs it too).
+ * `chat_usage`, `workflow_ai_usage`, and active in-flight reservations. Both
+ * features reserve under the same org lock before a provider call — the
+ * canonical logic lives in server-core's billing/ai-usage.ts (the poller
+ * needs it too).
  */
 export async function getMonthlySpend(organizationId: string): Promise<SpendStatus> {
   return getAiSpendStatus(organizationId);

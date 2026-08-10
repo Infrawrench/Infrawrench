@@ -204,12 +204,8 @@ export const workflowApprovals = pgTable(
  * One `infra.ai(...)` call's token usage and billable cost. The AI-chat
  * equivalent is `chat_usage`; kept as its own table because chat rows hang off
  * a conversation/message, which a workflow run doesn't have. The org's monthly
- * AI spend cap sums both tables (see ../billing/ai-usage.ts).
- *
- * Rows start as `status = 'reserved'` with an estimated cost so concurrent
- * runs cannot all clear the same below-cap check, then flip to `final` with
- * real token counts once the provider answers. A call that fails or is
- * aborted deletes its reservation so it stops counting.
+ * AI spend cap sums both tables plus in-flight {@link aiSpendReservations}
+ * (see ../billing/ai-usage.ts).
  *
  * `workflow_id` and `run_id` are plain columns, not foreign keys, on purpose:
  * these are billing records, and deleting a workflow (or pruning its runs) must
@@ -232,11 +228,6 @@ export const workflowAiUsage = pgTable(
     cacheWriteTokens: integer("cache_write_tokens").notNull(),
     /** Total billable cost in micro-dollars after markup. */
     costMicros: integer("cost_micros").notNull(),
-    /**
-     * `reserved` while the provider call is in flight (estimated cost counts
-     * toward the org cap); `final` once real usage is written.
-     */
-    status: text("status").notNull().default("final"),
     /** Stripe meter-event identifier once reported; null until reported. */
     stripeUsageRecordId: text("stripe_usage_record_id"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -244,6 +235,28 @@ export const workflowAiUsage = pgTable(
   (t) => ({
     orgCreatedIdx: index("workflow_ai_usage_org_created_idx").on(t.organizationId, t.createdAt),
     unreportedIdx: index("workflow_ai_usage_unreported_idx").on(t.stripeUsageRecordId),
+  }),
+);
+
+/**
+ * In-flight hold on an org's monthly AI spend pool. Chat turns and workflow
+ * `infra.ai()` calls both insert here under an org advisory lock before talking
+ * to a provider, so concurrent consumers cannot all clear the same below-cap
+ * check. Rows older than the TTL in billing/ai-usage.ts are purged and ignored
+ * — a process that dies mid-call must not permanently block the org.
+ */
+export const aiSpendReservations = pgTable(
+  "ai_spend_reservations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    estimatedCostMicros: integer("estimated_cost_micros").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgCreatedIdx: index("ai_spend_reservations_org_created_idx").on(t.organizationId, t.createdAt),
   }),
 );
 

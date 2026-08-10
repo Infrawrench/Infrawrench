@@ -1,17 +1,20 @@
--- Usage rows for `infra.ai(...)` calls made from workflows.
+-- Usage rows for `infra.ai(...)` calls made from workflows, plus the shared
+-- in-flight spend reservation table used by both workflows and AI chat.
 --
--- The AI-chat equivalent is `chat_usage`; this is its own table because chat
--- rows reference a conversation/message, which a workflow run doesn't have.
--- The org's monthly AI spend cap sums BOTH tables (billing/ai-usage.ts), so a
--- workflow and a chat turn draw from the same budget.
+-- The AI-chat equivalent of workflow_ai_usage is `chat_usage`; this is its own
+-- table because chat rows reference a conversation/message, which a workflow
+-- run doesn't have. The org's monthly AI spend cap sums BOTH usage tables
+-- (billing/ai-usage.ts), so a workflow and a chat turn draw from the same budget.
 --
 -- `workflow_id`/`run_id` are deliberately not foreign keys: these are billing
 -- records, and deleting a workflow (or pruning its runs) must not delete the
 -- spend it caused.
 --
--- `status` is `reserved` while a call is in flight (an estimated cost that
--- counts toward the org cap so concurrent runs cannot all clear the same
--- check) and `final` once the provider responds with real token counts.
+-- `ai_spend_reservations` holds estimated cost while a provider call is in
+-- flight (chat or workflow). Concurrent callers take an org advisory lock,
+-- purge expired rows, and insert here so they see each other's hold on the
+-- shared pool. Rows older than the TTL are ignored and deleted — a crashed
+-- process cannot permanently block an org.
 
 --> statement-breakpoint
 CREATE TABLE "workflow_ai_usage" (
@@ -25,7 +28,6 @@ CREATE TABLE "workflow_ai_usage" (
   "cache_read_tokens" integer NOT NULL,
   "cache_write_tokens" integer NOT NULL,
   "cost_micros" integer NOT NULL,
-  "status" text DEFAULT 'final' NOT NULL,
   "stripe_usage_record_id" text,
   "created_at" timestamp DEFAULT now() NOT NULL
 );
@@ -33,3 +35,12 @@ CREATE TABLE "workflow_ai_usage" (
 CREATE INDEX "workflow_ai_usage_org_created_idx" ON "workflow_ai_usage" ("organization_id", "created_at");
 --> statement-breakpoint
 CREATE INDEX "workflow_ai_usage_unreported_idx" ON "workflow_ai_usage" ("stripe_usage_record_id");
+--> statement-breakpoint
+CREATE TABLE "ai_spend_reservations" (
+  "id" text PRIMARY KEY NOT NULL,
+  "organization_id" text NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+  "estimated_cost_micros" integer NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE INDEX "ai_spend_reservations_org_created_idx" ON "ai_spend_reservations" ("organization_id", "created_at");

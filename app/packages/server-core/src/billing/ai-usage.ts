@@ -8,14 +8,17 @@
  * orgs), and both chat turns and workflow AI calls draw from it. The
  * month-to-date figure is therefore the sum of BOTH usage tables —
  * `chat_usage` (rows hang off a conversation/message) and `workflow_ai_usage`
- * (rows hang off a workflow/run). Splitting the cap per feature would let a
- * workflow spend on top of everything chat already allowed.
+ * (rows hang off a workflow/run) — plus any in-flight holds in
+ * `ai_spend_reservations`. Splitting the cap per feature would let a workflow
+ * spend on top of everything chat already allowed.
  *
- * Workflow calls reserve estimated spend under an org-scoped advisory lock
- * before talking to the provider, so concurrent runs cannot all clear the
- * same below-cap check. Chat still checks after the fact (a single interactive
- * turn); the reservation path is what keeps automation from stampeding past
- * the line.
+ * Before a provider call, both surfaces {@link reserveAiSpend} under an
+ * org-scoped advisory lock so concurrent consumers see each other's hold.
+ * Reservations older than {@link AI_SPEND_RESERVATION_TTL_MS} are purged and
+ * ignored, so a crashed process cannot permanently block the org. On success
+ * the caller records real usage first, then {@link releaseAiSpendReservation}
+ * (brief double-count is conservative for the cap); on failure or Stop they
+ * release without recording.
  *
  * Workflow usage reports to the same Stripe chat meter (micro-dollar unit)
  * with the same plain-fetch approach as `./build-meter.ts` — server-core does
@@ -23,10 +26,16 @@
  * `stripe_usage_record_id` is what a future replay job would key on.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte, lt, sql } from "drizzle-orm";
 
 import { db } from "../db/client.js";
-import { chatUsage, organizations, subscriptions, workflowAiUsage } from "../db/schema.js";
+import {
+  aiSpendReservations,
+  chatUsage,
+  organizations,
+  subscriptions,
+  workflowAiUsage,
+} from "../db/schema.js";
 import { activeCapacitySeats } from "./capacity-slots.js";
 import { computeCostMicros, type TokenUsage } from "./ai-pricing.js";
 
@@ -42,6 +51,13 @@ function monthStart(): Date {
  */
 const FREE_TIER_CAP_MICROS = 5_000_000;
 
+/**
+ * How long an in-flight reservation counts toward the cap. Past the workflow
+ * AI timeout (2 min) and long enough for a chat model call; short enough that
+ * a dead process stops blocking the org within minutes.
+ */
+export const AI_SPEND_RESERVATION_TTL_MS = 10 * 60 * 1000;
+
 /** Structurally identical to `SpendStatus` in @infrawrench/ui. */
 export interface AiSpendStatus {
   monthToDateMicros: number;
@@ -51,8 +67,45 @@ export interface AiSpendStatus {
   complimentary: boolean;
 }
 
+/** Thrown when {@link reserveAiSpend} finds the org already at its monthly cap. */
+export class AiSpendCapExceededError extends Error {
+  readonly spend: AiSpendStatus;
+
+  constructor(spend: AiSpendStatus, message?: string) {
+    super(
+      message ??
+        "This organization has reached its monthly AI spend cap. " +
+          "An admin can raise it under Settings → AI Chat, or it resets when the month rolls over.",
+    );
+    this.name = "AiSpendCapExceededError";
+    this.spend = spend;
+  }
+}
+
 /** Anything that can run the selects `getAiSpendStatus` needs — `db` or a tx. */
 type SpendQueryable = Pick<typeof db, "select">;
+
+function reservationCutoff(): Date {
+  return new Date(Date.now() - AI_SPEND_RESERVATION_TTL_MS);
+}
+
+/** Drop reservations past the TTL so a crashed holder cannot block the org. */
+async function purgeExpiredReservations(
+  queryable: { delete: typeof db.delete },
+  organizationId?: string,
+): Promise<void> {
+  const cutoff = reservationCutoff();
+  await queryable
+    .delete(aiSpendReservations)
+    .where(
+      organizationId
+        ? and(
+            eq(aiSpendReservations.organizationId, organizationId),
+            lt(aiSpendReservations.createdAt, cutoff),
+          )
+        : lt(aiSpendReservations.createdAt, cutoff),
+    );
+}
 
 export async function getAiSpendStatus(
   organizationId: string,
@@ -102,9 +155,21 @@ export async function getAiSpendStatus(
         gte(workflowAiUsage.createdAt, monthStart()),
       ),
     );
+  // Active holds only — expired rows are ignored here and deleted on reserve.
+  const reservationRows = await queryable
+    .select({ total: sql<string>`coalesce(sum(${aiSpendReservations.estimatedCostMicros}), 0)` })
+    .from(aiSpendReservations)
+    .where(
+      and(
+        eq(aiSpendReservations.organizationId, organizationId),
+        gte(aiSpendReservations.createdAt, reservationCutoff()),
+      ),
+    );
 
   const monthToDateMicros =
-    (Number(chatRows[0]?.total ?? 0) || 0) + (Number(workflowRows[0]?.total ?? 0) || 0);
+    (Number(chatRows[0]?.total ?? 0) || 0) +
+    (Number(workflowRows[0]?.total ?? 0) || 0) +
+    (Number(reservationRows[0]?.total ?? 0) || 0);
   const orgCapMicros = org?.cap ?? null;
   const monthlyCapMicros = hasPaidSubscription
     ? orgCapMicros
@@ -127,113 +192,55 @@ export interface WorkflowAiUsageInput {
   usage: TokenUsage;
 }
 
-export interface WorkflowAiReservationInput {
-  organizationId: string;
-  workflowId: string;
-  runId?: string;
-  model: string;
-  /**
-   * Upper-bound cost for this call (prompt estimate + full `maxTokens` at the
-   * model's output rate). Counts toward the cap until finalized or released.
-   */
-  estimatedCostMicros: number;
-}
-
 /**
  * Rough token count from character length. Anthropic's Latin-script average is
  * ~4 characters per token; overshooting the estimate is fine — the reservation
- * is a ceiling, and finalize replaces it with the provider's real counts.
+ * is a ceiling, and real usage replaces it after the call.
  */
 export function estimateTokensFromChars(chars: number): number {
   return Math.max(1, Math.ceil(chars / 4));
 }
 
 /**
- * Check the org's monthly AI cap and insert a `reserved` usage row under an
- * org-scoped advisory lock. Concurrent callers serialize on the lock and see
- * each other's reservations in the month-to-date sum, so only one call at a
- * time can clear a near-cap check.
+ * Check the org's monthly AI cap and insert a reservation under an org-scoped
+ * advisory lock. Chat and workflow callers both use this so they serialize on
+ * the same key and see each other's holds in the month-to-date sum.
  *
- * Returns the reservation id. The caller must {@link finalizeWorkflowAiUsage}
- * after a successful provider response, or {@link releaseWorkflowAiReservation}
- * if the call fails or the run is stopped.
+ * Returns the reservation id. The caller must record real usage (if any) and
+ * then {@link releaseAiSpendReservation}, or release alone on failure/Stop.
+ *
+ * @throws {AiSpendCapExceededError} when the org is already at its cap
  */
-export async function reserveWorkflowAiSpend(input: WorkflowAiReservationInput): Promise<string> {
+export async function reserveAiSpend(
+  organizationId: string,
+  estimatedCostMicros: number,
+): Promise<string> {
   const id = randomUUID();
   await db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${`ai_spend:${input.organizationId}`}))`,
-    );
-    const spend = await getAiSpendStatus(input.organizationId, tx);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ai_spend:${organizationId}`}))`);
+    await purgeExpiredReservations(tx, organizationId);
+    const spend = await getAiSpendStatus(organizationId, tx);
     if (spend.exceeded) {
-      throw new Error(
-        "infra.ai() is unavailable: this organization has reached its monthly AI spend cap. " +
-          "An admin can raise it under Settings → AI Chat, or it resets when the month rolls over.",
-      );
+      throw new AiSpendCapExceededError(spend);
     }
-    await tx.insert(workflowAiUsage).values({
+    await tx.insert(aiSpendReservations).values({
       id,
-      organizationId: input.organizationId,
-      workflowId: input.workflowId,
-      runId: input.runId ?? null,
-      model: input.model,
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-      costMicros: Math.max(0, input.estimatedCostMicros),
-      status: "reserved",
+      organizationId,
+      estimatedCostMicros: Math.max(0, estimatedCostMicros),
     });
   });
   return id;
 }
 
-/**
- * Replace a reservation with the provider's real token counts and try to
- * report the cost to the chat Stripe meter. Returns the finalized cost.
- */
-export async function finalizeWorkflowAiUsage(
-  reservationId: string,
-  input: WorkflowAiUsageInput,
-): Promise<number> {
-  const costMicros = computeCostMicros(input.model, input.usage);
-  const updated = await db
-    .update(workflowAiUsage)
-    .set({
-      model: input.model,
-      inputTokens: input.usage.inputTokens,
-      outputTokens: input.usage.outputTokens,
-      cacheReadTokens: input.usage.cacheReadTokens,
-      cacheWriteTokens: input.usage.cacheWriteTokens,
-      costMicros,
-      status: "final",
-    })
-    .where(and(eq(workflowAiUsage.id, reservationId), eq(workflowAiUsage.status, "reserved")))
-    .returning({ id: workflowAiUsage.id });
-
-  if (updated.length === 0) {
-    // Reservation was released (Stop) or never existed — do not bill.
-    throw new Error("Workflow stopped.");
-  }
-
-  void reportWorkflowAiUsageToStripe(reservationId, input.organizationId, costMicros).catch((e) => {
-    console.error("[billing/ai-usage] Stripe usage report failed:", e);
-  });
-
-  return costMicros;
-}
-
 /** Drop an in-flight reservation so its estimate stops counting toward the cap. */
-export async function releaseWorkflowAiReservation(reservationId: string): Promise<void> {
-  await db
-    .delete(workflowAiUsage)
-    .where(and(eq(workflowAiUsage.id, reservationId), eq(workflowAiUsage.status, "reserved")));
+export async function releaseAiSpendReservation(reservationId: string): Promise<void> {
+  await db.delete(aiSpendReservations).where(eq(aiSpendReservations.id, reservationId));
 }
 
 /**
  * Insert a finalized workflow_ai_usage row and try to report it to the chat
- * Stripe meter. Prefer the reserve → finalize path for live `infra.ai()` calls;
- * this remains for tests and any caller that has already paid the provider.
+ * Stripe meter. Call this before releasing the matching reservation so the
+ * brief overlap is a conservative double-count rather than a gap.
  *
  * Best-effort past the insert: a call that succeeded is never failed back to
  * the workflow because Stripe was down — but the insert itself must succeed,
@@ -253,7 +260,6 @@ export async function recordWorkflowAiUsage(input: WorkflowAiUsageInput): Promis
     cacheReadTokens: input.usage.cacheReadTokens,
     cacheWriteTokens: input.usage.cacheWriteTokens,
     costMicros,
-    status: "final",
   });
 
   void reportWorkflowAiUsageToStripe(id, input.organizationId, costMicros).catch((e) => {

@@ -16,6 +16,10 @@ vi.mock("@infrawrench/server-core/billing/ai-usage", () => ({
       freeTier: false,
       complimentary: false,
     }),
+  reserveAiSpend: () => Promise.resolve("res-test"),
+  releaseAiSpendReservation: () => Promise.resolve(),
+  AiSpendCapExceededError: class AiSpendCapExceededError extends Error {},
+  estimateTokensFromChars: (n: number) => Math.max(1, Math.ceil(n / 4)),
 }));
 
 import { searchBackend, isWebSearchConfigured } from "../backend";

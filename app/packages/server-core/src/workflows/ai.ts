@@ -12,8 +12,9 @@
  * `workflow_ai_usage` row priced with the chat markup, reports to the chat
  * Stripe meter, and is refused once the org's monthly AI spend cap is reached
  * (chat and workflow spend share one pool — see ../billing/ai-usage.ts).
- * Concurrent runs serialize on an org-scoped reservation so they cannot all
- * clear the same below-cap check before any of them records usage.
+ * Both surfaces reserve estimated spend under the same org lock before the
+ * provider call so concurrent consumers cannot all clear the same below-cap
+ * check.
  *
  * The spec arriving here is already validated by the runtime's `dispatch`
  * (model allowlist, prompt/system bounds, clamped maxTokens).
@@ -22,10 +23,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { WorkflowAiResult, WorkflowAiSpec } from "@infrawrench/workflow-runtime";
 
 import {
+  AiSpendCapExceededError,
   estimateTokensFromChars,
-  finalizeWorkflowAiUsage,
-  releaseWorkflowAiReservation,
-  reserveWorkflowAiSpend,
+  recordWorkflowAiUsage,
+  releaseAiSpendReservation,
+  reserveAiSpend,
 } from "../billing/ai-usage";
 import { computeCostMicros } from "../billing/ai-pricing";
 
@@ -93,17 +95,22 @@ export async function aiFromWorkflow(
 
   if (ctx.signal?.aborted) throw stoppedError();
 
-  // Reserve estimated spend under an org lock before the provider call so
-  // concurrent runs see each other in the month-to-date sum. One call that
-  // started under the cap can still finalize past the line — the cap is a
+  // Reserve estimated spend under the shared org lock before the provider call
+  // so concurrent chat turns and workflow runs see each other. One call that
+  // started under the cap can still settle past the line — the cap is a
   // monthly budget, not a hard wire, and the overshoot is at most one call.
-  const reservationId = await reserveWorkflowAiSpend({
-    organizationId: ctx.organizationId,
-    workflowId: ctx.workflowId,
-    ...(ctx.runId ? { runId: ctx.runId } : {}),
-    model: spec.model,
-    estimatedCostMicros: estimateCallCostMicros(spec),
-  });
+  let reservationId: string;
+  try {
+    reservationId = await reserveAiSpend(ctx.organizationId, estimateCallCostMicros(spec));
+  } catch (err) {
+    if (err instanceof AiSpendCapExceededError) {
+      throw new Error(
+        "infra.ai() is unavailable: this organization has reached its monthly AI spend cap. " +
+          "An admin can raise it under Settings → AI Chat, or it resets when the month rolls over.",
+      );
+    }
+    throw err;
+  }
 
   try {
     if (ctx.signal?.aborted) throw stoppedError();
@@ -130,13 +137,16 @@ export async function aiFromWorkflow(
       cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
       cacheWriteTokens: response.usage.cache_creation_input_tokens ?? 0,
     };
-    const costMicros = await finalizeWorkflowAiUsage(reservationId, {
+    // Record real usage before releasing the hold so the brief overlap is a
+    // conservative double-count rather than a gap concurrent callers could use.
+    const costMicros = await recordWorkflowAiUsage({
       organizationId: ctx.organizationId,
       workflowId: ctx.workflowId,
       ...(ctx.runId ? { runId: ctx.runId } : {}),
       model: response.model || spec.model,
       usage,
     });
+    await releaseAiSpendReservation(reservationId);
 
     // Safety classifiers answer 200 with `stop_reason: "refusal"` and no
     // content. An empty string would be a confusing non-answer to branch on, so
@@ -160,7 +170,7 @@ export async function aiFromWorkflow(
       costMicros,
     };
   } catch (err) {
-    await releaseWorkflowAiReservation(reservationId).catch((releaseErr) => {
+    await releaseAiSpendReservation(reservationId).catch((releaseErr) => {
       console.error("[workflows/ai] failed to release AI spend reservation:", releaseErr);
     });
     if (ctx.signal?.aborted || isAbortError(err)) throw stoppedError();

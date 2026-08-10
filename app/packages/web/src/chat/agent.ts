@@ -23,6 +23,13 @@ import {
   DEFAULT_CHAT_MODEL,
   type ChatContentBlock as AnthropicContentBlock,
 } from "@infrawrench/ui";
+import {
+  AiSpendCapExceededError,
+  estimateTokensFromChars,
+  releaseAiSpendReservation,
+  reserveAiSpend,
+} from "@infrawrench/server-core/billing/ai-usage";
+import { computeCostMicros } from "./pricing";
 import { recordUsage } from "./billing";
 import { providerForModel, type ProviderTool } from "./providers";
 import { notifyChatToolApproval } from "./slack-approvals";
@@ -32,6 +39,16 @@ const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
 // Hard cap on thinking + response text per request. Both Opus 5 and Gemini 3.6
 // Flash think by default, so this needs room for reasoning and the reply.
 const MAX_TOKENS = 32000;
+
+/** Ceiling for one agent-loop model call's spend reservation (full maxTokens out). */
+function estimateTurnCostMicros(model: string, inputChars: number): number {
+  return computeCostMicros(model, {
+    inputTokens: estimateTokensFromChars(inputChars),
+    outputTokens: MAX_TOKENS,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  });
+}
 
 const SLEEP_TOOL_NAME = "sleep";
 const MAX_SLEEP_SECONDS = 300;
@@ -249,19 +266,9 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
     }
   }
 
-  // Check spend cap. Done after writing the user message so the user's text is
-  // not lost — the model just won't reply this turn.
-  const { getMonthlySpend } = await import("./billing");
-  const spend = await getMonthlySpend(auth.organizationId);
-  if (spend.exceeded && spend.monthlyCapMicros != null) {
-    yield {
-      type: "spend_blocked",
-      monthToDateMicros: spend.monthToDateMicros,
-      monthlyCapMicros: spend.monthlyCapMicros,
-      freeTier: spend.freeTier,
-    };
-    return;
-  }
+  // Spend is enforced per model call below via reserveAiSpend (same org lock
+  // as workflow infra.ai). Done after writing the user message so the user's
+  // text is not lost when the pool is empty — the model just won't reply.
 
   const registry = await getToolRegistry();
   // Chat-only web tools (./web) sit alongside the shared registry rather than
@@ -295,6 +302,37 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
       content: m.content,
     }));
 
+    // Hold estimated spend before the provider call so a concurrent workflow
+    // infra.ai() cannot clear the same below-cap check. Record real usage
+    // before releasing so the brief overlap is conservative.
+    let reservationId: string;
+    try {
+      const inputChars =
+        SYSTEM_PROMPT.length +
+        (() => {
+          try {
+            return JSON.stringify(apiMessages).length;
+          } catch {
+            return 50_000;
+          }
+        })();
+      reservationId = await reserveAiSpend(
+        auth.organizationId,
+        estimateTurnCostMicros(activeModel, inputChars),
+      );
+    } catch (e) {
+      if (e instanceof AiSpendCapExceededError && e.spend.monthlyCapMicros != null) {
+        yield {
+          type: "spend_blocked",
+          monthToDateMicros: e.spend.monthToDateMicros,
+          monthlyCapMicros: e.spend.monthlyCapMicros,
+          freeTier: e.spend.freeTier,
+        };
+        return;
+      }
+      throw e;
+    }
+
     const assistantMessageId = uuidv4();
     yield { type: "message_start", messageId: assistantMessageId, role: "assistant" };
 
@@ -304,54 +342,63 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
     let cacheReadTokens = 0;
     let cacheWriteTokens = 0;
     let collectedBlocks: AnthropicContentBlock[] = [];
+    let costMicros = 0;
 
     try {
-      for await (const ev of provider.streamTurn({
-        model: activeModel,
-        system: SYSTEM_PROMPT,
-        tools: providerTools,
-        messages: apiMessages,
-        maxTokens: MAX_TOKENS,
-      })) {
-        if (ev.type === "done") {
-          collectedBlocks = ev.blocks;
-          stopReason = ev.stopReason;
-          inputTokens = ev.usage.inputTokens;
-          outputTokens = ev.usage.outputTokens;
-          cacheReadTokens = ev.usage.cacheReadTokens;
-          cacheWriteTokens = ev.usage.cacheWriteTokens;
-        } else {
-          yield ev;
+      try {
+        for await (const ev of provider.streamTurn({
+          model: activeModel,
+          system: SYSTEM_PROMPT,
+          tools: providerTools,
+          messages: apiMessages,
+          maxTokens: MAX_TOKENS,
+        })) {
+          if (ev.type === "done") {
+            collectedBlocks = ev.blocks;
+            stopReason = ev.stopReason;
+            inputTokens = ev.usage.inputTokens;
+            outputTokens = ev.usage.outputTokens;
+            cacheReadTokens = ev.usage.cacheReadTokens;
+            cacheWriteTokens = ev.usage.cacheWriteTokens;
+          } else {
+            yield ev;
+          }
         }
+      } catch (e) {
+        yield {
+          type: "error",
+          message: e instanceof Error ? e.message : `${provider.label} request failed`,
+        };
+        return;
       }
-    } catch (e) {
-      yield {
-        type: "error",
-        message: e instanceof Error ? e.message : `${provider.label} request failed`,
-      };
-      return;
+
+      // Persist the assistant message.
+      await db.insert(chatMessages).values({
+        id: assistantMessageId,
+        conversationId,
+        role: "assistant",
+        content: collectedBlocks,
+        stopReason,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheWriteTokens,
+      });
+
+      // Record real usage before the finally-release so the brief overlap is a
+      // conservative double-count rather than a gap concurrent callers could use.
+      costMicros = await recordUsage({
+        organizationId: auth.organizationId,
+        conversationId,
+        messageId: assistantMessageId,
+        model: activeModel,
+        usage: { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens },
+      });
+    } finally {
+      await releaseAiSpendReservation(reservationId).catch((releaseErr) => {
+        console.error("[chat/agent] failed to release AI spend reservation:", releaseErr);
+      });
     }
-
-    // Persist the assistant message.
-    await db.insert(chatMessages).values({
-      id: assistantMessageId,
-      conversationId,
-      role: "assistant",
-      content: collectedBlocks,
-      stopReason,
-      inputTokens,
-      outputTokens,
-      cacheReadTokens,
-      cacheWriteTokens,
-    });
-
-    const costMicros = await recordUsage({
-      organizationId: auth.organizationId,
-      conversationId,
-      messageId: assistantMessageId,
-      model: activeModel,
-      usage: { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens },
-    });
 
     await db
       .update(chatConversations)
