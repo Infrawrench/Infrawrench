@@ -8,10 +8,19 @@
  * per-service module needs to make a request.
  */
 
+import type { AzureHttpTransport } from "./http.js";
+
 export const ARM = "https://management.azure.com";
 
-/** Minimal HTTP surface required by per-service Azure client modules. */
-export interface AzureHttpContext {
+/**
+ * Minimal HTTP surface required by per-service Azure client modules.
+ *
+ * `http` rides along so modules that talk to something *other* than ARM (the
+ * ACR token dance and registry API, for instance) can reach the host's HTTP
+ * service the same way the ARM verbs above already do — see `http.ts` for why
+ * every Azure request has to have the option of going through the host.
+ */
+export interface AzureHttpContext extends AzureHttpTransport {
   get<T>(url: string): Promise<T>;
   post<T>(url: string, body: unknown): Promise<T>;
   put<T>(url: string, body: unknown): Promise<T>;

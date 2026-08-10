@@ -5,13 +5,18 @@
  * documented at https://learn.microsoft.com/en-us/azure/container-registry/container-registry-authentication
  * to obtain a bearer token usable against the Docker Registry HTTP API v2.
  */
-import type { ArtifactEntry } from "@infrawrench/plugin-base";
+import type { ArtifactEntry, HttpHostServices } from "@infrawrench/plugin-base";
 import { fetchAcrAccessToken, type AzureCredentials } from "./auth.js";
+import { azureRequest } from "./http.js";
 import { ARM, type AzureHttpContext } from "./shared.js";
 
-async function getAcrBearerToken(creds: AzureCredentials, loginServer: string): Promise<string> {
+async function getAcrBearerToken(
+  creds: AzureCredentials,
+  loginServer: string,
+  http: HttpHostServices | undefined,
+): Promise<string> {
   // Step 1: AAD token scoped to containerregistry.azure.net
-  const aadToken = await fetchAcrAccessToken(creds);
+  const aadToken = await fetchAcrAccessToken(creds, http);
 
   // Step 2: Exchange AAD token for an ACR refresh token
   const exchangeBody = new URLSearchParams({
@@ -20,7 +25,7 @@ async function getAcrBearerToken(creds: AzureCredentials, loginServer: string): 
     tenant: creds.tenantId,
     access_token: aadToken,
   });
-  const exchangeRes = await fetch(`https://${loginServer}/oauth2/exchange`, {
+  const exchangeRes = await azureRequest(http, `https://${loginServer}/oauth2/exchange`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: exchangeBody.toString(),
@@ -28,7 +33,7 @@ async function getAcrBearerToken(creds: AzureCredentials, loginServer: string): 
   if (!exchangeRes.ok) {
     throw new Error(`ACR token exchange failed: ${exchangeRes.status} ${await exchangeRes.text()}`);
   }
-  const exchangeData = (await exchangeRes.json()) as { refresh_token: string };
+  const exchangeData = await exchangeRes.json<{ refresh_token: string }>();
 
   // Step 3: Exchange refresh token for an ACR access token
   const tokenBody = new URLSearchParams({
@@ -37,7 +42,7 @@ async function getAcrBearerToken(creds: AzureCredentials, loginServer: string): 
     scope: "registry:catalog:* repository:*:pull repository:*:metadata_read",
     refresh_token: exchangeData.refresh_token,
   });
-  const tokenRes = await fetch(`https://${loginServer}/oauth2/token`, {
+  const tokenRes = await azureRequest(http, `https://${loginServer}/oauth2/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: tokenBody.toString(),
@@ -45,7 +50,7 @@ async function getAcrBearerToken(creds: AzureCredentials, loginServer: string): 
   if (!tokenRes.ok) {
     throw new Error(`ACR token grant failed: ${tokenRes.status} ${await tokenRes.text()}`);
   }
-  const tokenData = (await tokenRes.json()) as { access_token: string };
+  const tokenData = await tokenRes.json<{ access_token: string }>();
   return tokenData.access_token;
 }
 
@@ -71,18 +76,20 @@ export async function listAcrArtifacts(
   );
   const loginServer = registry.properties?.loginServer ?? `${name}.azurecr.io`;
 
-  const bearer = await getAcrBearerToken(creds, loginServer);
+  const bearer = await getAcrBearerToken(creds, loginServer, ctx.http);
   const authHeaders = { Authorization: `Bearer ${bearer}` };
 
   // Page through the catalog
   const catalogUrl = new URL(`https://${loginServer}/v2/_catalog`);
   catalogUrl.searchParams.set("n", "50");
   if (params?.pageToken) catalogUrl.searchParams.set("last", params.pageToken);
-  const catalogRes = await fetch(catalogUrl.toString(), { headers: authHeaders });
+  const catalogRes = await azureRequest(ctx.http, catalogUrl.toString(), {
+    headers: authHeaders,
+  });
   if (!catalogRes.ok) {
     throw new Error(`ACR catalog failed: ${catalogRes.status} ${await catalogRes.text()}`);
   }
-  const catalog = (await catalogRes.json()) as { repositories?: string[] };
+  const catalog = await catalogRes.json<{ repositories?: string[] }>();
   const repos = catalog.repositories ?? [];
 
   const prefix = params?.prefix?.trim();
@@ -93,12 +100,12 @@ export async function listAcrArtifacts(
   await Promise.all(
     filteredRepos.map(async (repo) => {
       const tagsUrl = `https://${loginServer}/acr/v1/${encodeURIComponent(repo)}/_tags?n=50&orderby=timedesc`;
-      const tagsRes = await fetch(tagsUrl, { headers: authHeaders });
+      const tagsRes = await azureRequest(ctx.http, tagsUrl, { headers: authHeaders });
       if (!tagsRes.ok) {
         items.push({ name: repo });
         return;
       }
-      const data = (await tagsRes.json()) as {
+      const data = await tagsRes.json<{
         tags?: Array<{
           name: string;
           digest?: string;
@@ -106,7 +113,7 @@ export async function listAcrArtifacts(
           lastUpdateTime?: string;
           signed?: boolean;
         }>;
-      };
+      }>();
       const tags = data.tags ?? [];
       if (tags.length === 0) {
         items.push({ name: repo });

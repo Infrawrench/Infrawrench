@@ -213,6 +213,9 @@ export async function ingestCostRows(opts: {
       // these defaults must hash exactly as they did before the columns existed.
       charge_type: "usage",
       amortized_amount: 0,
+      // Not reported, not "reported as zero" — an amortized query falls back to
+      // the cash amount for these rows rather than showing them as worthless.
+      amortized_reported: 0,
       commitment_id: "",
     };
   });

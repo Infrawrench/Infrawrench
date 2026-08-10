@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildCostExportQuery, resolveColumns, tagColumnName } from "../cost-exports/rows";
 import { csvCell, outputColumns, toCsv, toNdjson } from "../cost-exports/serialize";
+import { amortizedAmountExpr } from "../clickhouse/cost-readers";
 import type { CostExportRow } from "../cost-exports/rows";
 
 const stamp = { exportedAt: "2026-08-08T04:00:00.000Z", collectionWatermark: "2026-08-06" };
@@ -69,7 +70,13 @@ describe("buildCostExportQuery", () => {
 
   it("sums the amortized column when asked, with the cash fallback", () => {
     const { sql } = buildCostExportQuery({ ...base, costBasis: "amortized" });
-    expect(sql).toContain("if(amortized_amount != 0, amortized_amount, amount)");
+    // The *same* expression the graphs use, not a copy of it. An export is what
+    // someone reconciles a graph against, so drift between the two is a support
+    // ticket that reads "your own numbers disagree".
+    expect(sql).toContain(amortizedAmountExpr());
+    // And it distinguishes a reported amortized zero (a commitment purchase, on
+    // its purchase day) from no amortized figure at all.
+    expect(sql).toContain("amortized_reported");
   });
 
   it("translates filters, including tag filters, into bound predicates", () => {

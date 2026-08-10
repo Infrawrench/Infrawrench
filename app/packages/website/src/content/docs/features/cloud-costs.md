@@ -164,19 +164,22 @@ A bill is not all one thing. Alongside the usage you consumed, providers charge 
 
 Every cost row therefore carries a **charge type**:
 
-| Charge type             | What it is                                                                                       |
-| ----------------------- | ------------------------------------------------------------------------------------------------ |
-| **Usage**               | Consumption, billed at whatever rate applied. The default, and most of any bill.                 |
-| **Commitment fee**      | Buying a commitment: a reservation's up-front payment, a savings plan, a committed-use contract. |
-| **Commitment discount** | The negative line where a commitment covered usage that would otherwise be on-demand.            |
-| **Credit**              | Promotional or negotiated credit applied against the bill.                                       |
-| **Tax**                 | VAT, sales tax and the like, billed separately from the service.                                 |
-| **Refund**              | Money returned for a past charge.                                                                |
-| **Adjustment**          | A billing correction that is none of the above.                                                  |
-| **Support**             | A support plan, usually priced off the rest of the bill rather than off any one service.         |
-| **Other**               | A category the provider distinguishes that doesn't map onto the ones above.                      |
+| Charge type                  | What it is                                                                                                                                                      |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Usage**                    | Consumption billed on demand. The default, and most of any bill.                                                                                                |
+| **Commitment-covered usage** | Consumption a reservation, savings plan or committed-use discount covered. Still consumption — the commitment is in the rate, not in what kind of charge it is. |
+| **Commitment fee**           | Buying a commitment: a reservation's up-front payment, a savings plan, a committed-use contract.                                                                |
+| **Commitment discount**      | The negative line where a commitment covered usage that would otherwise be on-demand.                                                                           |
+| **Credit**                   | Promotional or negotiated credit applied against the bill.                                                                                                      |
+| **Tax**                      | VAT, sales tax and the like, billed separately from the service.                                                                                                |
+| **Refund**                   | Money returned for a past charge.                                                                                                                               |
+| **Adjustment**               | A billing correction that is none of the above.                                                                                                                 |
+| **Support**                  | A support plan, usually priced off the rest of the bill rather than off any one service.                                                                        |
+| **Other**                    | A category the provider distinguishes that doesn't map onto the ones above.                                                                                     |
 
-Group by **Charge type** to see the split, or filter on it to answer a specific question — "usage only, ignore the credits" is the one worth knowing, because it is the number that tells you whether spend is actually growing.
+Group by **Charge type** to see the split, or filter on it to answer a specific question — "consumption only, ignore the credits" is the one worth knowing, because it is the number that tells you whether spend is actually growing. Select **both** usage types for that: covered hours are consumption too, and leaving them out understates exactly the workloads you committed to.
+
+**Commitment-covered usage is worth nothing on a cash basis, everywhere.** AWS prices reservation-covered hours at an unblended rate of zero and Azure prices them at an effective price of zero, because the money left your account when you bought the commitment. Pair that charge type with the **amortized** basis below to see what those hours are actually worth — it is also the basis the [Commitments](./commitments.md) coverage figure is computed on, for exactly this reason.
 
 Not every provider distinguishes these. Where a provider doesn't, or where the data predates this, its rows are **Usage** — which is what they were always assumed to be.
 

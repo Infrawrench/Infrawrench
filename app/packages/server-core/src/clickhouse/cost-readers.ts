@@ -84,19 +84,42 @@ function dimensionExpr(
 }
 
 /**
- * The money expression a query sums, per {@link CostBasis}.
+ * The amortized money expression, shared with `commitment-readers.ts` so the
+ * two cannot drift into disagreeing about what "amortized" means.
  *
- * The amortized form falls back to `amount` whenever `amortized_amount` is 0,
- * which is the stored form of "this provider reports no amortized number". The
+ * It falls back to `amount` when the row carries no amortized opinion. That
  * fallback is not a nicety: an org running one provider that amortizes and one
  * that doesn't would otherwise see the second provider's spend vanish entirely
  * the moment the amortized view was selected — not shown as an approximation,
- * not flagged, just gone — and the total would read as a dramatic saving. A row
- * genuinely worth nothing on this basis has `amount` of 0 too, so the fallback
- * costs nothing where it doesn't apply.
+ * not flagged, just gone — and the total would read as a dramatic saving.
+ *
+ * **"No opinion" is `amortized_reported = 0`, not `amortized_amount = 0`.**
+ * Zero is a real amortized amount: a commitment purchase's cash lands on one
+ * day and its *value* belongs to the days it buys, so its honest amortized
+ * amount on the purchase day is nothing. Falling back for it would render the
+ * purchase at full cash price alongside every amortized slice of it —
+ * double-counting precisely what amortization exists to smooth.
+ *
+ * The `OR amortized_amount != 0` arm is what keeps three years of history
+ * reading exactly as it does today: rows written before `amortized_reported`
+ * existed default it to 0, so a pre-existing row with a non-zero amortized
+ * amount still uses it, and one with zero still falls back.
  */
+const AMORTIZED_EXPR =
+  "if(amortized_reported != 0 OR amortized_amount != 0, amortized_amount, amount)";
+
+/** The money expression a query sums, per {@link CostBasis}. */
 function amountExpr(basis: CostBasis | undefined): string {
-  return basis === "amortized" ? "if(amortized_amount != 0, amortized_amount, amount)" : "amount";
+  return basis === "amortized" ? AMORTIZED_EXPR : "amount";
+}
+
+/**
+ * The amortized expression, for readers that are amortized-only rather than
+ * basis-switchable — commitment coverage and utilization, which have no honest
+ * cash form (see `commitment-readers.ts`).
+ */
+export function amortizedAmountExpr(): string {
+  return AMORTIZED_EXPR;
 }
 
 /**

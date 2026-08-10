@@ -46,6 +46,7 @@ const GROUP_DIMENSIONS = [
 const COST_BASES: readonly CostBasis[] = ["cash", "amortized"];
 const CHARGE_TYPES: readonly CostChargeType[] = [
   "usage",
+  "commitment_covered_usage",
   "commitment_fee",
   "commitment_discount",
   "credit",

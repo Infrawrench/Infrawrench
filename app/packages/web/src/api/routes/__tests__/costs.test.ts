@@ -454,7 +454,11 @@ describe("GET /dimensions", () => {
     const body = (await res.json()) as { values: Array<{ value: string; label: string }> };
     expect(body.values).toContainEqual({ value: "usage", label: "Usage" });
     expect(body.values).toContainEqual({ value: "credit", label: "Credit" });
-    expect(body.values).toHaveLength(9);
+    expect(body.values).toContainEqual({
+      value: "commitment_covered_usage",
+      label: "Commitment-covered usage",
+    });
+    expect(body.values).toHaveLength(10);
     expect(mockGetCostDimensionValues).not.toHaveBeenCalled();
   });
 

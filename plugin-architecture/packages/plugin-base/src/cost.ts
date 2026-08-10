@@ -104,12 +104,44 @@ export interface CostCapabilityDeclaration {
  *
  * - `usage` — consumption billed at whatever rate applied. The default, and
  *   what every row without a charge type is.
+ * - `commitment_covered_usage` — consumption a reservation, savings plan or
+ *   committed-use discount covered. Still consumption, which is why it is not
+ *   `commitment_discount`; but distinguishable from on-demand consumption,
+ *   which is what makes coverage measurable.
+ *
+ *   **This is the member coverage is computed from, and it exists because
+ *   {@link CostRow.commitmentId} is not universally available.** AWS can say
+ *   *that* an hour was RI- or SP-covered (`RECORD_TYPE`) but not *which*
+ *   commitment covered it: `SAVINGS_PLAN_ARN` and `RESERVATION_ID` are
+ *   filter-only dimensions in Cost Explorer and cannot be grouped by. Azure
+ *   can say which (`BenefitId`) but only on EA/MCA agreements. A coverage
+ *   ratio that depended on the id would therefore read 0% on AWS forever and
+ *   0% on Azure pay-as-you-go — worse than saying "unavailable". Stamping the
+ *   charge type costs neither provider an extra call, and the host's coverage
+ *   numerator counts a row that carries *either* signal (without
+ *   double-counting one that carries both).
+ *
+ *   Note what this member does **not** claim: nothing about the rate, and
+ *   nothing about which holding. A plugin that knows the holding sets
+ *   `commitmentId` as well — the two are complementary, not alternatives.
+ *
+ *   Set `amortizedAmount` on these rows wherever the provider reports one.
+ *   Both AWS and Azure price covered usage at zero on the cash basis (an RI's
+ *   `UnblendedRate` is zero; Azure's `EffectivePrice` in `ActualCost` is
+ *   zero), because the money left the account when the commitment was bought.
+ *   Cash-basis covered spend is therefore structurally zero, and the amortized
+ *   amount is the only honest number for these rows.
  * - `commitment_fee` — buying a commitment: a reservation's up-front payment,
  *   a savings plan's recurring fee, a committed-use contract. Cash out the door
  *   on one day for capacity spanning months, which is exactly the row
  *   {@link CostRow.amortizedAmount} exists to re-date.
  * - `commitment_discount` — the (negative) line a provider writes when a
  *   commitment covers usage that would otherwise have been billed on demand.
+ *   Distinct from `commitment_covered_usage`: the discount is the offsetting
+ *   line, the covered usage is the consumption it offsets. A provider that
+ *   writes both (AWS Savings Plans) produces one of each; a provider whose
+ *   discount is baked into the rate (AWS Reserved Instances) produces only the
+ *   covered-usage row.
  * - `credit` — promotional or negotiated credit applied against the bill.
  * - `tax` — VAT, sales tax, and the like, billed separately from the service.
  * - `refund` — money returned for a past charge.
@@ -121,6 +153,7 @@ export interface CostCapabilityDeclaration {
  */
 export type CostChargeType =
   | "usage"
+  | "commitment_covered_usage"
   | "commitment_fee"
   | "commitment_discount"
   | "credit"
@@ -197,6 +230,14 @@ export interface CostRow {
    * up-front fee and the months of discount it bought are unrelated rows that
    * happen to be near each other, and nobody can answer whether a specific
    * reservation paid for itself.
+   *
+   * **Per-commitment utilization needs this; coverage does not.** Most
+   * providers cannot report it — Cost Explorer can filter by
+   * `SAVINGS_PLAN_ARN` / `RESERVATION_ID` but not group by them, and Azure's
+   * `BenefitId` column only exists on EA/MCA agreements — so the host derives
+   * coverage from `chargeType: "commitment_covered_usage"` instead, and treats
+   * this id as the strictly better answer where a provider has it. Omit it
+   * rather than inventing a key that joins to nothing.
    */
   commitmentId?: string;
 }
@@ -416,6 +457,60 @@ export interface CostFetchRange {
   fromDate: string;
   /** Last day to include, `YYYY-MM-DD` UTC. */
   toDate: string;
+}
+
+/**
+ * The richer return shape of `fetchCostData`, for a plugin that has something
+ * to say about the *collection* as well as about the spend.
+ *
+ * Returning a bare `CostRow[]` stays legal and is what almost every plugin
+ * does; this exists so the few collectors that can silently lose a dimension
+ * can say so. See {@link CostFetchResult.degraded}.
+ */
+export interface CostFetchResult {
+  rows: CostRow[];
+  /**
+   * True when this pass produced rows that are **less attributed than usual** —
+   * a fallback path ran, so the rows are correct in total but coarser than the
+   * ones the same plugin normally writes.
+   *
+   * Both large collectors have such a path: AWS falls back to one unattributed
+   * `GetCostAndUsage` when Cost Explorer rejects a `RECORD_TYPE` grouping, and
+   * Azure falls back to a single unfiltered Cost Management query when the
+   * two-group attributed shape is refused. Those fallbacks are deliberate —
+   * losing charge types is enormously better than losing the spend — and they
+   * fire not only for accounts that can never attribute but also for a
+   * *transient* refusal: a 429 mid-pass, a gateway timeout, a bad minute.
+   *
+   * The flag exists because the host's superseded-row reconciliation
+   * (`server-core/src/clickhouse/cost-reconcile.ts`) would otherwise read a
+   * degraded pass as authoritative and zero every attribution row for the days
+   * it covered. That is unrecoverable in practice: a backfilled account only
+   * re-fetches `restatementDays` (3 by default), so a flap that ages out of
+   * that window is never repaired, and the attribution is destroyed for good.
+   * Before reconciliation existed the stale-but-correct rows simply survived,
+   * so the flag restores that property rather than inventing a new one.
+   *
+   * **Absent means "not degraded"**, which is what makes this additive: a
+   * plugin that returns a bare array — every plugin but two — is unaffected,
+   * and so is a plugin whose fallback does not lose anything. Set it only when
+   * a *narrower* key space than usual was written; a pass that simply found no
+   * spend is not degraded, it is empty, and guard 1 already covers that.
+   */
+  degraded?: boolean;
+}
+
+/**
+ * Normalize either `fetchCostData` return shape into the pair the host works
+ * with. Absent or bare-array means "not degraded" — see
+ * {@link CostFetchResult.degraded}.
+ */
+export function normalizeCostFetchResult(value: CostRow[] | CostFetchResult): {
+  rows: CostRow[];
+  degraded: boolean;
+} {
+  if (Array.isArray(value)) return { rows: value, degraded: false };
+  return { rows: value.rows ?? [], degraded: value.degraded === true };
 }
 
 /**

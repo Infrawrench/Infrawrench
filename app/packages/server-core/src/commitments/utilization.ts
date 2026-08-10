@@ -10,8 +10,16 @@
  * are measurable from cost rows:
  *
  *     obligation = hourly × 24 × |active ∩ window ∩ days-we-have-data|
- *     delivered  = Σ usage rows stamped with the commitment id, same day set
+ *     delivered  = Σ amortized consumption stamped with the commitment id,
+ *                  same day set
  *     utilization = delivered / obligation
+ *
+ * **Delivered is amortized, and it has to be.** A provider prices
+ * commitment-covered usage at zero on the cash basis — the money left the
+ * account when the commitment was bought — so a cash delivered figure is zero
+ * for every commitment that is working perfectly, and every healthy plan would
+ * read as 0% used. The obligation is the commitment's own committed rate, which
+ * is exactly what an amortized delivered figure is comparable to.
  *
  * **The days-we-have-data intersection is the whole trick.** Counting a day
  * the cost collection never ran (backfill still in flight, provider export
@@ -47,9 +55,9 @@ export interface CommitmentUtilizationInput {
   /** ISO days (YYYY-MM-DD) on which the account has any cost rows at all. */
   daysWithData: Iterable<string>;
   /**
-   * Σ amount of usage rows stamped with this commitment's id over the window.
-   * (Such rows only exist on days with data, so no further intersection is
-   * needed on the numerator side.)
+   * Σ **amortized** amount of consumption rows stamped with this commitment's
+   * id over the window. (Such rows only exist on days with data, so no further
+   * intersection is needed on the numerator side.)
    */
   deliveredAmount: number;
 }

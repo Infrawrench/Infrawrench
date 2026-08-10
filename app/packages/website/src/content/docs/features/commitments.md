@@ -28,7 +28,13 @@ A few provider quirks are deliberately preserved rather than papered over:
 
 ## Coverage — a range, on purpose
 
-Coverage answers "how much of our usage spend is covered by a commitment". There is no single honest denominator for that question, so it's reported as a **range**:
+Coverage answers "how much of our usage spend is covered by a commitment".
+
+It is computed on **amortized** money, on both sides of the ratio, and that is not a preference. Providers price commitment-covered hours at zero cash — you paid for them when you bought the commitment — so a coverage percentage built from cash figures reads 0% for every organization that has ever committed to anything, however well covered it is. A ratio that is structurally zero is worse than no ratio, because 0% looks like an answer.
+
+A row counts as covered when the provider says a commitment covered it, whether or not it says _which_ one. Most providers can only say the first: AWS's cost API can filter by a savings plan or reservation id but cannot group by one, and Azure's benefit column exists only on Enterprise Agreement and Microsoft Customer Agreement accounts. Coverage therefore never depends on per-commitment attribution — only [utilization](#utilization--measured-only-where-theres-data) does, and it says "not measurable" rather than 0% where the id is missing.
+
+There is no single honest denominator for the question, so it's reported as a **range**:
 
 - the **low end** counts every uncovered usage dollar — an over-count, because egress, per-request charges and the like can never be committed against no matter what you buy;
 - the **high end** counts only uncovered usage in service/region cells where a commitment demonstrably landed during the window — provider evidence of committability, not a hand-maintained list of committable services that goes stale.

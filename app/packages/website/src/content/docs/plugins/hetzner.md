@@ -1,6 +1,6 @@
 ---
 title: Hetzner Cloud
-description: Manage Hetzner servers, volumes, networks, load balancers, images, and IP resources.
+description: Manage Hetzner servers, volumes, networks, load balancers, images, and IP resources, with estimated spend priced from the published rate card.
 sidebar_order: 5
 ---
 

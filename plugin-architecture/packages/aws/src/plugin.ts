@@ -101,10 +101,33 @@ const manifest: PluginManifest = {
     },
   ],
   rateLimit: { capacity: 120, refillPerSecond: 8 },
-  // Cost Explorer GetCostAndUsage, grouped by SERVICE + REGION. Per-resource
-  // granularity is intentionally omitted (CE keeps it 14 days only, and it
-  // explodes cardinality). Needs the ce:GetCostAndUsage IAM action.
-  costs: { dimensions: ["service", "region"], maxHistoryDays: 365, restatementDays: 3 },
+  // Cost Explorer GetCostAndUsage in three passes per month chunk: on-demand
+  // consumption and commitment-covered consumption each grouped by SERVICE +
+  // REGION, everything else by SERVICE + RECORD_TYPE (the API allows only two
+  // groupings per request). Per-resource granularity is intentionally omitted
+  // (CE keeps it 14 days only, and it explodes cardinality). Needs the
+  // ce:GetCostAndUsage IAM action and no other.
+  //
+  // chargeTypes: RECORD_TYPE tells on-demand usage from covered usage, tax,
+  // credits, refunds, support and commitment purchases — see cost-data.ts for
+  // the mapping table.
+  // amortization: AmortizedCost rides on the same requests as UnblendedCost,
+  // and is the only metric that prices RI-covered usage at all (its unblended
+  // rate is zero).
+  //
+  // Deliberately NOT declared: CostRow.commitmentId. SAVINGS_PLAN_ARN and
+  // RESERVATION_ID are filter-only dimensions — GetCostAndUsage cannot group
+  // by either — so rows cannot be joined to a specific reservation or plan.
+  // Coverage does not depend on that join; it reads the
+  // `commitment_covered_usage` charge type instead. Only per-commitment
+  // utilization is left unanswered, which is better than answered wrongly.
+  costs: {
+    dimensions: ["service", "region"],
+    maxHistoryDays: 365,
+    restatementDays: 3,
+    chargeTypes: true,
+    amortization: true,
+  },
   // EC2 + RDS Reserved Instances and Savings Plans. Needs
   // ec2:DescribeReservedInstances, rds:DescribeReservedDBInstances and
   // savingsplans:DescribeSavingsPlans — surfaced in the plugin docs.

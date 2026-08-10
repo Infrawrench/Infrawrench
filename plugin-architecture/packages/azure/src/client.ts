@@ -27,7 +27,7 @@ import type {
   CommitmentRecord,
   CostEstimate,
   CostFetchRange,
-  CostRow,
+  CostFetchResult,
   HostServices,
   PluginClient,
   ResourceInstance,
@@ -61,6 +61,7 @@ import {
 } from "./pricing.js";
 import { type AzureCreateContext } from "./create-handlers.js";
 import { ARM, type AzureHttpContext } from "./shared.js";
+import { azureRequest } from "./http.js";
 import {
   deleteStorageObject,
   listStorageObjects,
@@ -97,10 +98,12 @@ export class AzureClient implements PluginClient {
   private readonly creds: AzureCredentials;
   private readonly resourceTypes: ResourceTypeDefinition[];
   /**
-   * Host services, when the host provides them. Threaded through so new call
-   * paths (commitments) can route HTTP through `services.http` — which is
-   * what makes per-account bastion routing reach Azure. Existing paths still
-   * use direct `fetch`; migrating them is a separate, deliberate change.
+   * Host services, when the host provides them. Every Azure request this
+   * client makes — ARM, the AAD token endpoint, Blob Storage, ACR, the
+   * Service Bus / Event Hubs data plane, Retail Prices — goes through
+   * `services.http` when it is present, which is what makes per-account
+   * bastion routing and custom CA trust reach Azure. See `http.ts`. The one
+   * exception is Microsoft Graph, which the vendor SDK transports itself.
    */
   private readonly services: HostServices | undefined;
   private tokenCache: TokenCache | null = null;
@@ -134,7 +137,7 @@ export class AzureClient implements PluginClient {
     if (this.tokenCache && this.tokenCache.expiresAt > now + 60_000) {
       return this.tokenCache.token;
     }
-    const t = await fetchAccessToken(this.creds);
+    const t = await fetchAccessToken(this.creds, this.http);
     this.tokenCache = { token: t, expiresAt: now + 3_600_000 };
     return t;
   }
@@ -144,7 +147,7 @@ export class AzureClient implements PluginClient {
     if (this.storageTokenCache && this.storageTokenCache.expiresAt > now + 60_000) {
       return this.storageTokenCache.token;
     }
-    const t = await fetchStorageAccessToken(this.creds);
+    const t = await fetchStorageAccessToken(this.creds, this.http);
     this.storageTokenCache = { token: t, expiresAt: now + 3_600_000 };
     return t;
   }
@@ -155,7 +158,7 @@ export class AzureClient implements PluginClient {
     if (this.serviceBusTokenCache && this.serviceBusTokenCache.expiresAt > now + 60_000) {
       return this.serviceBusTokenCache.token;
     }
-    const t = await fetchServiceBusAccessToken(this.creds);
+    const t = await fetchServiceBusAccessToken(this.creds, this.http);
     this.serviceBusTokenCache = { token: t, expiresAt: now + 3_600_000 };
     return t;
   }
@@ -166,7 +169,7 @@ export class AzureClient implements PluginClient {
     if (this.graphTokenCache && this.graphTokenCache.expiresAt > now + 60_000) {
       return this.graphTokenCache.token;
     }
-    const t = await fetchGraphAccessToken(this.creds);
+    const t = await fetchGraphAccessToken(this.creds, this.http);
     this.graphTokenCache = { token: t, expiresAt: now + 3_600_000 };
     return t;
   }
@@ -183,7 +186,7 @@ export class AzureClient implements PluginClient {
     if (inFlight) return inFlight;
 
     const promise = (async () => {
-      const rates = await fetchAzurePricingRates(region);
+      const rates = await fetchAzurePricingRates(region, this.http);
       this.pricingRateCache.set(region, {
         ...rates,
         expiresAt: Date.now() + 6 * 60 * 60 * 1000,
@@ -200,57 +203,55 @@ export class AzureClient implements PluginClient {
 
   // ─── Low-level HTTP helpers ────────────────────────────────────────────
 
+  /** Host HTTP service when the host supplied one; `undefined` → direct fetch. */
+  private get http() {
+    return this.services?.http;
+  }
+
   private async get<T>(url: string): Promise<T> {
     const tok = await this.token();
-    const res = await fetch(url, {
+    const res = await azureRequest(this.http, url, {
       headers: { Authorization: `Bearer ${tok}` },
     });
     if (!res.ok) throw new Error(`Azure API ${res.status}: ${await res.text()}`);
-    return res.json() as Promise<T>;
+    return res.json<T>();
   }
 
-  private async post<T>(url: string, body: unknown): Promise<T> {
+  /** POST/PUT/PATCH differ only in the verb and the word in the error text. */
+  private async write<T>(method: "POST" | "PUT" | "PATCH", url: string, body: unknown): Promise<T> {
     const tok = await this.token();
-    const res = await fetch(url, {
-      method: "POST",
+    const res = await azureRequest(this.http, url, {
+      method,
       headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`Azure API POST ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw new Error(`Azure API ${method} ${res.status}: ${await res.text()}`);
+    // ARM answers a good few writes with an empty body (204, or 200 with no
+    // content) — those are successes with nothing to parse.
     if (res.status === 204 || res.headers.get("content-length") === "0") return {} as T;
-    return res.json() as Promise<T>;
+    return res.json<T>();
   }
 
-  private async put<T>(url: string, body: unknown): Promise<T> {
-    const tok = await this.token();
-    const res = await fetch(url, {
-      method: "PUT",
-      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(`Azure API PUT ${res.status}: ${await res.text()}`);
-    if (res.status === 204 || res.headers.get("content-length") === "0") return {} as T;
-    return res.json() as Promise<T>;
+  private post<T>(url: string, body: unknown): Promise<T> {
+    return this.write<T>("POST", url, body);
   }
 
-  private async patch<T>(url: string, body: unknown): Promise<T> {
-    const tok = await this.token();
-    const res = await fetch(url, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(`Azure API PATCH ${res.status}: ${await res.text()}`);
-    if (res.status === 204 || res.headers.get("content-length") === "0") return {} as T;
-    return res.json() as Promise<T>;
+  private put<T>(url: string, body: unknown): Promise<T> {
+    return this.write<T>("PUT", url, body);
+  }
+
+  private patch<T>(url: string, body: unknown): Promise<T> {
+    return this.write<T>("PATCH", url, body);
   }
 
   private async del(url: string): Promise<void> {
     const tok = await this.token();
-    const res = await fetch(url, {
+    const res = await azureRequest(this.http, url, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
+    // 202 is ARM's "accepted, deleting asynchronously" and 204 its "already
+    // gone" — both are the outcome the caller asked for.
     if (!res.ok && res.status !== 204 && res.status !== 202) {
       throw new Error(`Azure API DELETE ${res.status}: ${await res.text()}`);
     }
@@ -279,6 +280,7 @@ export class AzureClient implements PluginClient {
       put: <T>(url: string, body: unknown) => this.put<T>(url, body),
       patch: <T>(url: string, body: unknown) => this.patch<T>(url, body),
       del: (url: string) => this.del(url),
+      http: this.http,
       subscriptionId: this.creds.subscriptionId,
       tenantId: this.creds.tenantId,
     };
@@ -305,6 +307,7 @@ export class AzureClient implements PluginClient {
       del: (url: string) => this.del(url),
       makeId: (accountId, typeId, externalId) => this.makeId(accountId, typeId, externalId),
       graphClient: this.graphClient,
+      http: this.http,
       subscriptionId: this.creds.subscriptionId,
       tenantId: this.creds.tenantId,
       clientId: this.creds.clientId,
@@ -454,29 +457,14 @@ export class AzureClient implements PluginClient {
     return fetchAzureMetricSeries(this.httpCtx, resourceTypeId, resource, timeRange);
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostFetchResult> {
     return fetchAzureCostData(this.httpCtx, range);
   }
 
   async fetchCommitments(_accountId: string): Promise<CommitmentRecord[]> {
-    // Routed through the host's HTTP service when available so per-account
-    // bastion routing applies — the reason the constructor takes `services`.
-    return fetchAzureCommitments({
-      getJson: async <T>(url: string): Promise<T> => {
-        const http = this.services?.http;
-        if (!http) return this.get<T>(url);
-        const tok = await this.token();
-        const res = await http.request({
-          url,
-          method: "GET",
-          headers: { Authorization: `Bearer ${tok}` },
-        });
-        if (res.status < 200 || res.status >= 300) {
-          throw new Error(`Azure API ${res.status}: ${res.body}`);
-        }
-        return JSON.parse(res.body) as T;
-      },
-    });
+    // `get` is itself host-routed now, so commitments no longer need their own
+    // copy of the host-HTTP shim.
+    return fetchAzureCommitments({ getJson: <T>(url: string) => this.get<T>(url) });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -489,20 +477,24 @@ export class AzureClient implements PluginClient {
 
   // ─── Storage ──────────────────────────────────────────────────────────
 
+  private get storageCtx() {
+    return { storageToken: () => this.storageToken(), http: this.http };
+  }
+
   listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
-    return listStorageObjects({ storageToken: () => this.storageToken() }, bucket, prefix);
+    return listStorageObjects(this.storageCtx, bucket, prefix);
   }
 
   uploadStorageObject(bucket: string, key: string, file: File): Promise<void> {
-    return uploadStorageObject({ storageToken: () => this.storageToken() }, bucket, key, file);
+    return uploadStorageObject(this.storageCtx, bucket, key, file);
   }
 
   makeStorageFolder(bucket: string, key: string): Promise<void> {
-    return makeStorageFolder({ storageToken: () => this.storageToken() }, bucket, key);
+    return makeStorageFolder(this.storageCtx, bucket, key);
   }
 
   deleteStorageObject(bucket: string, key: string): Promise<void> {
-    return deleteStorageObject({ storageToken: () => this.storageToken() }, bucket, key);
+    return deleteStorageObject(this.storageCtx, bucket, key);
   }
 
   getStorageAccessToken(): Promise<string> {
@@ -643,7 +635,7 @@ export class AzureClient implements PluginClient {
     payload: PublishMessagePayload,
   ): Promise<PublishMessageResult> {
     const resource = await this.getResource(typeId, resourceId, accountId);
-    const ctx = { serviceBusToken: () => this.serviceBusToken() };
+    const ctx = { serviceBusToken: () => this.serviceBusToken(), http: this.http };
     if (typeId === "azure-service-bus") return publishServiceBus(ctx, resource, payload);
     if (typeId === "azure-event-hub") return publishEventHub(ctx, resource, payload);
     throw new Error(`Azure plugin: publishMessage not supported for type "${typeId}"`);

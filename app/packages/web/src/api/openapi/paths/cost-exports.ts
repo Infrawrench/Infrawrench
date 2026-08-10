@@ -39,6 +39,7 @@ const CostExportQuery = strict({
     .array(
       z.enum([
         "usage",
+        "commitment_covered_usage",
         "commitment_fee",
         "commitment_discount",
         "credit",

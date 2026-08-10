@@ -5,8 +5,15 @@
  * AzureClient can use the same cache-and-dedupe pattern.
  *
  * Docs: https://learn.microsoft.com/en-us/rest/api/cost-management/retail-prices/azure-retail-prices
+ *
+ * Unauthenticated, but still routed through the host's HTTP service when one
+ * is supplied: an account bound to a bastion is bound because *its* network is
+ * the only one allowed to reach outward, and a rate-card lookup egressing from
+ * ours would be the one call that breaks in a locked-down deployment.
  */
+import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { z } from "zod";
+import { azureRequest } from "./http.js";
 
 // Most fields tolerate empty string defaults — Azure returns rows for
 // many resource types where SKU/family fields are omitted. Validation only
@@ -96,7 +103,10 @@ const DISK_SAMPLES: Record<
   },
 };
 
-async function fetchPage(filter: string): Promise<RetailPriceItem[]> {
+async function fetchPage(
+  filter: string,
+  http: HttpHostServices | undefined,
+): Promise<RetailPriceItem[]> {
   const items: RetailPriceItem[] = [];
   let url: string =
     `${RETAIL_PRICES_ENDPOINT}?` +
@@ -107,7 +117,7 @@ async function fetchPage(filter: string): Promise<RetailPriceItem[]> {
     }).toString();
   // Cap pages to avoid runaway responses on a misfiled OData query.
   for (let page = 0; page < 20 && url; page++) {
-    const res = await fetch(url);
+    const res = await azureRequest(http, url);
     if (!res.ok) throw new Error(`Azure Retail Prices ${res.status}: ${await res.text()}`);
     const body = retailPricesPageSchema.parse(await res.json());
     items.push(...(body.Items ?? []));
@@ -274,17 +284,21 @@ function parseContainerInstanceRates(
  * whole call — they leave that family's map empty, and the estimator will
  * return null for those types.
  */
-export async function fetchAzurePricingRates(region: string): Promise<AzurePricingRates> {
+export async function fetchAzurePricingRates(
+  region: string,
+  http?: HttpHostServices,
+): Promise<AzurePricingRates> {
   const regionFilter = `armRegionName eq '${region}'`;
   const [vm, disk, redis, appService, sqlDb, containerInstance] = await Promise.all([
-    fetchPage(`serviceName eq 'Virtual Machines' and ${regionFilter}`).catch(() => []),
-    fetchPage(`serviceFamily eq 'Storage' and ${regionFilter} and serviceName eq 'Storage'`).catch(
-      () => [],
-    ),
-    fetchPage(`serviceName eq 'Redis Cache' and ${regionFilter}`).catch(() => []),
-    fetchPage(`serviceName eq 'Azure App Service' and ${regionFilter}`).catch(() => []),
-    fetchPage(`serviceName eq 'SQL Database' and ${regionFilter}`).catch(() => []),
-    fetchPage(`serviceName eq 'Container Instances' and ${regionFilter}`).catch(() => []),
+    fetchPage(`serviceName eq 'Virtual Machines' and ${regionFilter}`, http).catch(() => []),
+    fetchPage(
+      `serviceFamily eq 'Storage' and ${regionFilter} and serviceName eq 'Storage'`,
+      http,
+    ).catch(() => []),
+    fetchPage(`serviceName eq 'Redis Cache' and ${regionFilter}`, http).catch(() => []),
+    fetchPage(`serviceName eq 'Azure App Service' and ${regionFilter}`, http).catch(() => []),
+    fetchPage(`serviceName eq 'SQL Database' and ${regionFilter}`, http).catch(() => []),
+    fetchPage(`serviceName eq 'Container Instances' and ${regionFilter}`, http).catch(() => []),
   ]);
 
   const { appService: appServiceRates, functionApp: functionAppRates } =

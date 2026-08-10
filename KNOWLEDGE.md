@@ -2404,6 +2404,30 @@ Plugins declare `commitments?: { kinds }` and implement `fetchCommitments(accoun
 
 Coverage is a **range** (broad = all uncovered usage, lower bound; narrow = only ever-covered `(plugin, service, region)` cells, upper bound) because there is no single honest denominator. Utilization's obligation counts only `active ∩ window ∩ days-with-data` — counting a day collection never ran reports a healthy plan as under-utilized. Unit-denominated → `null` with reason, never 0%. The planner recommends at nearest-rank **p10** of daily uncovered spend, gated PRESENCE → NOT-IN-DECLINE → FLOOR → MATERIALITY in that order (floor-before-trend misreports a 50% decline as "spiky"); break-even is exactly `1 − discount`. Until collectors stamp `commitmentId` onto rows, coverage reports unavailable with excluded accounts named. Collection is a poller pass on the credits-poll pattern (`account_commitments`, `account_commitment_polls`).
 
+## Commitment attribution (what makes coverage non-zero)
+
+Coverage was inert on ship: no collector stamped `commitmentId`, so it honestly reported "unavailable". Turning it on needed three model corrections, because the naive version reports a confident **0%** — strictly worse than unavailable.
+
+**Coverage is computed on the amortized basis, never cash.** AWS prices RI/SP-covered usage at an unblended rate of **zero**, and Azure prices reservation-covered usage at an EffectivePrice of **zero** in ActualCost. Covered _cash_ spend is structurally zero on both, so a cash ratio reads 0% for every org that has ever committed to anything. `amortizedAmountExpr()` is exported from `cost-readers.ts` and shared by `commitment-readers.ts` and `cost-exports/rows.ts` so the three cannot drift — a restated copy in the exporter already had.
+
+**`commitment_covered_usage` exists because AWS cannot supply a commitment id.** `SAVINGS_PLAN_ARN` / `RESERVATION_ID` are filter-only dimensions in Cost Explorer, never groupable. Azure can (`BenefitId`, EA/MCA only). So the coverage numerator is "charge type is covered-usage **or** a commitment id is present", not the id alone. Every `chargeType === "usage"` site was audited: the coverage and delivered denominators widened; the `hashTags` fold, the ingest default and the `charge_type DEFAULT 'usage'` did **not** — the back catalogue genuinely is usage, and widening the fold would collide a covered row with the plain usage row of the same cell.
+
+**`amortized_reported UInt8` distinguishes absent from zero.** A commitment purchase's honest amortized amount _is_ 0, and the old `if(amortized_amount != 0, …)` fell back to full cash — rendering every purchase at cash **and** its amortized slices. Pre-existing rows default the flag to 0 and land on the `OR amortized_amount != 0` arm, i.e. bit-for-bit the old expression.
+
+**Two-GroupBy limits shape both collectors.** Cost Explorer and Azure Cost Management both cap grouping at two, so each runs multiple passes per chunk. AWS's passes are literal complements (`Not` of the usage record-type union), so spend is conserved even if a record-type token is misspelled. Azure's second pass is deliberately **unfiltered** because the API has no `NotIn` — a filtered complement would silently drop any charge type Azure adds later. Azure derives covered usage as the per-cell gap between ActualCost and AmortizedCost, gated on both being non-negative: Azure emits negative corrections, and an ungated subtraction _fabricates_ coverage.
+
+**Accumulate before emitting.** Any pass whose normalizers are many-to-one must aggregate into a keyed map first. Two provider rows that normalize to the same `(date, service, region, currency, chargeType, commitmentId)` are one host key, and `ReplacingMergeTree` keeps whichever arrived last — silently losing the other. Azure shipped this bug; its test suite had encoded it.
+
+## Host-side re-collection reconciliation
+
+When a plugin starts stamping charge types, a `(day, service, region)` cell whose spend was **entirely** non-usage has no row rewriting its old key, so the stale combined row lingers and the day reads high. `clickhouse/cost-reconcile.ts` solves it generically: before inserting a chunk, read back the keys already stored for that account over those days, subtract the keys about to be written, and write a zero-amount row at each leftover key.
+
+This lives in the host, not the plugins, because **a plugin only knows the keys it is writing** — it cannot know a stale row filed under a service label it no longer emits. Guards: nothing written → nothing zeroed; only days the plugin wrote at least one row for; only that plugin's own rows.
+
+**Degraded passes must not tombstone.** Both collectors fall back to an unattributed query on error. Without a signal, one transient flap zeroes every attribution row for the chunk — and since a backfilled account only re-fetches `restatementDays`, a flap that ages past that window is _never_ repaired. `fetchCostData` may return `{ rows, degraded }`; a bare array or absent flag normalizes to not-degraded, so plugins that never opted in are unaffected.
+
+Load-bearing and invisible: `hashTags` folds synthetic `infrawrench:` entries into `tags_hash` **without storing them in `tags`**, and reconciliation depends on that — if they were stored it would skip every attribution row and silently disable itself. Commented at both ends.
+
 ## Report folders, saved filters, delivery & change alerts
 
 **Folders** (`cost_report_folders`): 3-level nesting enforced against the whole subtree being moved; delete drops contents to root (both FKs SET NULL — reports are never deleted by a folder operation); cycle prevention is one shared client-core rule so the UI greys out exactly what the server rejects; a stale folderId degrades to top-level rather than hiding a report.

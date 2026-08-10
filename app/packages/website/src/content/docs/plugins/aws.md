@@ -66,11 +66,66 @@ The probe resolves the caller with `sts:GetCallerIdentity` (needs no permission)
 
 ## Cost graphs
 
-AWS accounts feed [cost graphs & budgets](../features/cloud-costs.md) via Cost Explorer (`GetCostAndUsage`), collected daily with service and region breakdowns.
+AWS accounts feed [cost graphs & budgets](../features/cloud-costs.md) via Cost Explorer (`GetCostAndUsage`), collected daily and broken down by service, region and [charge type](../features/cloud-costs.md#charge-types-and-cash-vs-amortized), on both a cash and an [amortized](../features/cloud-costs.md#cash-and-amortized) basis.
 
-- The IAM user needs the `ce:GetCostAndUsage` action — it is **not** part of typical read-only policies, so add a small policy for it.
-- AWS charges **$0.01 per Cost Explorer request**. Infrawrench fetches once a day (plus a one-time history backfill in month-sized chunks), so expect a few cents per month per account.
+- The IAM user needs the `ce:GetCostAndUsage` action — it is **not** part of typical read-only policies, so add a small policy for it. **Charge-type and amortized attribution need no additional permission**: they are the same API call with a different grouping and a second metric.
+- AWS charges **$0.01 per Cost Explorer request**. A collection makes three requests per month of range (see below), so a normal day costs 3–6 requests and the one-time 365-day backfill about 39 — well under a dollar a month per account either way.
 - Per-resource cost breakdown is not collected (Cost Explorer only retains it for 14 days).
+
+### Charge types, and why non-usage rows have no region
+
+Cost Explorer accepts at most **two groupings per request**, and there are three things worth knowing about a row: its service, its region, and what kind of charge it is. Each collection therefore makes three passes:
+
+| Pass | Covers                                                             | Grouped by            |
+| ---- | ------------------------------------------------------------------ | --------------------- |
+| 1a   | On-demand consumption — `Usage`                                    | Service + region      |
+| 1b   | Covered consumption — `DiscountedUsage`, `SavingsPlanCoveredUsage` | Service + region      |
+| 2    | Everything else                                                    | Service + record type |
+
+So **rows that are not consumption carry no region**: a tax line, a credit, a support fee or a reservation fee appears under its service with the region blank. Cost Explorer reports most of those with no region in the first place, and service is the dimension you read them by ("what did the Savings Plan cost", "how much support") — spending the second grouping on the region instead would have cost five to ten times as many requests to learn almost nothing.
+
+Passes 1a and 1b are the same query with different filters, and they are separate only so their rows can carry different charge types. That is what makes commitment coverage measurable at all — see below. Together they are the exact complement of pass 2, so every dollar lands in exactly one of the three. AWS's record types map onto Infrawrench's charge types like this:
+
+| Cost Explorer record type                                                            | Infrawrench charge type  |
+| ------------------------------------------------------------------------------------ | ------------------------ |
+| `Usage`                                                                              | Usage                    |
+| `DiscountedUsage` (reservation-applied usage)                                        | Commitment-covered usage |
+| `SavingsPlanCoveredUsage`                                                            | Commitment-covered usage |
+| `RIFee`, `Fee`, `SavingsPlanUpfrontFee`, `SavingsPlanRecurringFee`                   | Commitment fee           |
+| `SavingsPlanNegation`                                                                | Commitment discount      |
+| `Credit`                                                                             | Credit                   |
+| `Refund`                                                                             | Refund                   |
+| `Tax`                                                                                | Tax                      |
+| `Support`                                                                            | Support                  |
+| `Discount` (EDP, private rate, solution provider), `BundledDiscount`, anything newer | Other                    |
+
+Three of those are worth a sentence:
+
+- **Reservation- and Savings-Plan-covered usage is consumption**, not a discount — the commitment shows up in the rate the row was billed at, not in what kind of charge it is. It gets its own charge type rather than being lumped in with on-demand usage because "was this hour covered" is the only thing Cost Explorer will ever tell you about coverage, and that is what the [Commitments](../features/commitments.md) coverage figure is computed from. `SavingsPlanNegation` — the separate negative line AWS writes against covered usage — is the actual commitment discount. Reserved Instances have no equivalent line.
+- **`Fee` is filed as a commitment fee** even though AWS also uses it for the occasional non-reservation subscription. AWS documents it as the upfront fee for an All Upfront or Partial Upfront RI, and that purchase is the single largest one-day charge most accounts ever see; hiding it under "Other" to protect against the rare subscription is the worse trade.
+- **AWS's discount families read as "Other"**, deliberately. An Enterprise Discount Program or private-rate discount is not a credit, and filing it as one would make a negotiated rate indistinguishable from spending promotional balance. Infrawrench has no charge type for a negotiated discount, so it says so rather than guessing.
+
+<insert [Cost graph for an AWS account grouped by Charge type, showing a usage band with smaller commitment fee, tax and credit bands stacked on it] here>
+
+### Amortized cost
+
+Both `UnblendedCost` and `AmortizedCost` come back on the same requests, so AWS accounts support the amortized [cost basis](../features/cloud-costs.md#cash-and-amortized) at no extra cost. This matters more than it sounds for reservations: the unblended rate of RI-covered usage is **zero** by AWS's own definition, so on a cash basis a reserved fleet looks free and the reservation looks like a pure expense. Amortized cost is what those hours are actually worth.
+
+It is also why **commitment coverage is reported on the amortized basis and only there**. Covered hours cost nothing in cash — you paid for them when you bought the commitment — so a coverage percentage computed from cash figures would read 0% for every account that has ever bought anything, however well covered it is. Coverage, the utilization Infrawrench derives from cost rows, and the savings planner all read amortized money for that reason, and all three read it on both sides of every ratio.
+
+### What is not attributed: individual commitments
+
+Cost rows are **not** linked to the specific reservation or Savings Plan they belong to. `GetCostAndUsage` can filter by `SAVINGS_PLAN_ARN` and `RESERVATION_ID` but cannot group by either, so the only way to attribute rows to a particular commitment is one request per commitment held — a bill that grows with the size of your holding, and one that could cover Savings Plans (usually few) but not Reserved Instances (usually many).
+
+The practical effect: the [Commitments](../features/commitments.md) section lists what you own and what it cost, and cost graphs show commitment fees, commitment discounts and covered usage as their own charge types — but "which of my four Savings Plans paid for this hour" is a question AWS's cost API cannot answer, and Infrawrench does not invent an answer for it.
+
+### Re-collecting days collected before charge types existed
+
+Days collected by an older version were stored with every row typed as usage, because that was all the plugin could tell. **Nothing is required of you.** Re-collection sorts itself out: a usage row is stored under exactly the same identity it always was, so the new, usage-only figure replaces the old, all-in one, and the tax and fees that used to be inside it arrive as their own rows.
+
+The one case that could not replace itself — a service and region whose spend was **entirely** non-usage, or entirely commitment-covered, so that no new row lands on the old row's identity — is handled automatically. Every collection compares the rows it is about to write against what is already stored for the same days and supersedes anything left over, so a stale row is cleared by the next collection that touches its day. The [restatement window](../features/cloud-costs.md) walks the last few days over on its own; to sweep your whole history, clear the account's backfill marker so the next cost pass re-walks all 365 days (about 39 requests, ~$0.39).
+
+Earlier builds documented a manual `ALTER TABLE cost_daily DELETE` here. It is no longer needed and should not be run.
 
 ## Commitments
 
@@ -79,6 +134,7 @@ AWS accounts feed the [Commitments](../features/commitments.md) section: **EC2 R
 - Needs `ec2:DescribeReservedInstances`, `rds:DescribeReservedDBInstances` and `savingsplans:DescribeSavingsPlans` — add them alongside `ce:GetCostAndUsage`.
 - A Compute Savings Plan shows "All regions", which is exact: it follows your compute wherever it runs.
 - Savings Plans' recurring payment is deliberately not shown — AWS documents no period for the figure its API returns, and guessing between hourly and monthly would be a 730× error.
+- Cost rows are not linked back to an individual reservation or plan — see [what is not attributed](#what-is-not-attributed-individual-commitments) above for why, and what you get instead.
 
 ## Dependency graph
 
