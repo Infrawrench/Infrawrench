@@ -5,7 +5,7 @@ import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { getClientForAccount } from "../../services/plugin-clients";
 import { storageDrivers } from "../../services/drivers";
-import { buildPluginHostServices } from "@infrawrench/server-core/host-services";
+import { buildPluginHostServices } from "@/services/host-services";
 import archiver from "archiver";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
