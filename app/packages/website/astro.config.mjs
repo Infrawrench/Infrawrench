@@ -6,6 +6,8 @@ import tailwindcss from "@tailwindcss/vite";
 import remarkDocs from "./src/lib/remark-docs.mjs";
 
 export default defineConfig({
+  site: "https://infrawrench.com",
+
   output: "server",
 
   adapter: cloudflare({

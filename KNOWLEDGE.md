@@ -1772,6 +1772,12 @@ Endpoints:
 
 Both endpoints use `withEdgeCache(request, ctx, build)` from `src/lib/cache.ts` — only puts the response in cache if it's `ok` AND has a `Cache-Control` header (so 4xx/5xx aren't cached).
 
+### robots.txt and sitemap.xml
+
+`src/pages/robots.txt.ts` and `src/pages/sitemap.xml.ts` are `prerender = true` endpoints, so they build to static files in `dist/client/` and never invoke the worker. Both read the origin from `Astro.site` (`site: "https://infrawrench.com"` in `astro.config.mjs`) and throw at build time if it's unset — don't remove that config key. robots.txt disallows `/api/` (releases proxy + update feed, not content).
+
+The sitemap needs no maintenance when pages are added: docs URLs come from `getDocsNav()` (same source as the sidebar), and marketing pages are discovered with `import.meta.glob("./**/*.astro")` over `src/pages`, skipping dynamic `[...]` routes and an `EXCLUDED` set. `@astrojs/sitemap` was deliberately not used — in `output: "server"` it only sees routes the build knows statically, and the package takes no new dependency for this.
+
 Asset classification matches the rename rules in `.github/workflows/desktop-build.yml` — DMG arch from `arm64`/`x64` substring, `.exe` for Windows (split by arch), AppImage/deb default to x64 unless `arm64`/`aarch64` in name, snap is x64-only.
 
 ### Auto-update flow
