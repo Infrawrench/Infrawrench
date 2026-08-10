@@ -11,10 +11,11 @@ import { fieldNumber, fieldString, tf } from "@infrawrench/plugin-base";
  * (registry.terraform.io/providers/databricks/databricks):
  *   - databricks_cluster: `spark_version`, `node_type_id` required; `cluster_name`, workers optional.
  *   - databricks_sql_endpoint: `name`, `cluster_size` required.
- *   - databricks_job: `name` optional; tasks are not reconstructed from list metadata.
  *   - databricks_catalog: `name` required (metastore-level).
  *   - databricks_schema: `catalog_name`, `name` required.
- * Node-type catalog entries are skipped per guidance. Provider uses host + token variables.
+ * Jobs are intentionally unsupported: the lister stores list metadata only
+ * (`expand_tasks=false`), so we can't emit the required `task` blocks.
+ * Node-type catalog entries are skipped. Provider uses host + token variables.
  */
 export const databricksTerraformExport: TerraformExportCapability = {
   provider: { name: "databricks", source: "databricks/databricks", version: "~> 1.0" },
@@ -36,7 +37,6 @@ export const databricksTerraformExport: TerraformExportCapability = {
   supportedResourceTypeIds: [
     "databricks-cluster",
     "databricks-sql-warehouse",
-    "databricks-job",
     "databricks-catalog",
     "databricks-schema",
   ],
@@ -87,22 +87,6 @@ export const databricksTerraformExport: TerraformExportCapability = {
             name,
             attributes,
             importId: resource.externalId,
-          },
-        };
-      }
-      case "databricks-job": {
-        const name = fieldString(resource, "name") || resource.displayName;
-        if (!name) return null;
-        return {
-          resource: {
-            type: "databricks_job",
-            name,
-            attributes: { name: tf.str(name) },
-            importId: resource.externalId,
-            comments: [
-              "Job task definitions are not exported — add task blocks manually",
-              "after import (notebook, pipeline, sql_task, etc.).",
-            ],
           },
         };
       }
