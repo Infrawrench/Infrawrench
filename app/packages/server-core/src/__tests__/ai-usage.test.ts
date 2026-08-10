@@ -312,6 +312,22 @@ describe("reserve / release AI spend", () => {
     expect(mockInsert).not.toHaveBeenCalled();
   });
 
+  it("refuses a reservation whose estimate alone would cross the cap", async () => {
+    // Settled spend is still under the line; admitting the estimate would push past it.
+    mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
+      queueSpendSelects(1_000_000, "900000");
+      await fn({
+        execute: mockExecute,
+        select: (...a: unknown[]) => mockSelect(...a),
+        insert: (...a: unknown[]) => mockInsert(...a),
+        delete: (...a: unknown[]) => mockDelete(...a),
+      });
+    });
+
+    await expect(reserveAiSpend("o1", 200_000)).rejects.toBeInstanceOf(AiSpendCapExceededError);
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
   it("releases a reservation by id", async () => {
     const where = vi.fn().mockResolvedValue(undefined);
     mockDelete.mockReturnValue({ where });

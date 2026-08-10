@@ -206,27 +206,43 @@ export function estimateTokensFromChars(chars: number): number {
  * advisory lock. Chat and workflow callers both use this so they serialize on
  * the same key and see each other's holds in the month-to-date sum.
  *
+ * Admission is against the projected total (current spend + this estimate),
+ * not merely whether the existing total is already over the line — otherwise
+ * serialized near-cap callers would each clear a below-cap check and settle
+ * well past the configured limit.
+ *
  * Returns the reservation id. The caller must record real usage (if any) and
  * then {@link releaseAiSpendReservation}, or release alone on failure/Stop.
  *
- * @throws {AiSpendCapExceededError} when the org is already at its cap
+ * @throws {AiSpendCapExceededError} when the org is already at its cap, or
+ *   when this estimate alone would push it there
  */
 export async function reserveAiSpend(
   organizationId: string,
   estimatedCostMicros: number,
 ): Promise<string> {
   const id = randomUUID();
+  const estimate = Math.max(0, estimatedCostMicros);
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ai_spend:${organizationId}`}))`);
     await purgeExpiredReservations(tx, organizationId);
     const spend = await getAiSpendStatus(organizationId, tx);
-    if (spend.exceeded) {
-      throw new AiSpendCapExceededError(spend);
+    const projected =
+      spend.monthlyCapMicros != null &&
+      spend.monthToDateMicros + estimate >= spend.monthlyCapMicros;
+    if (spend.exceeded || projected) {
+      throw new AiSpendCapExceededError({
+        ...spend,
+        // Surface the projected total so spend_blocked UIs show why this call
+        // was refused even when the settled figure is still under the cap.
+        monthToDateMicros: spend.monthToDateMicros + estimate,
+        exceeded: true,
+      });
     }
     await tx.insert(aiSpendReservations).values({
       id,
       organizationId,
-      estimatedCostMicros: Math.max(0, estimatedCostMicros),
+      estimatedCostMicros: estimate,
     });
   });
   return id;
