@@ -181,13 +181,14 @@ export const ovhTerraformExport: TerraformExportCapability = {
               ]),
             },
             importId: resource.externalId,
-            comments:
-              nodeCount > 1
-                ? [
+            ...(nodeCount > 1
+              ? {
+                  comments: [
                     `Cluster has ${nodeCount} nodes — expand the nodes list to match`,
                     "each node's region/flavor in the OVH control panel.",
-                  ]
-                : undefined,
+                  ],
+                }
+              : {}),
           },
         };
       }
