@@ -3,7 +3,10 @@ import {
   type ChangeFeedAccount,
   type ChangeFeedPage,
   type ChangeFeedQuery,
+  type ChangeRevertClient,
   type ChangesClient,
+  type RevertApplyResponse,
+  type RevertPreviewResponse,
 } from "@infrawrench/ui";
 import { invoke } from "./invoke";
 import { listCloudAccounts } from "./cloud-accounts";
@@ -37,5 +40,26 @@ export function createDesktopChangesClient(): ChangesClient {
       const rows = await listCloudAccounts(requireOrg());
       return rows.map((a) => ({ id: a.id, displayName: a.displayName }));
     },
+    revert: createDesktopChangeRevertClient(requireOrg),
+  };
+}
+
+/**
+ * Time-travel undo over the two cloud IPC channels. Takes the org resolver
+ * rather than an id for the same reason the feed does — an org switch under a
+ * mounted panel must reach the new org.
+ */
+export function createDesktopChangeRevertClient(requireOrg: () => string): ChangeRevertClient {
+  return {
+    preview: (changeId) =>
+      invoke<RevertPreviewResponse>("cloud_change_revert_preview", {
+        orgId: requireOrg(),
+        changeId,
+      }),
+    apply: (changeId) =>
+      invoke<RevertApplyResponse>("cloud_change_revert_apply", {
+        orgId: requireOrg(),
+        changeId,
+      }),
   };
 }

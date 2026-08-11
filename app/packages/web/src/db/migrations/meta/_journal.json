@@ -743,6 +743,13 @@
       "when": 1786550000000,
       "tag": "0105_incident_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1786752000000,
+      "tag": "0106_change_revert",
+      "breakpoints": true
     }
   ]
 }

@@ -180,6 +180,18 @@ export const resourceChanges = pgTable(
      */
     origin: text("origin").$type<"schedule">(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
+    /**
+     * When this event was reverted, and by whom. The revert route claims the
+     * row with a conditional `UPDATE ... WHERE reverted_at IS NULL`, so two
+     * concurrent reverts of the same event can never both reach the provider;
+     * the loser gets a 409. Cleared again if the provider call fails, so a
+     * failed attempt stays retryable.
+     *
+     * No FK on the user id: the audit trail is the record of who did it, and
+     * this column must survive a member being removed from the org.
+     */
+    revertedAt: timestamp("reverted_at"),
+    revertedByUserId: text("reverted_by_user_id"),
   },
   (t) => ({
     orgCreatedIdx: index("resource_changes_org_created_idx").on(t.organizationId, t.createdAt),

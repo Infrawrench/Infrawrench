@@ -23,6 +23,22 @@ ipcMain.handle(
   },
 );
 
+// Reverting a change event. Two channels rather than one with a mode flag, so
+// the read (a dry run that only reads the provider) and the write (a real
+// provider mutation, freeze-gated and audit-logged server-side) stay visibly
+// distinct on the IPC surface.
+ipcMain.handle(
+  "cloud_change_revert_preview",
+  async (_e, { orgId, changeId }: { orgId: string; changeId: string }) =>
+    cloudFetch(orgId, `/changes/${encodeURIComponent(changeId)}/revert`),
+);
+
+ipcMain.handle(
+  "cloud_change_revert_apply",
+  async (_e, { orgId, changeId }: { orgId: string; changeId: string }) =>
+    cloudFetch(orgId, `/changes/${encodeURIComponent(changeId)}/revert`, { method: "POST" }),
+);
+
 // Provider status correlation ("is it me or is it them?") — also cloud-only:
 // the incident cache is filled by the cloud poller watching provider status
 // feeds, so the desktop reads the correlated view from the API rather than

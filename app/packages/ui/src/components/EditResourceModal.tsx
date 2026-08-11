@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import type { CostEstimate, FieldDefinition } from "@infrawrench/plugin-base";
-import { costEstimateDelta } from "@infrawrench/plugin-base";
+import { costEstimateDelta, isFieldEditable } from "@infrawrench/plugin-base";
 import { describeMonthlyDelta } from "@infrawrench/client-core";
 import { Modal } from "./Modal.js";
 import { CostEstimateBreakdown } from "./CostEstimateChip.js";
@@ -42,12 +42,6 @@ export interface EditResourceModalProps {
  * enough that the figure feels like it belongs to what is on screen.
  */
 const ESTIMATE_DEBOUNCE_MS = 300;
-
-function isFieldEditable(field: FieldDefinition): boolean {
-  if (field.editable === false) return false;
-  if (field.kind === "secret" || field.kind === "association") return false;
-  return true;
-}
 
 export function EditResourceModal({
   displayName,

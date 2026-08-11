@@ -50,6 +50,13 @@ export interface ResourceChangeEntry {
    */
   origin?: "schedule" | null;
   createdAt: string;
+  /**
+   * When this event was reverted, or null/absent if it never was. Set by the
+   * revert claim (`POST /changes/{id}/revert`), which is a one-shot: an event
+   * carrying a timestamp here can't be reverted again, and hosts label the row
+   * instead of offering the button.
+   */
+  revertedAt?: string | null;
   /** Present on org-feed entries (joined server-side); absent per-resource. */
   accountName?: string | null;
 }

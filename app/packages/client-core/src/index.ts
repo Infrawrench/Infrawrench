@@ -547,6 +547,21 @@ export {
   type ResourceChangeEntry,
 } from "./resource-changes";
 export {
+  computeRevertPlan,
+  buildRevertPatch,
+  revertValueAsText,
+  localRevertRefusal,
+  fetchRevertPreview,
+  applyRevert,
+  REVERT_CONFLICT_CODE,
+  type ComputeRevertPlanArgs,
+  type RevertApplyResponse,
+  type RevertFieldPlan,
+  type RevertFieldStatus,
+  type RevertPlan,
+  type RevertPreviewResponse,
+} from "./change-revert";
+export {
   fetchOrgStatusIncidents,
   compareStatusIncidents,
   summarizeStatusIncident,

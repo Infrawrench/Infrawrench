@@ -1,5 +1,14 @@
 import { z } from "../zod";
-import { strict, ErrorResponses, OrgIdParam, Uuid, IsoDateTime, ResourceId } from "../common";
+import {
+  strict,
+  ErrorResponse,
+  ErrorResponses,
+  OrgIdParam,
+  Uuid,
+  IsoDateTime,
+  ResourceId,
+} from "../common";
+import { FreezeLockedResponse } from "./change-freezes";
 import type { BuildContext } from "../context";
 
 const ResourceChangeKind = z.enum(["created", "updated", "deleted"]).openapi("ResourceChangeKind", {
@@ -39,6 +48,13 @@ const ResourceChangeEntry = strict({
         "schedule transitions. Absent/null = observed by sync.",
     }),
   createdAt: IsoDateTime,
+  revertedAt: IsoDateTime.nullable()
+    .optional()
+    .openapi({
+      description:
+        "When this event was reverted, or null if it never was. Reverting is a one-shot: an event " +
+        "carrying a timestamp here cannot be reverted again.",
+    }),
 }).openapi("ResourceChangeEntry");
 
 const ResourceChangeFeedEntry = ResourceChangeEntry.extend({
@@ -86,6 +102,62 @@ const DriftAlertSettingsUpdate = strict({
   minChanges: z.number().int().min(1).max(1000).optional(),
   accountIds: z.array(Uuid).max(200).optional(),
 }).openapi("DriftAlertSettingsUpdate");
+
+const RevertFieldStatus = z
+  .enum(["revertible", "already-reverted", "conflict", "not-writable", "provider-derived"])
+  .openapi("RevertFieldStatus", {
+    description:
+      "What a revert would do to one field. `revertible` — the field still holds the value the " +
+      "change set, and the plugin's edit form can write the old one back. `already-reverted` — it " +
+      "is already at the old value; nothing to do. `conflict` — it changed again since, so " +
+      "reverting would discard the newer value. `not-writable` — outside the plugin's editable " +
+      "surface, or the old value is not something the edit form can submit. `provider-derived` — " +
+      "an `outputs.*` entry, which the provider computes rather than accepts.",
+  });
+
+const RevertFieldPlan = strict({
+  field: z.string(),
+  revertTo: z.unknown().openapi({ description: "The value a revert would write." }),
+  changedTo: z.unknown().openapi({ description: "The value the recorded change set." }),
+  current: z
+    .unknown()
+    .openapi({ description: "The value the resource holds right now, read live." }),
+  status: RevertFieldStatus,
+  reason: z.string().openapi({ description: "One sentence explaining the status." }),
+}).openapi("RevertFieldPlan");
+
+const RevertPlan = strict({
+  fields: z.array(RevertFieldPlan).openapi({
+    description: "Every field of the recorded diff, in the order the event recorded them.",
+  }),
+  revertibleFields: z.array(z.string()).openapi({
+    description: "The keys that would actually be written.",
+  }),
+  revertible: z.boolean(),
+  blockedReason: z
+    .string()
+    .nullable()
+    .openapi({ description: "Why nothing would be written, or null when something would." }),
+}).openapi("RevertPlan");
+
+const RevertPreviewResponse = strict({
+  changeId: Uuid,
+  resourceId: ResourceId,
+  displayName: z.string(),
+  pluginId: z.string(),
+  resourceTypeId: z.string(),
+  accountId: Uuid,
+  plan: RevertPlan,
+  revertedAt: IsoDateTime.nullable(),
+}).openapi("RevertPreviewResponse");
+
+const RevertApplyResponse = strict({
+  changeId: Uuid,
+  resourceId: ResourceId,
+  appliedFields: z.array(z.string()).openapi({ description: "The fields written, in plan order." }),
+  plan: RevertPlan,
+  revertedAt: IsoDateTime,
+}).openapi("RevertApplyResponse");
 
 export function registerResourceChangePaths(ctx: BuildContext) {
   ctx.registry.registerPath({
@@ -204,6 +276,79 @@ export function registerResourceChangePaths(ctx: BuildContext) {
         content: { "application/json": { schema: ResourceChangeListResponse } },
       },
       400: ErrorResponses[400],
+    },
+  });
+
+  const ChangeIdParam = OrgIdParam.extend({
+    changeId: Uuid.openapi({ param: { name: "changeId", in: "path" } }),
+  });
+
+  ctx.registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/changes/{changeId}/revert",
+    tags: ["Changes"],
+    summary: "Dry-run a revert of one change event",
+    description:
+      "Inverts the recorded diff and reconciles it against the resource's *current* live fields, " +
+      "which is the whole point: the poller may have recorded this hours ago and the world may " +
+      "have moved on. Read-only — it reads from the provider and writes nothing.\n\n" +
+      "Only `updated` events with a field diff can be reverted. `outputs.*` entries are " +
+      "provider-derived and are never written back, and whether a field is writable at all is the " +
+      "plugin's own edit-form rule (`editable`, minus `secret` and `association` kinds), so a " +
+      "revert can never issue a provider call an edit could not.\n\n" +
+      "Gated on `resources:write` rather than `resources:read`: the plan names the write it is " +
+      "offering to make.",
+    request: { params: ChangeIdParam },
+    responses: {
+      200: {
+        description:
+          "The plan. A plan with `revertible: false` still lists every field and why each one is out.",
+        content: { "application/json": { schema: RevertPreviewResponse } },
+      },
+      404: ErrorResponses[404],
+      502: {
+        description:
+          "The provider couldn't be read, so no plan can be made safely. Nothing was written.",
+        content: { "application/json": { schema: ErrorResponse } },
+      },
+    },
+  });
+
+  ctx.registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/changes/{changeId}/revert",
+    tags: ["Changes"],
+    summary: "Revert one change event",
+    description:
+      "Applies the inverse patch through the plugin's ordinary `updateResource` path — the same " +
+      "call the Edit form makes — and only for the fields the dry run marked `revertible`.\n\n" +
+      "The plan is recomputed against a fresh live read before the write, so a field that moved " +
+      "between the preview and the apply becomes a conflict and drops out of the patch. On top of " +
+      "that, the event itself is claimed with a conditional update: two concurrent reverts of the " +
+      "same event cannot both reach the provider, and the loser gets `409`. A provider failure " +
+      "releases the claim, so a failed attempt stays retryable.\n\n" +
+      "Blocked with `423` while an org change freeze is in effect, and audit-logged as " +
+      "`resource.change_revert`. The stored resource snapshot is deliberately left untouched, so " +
+      "the next poll observes the reverted state and records it as an ordinary change event.",
+    request: { params: ChangeIdParam },
+    responses: {
+      200: {
+        description: "The revert was applied",
+        content: { "application/json": { schema: RevertApplyResponse } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+      409: {
+        description:
+          "Already reverted, another revert holds the event, or nothing in the plan is writable. " +
+          "The body carries `code: change_revert_conflict` for the first two.",
+        content: { "application/json": { schema: ErrorResponse } },
+      },
+      423: FreezeLockedResponse,
+      502: {
+        description: "The provider couldn't be read. Nothing was written.",
+        content: { "application/json": { schema: ErrorResponse } },
+      },
     },
   });
 }

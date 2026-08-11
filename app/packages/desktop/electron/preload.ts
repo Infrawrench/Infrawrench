@@ -179,6 +179,8 @@ const INVOKE_CHANNELS = [
   "cloud_dns",
   "cloud_environment_diff",
   "cloud_changes_list",
+  "cloud_change_revert_preview",
+  "cloud_change_revert_apply",
   "cloud_status_incidents",
   // Agents mode against an org — the local pipeline has its own (non-cloud)
   // channels; these drive the org's sessions through the web API instead.

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { summarizeChange } from "@infrawrench/client-core";
 import { ChangeDiffList, ChangeKindBadge } from "./ChangeParts.js";
+import { RevertChangeButton } from "./RevertChange.js";
 import { ProviderIncidentChangesSection } from "../status/ProviderIncidentChangesSection.js";
 import type { StatusIncidentsClient } from "../status/types.js";
 import type {
@@ -242,6 +243,14 @@ export function ChangesPanel({
                     <span className="text-xs text-on-surface-muted truncate">
                       {summarizeChange(entry)}
                     </span>
+                    {entry.revertedAt && (
+                      <span
+                        className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary whitespace-nowrap"
+                        title={`Reverted on ${new Date(entry.revertedAt).toLocaleString()}.`}
+                      >
+                        reverted
+                      </span>
+                    )}
                     {entry.changeKind === "updated" && entry.diff.length > 0 && (
                       <button
                         type="button"
@@ -251,6 +260,17 @@ export function ChangesPanel({
                       >
                         {expandedId === entry.id ? "Hide diff" : "Show diff"}
                       </button>
+                    )}
+                    {/* Rendered for every row, disabled with its reason on the
+                        kinds that can't be reverted — a button that vanishes on
+                        creations and deletions reads as a bug rather than as a
+                        boundary. */}
+                    {client.revert && (
+                      <RevertChangeButton
+                        entry={entry}
+                        client={client.revert}
+                        onReverted={() => void load()}
+                      />
                     )}
                   </span>
                 </div>

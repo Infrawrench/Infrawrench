@@ -6,6 +6,7 @@ import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { Card, Row, RowGroup, SectionTitle } from "@/components/ui";
 import { colors } from "@/lib/theme";
 import { ChangeDiffList, ChangeKindBadge } from "./ChangeParts";
+import { RevertChangeSection } from "./RevertChangeSection";
 
 /**
  * One resource's slice of the change timeline, mirroring the **Changes** tab
@@ -49,8 +50,9 @@ export function ResourceChangesCard({ resourceId }: { resourceId: string }) {
                 : {})}
             />
             {expandedId === entry.id && (
-              <View style={{ paddingBottom: 12 }}>
+              <View style={{ paddingBottom: 12, gap: 8 }}>
                 <ChangeDiffList entry={entry} />
+                <RevertChangeSection entry={entry} onReverted={() => void changes.refetch()} />
               </View>
             )}
           </View>

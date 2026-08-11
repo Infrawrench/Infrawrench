@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { desc, eq, and, gte, lte, sql } from "drizzle-orm";
 import {
   getDriftAlertSettings,
@@ -6,9 +7,19 @@ import {
   type DriftAlertSettings,
   type DriftAlertSettingsPatch,
 } from "@infrawrench/server-core/drift/settings";
+import { buildRevertPatch, REVERT_CONFLICT_CODE } from "@infrawrench/client-core";
 import { db } from "../../db/client";
 import { resourceChanges, accounts } from "../../db/schema";
 import { requirePermission } from "../../auth/permissions";
+import { checkChangeFreeze } from "../../services/change-freezes";
+import { logAudit } from "../../services/audit";
+import { getClientForAccount } from "../../services/plugin-clients";
+import {
+  buildRevertPlan,
+  claimRevert,
+  loadChange,
+  releaseRevert,
+} from "../../services/change-revert";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -69,6 +80,7 @@ app.get("/", async (c) => {
         diff: resourceChanges.diff,
         origin: resourceChanges.origin,
         createdAt: resourceChanges.createdAt,
+        revertedAt: resourceChanges.revertedAt,
         accountName: accounts.displayName,
       })
       .from(resourceChanges)
@@ -175,6 +187,7 @@ app.get("/resource", async (c) => {
       diff: resourceChanges.diff,
       origin: resourceChanges.origin,
       createdAt: resourceChanges.createdAt,
+      revertedAt: resourceChanges.revertedAt,
     })
     .from(resourceChanges)
     .where(
@@ -187,6 +200,180 @@ app.get("/resource", async (c) => {
     .limit(limit);
 
   return c.json({ entries });
+});
+
+/* ----------------------------- revert -------------------------------- *
+ *
+ * GET  /changes/:changeId/revert — the dry run
+ * POST /changes/:changeId/revert — apply it
+ *
+ * Same path, and the verb carries the whole difference: the plan is computed
+ * identically either way, the POST just recomputes it against a fresher read
+ * and then writes. See `services/change-revert.ts` for why that recomputation
+ * is the compare-and-swap.
+ */
+
+function revertFailureResponse(c: Context, failure: { kind: string; message?: string }) {
+  if (failure.kind === "account-not-found") {
+    return c.json({ error: "The account this change belongs to no longer exists" }, 404);
+  }
+  return c.json(
+    {
+      error: `Couldn't read the resource's current state, so a revert can't be planned safely — ${failure.message ?? "unknown error"}`,
+    },
+    502,
+  );
+}
+
+/**
+ * What a revert of this event would do, field by field, against the resource as
+ * it is right now. Read-only: it touches the provider (to read) and nothing
+ * else.
+ *
+ * `resources:write` rather than `resources:read` — the plan names the write it
+ * is offering to make, and it costs a live provider call, so it is gated with
+ * the action it previews rather than with the feed it reads from.
+ */
+app.get("/:changeId/revert", async (c) => {
+  requirePermission(c, "resources:write");
+  const organizationId = c.get("organizationId");
+  const changeId = c.req.param("changeId");
+
+  const change = await loadChange(organizationId, changeId);
+  if (!change) return c.json({ error: "Change not found" }, 404);
+
+  const result = await buildRevertPlan(organizationId, change);
+  if (!result.ok) return revertFailureResponse(c, result.failure);
+
+  return c.json({
+    changeId: change.id,
+    resourceId: change.resourceId,
+    displayName: change.displayName,
+    pluginId: change.pluginId,
+    resourceTypeId: change.resourceTypeId,
+    accountId: change.accountId,
+    plan: result.plan,
+    revertedAt: change.revertedAt ? change.revertedAt.toISOString() : null,
+  });
+});
+
+/**
+ * Put the resource back, through the plugin's ordinary update path.
+ *
+ * Order matters and is the point of the handler:
+ *
+ * 1. permission, then the change freeze — a revert is a provider mutation like
+ *    any other, so it goes through the same gate a delete or a resize does;
+ * 2. claim the event (conditional UPDATE), which settles a race between two
+ *    reverts of the same event before either can reach the provider;
+ * 3. rebuild the plan against a *fresh* live read — anything that moved since
+ *    the preview is now a conflict and drops out of the patch;
+ * 4. write, and release the claim on any failure so the attempt is retryable.
+ *
+ * The stored `resources` snapshot is deliberately left alone (unlike
+ * `POST /api/resources/update`), so the next poll sees the difference and
+ * records the revert as an ordinary change event.
+ */
+app.post("/:changeId/revert", async (c) => {
+  requirePermission(c, "resources:write");
+  const organizationId = c.get("organizationId");
+  const userId = (c.get("session") as { userId?: string } | undefined)?.userId;
+  const changeId = c.req.param("changeId");
+
+  const change = await loadChange(organizationId, changeId);
+  if (!change) return c.json({ error: "Change not found" }, 404);
+  if (change.revertedAt) {
+    return c.json(
+      { error: "This change has already been reverted.", code: REVERT_CONFLICT_CODE },
+      409,
+    );
+  }
+
+  const frozen = await checkChangeFreeze(c, {
+    action: "resource.change_revert",
+    entityType: "resource",
+    entityId: change.resourceId,
+    metadata: {
+      pluginId: change.pluginId,
+      resourceTypeId: change.resourceTypeId,
+      changeId: change.id,
+    },
+  });
+  if (frozen) return frozen;
+
+  const claimedAt = new Date();
+  const claimed = await claimRevert(organizationId, change.id, userId, claimedAt);
+  if (!claimed) {
+    return c.json(
+      {
+        error: "Another revert of this change is already in flight or has completed.",
+        code: REVERT_CONFLICT_CODE,
+      },
+      409,
+    );
+  }
+
+  const result = await buildRevertPlan(organizationId, change);
+  if (!result.ok) {
+    await releaseRevert(organizationId, change.id);
+    return revertFailureResponse(c, result.failure);
+  }
+  const plan = result.plan;
+  const patch = buildRevertPatch(plan);
+  if (Object.keys(patch).length === 0) {
+    await releaseRevert(organizationId, change.id);
+    return c.json(
+      {
+        error: plan.blockedReason ?? "Nothing about this change can be reverted.",
+        plan,
+      },
+      409,
+    );
+  }
+
+  const ctx = await getClientForAccount(change.accountId, organizationId);
+  if (!ctx?.client.updateResource) {
+    await releaseRevert(organizationId, change.id);
+    return c.json({ error: "The account this change belongs to no longer exists" }, 404);
+  }
+
+  try {
+    await ctx.client.updateResource(
+      change.resourceTypeId,
+      change.resourceId,
+      change.accountId,
+      patch,
+    );
+  } catch (err) {
+    await releaseRevert(organizationId, change.id);
+    const message = err instanceof Error ? err.message : "The revert failed";
+    return c.json({ error: message }, 400);
+  }
+
+  void logAudit({
+    organizationId,
+    userId,
+    action: "resource.change_revert",
+    entityType: "resource",
+    entityId: change.resourceId,
+    metadata: {
+      changeId: change.id,
+      pluginId: change.pluginId,
+      resourceTypeId: change.resourceTypeId,
+      // Keys only, like `resource.update` — a reverted value can be anything
+      // the plugin declared, and the audit table is not the place for it.
+      fieldKeys: plan.revertibleFields,
+      changeRecordedAt: change.createdAt.toISOString(),
+    },
+  });
+
+  return c.json({
+    changeId: change.id,
+    resourceId: change.resourceId,
+    appliedFields: plan.revertibleFields,
+    plan,
+    revertedAt: claimedAt.toISOString(),
+  });
 });
 
 export { app as resourceChangeRoutes };
