@@ -28,7 +28,12 @@ import { loadPlugins } from "../plugin-loader";
 import { NetworkFlowSetupError } from "@infrawrench/plugin-base";
 
 import { collectAccountNetworkFlows, type NetworkFlowCollectionResult } from "./collect";
-import { NETWORK_FLOW_LEASE_MS, NetworkFlowLeaseLostError, startNetworkFlowLease } from "./lease";
+import {
+  NETWORK_FLOW_LEASE_MS,
+  NetworkFlowLeaseLostError,
+  startNetworkFlowLease,
+  type NetworkFlowLease,
+} from "./lease";
 
 export {
   NETWORK_FLOW_HEARTBEAT_MS,
@@ -144,15 +149,25 @@ function jittered(base: number, jitter: number): Date {
  * release. Matching zero rows is the correct outcome there: the new holder
  * records the run it actually performed.
  *
- * `expiresAt` is null only when the claim did not hand back a deadline, in
- * which case there is nothing to fence with and the write is unconditional,
- * exactly as it was before renewal existed.
+ * **The lease is asked for the token, and is never handed one.** It renews
+ * itself, so the only deadline that fences anything is the one it holds at the
+ * moment of the write; a `Date` captured earlier — at the claim, or before the
+ * last renewal — names a value the row has already stopped having, and fencing
+ * on it drops the very write this function exists to protect. Taking the lease
+ * rather than a deadline is what stops that being reintroduced by a caller
+ * reaching for the nearest `Date` in scope. Await `lease.stop()` first: until
+ * it resolves, a renewal may still be on its way to the database.
+ *
+ * The deadline is null only when the claim did not hand one back, in which case
+ * there is nothing to fence with and the write is unconditional, exactly as it
+ * was before renewal existed.
  */
-function fencedWhere(claimed: ClaimedNetworkFlowAccount, expiresAt: Date | null) {
+function fencedWhere(claimed: ClaimedNetworkFlowAccount, lease: NetworkFlowLease) {
   const where = and(
     eq(accountNetworkFlowPolls.accountId, claimed.accountId),
     eq(accountNetworkFlowPolls.organizationId, claimed.organizationId),
   );
+  const expiresAt = lease.expiresAt;
   if (!expiresAt) return where;
   return and(where, eq(accountNetworkFlowPolls.nextPollAt, expiresAt));
 }
@@ -170,8 +185,8 @@ async function runOne(claimed: ClaimedNetworkFlowAccount): Promise<void> {
   } catch (e) {
     // Before anything else: the heartbeat must not outlive the work it was
     // guarding, and the fence below has to read a deadline that has stopped
-    // moving.
-    lease.stop();
+    // moving — hence awaiting, which also waits out a renewal in flight.
+    await lease.stop();
     if (e instanceof NetworkFlowLeaseLostError) {
       // Deliberately no write at all. The row belongs to whichever replica
       // claimed it after our lease lapsed; recording a failure here would
@@ -194,12 +209,15 @@ async function runOne(claimed: ClaimedNetworkFlowAccount): Promise<void> {
         lastError: message.slice(0, 1000),
         lastErrorHelpUrl: setup ? ((e as NetworkFlowSetupError).helpUrl ?? null) : null,
       })
-      .where(fencedWhere(claimed, lease.expiresAt));
+      .where(fencedWhere(claimed, lease));
     console.error(`[network-flow] account ${claimed.accountId} failed:`, message);
     return;
   }
 
-  lease.stop();
+  // Awaited for the same reason as above: a renewal that lands after this write
+  // would leave the row holding a lease rather than tomorrow's schedule, and
+  // the account would come due again and re-run the whole billable scan.
+  await lease.stop();
   await db
     .update(accountNetworkFlowPolls)
     .set({
@@ -211,7 +229,7 @@ async function runOne(claimed: ClaimedNetworkFlowAccount): Promise<void> {
       lastSources: result.sources,
       lastQueryBytesScanned: Math.min(result.queryBytesScanned, 2_147_483_647),
     })
-    .where(fencedWhere(claimed, lease.expiresAt));
+    .where(fencedWhere(claimed, lease));
   if (result.daysCollected > 0) {
     console.log(
       `[network-flow] account ${claimed.accountId}: ${result.daysCollected} day(s), ` +

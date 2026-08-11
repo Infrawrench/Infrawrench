@@ -41,7 +41,13 @@
  *   returns false once the budget is spent and the collector stops at the next
  *   day boundary, before issuing another billable query. Days already collected
  *   keep their watermark, so the remainder is simply picked up by a later pass —
- *   which is already how a backlog deeper than `MAX_DAYS_PER_PASS` drains.
+ *   which is already how a backlog deeper than `MAX_DAYS_PER_PASS` drains. That
+ *   budget being strictly shorter than {@link NETWORK_FLOW_LEASE_MS} is load
+ *   bearing, and not only as tidiness: it is what makes it safe to carry on
+ *   through a renewal that could not reach the database at all. The row still
+ *   holds a deadline at least a full lease period past the claim, the budget
+ *   runs out before that deadline can pass, so no billable query is ever issued
+ *   after the point where a second replica could have taken the account.
  * - The heartbeat bounds nothing; it just keeps renewing until {@link stop}. A
  *   single provider query that runs for hours therefore holds the lease for
  *   hours rather than letting a second replica in. That is the deliberate
@@ -76,12 +82,19 @@ export const NETWORK_FLOW_HEARTBEAT_MS = 10 * 60 * 1000;
 /**
  * How much wall-clock one account's pass gets before it stops collecting days.
  *
- * Set just inside a single lease period on purpose: in the overwhelmingly
- * common case a pass finishes without the heartbeat ever having mattered, and
- * the heartbeat is there for the one query that overshoots rather than being
- * load-bearing for every run. A pass that has spent this long on one account is
- * pathological — a hundred flow logs, or a provider having a bad day — and the
- * right answer for it is to bank the days it did collect and come back.
+ * Set just inside a single lease period on purpose, and it must stay inside
+ * one. Partly so that in the overwhelmingly common case a pass finishes without
+ * the heartbeat ever having mattered, and the heartbeat is there for the one
+ * query that overshoots rather than being load-bearing for every run. But also
+ * because it is the backstop for a lease this process can no longer confirm: a
+ * renewal that fails to execute leaves the collection running on the deadline
+ * the claim wrote, and this budget expires before that deadline can. Raise it
+ * past {@link NETWORK_FLOW_LEASE_MS} and a database outage becomes a pass that
+ * keeps spending the customer's money under a lease somebody else now holds.
+ *
+ * A pass that has spent this long on one account is pathological — a hundred
+ * flow logs, or a provider having a bad day — and the right answer for it is to
+ * bank the days it did collect and come back.
  */
 export const NETWORK_FLOW_MAX_RUNTIME_MS = 25 * 60 * 1000;
 
@@ -117,12 +130,29 @@ export interface NetworkFlowLeaseGate {
 export interface NetworkFlowLease extends NetworkFlowLeaseGate {
   /**
    * The deadline currently written in the row, or null when this lease is
-   * inert. Use it to fence any write that would otherwise trample a newer
-   * holder's claim.
+   * inert. Read it — never a copy taken earlier — to fence any write that would
+   * otherwise trample a newer holder's claim: the lease moves this forward on
+   * its own schedule, so a deadline captured before the last renewal names a
+   * value the row has already stopped having, and a fence built from it matches
+   * nothing.
+   *
+   * Stable once {@link stop} has resolved, which is the only point at which it
+   * is safe to fence with.
    */
   readonly expiresAt: Date | null;
-  /** Stop renewing. Idempotent, and safe to call from a `finally`. */
-  stop(): void;
+  /**
+   * Stop renewing, and wait for any renewal already in flight to land.
+   *
+   * Idempotent, and safe to call from a `finally`. **Await it before writing to
+   * the row.** A renewal that is in flight cannot be recalled — it is going to
+   * reach the database and move the deadline whatever this process does next —
+   * so returning while one is outstanding would leave {@link expiresAt} naming
+   * the deadline the row is about to stop having. The pass's terminal write
+   * fences on that value, and a fence that matches nothing silently drops the
+   * reschedule to tomorrow: the account then keeps only the renewed lease, comes
+   * due when it lapses, and re-runs the whole customer-billed scan.
+   */
+  stop(): Promise<void>;
 }
 
 /**
@@ -163,6 +193,29 @@ export interface NetworkFlowLeaseOptions {
   maxRuntimeMs?: number;
 }
 
+/**
+ * What one renewal attempt proved about the lease.
+ *
+ * The two failures are emphatically not the same thing, and everything the pass
+ * does next hangs off telling them apart:
+ *
+ * - `unreachable` — the renewal never executed. A connection blip, a timeout, a
+ *   failover. Nothing was written, so the deadline the last successful renewal
+ *   left is still in the row and still ours until it passes. Carry on and let
+ *   the next beat retry.
+ * - `lost` — the renewal executed and matched no row. Somebody else's deadline
+ *   is in there now. Stop, and touch nothing.
+ *
+ * Collapsing the first into the second aborts a collection, and records a
+ * failure with backoff against an account that did nothing wrong, over a
+ * database hiccup. Collapsing the second into the first is the duplicate
+ * customer charge this whole file exists to prevent.
+ */
+type RenewalOutcome =
+  | { readonly status: "renewed" }
+  | { readonly status: "lost" }
+  | { readonly status: "unreachable"; readonly error: unknown };
+
 class LeaseKeeper implements NetworkFlowLease {
   #expiresAt: Date | null;
   #lost = false;
@@ -177,8 +230,11 @@ class LeaseKeeper implements NetworkFlowLease {
    * would have the second one match nothing and conclude — wrongly, and
    * expensively, since it stops a collection this replica does still own — that
    * the lease was lost. So the second caller joins the first instead.
+   *
+   * It is also what {@link stop} waits on, so it must settle rather than
+   * reject: see {@link RenewalOutcome}.
    */
-  #inFlight: Promise<Date | null> | null = null;
+  #inFlight: Promise<RenewalOutcome> | null = null;
   readonly #deadline: number;
   readonly #heartbeatMs: number;
 
@@ -198,9 +254,17 @@ class LeaseKeeper implements NetworkFlowLease {
     return this.#expiresAt;
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
+    // Synchronous first, so that a caller who does not await still stops the
+    // beating: neither renewal path starts anything new once this is set, which
+    // is also why the loop below terminates.
     this.#stopped = true;
     this.#clearTimer();
+    // Then wait out the renewal that is already on its way to the database. It
+    // cannot be recalled, and it is about to move the deadline; returning now
+    // would hand the pass a fence token the row is one round trip away from no
+    // longer matching. See {@link NetworkFlowLease.stop}.
+    while (this.#inFlight) await this.#inFlight;
   }
 
   async checkpoint(): Promise<boolean> {
@@ -213,24 +277,67 @@ class LeaseKeeper implements NetworkFlowLease {
     // heartbeat that may have last run minutes ago — or, if the event loop was
     // starved, not at all.
     this.#clearTimer();
-    const renewed = await this.#renew();
-    if (renewed === null) {
-      this.#lost = true;
-      throw new NetworkFlowLeaseLostError(this.accountId);
-    }
+    if (!this.#stillHeld(await this.#renew())) throw new NetworkFlowLeaseLostError(this.accountId);
     if (!this.#stopped) this.#schedule();
     return true;
   }
 
-  /** One renewal at a time; later callers join the one already running. */
-  #renew(): Promise<Date | null> {
+  /**
+   * The one place either path decides what a renewal outcome means, and the
+   * only place `#lost` is set.
+   *
+   * The two used to classify separately and duly drifted: the heartbeat rode
+   * out a renewal that failed to execute, while `checkpoint` let the same
+   * exception escape into the pass, which could only read it as an account
+   * failure — aborting the collection and pushing the account's backoff out
+   * over a database blip the account had nothing to do with. Returns whether
+   * the lease is still ours; how that gets reported is each caller's business,
+   * since only one of them has somebody to throw to.
+   */
+  #stillHeld(outcome: RenewalOutcome): boolean {
+    if (outcome.status === "lost") {
+      this.#lost = true;
+      return false;
+    }
+    if (outcome.status === "unreachable") {
+      // Not a lost lease: the deadline is still in the row and still ours until
+      // it passes. Try again on the next beat. If the database stays
+      // unreachable the lease simply lapses, which is the safe direction —
+      // NETWORK_FLOW_MAX_RUNTIME_MS ends the pass before that can happen, so
+      // nothing billable is issued under a lease this process cannot confirm,
+      // and the account is freed rather than silently held.
+      console.error(
+        `[network-flow] account ${this.accountId}: lease renewal failed:`,
+        outcome.error instanceof Error ? outcome.error.message : String(outcome.error),
+      );
+    }
+    return true;
+  }
+
+  /**
+   * One renewal at a time; later callers join the one already running.
+   *
+   * Settles rather than rejects, so that joining a renewal cannot turn into a
+   * second copy of the same error and so that {@link stop} can await it without
+   * having to care.
+   *
+   * The new deadline is adopted here, inside the chain, rather than by whoever
+   * inspects the outcome afterwards. That is what lets `stop()` await this
+   * promise and know `#expiresAt` has already moved: an awaiter cannot resume
+   * before the `then` that assigned it has run.
+   */
+  #renew(): Promise<RenewalOutcome> {
     if (this.#inFlight) return this.#inFlight;
     const expected = this.#expiresAt!;
     const pending = renewNetworkFlowLease(this.accountId, this.organizationId, expected)
-      .then((renewed) => {
-        if (renewed !== null) this.#expiresAt = renewed;
-        return renewed;
-      })
+      .then(
+        (renewed): RenewalOutcome => {
+          if (renewed === null) return { status: "lost" };
+          this.#expiresAt = renewed;
+          return { status: "renewed" };
+        },
+        (error: unknown): RenewalOutcome => ({ status: "unreachable", error }),
+      )
       .finally(() => {
         this.#inFlight = null;
       });
@@ -254,31 +361,18 @@ class LeaseKeeper implements NetworkFlowLease {
   async #beat(): Promise<void> {
     this.#timer = null;
     if (this.#stopped || this.#lost || !this.#expiresAt) return;
-    try {
-      const renewed = await this.#renew();
-      if (this.#stopped) return;
-      if (renewed === null) {
-        // Only the next checkpoint can actually stop the work — there is no way
-        // to abort a provider call already in flight — but from here on nothing
-        // new is started and nothing is written.
-        this.#lost = true;
-        console.warn(
-          `[network-flow] account ${this.accountId}: lease lost mid-collection, stopping at the next day boundary`,
-        );
-        return;
-      }
-    } catch (e) {
-      // A renewal that failed to *execute* is not a lost lease: the deadline is
-      // still in the row and still ours until it passes. Try again on the next
-      // beat. If the database stays unreachable the lease simply lapses, which
-      // is the safe direction — the collection then loses its next checkpoint
-      // too, and the account is freed rather than silently held.
-      console.error(
-        `[network-flow] account ${this.accountId}: lease renewal failed:`,
-        e instanceof Error ? e.message : String(e),
+    const held = this.#stillHeld(await this.#renew());
+    if (this.#stopped) return;
+    if (!held) {
+      // Only the next checkpoint can actually stop the work — there is no way
+      // to abort a provider call already in flight — but from here on nothing
+      // new is started and nothing is written.
+      console.warn(
+        `[network-flow] account ${this.accountId}: lease lost mid-collection, stopping at the next day boundary`,
       );
+      return;
     }
-    if (!this.#stopped && !this.#lost) this.#schedule();
+    this.#schedule();
   }
 }
 
