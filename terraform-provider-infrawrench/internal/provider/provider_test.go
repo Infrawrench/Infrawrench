@@ -10,6 +10,16 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 )
 
+// wantResources and wantDataSources are the registry's expected size, asserted
+// from two directions — the Go constructors here, and the served gRPC schema in
+// schema_validation_test.go. They are deliberately hand-maintained: the number
+// is the reminder that adding a resource also means adding a row to the
+// README's table and to the docs page, neither of which any test can check.
+const (
+	wantResources   = 45
+	wantDataSources = 6
+)
+
 // These are unit tests over the provider's wiring, not acceptance tests: nothing
 // here talks to an Infrawrench installation. They exist because the framework
 // checks most of this at gRPC serve time, where a mistake surfaces as a cryptic
@@ -52,12 +62,12 @@ func TestResourcesAndDataSourcesConstruct(t *testing.T) {
 	p := New("test")()
 
 	resources := p.Resources(ctx)
-	if len(resources) != 11 {
-		t.Errorf("provider exposes %d resources, want 11", len(resources))
+	if len(resources) != wantResources {
+		t.Errorf("provider exposes %d resources, want %d", len(resources), wantResources)
 	}
 	dataSources := p.DataSources(ctx)
-	if len(dataSources) != 3 {
-		t.Errorf("provider exposes %d data sources, want 3", len(dataSources))
+	if len(dataSources) != wantDataSources {
+		t.Errorf("provider exposes %d data sources, want %d", len(dataSources), wantDataSources)
 	}
 
 	// A duplicated TypeName is a real bug — the second registration silently

@@ -46,11 +46,14 @@ func TestGetProviderSchemaIsValid(t *testing.T) {
 	if resp.Provider == nil {
 		t.Fatal("the provider schema is missing")
 	}
-	if len(resp.ResourceSchemas) != 11 {
-		t.Errorf("expected 11 resource schemas, got %d", len(resp.ResourceSchemas))
+	// Counts, not just names: a resource added to the registry and forgotten in
+	// the README's table, the docs page and this number is the failure mode this
+	// guards. Bump all four together.
+	if len(resp.ResourceSchemas) != wantResources {
+		t.Errorf("expected %d resource schemas, got %d", wantResources, len(resp.ResourceSchemas))
 	}
-	if len(resp.DataSourceSchemas) != 3 {
-		t.Errorf("expected 3 data source schemas, got %d", len(resp.DataSourceSchemas))
+	if len(resp.DataSourceSchemas) != wantDataSources {
+		t.Errorf("expected %d data source schemas, got %d", wantDataSources, len(resp.DataSourceSchemas))
 	}
 
 	for name := range resp.ResourceSchemas {

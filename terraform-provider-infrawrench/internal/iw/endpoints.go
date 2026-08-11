@@ -440,6 +440,227 @@ func (c *Client) DeleteCostExport(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/cost-exports/"+seg(id))
 }
 
+/* ----------------------------- business metrics ---------------------------- */
+
+// ListBusinessMetrics unwraps the {"metrics": […]} envelope.
+func (c *Client) ListBusinessMetrics(ctx context.Context) ([]BusinessMetric, error) {
+	var envelope struct {
+		Metrics []BusinessMetric `json:"metrics"`
+	}
+	if err := c.Get(ctx, "/business-metrics", &envelope); err != nil {
+		return nil, err
+	}
+	return envelope.Metrics, nil
+}
+
+func (c *Client) GetBusinessMetric(ctx context.Context, id string) (*BusinessMetric, error) {
+	var out BusinessMetric
+	if err := c.Get(ctx, "/business-metrics/"+seg(id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CreateBusinessMetric(ctx context.Context, in BusinessMetricInput) (*BusinessMetric, error) {
+	var out BusinessMetric
+	if err := c.Post(ctx, "/business-metrics", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateBusinessMetric(ctx context.Context, id string, in BusinessMetricInput) (*BusinessMetric, error) {
+	var out BusinessMetric
+	if err := c.Put(ctx, "/business-metrics/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteBusinessMetric(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/business-metrics/"+seg(id))
+}
+
+/* ----------------------------- cost annotations ---------------------------- */
+
+// ListCostAnnotations unwraps the {"annotations": […]} envelope.
+func (c *Client) ListCostAnnotations(ctx context.Context) ([]CostAnnotation, error) {
+	var envelope struct {
+		Annotations []CostAnnotation `json:"annotations"`
+	}
+	if err := c.Get(ctx, "/cost-annotations", &envelope); err != nil {
+		return nil, err
+	}
+	return envelope.Annotations, nil
+}
+
+// GetCostAnnotation lists and filters — there is no single-GET route.
+func (c *Client) GetCostAnnotation(ctx context.Context, id string) (*CostAnnotation, error) {
+	all, err := c.ListCostAnnotations(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if all[i].ID == id {
+			return &all[i], nil
+		}
+	}
+	return nil, notFound(http.MethodGet, "/cost-annotations", id)
+}
+
+func (c *Client) CreateCostAnnotation(ctx context.Context, in CostAnnotationInput) (*CostAnnotation, error) {
+	var out CostAnnotation
+	if err := c.Post(ctx, "/cost-annotations", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateCostAnnotation(ctx context.Context, id string, in CostAnnotationInput) (*CostAnnotation, error) {
+	var out CostAnnotation
+	if err := c.Put(ctx, "/cost-annotations/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteCostAnnotation(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/cost-annotations/"+seg(id))
+}
+
+/* -------------------------- report notifications --------------------------- */
+//
+// These hang off a report rather than off the org, so every wrapper takes the
+// report id as well. That is also why the Terraform resource imports under a
+// composite "reportId/notificationId" address: the notification id alone cannot
+// be turned back into a URL.
+
+func (c *Client) ListReportNotifications(ctx context.Context, reportID string) ([]ReportNotification, error) {
+	var out []ReportNotification
+	err := c.Get(ctx, "/cost-reports/"+seg(reportID)+"/notifications", &out)
+	return out, err
+}
+
+// GetReportNotification lists a report's schedules and filters — there is no
+// single-GET route for one schedule.
+func (c *Client) GetReportNotification(ctx context.Context, reportID, id string) (*ReportNotification, error) {
+	all, err := c.ListReportNotifications(ctx, reportID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if all[i].ID == id {
+			return &all[i], nil
+		}
+	}
+	return nil, notFound(http.MethodGet, "/cost-reports/"+seg(reportID)+"/notifications", id)
+}
+
+func (c *Client) CreateReportNotification(ctx context.Context, reportID string, in ReportNotificationInput) (*ReportNotification, error) {
+	var out ReportNotification
+	if err := c.Post(ctx, "/cost-reports/"+seg(reportID)+"/notifications", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateReportNotification(ctx context.Context, reportID, id string, in ReportNotificationInput) (*ReportNotification, error) {
+	var out ReportNotification
+	if err := c.Put(ctx, "/cost-reports/"+seg(reportID)+"/notifications/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteReportNotification(ctx context.Context, reportID, id string) error {
+	return c.Delete(ctx, "/cost-reports/"+seg(reportID)+"/notifications/"+seg(id))
+}
+
+/* ------------------------------ cost settings ------------------------------ */
+
+func (c *Client) GetAnomalySettings(ctx context.Context) (*CostAnomalySettings, error) {
+	var out CostAnomalySettings
+	if err := c.Get(ctx, "/costs/anomaly-settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutAnomalySettings(ctx context.Context, in CostAnomalySettings) (*CostAnomalySettings, error) {
+	var out CostAnomalySettings
+	// SMSConfigured is derived and rejected by the strict PUT schema, so it is
+	// cleared here rather than trusted to every caller.
+	in.SMSConfigured = nil
+	if err := c.Put(ctx, "/costs/anomaly-settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) GetEfficiencySettings(ctx context.Context) (*CostEfficiencySettings, error) {
+	var out CostEfficiencySettings
+	if err := c.Get(ctx, "/costs/efficiency-alert-settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutEfficiencySettings(ctx context.Context, in CostEfficiencySettings) (*CostEfficiencySettings, error) {
+	var out CostEfficiencySettings
+	if err := c.Put(ctx, "/costs/efficiency-alert-settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+/* --------------------------------- currency -------------------------------- */
+
+func (c *Client) GetCurrencyConfig(ctx context.Context) (*CurrencyConfig, error) {
+	var out CurrencyConfig
+	if err := c.Get(ctx, "/currency", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutCurrencySettings(ctx context.Context, in CurrencySettings) (*CurrencySettings, error) {
+	var out CurrencySettings
+	if err := c.Put(ctx, "/currency", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// UpsertExchangeRate creates or replaces one rate. The route is keyed on
+// (from, to, effectiveFrom), so restating a rate for a day it already covers
+// replaces it rather than adding a second one the reader has to choose between.
+func (c *Client) UpsertExchangeRate(ctx context.Context, in ExchangeRateInput) (*ExchangeRate, error) {
+	var out ExchangeRate
+	if err := c.Put(ctx, "/currency/rates", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetExchangeRate reads the whole rate table and filters — rates are only ever
+// returned as part of the currency config.
+func (c *Client) GetExchangeRate(ctx context.Context, id string) (*ExchangeRate, error) {
+	config, err := c.GetCurrencyConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range config.Rates {
+		if config.Rates[i].ID == id {
+			return &config.Rates[i], nil
+		}
+	}
+	return nil, notFound(http.MethodGet, "/currency", id)
+}
+
+func (c *Client) DeleteExchangeRate(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/currency/rates/"+seg(id))
+}
+
 /* --------------------------- read-only reference --------------------------- */
 
 func (c *Client) ListAccounts(ctx context.Context) ([]Account, error) {

@@ -148,8 +148,14 @@ func (p *infrawrenchProvider) Configure(ctx context.Context, req provider.Config
 	resp.DataSourceData = client
 }
 
+// Resources is the registry, grouped the way the README's table is.
+//
+// Ordering here is cosmetic — Terraform indexes by type name — but keeping the
+// groups together is what stops a new resource being added to the file and
+// forgotten in the documentation.
 func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
+		// Cost allocation and reporting.
 		NewBudgetResource,
 		NewCostCentreResource,
 		NewAllocationRuleResource,
@@ -157,10 +163,52 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewSavedFilterResource,
 		NewCostReportResource,
 		NewCostReportFolderResource,
+		NewCostReportNotificationResource,
 		NewCostAlertResource,
+		NewCostAnnotationResource,
 		NewScenarioModelResource,
 		NewBillingRuleResource,
 		NewCostExportResource,
+		NewBusinessMetricResource,
+		NewManagedAccountResource,
+		NewCurrencySettingsResource,
+		NewExchangeRateResource,
+		NewAnomalySettingsResource,
+		NewEfficiencyAlertSettingsResource,
+
+		// Monitoring.
+		NewProbeResource,
+		NewStatusPageResource,
+		NewMetricAlertResource,
+		NewLogQueryResource,
+		NewCustomGraphResource,
+
+		// Lifecycle governance.
+		NewScheduleResource,
+		NewChangeFreezeResource,
+		NewDriftAlertSettingsResource,
+		NewExpiryAlertSettingsResource,
+		NewPostureAlertSettingsResource,
+		NewSessionRecordingSettingsResource,
+
+		// Accounts and access.
+		NewAccountResource,
+		NewBastionResource,
+		NewRoleResource,
+		NewAPIKeyResource,
+		NewSSHKeyResource,
+		NewSSHSnippetResource,
+		NewDeployTriggerResource,
+		NewWorkflowScheduleResource,
+
+		// Alert delivery.
+		NewAlertRoutingResource,
+		NewSlackChannelResource,
+		NewMSTeamsWebhookResource,
+		NewDigestSettingsResource,
+		NewDigestRecipientResource,
+		NewJiraIntegrationResource,
+		NewLinearIntegrationResource,
 	}
 }
 
@@ -169,6 +217,9 @@ func (p *infrawrenchProvider) DataSources(_ context.Context) []func() datasource
 		NewAccountsDataSource,
 		NewPluginsDataSource,
 		NewCostCentresDataSource,
+		NewResourcesDataSource,
+		NewPermissionsDataSource,
+		NewSlackInstallationsDataSource,
 	}
 }
 

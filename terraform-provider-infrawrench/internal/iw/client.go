@@ -108,11 +108,21 @@ func (c *Client) Post(ctx context.Context, path string, body, out any) error {
 
 // Put sends body as JSON and decodes the response into out. out may be nil.
 //
-// Every write in this API is a PUT full-replace; there is no PATCH anywhere on
-// the configuration surface, which is why the wire structs below are explicit
-// about which fields are omitted versus sent as null.
+// Most writes on this API are PUT full-replaces, which is why the wire structs
+// are explicit about which fields are omitted versus sent as null.
 func (c *Client) Put(ctx context.Context, path string, body, out any) error {
 	return c.do(ctx, http.MethodPut, path, body, out)
+}
+
+// Patch sends body as JSON and decodes the response into out. out may be nil.
+//
+// A handful of routes outside cost management are genuine partial updates
+// rather than replaces — accounts, roles, Slack channels, Teams webhooks and
+// deploy triggers. For those the wire struct's omitted keys mean "leave alone",
+// which is the opposite of what an omitted key means on a PUT, so the two verbs
+// are kept visibly distinct rather than papered over here.
+func (c *Client) Patch(ctx context.Context, path string, body, out any) error {
+	return c.do(ctx, http.MethodPatch, path, body, out)
 }
 
 // Delete issues DELETE path. A 404 is returned as an APIError the caller can
