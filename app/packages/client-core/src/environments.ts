@@ -771,6 +771,46 @@ export function attemptedPositionCeiling(
   return highest + 1;
 }
 
+/**
+ * Does this member hold a resource with **no clock on it**?
+ *
+ * The question the lease-repair pass actually asks, and it keys on
+ * `resourceId` rather than on `status`. Filtering on `status === "created"`
+ * looked equivalent and was not: a member whose rollback failed is `failed`
+ * while its resource is very much alive, so that filter let state 6 (see the
+ * table in `instantiate.ts`) run past its mandatory TTL with nothing watching
+ * it. Status only correlates with "a resource exists"; the id is the fact.
+ */
+export function memberNeedsLeaseRepair(member: {
+  status: EnvironmentMemberStatus;
+  resourceId: string | null;
+  leaseId: string | null;
+}): boolean {
+  if (member.status === "pending" || member.status === "deleted") return false;
+  return member.resourceId !== null && member.leaseId === null;
+}
+
+/**
+ * A deadline a lease will accept.
+ *
+ * Leases must expire in the future (`validateLeaseInput`), so a member found
+ * after its instance already expired would be un-leasable — which is the one
+ * outcome this whole path exists to prevent. It gets a short grace window
+ * instead; the lease pass still announces before it deletes, just on a
+ * compressed schedule.
+ */
+export function leaseDeadlineFor(
+  preferred: Date | string,
+  now: number = Date.now(),
+  graceMs = 5 * 60_000,
+): Date {
+  const preferredMs = preferred instanceof Date ? preferred.getTime() : Date.parse(preferred);
+  const floor = now + graceMs;
+  return !Number.isNaN(preferredMs) && preferredMs > floor
+    ? new Date(preferredMs)
+    : new Date(floor);
+}
+
 export function classifyTeardownMember(
   member: { status: EnvironmentMemberStatus; resourceId: string | null; position: number },
   attemptedCeiling: number,
@@ -805,15 +845,27 @@ export type MemberTeardownOutcome =
  * - **Rolling back a member whose TTL could not be attached** is a *certain*
  *   identity — the provider handed us the id seconds earlier — so it deletes.
  * - **Recovering a member with no recorded id** is an *inferred* identity, and
- *   a display name is not an identity. It deletes only with the corroboration
- *   below, and otherwise reports the resource for a human.
+ *   a display name is not an identity. It deletes only on positive
+ *   corroboration, and otherwise reports the resource for a human.
  *
- * `createdAt` is necessary but nowhere near sufficient on its own: it is a
- * required field on `ResourceInstance`, so listers whose provider exposes no
- * creation time fill it with the time of the call. Such a resource always
- * looks freshly created. The load-bearing signal is therefore our **own**
- * inventory — a `resources` row that predates this environment is a fact no
- * plugin can fabricate.
+ * **The provider's `createdAt` can only ever veto, never authorise.** It is a
+ * required field on `ResourceInstance`, so the many listers whose provider
+ * exposes no creation time fill it with the time of the call — for those types
+ * every candidate looks freshly created, which is precisely the unrelated
+ * same-name resource this is meant to protect. Treating a fresh-looking
+ * timestamp as evidence would green-light exactly the wrong case, so it is
+ * only consulted to *reject*.
+ *
+ * The one signal that authorises a delete is therefore **our own inventory**:
+ * a `resources` row for the candidate, first written at or after this
+ * environment started. That is the poller having independently observed the
+ * resource appear during the instantiation, and no plugin can fabricate it.
+ * Its **absence is not evidence** — it is the ordinary state for a member
+ * whose bookkeeping failed — so no row means `needs-attention`, not a delete.
+ *
+ * The deliberate consequence: recovery leaves more resources alive than a
+ * looser rule would. They are reported by name on a `partial` instance rather
+ * than silently abandoned, which is the trade this rule exists to make.
  */
 export interface RecoveryCandidate {
   /** The provider's own id, when the lister supplies one. */
@@ -859,27 +911,29 @@ export function classifyRecoveryCandidate(
     return { action: "needs-attention", reason: "it belongs to another environment" };
   }
 
-  // Our own inventory, and the one signal a plugin cannot fake. A resource we
-  // were already tracking before this environment existed is not ours.
-  if (candidate.knownSince != null) {
-    const known = Date.parse(candidate.knownSince);
-    if (!Number.isNaN(known) && known < startedAt - RECOVERY_SKEW_MS) {
-      return { action: "needs-attention", reason: "it existed before this environment did" };
-    }
+  // The provider's own timestamp gets to veto and nothing more. For every type
+  // whose lister has no real creation time to report this reads as "just now",
+  // so it can never be the reason a delete goes ahead.
+  const created = candidate.createdAt === undefined ? Number.NaN : Date.parse(candidate.createdAt);
+  if (!Number.isNaN(created) && created < startedAt - RECOVERY_SKEW_MS) {
+    return { action: "needs-attention", reason: "the provider dates it before this environment" };
   }
 
-  // A lister with no real creation time reports the moment it was called, so
-  // an unparseable one is the *only* case this can catch — but a provider that
-  // does report honestly must not be ignored.
-  const created = candidate.createdAt === undefined ? Number.NaN : Date.parse(candidate.createdAt);
-  if (Number.isNaN(created)) {
+  // The only signal that authorises a delete: we have our own row for this
+  // resource, first written at or after the environment started — the poller
+  // independently watching it appear during the instantiation.
+  if (candidate.knownSince == null) {
     return {
       action: "needs-attention",
-      reason: "the provider reports no creation time to check it against",
+      reason: "nothing but its name connects it to this environment",
     };
   }
-  if (created < startedAt - RECOVERY_SKEW_MS) {
-    return { action: "needs-attention", reason: "it predates this environment" };
+  const known = Date.parse(candidate.knownSince);
+  if (Number.isNaN(known)) {
+    return { action: "needs-attention", reason: "we cannot tell when we first saw it" };
+  }
+  if (known < startedAt - RECOVERY_SKEW_MS) {
+    return { action: "needs-attention", reason: "it existed before this environment did" };
   }
 
   return { action: "delete" };

@@ -10,7 +10,9 @@ import {
   classifyRecoveryCandidate,
   classifyTeardownMember,
   expectedMemberDisplayName,
+  leaseDeadlineFor,
   leaseShouldBeCancelled,
+  memberNeedsLeaseRepair,
   formatTimeRemaining,
   memberDependencies,
   normalizeEnvironmentSettings,
@@ -665,6 +667,67 @@ describe("attemptedPositionCeiling / classifyTeardownMember", () => {
   });
 });
 
+describe("memberNeedsLeaseRepair", () => {
+  it("ignores members that never created anything", () => {
+    expect(memberNeedsLeaseRepair({ status: "pending", resourceId: null, leaseId: null })).toBe(
+      false,
+    );
+    expect(memberNeedsLeaseRepair({ status: "failed", resourceId: null, leaseId: null })).toBe(
+      false,
+    );
+  });
+
+  it("ignores members that already have a clock on them", () => {
+    expect(memberNeedsLeaseRepair({ status: "created", resourceId: "r", leaseId: "l" })).toBe(
+      false,
+    );
+  });
+
+  it("ignores members that are already gone", () => {
+    expect(memberNeedsLeaseRepair({ status: "deleted", resourceId: "r", leaseId: null })).toBe(
+      false,
+    );
+  });
+
+  it("repairs a created member whose lease id never landed", () => {
+    expect(memberNeedsLeaseRepair({ status: "created", resourceId: "r", leaseId: null })).toBe(
+      true,
+    );
+  });
+
+  // Regression (state 6): a member whose rollback failed is `failed` while its
+  // resource is alive. The repair pass filtered on `status === "created"`, so
+  // this one ran past its mandatory TTL with nothing watching it — the exact
+  // defect the rollback fix was supposed to close, one layer out.
+  it("repairs a failed member whose resource survived the rollback", () => {
+    expect(memberNeedsLeaseRepair({ status: "failed", resourceId: "r", leaseId: null })).toBe(true);
+  });
+});
+
+describe("leaseDeadlineFor", () => {
+  const now = Date.parse("2026-08-11T12:00:00Z");
+
+  it("keeps a deadline that is comfortably in the future", () => {
+    const preferred = new Date("2026-08-12T12:00:00Z");
+    expect(leaseDeadlineFor(preferred, now).toISOString()).toBe(preferred.toISOString());
+  });
+
+  // A member found after its instance expired must still get a lease: leases
+  // reject past deadlines, and "no lease" is the state this path exists to
+  // prevent.
+  it("gives a short grace window to a deadline that has already passed", () => {
+    expect(leaseDeadlineFor(new Date("2026-08-10T12:00:00Z"), now).getTime()).toBe(now + 300_000);
+  });
+
+  it("does not hand back a deadline inside the grace window", () => {
+    expect(leaseDeadlineFor(new Date(now + 1000), now).getTime()).toBe(now + 300_000);
+  });
+
+  it("falls back to the grace window for an unparseable deadline", () => {
+    expect(leaseDeadlineFor("whenever", now).getTime()).toBe(now + 300_000);
+  });
+});
+
 describe("leaseShouldBeCancelled", () => {
   it("cancels the lease once the resource is confirmed gone", () => {
     expect(leaseShouldBeCancelled("deleted")).toBe(true);
@@ -705,13 +768,47 @@ describe("classifyRecoveryCandidate", () => {
     ).toEqual({ action: "ambiguous" });
   });
 
-  it("deletes a candidate the provider and our inventory both place inside the window", () => {
+  it("deletes only when our own inventory saw it appear during the instantiation", () => {
     expect(
       classifyRecoveryCandidate(
-        [{ externalId: "a", createdAt: during, knownSince: null }],
+        [{ externalId: "a", createdAt: during, knownSince: during }],
         startedAt,
       ),
     ).toEqual({ action: "delete" });
+  });
+
+  // Regression: the deciding signal used to fall through to the provider
+  // timestamp whenever we had no row of our own. `createdAt` is required on
+  // ResourceInstance, so listers with nothing real to report fill it with the
+  // time of the call — for those types every candidate looks freshly created,
+  // and an unrelated same-name resource was authorised for deletion by a
+  // timestamp that is a sync artifact. Absence of local inventory is the
+  // ordinary state for a member whose bookkeeping failed; it is not evidence.
+  it("refuses when nothing but the name connects the resource to the environment", () => {
+    const decision = classifyRecoveryCandidate(
+      [{ externalId: "a", createdAt: during, knownSince: null }],
+      startedAt,
+    );
+    expect(decision.action).toBe("needs-attention");
+    expect(decision).toMatchObject({ reason: expect.stringContaining("nothing but its name") });
+  });
+
+  it("refuses on a fabricated-looking timestamp with no inventory behind it", () => {
+    // The exact shape of a lister that reports `new Date()` at list time.
+    expect(
+      classifyRecoveryCandidate(
+        [{ externalId: "a", createdAt: new Date().toISOString() }],
+        startedAt,
+      ).action,
+    ).toBe("needs-attention");
+  });
+
+  it("refuses when we cannot tell when we first saw it", () => {
+    const decision = classifyRecoveryCandidate(
+      [{ externalId: "a", createdAt: during, knownSince: "not a date" }],
+      startedAt,
+    );
+    expect(decision.action).toBe("needs-attention");
   });
 
   // Regression: a lone display-name match used to be treated as identity and
@@ -731,21 +828,26 @@ describe("classifyRecoveryCandidate", () => {
   // listers whose provider exposes no creation time fill it with the time of
   // the call, which always falls inside the window. Absence must not read as
   // corroboration.
-  it("refuses when the provider offers no creation time to check", () => {
-    const decision = classifyRecoveryCandidate([{ externalId: "a" }], startedAt);
-    expect(decision.action).toBe("needs-attention");
-    expect(decision).toMatchObject({ reason: expect.stringContaining("no creation time") });
+  it("refuses when the provider offers no creation time and we have no row", () => {
+    expect(classifyRecoveryCandidate([{ externalId: "a" }], startedAt).action).toBe(
+      "needs-attention",
+    );
   });
 
-  it("refuses a candidate the provider itself dates before this environment", () => {
-    const decision = classifyRecoveryCandidate([{ externalId: "a", createdAt: before }], startedAt);
+  // The provider timestamp keeps its veto even when our inventory would have
+  // authorised the delete.
+  it("lets the provider timestamp veto an otherwise corroborated candidate", () => {
+    const decision = classifyRecoveryCandidate(
+      [{ externalId: "a", createdAt: before, knownSince: during }],
+      startedAt,
+    );
     expect(decision.action).toBe("needs-attention");
-    expect(decision).toMatchObject({ reason: expect.stringContaining("predates") });
+    expect(decision).toMatchObject({ reason: expect.stringContaining("dates it before") });
   });
 
   it("refuses a resource another environment already owns", () => {
     const decision = classifyRecoveryCandidate(
-      [{ externalId: "a", createdAt: during, claimedByAnotherMember: true }],
+      [{ externalId: "a", createdAt: during, knownSince: during, claimedByAnotherMember: true }],
       startedAt,
     );
     expect(decision.action).toBe("needs-attention");
@@ -755,19 +857,24 @@ describe("classifyRecoveryCandidate", () => {
   it("tolerates a minute of clock skew but not a day of it", () => {
     expect(
       classifyRecoveryCandidate(
-        [{ externalId: "a", createdAt: "2026-08-11T11:59:45Z" }],
+        [{ externalId: "a", createdAt: during, knownSince: "2026-08-11T11:59:45Z" }],
         startedAt,
       ),
     ).toEqual({ action: "delete" });
     expect(
-      classifyRecoveryCandidate([{ externalId: "a", createdAt: "2026-08-11T11:00:00Z" }], startedAt)
-        .action,
+      classifyRecoveryCandidate(
+        [{ externalId: "a", createdAt: during, knownSince: "2026-08-11T11:00:00Z" }],
+        startedAt,
+      ).action,
     ).toBe("needs-attention");
   });
 
   it("refuses rather than deleting when the instance has no usable start time", () => {
     expect(
-      classifyRecoveryCandidate([{ externalId: "a", createdAt: during }], "whenever").action,
+      classifyRecoveryCandidate(
+        [{ externalId: "a", createdAt: during, knownSince: during }],
+        "whenever",
+      ).action,
     ).toBe("needs-attention");
   });
 });

@@ -18,12 +18,33 @@
  * provider check (`classifyTeardownMember` → `verifyAndDeleteMember`) rather
  * than as already handled. A missing id never means "nothing was created".
  *
- * **No member runs without an expiry.** The TTL is mandatory at the API
- * boundary, so a member whose lease cannot be attached would be exactly the
- * "forever" branch this feature exists not to have. `attachMemberLease` runs
- * before anything optional does and is retried; if it still fails the member is
- * **rolled back** rather than left running, and `repairMissingMemberLeases`
- * catches whatever still slips past.
+ * **No member runs without an expiry**, and the way to check that claim is to
+ * enumerate the states a member row can end a run in. `status` × `resource_id`
+ * × `lease_id`, against whether a provider resource actually exists:
+ *
+ * | # | status  | res id | lease | resource | how it happens                       | what covers it |
+ * |---|---------|--------|-------|----------|--------------------------------------|----------------|
+ * | 1 | pending | –      | –     | no       | run never reached it                 | nothing exists; teardown marks it done |
+ * | 2 | pending | –      | –     | maybe    | process died mid-create              | `failStalledInstantiations` → visible; teardown verifies |
+ * | 3 | created | set    | set   | yes      | happy path                           | **lease** |
+ * | 4 | created | set    | –     | yes      | lease landed, id-write failed        | `repairMissingMemberLeases` adopts it |
+ * | 5 | failed  | –      | –     | no       | create threw                         | nothing exists |
+ * | 6 | failed  | set    | –     | yes      | create ok, lease failed, rollback failed | `repairMissingMemberLeases` leases it, or retries the rollback |
+ * | 7 | failed  | –      | –     | no       | rollback succeeded                   | nothing exists |
+ * | 8 | failed  | set    | set   | yes      | lease attached, a later step threw   | **lease** |
+ * | 9 | failed  | set    | set   | yes      | teardown delete failed               | **lease** (kept on purpose) |
+ * |10 | failed  | –      | –     | maybe    | teardown declined to identify it     | reported by name on a `partial` instance |
+ * |11 | deleted | any    | any   | no       | torn down or auto-deleted            | terminal |
+ *
+ * Every row is leased, provably empty, or visible. **State 6 is the one that
+ * was neither** — the repair pass filtered on `status = "created"`, so a member
+ * whose rollback failed ran past its TTL with nothing watching it. That is why
+ * the pass keys on `resource_id is not null`, which is the actual question,
+ * rather than on a status that only correlates with it.
+ *
+ * State 10 is the deliberate one: see the identity rule below. It is the price
+ * of never deleting the wrong thing, and it is paid in visibility rather than
+ * silence.
  *
  * **Delete only when identity is certain; where it is not, report and leave.**
  * The rule that settles the two ways this could destroy something it did not
@@ -42,7 +63,7 @@
  * audit, all of it — rather than by a second teardown scheduler that would
  * have to relearn the same lessons.
  */
-import { and, eq, inArray, isNull, lte } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lte } from "drizzle-orm";
 import {
   attemptedPositionCeiling,
   buildInstantiationPlan,
@@ -50,7 +71,9 @@ import {
   classifyRecoveryCandidate,
   classifyTeardownMember,
   expectedMemberDisplayName,
+  leaseDeadlineFor,
   leaseShouldBeCancelled,
+  memberNeedsLeaseRepair,
   resolveMemberFields,
   resolveParameterValues,
   slugifyEnvironmentName,
@@ -780,6 +803,7 @@ export async function forgetEnvironmentInstance(
  * instances past their own deadline are considered.
  */
 export async function reconcileEnvironmentInstances(organizationId: string): Promise<void> {
+  await failStalledInstantiations(organizationId);
   await repairMissingMemberLeases(organizationId);
 
   const rows = await db
@@ -845,6 +869,10 @@ async function repairMissingMemberLeases(organizationId: string): Promise<void> 
       memberKey: environmentInstanceMembers.memberKey,
       resourceId: environmentInstanceMembers.resourceId,
       accountId: environmentInstanceMembers.accountId,
+      pluginId: environmentInstanceMembers.pluginId,
+      resourceTypeId: environmentInstanceMembers.resourceTypeId,
+      status: environmentInstanceMembers.status,
+      leaseId: environmentInstanceMembers.leaseId,
       expiresAt: environmentInstances.expiresAt,
       name: environmentInstances.name,
     })
@@ -856,7 +884,13 @@ async function repairMissingMemberLeases(organizationId: string): Promise<void> 
     .where(
       and(
         eq(environmentInstanceMembers.organizationId, organizationId),
-        eq(environmentInstanceMembers.status, "created"),
+        // Deliberately **not** `status = "created"`. A member whose rollback
+        // failed is `failed` while its resource is very much alive, and
+        // filtering on `created` is what let that state run past its TTL with
+        // nothing watching it. The question this pass asks is "does a resource
+        // exist with no clock on it", and `resource_id` is what answers it.
+        inArray(environmentInstanceMembers.status, ["created", "failed"]),
+        isNotNull(environmentInstanceMembers.resourceId),
         isNull(environmentInstanceMembers.leaseId),
         inArray(environmentInstances.status, ["creating", "active", "partial"]),
       ),
@@ -864,19 +898,77 @@ async function repairMissingMemberLeases(organizationId: string): Promise<void> 
     .limit(50);
 
   for (const orphan of orphans) {
-    if (!orphan.resourceId) continue;
-    await attachMemberLease({
-      organizationId,
-      instanceId: orphan.instanceId,
-      memberKey: orphan.memberKey,
-      resourceId: orphan.resourceId,
-      accountId: orphan.accountId,
-      expiresAt: orphan.expiresAt,
-      environmentName: orphan.name,
-    }).catch((error: unknown) => {
-      console.error("[environments] failed to repair a member's lease:", error);
-    });
+    // The SQL above is a cheap pre-filter; `memberNeedsLeaseRepair` is the
+    // authority, so the rule lives in one tested place rather than being
+    // restated in a WHERE clause that can drift away from it.
+    if (!memberNeedsLeaseRepair(orphan) || !orphan.resourceId) continue;
+    try {
+      await attachMemberLease({
+        organizationId,
+        instanceId: orphan.instanceId,
+        memberKey: orphan.memberKey,
+        resourceId: orphan.resourceId,
+        accountId: orphan.accountId,
+        // A member discovered after its instance already expired cannot be
+        // given a deadline in the past — `validateLeaseInput` rejects it — so
+        // it gets a short one instead. The lease pass still announces before
+        // it deletes; it just does so on a compressed schedule.
+        expiresAt: leaseDeadlineFor(orphan.expiresAt),
+        environmentName: orphan.name,
+      });
+    } catch (error) {
+      // The lease needs a `resources` row to point at, and the member whose
+      // bookkeeping failed before the upsert has none. There is no way to give
+      // that resource a TTL, so honour the rule the other way: it was already
+      // marked for rollback, so retry the rollback. Identity is certain — this
+      // id came back from the provider during the run.
+      console.error("[environments] could not attach a repair lease:", error);
+      const rolledBack = await rollbackCreatedMember(organizationId, {
+        accountId: orphan.accountId,
+        pluginId: orphan.pluginId,
+        resourceTypeId: orphan.resourceTypeId,
+        resourceId: orphan.resourceId,
+      });
+      if (rolledBack) {
+        await markMemberStatus(orphan.instanceId, orphan.memberKey, "deleted", null).catch(
+          () => undefined,
+        );
+      }
+    }
   }
+}
+
+/**
+ * Surface an instantiation that stopped without finishing.
+ *
+ * A process that dies mid-run leaves the instance at `creating` and its
+ * in-flight member at `pending` with no id — the one state no lease can cover,
+ * because there is nothing recorded to attach a lease to. It is instead made
+ * *visible*: the instance becomes `partial`, which is a state the page shows
+ * and teardown acts on (that member is within the attempted ceiling, so
+ * teardown checks it against the provider).
+ */
+async function failStalledInstantiations(organizationId: string): Promise<void> {
+  const cutoff = new Date(Date.now() - 30 * 60_000);
+  await db
+    .update(environmentInstances)
+    .set({
+      status: "partial",
+      error:
+        "This instantiation stopped before it finished. Tear the environment down — any " +
+        "resources it created will be checked against the provider.",
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(environmentInstances.organizationId, organizationId),
+        eq(environmentInstances.status, "creating"),
+        lte(environmentInstances.updatedAt, cutoff),
+      ),
+    )
+    .catch((error: unknown) => {
+      console.error("[environments] failed to fail a stalled instantiation:", error);
+    });
 }
 
 // ---------------------------------------------------------------------------
