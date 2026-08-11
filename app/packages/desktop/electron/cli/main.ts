@@ -42,6 +42,7 @@ import { cmdHygiene } from "./commands/hygiene";
 import { cmdCredits } from "./commands/credits";
 import { cmdCommitments } from "./commands/commitments";
 import { cmdProbes } from "./commands/probes";
+import { cmdDeclaredIncidents } from "./commands/declared-incidents";
 import { cmdStatusPages } from "./commands/status-pages";
 import { cmdOwnership } from "./commands/ownership";
 import { cmdGraph } from "./commands/graph";
@@ -149,6 +150,9 @@ COMMANDS
                       live status, 24h uptime & last latency (give an id/name for its chart)
   status-pages [name] public status pages built from your probes: what each publishes and the
                       URL it is live at (give a name/id for its components)
+  declared-incidents  incidents YOU declared (incident mode): severity, status, duration & whether
+       [id|title]     anything the declaration asked for failed (give an id/title for its joined
+                      timeline). "incidents" above is the other kind — the providers'.
   ownership [query]   who owns each resource, what it's for & its ticket (a resource absent
                       from this list is unowned; see orphans for the wasted ones)
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
@@ -529,6 +533,12 @@ export async function runCli(): Promise<void> {
       case "probes":
         // `infrawrench probes <id|name>` charts one probe's latency history.
         await cmdProbes(ctx, rest[0]);
+        break;
+      case "declared-incidents":
+        // Incidents *we* declared (incident mode), as opposed to `incidents`
+        // above, which is the provider status-page correlation. Two features,
+        // one English word; the long name is what keeps them apart.
+        await cmdDeclaredIncidents(ctx, rest[0]);
         break;
       case "status-pages":
         // `infrawrench status-pages <name|id>` details one page's components.

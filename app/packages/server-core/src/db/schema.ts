@@ -4091,3 +4091,4 @@ export * from "./agent-schema.js";
 export * from "./commitment-schema.js";
 export * from "./network-flow-schema.js";
 export * from "./quota-schema.js";
+export * from "./incident-schema.js";

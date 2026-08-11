@@ -117,6 +117,22 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns incidents list route args", () => {
+    const args = getWorkspaceNavigateArgs({ kind: "incidents" });
+    expect(args).toEqual({
+      to: "/org/$orgId/incidents",
+      params: { orgId: "test-org" },
+    });
+  });
+
+  it("returns incident detail route args when the tab remembers one", () => {
+    const args = getWorkspaceNavigateArgs({ kind: "incidents", incidentId: "inc-1" });
+    expect(args).toEqual({
+      to: "/org/$orgId/incidents/$incidentId",
+      params: { orgId: "test-org", incidentId: "inc-1" },
+    });
+  });
+
   it("returns resource route args with ssh hash (fallback without pluginId)", () => {
     const args = getWorkspaceNavigateArgs({
       kind: "resource",
@@ -258,6 +274,17 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the quotas path", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/quotas")).toEqual({ kind: "quotas" });
+  });
+
+  it("parses the incidents list path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/incidents")).toEqual({ kind: "incidents" });
+  });
+
+  it("parses an incident detail path back onto the same tab", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/incidents/inc-1")).toEqual({
+      kind: "incidents",
+      incidentId: "inc-1",
+    });
   });
 
   it("parses the chat list path", () => {

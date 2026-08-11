@@ -132,6 +132,36 @@ describe("probes tab kind", () => {
   });
 });
 
+describe("incidents tab kind", () => {
+  it("is a singleton tab id regardless of which incident is open", () => {
+    expect(getWorkspaceTabId({ kind: "incidents" })).toBe("incidents");
+    expect(getWorkspaceTabId({ kind: "incidents", incidentId: "inc-1" })).toBe("incidents");
+  });
+
+  it("falls back to the sidebar tile's title", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "incidents" })).toBe("Incidents");
+  });
+
+  it("compares by incident, so reactivation restores the one that was open", () => {
+    expect(workspaceTabTargetsEqual({ kind: "incidents" }, { kind: "incidents" })).toBe(true);
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "incidents", incidentId: "inc-1" },
+        { kind: "incidents", incidentId: "inc-1" },
+      ),
+    ).toBe(true);
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "incidents", incidentId: "inc-1" },
+        { kind: "incidents", incidentId: "inc-2" },
+      ),
+    ).toBe(false);
+    expect(
+      workspaceTabTargetsEqual({ kind: "incidents" }, { kind: "incidents", incidentId: "inc-1" }),
+    ).toBe(false);
+  });
+});
+
 describe("getWorkspaceTabFallbackTitle", () => {
   it("returns 'Dashboard' for dashboard target", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "dashboard", dashboardId: "x" })).toBe("Dashboard");

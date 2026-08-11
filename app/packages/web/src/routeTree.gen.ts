@@ -27,6 +27,7 @@ import { Route as OrgOrgIdDnsRouteImport } from './routes/org.$orgId.dns'
 import { Route as OrgOrgIdEnvironmentDiffRouteImport } from './routes/org.$orgId.environment-diff'
 import { Route as OrgOrgIdExpiringRouteImport } from './routes/org.$orgId.expiring'
 import { Route as OrgOrgIdGraphRouteImport } from './routes/org.$orgId.graph'
+import { Route as OrgOrgIdIncidentsRouteImport } from './routes/org.$orgId.incidents'
 import { Route as OrgOrgIdInvoicesRouteImport } from './routes/org.$orgId.invoices'
 import { Route as OrgOrgIdLogsRouteImport } from './routes/org.$orgId.logs'
 import { Route as OrgOrgIdMetricAlertsRouteImport } from './routes/org.$orgId.metric-alerts'
@@ -43,6 +44,7 @@ import { Route as OrgOrgIdChatIndexRouteImport } from './routes/org.$orgId.chat.
 import { Route as OrgOrgIdChatConversationIdRouteImport } from './routes/org.$orgId.chat.$conversationId'
 import { Route as OrgOrgIdCostReportsReportIdRouteImport } from './routes/org.$orgId.cost-reports.$reportId'
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
+import { Route as OrgOrgIdIncidentsIncidentIdRouteImport } from './routes/org.$orgId.incidents.$incidentId'
 import { Route as OrgOrgIdInvoicesInvoiceIdRouteImport } from './routes/org.$orgId.invoices.$invoiceId'
 import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
 import { Route as OrgOrgIdSettingsAccessRequestsRouteImport } from './routes/org.$orgId.settings.access-requests'
@@ -159,6 +161,11 @@ const OrgOrgIdGraphRoute = OrgOrgIdGraphRouteImport.update({
   path: '/graph',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
+const OrgOrgIdIncidentsRoute = OrgOrgIdIncidentsRouteImport.update({
+  id: '/incidents',
+  path: '/incidents',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
 const OrgOrgIdInvoicesRoute = OrgOrgIdInvoicesRouteImport.update({
   id: '/invoices',
   path: '/invoices',
@@ -242,6 +249,12 @@ const OrgOrgIdDashboardDashboardIdRoute =
     id: '/dashboard/$dashboardId',
     path: '/dashboard/$dashboardId',
     getParentRoute: () => OrgOrgIdRoute,
+  } as any)
+const OrgOrgIdIncidentsIncidentIdRoute =
+  OrgOrgIdIncidentsIncidentIdRouteImport.update({
+    id: '/$incidentId',
+    path: '/$incidentId',
+    getParentRoute: () => OrgOrgIdIncidentsRoute,
   } as any)
 const OrgOrgIdInvoicesInvoiceIdRoute =
   OrgOrgIdInvoicesInvoiceIdRouteImport.update({
@@ -401,6 +414,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/incidents': typeof OrgOrgIdIncidentsRouteWithChildren
   '/org/$orgId/invoices': typeof OrgOrgIdInvoicesRouteWithChildren
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
@@ -417,6 +431,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
@@ -460,6 +475,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/incidents': typeof OrgOrgIdIncidentsRouteWithChildren
   '/org/$orgId/invoices': typeof OrgOrgIdInvoicesRouteWithChildren
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
@@ -475,6 +491,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
@@ -521,6 +538,7 @@ export interface FileRoutesById {
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/incidents': typeof OrgOrgIdIncidentsRouteWithChildren
   '/org/$orgId/invoices': typeof OrgOrgIdInvoicesRouteWithChildren
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
   '/org/$orgId/metric-alerts': typeof OrgOrgIdMetricAlertsRoute
@@ -537,6 +555,7 @@ export interface FileRoutesById {
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/cost-reports/$reportId': typeof OrgOrgIdCostReportsReportIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
@@ -584,6 +603,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/incidents'
     | '/org/$orgId/invoices'
     | '/org/$orgId/logs'
     | '/org/$orgId/metric-alerts'
@@ -600,6 +620,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/api-keys'
@@ -643,6 +664,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/incidents'
     | '/org/$orgId/invoices'
     | '/org/$orgId/logs'
     | '/org/$orgId/metric-alerts'
@@ -658,6 +680,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/api-keys'
@@ -703,6 +726,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/incidents'
     | '/org/$orgId/invoices'
     | '/org/$orgId/logs'
     | '/org/$orgId/metric-alerts'
@@ -719,6 +743,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/cost-reports/$reportId'
     | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/api-keys'
@@ -885,6 +910,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdGraphRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
+    '/org/$orgId/incidents': {
+      id: '/org/$orgId/incidents'
+      path: '/incidents'
+      fullPath: '/org/$orgId/incidents'
+      preLoaderRoute: typeof OrgOrgIdIncidentsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
     '/org/$orgId/invoices': {
       id: '/org/$orgId/invoices'
       path: '/invoices'
@@ -996,6 +1028,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/org/$orgId/dashboard/$dashboardId'
       preLoaderRoute: typeof OrgOrgIdDashboardDashboardIdRouteImport
       parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/incidents/$incidentId': {
+      id: '/org/$orgId/incidents/$incidentId'
+      path: '/$incidentId'
+      fullPath: '/org/$orgId/incidents/$incidentId'
+      preLoaderRoute: typeof OrgOrgIdIncidentsIncidentIdRouteImport
+      parentRoute: typeof OrgOrgIdIncidentsRoute
     }
     '/org/$orgId/invoices/$invoiceId': {
       id: '/org/$orgId/invoices/$invoiceId'
@@ -1200,6 +1239,17 @@ const OrgOrgIdCostReportsRouteChildren: OrgOrgIdCostReportsRouteChildren = {
 const OrgOrgIdCostReportsRouteWithChildren =
   OrgOrgIdCostReportsRoute._addFileChildren(OrgOrgIdCostReportsRouteChildren)
 
+interface OrgOrgIdIncidentsRouteChildren {
+  OrgOrgIdIncidentsIncidentIdRoute: typeof OrgOrgIdIncidentsIncidentIdRoute
+}
+
+const OrgOrgIdIncidentsRouteChildren: OrgOrgIdIncidentsRouteChildren = {
+  OrgOrgIdIncidentsIncidentIdRoute: OrgOrgIdIncidentsIncidentIdRoute,
+}
+
+const OrgOrgIdIncidentsRouteWithChildren =
+  OrgOrgIdIncidentsRoute._addFileChildren(OrgOrgIdIncidentsRouteChildren)
+
 interface OrgOrgIdInvoicesRouteChildren {
   OrgOrgIdInvoicesInvoiceIdRoute: typeof OrgOrgIdInvoicesInvoiceIdRoute
 }
@@ -1279,6 +1329,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdEnvironmentDiffRoute: typeof OrgOrgIdEnvironmentDiffRoute
   OrgOrgIdExpiringRoute: typeof OrgOrgIdExpiringRoute
   OrgOrgIdGraphRoute: typeof OrgOrgIdGraphRoute
+  OrgOrgIdIncidentsRoute: typeof OrgOrgIdIncidentsRouteWithChildren
   OrgOrgIdInvoicesRoute: typeof OrgOrgIdInvoicesRouteWithChildren
   OrgOrgIdLogsRoute: typeof OrgOrgIdLogsRoute
   OrgOrgIdMetricAlertsRoute: typeof OrgOrgIdMetricAlertsRoute
@@ -1307,6 +1358,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdEnvironmentDiffRoute: OrgOrgIdEnvironmentDiffRoute,
   OrgOrgIdExpiringRoute: OrgOrgIdExpiringRoute,
   OrgOrgIdGraphRoute: OrgOrgIdGraphRoute,
+  OrgOrgIdIncidentsRoute: OrgOrgIdIncidentsRouteWithChildren,
   OrgOrgIdInvoicesRoute: OrgOrgIdInvoicesRouteWithChildren,
   OrgOrgIdLogsRoute: OrgOrgIdLogsRoute,
   OrgOrgIdMetricAlertsRoute: OrgOrgIdMetricAlertsRoute,

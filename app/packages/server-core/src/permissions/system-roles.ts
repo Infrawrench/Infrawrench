@@ -66,6 +66,12 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       // Members can see freeze windows (the banner needs the status), but
       // declaring, ending, and overriding freezes stays with admins/owners.
       "freezes:read",
+      // Both halves, for members. See the note in the catalog: an incident is
+      // declared by whoever noticed, and gating that on admin is how orgs end
+      // up with a Slack thread instead of a record. The governance side effects
+      // a declaration can request are still gated separately.
+      "incidents:read",
+      "incidents:write",
       "team:read",
       "audit:read",
       // Members are exactly who break-glass is for: ask for what you need,

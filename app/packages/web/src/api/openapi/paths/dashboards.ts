@@ -203,6 +203,7 @@ const TabTarget = strict({
     "metric-alerts",
     "probes",
     "quotas",
+    "incidents",
     "workflows",
     "deployments",
     "settings",

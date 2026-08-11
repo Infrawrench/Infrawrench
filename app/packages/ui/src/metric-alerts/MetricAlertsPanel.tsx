@@ -12,6 +12,21 @@ import type { MetricAlertsClient } from "./types.js";
 
 export interface MetricAlertsPanelProps {
   client: MetricAlertsClient;
+  /**
+   * Declare an incident from a firing, seeded with the rule name and the
+   * resource. Optional: a host that has no incidents surface (or a caller
+   * without `incidents:write`) simply omits it and the column disappears.
+   *
+   * This exists because a firing alert is one of the two places an incident
+   * actually starts, and making somebody navigate elsewhere and retype what
+   * they are looking at is how incidents end up declared in Slack instead.
+   */
+  onDeclareIncident?: (seed: {
+    title: string;
+    summary?: string;
+    resourceIds?: string[];
+    startedAt?: string;
+  }) => void;
 }
 
 function formatWhen(iso: string): string {
@@ -32,7 +47,7 @@ function formatWhen(iso: string): string {
  * firing history. Shared between web and desktop; write actions are gated on
  * the client exposing the write methods (the `CostsPanel` convention).
  */
-export function MetricAlertsPanel({ client }: MetricAlertsPanelProps) {
+export function MetricAlertsPanel({ client, onDeclareIncident }: MetricAlertsPanelProps) {
   // null = loading, [] = loaded-empty.
   const [rules, setRules] = useState<MetricAlertRuleWithStatus[] | null>(null);
   const [events, setEvents] = useState<MetricAlertEvent[] | null>(null);
@@ -208,6 +223,11 @@ export function MetricAlertsPanel({ client }: MetricAlertsPanelProps) {
                   <th scope="col" className="py-1.5 font-medium">
                     Status
                   </th>
+                  {onDeclareIncident && (
+                    <th scope="col" className="py-1.5 font-medium sr-only">
+                      Declare
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -230,6 +250,24 @@ export function MetricAlertsPanel({ client }: MetricAlertsPanelProps) {
                         </span>
                       )}
                     </td>
+                    {onDeclareIncident && (
+                      <td className="py-1.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onDeclareIncident({
+                              title: `${e.ruleName} firing on ${e.resourceName}`,
+                              summary: `Metric alert "${e.ruleName}" fired at ${Number(e.observedValue.toFixed(2))}.`,
+                              resourceIds: [e.resourceId],
+                              startedAt: e.firedAt,
+                            })
+                          }
+                          className="px-2 py-1 rounded-lg text-xs text-red-400 hover:bg-surface-sunken transition-colors"
+                        >
+                          Declare incident
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

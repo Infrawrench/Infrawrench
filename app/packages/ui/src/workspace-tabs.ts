@@ -74,6 +74,16 @@ export function quotasTabTarget(): WorkspaceTabTarget {
   return { kind: "quotas" };
 }
 
+/**
+ * Incident mode. One tab, optionally remembering which incident it was on —
+ * during an incident people flip between the timeline and everything else, and
+ * a tab per incident would bury the tab strip exactly when it is least
+ * convenient to tidy.
+ */
+export function incidentsTabTarget(incidentId?: string): WorkspaceTabTarget {
+  return { kind: "incidents", ...(incidentId ? { incidentId } : {}) };
+}
+
 export function deploymentsTabTarget(repo?: string): WorkspaceTabTarget {
   return { kind: "deployments", ...(repo ? { repo } : {}) };
 }

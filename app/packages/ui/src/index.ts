@@ -341,6 +341,7 @@ export {
   metricAlertsTabTarget,
   probesTabTarget,
   quotasTabTarget,
+  incidentsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -755,6 +756,7 @@ export { EnvironmentDiffIcon } from "./components/icons/EnvironmentDiffIcon.js";
 export { FanoutIcon } from "./components/icons/FanoutIcon.js";
 export { MetricAlertIcon } from "./components/icons/MetricAlertIcon.js";
 export { ProbesIcon } from "./components/icons/ProbesIcon.js";
+export { IncidentsIcon } from "./components/icons/IncidentsIcon.js";
 
 /**
  * SSH host-key trust handshake. Shared with mobile through client-core because
@@ -817,6 +819,7 @@ export { RecordingPlayer } from "./session-recordings/RecordingPlayer.js";
 export type { PlaybackTerminal, MountPlaybackTerminal } from "./session-recordings/terminal.js";
 export * from "./metric-alerts/index.js";
 export * from "./probes/index.js";
+export * from "./incidents/index.js";
 export * from "./savings/index.js";
 // Issue filing (Jira and Linear) — the tracker-aware provider a host mounts
 // once, and the button any findings row drops in. See issue-filing/host.tsx

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.14.0",
+    "version": "1.15.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -163,6 +163,10 @@
     {
       "name": "Quota radar",
       "description": "How close each account is to the limits its provider enforces, with the trend fitted over recent readings. Both halves of every row come from the provider — nothing is filled in from published defaults, because an account with an approved increase would otherwise read as exhausted while it has headroom. A provider with no quota API contributes nothing rather than zero."
+    },
+    {
+      "name": "Incidents",
+      "description": "Incidents the organization declares itself — not to be confused with the provider status incidents under Resources, which are somebody else's outage. Declaring records the incident and, optionally, opens a change freeze, pins the moment, announces through the org's alert routing rules and posts a public status-page update; each side effect is recorded as an artefact whose failure is stored rather than thrown, so nothing an integration does can lose the declaration. The timeline is assembled on read by joining feeds that already exist, and the postmortem export pre-fills everything except the judgement."
     },
     {
       "name": "Status pages",
@@ -2698,6 +2702,7 @@
               "metric-alerts",
               "probes",
               "quotas",
+              "incidents",
               "workflows",
               "deployments",
               "settings",
@@ -19263,6 +19268,684 @@
         ],
         "additionalProperties": false
       },
+      "IncidentArtifact": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "freeze",
+              "moment",
+              "slack",
+              "status-page"
+            ],
+            "description": "Which side effect of declaring this artefact records."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "created",
+              "failed",
+              "closed"
+            ],
+            "description": "`failed` is a stored state, not an error: declaring writes the incident first and attempts each opted-in side effect afterwards, so a Slack outage costs the announcement and never the incident. A failed artefact carries its error and can be retried."
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human label — the freeze name, the destination count."
+          },
+          "refId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Freeze id, notice id, Slack channel id…"
+          },
+          "refSecondary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Second half of a compound reference — a Slack message ts, a window width."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it failed. Null unless `status` is `failed`."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "label",
+          "refId",
+          "refSecondary",
+          "error",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "Incident": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "sev1",
+              "sev2",
+              "sev3",
+              "sev4"
+            ],
+            "description": "Severity in the ordinary sev1..sev4 register. `sev1` is a complete outage; `sev4` is cosmetic and tracked rather than paged.",
+            "example": "sev2"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "mitigated",
+              "resolved"
+            ],
+            "description": "`mitigated` is a real state, not a synonym for resolved: impact has stopped but the incident is still open for follow-up. Keeping it separate is what makes time-to-mitigate a measurement rather than a guess. Resolving runs the resolve path — the change freeze this incident opened is lifted, and the status-page update it posted is closed."
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Backdatable — people declare after they start firefighting."
+          },
+          "mitigatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "resolvedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "declaredByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "declaredByName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolvedByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "affectedResourceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Advisory. Not foreign keys — the claim must survive the resource being deleted."
+          },
+          "affectedAccountIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            }
+          },
+          "issueUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the write-up was filed, once anyone filed it."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IncidentArtifact"
+            }
+          },
+          "noteCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "severity",
+          "status",
+          "summary",
+          "startedAt",
+          "mitigatedAt",
+          "resolvedAt",
+          "declaredByUserId",
+          "declaredByName",
+          "resolvedByUserId",
+          "affectedResourceIds",
+          "affectedAccountIds",
+          "issueUrl",
+          "createdAt",
+          "updatedAt",
+          "artifacts",
+          "noteCount"
+        ],
+        "additionalProperties": false
+      },
+      "IncidentList": {
+        "type": "object",
+        "properties": {
+          "incidents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Incident"
+            }
+          }
+        },
+        "required": [
+          "incidents"
+        ],
+        "additionalProperties": false
+      },
+      "IncidentActions": {
+        "type": "object",
+        "properties": {
+          "openFreeze": {
+            "type": "boolean",
+            "description": "Open an org change freeze for the duration, lifted when the incident resolves. Defaults to false — freezing has blast radius beyond the incident. Needs `freezes:write`; without it the freeze is recorded as a failed artefact naming the permission, and the incident still stands."
+          },
+          "pinMoment": {
+            "type": "boolean",
+            "description": "Pin the moment (a timestamp and a window) so `GET /moment` is one click away. Defaults to true — it cannot fail, and the investigation always wants it."
+          },
+          "postSlack": {
+            "type": "boolean",
+            "description": "Announce through the org's alert routing rules under the `incidentAlerts` trigger, so channels, quiet hours, escalation and the acknowledge button all apply unchanged. Defaults to true. If no rule matches, the artefact fails and says so."
+          },
+          "statusPageId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Post a public update on this status page. Omitted means no public update.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "statusPageComponentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "description": "Components on that page to mark affected. Empty means the page as a whole."
+          }
+        },
+        "additionalProperties": false
+      },
+      "IncidentDeclare": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "sev1",
+              "sev2",
+              "sev3",
+              "sev4"
+            ],
+            "description": "Severity in the ordinary sev1..sev4 register. `sev1` is a complete outage; `sev4` is cosmetic and tracked rather than paged.",
+            "example": "sev2"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Defaults to now."
+          },
+          "affectedResourceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "affectedAccountIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            }
+          },
+          "actions": {
+            "$ref": "#/components/schemas/IncidentActions"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "IncidentNote": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "body": {
+            "type": "string"
+          },
+          "authorUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "authorName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the note is *about*, which may precede when it was written — a note typed at 04:00 can be dated to 03:14 and lands there on the timeline."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "body",
+          "authorUserId",
+          "authorName",
+          "occurredAt",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "IncidentDetail": {
+        "type": "object",
+        "properties": {
+          "incident": {
+            "$ref": "#/components/schemas/Incident"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IncidentNote"
+            }
+          }
+        },
+        "required": [
+          "incident",
+          "notes"
+        ],
+        "additionalProperties": false
+      },
+      "IncidentPatch": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "sev1",
+              "sev2",
+              "sev3",
+              "sev4"
+            ],
+            "description": "Severity in the ordinary sev1..sev4 register. `sev1` is a complete outage; `sev4` is cosmetic and tracked rather than paged.",
+            "example": "sev2"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "mitigated",
+              "resolved"
+            ],
+            "description": "`mitigated` is a real state, not a synonym for resolved: impact has stopped but the incident is still open for follow-up. Keeping it separate is what makes time-to-mitigate a measurement rather than a guess. Resolving runs the resolve path — the change freeze this incident opened is lifted, and the status-page update it posted is closed."
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "affectedResourceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "affectedAccountIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            }
+          },
+          "issueUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "IncidentTimelineEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "incident",
+              "note",
+              "artifact",
+              "moment",
+              "probe",
+              "metric-alert"
+            ],
+            "description": "`moment` covers everything the moment union already indexes — resource changes, deployments, cost anomalies, provider status incidents, audit entries, change freezes and workflow runs. Nothing is copied into the incident's own tables; the timeline is a join, so re-reading it reflects the record as it stands today."
+          },
+          "kind": {
+            "type": "string",
+            "description": "`<noun>.<verb>`. Open set — render unknown kinds generically."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "title": {
+            "type": "string"
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "info",
+              "warning",
+              "critical"
+            ]
+          },
+          "authorName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resourceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resourceName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pluginId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "link": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "resource",
+                  "changes",
+                  "provider-incident",
+                  "costs",
+                  "workflow-run",
+                  "deployment",
+                  "audit",
+                  "freeze",
+                  "expiring",
+                  "probe",
+                  "metric-alert",
+                  "incident"
+                ]
+              },
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "parentId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "kind",
+          "at",
+          "title",
+          "severity"
+        ],
+        "additionalProperties": false
+      },
+      "IncidentTimeline": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "description": "`resolvedAt`, or the server's clock while the incident is open."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IncidentTimelineEntry"
+            }
+          },
+          "feeds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "feed": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "ok",
+                    "omitted",
+                    "error"
+                  ]
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "feed",
+                "status"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Per-feed health, passed through from the moment union: `omitted` means the caller lacks that feed's read permission, `error` means it failed and the rest is still good."
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "incidentId",
+          "from",
+          "to",
+          "generatedAt",
+          "entries",
+          "feeds",
+          "truncated"
+        ],
+        "additionalProperties": false
+      },
+      "IncidentPostmortem": {
+        "type": "object",
+        "properties": {
+          "markdown": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "markdown",
+          "filename"
+        ],
+        "additionalProperties": false
+      },
+      "IncidentNoteCreate": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Defaults to now; backdate to place the note."
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "additionalProperties": false
+      },
       "StatusPageComponent": {
         "type": "object",
         "properties": {
@@ -22417,6 +23100,8 @@
           "freezes:read",
           "freezes:write",
           "freezes:override",
+          "incidents:read",
+          "incidents:write",
           "tag-policy:override",
           "config:read",
           "config:write",
@@ -44331,6 +45016,593 @@
         },
         "operationId": "getOrgOrgIdProbesProbeIdMetrics",
         "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/incidents": {
+      "get": {
+        "tags": [
+          "Incidents"
+        ],
+        "summary": "List declared incidents",
+        "description": "Every incident the organization has declared, newest first, each with the artefacts its declaration created — including the ones that failed.\n\n_Requires permission: `incidents:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "`open`, `mitigated`, `resolved`, or `all` (the default)."
+            },
+            "required": false,
+            "description": "`open`, `mitigated`, `resolved`, or `all` (the default).",
+            "name": "status",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's incidents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentList"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdIncidents",
+        "x-required-permission": "incidents:read"
+      },
+      "post": {
+        "tags": [
+          "Incidents"
+        ],
+        "summary": "Declare an incident",
+        "description": "Record the incident and perform the opted-in side effects. The incident row is written first and alone: a 201 means it exists, and the `artifacts` array on the response says what else happened. No side effect can lose the declaration, and none is swallowed. Audit-logged.\n\n_Requires permission: `incidents:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentDeclare"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The declared incident, re-read after its artefacts settled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Incident"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdIncidents",
+        "x-required-permission": "incidents:write"
+      }
+    },
+    "/api/org/{orgId}/incidents/{incidentId}": {
+      "get": {
+        "tags": [
+          "Incidents"
+        ],
+        "summary": "Read one incident",
+        "description": "The incident with its artefacts and its operator notes.\n\n_Requires permission: `incidents:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "incidentId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The incident",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdIncidentsIncidentId",
+        "x-required-permission": "incidents:read"
+      },
+      "patch": {
+        "tags": [
+          "Incidents"
+        ],
+        "summary": "Edit or transition an incident",
+        "description": "Omitted fields keep their value. Setting `status` stamps the matching timestamp, and resolving undoes exactly what this incident created — the freeze whose id is on its own artefact, not whatever freeze happens to be in effect. Resolving an incident that was never marked mitigated back-fills `mitigatedAt` from `resolvedAt`. Audit-logged.\n\n_Requires permission: `incidents:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "incidentId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated incident",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Incident"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "patchOrgOrgIdIncidentsIncidentId",
+        "x-required-permission": "incidents:write"
+      },
+      "delete": {
+        "tags": [
+          "Incidents"
+        ],
+        "summary": "Delete an incident",
+        "description": "Removes the incident, its notes and its artefact records. It does not lift a freeze or close a status-page update — resolve for that; deleting is for a mis-declaration. Audit-logged.\n\n_Requires permission: `incidents:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "incidentId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdIncidentsIncidentId",
+        "x-required-permission": "incidents:write"
+      }
+    },
+    "/api/org/{orgId}/incidents/{incidentId}/retry-artifacts": {
+      "post": {
+        "tags": [
+          "Incidents"
+        ],
+        "summary": "Retry the artefacts that failed",
+        "description": "Re-runs only the side effects whose artefact is in the `failed` state, replacing each failure rather than queueing a second attempt beside it. Its own endpoint rather than a flag on PATCH, because it writes into three external systems. Audit-logged.\n\n_Requires permission: `incidents:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "incidentId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The incident with its artefacts re-read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Incident"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdIncidentsIncidentIdRetryArtifacts",
+        "x-required-permission": "incidents:write"
+      }
+    },
+    "/api/org/{orgId}/incidents/{incidentId}/timeline": {
+      "get": {
+        "tags": [
+          "Incidents"
+        ],
+        "summary": "Assemble the incident's timeline",
+        "description": "Merged on read from what is already recorded between the incident's start and its resolution: resource changes, deployments, cost anomalies, provider status incidents, audit entries, change freezes and workflow runs (all via the same union the Moment screen uses), plus probe state transitions, metric-alert firings, the incident's own life events, its artefacts and its operator notes. Nothing is copied — a correction upstream shows up here on the next read.\n\nProbe transitions are an approximation: `synthetic_probes` keeps only a single `lastStateChangeAt`, so a probe that flapped twice inside the window contributes its most recent flip and no more.\n\n_Requires permission: `incidents:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "incidentId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The merged timeline",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentTimeline"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdIncidentsIncidentIdTimeline",
+        "x-required-permission": "incidents:read"
+      }
+    },
+    "/api/org/{orgId}/incidents/{incidentId}/postmortem": {
+      "get": {
+        "tags": [
+          "Incidents"
+        ],
+        "summary": "Export a pre-filled postmortem",
+        "description": "Markdown with the timeline, the affected resources, the duration, the time to mitigate and the notes already filled in. The analysis headings — impact, root cause, action items — are deliberately left blank: a generated document that guesses at a root cause is worse than one that leaves a heading.\n\n_Requires permission: `incidents:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "incidentId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The postmortem document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentPostmortem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdIncidentsIncidentIdPostmortem",
+        "x-required-permission": "incidents:read"
+      }
+    },
+    "/api/org/{orgId}/incidents/{incidentId}/notes": {
+      "post": {
+        "tags": [
+          "Incidents"
+        ],
+        "summary": "Add an operator note",
+        "description": "The running commentary no join can reconstruct. `occurredAt` may be backdated so a note typed at 04:00 lands on the timeline where it belongs.\n\n_Requires permission: `incidents:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "incidentId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentNoteCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created note",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentNote"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdIncidentsIncidentIdNotes",
+        "x-required-permission": "incidents:write"
+      }
+    },
+    "/api/org/{orgId}/incidents/{incidentId}/notes/{noteId}": {
+      "delete": {
+        "tags": [
+          "Incidents"
+        ],
+        "summary": "Delete an operator note",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "incidentId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "noteId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdIncidentsIncidentIdNotesNoteId",
+        "x-required-permission": "incidents:write",
+        "description": "_Requires permission: `incidents:write`._"
       }
     },
     "/api/org/{orgId}/status-pages": {

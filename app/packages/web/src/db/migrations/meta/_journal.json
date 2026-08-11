@@ -736,6 +736,13 @@
       "when": 1786472532873,
       "tag": "0104_shared_consoles",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1786550000000,
+      "tag": "0105_incident_mode",
+      "breakpoints": true
     }
   ]
 }

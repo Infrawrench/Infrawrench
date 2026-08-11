@@ -7,6 +7,7 @@ import {
   deploymentsTabTarget,
   probesTabTarget,
   quotasTabTarget,
+  incidentsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -71,6 +72,18 @@ describe("getWorkspaceNavigateArgs", () => {
   it("returns quotas route args", () => {
     const args = getWorkspaceNavigateArgs(quotasTabTarget());
     expect(args.to).toBe("/quotas");
+  });
+
+  it("returns incidents route args, clearing the param for the list view", () => {
+    const list = getWorkspaceNavigateArgs(incidentsTabTarget());
+    expect(list.to).toBe("/incidents");
+    // Explicitly empty, not omitted: navigating back from an incident must
+    // clear ?incident= or the route resolves straight back into it.
+    expect(list.search).toEqual({});
+
+    const detail = getWorkspaceNavigateArgs(incidentsTabTarget("inc-1"));
+    expect(detail.to).toBe("/incidents");
+    expect(detail.search).toEqual({ incident: "inc-1" });
   });
 
   it("returns resource route args for details view", () => {
@@ -238,6 +251,14 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the quotas path", () => {
     expect(syncWorkspaceRouteFromPath("/quotas")).toEqual({ kind: "quotas" });
+  });
+
+  it("parses the incidents path, with and without a selected incident", () => {
+    expect(syncWorkspaceRouteFromPath("/incidents")).toEqual({ kind: "incidents" });
+    expect(syncWorkspaceRouteFromPath("/incidents", undefined, "?incident=inc-1")).toEqual({
+      kind: "incidents",
+      incidentId: "inc-1",
+    });
   });
 
   it("parses the environment diff path, with and without a pair", () => {

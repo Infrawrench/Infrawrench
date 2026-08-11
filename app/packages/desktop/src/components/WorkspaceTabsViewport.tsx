@@ -51,6 +51,7 @@ import { DesktopEnvironmentDiffPanel } from "@/components/DesktopEnvironmentDiff
 import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel";
 import { DesktopProbesPanel } from "@/components/DesktopProbesPanel";
 import { DesktopQuotasPanel } from "@/components/DesktopQuotasPanel";
+import { DesktopIncidentsPanel } from "@/components/DesktopIncidentsPanel";
 import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
 import { DesktopSettingsPanel } from "@/components/DesktopSettingsPanel";
 import { DesktopAgentsPanel } from "@/components/DesktopAgentsPanel";
@@ -481,6 +482,8 @@ function renderPanel(
       return <DesktopProbesPanel />;
     case "quotas":
       return <DesktopQuotasPanel />;
+    case "incidents":
+      return <DesktopIncidentsPanel incidentId={t.incidentId} />;
     case "settings":
       return <DesktopSettingsPanel section={t.section ?? ""} />;
     case "chat":

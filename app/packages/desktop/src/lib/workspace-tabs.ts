@@ -18,6 +18,7 @@ import {
   metricAlertsTabTarget,
   probesTabTarget,
   quotasTabTarget,
+  incidentsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -48,6 +49,7 @@ export {
   metricAlertsTabTarget,
   probesTabTarget,
   quotasTabTarget,
+  incidentsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -142,6 +144,15 @@ export function getWorkspaceNavigateArgs(
       return { to: "/probes", ...(replace ? { replace: true } : {}) };
     case "quotas":
       return { to: "/quotas", ...(replace ? { replace: true } : {}) };
+    case "incidents":
+      // Search passed explicitly, the settings/chat rule: navigating from an
+      // incident back to the list must CLEAR ?incident= or the route resolves
+      // straight back into the incident somebody just left.
+      return {
+        to: "/incidents",
+        search: target.incidentId ? { incident: target.incidentId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
     case "settings":
       // Like chat: search passed explicitly so navigating back to the General
       // section CLEARS the ?section= param instead of resolving back to it.
@@ -273,6 +284,10 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "quotas") {
     return quotasTabTarget();
+  }
+  if (segments[0] === "incidents") {
+    const params = new URLSearchParams(search ?? "");
+    return incidentsTabTarget(params.get("incident") ?? undefined);
   }
   if (segments[0] === "chat") {
     const params = new URLSearchParams(search ?? "");

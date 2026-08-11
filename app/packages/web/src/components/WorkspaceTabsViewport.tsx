@@ -32,7 +32,7 @@ import { WebChatPanel } from "./WebChatPanel";
 import { WebGraphPanel } from "./WebGraphPanel";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
 import { CostReportsPanel, type CostReportsClient } from "@infrawrench/ui/cost-reports";
-import { costReportsTabTarget, invoicesTabTarget } from "@/lib/workspace-tabs";
+import { costReportsTabTarget, incidentsTabTarget, invoicesTabTarget } from "@/lib/workspace-tabs";
 import {
   environmentDiffTabTarget,
   resourceTabTarget,
@@ -53,6 +53,7 @@ import { WebEnvironmentDiffPanel } from "./WebEnvironmentDiffPanel";
 import { WebMetricAlertsPanel } from "./WebMetricAlertsPanel";
 import { WebProbesPanel } from "./WebProbesPanel";
 import { WebQuotasPanel } from "./WebQuotasPanel";
+import { WebIncidentsPanel } from "./WebIncidentsPanel";
 import { WebSshFanoutPanel } from "./WebSshFanoutPanel";
 
 interface WebWorkspaceTabsViewportProps {
@@ -480,6 +481,19 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       return <WebProbesPanel key={orgId} orgId={orgId} />;
     case "quotas":
       return <WebQuotasPanel key={orgId} orgId={orgId} />;
+    case "incidents":
+      return (
+        <WebIncidentsPanel
+          key={orgId}
+          orgId={orgId}
+          incidentId={t.incidentId}
+          // The URL owns which incident is open — navigating is what records it
+          // on the tab, so a reload or a tab switch comes back to it.
+          onSelectIncident={(incidentId) =>
+            void navigate(getWorkspaceNavigateArgs(incidentsTabTarget(incidentId ?? undefined)))
+          }
+        />
+      );
     case "chat":
       return <WebChatPanel orgId={orgId} conversationId={t.conversationId} />;
     case "settings":

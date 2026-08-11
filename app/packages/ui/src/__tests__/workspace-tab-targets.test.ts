@@ -7,6 +7,7 @@ import {
   postureTabTarget,
   environmentDiffTabTarget,
   probesTabTarget,
+  incidentsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -43,6 +44,11 @@ describe("tab target factories", () => {
 
   it("probesTabTarget", () => {
     expect(probesTabTarget()).toEqual({ kind: "probes" });
+  });
+
+  it("incidentsTabTarget omits incidentId for the list view", () => {
+    expect(incidentsTabTarget()).toEqual({ kind: "incidents" });
+    expect(incidentsTabTarget("inc-1")).toEqual({ kind: "incidents", incidentId: "inc-1" });
   });
 
   it("costReportsTabTarget omits reportId for the list view", () => {

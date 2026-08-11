@@ -41,6 +41,18 @@ export const ALL_PERMISSIONS = [
   "freezes:read",
   "freezes:write",
   "freezes:override",
+  // Declared incidents (incident mode) — not provider status incidents, which
+  // ride `resources:read` with the rest of the correlation feeds.
+  //
+  // `incidents:write` sits with the *members* rather than the admins, which is
+  // unusual for a write permission and deliberate: the people who notice an
+  // outage at 03:14 are rarely admins, and a product where declaring needs an
+  // admin is a product where nobody declares. What declaring can *do* keeps its
+  // own gates — opening a change freeze still needs `freezes:write`, and a
+  // declaration by someone without it records the freeze as a failed artefact
+  // naming the permission instead of quietly escalating.
+  "incidents:read",
+  "incidents:write",
   // Create anyway when the org's tag policy would reject the resource. Its own
   // family (not `resources:*`) so "can create but cannot skip governance"
   // stays expressible, mirroring `freezes:override`.

@@ -243,6 +243,22 @@ export const ALERT_TRIGGERS = [
     defaultSeverity: "warning",
   },
   {
+    // The one trigger a *person* raises. Every other entry in this list is a
+    // detector noticing something; this one fires because somebody declared an
+    // incident (or mitigated or resolved one), which is why it is `critical` by
+    // default and why it is not push-muted: the whole reason to declare is that
+    // the people who are not looking need to find out.
+    //
+    // Note the name: this is *our* incident, the declared one. Provider status
+    // incidents keep `providerIncidents` above.
+    id: "incidentAlerts",
+    label: "Incidents",
+    description: "Someone declared, mitigated or resolved an incident.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "critical",
+  },
+  {
     id: "weeklyDigest",
     label: "Weekly digest",
     description: "The Monday-morning summary. Channels only — never a phone.",

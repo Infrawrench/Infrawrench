@@ -253,6 +253,11 @@ export function pushDataToPath(data: MobilePushData): string {
     // latency and history (mobile has no probe editor — web/desktop own that).
     case "probe_alert":
       return `/org/${data.orgId}/probes`;
+    // A declared incident names exactly one thing to look at, and its screen
+    // carries the timeline and the note box — which is the whole reason to open
+    // a phone at 03:14.
+    case "incident":
+      return `/org/${data.orgId}/incidents/${data.incidentId}`;
     case "test":
       return `/org/${data.orgId}`;
     default:
@@ -475,6 +480,17 @@ export function parsePushData(raw: unknown): MobilePushData | null {
       const status = data["status"];
       if (typeof probeId !== "string" || (status !== "down" && status !== "up")) return null;
       return { type: "probe_alert", orgId, probeId, status };
+    }
+    case "incident": {
+      const incidentId = data["incidentId"];
+      const status = data["status"];
+      if (
+        typeof incidentId !== "string" ||
+        (status !== "open" && status !== "mitigated" && status !== "resolved")
+      ) {
+        return null;
+      }
+      return { type: "incident", orgId, incidentId, status };
     }
     case "test":
       return { type: "test", orgId };
