@@ -14,7 +14,7 @@
  * A page that showed only the first would render "no quotas near their limits"
  * for an org whose every account's collection is failing.
  */
-import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 
 import {
   computeQuotaTrend,
@@ -75,6 +75,18 @@ export async function getQuotaFeed(
 
   const settings = await getQuotaSettings(organizationId);
 
+  // Soft-deleted accounts are excluded, the `expiry/feed.ts` and
+  // `posture/feed.ts` rule. Removing an account is a soft delete, so its
+  // `account_quota_usage` rows survive the deletion and would otherwise keep
+  // appearing on the Quotas page, keep being counted by the weekly digest, and
+  // keep paging somebody about a limit on an account nobody can act on any
+  // more — indefinitely, because the collection pass stops running for it and
+  // so nothing ever supersedes the last reading.
+  //
+  // Filtering here rather than in each of the three reads below is what makes
+  // it hold for all of them: `accountById` is the join every row and every
+  // status entry is resolved through, so an account absent from this list
+  // contributes nothing regardless of what the quota tables still hold.
   const orgAccounts = await db
     .select({
       id: accounts.id,
@@ -82,7 +94,7 @@ export async function getQuotaFeed(
       pluginId: accounts.pluginId,
     })
     .from(accounts)
-    .where(eq(accounts.organizationId, organizationId));
+    .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt)));
 
   // Named, not counted: "Vercel cannot report quotas" is actionable in a way
   // that "3 providers unsupported" is not. Deduped and sorted so the list is
