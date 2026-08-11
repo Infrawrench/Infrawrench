@@ -236,6 +236,73 @@ const dnsServiceHostSchema = z
     path: ["hostKeys"],
   });
 
+const backupRoleSchema = z
+  .object({
+    role: z.literal("snapshot"),
+    backupTypeKey: z.string().min(1).optional(),
+    backupTypeValues: z.array(z.string().min(1)).min(1).optional(),
+    sourceKey: z.string().min(1).optional(),
+    sourceTemplate: z.string().min(1).optional(),
+    createdKey: z.string().min(1).optional(),
+    sizeKey: z.string().min(1).optional(),
+    sizeUnit: z.enum(["gib", "bytes"]).optional(),
+  })
+  // Neither half of the narrowing is usable alone (the `privateValues requires
+  // privateKey` stance, in both directions here: a key with no list would let
+  // nothing through).
+  .refine((r) => (r.backupTypeKey === undefined) === (r.backupTypeValues === undefined), {
+    message: "backupTypeKey and backupTypeValues must be declared together",
+    path: ["backupTypeValues"],
+  })
+  // Two answers to "what does this protect?" — which wins is a coin flip the
+  // author didn't intend, so fail rather than pick (the `isPrivate` stance).
+  .refine((r) => r.sourceKey === undefined || r.sourceTemplate === undefined, {
+    message: "sourceKey and sourceTemplate are mutually exclusive",
+    path: ["sourceTemplate"],
+  })
+  // A template with nothing to interpolate is a literal, which would match the
+  // same resource for every backup of the type — silently attributing every
+  // snapshot to one volume.
+  .refine((r) => r.sourceTemplate === undefined || /\{[^}]+\}/.test(r.sourceTemplate), {
+    message: "sourceTemplate must interpolate at least one {field}",
+    path: ["sourceTemplate"],
+  })
+  // A unit with no size field to apply it to is dead config (the `maxAgeDays`
+  // stance).
+  .refine((r) => r.sizeUnit === undefined || r.sizeKey !== undefined, {
+    message: "sizeUnit requires sizeKey",
+    path: ["sizeKey"],
+  });
+
+const backupPolicySchema = z
+  .object({
+    protectedBy: z.array(z.string().min(1)),
+    automatedBackupFieldKey: z.string().min(1).optional(),
+    automatedBackupWhen: z.enum(["truthy", "present"]).optional(),
+    retentionDaysFieldKey: z.string().min(1).optional(),
+  })
+  // A reading with no field to read is dead config, same stance again.
+  .refine((p) => p.automatedBackupWhen === undefined || p.automatedBackupFieldKey !== undefined, {
+    message: "automatedBackupWhen requires automatedBackupFieldKey",
+    path: ["automatedBackupFieldKey"],
+  })
+  // A policy that names no protector type and no provider-native backup field
+  // can never be judged either way — the type would sit on the surface as a
+  // permanent "unknown". That is dead config, so fail the manifest (the
+  // `maxAgeDays` / `runningValues` stance) rather than ship a row that means
+  // nothing.
+  .refine(
+    (p) =>
+      p.protectedBy.length > 0 ||
+      p.automatedBackupFieldKey !== undefined ||
+      p.retentionDaysFieldKey !== undefined,
+    {
+      message:
+        "backupPolicy needs at least one of protectedBy, automatedBackupFieldKey or retentionDaysFieldKey",
+      path: ["protectedBy"],
+    },
+  );
+
 const lifecycleActionsSchema = z
   .object({
     startActionId: z.string().min(1),
@@ -361,6 +428,8 @@ export const resourceTypeDefinitionSchema = z.object({
   expiryFields: z.array(expiryFieldRuleSchema).optional(),
   dnsRole: dnsRoleSchema.optional(),
   dnsServiceHosts: z.array(dnsServiceHostSchema).optional(),
+  backupRole: backupRoleSchema.optional(),
+  backupPolicy: backupPolicySchema.optional(),
   lifecycle: lifecycleActionsSchema.optional(),
   rightsizing: rightsizingSchema.optional(),
   principalRole: principalRoleSchema.optional(),
