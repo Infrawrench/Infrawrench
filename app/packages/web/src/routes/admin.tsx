@@ -89,13 +89,24 @@ function AdminPage() {
         ) : (
           <div className="border border-border rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
+              <caption className="sr-only">Organizations</caption>
               <thead>
                 <tr className="text-left text-xs text-on-surface-muted border-b border-border">
-                  <th className="px-4 py-3 font-medium">Organization</th>
-                  <th className="px-4 py-3 font-medium">Members</th>
-                  <th className="px-4 py-3 font-medium">Subscription</th>
-                  <th className="px-4 py-3 font-medium">Created</th>
-                  <th className="px-4 py-3 font-medium text-right">Complimentary</th>
+                  <th scope="col" className="px-4 py-3 font-medium">
+                    Organization
+                  </th>
+                  <th scope="col" className="px-4 py-3 font-medium">
+                    Members
+                  </th>
+                  <th scope="col" className="px-4 py-3 font-medium">
+                    Subscription
+                  </th>
+                  <th scope="col" className="px-4 py-3 font-medium">
+                    Created
+                  </th>
+                  <th scope="col" className="px-4 py-3 font-medium text-right">
+                    Complimentary
+                  </th>
                 </tr>
               </thead>
               <tbody>

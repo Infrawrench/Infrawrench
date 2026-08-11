@@ -15,6 +15,46 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── Skip link ──────────────────────────────────────────── */
+/* Visually hidden until it takes keyboard focus, so the first Tab on any
+   page jumps straight past the nav (and, in the docs, past the whole
+   sidebar) to the page's <main id="main-content">. */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  padding: 10px 16px;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  background: #0b0b0b;
+  color: #e6edf3;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(calc(-100% - 16px));
+  transition: transform 0.15s ease;
+}
+
+.skip-link:focus-visible,
+.skip-link:focus {
+  transform: translateY(0);
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* Focusing <main> to move the reading position shouldn't draw a box round
+   the entire page. */
+main:focus {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skip-link {
+    transition: none;
+  }
+}
+
 /* ── Animations ─────────────────────────────────────────── */
 @keyframes pulse-dot {
   0%,

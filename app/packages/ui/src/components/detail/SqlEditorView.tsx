@@ -467,14 +467,20 @@ export function SqlEditorView({
                 </div>
               )}
               <table className="w-full text-xs border-collapse">
+                <caption className="sr-only">Query results</caption>
                 <thead className="sticky top-0 bg-surface-raised z-10">
                   <tr>
                     {canEdit && (
-                      <th className="w-8 border-b border-border" aria-label="Row actions" />
+                      <th
+                        scope="col"
+                        className="w-8 border-b border-border"
+                        aria-label="Row actions"
+                      />
                     )}
                     {columns.map((col) => (
                       <th
                         key={col}
+                        scope="col"
                         className="px-3 py-2 text-left border-b border-border whitespace-nowrap"
                       >
                         <span

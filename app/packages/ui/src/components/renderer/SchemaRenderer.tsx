@@ -334,6 +334,7 @@ function TableNodeRenderer({
             {node.columns.map((col) => (
               <th
                 key={col.key}
+                scope="col"
                 className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-on-surface-muted ${TABLE_WIDTH_CLASS[col.width ?? "auto"] ?? ""}`}
               >
                 {col.label}

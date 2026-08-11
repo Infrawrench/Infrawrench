@@ -224,12 +224,13 @@ export function ChildResourceTable({
                 {spec.columns.map((col) => (
                   <th
                     key={col.key}
+                    scope="col"
                     className="text-left font-medium text-on-surface-muted text-xs px-3 py-2 whitespace-nowrap"
                   >
                     {col.label}
                   </th>
                 ))}
-                {canDelete && <th className="px-3 py-2" aria-label="Actions" />}
+                {canDelete && <th scope="col" className="px-3 py-2" aria-label="Actions" />}
               </tr>
             </thead>
             <tbody>

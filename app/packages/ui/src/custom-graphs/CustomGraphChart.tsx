@@ -133,7 +133,7 @@ export function CustomGraphChart({ spec }: { spec: ChartSpec }) {
           <thead>
             <tr className="text-left text-on-surface-faint sticky top-0 bg-surface-raised">
               {spec.columns.map((c) => (
-                <th key={c} className="px-2 py-1.5 font-medium border-b border-border">
+                <th key={c} scope="col" className="px-2 py-1.5 font-medium border-b border-border">
                   {c}
                 </th>
               ))}

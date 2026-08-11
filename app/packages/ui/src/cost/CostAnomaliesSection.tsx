@@ -139,12 +139,24 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-on-surface-faint">
-                <th className="px-3 py-2 font-medium">Day</th>
-                <th className="px-3 py-2 font-medium">What</th>
-                <th className="px-3 py-2 font-medium text-right">Spend</th>
-                <th className="px-3 py-2 font-medium text-right">Baseline / day</th>
-                <th className="px-3 py-2 font-medium text-right">Change</th>
-                <th className="px-3 py-2 font-medium text-right">Actions</th>
+                <th scope="col" className="px-3 py-2 font-medium">
+                  Day
+                </th>
+                <th scope="col" className="px-3 py-2 font-medium">
+                  What
+                </th>
+                <th scope="col" className="px-3 py-2 font-medium text-right">
+                  Spend
+                </th>
+                <th scope="col" className="px-3 py-2 font-medium text-right">
+                  Baseline / day
+                </th>
+                <th scope="col" className="px-3 py-2 font-medium text-right">
+                  Change
+                </th>
+                <th scope="col" className="px-3 py-2 font-medium text-right">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">

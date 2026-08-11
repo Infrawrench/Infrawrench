@@ -115,21 +115,37 @@ export function ArtifactRegistryView({ capability, onListArtifacts }: Props) {
           </div>
         ) : (
           <table className="w-full text-sm">
+            <caption className="sr-only">Artifacts</caption>
             <thead className="sticky top-0 bg-surface-sunken border-b border-border z-10">
               <tr>
-                <th className="px-4 py-2 text-left font-medium text-on-surface-muted uppercase text-xs tracking-wide">
+                <th
+                  scope="col"
+                  className="px-4 py-2 text-left font-medium text-on-surface-muted uppercase text-xs tracking-wide"
+                >
                   Name
                 </th>
-                <th className="px-4 py-2 text-left font-medium text-on-surface-muted uppercase text-xs tracking-wide">
+                <th
+                  scope="col"
+                  className="px-4 py-2 text-left font-medium text-on-surface-muted uppercase text-xs tracking-wide"
+                >
                   {versionHeader}
                 </th>
-                <th className="px-4 py-2 text-left font-medium text-on-surface-muted uppercase text-xs tracking-wide">
+                <th
+                  scope="col"
+                  className="px-4 py-2 text-left font-medium text-on-surface-muted uppercase text-xs tracking-wide"
+                >
                   Size
                 </th>
-                <th className="px-4 py-2 text-left font-medium text-on-surface-muted uppercase text-xs tracking-wide">
+                <th
+                  scope="col"
+                  className="px-4 py-2 text-left font-medium text-on-surface-muted uppercase text-xs tracking-wide"
+                >
                   Digest
                 </th>
-                <th className="px-4 py-2 text-left font-medium text-on-surface-muted uppercase text-xs tracking-wide">
+                <th
+                  scope="col"
+                  className="px-4 py-2 text-left font-medium text-on-surface-muted uppercase text-xs tracking-wide"
+                >
                   Updated
                 </th>
               </tr>

@@ -76,6 +76,7 @@ export function LocalDeploymentsPanel() {
           </p>
         ) : (
           <table className="w-full text-xs">
+            <caption className="sr-only">Deploys from this machine</caption>
             <thead className="text-[11px] uppercase tracking-wide text-on-surface-faint">
               <tr className="border-b border-white/10">
                 <Th>When</Th>
@@ -205,7 +206,11 @@ function basename(dir: string): string {
 }
 
 function Th({ children }: { children?: React.ReactNode }) {
-  return <th className="text-left font-normal px-3 py-1.5">{children}</th>;
+  return (
+    <th scope="col" className="text-left font-normal px-3 py-1.5">
+      {children}
+    </th>
+  );
 }
 
 function Td({ children }: { children: React.ReactNode }) {

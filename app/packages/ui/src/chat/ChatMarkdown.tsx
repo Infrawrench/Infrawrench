@@ -58,7 +58,9 @@ export function ChatMarkdown({ text }: { text: string }): React.ReactElement {
             </div>
           ),
           th: ({ children }) => (
-            <th className="border border-border px-2 py-1 text-left font-semibold">{children}</th>
+            <th scope="col" className="border border-border px-2 py-1 text-left font-semibold">
+              {children}
+            </th>
           ),
           td: ({ children }) => <td className="border border-border px-2 py-1">{children}</td>,
           hr: () => <hr className="border-border" />,
