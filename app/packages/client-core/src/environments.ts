@@ -783,10 +783,107 @@ export function classifyTeardownMember(
 /**
  * How tearing one member down ended.
  *
- * `ambiguous` is its own outcome because more than one candidate matched the
- * name: deleting the wrong resource is worse than leaving this one for a human.
+ * `ambiguous` and `needs-attention` are separate outcomes from `failed` because
+ * nothing was attempted in either case: the environment declined to delete
+ * something it could not prove was its own, and said so.
  */
-export type MemberTeardownOutcome = "deleted" | "already-gone" | "failed" | "ambiguous";
+export type MemberTeardownOutcome =
+  "deleted" | "already-gone" | "failed" | "ambiguous" | "needs-attention";
+
+// ---------------------------------------------------------------------------
+// The identity rule
+// ---------------------------------------------------------------------------
+
+/**
+ * **Delete only when identity is certain. Where it is not, report and leave.**
+ *
+ * This single rule settles the two ways this feature can destroy something it
+ * did not create, and it is deliberately asymmetric because the costs are:
+ * an orphaned resource costs money, and money is recoverable; a wrongly
+ * deleted resource costs data, and data is not.
+ *
+ * - **Rolling back a member whose TTL could not be attached** is a *certain*
+ *   identity — the provider handed us the id seconds earlier — so it deletes.
+ * - **Recovering a member with no recorded id** is an *inferred* identity, and
+ *   a display name is not an identity. It deletes only with the corroboration
+ *   below, and otherwise reports the resource for a human.
+ *
+ * `createdAt` is necessary but nowhere near sufficient on its own: it is a
+ * required field on `ResourceInstance`, so listers whose provider exposes no
+ * creation time fill it with the time of the call. Such a resource always
+ * looks freshly created. The load-bearing signal is therefore our **own**
+ * inventory — a `resources` row that predates this environment is a fact no
+ * plugin can fabricate.
+ */
+export interface RecoveryCandidate {
+  /** The provider's own id, when the lister supplies one. */
+  externalId: string | null;
+  /** Provider-reported creation time. May be the time of the listing call. */
+  createdAt?: string | undefined;
+  /**
+   * When Infrawrench already had a row for this resource, when that row was
+   * first written. Null when we have never seen it before.
+   */
+  knownSince?: string | null | undefined;
+  /** True when another environment member already owns this resource. */
+  claimedByAnotherMember?: boolean | undefined;
+}
+
+export type RecoveryDecision =
+  | { action: "already-gone" }
+  | { action: "ambiguous" }
+  | { action: "needs-attention"; reason: string }
+  | { action: "delete" };
+
+/**
+ * Allowance for clock skew between a provider's timestamps and ours. Kept
+ * small: every second of it is a second of someone else's resource that could
+ * be mistaken for ours.
+ */
+const RECOVERY_SKEW_MS = 60_000;
+
+export function classifyRecoveryCandidate(
+  candidates: RecoveryCandidate[],
+  instanceCreatedAt: string,
+): RecoveryDecision {
+  if (candidates.length === 0) return { action: "already-gone" };
+  if (candidates.length > 1) return { action: "ambiguous" };
+
+  const candidate = candidates[0]!;
+  const startedAt = Date.parse(instanceCreatedAt);
+  if (Number.isNaN(startedAt)) {
+    return { action: "needs-attention", reason: "this environment has no usable start time" };
+  }
+
+  if (candidate.claimedByAnotherMember) {
+    return { action: "needs-attention", reason: "it belongs to another environment" };
+  }
+
+  // Our own inventory, and the one signal a plugin cannot fake. A resource we
+  // were already tracking before this environment existed is not ours.
+  if (candidate.knownSince != null) {
+    const known = Date.parse(candidate.knownSince);
+    if (!Number.isNaN(known) && known < startedAt - RECOVERY_SKEW_MS) {
+      return { action: "needs-attention", reason: "it existed before this environment did" };
+    }
+  }
+
+  // A lister with no real creation time reports the moment it was called, so
+  // an unparseable one is the *only* case this can catch — but a provider that
+  // does report honestly must not be ignored.
+  const created = candidate.createdAt === undefined ? Number.NaN : Date.parse(candidate.createdAt);
+  if (Number.isNaN(created)) {
+    return {
+      action: "needs-attention",
+      reason: "the provider reports no creation time to check it against",
+    };
+  }
+  if (created < startedAt - RECOVERY_SKEW_MS) {
+    return { action: "needs-attention", reason: "it predates this environment" };
+  }
+
+  return { action: "delete" };
+}
 
 /**
  * Whether the member's auto-delete lease may be cancelled.
@@ -795,7 +892,9 @@ export type MemberTeardownOutcome = "deleted" | "already-gone" | "failed" | "amb
  * it re-attempts the delete at expiry, defers through change freezes and
  * reports when it gives up. Cancelling it after a failed delete turns a
  * transient provider error into a resource that bills until somebody
- * remembers to retry the teardown by hand.
+ * remembers to retry the teardown by hand. `ambiguous` and `needs-attention`
+ * keep it for the same reason plus a better one: nothing was deleted, so the
+ * resource is still there and still on a clock.
  */
 export function leaseShouldBeCancelled(outcome: MemberTeardownOutcome): boolean {
   return outcome === "deleted" || outcome === "already-gone";

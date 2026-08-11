@@ -7,6 +7,7 @@ import {
   buildCaptureDraft,
   buildInstantiationPlan,
   buildMemberFailureRecord,
+  classifyRecoveryCandidate,
   classifyTeardownMember,
   expectedMemberDisplayName,
   leaseShouldBeCancelled,
@@ -679,6 +680,103 @@ describe("leaseShouldBeCancelled", () => {
   });
 
   it("keeps the lease when the match was ambiguous", () => {
+    expect(leaseShouldBeCancelled("ambiguous")).toBe(false);
+  });
+});
+
+describe("classifyRecoveryCandidate", () => {
+  const startedAt = "2026-08-11T12:00:00Z";
+  const during = "2026-08-11T12:00:30Z";
+  const before = "2026-08-10T09:00:00Z";
+
+  it("reports nothing to do when no candidate matched", () => {
+    expect(classifyRecoveryCandidate([], startedAt)).toEqual({ action: "already-gone" });
+  });
+
+  it("refuses when two candidates share the name", () => {
+    expect(
+      classifyRecoveryCandidate(
+        [
+          { externalId: "a", createdAt: during },
+          { externalId: "b", createdAt: during },
+        ],
+        startedAt,
+      ),
+    ).toEqual({ action: "ambiguous" });
+  });
+
+  it("deletes a candidate the provider and our inventory both place inside the window", () => {
+    expect(
+      classifyRecoveryCandidate(
+        [{ externalId: "a", createdAt: during, knownSince: null }],
+        startedAt,
+      ),
+    ).toEqual({ action: "delete" });
+  });
+
+  // Regression: a lone display-name match used to be treated as identity and
+  // deleted. A user's own resource that happens to carry the name a template
+  // member would have been given, in the same account and type, was one
+  // automated teardown away from being destroyed.
+  it("refuses a resource we were already tracking before this environment existed", () => {
+    const decision = classifyRecoveryCandidate(
+      [{ externalId: "a", createdAt: during, knownSince: before }],
+      startedAt,
+    );
+    expect(decision.action).toBe("needs-attention");
+    expect(decision).toMatchObject({ reason: expect.stringContaining("existed before") });
+  });
+
+  // The dangerous default: `createdAt` is required on ResourceInstance, so
+  // listers whose provider exposes no creation time fill it with the time of
+  // the call, which always falls inside the window. Absence must not read as
+  // corroboration.
+  it("refuses when the provider offers no creation time to check", () => {
+    const decision = classifyRecoveryCandidate([{ externalId: "a" }], startedAt);
+    expect(decision.action).toBe("needs-attention");
+    expect(decision).toMatchObject({ reason: expect.stringContaining("no creation time") });
+  });
+
+  it("refuses a candidate the provider itself dates before this environment", () => {
+    const decision = classifyRecoveryCandidate([{ externalId: "a", createdAt: before }], startedAt);
+    expect(decision.action).toBe("needs-attention");
+    expect(decision).toMatchObject({ reason: expect.stringContaining("predates") });
+  });
+
+  it("refuses a resource another environment already owns", () => {
+    const decision = classifyRecoveryCandidate(
+      [{ externalId: "a", createdAt: during, claimedByAnotherMember: true }],
+      startedAt,
+    );
+    expect(decision.action).toBe("needs-attention");
+    expect(decision).toMatchObject({ reason: expect.stringContaining("another environment") });
+  });
+
+  it("tolerates a minute of clock skew but not a day of it", () => {
+    expect(
+      classifyRecoveryCandidate(
+        [{ externalId: "a", createdAt: "2026-08-11T11:59:45Z" }],
+        startedAt,
+      ),
+    ).toEqual({ action: "delete" });
+    expect(
+      classifyRecoveryCandidate([{ externalId: "a", createdAt: "2026-08-11T11:00:00Z" }], startedAt)
+        .action,
+    ).toBe("needs-attention");
+  });
+
+  it("refuses rather than deleting when the instance has no usable start time", () => {
+    expect(
+      classifyRecoveryCandidate([{ externalId: "a", createdAt: during }], "whenever").action,
+    ).toBe("needs-attention");
+  });
+});
+
+describe("leaseShouldBeCancelled - declined deletions", () => {
+  // Nothing was deleted in either case, so the resource is still there and
+  // still needs the clock the lease provides.
+  it("keeps the lease when the environment declined to delete", () => {
+    expect(leaseShouldBeCancelled("needs-attention")).toBe(false);
     expect(leaseShouldBeCancelled("ambiguous")).toBe(false);
   });
 });

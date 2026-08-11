@@ -18,6 +18,22 @@
  * provider check (`classifyTeardownMember` → `verifyAndDeleteMember`) rather
  * than as already handled. A missing id never means "nothing was created".
  *
+ * **No member runs without an expiry.** The TTL is mandatory at the API
+ * boundary, so a member whose lease cannot be attached would be exactly the
+ * "forever" branch this feature exists not to have. `attachMemberLease` runs
+ * before anything optional does and is retried; if it still fails the member is
+ * **rolled back** rather than left running, and `repairMissingMemberLeases`
+ * catches whatever still slips past.
+ *
+ * **Delete only when identity is certain; where it is not, report and leave.**
+ * The rule that settles the two ways this could destroy something it did not
+ * create, and it is asymmetric on purpose — an orphan costs money, a wrong
+ * delete costs data. Rolling a member back is a *certain* identity (the
+ * provider returned the id seconds earlier), so it deletes. Recovering a member
+ * with no recorded id is an *inferred* identity, and a display name is not an
+ * identity, so it deletes only when `classifyRecoveryCandidate` finds
+ * corroboration and otherwise reports the resource for a human.
+ *
  * **Everything goes through the ordinary paths.** Creates run through the same
  * `createResource` + `upsertCreatedResource` + secret-state persistence the
  * create form uses; deletes run through the same `deleteResource`; the TTL is
@@ -31,6 +47,7 @@ import {
   attemptedPositionCeiling,
   buildInstantiationPlan,
   buildMemberFailureRecord,
+  classifyRecoveryCandidate,
   classifyTeardownMember,
   expectedMemberDisplayName,
   leaseShouldBeCancelled,
@@ -48,11 +65,17 @@ import {
   type EnvironmentTemplate,
   type EnvironmentTemplateMember,
   type MemberTeardownOutcome,
+  type RecoveryCandidate,
 } from "@infrawrench/client-core";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { normalizeResourceCreateResult, parseOutputRef } from "@infrawrench/plugin-base";
 import { db } from "../db/client";
-import { environmentInstances, resourceLeases, resources } from "../db/schema";
+import {
+  environmentInstanceMembers,
+  environmentInstances,
+  resourceLeases,
+  resources,
+} from "../db/schema";
 import { upsertCreatedResource } from "../created-resource";
 import { getOrgAccountClient } from "../org-accounts";
 import { setLiteralSecretState } from "../secret-states";
@@ -74,6 +97,7 @@ import {
   markMemberStatus,
   setInstanceStatus,
   type InstanceMemberRow,
+  type InstanceRow,
 } from "./store";
 
 export interface InstantiateContext {
@@ -87,6 +111,105 @@ export interface InstantiateContext {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Retry a bookkeeping write a couple of times before treating it as fatal. */
+async function withRetry<T>(operation: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts - 1) await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+  }
+  throw lastError;
+}
+
+/**
+ * Attach the member's TTL. Retried, and **fatal when it cannot be done** — the
+ * caller rolls the resource back rather than letting it run without an expiry.
+ *
+ * A lease that already exists for the resource is adopted rather than
+ * duplicated: `createLeaseRecord` 409s on an active lease, and the only way to
+ * reach that here is a previous attempt whose lease landed but whose id we
+ * failed to record.
+ */
+async function attachMemberLease(input: {
+  organizationId: string;
+  instanceId: string;
+  memberKey: string;
+  resourceId: string;
+  accountId: string;
+  expiresAt: Date;
+  environmentName: string;
+  userId?: string | undefined;
+}): Promise<void> {
+  const leaseId = await withRetry(async () => {
+    const existing = await getLeaseRecordByResource(input.organizationId, input.resourceId);
+    if (existing && existing.status === "active") return existing.id;
+    const lease = await createLeaseRecord(
+      input.organizationId,
+      {
+        resourceId: input.resourceId,
+        accountId: input.accountId,
+        expiresAt: input.expiresAt.toISOString(),
+        autoDelete: true,
+        note: `Ephemeral environment "${input.environmentName}"`,
+      },
+      input.userId,
+    );
+    return lease.id;
+  });
+  await withRetry(() => markMemberLease(input.instanceId, input.memberKey, leaseId));
+}
+
+/** Whether a resource already carries an active lease. */
+async function memberHasLease(organizationId: string, resourceId: string): Promise<boolean> {
+  const lease = await getLeaseRecordByResource(organizationId, resourceId).catch(() => null);
+  return lease !== null && lease.status === "active";
+}
+
+/**
+ * Undo a member whose TTL could not be attached.
+ *
+ * Returns whether the resource is gone. Deleting here is safe in a way the
+ * teardown recovery path is not: this id came straight back from the provider
+ * moments ago, so there is no inference and nothing to mistake it for.
+ */
+async function rollbackCreatedMember(
+  organizationId: string,
+  target: { accountId: string; pluginId: string; resourceTypeId: string; resourceId: string },
+): Promise<boolean> {
+  try {
+    const ctxClient = await getOrgAccountClient(target.accountId, organizationId);
+    if (!ctxClient?.client.deleteResource) return false;
+    try {
+      await ctxClient.client.deleteResource(
+        target.resourceTypeId,
+        target.resourceId,
+        target.accountId,
+      );
+    } catch (error) {
+      if (!looksAlreadyGone(error)) throw error;
+    }
+    await db
+      .update(resources)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(
+        and(
+          eq(resources.organizationId, organizationId),
+          eq(resources.id, target.resourceId),
+          isNull(resources.deletedAt),
+        ),
+      )
+      .catch(() => undefined);
+    return true;
+  } catch (error) {
+    console.error("[environments] failed to roll back a member with no TTL:", error);
+    return false;
+  }
 }
 
 /**
@@ -255,14 +378,32 @@ export async function instantiateEnvironment(
       };
       await markMemberCreated(instance.id, member.key, createdRecord);
 
-      await upsertCreatedResource({
+      // The resource row has to exist before a lease can point at it
+      // (`createLeaseRecord` validates it), so this is retried rather than
+      // swallowed: losing it used to take the TTL down with it, silently.
+      await withRetry(() =>
+        upsertCreatedResource({
+          organizationId,
+          pluginId: member.pluginId,
+          resourceTypeId: member.resourceTypeId,
+          accountId,
+          resource,
+        }),
+      );
+
+      // The TTL, attached before anything optional runs. A member without a
+      // lease is the "forever" branch this feature exists to not have, so a
+      // lease that cannot be attached rolls the member back rather than
+      // leaving a resource running with no clock on it.
+      await attachMemberLease({
         organizationId,
-        pluginId: member.pluginId,
-        resourceTypeId: member.resourceTypeId,
+        instanceId: instance.id,
+        memberKey: member.key,
+        resourceId: resource.id,
         accountId,
-        resource,
-      }).catch((error: unknown) => {
-        console.error("[environments] failed to persist created resource:", error);
+        expiresAt,
+        environmentName: name,
+        userId: ctx.userId,
       });
 
       for (const state of resource.secretStates ?? []) {
@@ -287,29 +428,30 @@ export async function instantiateEnvironment(
         );
       }
       created[member.key] = { externalId: resource.externalId ?? resource.id, outputs };
-
-      // The TTL: an ordinary auto-delete lease, so the existing lease pass owns
-      // expiry. A lease that fails to attach is loud but not fatal — the
-      // environment can still be torn down by hand, and refusing to record a
-      // resource we already created would be strictly worse.
-      try {
-        const lease = await createLeaseRecord(
-          organizationId,
-          {
-            resourceId: resource.id,
-            accountId,
-            expiresAt: expiresAt.toISOString(),
-            autoDelete: true,
-            note: `Ephemeral environment "${name}"`,
-          },
-          ctx.userId,
-        );
-        await markMemberLease(instance.id, member.key, lease.id);
-      } catch (error) {
-        console.error("[environments] failed to attach lease:", error);
-      }
     } catch (error) {
       failure = `${member.sourceName}: ${errorMessage(error)}`;
+
+      // A member that got as far as a resource but not as far as a TTL must not
+      // be left running. Identity is *certain* here — the provider handed the
+      // id back seconds ago — which is what makes deleting it the safe move,
+      // unlike the name-based recovery teardown has to do.
+      if (createdRecord && !(await memberHasLease(organizationId, createdRecord.resourceId))) {
+        const rolledBack = await rollbackCreatedMember(organizationId, {
+          accountId,
+          pluginId: member.pluginId,
+          resourceTypeId: member.resourceTypeId,
+          resourceId: createdRecord.resourceId,
+        });
+        if (rolledBack) {
+          failure = `${member.sourceName}: ${errorMessage(error)} (the resource was rolled back)`;
+          createdRecord = null;
+        } else {
+          failure =
+            `${member.sourceName}: ${errorMessage(error)} — it has no expiry and could not be ` +
+            `rolled back, so tear this environment down`;
+        }
+      }
+
       // One statement, carrying the created id when there is one. A separate
       // "record the failure" write that dropped the id is how a successful
       // create became an untracked, billing resource: teardown saw a member
@@ -397,17 +539,16 @@ export async function tearDownEnvironment(
     let outcome: MemberTeardownOutcome;
     let detail: string | null = null;
     try {
-      outcome =
-        action === "delete"
-          ? await deleteMemberResource(organizationId, member)
-          : await verifyAndDeleteMember(organizationId, instanceId, member, listCache);
+      if (action === "delete") {
+        outcome = await deleteMemberResource(organizationId, member);
+      } else {
+        const verified = await verifyAndDeleteMember(organizationId, row, member, listCache);
+        outcome = verified.outcome;
+        detail = verified.detail ?? null;
+      }
     } catch (error) {
       outcome = "failed";
       detail = errorMessage(error);
-    }
-
-    if (outcome === "ambiguous") {
-      detail ??= `more than one resource is named "${member.displayName}" — delete it by hand`;
     }
 
     if (outcome === "deleted" || outcome === "already-gone") {
@@ -487,18 +628,21 @@ async function deleteMemberResource(
  * exactly how a resource ends up running with nothing pointing at it, so ask
  * the provider instead.
  *
- * The lookup is by the name the member would have been given
+ * The lookup starts from the name the member would have been given
  * (`expectedMemberDisplayName`, resolved at insert time), using only
- * `listResources` — no provider-specific search. Two candidates is a refusal,
- * not a guess: deleting the wrong resource is worse than leaving this one for a
- * human. A failed listing is a failure, never an absence.
+ * `listResources` — no provider-specific search. **A name is not an identity**,
+ * so a single match is only a candidate: `classifyRecoveryCandidate` then
+ * requires our own inventory and the provider's own timestamp to agree that it
+ * did not exist before this environment did. Anything short of that is
+ * reported for a human rather than deleted, because an orphan costs money and
+ * a wrong delete costs data. A failed listing is a failure, never an absence.
  */
 async function verifyAndDeleteMember(
   organizationId: string,
-  instanceId: string,
+  instance: InstanceRow,
   member: InstanceMemberRow,
   listCache: Map<string, ResourceInstance[]>,
-): Promise<MemberTeardownOutcome> {
+): Promise<{ outcome: MemberTeardownOutcome; detail?: string }> {
   const cacheKey = `${member.accountId}:${member.resourceTypeId}`;
   let listed = listCache.get(cacheKey);
   if (!listed) {
@@ -509,19 +653,84 @@ async function verifyAndDeleteMember(
   }
 
   const matches = listed.filter((candidate) => candidate.displayName === member.displayName);
-  if (matches.length === 0) return "already-gone";
-  if (matches.length > 1) return "ambiguous";
+  const evidence = await gatherRecoveryEvidence(organizationId, instance.id, matches);
+  const decision = classifyRecoveryCandidate(evidence, instance.createdAt.toISOString());
+
+  if (decision.action === "already-gone") return { outcome: "already-gone" };
+  if (decision.action === "ambiguous") {
+    return {
+      outcome: "ambiguous",
+      detail: `${matches.length} resources are named "${member.displayName}" — delete the right one by hand`,
+    };
+  }
+  if (decision.action === "needs-attention") {
+    return {
+      outcome: "needs-attention",
+      detail: `a resource named "${member.displayName}" was left alone because ${decision.reason} — check it by hand`,
+    };
+  }
 
   const found = matches[0]!;
   // Record what the run failed to before deleting it, so a teardown that dies
   // here leaves the id behind rather than making the next attempt re-derive it.
-  await markMemberResourceId(instanceId, member.memberKey, {
+  await markMemberResourceId(instance.id, member.memberKey, {
     resourceId: found.id,
     externalId: found.externalId ?? null,
   }).catch((error: unknown) => {
     console.error("[environments] failed to record a recovered resource id:", error);
   });
-  return deleteMemberResource(organizationId, member, found.id);
+  return { outcome: await deleteMemberResource(organizationId, member, found.id) };
+}
+
+/**
+ * Everything the identity rule needs that the provider cannot fabricate: when
+ * *we* first saw the resource, and whether another environment already claims
+ * it. Both come from our own tables.
+ */
+async function gatherRecoveryEvidence(
+  organizationId: string,
+  instanceId: string,
+  matches: ResourceInstance[],
+): Promise<RecoveryCandidate[]> {
+  if (matches.length === 0) return [];
+  const ids = matches.map((match) => match.id);
+
+  const [known, claimed] = await Promise.all([
+    db
+      .select({ id: resources.id, createdAt: resources.createdAt })
+      .from(resources)
+      .where(and(eq(resources.organizationId, organizationId), inArray(resources.id, ids))),
+    db
+      .select({ resourceId: environmentInstanceMembers.resourceId })
+      .from(environmentInstanceMembers)
+      .where(
+        and(
+          eq(environmentInstanceMembers.organizationId, organizationId),
+          inArray(environmentInstanceMembers.resourceId, ids),
+        ),
+      ),
+  ]);
+
+  const knownSince = new Map(known.map((row) => [row.id, row.createdAt]));
+  const claimedElsewhere = new Set(
+    claimed.filter((row) => row.resourceId !== null).map((row) => row.resourceId!),
+  );
+  // A claim by *this* instance is the member being recovered, not somebody
+  // else's hold on the resource.
+  const ownClaims = await db
+    .select({ resourceId: environmentInstanceMembers.resourceId })
+    .from(environmentInstanceMembers)
+    .where(eq(environmentInstanceMembers.instanceId, instanceId));
+  for (const row of ownClaims) {
+    if (row.resourceId) claimedElsewhere.delete(row.resourceId);
+  }
+
+  return matches.map((match) => ({
+    externalId: match.externalId ?? null,
+    createdAt: match.createdAt,
+    knownSince: knownSince.get(match.id)?.toISOString() ?? null,
+    claimedByAnotherMember: claimedElsewhere.has(match.id),
+  }));
 }
 
 /**
@@ -571,6 +780,8 @@ export async function forgetEnvironmentInstance(
  * instances past their own deadline are considered.
  */
 export async function reconcileEnvironmentInstances(organizationId: string): Promise<void> {
+  await repairMissingMemberLeases(organizationId);
+
   const rows = await db
     .select({ id: environmentInstances.id })
     .from(environmentInstances)
@@ -614,6 +825,57 @@ export async function reconcileEnvironmentInstances(organizationId: string): Pro
     if (aliveIds.size === 0) {
       await setInstanceStatus(row.id, "deleted", { completedAt: new Date() });
     }
+  }
+}
+
+/**
+ * Give a live member back its TTL if it somehow lost one.
+ *
+ * The third layer under "no member runs without an expiry": instantiation
+ * retries the attachment and rolls the resource back if it cannot manage it,
+ * and this catches whatever still slips through — most realistically a lease
+ * that was created while the write recording its id failed, which leaves the
+ * TTL working but the row claiming otherwise. Adopting the existing lease is
+ * why this looks it up before creating one.
+ */
+async function repairMissingMemberLeases(organizationId: string): Promise<void> {
+  const orphans = await db
+    .select({
+      instanceId: environmentInstanceMembers.instanceId,
+      memberKey: environmentInstanceMembers.memberKey,
+      resourceId: environmentInstanceMembers.resourceId,
+      accountId: environmentInstanceMembers.accountId,
+      expiresAt: environmentInstances.expiresAt,
+      name: environmentInstances.name,
+    })
+    .from(environmentInstanceMembers)
+    .innerJoin(
+      environmentInstances,
+      eq(environmentInstanceMembers.instanceId, environmentInstances.id),
+    )
+    .where(
+      and(
+        eq(environmentInstanceMembers.organizationId, organizationId),
+        eq(environmentInstanceMembers.status, "created"),
+        isNull(environmentInstanceMembers.leaseId),
+        inArray(environmentInstances.status, ["creating", "active", "partial"]),
+      ),
+    )
+    .limit(50);
+
+  for (const orphan of orphans) {
+    if (!orphan.resourceId) continue;
+    await attachMemberLease({
+      organizationId,
+      instanceId: orphan.instanceId,
+      memberKey: orphan.memberKey,
+      resourceId: orphan.resourceId,
+      accountId: orphan.accountId,
+      expiresAt: orphan.expiresAt,
+      environmentName: orphan.name,
+    }).catch((error: unknown) => {
+      console.error("[environments] failed to repair a member's lease:", error);
+    });
   }
 }
 
