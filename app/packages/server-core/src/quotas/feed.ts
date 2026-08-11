@@ -27,6 +27,7 @@ import {
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
+import { renderableHelpUrl } from "../help-links";
 import {
   accountQuotaPolls,
   accountQuotaSnapshots,
@@ -170,7 +171,17 @@ export async function getQuotaFeed(
       utilization: row.utilization,
       unit: row.unit,
       adjustable: row.adjustable,
-      docsUrl: row.docsUrl ?? quotaPlugins.get(account.pluginId)?.increaseUrl ?? null,
+      // Re-checked on the way out, not just on the way in, because storage is
+      // not the only door. `increaseUrl` comes straight off the manifest here
+      // and never passes through the collector at all, so this is the *only*
+      // place it can be caught; and a `docs_url` written before the collector
+      // enforced the rule is still sitting in the table. The value ends up at
+      // `window.open`, so a null link is the safe failure and the row simply
+      // renders without one.
+      docsUrl:
+        renderableHelpUrl(row.docsUrl) ??
+        renderableHelpUrl(quotaPlugins.get(account.pluginId)?.increaseUrl) ??
+        null,
       observedAt: row.observedAt.toISOString(),
       severity: quotaSeverity(row.utilization, settings.threshold, trend),
       trend,

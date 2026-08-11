@@ -83,7 +83,7 @@ function quotaRow(accountId: string) {
     utilization: 1010 / 1024,
     unit: "vCPUs",
     adjustable: true,
-    docsUrl: null,
+    docsUrl: storedDocsUrl,
     observedAt: new Date("2026-08-11T00:00:00.000Z"),
   };
 }
@@ -119,9 +119,25 @@ vi.mock("../db/client", () => ({
   },
 }));
 
+/** Manifest `increaseUrl` for the fixture plugin; varied per test. */
+let increaseUrl: string | undefined = undefined;
+/** Stored `docs_url` on the live account's row; varied per test. */
+let storedDocsUrl: string | null = null;
+
 vi.mock("../plugin-loader", () => ({
   loadPlugins: async () => [
-    { plugin: { manifest: { id: "aws", quotas: { label: "Service Quotas", partial: true } } } },
+    {
+      plugin: {
+        manifest: {
+          id: "aws",
+          quotas: {
+            label: "Service Quotas",
+            partial: true,
+            ...(increaseUrl === undefined ? {} : { increaseUrl }),
+          },
+        },
+      },
+    },
   ],
 }));
 
@@ -136,7 +152,59 @@ vi.mock("../quotas/settings", () => ({
 
 const { getQuotaFeed } = await import("../quotas/feed");
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  increaseUrl = undefined;
+  storedDocsUrl = null;
+});
+
+/**
+ * The feed re-checks link safety on the way out, not only on the way in.
+ *
+ * Two paths make that necessary rather than merely defensive. The manifest's
+ * `increaseUrl` is injected here and never passes through the collector at
+ * all, so this is the *only* place it can be caught. And a `docs_url` written
+ * before the collector enforced the rule is still sitting in the table.
+ * Everything here ends up at `window.open`.
+ */
+describe("getQuotaFeed — plugin-supplied link safety", () => {
+  it("serves an https docs URL stored on the row", async () => {
+    storedDocsUrl = "https://docs.aws.amazon.com/servicequotas/";
+    const feed = await getQuotaFeed("org-1");
+    expect(feed.rows[0]?.docsUrl).toBe("https://docs.aws.amazon.com/servicequotas/");
+  });
+
+  it("falls back to the manifest increaseUrl when the row has none", async () => {
+    increaseUrl = "https://console.aws.amazon.com/servicequotas/home";
+    const feed = await getQuotaFeed("org-1");
+    expect(feed.rows[0]?.docsUrl).toBe("https://console.aws.amazon.com/servicequotas/home");
+  });
+
+  // The field the collector can never see.
+  it("refuses an unsafe manifest increaseUrl", async () => {
+    for (const url of ["javascript:alert(1)", "data:text/html,<script>", "http://example.com"]) {
+      increaseUrl = url;
+      const feed = await getQuotaFeed("org-1");
+      expect(feed.rows[0]?.docsUrl).toBeNull();
+    }
+  });
+
+  // A row written before the collector enforced the rule.
+  it("refuses an unsafe docs URL already sitting in the table", async () => {
+    storedDocsUrl = "javascript:alert(1)";
+    const feed = await getQuotaFeed("org-1");
+    expect(feed.rows[0]?.docsUrl).toBeNull();
+  });
+
+  // An unsafe stored value must not silently promote the manifest fallback
+  // either — but a safe fallback beside a poisoned row is still the right link.
+  it("falls through to a safe manifest URL when the stored one is rejected", async () => {
+    storedDocsUrl = "javascript:alert(1)";
+    increaseUrl = "https://console.aws.amazon.com/servicequotas/home";
+    const feed = await getQuotaFeed("org-1");
+    expect(feed.rows[0]?.docsUrl).toBe("https://console.aws.amazon.com/servicequotas/home");
+  });
+});
 
 describe("getQuotaFeed — soft-deleted accounts", () => {
   it("drops a deleted account's stored quota rows", async () => {

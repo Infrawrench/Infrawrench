@@ -25,7 +25,7 @@ import {
 
 import { db } from "../db/client";
 import { accountQuotaPolls, accountQuotaSnapshots, accountQuotaUsage } from "../db/schema";
-import { renderableHelpLink } from "../help-links";
+import { renderableHelpLink, renderableHelpUrl } from "../help-links";
 import { loadAccountClient } from "../sync-resources";
 
 export interface QuotaCollectionResult {
@@ -89,7 +89,13 @@ export async function collectAccountQuotas(
         utilization,
         unit: reading.unit ?? null,
         adjustable: reading.adjustable ?? null,
-        docsUrl: reading.docsUrl ?? null,
+        // The same boundary the failure help link crosses, reached through the
+        // other field. `docsUrl` is plugin-supplied, is returned unchanged by
+        // the feed, and ends up at `window.open` on web — a worse sink than an
+        // anchor `href`, since a scheme the browser executes runs without the
+        // user ever leaving the page. `https:` only; anything else is stored
+        // as null and the row simply renders without a link.
+        docsUrl: renderableHelpUrl(reading.docsUrl),
         observedAt,
       };
 

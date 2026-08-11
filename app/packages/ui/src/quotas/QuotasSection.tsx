@@ -5,11 +5,30 @@ import {
   formatDaysToExhaustion,
   formatQuotaAmount,
   formatQuotaUtilization,
+  renderableHelpUrl,
   type QuotaAccountStatus,
   type QuotaListResponse,
   type QuotaRow,
   type QuotaSeverity,
 } from "@infrawrench/client-core";
+
+/**
+ * Every URL on this screen originates in a plugin — a quota's `docsUrl`, the
+ * manifest's `increaseUrl`, a failure's help link — and every one of them ends
+ * up either in an anchor's `href` or at the host's `onOpenExternal`, which is
+ * `window.open` on web and `shell.openExternal` on desktop.
+ *
+ * The server already refuses to store or serve an unsafe one. This is the
+ * second end of the same check, and it is here rather than assumed away
+ * because the server's guarantee is about *this* build of the server: a row
+ * written before the rule existed, a future writer of the poll table, or a
+ * desktop pointed at an older cloud all deliver values this component would
+ * otherwise hand straight to a navigation sink. Refusing to render a link we
+ * cannot validate costs a link; trusting the other end costs a click.
+ */
+function quotaLinkUrl(url: string | null | undefined): string | null {
+  return renderableHelpUrl(url);
+}
 
 export interface QuotasSectionProps {
   /**
@@ -173,11 +192,11 @@ function CoverageNotes({
         <p key={account.accountId} role="alert" className="text-red-400">
           <span className="font-medium">{account.accountName}</span> — quotas could not be read:{" "}
           {account.lastError}
-          {account.lastErrorHelpUrl && (
+          {quotaLinkUrl(account.lastErrorHelpUrl) && (
             <>
               {" "}
               <a
-                href={account.lastErrorHelpUrl}
+                href={quotaLinkUrl(account.lastErrorHelpUrl)!}
                 target="_blank"
                 rel="noreferrer"
                 className="underline"
@@ -413,10 +432,13 @@ export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSe
                                     >
                                       hard limit
                                     </span>
-                                  ) : row.docsUrl && onOpenExternal ? (
+                                  ) : quotaLinkUrl(row.docsUrl) && onOpenExternal ? (
                                     <button
                                       type="button"
-                                      onClick={() => onOpenExternal(row.docsUrl!)}
+                                      onClick={() => {
+                                        const url = quotaLinkUrl(row.docsUrl);
+                                        if (url) onOpenExternal(url);
+                                      }}
                                       className="text-[11px] text-on-surface-tertiary underline hover:text-on-surface-secondary"
                                     >
                                       {row.adjustable === true ? "Request increase" : "Docs"}

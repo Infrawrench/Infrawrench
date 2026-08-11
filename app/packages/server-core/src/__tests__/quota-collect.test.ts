@@ -167,6 +167,52 @@ describe("collectAccountQuotas — atomicity", () => {
   });
 });
 
+describe("collectAccountQuotas — docsUrl", () => {
+  function storedDocsUrl(): unknown {
+    const upsert = writes.find((w) => w.table === "accountQuotaUsage" && w.op === "insert");
+    return (upsert?.values as Record<string, unknown> | undefined)?.["docsUrl"];
+  }
+
+  it("stores an https docs link", async () => {
+    fetchQuotas.mockResolvedValue([
+      reading({ docsUrl: "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/" }),
+    ]);
+    await collectAccountQuotas("acc-1", "org-1");
+    expect(storedDocsUrl()).toBe("https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/");
+  });
+
+  /**
+   * The same boundary the failure help link crosses, reached through the other
+   * field. `docsUrl` is returned unchanged by the feed and handed to
+   * `window.open` on web — a worse sink than an anchor `href`, since a scheme
+   * the browser executes runs without the user leaving the page.
+   */
+  it("refuses a docs URL the UI could not safely open", async () => {
+    for (const docsUrl of [
+      "javascript:alert(1)",
+      "data:text/html;base64,PHNjcmlwdD4=",
+      "http://example.com/docs",
+      "/org/settings",
+      "\njavascript:alert(1)",
+    ]) {
+      writes = [];
+      fetchQuotas.mockResolvedValue([reading({ docsUrl })]);
+      await collectAccountQuotas("acc-1", "org-1");
+      expect(storedDocsUrl()).toBeNull();
+    }
+  });
+
+  // Dropping the link must not drop the reading: the quota is still real and
+  // still the thing the page exists to show.
+  it("keeps the reading when it drops the link", async () => {
+    fetchQuotas.mockResolvedValue([reading({ docsUrl: "javascript:alert(1)" })]);
+    const result = await collectAccountQuotas("acc-1", "org-1");
+    expect(result.quotaCount).toBe(1);
+    const upsert = writes.find((w) => w.table === "accountQuotaUsage" && w.op === "insert");
+    expect(upsert?.values).toMatchObject({ service: "ec2", used: 912, quotaLimit: 1024 });
+  });
+});
+
 describe("markQuotaPollFailure — help links", () => {
   /** A `QuotaAccessError` as a plugin bundled with its own plugin-base throws it. */
   function quotaAccessError(helpLabel: string, helpUrl: string) {
