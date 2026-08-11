@@ -22,7 +22,7 @@
  */
 import type { CostBasis, CostChargeType, CostFilter } from "@infrawrench/client-core";
 import { getClickHouseClient, isClickHouseConfigured } from "../clickhouse/client";
-import { amortizedAmountExpr } from "../clickhouse/cost-readers";
+import { amortizedAmountExpr, DAY_FROM_SQL, DAY_TO_SQL } from "../clickhouse/cost-readers";
 
 /** The column set an export emits, in order. Drives both the header and each row. */
 export interface CostExportColumns {
@@ -119,11 +119,7 @@ interface BuiltQuery {
 /** Assemble the SELECT. Exported for the tests that assert its shape. */
 export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
   const params: Record<string, unknown> = { orgId: q.organizationId, from: q.from, to: q.to };
-  const where = [
-    "organization_id = {orgId:String}",
-    "day >= toDate({from:String})",
-    "day <= toDate({to:String})",
-  ];
+  const where = ["organization_id = {orgId:String}", DAY_FROM_SQL, DAY_TO_SQL];
 
   q.filters.forEach((f, i) => {
     const expr =

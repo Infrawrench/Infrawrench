@@ -62,7 +62,7 @@
  * stamp, not a claim.
  */
 import { getClickHouseClient, isClickHouseConfigured } from "./client";
-import { amortizedAmountExpr } from "./cost-readers";
+import { amortizedAmountExpr, DAY_FROM_SQL, DAY_TO_SQL } from "./cost-readers";
 
 async function query<T>(sql: string, query_params: Record<string, unknown>): Promise<T[]> {
   if (!isClickHouseConfigured()) return [];
@@ -136,8 +136,8 @@ export async function getCommitmentCoverageCells(
             sumIf(${money}, ${UNCOVERED_SQL}) AS uncovered_amount
      FROM cost_daily FINAL
      WHERE organization_id = {orgId:String}
-       AND day >= toDate({from:String})
-       AND day <= toDate({to:String})
+       AND ${DAY_FROM_SQL}
+       AND ${DAY_TO_SQL}
        AND ${CONSUMPTION_SQL}
        AND account_id IN {accountIds:Array(String)}
      GROUP BY account_id, plugin_id, service, region, currency`,
@@ -167,8 +167,8 @@ export async function getAccountDataDays(
     `SELECT DISTINCT account_id, toString(day) AS day
      FROM cost_daily
      WHERE organization_id = {orgId:String}
-       AND day >= toDate({from:String})
-       AND day <= toDate({to:String})
+       AND ${DAY_FROM_SQL}
+       AND ${DAY_TO_SQL}
        AND account_id IN {accountIds:Array(String)}`,
     { orgId: organizationId, from, to, accountIds },
   );
@@ -210,8 +210,8 @@ export async function getCommitmentDeliveredTotals(
     `SELECT account_id, commitment_id, currency, sum(${amortizedAmountExpr()}) AS amount
      FROM cost_daily FINAL
      WHERE organization_id = {orgId:String}
-       AND day >= toDate({from:String})
-       AND day <= toDate({to:String})
+       AND ${DAY_FROM_SQL}
+       AND ${DAY_TO_SQL}
        AND ${CONSUMPTION_SQL}
        AND commitment_id != ''
        AND account_id IN {accountIds:Array(String)}
@@ -253,8 +253,8 @@ export async function getUncoveredDailySpend(
             sum(${amortizedAmountExpr()}) AS amount
      FROM cost_daily FINAL
      WHERE organization_id = {orgId:String}
-       AND day >= toDate({from:String})
-       AND day <= toDate({to:String})
+       AND ${DAY_FROM_SQL}
+       AND ${DAY_TO_SQL}
        AND ${CONSUMPTION_SQL}
        AND ${UNCOVERED_SQL}
        AND account_id IN {accountIds:Array(String)}
