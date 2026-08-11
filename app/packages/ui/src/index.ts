@@ -358,9 +358,14 @@ export {
   buildDependencyGraph,
   directDependencies,
   collectDependents,
+  collectDependentsWithDepth,
   collectDependencies,
   layoutDependencyGraph,
   dependencyEdgeLabel,
+  summarizeBlastRadius,
+  blastRadiusSeverity,
+  blastRadiusHeadline,
+  blastRadiusReferenceLabel,
   collapseIdenticalNodes,
   inferDependencyEdges,
   collectDependencyRules,
@@ -861,6 +866,22 @@ export type {
   ResourceOwnershipListResponse,
   ResourceOwnershipPatch,
 } from "./ownership/types.js";
+export { BlastRadiusPanel } from "./blast-radius/BlastRadiusPanel.js";
+export { BlastRadiusSummary } from "./blast-radius/BlastRadiusSummary.js";
+export { useBlastRadius } from "./blast-radius/useBlastRadius.js";
+export type { BlastRadiusState } from "./blast-radius/useBlastRadius.js";
+// Named, per the dts-bundler note above the ownership block.
+export type {
+  BlastRadiusClient,
+  BlastRadiusDependant,
+  BlastRadiusFlowPeer,
+  BlastRadiusGap,
+  BlastRadiusReference,
+  BlastRadiusReferenceKind,
+  BlastRadiusReport,
+  BlastRadiusSeverity,
+  OpenBlastRadiusResource,
+} from "./blast-radius/types.js";
 export { StatusPagesPanel } from "./status-pages/StatusPagesPanel.js";
 export type { StatusPagesPanelProps } from "./status-pages/StatusPagesPanel.js";
 export { StatusPageEditorModal } from "./status-pages/StatusPageEditorModal.js";

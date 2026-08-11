@@ -39,6 +39,8 @@ Click a node to see its **blast radius**: the resource itself plus everything th
 
 Click the selected node again (or the **Open resource** button in the header) to jump to its detail page.
 
+The canvas highlight is the graph's share of the answer. The full [blast radius](./blast-radius.md) report adds what the graph cannot see — the dashboards, probes, alerts, leases and schedules that point at the resource, what measurably talks to it, and what couldn't be checked — and it is what the delete confirmation dialog shows.
+
 The graph is keyboard navigable: <kbd>Tab</kbd> moves between nodes, <kbd>Enter</kbd> or <kbd>Space</kbd> selects the focused node and then opens it, and <kbd>Escape</kbd> clears the selection. Clicking empty canvas or the **Clear** button in the header clears it too.
 
 ## Per-resource dependencies

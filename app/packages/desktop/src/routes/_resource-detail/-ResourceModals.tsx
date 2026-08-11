@@ -7,6 +7,7 @@ import type {
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
 import {
+  BlastRadiusSummary,
   ConfirmDeleteModal,
   CredentialExportModal,
   EditResourceModal,
@@ -29,8 +30,16 @@ import {
   navigateToWorkspaceTarget,
   resourceTabTarget,
 } from "../../lib/workspace-tabs";
+import { createDesktopBlastRadiusClient } from "../../lib/blast-radius-client";
+import type { BlastRadiusClient } from "@infrawrench/ui";
 import type { AccountRow } from "../../db/rows";
 import type { CloudCtx } from "./-types";
+
+let desktopBlastRadiusClient: BlastRadiusClient | null = null;
+function getBlastRadiusClient(): BlastRadiusClient {
+  if (!desktopBlastRadiusClient) desktopBlastRadiusClient = createDesktopBlastRadiusClient();
+  return desktopBlastRadiusClient;
+}
 
 interface ResourceModalsProps {
   showExportCredential: boolean;
@@ -164,6 +173,19 @@ export function ResourceModals({
           name={resource.displayName}
           onConfirm={onConfirmDelete}
           onClose={onCloseConfirmDelete}
+          // Cloud mode only — the report is mostly about org objects a local
+          // workspace does not have. Passing `undefined` renders no summary
+          // rather than an empty one, which would read as "nothing found".
+          {...(getCloudCtx()
+            ? {
+                summary: (
+                  <BlastRadiusSummary
+                    client={getBlastRadiusClient()}
+                    resourceId={decodedResourceId}
+                  />
+                ),
+              }
+            : {})}
         />
       )}
 

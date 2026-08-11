@@ -1,5 +1,6 @@
 import type { AssociationSource, CostEstimate } from "@infrawrench/plugin-base";
 import type {
+  BlastRadiusReport,
   DependencyGraphData,
   DnsInventoryResponse,
   EnvironmentDiffResponse,
@@ -19,6 +20,23 @@ export async function fetchCloudDependencyGraph(
   resourceId?: string,
 ): Promise<DependencyGraphData> {
   return invoke("cloud_dependency_graph", resourceId ? { orgId, resourceId } : { orgId });
+}
+
+/**
+ * One resource's impact report — what breaks if it is deleted.
+ *
+ * Cloud-only on purpose, and there is no local-mode counterpart: the report is
+ * mostly about org objects a local workspace does not have (dashboards,
+ * probes, status pages, leases, schedules, owners) and about flow attribution
+ * that only the cloud collects. A local half that could only ever answer the
+ * dependency-graph third would be a report whose "nothing else found" was
+ * structurally untrue.
+ */
+export async function fetchCloudBlastRadius(
+  orgId: string,
+  resourceId: string,
+): Promise<BlastRadiusReport> {
+  return invoke("cloud_blast_radius", { orgId, resourceId });
 }
 
 /**

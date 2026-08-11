@@ -11,7 +11,7 @@
  * day writes a newer `ingested_at` for the same key; without `FINAL` a day
  * collected twice reads as double its traffic until the parts happen to merge.
  */
-import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
 import { networkFlowDaily as flow } from "./schema";
 
@@ -31,6 +31,15 @@ export interface NetworkFlowFilters {
   pluginId?: string | undefined;
   scope?: string | undefined;
   direction?: string | undefined;
+  /**
+   * Keep only pairs with this endpoint at one end — "who talks to this thing".
+   *
+   * A flow ref is the **provider's** resource id (`i-0abc…`), never the
+   * composite id the app addresses resources by, so the caller resolves the
+   * external id first. It matches either end because the row's direction is
+   * relative to the pair, not to the resource being asked about.
+   */
+  ref?: string | undefined;
 }
 
 function whereClause(organizationId: string, range: NetworkFlowRange, filters: NetworkFlowFilters) {
@@ -42,6 +51,7 @@ function whereClause(organizationId: string, range: NetworkFlowRange, filters: N
     filters.pluginId ? eq(flow.plugin_id, filters.pluginId) : undefined,
     filters.scope ? eq(flow.scope, filters.scope) : undefined,
     filters.direction ? eq(flow.direction, filters.direction) : undefined,
+    filters.ref ? or(eq(flow.src_ref, filters.ref), eq(flow.dst_ref, filters.ref)) : undefined,
   );
 }
 

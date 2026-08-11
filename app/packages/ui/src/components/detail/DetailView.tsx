@@ -169,6 +169,13 @@ interface DetailViewProps {
    */
   renderOwnershipTab?: (() => React.ReactNode) | undefined;
   /**
+   * When set, a "Blast radius" tab renders the resource's impact report — what
+   * breaks if it is deleted. Host-driven and ungated like `renderOwnershipTab`:
+   * the answer is worth having for every resource, and "nothing depends on
+   * this" is as useful a finding as a long list.
+   */
+  renderBlastRadiusTab?: (() => React.ReactNode) | undefined;
+  /**
    * When `schema.noSqlBrowser` is set, the host provides the actual browser
    * UI via this render prop. The detail view renders it inside a dedicated
    * "Documents" tab. Keeping the UI in the host lets it hold driver-specific
@@ -232,6 +239,7 @@ type Tab =
   | "schedule"
   | "lease"
   | "ownership"
+  | "blast-radius"
   | "artifacts"
   | "kv-browser"
   | "secret-versions"
@@ -285,6 +293,7 @@ export function DetailView({
   renderScheduleTab,
   renderLeaseTab,
   renderOwnershipTab,
+  renderBlastRadiusTab,
   renderNoSqlBrowser,
   renderStorageBrowser,
   onChatStream,
@@ -312,6 +321,7 @@ export function DetailView({
   const hasScheduleTab = !!renderScheduleTab;
   const hasLeaseTab = !!renderLeaseTab;
   const hasOwnershipTab = !!renderOwnershipTab;
+  const hasBlastRadiusTab = !!renderBlastRadiusTab;
   const hasArtifacts = !!schema.artifactRegistry && !!onListArtifacts;
   const hasKvBrowser =
     !!schema.kvBrowser && !!onListKvKeys && !!onGetKvValue && !!onPutKvValue && !!onDeleteKvKey;
@@ -351,6 +361,8 @@ export function DetailView({
     hasChangesTab ||
     hasScheduleTab ||
     hasLeaseTab ||
+    hasOwnershipTab ||
+    hasBlastRadiusTab ||
     hasArtifacts ||
     hasKvBrowser ||
     hasSecretVersions ||
@@ -381,6 +393,7 @@ export function DetailView({
   if (hasScheduleTab) tabKeys.push("schedule");
   if (hasLeaseTab) tabKeys.push("lease");
   if (hasOwnershipTab) tabKeys.push("ownership");
+  if (hasBlastRadiusTab) tabKeys.push("blast-radius");
   if (hasArtifacts) tabKeys.push("artifacts");
   if (hasKvBrowser) tabKeys.push("kv-browser");
   if (hasSecretVersions) tabKeys.push("secret-versions");
@@ -624,6 +637,13 @@ export function DetailView({
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("ownership")}>
                     Ownership
+                  </TabButton>
+                );
+              }
+              if (key === "blast-radius") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("blast-radius")}>
+                    Blast radius
                   </TabButton>
                 );
               }
@@ -934,6 +954,18 @@ export function DetailView({
           className="flex-1 overflow-auto"
         >
           {renderOwnershipTab!()}
+        </div>
+      )}
+
+      {hasBlastRadiusTab && activeTab === "blast-radius" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("blast-radius")}
+          aria-labelledby={tabIdFor("blast-radius")}
+          tabIndex={0}
+          className="flex-1 overflow-auto"
+        >
+          {renderBlastRadiusTab!()}
         </div>
       )}
 

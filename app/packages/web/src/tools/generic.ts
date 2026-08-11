@@ -25,6 +25,7 @@ import {
   EnvironmentDiffPluginMismatchError,
 } from "@infrawrench/server-core/environment-diff";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
+import { getBlastRadius } from "../services/blast-radius";
 import { resolveStoredSshPublicKey } from "./ssh-key-lookup";
 import { logAudit } from "../services/audit";
 import {
@@ -459,6 +460,36 @@ export function genericTools(): ToolDefinition[] {
           skippedNamespaces: inventory.skippedNamespaces,
           generatedAt: inventory.generatedAt,
         });
+      },
+    },
+
+    {
+      name: "get_blast_radius",
+      title: "Blast radius",
+      description:
+        "What breaks if a resource is deleted. Walks the dependency graph inbound for direct " +
+        "and transitive dependants, measures who talks to it over the network, and lists the " +
+        "dashboards, custom graphs, probes, status pages, metric alerts, leases, schedules, " +
+        "saved log queries, workflows and owner record that name it. " +
+        "**Read `unchecked` before concluding anything is safe to delete** — it says what the " +
+        "report could not look at (flow collection off, workflows matched only by literal id), " +
+        "and an empty dependant list next to a non-empty `unchecked` is not a clean bill of " +
+        "health. Call this before proposing or performing delete_resource.",
+      inputSchema: {
+        resourceId: z
+          .string()
+          .describe(
+            "The resource id as returned by list_resources / search_resources (the composite " +
+              "`pluginId:accountId:externalId` form, not the provider's own id).",
+          ),
+      },
+      risk: "read",
+      // Mirrors `GET /blast-radius`.
+      permission: "resources:read",
+      handler: async (input, auth) => {
+        const resourceId = (input["resourceId"] as string).trim();
+        if (!resourceId) return err("resourceId is required");
+        return ok(await getBlastRadius(auth.organizationId, resourceId));
       },
     },
 
@@ -1157,7 +1188,9 @@ export function genericTools(): ToolDefinition[] {
       name: "delete_resource",
       title: "Delete resource",
       description:
-        "Permanently delete a resource. Audit-logged. The chat surface confirms with the user before invoking.",
+        "Permanently delete a resource. Audit-logged. The chat surface confirms with the user " +
+        "before invoking. Call get_blast_radius first and say what it found — including its " +
+        "`unchecked` list — so the confirmation is an informed one.",
       inputSchema: resourceTargetSchema,
       risk: "destructive",
       permission: "resources:delete",

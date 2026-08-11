@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.12.0",
+    "version": "1.13.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -20335,6 +20335,339 @@
           "nodes",
           "edges",
           "truncated"
+        ],
+        "additionalProperties": false
+      },
+      "BlastRadiusNode": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "pluginDisplayName": {
+            "type": "string"
+          },
+          "pluginLogoSvg": {
+            "type": "string",
+            "description": "Inline SVG markup; may be empty."
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeLabel": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "displayName",
+          "pluginId",
+          "pluginDisplayName",
+          "pluginLogoSvg",
+          "resourceTypeId",
+          "resourceTypeLabel",
+          "accountId",
+          "accountName"
+        ],
+        "additionalProperties": false,
+        "description": "The resource itself, when it participates in the dependency graph."
+      },
+      "BlastRadiusDependant": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlastRadiusNode"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "depth": {
+            "type": "integer",
+            "description": "Shortest hop count from the resource: 1 is a direct dependant, 2 or more reached it through something else. The resource itself is never listed."
+          },
+          "via": {
+            "type": "object",
+            "properties": {
+              "fieldKey": {
+                "type": "string",
+                "description": "The dependant's field holding the reference."
+              },
+              "outputKey": {
+                "type": "string",
+                "description": "The output or identity the reference reads."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "output-ref",
+                  "declared",
+                  "containment",
+                  "field-match"
+                ],
+                "description": "Where the edge came from. Absent means `output-ref` — a reference wired by hand."
+              },
+              "label": {
+                "type": "string",
+                "description": "How the plugin words the relationship (\"in VPC\"), when it declared one."
+              }
+            },
+            "required": [
+              "fieldKey",
+              "outputKey"
+            ],
+            "additionalProperties": false,
+            "description": "How a direct dependant reaches the resource. Absent for transitive dependants, whose path is several edges and has no single caption."
+          }
+        },
+        "required": [
+          "node",
+          "depth"
+        ],
+        "additionalProperties": false
+      },
+      "BlastRadiusReference": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "dashboard",
+              "custom-graph",
+              "probe",
+              "status-page",
+              "metric-alert",
+              "lease",
+              "schedule",
+              "workflow",
+              "log-query",
+              "owner"
+            ],
+            "description": "What kind of object names the resource."
+          },
+          "id": {
+            "type": "string",
+            "description": "The referring object's own id."
+          },
+          "name": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string",
+            "description": "One extra clause of context."
+          },
+          "userFacing": {
+            "type": "boolean",
+            "description": "Set when the reference is visible outside the organization — a published status page component, or the probe behind one. Any user-facing reference makes the report high severity on its own."
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "BlastRadiusFlowPeer": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "The peer's flow ref — a provider resource id, or a class token like `internet`."
+          },
+          "label": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "egress",
+              "ingress"
+            ],
+            "description": "Relative to the resource being deleted, not to the row the provider captured."
+          },
+          "scope": {
+            "type": "string",
+            "description": "The boundary the traffic crossed."
+          },
+          "bytes": {
+            "type": "number"
+          },
+          "estimatedCost": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "days": {
+            "type": "integer",
+            "description": "Days in the window this peer appeared on — a spike versus a standing flow."
+          },
+          "resourceId": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResourceId"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The peer's Infrawrench resource id when its flow ref resolved to exactly one synced resource. Null when it resolved to none (an endpoint outside the organization) and also when it resolved to several — a provider id is only unique within one plugin and account, and a flow record does not name the peer's account, so a contested ref is reported unlinked with the reason in `unchecked` rather than attributed to a guess."
+              }
+            ]
+          }
+        },
+        "required": [
+          "ref",
+          "label",
+          "direction",
+          "scope",
+          "bytes",
+          "estimatedCost",
+          "currency",
+          "days",
+          "resourceId"
+        ],
+        "additionalProperties": false
+      },
+      "BlastRadiusGap": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "network-flows",
+              "dependency-graph",
+              "references",
+              "workflow-source",
+              "custom-graph-source"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "A full sentence, written to be rendered verbatim to the person deleting."
+          }
+        },
+        "required": [
+          "kind",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "BlastRadiusReport": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/BlastRadiusNode"
+          },
+          "dependants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlastRadiusDependant"
+            },
+            "description": "Affected resources, direct first then by depth."
+          },
+          "directCount": {
+            "type": "integer"
+          },
+          "transitiveCount": {
+            "type": "integer"
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlastRadiusReference"
+            },
+            "description": "Objects naming the resource without depending on it, user-facing ones first."
+          },
+          "flowPeers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlastRadiusFlowPeer"
+            },
+            "description": "Measured network peers over the last 14 days, heaviest first. Empty when flow collection is off — see `unchecked`."
+          },
+          "flowTotals": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "bytes": {
+                "type": "number"
+              },
+              "estimatedCost": {
+                "type": "number"
+              },
+              "currency": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "bytes",
+              "estimatedCost",
+              "currency"
+            ],
+            "additionalProperties": false,
+            "description": "Totals over `flowPeers`, or null when traffic could not be measured at all. Zeroed totals mean collection is on and the resource is quiet; null means nobody looked."
+          },
+          "unchecked": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlastRadiusGap"
+            },
+            "description": "What the report could not look at. An empty `dependants` list with a non-empty `unchecked` list is not a clean bill of health, and surfaces must not render it as one."
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "unknown"
+            ],
+            "description": "`high` for anything user-facing or five or more direct dependants; `unknown` when nothing was found but something could not be checked."
+          },
+          "headline": {
+            "type": "string",
+            "description": "One sentence, ready to render."
+          }
+        },
+        "required": [
+          "resourceId",
+          "resource",
+          "dependants",
+          "directCount",
+          "transitiveCount",
+          "references",
+          "flowPeers",
+          "flowTotals",
+          "unchecked",
+          "severity",
+          "headline"
         ],
         "additionalProperties": false
       },
@@ -44568,6 +44901,60 @@
         "operationId": "getOrgOrgIdDependencyGraph",
         "x-required-permission": "resources:read",
         "description": "_Requires permission: `resources:read`._"
+      }
+    },
+    "/api/org/{orgId}/blast-radius": {
+      "get": {
+        "tags": [
+          "Associations"
+        ],
+        "summary": "What breaks if this resource is deleted",
+        "description": "An impact report for one resource, assembled from the dependency graph walked inbound, network flow attribution, and the org objects that name the resource without depending on it (dashboards, custom graphs, probes, status pages, metric alerts, leases, schedules, saved log queries, workflows, and its recorded owner).\n\nThe endpoint answers 200 with a partial report rather than failing when a source is unavailable; `unchecked` says which, in prose.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/ResourceId"
+                },
+                {
+                  "description": "The resource to report on. A query parameter rather than a path segment because composite resource ids contain slashes and colons."
+                }
+              ]
+            },
+            "required": true,
+            "name": "resourceId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The impact report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlastRadiusReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing resourceId"
+          }
+        },
+        "operationId": "getOrgOrgIdBlastRadius",
+        "x-required-permission": "resources:read"
       }
     },
     "/api/org/{orgId}/search": {

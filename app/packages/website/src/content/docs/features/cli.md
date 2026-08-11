@@ -262,6 +262,9 @@ infrawrench moment 2026-08-03T03:14 -w 1h  # ±1h around a timestamp
 
 infrawrench graph                          # the dependency tree for the whole org
 infrawrench graph --resource <id>          # what it needs, and its blast radius
+
+infrawrench blast-radius <id>              # what breaks if you delete it
+infrawrench blast-radius <id> --output json
 ```
 
 `changes` is the [change timeline](./change-timeline.md) in a table: when an event was seen, a `+`/`~`/`-` glyph for appeared / changed / disappeared, the resource, its type, its account, and which fields moved. `--limit` caps the rows (200 max); `--json` carries the full diffs and the `total` matching your filter.
@@ -272,7 +275,9 @@ infrawrench graph --resource <id>          # what it needs, and its blast radius
 
 `graph` prints the [dependency graph](./dependency-graph.md) as an ASCII tree rather than a picture — roots are the resources nothing depends on, and each child is something its parent depends on. Focused on one resource it becomes the terminal's **Dependencies** tab: a **Depends on** tree, and a **Depended on by** tree headed with the blast-radius count. `--json` emits the node and edge lists.
 
-`changes`, `moment` and `graph` read data the cloud poller collects, so they need an organization; `--local` says so rather than printing an empty table.
+`blast-radius` is the [blast radius](./blast-radius.md) report for one resource: its transitive dependants with a direct/hops badge on each, the dashboards, probes, status pages, alerts, leases, schedules, log queries and workflows that point at it, what measurably talks to it over the network, and — always printed, including on an otherwise empty report — what the check could not look at. `--output json` emits the whole report including `unchecked`, so a decommissioning script can refuse to proceed on a report it doesn't like.
+
+`changes`, `moment`, `graph` and `blast-radius` read data the cloud poller collects, so they need an organization; `--local` says so rather than printing an empty table.
 
 ## Running a command on many hosts
 

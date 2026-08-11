@@ -12,6 +12,17 @@ ipcMain.handle(
     ),
 );
 
+/**
+ * The impact report for one resource — cloud-mode only, since it reads the
+ * org's dependency graph, flow warehouse and org objects. The renderer wires
+ * the panel and the delete-dialog summary only when signed in.
+ */
+ipcMain.handle(
+  "cloud_blast_radius",
+  async (_e, { orgId, resourceId }: { orgId: string; resourceId: string }) =>
+    cloudFetch(orgId, `/blast-radius?resourceId=${encodeURIComponent(resourceId)}`),
+);
+
 ipcMain.handle(
   "cloud_tunnel_ssh_attach",
   async (_e, { orgId, body }: { orgId: string; body: unknown }) =>

@@ -601,6 +601,7 @@ export {
   buildDependencyGraph,
   directDependencies,
   collectDependents,
+  collectDependentsWithDepth,
   collectDependencies,
   layoutDependencyGraph,
   dependencyEdgeLabel,
@@ -615,6 +616,24 @@ export {
   type DependencyGraphLayout,
   type DependencyGraphLayoutOptions,
 } from "./dependency-graph";
+export {
+  summarizeBlastRadius,
+  blastRadiusSeverity,
+  blastRadiusHeadline,
+  blastRadiusReferenceLabel,
+  resolveFlowPeerIdentities,
+  fetchBlastRadius,
+  type FlowPeerCandidate,
+  type FlowPeerIdentities,
+  type BlastRadiusReport,
+  type BlastRadiusInput,
+  type BlastRadiusDependant,
+  type BlastRadiusReference,
+  type BlastRadiusReferenceKind,
+  type BlastRadiusFlowPeer,
+  type BlastRadiusGap,
+  type BlastRadiusSeverity,
+} from "./blast-radius";
 export {
   MONGO_PAGE_SIZE,
   mongoCommands,

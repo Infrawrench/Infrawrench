@@ -1,3 +1,4 @@
+import type React from "react";
 import { useState, useEffect, useRef } from "react";
 import { Modal } from "./Modal.js";
 import { formatErrorMessage } from "../utils.js";
@@ -11,9 +12,26 @@ interface ConfirmDeleteModalProps {
   onConfirm: () => void | Promise<void>;
   /** Called when the modal is dismissed */
   onClose: () => void;
+  /**
+   * Optional impact summary rendered between the warning and the confirmation
+   * box — the resource surfaces pass `<BlastRadiusSummary/>`.
+   *
+   * It is a slot rather than data because it must be able to arrive *late*:
+   * the dialog opens immediately and the summary fills in underneath, and
+   * nothing here waits on it or blocks confirmation on it. Someone who already
+   * knows what they are deleting must never be held up by a check they didn't
+   * ask for.
+   */
+  summary?: React.ReactNode;
 }
 
-export function ConfirmDeleteModal({ kind, name, onConfirm, onClose }: ConfirmDeleteModalProps) {
+export function ConfirmDeleteModal({
+  kind,
+  name,
+  onConfirm,
+  onClose,
+  summary,
+}: ConfirmDeleteModalProps) {
   const [typed, setTyped] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +63,8 @@ export function ConfirmDeleteModal({ kind, name, onConfirm, onClose }: ConfirmDe
           This action cannot be undone. To confirm, type{" "}
           <span className="text-white font-medium select-all">{name}</span> below.
         </p>
+
+        {summary}
 
         <label htmlFor="confirm-delete-input" className="sr-only">
           Type {name} to confirm

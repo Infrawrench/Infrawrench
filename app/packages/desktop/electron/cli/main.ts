@@ -45,6 +45,7 @@ import { cmdProbes } from "./commands/probes";
 import { cmdStatusPages } from "./commands/status-pages";
 import { cmdOwnership } from "./commands/ownership";
 import { cmdGraph } from "./commands/graph";
+import { cmdBlastRadius } from "./commands/blast-radius";
 import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCli } from "./commands/cli-install";
 import { cmdDeploy } from "./commands/deploy";
@@ -151,6 +152,8 @@ COMMANDS
   ownership [query]   who owns each resource, what it's for & its ticket (a resource absent
                       from this list is unowned; see orphans for the wasted ones)
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
+  blast-radius <id>   what breaks if a resource is deleted: dependants, the dashboards/probes/
+                      alerts/leases that point at it, what talks to it, and what wasn't checked
   ssh-fanout <cmd>    run one command across many SSH hosts; identical output is collapsed and
                       outliers are diffed against the majority   [--list] [--hosts <q>] [--plugin <id>]
                       [--tag k:v] [--key <id|name>] [--user <name>] [--snippet <name>] [-y]
@@ -539,6 +542,11 @@ export async function runCli(): Promise<void> {
         // `infrawrench graph <resource-id>` is the same as --resource; a
         // resource id is the only positional this command could take.
         await cmdGraph(ctx, rest[0] ? { ...parsed.range, resource: rest[0] } : parsed.range);
+        break;
+      case "blast-radius":
+        // `infrawrench blast-radius <resource-id>` — the full impact report,
+        // not just the graph's share of it.
+        await cmdBlastRadius(ctx, rest[0]);
         break;
       case "page":
         await cmdPage(ctx, rest, parsed.push);
