@@ -772,6 +772,26 @@ export function attemptedPositionCeiling(
 }
 
 /**
+ * Might this instance still own live cloud resources?
+ *
+ * The instance-level twin of {@link memberNeedsLeaseRepair}, and it exists for
+ * the same reason: three separate passes each hand-enumerated the statuses
+ * they cared about (`["active","partial"]`, `["creating","active","partial"]`,
+ * `"creating"`) and **none of the three lists was complete**. A `failed`
+ * instance whose first member survived a failed rollback owns a billable
+ * resource; so does one stuck at `tearing-down` because the process died
+ * mid-teardown. Status summarises how the *run* went, which only correlates
+ * with what the instance still holds.
+ *
+ * Stated as the complement instead: only `deleted` is finished, because
+ * reaching it requires every member to have been marked `deleted`, and a
+ * `deleted` member holds nothing.
+ */
+export function instanceMayOwnLiveResources(status: EnvironmentInstanceStatus): boolean {
+  return status !== "deleted";
+}
+
+/**
  * Does this member hold a resource with **no clock on it**?
  *
  * The question the lease-repair pass actually asks, and it keys on

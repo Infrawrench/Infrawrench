@@ -43,6 +43,24 @@
  * the pass keys on `resource_id is not null`, which is the actual question,
  * rather than on a status that only correlates with it.
  *
+ * The same miss exists one layer up, so the instance statuses get the same
+ * treatment — "might this still own live resources?":
+ *
+ * | status         | owns live resources?                                  |
+ * |----------------|-------------------------------------------------------|
+ * | `creating`     | yes — in flight, or stalled                            |
+ * | `active`       | yes                                                    |
+ * | `partial`      | yes                                                    |
+ * | `tearing-down` | yes — in flight, or a teardown whose process died      |
+ * | `failed`       | **yes** — a member can survive a failed rollback       |
+ * | `deleted`      | no — reaching it requires every member to be `deleted` |
+ *
+ * Three passes each hand-enumerated this and **none of the three lists was
+ * complete** (`["active","partial"]`, `["creating","active","partial"]`,
+ * `"creating"`). `instanceMayOwnLiveResources` states it once as the
+ * complement of `deleted`; lease repair does not consult instance status at
+ * all, because the member predicate already is the question.
+ *
  * State 10 is the deliberate one: see the identity rule below. It is the price
  * of never deleting the wrong thing, and it is paid in visibility rather than
  * silence.
@@ -67,7 +85,7 @@
  * audit, all of it — rather than by a second teardown scheduler that would
  * have to relearn the same lessons.
  */
-import { and, eq, inArray, isNotNull, isNull, lte } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
 import {
   attemptedPositionCeiling,
   buildInstantiationPlan,
@@ -75,6 +93,7 @@ import {
   classifyRecoveryCandidates,
   classifyTeardownMember,
   expectedMemberDisplayName,
+  instanceMayOwnLiveResources,
   leaseDeadlineFor,
   leaseShouldBeCancelled,
   memberNeedsLeaseRepair,
@@ -88,6 +107,7 @@ import {
   type CreatedMemberState,
   type EnvironmentCostEstimate,
   type EnvironmentInstance,
+  type EnvironmentInstanceStatus,
   type EnvironmentInstantiateInput,
   type EnvironmentTemplate,
   type EnvironmentTemplateMember,
@@ -745,25 +765,31 @@ export async function reconcileEnvironmentInstances(organizationId: string): Pro
   await failStalledInstantiations(organizationId);
   await repairMissingMemberLeases(organizationId);
 
-  const rows = await db
-    .select({ id: environmentInstances.id })
+  const rows = (await db
+    .select({ id: environmentInstances.id, status: environmentInstances.status })
     .from(environmentInstances)
     .where(
       and(
         eq(environmentInstances.organizationId, organizationId),
-        inArray(environmentInstances.status, ["active", "partial"]),
+        // `deleted` is the only finished status; everything else may still
+        // hold something. The old `["active","partial"]` list left a `failed`
+        // or `creating` instance whose leases had done their work sitting
+        // there claiming to be live forever.
+        ne(environmentInstances.status, "deleted"),
         lte(environmentInstances.expiresAt, new Date()),
       ),
     )
-    .limit(50);
+    .limit(50)) as { id: string; status: EnvironmentInstanceStatus }[];
 
   for (const row of rows) {
+    if (!instanceMayOwnLiveResources(row.status)) continue;
     const members = await getInstanceMemberRows(row.id);
-    const liveIds = members
-      .filter((m) => m.status === "created" && m.resourceId)
-      .map((m) => m.resourceId!);
-    if (liveIds.length === 0) {
-      if (members.every((m) => m.status !== "created")) {
+    // Keyed on holding a resource id, not on `status === "created"` — the same
+    // correction the lease-repair pass needed. A `failed` member with a live
+    // resource is exactly the case that must still be followed up.
+    const holders = members.filter((m) => m.status !== "deleted" && m.resourceId);
+    if (holders.length === 0) {
+      if (members.every((m) => m.status === "deleted" || !m.resourceId)) {
         await setInstanceStatus(row.id, "deleted", { completedAt: new Date() });
       }
       continue;
@@ -774,14 +800,16 @@ export async function reconcileEnvironmentInstances(organizationId: string): Pro
       .where(
         and(
           eq(resources.organizationId, organizationId),
-          inArray(resources.id, liveIds),
+          inArray(
+            resources.id,
+            holders.map((m) => m.resourceId!),
+          ),
           isNull(resources.deletedAt),
         ),
       );
     const aliveIds = new Set(alive.map((r) => r.id));
-    for (const member of members) {
-      if (member.status !== "created" || !member.resourceId) continue;
-      if (!aliveIds.has(member.resourceId)) {
+    for (const member of holders) {
+      if (!aliveIds.has(member.resourceId!)) {
         await markMemberStatus(row.id, member.memberKey, "deleted", null);
       }
     }
@@ -831,7 +859,11 @@ async function repairMissingMemberLeases(organizationId: string): Promise<void> 
         inArray(environmentInstanceMembers.status, ["created", "failed"]),
         isNotNull(environmentInstanceMembers.resourceId),
         isNull(environmentInstanceMembers.leaseId),
-        inArray(environmentInstances.status, ["creating", "active", "partial"]),
+        // No instance-status filter at all. The member predicate is the whole
+        // question — "does a resource exist with no clock on it" — and the
+        // instance's status only summarises how its run went. Enumerating
+        // statuses here is what excluded `failed` (a member that survived a
+        // failed rollback) and `tearing-down` (a teardown whose process died).
       ),
     )
     .limit(50);
@@ -878,14 +910,18 @@ async function repairMissingMemberLeases(organizationId: string): Promise<void> 
 }
 
 /**
- * Surface an instantiation that stopped without finishing.
+ * Surface a run that stopped without finishing.
  *
- * A process that dies mid-run leaves the instance at `creating` and its
- * in-flight member at `pending` with no id — the one state no lease can cover,
- * because there is nothing recorded to attach a lease to. It is instead made
- * *visible*: the instance becomes `partial`, which is a state the page shows
- * and teardown acts on (that member is within the attempted ceiling, so
- * teardown checks it against the provider).
+ * A process that dies mid-instantiation leaves the instance at `creating` and
+ * its in-flight member at `pending` with no id — the one state no lease can
+ * cover, because there is nothing recorded to attach a lease to. A process that
+ * dies mid-*teardown* leaves it at `tearing-down`, which is the same lie told
+ * from the other end and was missed by the original `creating`-only filter.
+ *
+ * Both become `partial`: a state the page shows and teardown acts on. Resource
+ * safety does not depend on this — `repairMissingMemberLeases` covers any
+ * member holding a resource regardless of instance status — but a status that
+ * has stopped being true is its own defect.
  */
 async function failStalledInstantiations(organizationId: string): Promise<void> {
   const cutoff = new Date(Date.now() - 30 * 60_000);
@@ -894,19 +930,19 @@ async function failStalledInstantiations(organizationId: string): Promise<void> 
     .set({
       status: "partial",
       error:
-        "This instantiation stopped before it finished. Tear the environment down — any " +
-        "resources it created will be checked against the provider.",
+        "This run stopped before it finished. Tear the environment down — any resources it " +
+        "created will be checked against the provider.",
       updatedAt: new Date(),
     })
     .where(
       and(
         eq(environmentInstances.organizationId, organizationId),
-        eq(environmentInstances.status, "creating"),
+        inArray(environmentInstances.status, ["creating", "tearing-down"]),
         lte(environmentInstances.updatedAt, cutoff),
       ),
     )
     .catch((error: unknown) => {
-      console.error("[environments] failed to fail a stalled instantiation:", error);
+      console.error("[environments] failed to fail a stalled run:", error);
     });
 }
 

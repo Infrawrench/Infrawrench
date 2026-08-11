@@ -10,6 +10,7 @@ import {
   classifyRecoveryCandidates,
   classifyTeardownMember,
   expectedMemberDisplayName,
+  instanceMayOwnLiveResources,
   leaseDeadlineFor,
   leaseShouldBeCancelled,
   memberNeedsLeaseRepair,
@@ -26,6 +27,7 @@ import {
   validateTtlHours,
   type CaptureCreateField,
   type CaptureSourceResource,
+  type EnvironmentInstanceStatus,
   type EnvironmentTemplateMember,
 } from "../environments";
 
@@ -664,6 +666,42 @@ describe("attemptedPositionCeiling / classifyTeardownMember", () => {
     expect(classifyTeardownMember({ status: "pending", resourceId: null, position: 3 }, 2)).toBe(
       "unattempted",
     );
+  });
+});
+
+describe("instanceMayOwnLiveResources", () => {
+  it("treats only a torn-down instance as finished", () => {
+    expect(instanceMayOwnLiveResources("deleted")).toBe(false);
+  });
+
+  // Regression: three passes each hand-enumerated the statuses they cared
+  // about and none of the lists was complete. A `failed` instance whose first
+  // member survived a failed rollback owns a billable resource, and a
+  // `tearing-down` one whose process died mid-teardown does too — both were
+  // excluded from lease repair, so the resource ran past its mandatory TTL.
+  it("includes the statuses the hand-written lists kept missing", () => {
+    expect(instanceMayOwnLiveResources("failed")).toBe(true);
+    expect(instanceMayOwnLiveResources("tearing-down")).toBe(true);
+  });
+
+  it("includes the obvious live statuses", () => {
+    expect(instanceMayOwnLiveResources("creating")).toBe(true);
+    expect(instanceMayOwnLiveResources("active")).toBe(true);
+    expect(instanceMayOwnLiveResources("partial")).toBe(true);
+  });
+
+  it("covers every status the union declares", () => {
+    // A new status must be classified deliberately rather than defaulting to
+    // "finished", which is the failure mode this replaced.
+    const all: EnvironmentInstanceStatus[] = [
+      "creating",
+      "active",
+      "partial",
+      "tearing-down",
+      "deleted",
+      "failed",
+    ];
+    expect(all.filter(instanceMayOwnLiveResources)).toHaveLength(all.length - 1);
   });
 });
 
