@@ -107,6 +107,15 @@ export const DropletResourceType = rt({
     resizeNote:
       "DigitalOcean powers the Droplet off for the resize and boots it again afterwards. CPU/RAM only — the disk is unchanged, so the change can be reverted.",
   },
+  // Same field, same guarantee, as the posture check below: the lister always
+  // writes `nextBackupStart` — the next window's ISO instant when backups are
+  // on, `""` when off — so `when: "present"` is a real three-state read, not a
+  // guess. Droplet snapshots carry the droplet id in `snapshot.resourceId`.
+  backupPolicy: {
+    protectedBy: ["snapshot"],
+    automatedBackupFieldKey: "nextBackupStart",
+    automatedBackupWhen: "present",
+  },
   // The lister always writes `nextBackupStart` ("" when backups are off), so
   // `equals ""` can't flag rows synced before the field existed.
   postureChecks: [

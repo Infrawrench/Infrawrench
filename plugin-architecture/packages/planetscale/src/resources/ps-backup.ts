@@ -30,6 +30,15 @@ export const PsBackupResourceType = rt({
     },
   ],
   expiryFields: [{ fieldKey: "expiresAt", from: "expiry", kind: "other", label: "Backup expires" }],
+  // The same composition the `dependsOn` above needs, for the same reason:
+  // a bare `branchName` of "main" exists in every database in the org.
+  backupRole: {
+    role: "snapshot",
+    sourceTemplate: "{databaseName}/{branchName}",
+    createdKey: "createdAt",
+    sizeKey: "size",
+    sizeUnit: "bytes",
+  },
   parentTypeId: "ps-branch",
   iconKey: "planetscale",
 });

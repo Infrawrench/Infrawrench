@@ -76,6 +76,12 @@ export const PostgresFlexibleServerResourceType = rt({
       },
     },
   ],
+  // Azure has no listable snapshot type here — Flexible Server backups are
+  // service-managed and never appear as resources — so the retention window is
+  // the whole story, and it is the one thing a policy can meaningfully check.
+  // The lister defaults it to 7 when ARM omits `properties.backup`, which is
+  // Azure's own default, so a value of 0 really does mean disabled.
+  backupPolicy: { protectedBy: [], retentionDaysFieldKey: "backupRetentionDays" },
   secretExportTemplates: [
     {
       id: "postgres-connection",
