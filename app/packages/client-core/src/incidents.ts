@@ -125,8 +125,40 @@ export const INCIDENT_ARTIFACT_LABELS: Record<IncidentArtifactKind, string> = {
  * is written back. A failure is surfaced on the incident (and on the timeline)
  * instead of being swallowed, and can be retried from the detail view.
  */
-export const INCIDENT_ARTIFACT_STATUSES = ["created", "failed", "closed"] as const;
+export const INCIDENT_ARTIFACT_STATUSES = ["created", "failed", "closed", "close_failed"] as const;
 export type IncidentArtifactStatus = (typeof INCIDENT_ARTIFACT_STATUSES)[number];
+
+/**
+ * `close_failed` exists because creating and closing are two different things
+ * that can go wrong, and collapsing them loses the one that matters more.
+ *
+ * Resolving an incident lifts the freeze it opened and closes the public notice
+ * it posted. If *that* fails, the artefact still refers to a real freeze and a
+ * real public notice — so it is emphatically not `failed` (retrying would open a
+ * **second** freeze) and equally not `created` (which reads as "fine"). It is
+ * "we made this and could not put it away", and the retry path has to run the
+ * *closing* half for it. See {@link planIncidentArtifactRetry}.
+ */
+export function isIncidentArtifactFailure(status: IncidentArtifactStatus): boolean {
+  return status === "failed" || status === "close_failed";
+}
+
+/**
+ * The inputs an artefact was created from, kept so a retry reproduces the
+ * *original* request rather than a narrower one.
+ *
+ * Only the status-page artefact needs this today, and it needs it badly: the
+ * operator picked which components are affected, and a retry that forgot them
+ * would publish an outage against the whole page. Widening a customer-visible
+ * blast radius on a retry is precisely the kind of thing nobody would notice
+ * until it happened.
+ */
+export interface IncidentArtifactRequest {
+  /** Status page the notice belongs on. */
+  statusPageId?: string | null;
+  /** Components the operator named as affected. Empty means the whole page. */
+  componentIds?: string[];
+}
 
 export interface IncidentArtifact {
   id: string;
@@ -138,8 +170,10 @@ export interface IncidentArtifact {
   refId: string | null;
   /** Secondary reference: Slack message `ts`, moment window minutes… */
   refSecondary: string | null;
-  /** Why it failed, verbatim enough to act on. Null unless `status` is failed. */
+  /** Why it failed, verbatim enough to act on. Null unless the status is a failure. */
   error: string | null;
+  /** What was asked for, so a retry asks for the same thing. */
+  request: IncidentArtifactRequest | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -393,6 +427,84 @@ export interface IncidentTimelineResponse {
   truncated: boolean;
 }
 
+/* ------------------------------------------------------------------ *
+ * Retry planning
+ * ------------------------------------------------------------------ */
+
+/**
+ * What retrying an incident's artefacts should actually do.
+ *
+ * Two lists, because "this artefact went wrong" has two meanings that call for
+ * opposite actions:
+ *
+ * - **`recreate`** — the artefact was never made (`failed`). Run the creating
+ *   half again.
+ * - **`reclose`** — the artefact *was* made and could not be put away
+ *   (`close_failed`): the freeze is still in force, the public notice still
+ *   says there is an outage. Run the *closing* half. Recreating one of these
+ *   would open a second freeze or post a duplicate notice, which is worse than
+ *   the failure it was trying to fix.
+ *
+ * Pure, and separated from the service that performs the work, so the rule can
+ * be tested without a database — the mistake it guards against (a failure state
+ * the retry path cannot see) is invisible in a type check and expensive in
+ * production.
+ */
+export interface IncidentArtifactRetryPlan {
+  recreate: IncidentArtifact[];
+  reclose: IncidentArtifact[];
+}
+
+export function planIncidentArtifactRetry(
+  incident: Pick<Incident, "artifacts">,
+): IncidentArtifactRetryPlan {
+  const recreate: IncidentArtifact[] = [];
+  const reclose: IncidentArtifact[] = [];
+  for (const artifact of incident.artifacts) {
+    if (artifact.status === "failed") recreate.push(artifact);
+    else if (artifact.status === "close_failed") reclose.push(artifact);
+  }
+  return { recreate, reclose };
+}
+
+/** True when anything on the incident is in a state a retry could improve. */
+export function incidentHasRetryableArtifacts(incident: Pick<Incident, "artifacts">): boolean {
+  return incident.artifacts.some((artifact) => isIncidentArtifactFailure(artifact.status));
+}
+
+/* ------------------------------------------------------------------ *
+ * Text safety
+ * ------------------------------------------------------------------ */
+
+// C0 controls except tab (09) and newline (0A), DEL, and the C1 range. Note
+// that carriage return (0D) IS stripped: it needs no ESC and is the simplest
+// spoofing primitive there is — print a plausible line, return to column zero,
+// print something else over it. Kept as a character
+// class rather than a sequence matcher: the goal is that no escape sequence can
+// begin, which is simpler to be sure of than enumerating the ones that hurt.
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARACTERS = /[\x00-\x08\x0B-\x1F\x7F-\x9F]/g;
+
+/**
+ * Strip control characters from operator-supplied text.
+ *
+ * Incident titles, summaries and notes are written by one org member and read
+ * by another, on surfaces that are not all HTML. A terminal is the sharp case:
+ * ANSI/CSI/OSC controls in a title let the author clear the screen, reposition
+ * the cursor to overwrite what was already printed, or set the window title on
+ * a colleague's machine. Browsers render these inertly, which is exactly why it
+ * would go unnoticed until somebody ran the CLI.
+ *
+ * Applied when incident text is **stored**, so the payload never enters the
+ * data in the first place. That is defence in depth and not the whole defence:
+ * rows written before this existed, or through some other path, still reach a
+ * terminal, so the CLI sanitises again at its own render boundary. Newlines and
+ * tabs survive — a summary is allowed to have paragraphs.
+ */
+export function stripControlCharacters(value: string): string {
+  return value.replace(CONTROL_CHARACTERS, "");
+}
+
 /** `[startedAt, resolvedAt ?? now]` as epoch ms. Unparseable input becomes NaN. */
 export function incidentWindow(
   incident: Pick<Incident, "startedAt" | "resolvedAt">,
@@ -452,6 +564,21 @@ function artifactEntry(
       title: `${label} could not be created`,
       // The error is the whole value of recording a failure — an artefact that
       // says only "failed" sends the operator back to the surface that failed.
+      detail: artifact.error ?? "No detail was recorded.",
+      severity: "critical",
+      link: { kind: "incident", id: incidentId },
+    };
+  }
+  if (artifact.status === "close_failed") {
+    return {
+      id: `artifact:${artifact.id}:close-failed`,
+      source: "artifact",
+      kind: "artifact.close_failed",
+      at: artifact.updatedAt,
+      // Worded as the operational consequence, not the internal state: what
+      // this means for the reader is that a freeze is still in force, or the
+      // public is still being told there is an outage.
+      title: `${label} is still open — closing it failed`,
       detail: artifact.error ?? "No detail was recorded.",
       severity: "critical",
       link: { kind: "incident", id: incidentId },

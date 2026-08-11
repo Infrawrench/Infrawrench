@@ -54,6 +54,16 @@ thing that did not happen and why — "No alert routing rule matches the Inciden
 nobody was told", "Opening a change freeze needs the freezes:write permission" — with a
 **Retry these** button that re-runs only the failures.
 
+Resolving can fail the same way, and it is tracked separately because the fix is the opposite
+one. If lifting the freeze or closing the public update fails, the artefact reads **still
+open** rather than "failed": the freeze really is still in force and the status page really is
+still reporting an outage, so **Retry these** runs the _closing_ step again. Re-running the
+creating step would open a second freeze or post a duplicate notice, which is worse than the
+failure it was meant to fix.
+
+Retrying a status-page update republishes it against **the components you originally picked**,
+not the whole page.
+
 ## The timeline
 
 The timeline is **assembled when you read it**, by joining what the platform already recorded

@@ -35,6 +35,7 @@ CREATE TABLE "incident_artifacts" (
 	"ref_id" text,
 	"ref_secondary" text,
 	"error" text,
+	"request_json" jsonb,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );

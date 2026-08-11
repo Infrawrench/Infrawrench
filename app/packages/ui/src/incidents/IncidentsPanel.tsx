@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   formatIncidentDuration,
+  isIncidentArtifactFailure,
   incidentSeverityLabel,
   incidentStatusLabel,
   type Incident,
@@ -215,7 +216,7 @@ export function IncidentsPanel({
    * ---------------------------------------------------------------- */
 
   if (incidentId && selected) {
-    const failed = selected.artifacts.filter((a) => a.status === "failed");
+    const failed = selected.artifacts.filter((a) => isIncidentArtifactFailure(a.status));
     return (
       <div className="space-y-5">
         <button
@@ -255,7 +256,7 @@ export function IncidentsPanel({
                   key={artifact.id}
                   title={artifact.error ?? artifact.label ?? undefined}
                   className={`px-2 py-0.5 rounded-full text-[11px] ${
-                    artifact.status === "failed"
+                    isIncidentArtifactFailure(artifact.status)
                       ? "bg-red-500/15 text-red-400"
                       : artifact.status === "closed"
                         ? "bg-surface-sunken text-on-surface-faint"
@@ -269,13 +270,14 @@ export function IncidentsPanel({
             {failed.length > 0 && (
               <div className="rounded-lg border border-red-500/40 bg-red-500/5 px-3 py-2">
                 <p className="text-xs text-red-300">
-                  {failed.length === 1 ? "One thing" : `${failed.length} things`} this declaration
-                  asked for did not happen:
+                  {failed.length === 1 ? "One thing" : `${failed.length} things`} on this incident
+                  needs attention:
                 </p>
                 <ul className="mt-1 space-y-0.5">
                   {failed.map((artifact) => (
                     <li key={artifact.id} className="text-xs text-on-surface-secondary">
-                      <span className="text-on-surface">{artifactLabel(artifact.kind)}</span> —{" "}
+                      <span className="text-on-surface">{artifactLabel(artifact.kind)}</span>
+                      {artifact.status === "close_failed" ? " is still open — " : " — "}
                       {artifact.error}
                     </li>
                   ))}
@@ -478,7 +480,9 @@ export function IncidentsPanel({
       {incidents !== null && incidents.length > 0 && (
         <ul className="space-y-2">
           {incidents.map((incident) => {
-            const failedCount = incident.artifacts.filter((a) => a.status === "failed").length;
+            const failedCount = incident.artifacts.filter((a) =>
+              isIncidentArtifactFailure(a.status),
+            ).length;
             return (
               <li key={incident.id}>
                 <button
@@ -500,7 +504,8 @@ export function IncidentsPanel({
                     </span>
                     {failedCount > 0 && (
                       <span className="text-xs text-red-400">
-                        {failedCount} artefact{failedCount === 1 ? "" : "s"} failed
+                        {failedCount} artefact{failedCount === 1 ? "" : "s"} need
+                        {failedCount === 1 ? "s" : ""} attention
                       </span>
                     )}
                   </div>

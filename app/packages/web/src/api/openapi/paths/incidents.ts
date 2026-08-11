@@ -28,11 +28,26 @@ const ArtifactKind = z.enum(["freeze", "moment", "slack", "status-page"]).openap
   description: "Which side effect of declaring this artefact records.",
 });
 
-const ArtifactStatus = z.enum(["created", "failed", "closed"]).openapi({
+const ArtifactStatus = z.enum(["created", "failed", "closed", "close_failed"]).openapi({
   description:
     "`failed` is a stored state, not an error: declaring writes the incident first and attempts " +
     "each opted-in side effect afterwards, so a Slack outage costs the announcement and never " +
-    "the incident. A failed artefact carries its error and can be retried.",
+    "the incident. A failed artefact carries its error and can be retried.\n\n" +
+    "`close_failed` is the other half and is deliberately distinct: the artefact **was** created " +
+    "and resolving could not put it away, so the change freeze is still in force or the public " +
+    "notice still reports an outage. Retrying a `failed` artefact re-creates it; retrying a " +
+    "`close_failed` one re-closes it. Collapsing the two would either strand the incident with a " +
+    "live freeze nothing can lift, or open a second freeze.",
+});
+
+const ArtifactRequest = strict({
+  statusPageId: Uuid.nullable().optional(),
+  componentIds: z.array(Uuid).optional(),
+}).openapi("IncidentArtifactRequest", {
+  description:
+    "What the declaration asked for, recorded so a retry asks for the same thing. Present on " +
+    "the status-page artefact, where a retry that forgot the operator's chosen components " +
+    "would publish the outage against the whole page.",
 });
 
 export function registerIncidentPaths(ctx: BuildContext) {
@@ -48,7 +63,11 @@ export function registerIncidentPaths(ctx: BuildContext) {
       .string()
       .nullable()
       .describe("Second half of a compound reference — a Slack message ts, a window width."),
-    error: z.string().nullable().describe("Why it failed. Null unless `status` is `failed`."),
+    error: z
+      .string()
+      .nullable()
+      .describe("Why it failed. Null unless `status` is `failed` or `close_failed`."),
+    request: ArtifactRequest.nullable(),
     createdAt: IsoDateTime,
     updatedAt: IsoDateTime,
   }).openapi("IncidentArtifact");
@@ -330,9 +349,13 @@ export function registerIncidentPaths(ctx: BuildContext) {
     tags: ["Incidents"],
     summary: "Retry the artefacts that failed",
     description:
-      "Re-runs only the side effects whose artefact is in the `failed` state, replacing each " +
-      "failure rather than queueing a second attempt beside it. Its own endpoint rather than a " +
-      "flag on PATCH, because it writes into three external systems. Audit-logged.",
+      "Re-runs only the side effects whose artefact is in a failure state, replacing each " +
+      "failure rather than queueing a second attempt beside it. A `failed` artefact is " +
+      "**re-created**; a `close_failed` one is **re-closed** — re-creating the latter would open " +
+      "a second change freeze or post a duplicate public notice. A status-page retry reuses the " +
+      "components recorded on the artefact's `request`, so the announcement keeps its original " +
+      "scope. Its own endpoint rather than a flag on PATCH, because it writes into three " +
+      "external systems. Audit-logged.",
     request: { params: OrgIdParam.extend({ incidentId: Uuid }) },
     responses: {
       200: {

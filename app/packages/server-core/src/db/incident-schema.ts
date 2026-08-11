@@ -116,13 +116,33 @@ export const incidentArtifacts = pgTable(
       .references(() => incidents.id, { onDelete: "cascade" }),
     /** `freeze` | `moment` | `slack` | `status-page`. */
     kind: text("kind").$type<"freeze" | "moment" | "slack" | "status-page">().notNull(),
-    /** `created` | `failed` | `closed`. */
-    status: text("status").$type<"created" | "failed" | "closed">().notNull(),
+    /**
+     * `created` | `failed` | `closed` | `close_failed`.
+     *
+     * The fourth is not a nicety. `failed` means "never made it"; `close_failed`
+     * means "made it, could not put it away" — the freeze is still in force, the
+     * public notice still says there is an outage. Retrying the first re-creates;
+     * retrying the second re-closes. Collapsing them would either strand the
+     * incident with a live freeze nothing can lift, or open a second freeze.
+     */
+    status: text("status").$type<"created" | "failed" | "closed" | "close_failed">().notNull(),
     label: text("label"),
     refId: text("ref_id"),
     refSecondary: text("ref_secondary"),
-    /** Verbatim enough to act on. Null unless `status` is `failed`. */
+    /** Verbatim enough to act on. Null unless the status is a failure. */
     error: text("error"),
+    /**
+     * What the declaration asked for, so a retry asks for the same thing.
+     *
+     * The status-page artefact is why this exists: the operator named which
+     * components are affected, and a retry that had forgotten them would
+     * publish the outage against the whole page. Server-side retry state, so
+     * it is deliberately narrow — see `IncidentArtifactRequest`.
+     */
+    requestJson: jsonb("request_json").$type<{
+      statusPageId?: string | null;
+      componentIds?: string[];
+    }>(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

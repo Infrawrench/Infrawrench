@@ -17,8 +17,10 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   DEFAULT_INCIDENT_SEVERITY,
   INCIDENT_LIMITS,
+  stripControlCharacters,
   type Incident,
   type IncidentArtifactKind,
+  type IncidentArtifactRequest,
   type IncidentArtifactStatus,
   type IncidentNote,
   type IncidentSeverity,
@@ -59,7 +61,12 @@ export interface IncidentUpdateInput {
 }
 
 function trimmedTitle(raw: unknown): string {
-  const title = typeof raw === "string" ? raw.trim() : "";
+  // Control characters are stripped on the way in, not just on the way out:
+  // this text is written by one org member and read by another on surfaces
+  // that are not all HTML, and a terminal treats ANSI/CSI/OSC bytes as
+  // instructions. Defence in depth — the CLI sanitises again at its render
+  // boundary for rows written before this existed.
+  const title = typeof raw === "string" ? stripControlCharacters(raw).trim() : "";
   if (!title) throw new IncidentInputError("An incident needs a title.");
   if (title.length > INCIDENT_LIMITS.maxTitleLength) {
     throw new IncidentInputError(
@@ -71,7 +78,7 @@ function trimmedTitle(raw: unknown): string {
 
 function normalizeSummary(raw: unknown): string | null {
   if (raw === null || raw === undefined) return null;
-  const summary = String(raw).trim();
+  const summary = stripControlCharacters(String(raw)).trim();
   if (!summary) return null;
   if (summary.length > INCIDENT_LIMITS.maxSummaryLength) {
     throw new IncidentInputError(
@@ -139,6 +146,7 @@ function artifactToWire(row: IncidentArtifactRow) {
     refId: row.refId,
     refSecondary: row.refSecondary,
     error: row.error,
+    request: row.requestJson ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -431,7 +439,7 @@ export async function addIncidentNoteRecord(
   authorUserId: string | null,
   occurredAt?: Date,
 ): Promise<IncidentNote> {
-  const text = body.trim();
+  const text = stripControlCharacters(body).trim();
   if (!text) throw new IncidentInputError("A note needs something in it.");
   if (text.length > INCIDENT_LIMITS.maxNoteLength) {
     throw new IncidentInputError(
@@ -474,6 +482,12 @@ export interface ArtifactRecordInput {
   refId?: string | null;
   refSecondary?: string | null;
   error?: string | null;
+  /**
+   * What was asked for. Recorded on **failure as well as success** — a retry
+   * that cannot see the original request is how a status-page notice loses the
+   * components the operator picked and goes out against the whole page.
+   */
+  request?: IncidentArtifactRequest | null;
 }
 
 /**
@@ -500,6 +514,7 @@ export async function recordIncidentArtifact(
       refId: input.refId ?? null,
       refSecondary: input.refSecondary ?? null,
       error: input.error ?? null,
+      requestJson: input.request ?? null,
       createdAt: now,
       updatedAt: now,
     })
@@ -511,6 +526,7 @@ export async function recordIncidentArtifact(
         refId: input.refId ?? null,
         refSecondary: input.refSecondary ?? null,
         error: input.error ?? null,
+        requestJson: input.request ?? null,
         updatedAt: now,
       },
     });
@@ -524,12 +540,25 @@ export async function closeIncidentArtifact(
 ): Promise<void> {
   await db
     .update(incidentArtifacts)
-    .set({ status: "closed", updatedAt: now })
+    .set({ status: "closed", error: null, updatedAt: now })
     .where(and(eq(incidentArtifacts.incidentId, incidentId), eq(incidentArtifacts.kind, kind)));
 }
 
-/** Record that closing an artefact failed, without losing what it referenced. */
-export async function markIncidentArtifactError(
+/**
+ * Record that **closing** an artefact failed, keeping what it referenced.
+ *
+ * The status has to move to `close_failed` and not merely gain an error string.
+ * An artefact left in `created` with an error attached is invisible to the
+ * retry path, which selects on status — so the incident would sit resolved with
+ * a change freeze still blocking every destructive action in the org, or a
+ * status page still telling customers there is an outage, and nothing in the
+ * product able to finish the job. That is the same class of bug the create side
+ * avoids by storing `failed` instead of throwing.
+ *
+ * It must equally not become `failed`: the freeze and the notice really exist,
+ * and re-running the *creating* half would open a second freeze.
+ */
+export async function markIncidentArtifactCloseFailed(
   incidentId: string,
   kind: IncidentArtifactKind,
   error: string,
@@ -537,7 +566,7 @@ export async function markIncidentArtifactError(
 ): Promise<void> {
   await db
     .update(incidentArtifacts)
-    .set({ error, updatedAt: now })
+    .set({ status: "close_failed", error, updatedAt: now })
     .where(and(eq(incidentArtifacts.incidentId, incidentId), eq(incidentArtifacts.kind, kind)));
 }
 

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildIncidentTimeline,
+  incidentHasRetryableArtifacts,
+  isIncidentArtifactFailure,
+  planIncidentArtifactRetry,
+  stripControlCharacters,
   compareIncidentTimelineEntries,
   formatIncidentDuration,
   incidentSeverityRank,
@@ -29,6 +33,7 @@ function artifact(over: Partial<IncidentArtifact> = {}): IncidentArtifact {
     refId: "freeze-1",
     refSecondary: null,
     error: null,
+    request: null,
     createdAt: START,
     updatedAt: START,
     ...over,

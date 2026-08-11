@@ -5,6 +5,7 @@ import {
   incidentSeverityLabel,
   incidentStatusLabel,
   INCIDENT_ARTIFACT_LABELS,
+  isIncidentArtifactFailure,
   type IncidentTimelineEntry,
 } from "@infrawrench/client-core";
 import { Button, Card, ErrorView, LoadingView, Screen, SectionTitle } from "@/components/ui";
@@ -45,7 +46,7 @@ export function IncidentDetailScreen({ incidentId }: { incidentId: string }) {
   }
 
   const { incident } = detail.data;
-  const failed = incident.artifacts.filter((a) => a.status === "failed");
+  const failed = incident.artifacts.filter((a) => isIncidentArtifactFailure(a.status));
 
   return (
     <Screen
@@ -68,12 +69,14 @@ export function IncidentDetailScreen({ incidentId }: { incidentId: string }) {
       {failed.length > 0 && (
         <View style={styles.failedBox}>
           <Text style={styles.failedTitle}>
-            {failed.length === 1 ? "One thing" : `${failed.length} things`} this declaration asked
-            for did not happen
+            {failed.length === 1 ? "One thing" : `${failed.length} things`} on this incident needs
+            attention
           </Text>
           {failed.map((artifact) => (
             <Text key={artifact.id} style={styles.failedLine}>
-              {INCIDENT_ARTIFACT_LABELS[artifact.kind] ?? artifact.kind} — {artifact.error}
+              {INCIDENT_ARTIFACT_LABELS[artifact.kind] ?? artifact.kind}
+              {artifact.status === "close_failed" ? " is still open — " : " — "}
+              {artifact.error}
             </Text>
           ))}
           <Text style={styles.footnote}>Retry them on the web or desktop app.</Text>

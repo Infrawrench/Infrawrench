@@ -24,7 +24,7 @@ import type {
   IncidentListResponse,
   IncidentTimelineResponse,
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
-import { c, printJson, println, printTable, type Column } from "../output";
+import { c, printJson, println, printTable, safe, type Column } from "../output";
 import { formatChangeTime } from "../format";
 
 /**
@@ -48,6 +48,17 @@ function duration(startedAt: string, endedAt: string | null): string {
   return parts.join(" ");
 }
 
+/**
+ * Both artefact failure states, so neither hides. `close_failed` is the one that
+ * matters most in a terminal: it means a change freeze is still blocking the
+ * org, or a status page is still telling customers there is an outage.
+ */
+function isFailureStatus(status: string): boolean {
+  return status === "failed" || status === "close_failed";
+}
+
+// severityCell/statusCell render closed server enums, never free text, so they
+// are the only server values in this file printed without safe().
 function severityCell(incident: Incident): string {
   const label = incident.severity.toUpperCase();
   switch (incident.severity) {
@@ -119,7 +130,7 @@ export async function cmdDeclaredIncidents(ctx: CliContext, incidentArg?: string
 
   const open = incidents.filter((i) => i.status !== "resolved").length;
   println(
-    `${c.bold(org.displayName)} ${c.dim(
+    `${c.bold(safe(org.displayName))} ${c.dim(
       `· ${incidents.length} incident${incidents.length === 1 ? "" : "s"}`,
     )}${open > 0 ? `  ${c.red(`${open} not resolved`)}` : ""}`,
   );
@@ -128,14 +139,14 @@ export async function cmdDeclaredIncidents(ctx: CliContext, incidentArg?: string
   const columns: Column<Incident>[] = [
     { header: "", value: (i) => statusCell(i) },
     { header: "sev", value: (i) => severityCell(i) },
-    { header: "incident", value: (i) => i.title },
+    { header: "incident", value: (i) => safe(i.title) },
     { header: "started", value: (i) => c.dim(formatChangeTime(i.startedAt)) },
     { header: "duration", value: (i) => duration(i.startedAt, i.resolvedAt), align: "right" },
-    { header: "declared by", value: (i) => c.dim(i.declaredByName ?? "—") },
+    { header: "declared by", value: (i) => c.dim(safe(i.declaredByName) || "—") },
     {
       header: "artefacts",
       value: (i) => {
-        const failed = i.artifacts.filter((a) => a.status === "failed").length;
+        const failed = i.artifacts.filter((a) => isFailureStatus(a.status)).length;
         if (failed > 0) return c.red(`${failed} failed`);
         return c.dim(`${i.artifacts.length}`);
       },
@@ -168,26 +179,26 @@ async function printIncidentDetail(
     return;
   }
 
-  println(`${severityCell(incident)} ${c.bold(incident.title)}  ${statusCell(incident)}`);
+  println(`${severityCell(incident)} ${c.bold(safe(incident.title))}  ${statusCell(incident)}`);
   println(
     c.dim(
       `started ${formatChangeTime(incident.startedAt)} · ${duration(
         incident.startedAt,
         incident.resolvedAt,
-      )}${incident.declaredByName ? ` · declared by ${incident.declaredByName}` : ""}`,
+      )}${incident.declaredByName ? ` · declared by ${safe(incident.declaredByName)}` : ""}`,
     ),
   );
-  if (incident.summary) println(incident.summary);
+  if (incident.summary) println(safe(incident.summary));
   println();
 
   // Artefacts first, and failures loudly: the point of recording a failed
   // artefact is that somebody sees it.
   if (incident.artifacts.length > 0) {
     for (const artifact of incident.artifacts) {
-      const line = `${artifact.kind}: ${artifact.status}${artifact.label ? ` (${artifact.label})` : ""}`;
+      const line = `${artifact.kind}: ${artifact.status}${artifact.label ? ` (${safe(artifact.label)})` : ""}`;
       println(
-        artifact.status === "failed"
-          ? c.red(`  ✗ ${line} — ${artifact.error ?? "no detail recorded"}`)
+        isFailureStatus(artifact.status)
+          ? c.red(`  ✗ ${line} — ${safe(artifact.error) || "no detail recorded"}`)
           : c.dim(`  · ${line}`),
       );
     }
@@ -197,7 +208,9 @@ async function printIncidentDetail(
   const degraded = timeline.feeds.filter((f) => f.status !== "ok");
   if (degraded.length > 0) {
     println(
-      c.dim(`feeds unavailable or not visible to you: ${degraded.map((f) => f.feed).join(", ")}`),
+      c.dim(
+        `feeds unavailable or not visible to you: ${degraded.map((f) => safe(f.feed)).join(", ")}`,
+      ),
     );
     println();
   }
@@ -214,10 +227,10 @@ async function printIncidentDetail(
   for (const entry of timeline.entries) {
     println(
       `${severityGlyph(entry.severity)} ${c.dim(formatChangeTime(entry.at).padEnd(16))} ${c.dim(
-        entry.source.padEnd(13),
-      )} ${entry.title}`,
+        safe(entry.source).padEnd(13),
+      )} ${safe(entry.title)}`,
     );
-    if (entry.detail) println(`  ${c.dim(entry.detail)}`);
+    if (entry.detail) println(`  ${c.dim(safe(entry.detail))}`);
   }
 
   if (timeline.truncated) {

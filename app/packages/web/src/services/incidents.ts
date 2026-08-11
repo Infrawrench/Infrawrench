@@ -35,10 +35,12 @@
 import { and, desc, eq, gte, inArray, lte, or } from "drizzle-orm";
 import {
   buildIncidentTimeline,
+  planIncidentArtifactRetry,
   postmortemFilename,
   renderPostmortemMarkdown,
   type Incident,
   type IncidentActions,
+  type IncidentArtifactStatus,
   type IncidentMetricAlertEvent,
   type IncidentNote,
   type IncidentProbeTransition,
@@ -60,7 +62,7 @@ import {
   getIncidentArtifact,
   getIncidentRecord,
   listIncidentNoteRecords,
-  markIncidentArtifactError,
+  markIncidentArtifactCloseFailed,
   recordIncidentArtifact,
   updateIncidentRecord,
   type IncidentCreateInput,
@@ -345,6 +347,12 @@ async function publishNotice(
   statusPageId: string,
   componentIds: readonly string[] | undefined,
 ): Promise<void> {
+  // Recorded on the failure path too, and that is the point: a retry reads this
+  // back, so the second attempt names the same components as the first. Without
+  // it the retry would fall back to "no components", which on a status page
+  // means *the whole page* — quietly widening a customer-visible outage
+  // announcement as a side effect of pressing Retry.
+  const request = { statusPageId, componentIds: [...(componentIds ?? [])] };
   try {
     const notice = await createStatusPageNotice({
       organizationId,
@@ -362,12 +370,14 @@ async function publishNotice(
       label: notice.title,
       refId: notice.id,
       refSecondary: statusPageId,
+      request,
     });
   } catch (error) {
     await recordIncidentArtifact(incident.id, {
       kind: "status-page",
       status: "failed",
       error: errorText(error),
+      request,
     });
   }
 }
@@ -441,13 +451,25 @@ export async function patchIncident(
   return (await getIncidentRecord(organizationId, incidentId)) ?? after;
 }
 
+/**
+ * Which artefact states still have something to close.
+ *
+ * `created` is the ordinary case. `close_failed` is a previous close that threw
+ * — the freeze or the notice is still out there, so the work is still owed and
+ * a retry must be allowed to attempt it again.
+ */
+function isCloseable(status: IncidentArtifactStatus): boolean {
+  return status === "created" || status === "close_failed";
+}
+
 async function liftFreeze(
   organizationId: string,
   incident: Incident,
   actor: IncidentActor,
 ): Promise<void> {
   const artifact = await getIncidentArtifact(incident.id, "freeze");
-  if (!artifact || artifact.status !== "created" || !artifact.refId) return;
+  // `close_failed` is included so a retry can finish what resolving started.
+  if (!artifact || !isCloseable(artifact.status) || !artifact.refId) return;
   try {
     const ended = await endChangeFreeze(organizationId, artifact.refId, actor.userId);
     if (!ended) {
@@ -466,18 +488,22 @@ async function liftFreeze(
       metadata: { viaIncidentId: incident.id },
     });
   } catch (error) {
-    await markIncidentArtifactError(incident.id, "freeze", `Could not lift: ${errorText(error)}`);
+    await markIncidentArtifactCloseFailed(
+      incident.id,
+      "freeze",
+      `Could not lift: ${errorText(error)}`,
+    );
   }
 }
 
 async function closeNotice(incident: Incident): Promise<void> {
   const artifact = await getIncidentArtifact(incident.id, "status-page");
-  if (!artifact || artifact.status !== "created" || !artifact.refId) return;
+  if (!artifact || !isCloseable(artifact.status) || !artifact.refId) return;
   try {
     await resolveStatusPageNotice(artifact.refId, incident.summary ?? null);
     await closeIncidentArtifact(incident.id, "status-page");
   } catch (error) {
-    await markIncidentArtifactError(
+    await markIncidentArtifactCloseFailed(
       incident.id,
       "status-page",
       `Could not close the public update: ${errorText(error)}`,
@@ -485,7 +511,22 @@ async function closeNotice(incident: Incident): Promise<void> {
   }
 }
 
-/** Retry whichever artefacts previously failed. Only the failures are re-run. */
+/**
+ * Retry whichever artefacts are in a failure state. Only those are re-run.
+ *
+ * "Failure state" is two states, and they need opposite work — the split is
+ * decided by the pure {@link planIncidentArtifactRetry} so the rule is testable
+ * without a database:
+ *
+ * - **`failed`** — never created. Run the creating half again.
+ * - **`close_failed`** — created, and resolving could not put it away. Run the
+ *   *closing* half. Re-creating one of these would open a second change freeze
+ *   or post a duplicate public notice.
+ *
+ * The status-page re-creation reads its component list back off the artefact's
+ * recorded request rather than defaulting to none, so a retry announces against
+ * the components the operator actually picked.
+ */
 export async function retryIncidentArtifacts(
   organizationId: string,
   incidentId: string,
@@ -493,16 +534,20 @@ export async function retryIncidentArtifacts(
 ): Promise<Incident | null> {
   const incident = await getIncidentRecord(organizationId, incidentId);
   if (!incident) return null;
-  const failed = new Set(
-    incident.artifacts.filter((a) => a.status === "failed").map((a) => a.kind),
-  );
-  if (failed.size === 0) return incident;
 
-  const statusPageArtifact = incident.artifacts.find((a) => a.kind === "status-page");
+  const { recreate, reclose } = planIncidentArtifactRetry(incident);
+  if (recreate.length === 0 && reclose.length === 0) return incident;
+
+  const recreateKinds = new Set(recreate.map((a) => a.kind));
+  const recloseKinds = new Set(reclose.map((a) => a.kind));
+  const statusPageArtifact = recreate.find((a) => a.kind === "status-page");
+  const statusPageId =
+    statusPageArtifact?.request?.statusPageId ?? statusPageArtifact?.refSecondary ?? null;
+
   await Promise.all([
-    failed.has("moment") ? pinMoment(incident) : Promise.resolve(),
-    failed.has("freeze") ? openFreeze(organizationId, incident, actor) : Promise.resolve(),
-    failed.has("slack")
+    recreateKinds.has("moment") ? pinMoment(incident) : Promise.resolve(),
+    recreateKinds.has("freeze") ? openFreeze(organizationId, incident, actor) : Promise.resolve(),
+    recreateKinds.has("slack")
       ? announce(
           organizationId,
           incident,
@@ -511,9 +556,17 @@ export async function retryIncidentArtifacts(
           incident.status === "resolved" ? "resolved" : "declared",
         )
       : Promise.resolve(),
-    failed.has("status-page") && statusPageArtifact?.refSecondary
-      ? publishNotice(organizationId, incident, statusPageArtifact.refSecondary, [])
+    recreateKinds.has("status-page") && statusPageId
+      ? publishNotice(
+          organizationId,
+          incident,
+          statusPageId,
+          statusPageArtifact?.request?.componentIds ?? [],
+        )
       : Promise.resolve(),
+    // The closing half. Both are no-ops unless the artefact is still closeable.
+    recloseKinds.has("freeze") ? liftFreeze(organizationId, incident, actor) : Promise.resolve(),
+    recloseKinds.has("status-page") ? closeNotice(incident) : Promise.resolve(),
   ]);
   return getIncidentRecord(organizationId, incidentId);
 }

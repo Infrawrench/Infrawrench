@@ -41,7 +41,9 @@ function formatTime(iso: string): string {
 }
 
 function entryTone(entry: IncidentTimelineEntry): string {
-  if (entry.kind === "artifact.failed") return "border-red-500/40 bg-red-500/5";
+  if (entry.kind === "artifact.failed" || entry.kind === "artifact.close_failed") {
+    return "border-red-500/40 bg-red-500/5";
+  }
   if (entry.source === "note") return "border-blue-500/30 bg-blue-500/5";
   if (entry.source === "incident") return "border-border bg-surface-sunken";
   return "border-border";
