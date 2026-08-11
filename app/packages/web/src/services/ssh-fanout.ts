@@ -27,7 +27,7 @@ import { decrypt, buildAad } from "./encryption";
 import { getClientForAccount } from "./plugin-clients";
 import { resolveSshConfig, sshExecCapture } from "./ssh";
 import { HostKeyTrustRequiredError } from "./ssh-host-keys";
-import { assertHostNotInternal } from "./host-validation";
+import { resolveSafeHost } from "./host-validation";
 
 export const FANOUT_MAX_CONCURRENCY = 16;
 
@@ -310,14 +310,18 @@ export async function runFanout(
         };
       }
 
-      // SSRF guard on the host the server is about to dial.
+      // SSRF guard on the host the server is about to dial. The cleared
+      // address is what gets dialed — re-resolving the name inside ssh2 would
+      // give a short-TTL record a second answer to give, after this check has
+      // already passed. `config.host` still carries the host-key identity.
+      let dialAddress: string;
       try {
-        await assertHostNotInternal(config.host);
+        dialAddress = await resolveSafeHost(config.host);
       } catch (e) {
         return blockedResult(base, label, e instanceof Error ? e.message : "Host blocked", started);
       }
 
-      const result = await sshExecCapture(organizationId, config, opts.command);
+      const result = await sshExecCapture(organizationId, config, opts.command, { dialAddress });
       return {
         ...base,
         label,

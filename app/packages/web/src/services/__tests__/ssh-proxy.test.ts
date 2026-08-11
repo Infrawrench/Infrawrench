@@ -104,9 +104,10 @@ vi.mock("@/services/ssh-host-keys", () => ({
 }));
 
 // Real DNS is off-limits in tests; the SSRF guard is covered by its own suite.
-const mockAssertHostNotInternal = vi.fn().mockResolvedValue(undefined);
+// What matters here is which address comes back and what the proxy does with it.
+const mockResolveSafeHost = vi.fn().mockResolvedValue("203.0.113.7");
 vi.mock("@/services/host-validation", () => ({
-  assertHostNotInternal: (...a: unknown[]) => mockAssertHostNotInternal(...a),
+  resolveSafeHost: (...a: unknown[]) => mockResolveSafeHost(...a),
 }));
 
 const mockResolveSshChain = vi.fn();
@@ -165,11 +166,12 @@ describe("handleSshSession", () => {
     sshClients.length = 0;
     mockMakeHostKeyVerifier.mockReturnValue(() => {});
     mockStartSessionRecording.mockResolvedValue(null);
+    mockResolveSafeHost.mockResolvedValue("203.0.113.7");
   });
 
   it("refuses a direct-SSH host in blocked address space", async () => {
     selectRows([KEY_ROW]);
-    mockAssertHostNotInternal.mockRejectedValueOnce(
+    mockResolveSafeHost.mockRejectedValueOnce(
       new Error("SSH host 127.0.0.1 resolves to a blocked address range"),
     );
     const ws = fakeWs();
@@ -178,12 +180,40 @@ describe("handleSshSession", () => {
       host: "127.0.0.1",
     });
 
-    expect(mockAssertHostNotInternal).toHaveBeenCalledWith("127.0.0.1");
+    expect(mockResolveSafeHost).toHaveBeenCalledWith("127.0.0.1");
     expect(sshClients).toHaveLength(0);
     expect(ws.sent).toContainEqual({
       type: "ssh:error",
       error: "SSH host 127.0.0.1 resolves to a blocked address range",
     });
+  });
+
+  it("dials the vetted address, not the name it validated", async () => {
+    selectRows([KEY_ROW]);
+    const ws = fakeWs();
+    await handleSshSession(ws as never, "org-1", "acct-1", undefined, DIRECT);
+
+    // Handing ssh2 the hostname would let it resolve a second time, which is
+    // the whole rebinding window: check answers public, connect answers
+    // 169.254.169.254. Only the cleared address may reach the socket.
+    expect(mockResolveSafeHost).toHaveBeenCalledWith("target.example");
+    expect(sshClients[0]!.connectConfig).toMatchObject({ host: "203.0.113.7", port: 22 });
+  });
+
+  it("keeps host-key identity on the hostname while dialing the address", async () => {
+    selectRows([KEY_ROW]);
+    const ws = fakeWs();
+    await handleSshSession(ws as never, "org-1", "acct-1", undefined, DIRECT);
+
+    // Pins live in `ssh_host_keys` keyed by (host, port). Verify against the
+    // IP and every already-trusted host silently asks to be trusted again.
+    expect(mockMakeHostKeyVerifier).toHaveBeenCalledWith(
+      "org-1",
+      "target.example",
+      22,
+      expect.anything(),
+      "ssh-proxy",
+    );
   });
 
   it("skips the SSRF guard when jumping through a bastion", async () => {
@@ -205,7 +235,10 @@ describe("handleSshSession", () => {
     sshClients[1]!.emit("ready");
     await session;
 
-    expect(mockAssertHostNotInternal).not.toHaveBeenCalled();
+    expect(mockResolveSafeHost).not.toHaveBeenCalled();
+    // The bastion itself is dialed by name too: its endpoint comes from a
+    // stored account, not from the frame, and is routinely private on purpose.
+    expect(sshClients[1]!.connectConfig).toMatchObject({ host: "jump.example" });
   });
 
   it("wires a host verifier into the final connect", async () => {

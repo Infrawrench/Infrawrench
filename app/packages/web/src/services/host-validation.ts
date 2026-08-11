@@ -6,6 +6,13 @@
  * the bastion endpoint (`sshHost`) of an SSH tunnel, where the server itself
  * is the one making the outbound connection. Inner `remoteHost` is _not_
  * validated — reaching private hosts via the bastion is the whole point.
+ *
+ * {@link resolveSafeHost} is the only entry point on purpose. An
+ * `assertHostNotInternal(host)` wrapper used to sit alongside it and read as
+ * an enforcement, but a caller that then handed the same *name* to ssh2 had
+ * only bought a second DNS lookup for an attacker to answer differently. A
+ * function that returns the address it cleared makes ignoring that address a
+ * visible choice, which is the whole difference between a check and a guard.
  */
 import { promises as dns } from "node:dns";
 import net from "node:net";
@@ -118,15 +125,4 @@ export async function resolveSafeHost(host: string): Promise<string> {
     }
   }
   return addrs[0]!.address;
-}
-
-/**
- * Throw if `host` resolves to (or already is) a blocked address.
- *
- * Prefer {@link resolveSafeHost} where the caller controls the address it
- * dials — this variant leaves the rebinding window open by design and exists
- * for call sites that only validate.
- */
-export async function assertHostNotInternal(host: string): Promise<void> {
-  await resolveSafeHost(host);
 }

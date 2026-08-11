@@ -15,7 +15,7 @@ import { sshExec } from "../../services/ssh";
 import { HostKeyTrustRequiredError } from "../../services/ssh-host-keys";
 import { hostKeyTrustResponse } from "./ssh-host-keys";
 import { requirePermission } from "../../auth/permissions";
-import { assertHostNotInternal } from "../../services/host-validation";
+import { resolveSafeHost } from "../../services/host-validation";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
 
@@ -51,8 +51,13 @@ app.post("/create-account", async (c) => {
   // SSRF guard: refuse to use a bastion that resolves to internal address
   // space. Only `sshHost` (the public bastion the server dials) is checked;
   // the inner `remoteHost` is allowed to be private, that's the point.
+  //
+  // The cleared address is discarded here on purpose: `openTunnel` resolves
+  // again and dials the address *it* cleared, so the connection is pinned by
+  // the code that owns the socket. This call only exists to turn a bad host
+  // into a 400 before any key is decrypted.
   try {
-    await assertHostNotInternal(input.sshHost);
+    await resolveSafeHost(input.sshHost);
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : "Invalid SSH host" }, 400);
   }
@@ -165,9 +170,10 @@ app.post("/open", async (c) => {
   if (!config) return c.json({ error: "No tunnel config for this account" }, 404);
 
   // SSRF guard on the stored bastion endpoint. The create-account flow
-  // validates this at write time, but DNS records can change.
+  // validates this at write time, but DNS records can change. As above, the
+  // address is `openTunnel`'s to pin — this is the early 400.
   try {
-    await assertHostNotInternal(config.sshHost);
+    await resolveSafeHost(config.sshHost);
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : "Invalid SSH host" }, 400);
   }
@@ -253,9 +259,13 @@ app.post("/exec", async (c) => {
     command: string;
   }>();
 
-  // SSRF guard on the bastion host the server is about to dial.
+  // SSRF guard on the bastion host the server is about to dial. Unlike the
+  // two tunnel routes above, nothing downstream re-resolves for us — `sshExec`
+  // dials what it is given — so the cleared address is kept and handed to it,
+  // and the name is resolved exactly once.
+  let dialAddress: string;
   try {
-    await assertHostNotInternal(input.sshHost);
+    dialAddress = await resolveSafeHost(input.sshHost);
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : "Invalid SSH host" }, 400);
   }
@@ -325,6 +335,7 @@ app.post("/exec", async (c) => {
       organizationId,
       { host: input.sshHost, port: input.sshPort, username: input.sshUser, privateKey },
       input.command,
+      { dialAddress },
     );
     void logAudit({
       ...auditBase,
