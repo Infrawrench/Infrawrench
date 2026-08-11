@@ -30,6 +30,8 @@ interface Row {
   reverted_at: number | null;
   /** Epoch ms, or null. The lease an in-flight revert holds. */
   revert_claimed_at: number | null;
+  /** Identity of the lease holder. What makes the lease an exclusion, not a timer. */
+  revert_claim_owner: string | null;
   reverted_by_user_id: string | null;
 }
 
@@ -121,6 +123,7 @@ const update = vi.fn((_table: unknown) => ({
 /** Drizzle field name → column name, for the fake's writes. */
 const COLUMN_OF: Record<string, string> = {
   revertClaimedAt: "revert_claimed_at",
+  revertClaimOwner: "revert_claim_owner",
   revertedAt: "reverted_at",
   revertedByUserId: "reverted_by_user_id",
 };
@@ -142,6 +145,7 @@ beforeEach(() => {
     organization_id: "org-1",
     reverted_at: null,
     revert_claimed_at: null,
+    revert_claim_owner: null,
     reverted_by_user_id: null,
   };
   update.mockClear();
@@ -151,16 +155,25 @@ describe("claimRevert — exclusivity", () => {
   it("lets exactly one of two concurrent reverts through", async () => {
     const first = await claimRevert("org-1", "chg-1", "user-a", T0);
     const second = await claimRevert("org-1", "chg-1", "user-b", at(50));
-    expect([first, second]).toEqual([true, false]);
+    expect(first).toEqual(expect.any(String));
+    expect(second).toBeNull();
+  });
+
+  it("mints a distinct owner token per claim", async () => {
+    const first = await claimRevert("org-1", "chg-1", "user-a", T0);
+    await releaseRevert("org-1", "chg-1", first!);
+    const second = await claimRevert("org-1", "chg-1", "user-b", at(50));
+    expect(second).not.toBe(first);
+    expect(row.revert_claim_owner).toBe(second);
   });
 
   it("refuses an event that already completed, however long ago", async () => {
     row.reverted_at = T0.getTime();
-    expect(await claimRevert("org-1", "chg-1", "user-b", at(365 * 24 * 3_600_000))).toBe(false);
+    expect(await claimRevert("org-1", "chg-1", "user-b", at(365 * 24 * 3_600_000))).toBeNull();
   });
 
   it("is scoped to the organization", async () => {
-    expect(await claimRevert("org-2", "chg-1", "user-a", T0)).toBe(false);
+    expect(await claimRevert("org-2", "chg-1", "user-a", T0)).toBeNull();
     expect(row.revert_claimed_at).toBeNull();
   });
 });
@@ -172,35 +185,101 @@ describe("claimRevert — abandoned claims recover", () => {
    * ever release; without a lease the event is permanently unrevertible.
    */
   it("reclaims a lease left behind by a process that never finished", async () => {
-    expect(await claimRevert("org-1", "chg-1", "user-a", T0)).toBe(true);
+    expect(await claimRevert("org-1", "chg-1", "user-a", T0)).toEqual(expect.any(String));
     // ...that request's process dies here: no completeRevert, no releaseRevert.
     expect(row.reverted_at).toBeNull();
 
     const afterLease = at(REVERT_CLAIM_LEASE_MS + 1_000);
-    expect(await claimRevert("org-1", "chg-1", "user-b", afterLease)).toBe(true);
+    expect(await claimRevert("org-1", "chg-1", "user-b", afterLease)).toEqual(expect.any(String));
     expect(row.revert_claimed_at).toBe(afterLease.getTime());
     expect(row.reverted_by_user_id).toBe("user-b");
   });
 
   it("does not steal a claim that is still inside its lease", async () => {
-    expect(await claimRevert("org-1", "chg-1", "user-a", T0)).toBe(true);
-    expect(await claimRevert("org-1", "chg-1", "user-b", at(REVERT_CLAIM_LEASE_MS - 1_000))).toBe(
-      false,
-    );
+    expect(await claimRevert("org-1", "chg-1", "user-a", T0)).toEqual(expect.any(String));
+    expect(
+      await claimRevert("org-1", "chg-1", "user-b", at(REVERT_CLAIM_LEASE_MS - 1_000)),
+    ).toBeNull();
     expect(row.reverted_by_user_id).toBe("user-a");
   });
 
   it("recovers when the best-effort release itself failed", async () => {
-    expect(await claimRevert("org-1", "chg-1", "user-a", T0)).toBe(true);
+    const owner = await claimRevert("org-1", "chg-1", "user-a", T0);
     // A release that throws is swallowed by design; the row keeps its claim.
     update.mockImplementationOnce(() => {
       throw new Error("connection reset");
     });
-    await expect(releaseRevert("org-1", "chg-1")).resolves.toBeUndefined();
+    await expect(releaseRevert("org-1", "chg-1", owner!)).resolves.toBeUndefined();
     expect(row.revert_claimed_at).toBe(T0.getTime());
 
     // The lease is the backstop that makes that survivable.
-    expect(await claimRevert("org-1", "chg-1", "user-b", at(REVERT_CLAIM_LEASE_MS + 1))).toBe(true);
+    expect(await claimRevert("org-1", "chg-1", "user-b", at(REVERT_CLAIM_LEASE_MS + 1))).toEqual(
+      expect.any(String),
+    );
+  });
+});
+
+/**
+ * The regression this round of review found: a lease with no owner is only a
+ * timer. Every one of these describes the same shape — an attempt whose
+ * provider call outlived the five-minute lease, finishing after a replacement
+ * has already taken the event over.
+ */
+describe("a superseded attempt can touch nothing", () => {
+  /** Claim as A, let the lease lapse, claim as B. Returns both tokens. */
+  async function supersede() {
+    const a = await claimRevert("org-1", "chg-1", "user-a", T0);
+    const b = await claimRevert("org-1", "chg-1", "user-b", at(REVERT_CLAIM_LEASE_MS + 1_000));
+    expect(a).toEqual(expect.any(String));
+    expect(b).toEqual(expect.any(String));
+    expect(b).not.toBe(a);
+    return { a: a!, b: b! };
+  }
+
+  it("does not release the replacement's claim on its failure path", async () => {
+    const { a, b } = await supersede();
+
+    // A's provider call finally fails and it runs its rollback.
+    await releaseRevert("org-1", "chg-1", a);
+
+    // B still holds the event. Without the owner fence this cleared B's claim,
+    // and a third attempt could then claim it while B was mid-write.
+    expect(row.revert_claim_owner).toBe(b);
+    expect(row.revert_claimed_at).toBe(at(REVERT_CLAIM_LEASE_MS + 1_000).getTime());
+    expect(await claimRevert("org-1", "chg-1", "user-c", at(REVERT_CLAIM_LEASE_MS + 2_000))).toBe(
+      null,
+    );
+  });
+
+  it("does not complete on the replacement's behalf", async () => {
+    const { a, b } = await supersede();
+
+    // A's provider write landed, but the event is not A's to close any more.
+    expect(await completeRevert("org-1", "chg-1", a, at(REVERT_CLAIM_LEASE_MS + 5_000))).toBe(
+      false,
+    );
+    expect(row.reverted_at).toBeNull();
+    expect(row.revert_claim_owner).toBe(b);
+  });
+
+  it("leaves the replacement able to finish normally", async () => {
+    const { a, b } = await supersede();
+    await releaseRevert("org-1", "chg-1", a);
+    expect(await completeRevert("org-1", "chg-1", b, at(REVERT_CLAIM_LEASE_MS + 9_000))).toBe(true);
+    expect(row.reverted_at).toBe(at(REVERT_CLAIM_LEASE_MS + 9_000).getTime());
+    expect(row.revert_claim_owner).toBeNull();
+  });
+
+  it("cannot re-open an event the replacement already completed", async () => {
+    const { a, b } = await supersede();
+    await completeRevert("org-1", "chg-1", b, at(REVERT_CLAIM_LEASE_MS + 3_000));
+
+    // A arrives late on either path; neither may disturb the recorded outcome.
+    await releaseRevert("org-1", "chg-1", a);
+    expect(await completeRevert("org-1", "chg-1", a, at(REVERT_CLAIM_LEASE_MS + 4_000))).toBe(
+      false,
+    );
+    expect(row.reverted_at).toBe(at(REVERT_CLAIM_LEASE_MS + 3_000).getTime());
   });
 });
 
@@ -214,30 +293,32 @@ describe("claim vs completion are different columns", () => {
   });
 
   it("marks it reverted only on completion, and drops the lease", async () => {
-    await claimRevert("org-1", "chg-1", "user-a", T0);
-    await completeRevert("org-1", "chg-1", at(1_200));
+    const owner = await claimRevert("org-1", "chg-1", "user-a", T0);
+    expect(await completeRevert("org-1", "chg-1", owner!, at(1_200))).toBe(true);
     expect(row.reverted_at).toBe(at(1_200).getTime());
     expect(row.revert_claimed_at).toBeNull();
+    expect(row.revert_claim_owner).toBeNull();
 
     // And a completed event is never claimable again.
-    expect(await claimRevert("org-1", "chg-1", "user-b", at(10 * REVERT_CLAIM_LEASE_MS))).toBe(
-      false,
-    );
+    expect(
+      await claimRevert("org-1", "chg-1", "user-b", at(10 * REVERT_CLAIM_LEASE_MS)),
+    ).toBeNull();
   });
 
   it("releases the claim without ever un-reverting a completed event", async () => {
-    await claimRevert("org-1", "chg-1", "user-a", T0);
-    await completeRevert("org-1", "chg-1", at(1_200));
-    await releaseRevert("org-1", "chg-1");
+    const owner = await claimRevert("org-1", "chg-1", "user-a", T0);
+    await completeRevert("org-1", "chg-1", owner!, at(1_200));
+    await releaseRevert("org-1", "chg-1", owner!);
     expect(row.reverted_at).toBe(at(1_200).getTime());
   });
 
   it("frees the event immediately when the provider call failed", async () => {
-    await claimRevert("org-1", "chg-1", "user-a", T0);
-    await releaseRevert("org-1", "chg-1");
+    const owner = await claimRevert("org-1", "chg-1", "user-a", T0);
+    await releaseRevert("org-1", "chg-1", owner!);
     expect(row.revert_claimed_at).toBeNull();
+    expect(row.revert_claim_owner).toBeNull();
     expect(row.reverted_at).toBeNull();
     // Retryable at once, not at lease expiry.
-    expect(await claimRevert("org-1", "chg-1", "user-a", at(10))).toBe(true);
+    expect(await claimRevert("org-1", "chg-1", "user-a", at(10))).toEqual(expect.any(String));
   });
 });

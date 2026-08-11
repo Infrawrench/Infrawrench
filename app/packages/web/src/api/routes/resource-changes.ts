@@ -307,9 +307,11 @@ app.post("/:changeId/revert", async (c) => {
   });
   if (frozen) return frozen;
 
-  const claimedAt = new Date();
-  const claimed = await claimRevert(organizationId, change.id, userId, claimedAt);
-  if (!claimed) {
+  // The claim's owner token. Every write that ends this revert is fenced on it,
+  // so if the lease lapses mid-request and another attempt takes the event over,
+  // this one can neither release nor complete the replacement's claim.
+  const owner = await claimRevert(organizationId, change.id, userId, new Date());
+  if (!owner) {
     return c.json(
       {
         error: "Another revert of this change is already in flight or has completed.",
@@ -321,13 +323,13 @@ app.post("/:changeId/revert", async (c) => {
 
   const result = await buildRevertPlan(organizationId, change);
   if (!result.ok) {
-    await releaseRevert(organizationId, change.id);
+    await releaseRevert(organizationId, change.id, owner);
     return revertFailureResponse(c, result.failure);
   }
   const { plan, client } = result.result;
   const patch = buildRevertPatch(plan);
   if (Object.keys(patch).length === 0) {
-    await releaseRevert(organizationId, change.id);
+    await releaseRevert(organizationId, change.id, owner);
     return c.json(
       {
         error: plan.blockedReason ?? "Nothing about this change can be reverted.",
@@ -342,14 +344,14 @@ app.post("/:changeId/revert", async (c) => {
   // credential rewriters *between* the read and the write, widening the window
   // for exactly the lost update the re-read is trying to catch.
   if (!client?.updateResource) {
-    await releaseRevert(organizationId, change.id);
+    await releaseRevert(organizationId, change.id, owner);
     return c.json({ error: "The account this change belongs to no longer exists" }, 404);
   }
 
   try {
     await client.updateResource(change.resourceTypeId, change.resourceId, change.accountId, patch);
   } catch (err) {
-    await releaseRevert(organizationId, change.id);
+    await releaseRevert(organizationId, change.id, owner);
     const message = err instanceof Error ? err.message : "The revert failed";
     return c.json({ error: message }, 400);
   }
@@ -357,7 +359,25 @@ app.post("/:changeId/revert", async (c) => {
   // Only now is the event reverted. Until this commits the row carries a lease,
   // not a verdict — so a crash anywhere above leaves something retryable.
   const revertedAt = new Date();
-  await completeRevert(organizationId, change.id, revertedAt);
+  const completed = await completeRevert(organizationId, change.id, owner, revertedAt);
+  if (!completed) {
+    // This request outlived its lease and another attempt took the event over
+    // while the provider call was in flight. The write landed, but the outcome
+    // belongs to whoever holds the claim now — saying "reverted" here would
+    // overwrite their claim, and saying nothing at all would be a lie about a
+    // write that did happen. Report both halves and let the caller re-read.
+    return c.json(
+      {
+        error:
+          "The revert was applied to the provider, but this attempt ran longer than its lease and " +
+          "another revert of the same change took over in the meantime, so it isn't recorded " +
+          "against this event. Re-check the resource before retrying.",
+        code: REVERT_CONFLICT_CODE,
+        appliedFields: plan.revertibleFields,
+      },
+      409,
+    );
+  }
 
   void logAudit({
     organizationId,

@@ -97,6 +97,8 @@ In practice the window is one API round-trip wide, and reverting a change nobody
 
 An event only counts as reverted once the provider has accepted the write. If a revert is interrupted part-way — a deploy, a restart, a dropped connection — the event is held for five minutes and then becomes revertible again, so an undo that never landed is never left looking like one that did.
 
+Very occasionally a provider is slow enough that a revert outlives that five-minute hold and someone else's retry picks the event up first. When that happens the slow request tells you so explicitly, listing the fields it did write, rather than quietly reporting success — both attempts are putting back the same recorded values, so the resource ends up correct either way, but the message is worth reading before you retry again.
+
 ### Guardrails
 
 - Reverting needs the **Resources: write** permission — the same one editing a resource needs.

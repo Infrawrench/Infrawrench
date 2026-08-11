@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { and, eq, isNull, lt, or } from "drizzle-orm";
 import { isFieldEditable } from "@infrawrench/plugin-base";
 import type { PluginClient, ResourceInstance } from "@infrawrench/plugin-base";
@@ -27,11 +28,13 @@ import { getClientForAccount } from "./plugin-clients";
  *    This is a **last-moment re-read, not an atomic compare-and-swap** — see
  *    {@link buildRevertPlan} for exactly how wide the remaining window is and
  *    why it cannot be closed here.
- * 3. **The event is claimed under a lease.** A conditional `UPDATE ... WHERE
- *    reverted_at IS NULL AND (revert_claimed_at IS NULL OR revert_claimed_at <
- *    now - lease)` decides which of two concurrent reverts gets to touch the
- *    provider. See {@link claimRevert} for why the claim and the completion are
- *    two different columns.
+ * 3. **The event is claimed under a lease, and the lease has an owner.** A
+ *    conditional `UPDATE ... WHERE reverted_at IS NULL AND (revert_claimed_at IS
+ *    NULL OR revert_claimed_at < now - lease)` decides which of two concurrent
+ *    reverts gets to touch the provider, and every write that *ends* a revert is
+ *    fenced on the token that claim minted. See {@link claimRevert} for why the
+ *    claim and the completion are two different columns, and for what the lease
+ *    does and does not promise.
  *
  * What this file deliberately does *not* do is mirror the new values into the
  * `resources` row the way `POST /api/resources/update` does. That mirror exists
@@ -66,6 +69,7 @@ export interface ChangeRow {
   createdAt: Date;
   revertedAt: Date | null;
   revertClaimedAt: Date | null;
+  revertClaimOwner: string | null;
 }
 
 /** Failure modes the routes turn into status codes. */
@@ -108,6 +112,7 @@ export async function loadChange(
       createdAt: resourceChanges.createdAt,
       revertedAt: resourceChanges.revertedAt,
       revertClaimedAt: resourceChanges.revertClaimedAt,
+      revertClaimOwner: resourceChanges.revertClaimOwner,
     })
     .from(resourceChanges)
     .where(
@@ -219,10 +224,32 @@ export async function buildRevertPlan(
 }
 
 /**
+ * Every write that ends a revert names the claim it is ending.
+ *
+ * A deadline on its own is only a timer: an attempt whose lease lapsed while
+ * its provider call was still running would otherwise clear — or complete —
+ * whatever claim had replaced it, and the event would fall open for a third
+ * attempt while the second was mid-write. Fencing on the token makes a
+ * superseded attempt match no row, so it can do nothing at all, which is
+ * exactly what it should do. Same shape as `fencedWhere` in
+ * `server-core/src/network-flow/pass.ts`.
+ */
+function fencedWhere(organizationId: string, changeId: string, owner: string) {
+  return and(
+    eq(resourceChanges.id, changeId),
+    eq(resourceChanges.organizationId, organizationId),
+    eq(resourceChanges.revertClaimOwner, owner),
+  );
+}
+
+/**
  * Take ownership of the event for {@link REVERT_CLAIM_LEASE_MS}.
  *
- * Returns false when the event is already reverted, or when another revert
- * holds a claim that has not yet expired.
+ * Returns the claim's owner token, or null when the event is already reverted
+ * or another attempt holds a claim that has not yet expired. The token is the
+ * caller's proof of ownership and must be handed to {@link completeRevert} and
+ * {@link releaseRevert}; it is fixed for the life of the claim, so there is
+ * nothing about it that can go stale.
  *
  * **The claim and the completion are two columns on purpose.** `revert_claimed_at`
  * is a lease; `reverted_at` is a fact, written only once the provider actually
@@ -234,22 +261,36 @@ export async function buildRevertPlan(
  * deploy mid-request, a `releaseRevert` that itself failed) now resolves itself
  * at lease expiry.
  *
- * The reverse failure — dying *after* the provider accepted the write but
- * before {@link completeRevert} commits — is safe by construction rather than by
- * bookkeeping: the lease expires, a retry re-reads the resource, finds every
- * field already at its old value, and plans `already-reverted` for all of them,
- * so nothing is written a second time.
+ * ## What the lease does and does not promise
+ *
+ * Dying *after* the provider accepted the write but before {@link completeRevert}
+ * commits is safe by construction rather than by bookkeeping: the lease expires,
+ * a retry re-reads the resource, finds every field already at its old value, and
+ * plans `already-reverted` for all of them, so nothing is written a second time.
+ *
+ * A provider call that outlives the lease is the case the token exists for, and
+ * it is worth being exact about what survives it. The token guarantees the
+ * *bookkeeping* is never corrupted: a superseded attempt cannot release or
+ * complete the new holder's claim, so the event can never fall open to a third
+ * attempt while the second is still writing. It does **not** guarantee that two
+ * provider writes never overlap — if the work outlives the lease, the second
+ * holder may start its own write while the first is still in flight. What makes
+ * that survivable is that both are writing *the same patch*: the values come
+ * from the same recorded event, inverted the same way, so the second holder's
+ * patch is a subset of the first's and an overlap is idempotent in effect rather
+ * than divergent. Two attempts can race; they cannot disagree.
  */
 export async function claimRevert(
   organizationId: string,
   changeId: string,
   userId: string | undefined,
   at: Date,
-): Promise<boolean> {
+): Promise<string | null> {
+  const owner = randomUUID();
   const staleBefore = new Date(at.getTime() - REVERT_CLAIM_LEASE_MS);
   const claimed = await db
     .update(resourceChanges)
-    .set({ revertClaimedAt: at, revertedByUserId: userId ?? null })
+    .set({ revertClaimedAt: at, revertClaimOwner: owner, revertedByUserId: userId ?? null })
     .where(
       and(
         eq(resourceChanges.id, changeId),
@@ -262,50 +303,57 @@ export async function claimRevert(
       ),
     )
     .returning({ id: resourceChanges.id });
-  return claimed.length > 0;
+  return claimed.length > 0 ? owner : null;
 }
 
 /**
  * Record that the provider accepted the write. Only this makes an event read as
  * reverted — to the feed, to the UI badge, and to a later revert attempt.
+ *
+ * Returns false when this attempt no longer holds the claim, which means its
+ * lease lapsed and another attempt took the event over. The caller must not
+ * treat that as success: the provider write did land, but this request is no
+ * longer the one that owns the outcome, and claiming it would overwrite the
+ * replacement's claim.
  */
 export async function completeRevert(
   organizationId: string,
   changeId: string,
+  owner: string,
   at: Date,
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  const completed = await db
     .update(resourceChanges)
-    .set({ revertedAt: at, revertClaimedAt: null })
-    .where(
-      and(eq(resourceChanges.id, changeId), eq(resourceChanges.organizationId, organizationId)),
-    );
+    .set({ revertedAt: at, revertClaimedAt: null, revertClaimOwner: null })
+    .where(fencedWhere(organizationId, changeId, owner))
+    .returning({ id: resourceChanges.id });
+  return completed.length > 0;
 }
 
 /**
  * Hand the event back, so a failed attempt is retryable immediately rather than
  * at lease expiry.
  *
+ * Fenced on the claim token: an attempt that was already superseded releases
+ * nothing, because the claim it would be clearing is not its own. Also scoped
+ * to rows that have not completed, so it can never un-revert an event whose
+ * write did land.
+ *
  * Never throws: this runs on the error path, and a failed rollback must not
  * mask the error that caused it (the same rule the drift-alert cooldown claim
  * follows). A release that fails is not a stuck row either — the lease is the
  * backstop, which is exactly why the lease exists.
- *
- * Scoped to rows that have not completed, so it can never un-revert an event
- * whose write did land.
  */
-export async function releaseRevert(organizationId: string, changeId: string): Promise<void> {
+export async function releaseRevert(
+  organizationId: string,
+  changeId: string,
+  owner: string,
+): Promise<void> {
   try {
     await db
       .update(resourceChanges)
-      .set({ revertClaimedAt: null, revertedByUserId: null })
-      .where(
-        and(
-          eq(resourceChanges.id, changeId),
-          eq(resourceChanges.organizationId, organizationId),
-          isNull(resourceChanges.revertedAt),
-        ),
-      );
+      .set({ revertClaimedAt: null, revertClaimOwner: null, revertedByUserId: null })
+      .where(and(fencedWhere(organizationId, changeId, owner), isNull(resourceChanges.revertedAt)));
   } catch (err) {
     console.error("[change-revert] Failed to release the revert claim:", err);
   }

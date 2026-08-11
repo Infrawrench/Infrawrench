@@ -72,13 +72,23 @@ function stubSelect(change = CHANGE) {
   }));
 }
 
-/** `db.update()...where()` / `.returning()`, with the claim always winning. */
-function stubUpdate(claimWins = true) {
+/**
+ * `db.update()...where()` / `.returning()`.
+ *
+ * A statement "wins" when it matches a row. Claim and completion are separable
+ * because they are the only two fenced writes and they set different columns:
+ * `completeWins: false` models this request's lease having lapsed and another
+ * attempt having taken the event over while the provider call was in flight, so
+ * the owner-fenced completion matches nothing.
+ */
+function stubUpdate({ claimWins = true, completeWins = true } = {}) {
   const writes: Record<string, unknown>[] = [];
   mockUpdate.mockImplementation(() => ({
     set: (values: Record<string, unknown>) => {
       writes.push(values);
-      const result = claimWins ? [{ id: "chg-1" }] : [];
+      const isCompletion = "revertedAt" in values;
+      const won = isCompletion ? completeWins : claimWins;
+      const result = won ? [{ id: "chg-1" }] : [];
       return {
         where: () => ({
           returning: () => Promise.resolve(result),
@@ -229,13 +239,39 @@ describe("POST /:changeId/revert — claim lifecycle", () => {
 
   it("refuses when the claim is already held", async () => {
     stubSelect();
-    stubUpdate(false);
+    stubUpdate({ claimWins: false });
     const { updateResource } = stubClient();
 
     const res = await app().request("/chg-1/revert", { method: "POST" });
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe("change_revert_conflict");
     expect(updateResource).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The provider call outlived the five-minute lease and another attempt took
+   * the event over. The write landed, but this request no longer owns the
+   * outcome — reporting success would mean overwriting the replacement's claim,
+   * and reporting a plain failure would be a lie about a write that happened.
+   */
+  it("reports honestly when its lease lapsed and it was superseded mid-write", async () => {
+    stubSelect();
+    stubUpdate({ completeWins: false });
+    const { updateResource } = stubClient();
+
+    const res = await app().request("/chg-1/revert", { method: "POST" });
+    expect(updateResource).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as {
+      code: string;
+      error: string;
+      appliedFields: string[];
+    };
+    expect(body.code).toBe("change_revert_conflict");
+    expect(body.error).toMatch(/applied to the provider/);
+    expect(body.error).toMatch(/took over/);
+    // The fields it did write are still named, so the caller can reconcile.
+    expect(body.appliedFields).toEqual(["size"]);
   });
 
   it("refuses an event that already completed, without touching the provider", async () => {

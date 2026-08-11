@@ -335,6 +335,12 @@ export function registerResourceChangePaths(ctx: BuildContext) {
       "and the loser gets `409`. A provider failure releases the claim immediately; a process that " +
       "dies mid-write leaves a claim that expires, so an interrupted revert is retryable rather " +
       "than permanently stuck. `revertedAt` is only set once the provider accepted the write.\n\n" +
+      "The claim carries an owner token, and every write that ends a revert is fenced on it. An " +
+      "attempt whose provider call outlives the lease can therefore neither release nor complete " +
+      "the claim that replaced it — it gets `409` with `appliedFields` naming what it did write, " +
+      "so the caller can reconcile rather than assume. Two attempts can overlap in that case, but " +
+      "they cannot disagree: both invert the same recorded event to the same values, so the second " +
+      "one's patch is a subset of the first's.\n\n" +
       "Blocked with `423` while an org change freeze is in effect, and audit-logged as " +
       "`resource.change_revert`. The stored resource snapshot is deliberately left untouched, so " +
       "the next poll observes the reverted state and records it as an ordinary change event.",
@@ -348,8 +354,10 @@ export function registerResourceChangePaths(ctx: BuildContext) {
       404: ErrorResponses[404],
       409: {
         description:
-          "Already reverted, another revert holds the event, or nothing in the plan is writable. " +
-          "The body carries `code: change_revert_conflict` for the first two.",
+          "Already reverted, another revert holds the event, nothing in the plan is writable, or " +
+          "this attempt was superseded mid-write (its lease lapsed). The body carries " +
+          "`code: change_revert_conflict` for all but the writability case, and `appliedFields` " +
+          "when the provider write had already landed.",
         content: { "application/json": { schema: ErrorResponse } },
       },
       423: FreezeLockedResponse,

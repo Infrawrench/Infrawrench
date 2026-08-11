@@ -200,6 +200,16 @@ export const resourceChanges = pgTable(
      * neither path ran.
      */
     revertClaimedAt: timestamp("revert_claimed_at"),
+    /**
+     * Identity of the claim holder, minted per attempt. Every write that ends a
+     * revert is fenced on it (`WHERE revert_claim_owner = <mine>`), so an
+     * attempt whose lease already lapsed — and whose event another attempt has
+     * since claimed under a token of its own — matches no row and cannot clear
+     * or complete the new holder's claim. A deadline alone is only a timer;
+     * this is what makes the lease an exclusion. Same shape as
+     * `account_network_flow_polls.lease_owner`.
+     */
+    revertClaimOwner: text("revert_claim_owner"),
   },
   (t) => ({
     orgCreatedIdx: index("resource_changes_org_created_idx").on(t.organizationId, t.createdAt),
