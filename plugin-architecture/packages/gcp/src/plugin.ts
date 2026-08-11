@@ -117,6 +117,18 @@ const manifest: PluginManifest = {
   // Committed-use discounts via compute.regionCommitments.aggregatedList.
   // Needs compute.commitments.list (in roles/compute.viewer).
   commitments: { kinds: ["committed_use"] },
+  // Compute Engine quotas via compute.projects.get + compute.regions.list.
+  // Needs compute.projects.get and compute.regions.list (both in
+  // roles/compute.viewer, which the account already needs to list anything).
+  //
+  // Not `partial`: this is every quota Compute Engine reports, globally and
+  // per region. It is not every quota *GCP* enforces — BigQuery, Cloud Run and
+  // the rest have their own — but within Compute Engine the list is complete,
+  // and claiming otherwise would be as misleading in the other direction.
+  quotas: {
+    label: "Quotas",
+    increaseUrl: "https://console.cloud.google.com/iam-admin/quotas",
+  },
   statusFeed,
   preflight: gcpPreflight,
 };

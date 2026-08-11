@@ -9,6 +9,7 @@ import "./metric-alerts";
 import "./orphans";
 import "./rightsizing";
 import "./expiring";
+import "./quotas";
 import "./posture";
 import "./dns";
 import "./environment-diff";

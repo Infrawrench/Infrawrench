@@ -1,6 +1,7 @@
 import type {
   CostFetchRange,
   CostRow,
+  QuotaUsage,
   DashboardStat,
   DetailViewSchema,
   HostServices,
@@ -48,6 +49,7 @@ import { computeClusterCost, type ClusterCostResult } from "./cluster-cost.js";
 import { buildCostIndex, type CostIndex } from "./cost-surface.js";
 import { parseNodeRates, type NodeRateTable } from "./node-rates.js";
 import { allocationToCostRows } from "./cost-data.js";
+import { fetchK8sQuotas } from "./quotas.js";
 import { buildCostMetricSeries } from "./metric-series.js";
 
 /**
@@ -275,6 +277,15 @@ export class KubernetesClient implements PluginClient {
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
     const result = await this.clusterCost();
     return allocationToCostRows(result.allocation, range);
+  }
+
+  /**
+   * Quota readings from the cluster's own `ResourceQuota` objects — one
+   * unpaginated list across every namespace. See `quotas.ts` for why node
+   * capacity and `LimitRange` are deliberately not in here.
+   */
+  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
+    return fetchK8sQuotas({ fetch: this.k8sFetch });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

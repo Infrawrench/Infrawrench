@@ -167,6 +167,18 @@ export interface PluginManifest {
    */
   credits?: CreditsCapabilityDeclaration;
   /**
+   * If present, this plugin can report how close the account is to the limits
+   * its provider enforces, via `fetchQuotas`, and the host schedules a
+   * low-frequency collection pass that turns the resulting series into a
+   * utilisation trend and an exhaustion alert.
+   *
+   * Independent of `costs` and of the metric contract: a quota is a used/limit
+   * *pair* from a management API, not spend and not a sampled series. See
+   * `quotas.ts` for why conflating it with either is a mistake — and for why
+   * absence must render as *nothing* rather than as zero.
+   */
+  quotas?: QuotaCapabilityDeclaration;
+  /**
    * If present, this plugin can return *aggregated* network flows — priced
    * source→destination pairs — for an account via `fetchNetworkFlows`, and the
    * host schedules a forward-only daily pass for its accounts.
@@ -454,6 +466,37 @@ export interface PluginClient {
    * — that is a different situation from a failure and the host says so.
    */
   fetchCreditBalance?(accountId: string): Promise<CreditBalance[]>;
+  /**
+   * Read how close this account is to the limits the provider enforces. Only
+   * called when the manifest declares `quotas`. Called on a low-frequency
+   * background pass (a few times a day), so it should be a bounded, named set
+   * of requests — never a walk of every quota the provider publishes.
+   *
+   * Credentialed, so it lives here and not on the manifest, alongside
+   * `fetchMetricSeries` and `fetchCostData`.
+   *
+   * Three rules:
+   *
+   * 1. **Both halves come from the provider.** Never fill in a `limit` from
+   *    documentation or from the plugin's own memory of the defaults. An
+   *    account with an approved increase would then read as exhausted while it
+   *    has headroom — a false alarm about the one thing this feature exists to
+   *    be trusted about. A quota whose limit the provider will not state is a
+   *    quota this method does not return.
+   * 2. **Return a bounded subset, and declare it.** `quotas.partial` says the
+   *    list is representative rather than exhaustive, so the surface can avoid
+   *    implying "you are within all your limits" when it only knows about
+   *    eleven of them.
+   * 3. **Throw rather than return a short list.** The host replaces the
+   *    account's stored readings with what this returns, so a partial answer
+   *    (one region refused, the rest fine) reads as quotas having disappeared
+   *    — and a disappeared quota is one nobody is watching any more.
+   *
+   * Throw {@link QuotaAccessError} when the credential or the account is
+   * missing what this needs (an unattached policy, a disabled API) so the host
+   * can stop retrying on a tight loop and show the fix.
+   */
+  fetchQuotas?(accountId: string): Promise<QuotaUsage[]>;
   /**
    * Return **aggregated** source→destination flows for one closed UTC day.
    * Only called when the manifest declares `networkFlows`.
@@ -990,6 +1033,7 @@ import type {
   NetworkFlowRecord,
 } from "./network-flow.js";
 import type { PolicyTemplate, PreflightDeclaration, PreflightResult } from "./preflight.js";
+import type { QuotaCapabilityDeclaration, QuotaUsage } from "./quotas.js";
 import type { StatusFeedDeclaration, StatusIncident } from "./status-feed.js";
 import type { ResourceCreateReturn, ResourceInstance } from "./instance.js";
 import type {

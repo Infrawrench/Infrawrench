@@ -70,6 +70,10 @@ export function probesTabTarget(): WorkspaceTabTarget {
   return { kind: "probes" };
 }
 
+export function quotasTabTarget(): WorkspaceTabTarget {
+  return { kind: "quotas" };
+}
+
 export function deploymentsTabTarget(repo?: string): WorkspaceTabTarget {
   return { kind: "deployments", ...(repo ? { repo } : {}) };
 }

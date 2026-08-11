@@ -332,6 +332,7 @@ export {
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
+  quotasTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -591,6 +592,41 @@ export type {
   ExpirySeverity,
 } from "@infrawrench/client-core";
 export { ExpirySection, formatDaysRemaining } from "./expiry/ExpirySection.js";
+/**
+ * Quota radar — how close each account is to its provider's enforced limits.
+ * The pure contract (trend fit, severity buckets, formatters) lives in
+ * `@infrawrench/client-core` so the poller, the digest and any future CLI
+ * share one definition of "over threshold"; re-exported here because web and
+ * desktop import it from `ui`.
+ */
+export {
+  alertableQuotas,
+  computeQuotaTrend,
+  fitQuotaSlope,
+  formatDaysToExhaustion,
+  formatQuotaAmount,
+  formatQuotaUtilization,
+  quotaSeverity,
+  sortQuotaRows,
+  DEFAULT_QUOTA_THRESHOLD,
+  QUOTA_ALERT_LIMITS,
+  QUOTA_SEVERITIES,
+  QUOTA_SEVERITY_LABELS,
+  QUOTA_TREND_HORIZON_DAYS,
+} from "@infrawrench/client-core";
+export type {
+  QuotaAccountStatus,
+  QuotaListResponse,
+  QuotaRow,
+  QuotaSettings,
+  QuotaSettingsPatch,
+  QuotaSeverity,
+  QuotaSnapshot,
+  QuotaTrend,
+} from "@infrawrench/client-core";
+export { QuotasSection } from "./quotas/QuotasSection.js";
+export { QuotasIcon } from "./components/icons/QuotasIcon.js";
+export type { QuotasSectionProps } from "./quotas/QuotasSection.js";
 export type { ExpirySectionProps } from "./expiry/ExpirySection.js";
 export { ExpiryIcon } from "./components/icons/ExpiryIcon.js";
 

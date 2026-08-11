@@ -85,6 +85,18 @@ const manifest: PluginManifest = {
     maxHistoryDays: 1,
     restatementDays: 1,
   },
+  // ResourceQuota objects, read with one `GET /api/v1/resourcequotas` across
+  // all namespaces. Needs `list` on `resourcequotas` cluster-wide.
+  //
+  // The only provider here whose quota model is native rather than adapted:
+  // `status.hard` and `status.used` are already the contract's `limit` and
+  // `used` over the same unit. Not `partial` — this is every ResourceQuota in
+  // the cluster. `label: "Resource quotas"` is the object's own name, which is
+  // what the user will `kubectl get`.
+  quotas: {
+    label: "Resource quotas",
+    increaseUrl: "https://kubernetes.io/docs/concepts/policy/resource-quotas/",
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

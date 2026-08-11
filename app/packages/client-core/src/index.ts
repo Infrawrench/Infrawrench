@@ -635,6 +635,8 @@ export * from "./dns";
 export * from "./environment-diff";
 export * from "./schedules";
 export * from "./probes";
+export * from "./help-links";
+export * from "./quotas";
 export * from "./status-pages";
 export * from "./ownership";
 export * from "./log-workspaces";

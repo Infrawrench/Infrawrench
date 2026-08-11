@@ -6,6 +6,7 @@ import {
   invoicesTabTarget,
   deploymentsTabTarget,
   probesTabTarget,
+  quotasTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -65,6 +66,11 @@ describe("getWorkspaceNavigateArgs", () => {
   it("returns probes route args", () => {
     const args = getWorkspaceNavigateArgs(probesTabTarget());
     expect(args.to).toBe("/probes");
+  });
+
+  it("returns quotas route args", () => {
+    const args = getWorkspaceNavigateArgs(quotasTabTarget());
+    expect(args.to).toBe("/quotas");
   });
 
   it("returns resource route args for details view", () => {
@@ -228,6 +234,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the probes path", () => {
     expect(syncWorkspaceRouteFromPath("/probes")).toEqual({ kind: "probes" });
+  });
+
+  it("parses the quotas path", () => {
+    expect(syncWorkspaceRouteFromPath("/quotas")).toEqual({ kind: "quotas" });
   });
 
   it("parses the environment diff path, with and without a pair", () => {

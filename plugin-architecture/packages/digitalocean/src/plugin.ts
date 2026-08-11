@@ -69,6 +69,18 @@ const manifest: PluginManifest = {
   // per invoice line + region. Needs the `billing:read` token scope. Data
   // exists from 1 Dec 2025 onward; earlier backfill windows come back empty.
   costs: { dimensions: ["service", "region"], maxHistoryDays: 365, restatementDays: 3 },
+  // Droplet and reserved-IP limits from /v2/account, counted against
+  // ?per_page=1 reads of /v2/droplets and /v2/reserved_ips. Needs the
+  // `account:read`, `droplet:read` and `reserved_ip:read` token scopes.
+  //
+  // `partial` because DigitalOcean publishes exactly two limits in its API and
+  // enforces more than two — there is no volume limit and no Spaces limit in
+  // /v2/account, so the radar's silence about them is ignorance, not headroom.
+  quotas: {
+    label: "Limits",
+    increaseUrl: "https://cloud.digitalocean.com/account/profile",
+    partial: true,
+  },
   statusFeed,
 };
 

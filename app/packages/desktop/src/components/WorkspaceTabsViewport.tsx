@@ -50,6 +50,7 @@ import { DesktopDnsPanel } from "@/components/DesktopDnsPanel";
 import { DesktopEnvironmentDiffPanel } from "@/components/DesktopEnvironmentDiffPanel";
 import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel";
 import { DesktopProbesPanel } from "@/components/DesktopProbesPanel";
+import { DesktopQuotasPanel } from "@/components/DesktopQuotasPanel";
 import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
 import { DesktopSettingsPanel } from "@/components/DesktopSettingsPanel";
 import { DesktopAgentsPanel } from "@/components/DesktopAgentsPanel";
@@ -478,6 +479,8 @@ function renderPanel(
       return <DesktopMetricAlertsPanel />;
     case "probes":
       return <DesktopProbesPanel />;
+    case "quotas":
+      return <DesktopQuotasPanel />;
     case "settings":
       return <DesktopSettingsPanel section={t.section ?? ""} />;
     case "chat":

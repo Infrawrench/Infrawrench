@@ -7,6 +7,7 @@
  * poller log line nobody reads.
  */
 import type { CostPollError } from "@infrawrench/client-core";
+import { renderableHelpLink } from "../help-links";
 
 /**
  * What the host stores (and later renders) for a failed collection.
@@ -42,10 +43,12 @@ export function describeCostFailure(e: unknown): CostFailureDescription {
     link !== null
   ) {
     const { label, url } = link as { label?: unknown; url?: unknown };
-    // Only ever hand the UI a link it can safely render as an anchor.
-    if (typeof label === "string" && typeof url === "string" && url.startsWith("https://")) {
-      return { message, helpLink: { label, url } };
-    }
+    // Only ever hand the UI a link it can safely render as an anchor. The rule
+    // lives in `../help-links` so the quota path enforces the identical one —
+    // a second copy is a second chance to get it wrong, and the wrong version
+    // fails open.
+    const helpLink = renderableHelpLink(label, url);
+    if (helpLink) return { message, helpLink };
   }
   return { message, helpLink: null };
 }

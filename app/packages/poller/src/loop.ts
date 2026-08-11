@@ -26,16 +26,20 @@ import {
   settleAbandonedRecordings,
 } from "@infrawrench/server-core/ssh-recording/retention";
 import { pruneCreditSnapshots } from "@infrawrench/server-core/credits/feed";
+import { pruneQuotaSnapshots } from "@infrawrench/server-core/quotas/feed";
+import { runQuotaAlerts } from "@infrawrench/server-core/quotas/alerts";
 import { TickLoop } from "@infrawrench/server-core/tick-loop";
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { pollAccountCosts } from "./cost-poll";
 import { pollAccountCredits } from "./credit-poll";
 import { pollAccountCommitments } from "./commitment-poll";
+import { pollAccountQuotas } from "./quota-poll";
 import {
   claimDueAccounts,
   claimDueCommitmentAccounts,
   claimDueCostAccounts,
   claimDueCreditAccounts,
+  claimDueQuotaAccounts,
   claimDueWorkflows,
   type DueWorkflowRow,
 } from "./claim";
@@ -90,6 +94,8 @@ export class PollerLoop extends TickLoop {
   private creditCapablePluginIds: string[] | null = null;
   /** Plugin IDs whose manifest declares a `commitments` capability; likewise lazy. */
   private commitmentCapablePluginIds: string[] | null = null;
+  /** Plugin IDs whose manifest declares a `quotas` capability; likewise lazy. */
+  private quotaCapablePluginIds: string[] | null = null;
   /** Epoch ms of the last retention pass; 0 means "run on the first tick". */
   private lastRetentionAt = 0;
 
@@ -125,6 +131,13 @@ export class PollerLoop extends TickLoop {
     // outage must not stop us noticing a commitment that expires tomorrow.
     await this.tickCommitments();
 
+    // Provider quota utilisation (four times a day per account). Its own pass
+    // rather than part of the cost pass for the reason credits and commitments
+    // have theirs: a quota is a management-API fact, not a billing one, and
+    // running out of vCPUs is an outage rather than an invoice — so a billing
+    // outage must not stop us noticing it.
+    await this.tickQuotas();
+
     // Network flow attribution (daily cadence per account, opt-in per org).
     // Its own pass rather than part of the cost pass for two reasons that both
     // matter: the data comes from the provider's *log* store rather than its
@@ -158,6 +171,12 @@ export class PollerLoop extends TickLoop {
     // (`org_expiry_settings.last_notified_at`) makes it replica- and
     // restart-safe. Defensive like the others.
     await this.tickExpiryAlerts();
+
+    // Quota alerts: a bounded batch of orgs whose 24h quota-scan window has
+    // elapsed; the conditional-upsert claim inside
+    // (`org_quota_settings.last_notified_at`) makes it replica- and
+    // restart-safe. Defensive like the others.
+    await this.tickQuotaAlerts();
 
     // Posture alerts: a bounded batch of orgs whose 24h posture-scan window
     // has elapsed; the conditional-upsert claim inside
@@ -284,6 +303,23 @@ export class PollerLoop extends TickLoop {
     }
   }
 
+  /** Claim accounts due a quota read and run them. */
+  private async tickQuotas(): Promise<void> {
+    try {
+      if (!this.quotaCapablePluginIds) {
+        const loaded = await loadPlugins();
+        this.quotaCapablePluginIds = loaded
+          .filter((l) => l.plugin.manifest.quotas)
+          .map((l) => l.plugin.manifest.id);
+      }
+      const claimed = await claimDueQuotaAccounts(COST_LIMIT, this.quotaCapablePluginIds);
+      if (claimed.length === 0) return;
+      await Promise.allSettled(claimed.map((row) => pollAccountQuotas(row)));
+    } catch (e) {
+      console.error("[quotas] quota tick failed:", e);
+    }
+  }
+
   /** Claim accounts due a commitment-inventory read and run them. */
   private async tickCommitments(): Promise<void> {
     try {
@@ -316,6 +352,15 @@ export class PollerLoop extends TickLoop {
       await runExpiryAlerts({ limit: 4 });
     } catch (e) {
       console.error("[poller] expiry alert tick failed:", e);
+    }
+  }
+
+  /** Scan a bounded batch of orgs whose quota-alert window has come due. */
+  private async tickQuotaAlerts(): Promise<void> {
+    try {
+      await runQuotaAlerts({ limit: 4 });
+    } catch (e) {
+      console.error("[quotas] quota alert tick failed:", e);
     }
   }
 
@@ -455,6 +500,14 @@ export class PollerLoop extends TickLoop {
       await pruneCreditSnapshots();
     } catch (e) {
       console.error("[poller] credit snapshot retention tick failed:", e);
+    }
+    // Quota snapshots keep a year for the same reason credit snapshots do:
+    // the rows are tiny, and a longer series is the only way to answer "when
+    // did this start climbing" after the fact.
+    try {
+      await pruneQuotaSnapshots();
+    } catch (e) {
+      console.error("[poller] quota snapshot retention tick failed:", e);
     }
     // Delivery rows ride the same hourly clock rather than their own: the work
     // is idempotent and tiny, and a second in-process timer would be a second

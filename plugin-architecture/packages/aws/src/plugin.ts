@@ -133,6 +133,21 @@ const manifest: PluginManifest = {
   // ec2:DescribeReservedInstances, rds:DescribeReservedDBInstances and
   // savingsplans:DescribeSavingsPlans — surfaced in the plugin docs.
   commitments: { kinds: ["reservation", "savings_plan"] },
+  // Service Quotas for the ceiling, CloudWatch `AWS/Usage` (and two describe
+  // calls) for the usage. Needs servicequotas:ListServiceQuotas,
+  // servicequotas:GetAWSDefaultServiceQuota, cloudwatch:GetMetricStatistics,
+  // ec2:DescribeAddresses and ec2:DescribeVpcs — surfaced in the plugin docs.
+  //
+  // `partial` because AWS publishes thousands of quotas and this reports the
+  // handful that actually stop deploys: standard and GPU on-demand vCPUs,
+  // Elastic IPs, VPCs per region. Declaring it is what stops the surface
+  // implying "you are within all your limits". See `quotas.ts`.
+  quotas: {
+    label: "Service Quotas",
+    increaseUrl: "https://console.aws.amazon.com/servicequotas/home",
+    partial: true,
+    requiresElevatedCredential: true,
+  },
   // Priced VPC Flow Log attribution. Needs ec2:DescribeFlowLogs,
   // ec2:DescribeNetworkInterfaces, logs:StartQuery and logs:GetQueryResults —
   // surfaced in the plugin docs.

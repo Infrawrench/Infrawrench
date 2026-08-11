@@ -17,6 +17,7 @@ import type {
   CostEstimate,
   CostFetchRange,
   CostRow,
+  QuotaUsage,
 } from "@infrawrench/plugin-base";
 import {
   buildCostEstimate,
@@ -67,6 +68,7 @@ import {
   renderDomainDetail,
   renderDnsRecordDetail,
 } from "./detail-renderers.js";
+import { fetchDoQuotas } from "./quotas.js";
 import { fetchDoCostData } from "./cost-data.js";
 import { doStatusDot } from "./status-dots.js";
 import {
@@ -741,6 +743,17 @@ export class DigitalOceanClient implements PluginClient {
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
     return fetchDoCostData({ fetch: this.fetch.bind(this) }, range);
+  }
+
+  /**
+   * Quota readings. Three requests: the account's limits, then one
+   * `per_page=1` count each for droplets and reserved IPs — DigitalOcean
+   * reports the ceilings and nothing else, so usage is counted from the
+   * pagination envelope. See `quotas.ts` for the two field names that are not
+   * what they look like.
+   */
+  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
+    return fetchDoQuotas({ fetch: this.fetch.bind(this) });
   }
 
   async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {

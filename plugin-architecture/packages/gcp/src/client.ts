@@ -24,6 +24,7 @@ import type {
   CostEstimate,
   CostEstimateLineItem,
   CommitmentRecord,
+  QuotaUsage,
   CostFetchRange,
   CostRow,
 } from "@infrawrench/plugin-base";
@@ -99,6 +100,7 @@ import { fetchGcpCostData } from "./cost-data.js";
 import { fetchGcpCommitments } from "./commitments.js";
 
 import type { GcpClientContext } from "./shared.js";
+import { fetchGcpQuotas, type GcpProject, type GcpRegionList } from "./quotas.js";
 import { deleteResource as runDeleteResource } from "./delete-client.js";
 import {
   resolveOutput as runResolveOutput,
@@ -987,6 +989,26 @@ export class GcpClient implements PluginClient {
 
   async fetchCommitments(_accountId: string): Promise<CommitmentRecord[]> {
     return fetchGcpCommitments({ project: this.project, get: this.get.bind(this) });
+  }
+
+  /**
+   * Quota readings. Two requests for the whole project: `projects.get` for the
+   * global quotas and one paginated `regions.list` for every region's — the
+   * list response carries each region's full `quotas[]`, so there is no
+   * per-region fan-out to bound. See `quotas.ts`.
+   */
+  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
+    const base = `https://compute.googleapis.com/compute/v1/projects/${this.project}`;
+    return fetchGcpQuotas({
+      project: this.project,
+      getProject: () => this.get<GcpProject>(base),
+      listRegions: (pageToken) => {
+        const url = new URL(`${base}/regions`);
+        url.searchParams.set("maxResults", "100");
+        if (pageToken) url.searchParams.set("pageToken", pageToken);
+        return this.get<GcpRegionList>(url.toString());
+      },
+    });
   }
 
   async getLogs(

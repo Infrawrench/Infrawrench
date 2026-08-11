@@ -17,6 +17,7 @@ import {
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
+  quotasTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -191,6 +192,12 @@ export function getWorkspaceNavigateArgs(
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
+    case "quotas":
+      return {
+        to: "/org/$orgId/quotas",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
     // The section is a static child route, not a path param, so the path is
     // built concretely rather than through `params`.
     case "settings":
@@ -344,6 +351,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "probes") {
     return probesTabTarget();
+  }
+  if (s[0] === "quotas") {
+    return quotasTabTarget();
   }
   if (s[0] === "settings") {
     return settingsTabTarget(s.slice(1).join("/") || undefined);
