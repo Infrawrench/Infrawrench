@@ -49,6 +49,7 @@ import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
 import { DesktopAccessReviewPanel } from "@/components/DesktopAccessReviewPanel";
 import { DesktopBackupsPanel } from "@/components/DesktopBackupsPanel";
 import { DesktopDnsPanel } from "@/components/DesktopDnsPanel";
+import { DesktopIacPanel } from "@/components/DesktopIacPanel";
 import { DesktopEnvironmentDiffPanel } from "@/components/DesktopEnvironmentDiffPanel";
 import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel";
 import { DesktopProbesPanel } from "@/components/DesktopProbesPanel";
@@ -477,6 +478,8 @@ function renderPanel(
           }
         />
       );
+    case "iac":
+      return <DesktopIacPanel key={activeCloudOrgId ?? "local"} />;
     case "environment-diff":
       return (
         <DesktopEnvironmentDiffPanel

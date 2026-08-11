@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.19.0",
+    "version": "1.20.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -2699,6 +2699,7 @@
               "access-review",
               "backups",
               "dns",
+              "iac",
               "environment-diff",
               "ssh-fanout",
               "metric-alerts",
@@ -22343,6 +22344,561 @@
         ],
         "additionalProperties": false
       },
+      "IacState": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "label": {
+            "type": "string",
+            "description": "User-supplied name for this state, e.g. \"prod / us-east-1\"."
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The account this state covers, or null when it covers the whole organization.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "tfstate",
+              "show-json"
+            ],
+            "description": "Which document shape was uploaded: a raw state file, or `terraform show -json`."
+          },
+          "formatVersion": {
+            "type": "string",
+            "description": "The document's own version — \"4\" for a state file, \"1.0\"-style otherwise."
+          },
+          "terraformVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "serial": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "State file serial; null for show output."
+          },
+          "lineage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "State file lineage; null for show output."
+          },
+          "resourceCount": {
+            "type": "integer",
+            "description": "Managed resource instances recorded."
+          },
+          "dataSourceCount": {
+            "type": "integer",
+            "description": "Data-source entries, recorded but never matched against inventory."
+          },
+          "redactedAttributeCount": {
+            "type": "integer",
+            "description": "Attribute values dropped because the state marked them sensitive. Redaction happens at parse time — no sensitive value is ever stored."
+          },
+          "parseWarnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "uploadedByUserId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "uploadedByName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "accountId",
+          "accountName",
+          "format",
+          "formatVersion",
+          "terraformVersion",
+          "serial",
+          "lineage",
+          "resourceCount",
+          "dataSourceCount",
+          "redactedAttributeCount",
+          "parseWarnings",
+          "uploadedByUserId",
+          "uploadedByName",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "IacStateListResponse": {
+        "type": "object",
+        "properties": {
+          "states": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IacState"
+            }
+          }
+        },
+        "required": [
+          "states"
+        ],
+        "additionalProperties": false
+      },
+      "IacStateUploadRequest": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "document": {
+            "type": "string",
+            "description": "The state document, as text: a raw `.tfstate` (format version 4) or the output of `terraform show -json` (format_version 1.x). Limited to 8 MiB."
+          }
+        },
+        "required": [
+          "label",
+          "document"
+        ],
+        "additionalProperties": false
+      },
+      "IacFieldChange": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "from": {
+            "description": "The value Terraform state carries."
+          },
+          "to": {
+            "description": "The value actually running."
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "additionalProperties": false
+      },
+      "IacReconciledResource": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "managed",
+              "drifted",
+              "unmanaged"
+            ],
+            "description": "`managed`: matched a state entry and agrees with it. `drifted`: matched, but live fields differ. `unmanaged`: in inventory, absent from state — somebody made it by hand."
+          },
+          "terraformType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "terraformAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "matchedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "import-id",
+              "external-id",
+              "identifier"
+            ],
+            "description": "How the match was made, so it can be argued with."
+          },
+          "drift": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IacFieldChange"
+            }
+          },
+          "unmappableReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set when no Terraform block could be produced for this resource, which makes its drift unknowable. Never reported as \"no drift\"."
+          },
+          "owner": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {},
+            "description": "Resource owner annotation, populated for unmanaged resources."
+          },
+          "firstSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the change timeline first recorded this resource appearing."
+          }
+        },
+        "required": [
+          "resourceId",
+          "pluginId",
+          "resourceTypeId",
+          "accountId",
+          "displayName",
+          "externalId",
+          "status",
+          "terraformType",
+          "terraformAddress",
+          "matchedBy",
+          "drift",
+          "unmappableReason",
+          "owner",
+          "firstSeenAt"
+        ],
+        "additionalProperties": false
+      },
+      "IacStateOnlyResource": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "terraformType": {
+            "type": "string"
+          },
+          "identifiers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "$ref": "#/components/schemas/PluginId"
+                },
+                "resourceTypeId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "pluginId",
+                "resourceTypeId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "no-inventory-match",
+              "unknown-terraform-type"
+            ]
+          }
+        },
+        "required": [
+          "address",
+          "terraformType",
+          "identifiers",
+          "candidates",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "IacReconciliationResponse": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/IacState"
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IacReconciledResource"
+            }
+          },
+          "stateOnly": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IacStateOnlyResource"
+            },
+            "description": "State entries with no inventory match — their own category."
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "inventoryTotal": {
+                "type": "integer"
+              },
+              "managed": {
+                "type": "integer"
+              },
+              "drifted": {
+                "type": "integer"
+              },
+              "unmanaged": {
+                "type": "integer"
+              },
+              "stateOnly": {
+                "type": "integer"
+              },
+              "undiffable": {
+                "type": "integer"
+              },
+              "stateResources": {
+                "type": "integer"
+              },
+              "dataSourcesIgnored": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "inventoryTotal",
+              "managed",
+              "drifted",
+              "unmanaged",
+              "stateOnly",
+              "undiffable",
+              "stateResources",
+              "dataSourcesIgnored"
+            ],
+            "additionalProperties": false
+          },
+          "underivable": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pluginId": {
+                  "$ref": "#/components/schemas/PluginId"
+                },
+                "resourceTypeId": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "pluginId",
+                "resourceTypeId",
+                "reason"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Plugin resource types whose Terraform type could not be derived from the plugin's own export mapper. Reported rather than guessed."
+          }
+        },
+        "required": [
+          "state",
+          "resources",
+          "stateOnly",
+          "summary",
+          "underivable"
+        ],
+        "additionalProperties": false
+      },
+      "IacImportPlanResponse": {
+        "type": "object",
+        "properties": {
+          "hcl": {
+            "type": "string",
+            "description": "`import` blocks followed by the generated resource stanzas."
+          },
+          "exported": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceId": {
+                  "type": "string"
+                },
+                "address": {
+                  "type": "string"
+                },
+                "importId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "resourceId",
+                "address",
+                "importId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "unsupported": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceId": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "resourceId",
+                "displayName",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "hcl",
+          "exported",
+          "unsupported"
+        ],
+        "additionalProperties": false
+      },
+      "IacImportPlanRequest": {
+        "type": "object",
+        "properties": {
+          "resourceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 500
+          }
+        },
+        "required": [
+          "resourceIds"
+        ],
+        "additionalProperties": false
+      },
+      "IacResourceStatusResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "managed",
+              "drifted",
+              "unmanaged"
+            ]
+          },
+          "stateId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "stateLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "terraformAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "driftFieldCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "stateId",
+          "stateLabel",
+          "terraformAddress",
+          "driftFieldCount"
+        ],
+        "additionalProperties": false
+      },
       "LogStreamSelector": {
         "type": "object",
         "properties": {
@@ -24904,6 +25460,8 @@
           "tag-policy:override",
           "config:read",
           "config:write",
+          "iac:read",
+          "iac:write",
           "audit:read",
           "access:read",
           "access:request",
@@ -48865,6 +49423,341 @@
         },
         "operationId": "getOrgOrgIdOwnershipResource",
         "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/iac/states": {
+      "get": {
+        "tags": [
+          "IaC"
+        ],
+        "summary": "List uploaded Terraform state documents",
+        "description": "Every state document the organization has uploaded, newest first. The documents themselves are never stored — only the parsed, redacted projection.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's state documents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IacStateListResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdIacStates"
+      },
+      "post": {
+        "tags": [
+          "IaC"
+        ],
+        "summary": "Upload a Terraform state document",
+        "description": "Parses a `.tfstate` (format version 4) or `terraform show -json` output (format_version 1.x) and records the resource instances it contains. Attributes the state marks sensitive are dropped before anything is written. The format version is checked, not assumed: an unsupported version is a 400 rather than a partial read.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IacStateUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The stored state document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "state": {
+                      "$ref": "#/components/schemas/IacState"
+                    }
+                  },
+                  "required": [
+                    "state"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdIacStates"
+      }
+    },
+    "/api/org/{orgId}/iac/states/{stateId}": {
+      "delete": {
+        "tags": [
+          "IaC"
+        ],
+        "summary": "Delete an uploaded state document",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "stateId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdIacStatesStateId"
+      }
+    },
+    "/api/org/{orgId}/iac/reconciliation": {
+      "get": {
+        "tags": [
+          "IaC"
+        ],
+        "summary": "Classify inventory against a state document",
+        "description": "Every synced resource classified as managed, drifted or unmanaged against one uploaded state, plus state entries with no inventory match. Unmanaged resources carry the ownership and first-seen join that answers \"who made this by hand, and when\".",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "stateId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The classification",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IacReconciliationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdIacReconciliation"
+      }
+    },
+    "/api/org/{orgId}/iac/import-plan": {
+      "post": {
+        "tags": [
+          "IaC"
+        ],
+        "summary": "Generate Terraform import blocks for unmanaged resources",
+        "description": "Terraform 1.5+ `import` blocks plus the matching resource stanzas, generated by the same plugin export mappers and HCL serializer that back \"Export to Terraform…\". Resources no plugin can express are returned in `unsupported` with a reason, never dropped.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IacImportPlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The adoption document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IacImportPlanResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdIacImportPlan"
+      }
+    },
+    "/api/org/{orgId}/iac/resource": {
+      "get": {
+        "tags": [
+          "IaC"
+        ],
+        "summary": "IaC status for one resource",
+        "description": "The managed/unmanaged badge for a resource detail page, computed against the newest state document. `status` is null when the organization has uploaded none — absence of a state is not evidence of ClickOps. A query parameter rather than a path segment because composite resource ids contain slashes.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "resourceId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The resource's IaC status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IacResourceStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdIacResource"
       }
     },
     "/api/org/{orgId}/log-workspaces": {

@@ -56,4 +56,7 @@
 // charts as an annotation. Three new routes, no existing shape changed.
 // 1.19.0: backup & restore coverage — the `/backups` feed and `/backups/policies`
 // CRUD, plus a `backups` member on the TabTarget enum. All additive.
-export const API_VERSION = "1.19.0";
+// 1.20.0: IaC reconciliation — the five `/iac/*` routes, the `iac:read` /
+// `iac:write` permissions, and a new `iac` member on the workspace TabTarget
+// kind enum. All additive.
+export const API_VERSION = "1.20.0";

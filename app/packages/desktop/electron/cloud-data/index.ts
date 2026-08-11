@@ -16,6 +16,7 @@ import "./backups";
 import "./dns";
 import "./environment-diff";
 import "./changes";
+import "./iac";
 import "./moment";
 import "./schedules";
 import "./leases";

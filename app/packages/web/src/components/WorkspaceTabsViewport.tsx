@@ -51,6 +51,7 @@ import { WebPosturePanel } from "./WebPosturePanel";
 import { WebAccessReviewPanel } from "./WebAccessReviewPanel";
 import { WebBackupsPanel } from "./WebBackupsPanel";
 import { WebDnsPanel } from "./WebDnsPanel";
+import { WebIacPanel } from "./WebIacPanel";
 import { WebEnvironmentDiffPanel } from "./WebEnvironmentDiffPanel";
 import { WebMetricAlertsPanel } from "./WebMetricAlertsPanel";
 import { WebProbesPanel } from "./WebProbesPanel";
@@ -477,6 +478,8 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           }
         />
       );
+    case "iac":
+      return <WebIacPanel key={orgId} orgId={orgId} />;
     case "environment-diff":
       return (
         <WebEnvironmentDiffPanel

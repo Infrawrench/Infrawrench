@@ -91,6 +91,10 @@ describe("getWorkspaceTabId", () => {
   it("returns the singleton id for the access review target", () => {
     expect(getWorkspaceTabId({ kind: "access-review" })).toBe("access-review");
   });
+
+  it("returns the singleton id for the iac target", () => {
+    expect(getWorkspaceTabId({ kind: "iac" })).toBe("iac");
+  });
 });
 
 describe("environment diff tab kind", () => {
@@ -222,6 +226,10 @@ describe("getWorkspaceTabFallbackTitle", () => {
   it("returns 'Access review' for the access review target, matching the sidebar tile", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "access-review" })).toBe("Access review");
   });
+
+  it("returns 'IaC' for the iac target, matching the sidebar tile", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "iac" })).toBe("IaC");
+  });
 });
 
 describe("workspaceTabTargetsEqual", () => {
@@ -330,5 +338,9 @@ describe("workspaceTabTargetsEqual", () => {
   // each other in the sidebar and answer different questions.
   it("never equates the access review with posture", () => {
     expect(workspaceTabTargetsEqual({ kind: "access-review" }, { kind: "posture" })).toBe(false);
+  });
+
+  it("treats two iac targets as equal (singleton tab)", () => {
+    expect(workspaceTabTargetsEqual({ kind: "iac" }, { kind: "iac" })).toBe(true);
   });
 });

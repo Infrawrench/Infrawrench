@@ -6,6 +6,7 @@ import {
   CHAT_CONVERSATIONS_CHANGED_EVENT,
   DEFAULT_CHAT_MODEL,
   ChangesIcon,
+  IacIcon,
   MetricAlertIcon,
   ProbesIcon,
   QuotasIcon,
@@ -44,6 +45,7 @@ import {
   backupsTabTarget,
   dnsTabTarget,
   accessReviewTabTarget,
+  iacTabTarget,
   environmentDiffTabTarget,
   workflowsTabTarget,
   navigateToWorkspaceTarget,
@@ -280,6 +282,16 @@ export function SidebarDashboards() {
               void navigateToWorkspaceTarget(navigate, accessReviewTabTarget(), {
                 label: "Access review",
               }),
+          },
+          // Cloud-only: reconciliation classifies the org's *synced*
+          // inventory against an uploaded Terraform state, and local-only mode
+          // has no synced inventory.
+          {
+            key: "iac",
+            label: "IaC",
+            icon: <IacIcon />,
+            onClick: () =>
+              void navigateToWorkspaceTarget(navigate, iacTabTarget(), { label: "IaC" }),
           },
           // Cloud-only like Changes: probes run in the cloud poller through
           // the egress proxy, and results live in the cloud metric store.

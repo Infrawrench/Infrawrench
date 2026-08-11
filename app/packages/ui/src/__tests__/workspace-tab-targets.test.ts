@@ -7,6 +7,7 @@ import {
   postureTabTarget,
   accessReviewTabTarget,
   backupsTabTarget,
+  iacTabTarget,
   environmentDiffTabTarget,
   probesTabTarget,
   incidentsTabTarget,
@@ -41,6 +42,10 @@ describe("tab target factories", () => {
 
   it("accessReviewTabTarget", () => {
     expect(accessReviewTabTarget()).toEqual({ kind: "access-review" });
+  });
+
+  it("iacTabTarget", () => {
+    expect(iacTabTarget()).toEqual({ kind: "iac" });
   });
 
   it("environmentDiffTabTarget carries the pair when given, and omits it otherwise", () => {

@@ -143,3 +143,40 @@ export function exportResourcesToTerraform(
 
   return { hcl: bundle.hcl, exported, unsupported };
 }
+
+/**
+ * Render Terraform 1.5+ `import` blocks for an export outcome.
+ *
+ * The export already prints `terraform import …` as a comment, which is the
+ * right hint when someone is reading one resource. Adoption at scale wants the
+ * declarative form: `import` blocks are planned, reviewed and applied with the
+ * configuration itself, so a whole set of hand-made resources comes under
+ * management in one `terraform apply` rather than N imperative commands.
+ *
+ * Only resources whose plugin supplied an `importId` can be adopted; the rest
+ * are skipped (their stanza still renders, so the resource can be adopted once
+ * an id is known).
+ */
+export function renderTerraformImportBlocks(
+  exported: readonly TerraformExportedResource[],
+): string {
+  const blocks = exported
+    .filter((entry) => entry.importId)
+    .map(
+      (entry) => `import {\n  to = ${entry.address}\n  id = ${JSON.stringify(entry.importId)}\n}`,
+    );
+  return blocks.length > 0 ? blocks.join("\n\n") + "\n" : "";
+}
+
+/**
+ * One document that both declares the resources and adopts them: `import`
+ * blocks first (so a reader sees what is about to be taken over), then the
+ * generated configuration. This is the payoff surface of IaC reconciliation —
+ * "here is the Terraform for the 40 things somebody made by hand".
+ */
+export function renderTerraformAdoptionDocument(outcome: TerraformExportOutcome): string {
+  const imports = renderTerraformImportBlocks(outcome.exported);
+  if (!imports) return outcome.hcl;
+  if (!outcome.hcl) return imports;
+  return `${imports}\n${outcome.hcl}`;
+}

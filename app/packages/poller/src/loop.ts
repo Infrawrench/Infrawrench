@@ -28,6 +28,7 @@ import {
 import { pruneCreditSnapshots } from "@infrawrench/server-core/credits/feed";
 import { pruneQuotaSnapshots } from "@infrawrench/server-core/quotas/feed";
 import { runQuotaAlerts } from "@infrawrench/server-core/quotas/alerts";
+import { pruneIacStates } from "@infrawrench/server-core/iac/store";
 import { TickLoop } from "@infrawrench/server-core/tick-loop";
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { pollAccountCosts } from "./cost-poll";
@@ -516,6 +517,14 @@ export class PollerLoop extends TickLoop {
       await pruneAlertDeliveries();
     } catch (e) {
       console.error("[poller] alert delivery retention failed:", e);
+    }
+    // Uploaded Terraform state documents, same hourly slot. The newest per
+    // org+account scope is always kept — retention here is about superseded
+    // snapshots, not about forgetting what an org told us Terraform manages.
+    try {
+      await pruneIacStates();
+    } catch (e) {
+      console.error("[poller] IaC state retention failed:", e);
     }
   }
 

@@ -167,6 +167,10 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(getWorkspaceNavigateArgs({ kind: "dns" })).toEqual({ to: "/dns" });
   });
 
+  it("returns iac route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "iac" })).toEqual({ to: "/iac" });
+  });
+
   it("carries the environment diff pair as search params", () => {
     expect(getWorkspaceNavigateArgs({ kind: "environment-diff" })).toEqual({
       to: "/environment-diff",
@@ -259,6 +263,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the dns path", () => {
     expect(syncWorkspaceRouteFromPath("/dns")).toEqual({ kind: "dns" });
+  });
+
+  it("parses the iac path", () => {
+    expect(syncWorkspaceRouteFromPath("/iac")).toEqual({ kind: "iac" });
   });
 
   it("parses the probes path", () => {

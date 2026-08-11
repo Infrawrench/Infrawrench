@@ -375,6 +375,8 @@ export type {
 } from "./terraform-hcl.js";
 export {
   exportResourcesToTerraform,
+  renderTerraformImportBlocks,
+  renderTerraformAdoptionDocument,
   fieldString,
   fieldNumber,
   fieldBool,

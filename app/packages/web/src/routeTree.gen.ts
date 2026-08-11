@@ -29,6 +29,7 @@ import { Route as OrgOrgIdDnsRouteImport } from './routes/org.$orgId.dns'
 import { Route as OrgOrgIdEnvironmentDiffRouteImport } from './routes/org.$orgId.environment-diff'
 import { Route as OrgOrgIdExpiringRouteImport } from './routes/org.$orgId.expiring'
 import { Route as OrgOrgIdGraphRouteImport } from './routes/org.$orgId.graph'
+import { Route as OrgOrgIdIacRouteImport } from './routes/org.$orgId.iac'
 import { Route as OrgOrgIdIncidentsRouteImport } from './routes/org.$orgId.incidents'
 import { Route as OrgOrgIdInvoicesRouteImport } from './routes/org.$orgId.invoices'
 import { Route as OrgOrgIdLogsRouteImport } from './routes/org.$orgId.logs'
@@ -171,6 +172,11 @@ const OrgOrgIdExpiringRoute = OrgOrgIdExpiringRouteImport.update({
 const OrgOrgIdGraphRoute = OrgOrgIdGraphRouteImport.update({
   id: '/graph',
   path: '/graph',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdIacRoute = OrgOrgIdIacRouteImport.update({
+  id: '/iac',
+  path: '/iac',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdIncidentsRoute = OrgOrgIdIncidentsRouteImport.update({
@@ -428,6 +434,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/iac': typeof OrgOrgIdIacRoute
   '/org/$orgId/incidents': typeof OrgOrgIdIncidentsRouteWithChildren
   '/org/$orgId/invoices': typeof OrgOrgIdInvoicesRouteWithChildren
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
@@ -491,6 +498,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/iac': typeof OrgOrgIdIacRoute
   '/org/$orgId/incidents': typeof OrgOrgIdIncidentsRouteWithChildren
   '/org/$orgId/invoices': typeof OrgOrgIdInvoicesRouteWithChildren
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
@@ -556,6 +564,7 @@ export interface FileRoutesById {
   '/org/$orgId/environment-diff': typeof OrgOrgIdEnvironmentDiffRoute
   '/org/$orgId/expiring': typeof OrgOrgIdExpiringRoute
   '/org/$orgId/graph': typeof OrgOrgIdGraphRoute
+  '/org/$orgId/iac': typeof OrgOrgIdIacRoute
   '/org/$orgId/incidents': typeof OrgOrgIdIncidentsRouteWithChildren
   '/org/$orgId/invoices': typeof OrgOrgIdInvoicesRouteWithChildren
   '/org/$orgId/logs': typeof OrgOrgIdLogsRoute
@@ -623,6 +632,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/iac'
     | '/org/$orgId/incidents'
     | '/org/$orgId/invoices'
     | '/org/$orgId/logs'
@@ -686,6 +696,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/iac'
     | '/org/$orgId/incidents'
     | '/org/$orgId/invoices'
     | '/org/$orgId/logs'
@@ -750,6 +761,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/environment-diff'
     | '/org/$orgId/expiring'
     | '/org/$orgId/graph'
+    | '/org/$orgId/iac'
     | '/org/$orgId/incidents'
     | '/org/$orgId/invoices'
     | '/org/$orgId/logs'
@@ -946,6 +958,13 @@ declare module '@tanstack/react-router' {
       path: '/graph'
       fullPath: '/org/$orgId/graph'
       preLoaderRoute: typeof OrgOrgIdGraphRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/iac': {
+      id: '/org/$orgId/iac'
+      path: '/iac'
+      fullPath: '/org/$orgId/iac'
+      preLoaderRoute: typeof OrgOrgIdIacRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/incidents': {
@@ -1369,6 +1388,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdEnvironmentDiffRoute: typeof OrgOrgIdEnvironmentDiffRoute
   OrgOrgIdExpiringRoute: typeof OrgOrgIdExpiringRoute
   OrgOrgIdGraphRoute: typeof OrgOrgIdGraphRoute
+  OrgOrgIdIacRoute: typeof OrgOrgIdIacRoute
   OrgOrgIdIncidentsRoute: typeof OrgOrgIdIncidentsRouteWithChildren
   OrgOrgIdInvoicesRoute: typeof OrgOrgIdInvoicesRouteWithChildren
   OrgOrgIdLogsRoute: typeof OrgOrgIdLogsRoute
@@ -1400,6 +1420,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdEnvironmentDiffRoute: OrgOrgIdEnvironmentDiffRoute,
   OrgOrgIdExpiringRoute: OrgOrgIdExpiringRoute,
   OrgOrgIdGraphRoute: OrgOrgIdGraphRoute,
+  OrgOrgIdIacRoute: OrgOrgIdIacRoute,
   OrgOrgIdIncidentsRoute: OrgOrgIdIncidentsRouteWithChildren,
   OrgOrgIdInvoicesRoute: OrgOrgIdInvoicesRouteWithChildren,
   OrgOrgIdLogsRoute: OrgOrgIdLogsRoute,

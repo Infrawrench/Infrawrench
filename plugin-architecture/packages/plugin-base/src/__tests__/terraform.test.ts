@@ -7,7 +7,11 @@ import {
   renderTerraformValue,
   sanitizeTerraformName,
 } from "../terraform-hcl.js";
-import { exportResourcesToTerraform } from "../terraform-export.js";
+import {
+  exportResourcesToTerraform,
+  renderTerraformAdoptionDocument,
+  renderTerraformImportBlocks,
+} from "../terraform-export.js";
 
 function makeResource(overrides: Partial<ResourceInstance>): ResourceInstance {
   return {
@@ -142,5 +146,47 @@ describe("exportResourcesToTerraform", () => {
     expect(reasons).toContain("Plugin has no Terraform mapping yet");
     expect(reasons).toContain("Stored state is missing fields required by the Terraform provider");
     expect(outcome.hcl).toContain('resource "hcloud_server" "web_1"');
+  });
+});
+
+describe("renderTerraformImportBlocks / renderTerraformAdoptionDocument", () => {
+  const adoptable = () =>
+    exportResourcesToTerraform(
+      [
+        makeResource({ fields: { name: "web-1" } }),
+        makeResource({
+          id: "acct:server:2",
+          externalId: "",
+          displayName: "no-id",
+          fields: { name: "web-2" },
+        }),
+      ],
+      () => capability,
+    );
+
+  it("emits a Terraform 1.5+ import block per adoptable resource", () => {
+    const hcl = renderTerraformImportBlocks(adoptable().exported);
+    expect(hcl).toContain("import {");
+    expect(hcl).toContain("to = hcloud_server.web_1");
+    expect(hcl).toContain('id = "1"');
+  });
+
+  it("skips resources with no import id rather than emitting a broken block", () => {
+    const blocks = renderTerraformImportBlocks(adoptable().exported);
+    expect(blocks.match(/import \{/g)).toHaveLength(1);
+    expect(blocks).not.toContain("web_2");
+  });
+
+  it("puts the import blocks ahead of the configuration in the adoption document", () => {
+    const doc = renderTerraformAdoptionDocument(adoptable());
+    expect(doc.indexOf("import {")).toBeLessThan(doc.indexOf('resource "hcloud_server"'));
+  });
+
+  it("falls back to the plain configuration when nothing can be imported", () => {
+    const nothing = exportResourcesToTerraform(
+      [makeResource({ externalId: "", fields: { name: "web-2" } })],
+      () => capability,
+    );
+    expect(renderTerraformAdoptionDocument(nothing)).toBe(nothing.hcl);
   });
 });
