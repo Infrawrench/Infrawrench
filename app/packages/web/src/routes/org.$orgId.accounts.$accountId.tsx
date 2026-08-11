@@ -214,7 +214,7 @@ export function AccountPanel({
 
   if (initialLoading)
     return <div className="p-6 text-on-surface-muted text-sm animate-pulse">Loading…</div>;
-  if (!meta) return <div className="p-6 text-red-400 text-sm">Failed to load account.</div>;
+  if (!meta) return <div className="p-6 text-danger text-sm">Failed to load account.</div>;
 
   // Account-root plugins (UploadThing) hold exactly one instance of their root
   // type, and that instance *is* the account — so the account opens straight

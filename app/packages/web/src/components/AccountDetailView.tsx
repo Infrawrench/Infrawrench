@@ -264,7 +264,7 @@ export function AccountDetailView({
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}
-            className="px-3 py-1.5 text-xs text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-100 dark:hover:bg-red-950/50 rounded transition-colors"
+            className="px-3 py-1.5 text-xs text-danger hover:text-danger-strong hover:bg-red-100 dark:hover:bg-red-950/50 rounded transition-colors"
           >
             Delete
           </button>

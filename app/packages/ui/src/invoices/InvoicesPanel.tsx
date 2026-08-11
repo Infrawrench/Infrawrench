@@ -24,9 +24,9 @@ import type { InvoiceScopeAccount, InvoicesClient } from "./types.js";
 
 const STATUS_CLASS: Record<ManagedInvoiceStatus, string> = {
   draft: "text-on-surface-faint",
-  approved: "text-blue-500",
-  sent: "text-green-500",
-  void: "text-red-500",
+  approved: "text-info",
+  sent: "text-success",
+  void: "text-danger",
 };
 
 function StatusChip({ status }: { status: ManagedInvoiceStatus }) {
@@ -56,12 +56,12 @@ function DeliveryNote({ delivery }: { delivery: ManagedInvoiceDelivery | null })
   }
   const tone =
     delivery.status === "succeeded"
-      ? "text-green-500"
+      ? "text-success"
       : delivery.status === "partial"
-        ? "text-yellow-500"
+        ? "text-warning"
         : delivery.status === "pending"
-          ? "text-yellow-500"
-          : "text-red-500";
+          ? "text-warning"
+          : "text-danger";
   return (
     <div className="flex flex-col gap-1">
       <p className={`text-xs ${tone}`}>
@@ -234,7 +234,7 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 py-6 flex flex-col gap-6">
         {error !== null && (
-          <div role="alert" className="text-sm text-red-500">
+          <div role="alert" className="text-sm text-danger">
             Couldn&rsquo;t load invoices — {error}{" "}
             <button type="button" onClick={() => void refresh()} className="underline">
               Retry
@@ -561,7 +561,7 @@ function CustomerModal({
         </div>
 
         {error !== null && (
-          <p role="alert" className="text-sm text-red-500">
+          <p role="alert" className="text-sm text-danger">
             {error}
           </p>
         )}
@@ -637,7 +637,7 @@ function RaiseInvoiceModal({
           />
         </label>
         {error !== null && (
-          <p role="alert" className="text-sm text-red-500">
+          <p role="alert" className="text-sm text-danger">
             {error}
           </p>
         )}
@@ -714,7 +714,7 @@ function InvoiceList({
                     invoice that says "Sent" and never reached anyone is the
                     one thing nobody would think to go looking for. */}
                 {invoice.delivery && managedInvoiceDeliveryRetryable(invoice.delivery) && (
-                  <span className="text-xs uppercase tracking-wide text-red-500">
+                  <span className="text-xs uppercase tracking-wide text-danger">
                     {MANAGED_INVOICE_DELIVERY_STATUS_LABELS[invoice.delivery.status]}
                   </span>
                 )}
@@ -788,7 +788,7 @@ function InvoiceDetail({
           ← All invoices
         </button>
         {error !== null ? (
-          <p role="alert" className="text-sm text-red-500">
+          <p role="alert" className="text-sm text-danger">
             {error}
           </p>
         ) : (
@@ -838,7 +838,7 @@ function InvoiceDetail({
             : `Frozen at approval on ${new Date(invoice.computedAt).toLocaleString()}. Nothing that happens to spend, exchange rates, billing rules or names can change what this document says.`}
         </p>
         {invoice.status === "void" && invoice.voidReason && (
-          <p className="text-xs text-red-500">Voided — {invoice.voidReason}</p>
+          <p className="text-xs text-danger">Voided — {invoice.voidReason}</p>
         )}
         {invoice.status !== "draft" && <DeliveryNote delivery={invoice.delivery} />}
         {invoice.supersededByInvoiceId && (
@@ -862,7 +862,7 @@ function InvoiceDetail({
       </header>
 
       {error !== null && (
-        <p role="alert" className="text-sm text-red-500">
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
@@ -936,10 +936,10 @@ function InvoiceDetail({
       </div>
 
       {approveBlocker !== null && invoice.status === "draft" && (
-        <p className="text-sm text-yellow-500">{approveBlocker}</p>
+        <p className="text-sm text-warning">{approveBlocker}</p>
       )}
       {invoice.derivation.missingScope.length > 0 && (
-        <p className="text-sm text-yellow-500">
+        <p className="text-sm text-warning">
           {invoice.derivation.missingScope.length} scope entr
           {invoice.derivation.missingScope.length === 1 ? "y" : "ies"} no longer exist and
           contributed nothing to this invoice.
@@ -1039,7 +1039,7 @@ function LineTable({ invoice }: { invoice: ManagedInvoice }) {
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-on-surface-faint">
                     {line.rate === null ? (
-                      <span className="text-yellow-500">no rate</span>
+                      <span className="text-warning">no rate</span>
                     ) : line.rate === 1 ? (
                       "—"
                     ) : (
@@ -1110,7 +1110,7 @@ function Derivation({ invoice }: { invoice: ManagedInvoice }) {
             " These rates are frozen — restating one later cannot change this invoice."}
         </p>
         {d.unconverted.length > 0 && (
-          <p className="text-yellow-500">
+          <p className="text-warning">
             No exchange rate was stated for {d.unconverted.join(", ")}, so those amounts are carried
             in their own currency. Add the rate in Settings → Currency before approving.
           </p>

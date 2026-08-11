@@ -87,7 +87,7 @@ export function ResourceSchedulePanel({ client, target }: ResourceSchedulePanelP
       </div>
 
       {error !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           {error}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
             Retry
@@ -134,12 +134,12 @@ export function ResourceSchedulePanel({ client, target }: ResourceSchedulePanelP
               </>
             )}
             {schedule.lastRunStatus === "failed" && (
-              <span className="text-red-500">
+              <span className="text-danger">
                 Last run failed: {schedule.lastRunError ?? "unknown error"} ·{" "}
               </span>
             )}
             {schedule.lastRunStatus === "skipped_freeze" && (
-              <span className="text-amber-500">Last transition skipped (change freeze) · </span>
+              <span className="text-warning">Last transition skipped (change freeze) · </span>
             )}
             {schedule.nextTransitionAt && !schedule.paused ? (
               <>
@@ -171,7 +171,7 @@ export function ResourceSchedulePanel({ client, target }: ResourceSchedulePanelP
               type="button"
               disabled={busy}
               onClick={() => void remove()}
-              className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-red-500 hover:border-red-500/50 disabled:opacity-50"
+              className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-danger hover:border-red-500/50 disabled:opacity-50"
             >
               Delete
             </button>

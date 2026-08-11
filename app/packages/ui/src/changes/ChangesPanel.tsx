@@ -176,7 +176,7 @@ export function ChangesPanel({
       </div>
 
       {error !== null && (
-        <div role="alert" className="mb-4 text-sm text-red-500">
+        <div role="alert" className="mb-4 text-sm text-danger">
           Couldn&apos;t load the change feed — {error}{" "}
           <button type="button" onClick={() => void load()} className="underline">
             Retry

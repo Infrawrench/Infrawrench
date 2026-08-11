@@ -127,7 +127,7 @@ export function SshKeysSection() {
                       <button
                         type="button"
                         onClick={() => void handleDelete(key.id)}
-                        className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+                        className="text-xs text-danger hover:text-danger-strong"
                       >
                         Delete
                       </button>
@@ -268,7 +268,7 @@ function GenerateKeyModal({
             An Ed25519 keypair will be generated. The private key is only shown once. The public key
             will be shared with all organization members.
           </p>
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs text-danger">{error}</p>}
           <button
             type="button"
             onClick={() => void handleCreate()}
@@ -370,7 +370,7 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
             <code className="text-on-surface-tertiary">~/.ssh/id_ed25519.pub</code>). Only the
             public key is stored. The key will be shared with all organization members.
           </p>
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs text-danger">{error}</p>}
           <button
             type="button"
             onClick={() => void handleImport()}

@@ -91,7 +91,7 @@ export function CostAnnotationModal({
         </p>
 
         {error !== null && (
-          <div role="alert" className="mb-3 text-sm text-red-500">
+          <div role="alert" className="mb-3 text-sm text-danger">
             {error}
           </div>
         )}
@@ -180,7 +180,7 @@ export function CostAnnotationModal({
           )}
         </div>
 
-        {problem && text.trim() !== "" && <p className="mt-3 text-xs text-red-500">{problem}</p>}
+        {problem && text.trim() !== "" && <p className="mt-3 text-xs text-danger">{problem}</p>}
 
         <div className="mt-5 flex items-center justify-between gap-2">
           <div>
@@ -189,7 +189,7 @@ export function CostAnnotationModal({
                 type="button"
                 disabled={busy}
                 onClick={() => void run(onDelete)}
-                className="text-xs text-on-surface-faint hover:text-red-500 underline disabled:opacity-50"
+                className="text-xs text-on-surface-faint hover:text-danger underline disabled:opacity-50"
               >
                 Delete
               </button>

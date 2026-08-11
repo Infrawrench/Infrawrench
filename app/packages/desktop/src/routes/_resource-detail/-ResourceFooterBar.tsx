@@ -41,7 +41,7 @@ export function ResourceFooterBar({
         <button
           type="button"
           onClick={onConfirmDelete}
-          className="text-xs text-on-surface-faint hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+          className="text-xs text-on-surface-faint hover:text-danger transition-colors px-2 py-1 rounded hover:bg-red-500/10"
         >
           Delete {resourceTypeLabel}…
         </button>

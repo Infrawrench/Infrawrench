@@ -140,7 +140,7 @@ export function EditCredentialsModal({
                           }
                         : undefined
                     }
-                    className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 mb-1"
+                    className="inline-flex items-center gap-1 text-xs text-info hover:text-info-strong mb-1"
                   >
                     {f.helpLink.label}
                     <span aria-hidden="true">↗</span>
@@ -178,7 +178,7 @@ export function EditCredentialsModal({
             );
           })}
 
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs text-danger">{error}</p>}
 
           <div className="flex gap-2 pt-1">
             <button

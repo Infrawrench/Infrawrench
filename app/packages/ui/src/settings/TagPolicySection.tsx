@@ -110,7 +110,7 @@ export function TagPolicySection() {
       </div>
 
       {error && (
-        <div className="mb-4 px-3 py-2 text-sm text-red-400 border border-red-900/50 bg-red-950/20 rounded-lg">
+        <div className="mb-4 px-3 py-2 text-sm text-danger border border-red-900/50 bg-red-950/20 rounded-lg">
           {error}
         </div>
       )}
@@ -158,7 +158,7 @@ export function TagPolicySection() {
                   <button
                     type="button"
                     onClick={() => setRows((prev) => prev.filter((_, j) => j !== i))}
-                    className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+                    className="text-xs text-danger hover:text-danger-strong"
                   >
                     Remove
                   </button>
@@ -170,7 +170,7 @@ export function TagPolicySection() {
                 <button
                   type="button"
                   onClick={() => setRows((prev) => [...prev, { key: "", allowedValues: "" }])}
-                  className="text-sm text-blue-500 hover:text-blue-400"
+                  className="text-sm text-info hover:text-info-strong"
                 >
                   + Add required tag
                 </button>
@@ -255,10 +255,10 @@ export function TagPolicySection() {
                             <span
                               className={
                                 account.score >= 90
-                                  ? "text-emerald-500"
+                                  ? "text-success"
                                   : account.score >= 50
-                                    ? "text-amber-500"
-                                    : "text-red-400"
+                                    ? "text-warning"
+                                    : "text-danger"
                               }
                             >
                               {account.score}%
@@ -387,7 +387,7 @@ function AllocationSection({
       </p>
 
       {error && (
-        <div className="px-3 py-2 text-sm text-red-400 border border-red-900/50 bg-red-950/20 rounded-lg">
+        <div className="px-3 py-2 text-sm text-danger border border-red-900/50 bg-red-950/20 rounded-lg">
           {error}
         </div>
       )}
@@ -398,7 +398,7 @@ function AllocationSection({
           <button
             type="button"
             onClick={() => openSection("cost-centres")}
-            className="text-xs text-blue-500 hover:text-blue-400"
+            className="text-xs text-info hover:text-info-strong"
           >
             Manage cost centres →
           </button>
@@ -479,7 +479,7 @@ function AllocationSection({
                     <button
                       type="button"
                       onClick={() => void removeRule(rule)}
-                      className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+                      className="text-xs text-danger hover:text-danger-strong"
                     >
                       Remove
                     </button>

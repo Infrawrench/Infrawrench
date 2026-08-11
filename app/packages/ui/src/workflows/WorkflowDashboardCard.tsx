@@ -71,11 +71,11 @@ export function WorkflowDashboardCard({
   const status = running ? "running" : data.lastStatus;
   const statusColor =
     status === "success"
-      ? "text-emerald-400"
+      ? "text-success"
       : status === "failure"
-        ? "text-red-400"
+        ? "text-danger"
         : status === "running"
-          ? "text-blue-400"
+          ? "text-info"
           : "text-on-surface-faint";
   const statusGlyph = status === "failure" ? "✕" : status === "running" ? "•" : "✓";
 

@@ -24,9 +24,9 @@ function formatWhen(iso: string): string {
 }
 
 const KIND_TONE: Record<EfficiencyAlertKind, string> = {
-  commitment_expiry: "text-amber-500",
-  commitment_idle: "text-blue-400",
-  unit_cost_regression: "text-red-400",
+  commitment_expiry: "text-warning",
+  commitment_idle: "text-info",
+  unit_cost_regression: "text-danger",
 };
 
 /**
@@ -157,7 +157,7 @@ export function EfficiencyAlertsSection({ client }: EfficiencyAlertsSectionProps
       {tuning && <EfficiencyTuningPanel client={client} />}
 
       {error !== null && (
-        <div role="alert" className="rounded-xl border border-border p-4 text-sm text-red-500">
+        <div role="alert" className="rounded-xl border border-border p-4 text-sm text-danger">
           Couldn&rsquo;t load efficiency alerts — {error}
         </div>
       )}
@@ -347,7 +347,7 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
 
   if (loadError !== null) {
     return (
-      <div role="alert" className="rounded-xl border border-border p-4 text-sm text-red-500">
+      <div role="alert" className="rounded-xl border border-border p-4 text-sm text-danger">
         Couldn&rsquo;t load alert settings — {loadError}
       </div>
     );
@@ -555,7 +555,7 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
       </div>
 
       {saveError !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           {saveError}
         </div>
       )}

@@ -32,14 +32,14 @@ export interface CredentialPreflightPanelProps {
 function StatusGlyph({ status }: { status: PreflightChecklistRow["status"] }) {
   if (status === "ok") {
     return (
-      <span aria-hidden="true" className="text-emerald-400">
+      <span aria-hidden="true" className="text-success">
         ✓
       </span>
     );
   }
   if (status === "missing") {
     return (
-      <span aria-hidden="true" className="text-red-400">
+      <span aria-hidden="true" className="text-danger">
         ✗
       </span>
     );
@@ -78,7 +78,7 @@ function ExternalLink({
             }
           : undefined
       }
-      className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+      className="inline-flex items-center gap-1 text-xs text-info hover:text-info-strong"
     >
       {link.label}
       <span aria-hidden="true">↗</span>
@@ -188,7 +188,7 @@ export function CredentialPreflightPanel({
         )}
       </div>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
 
       <ul className="space-y-2">
         {rows.map((row) => (
@@ -236,7 +236,7 @@ export function CredentialPreflightPanel({
               setShowGenerator(next);
               if (next && !template) void generate(selectedIds);
             }}
-            className="text-xs text-blue-400 hover:text-blue-300"
+            className="text-xs text-info hover:text-info-strong"
           >
             {showGenerator
               ? "Hide least-privilege template"
@@ -282,7 +282,7 @@ export function CredentialPreflightPanel({
                 </div>
               </fieldset>
 
-              {generatorError && <p className="text-xs text-red-400">{generatorError}</p>}
+              {generatorError && <p className="text-xs text-danger">{generatorError}</p>}
               {generating && <p className="text-xs text-on-surface-faint">Generating…</p>}
 
               {template && !generating && (

@@ -145,7 +145,7 @@ export function LogsView({ capability, onGetLogs }: Props) {
         </div>
       </div>
       {error && (
-        <div className="px-3 py-2 text-xs text-red-400 font-mono border-b border-border bg-red-500/5 whitespace-pre-wrap shrink-0">
+        <div className="px-3 py-2 text-xs text-danger font-mono border-b border-border bg-red-500/5 whitespace-pre-wrap shrink-0">
           {error}
         </div>
       )}

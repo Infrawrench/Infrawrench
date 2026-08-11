@@ -139,7 +139,7 @@ export function CustomGraphCard({
         {error || scriptError ? (
           <div
             role="alert"
-            className="flex-1 flex items-center justify-center text-sm text-red-400 px-4 text-center whitespace-pre-wrap"
+            className="flex-1 flex items-center justify-center text-sm text-danger px-4 text-center whitespace-pre-wrap"
           >
             {error ?? scriptError}
           </div>

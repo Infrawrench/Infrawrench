@@ -68,7 +68,7 @@ export function ErrorNotice({
               key={link}
               type="button"
               onClick={() => openLink(link)}
-              className="inline-flex items-center rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-200 hover:bg-red-500/20 transition-colors"
+              className="inline-flex items-center rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-danger hover:bg-red-500/20 transition-colors"
             >
               {getActionLabel(link)}
             </button>

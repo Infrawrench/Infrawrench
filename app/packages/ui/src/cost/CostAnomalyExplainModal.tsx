@@ -101,7 +101,7 @@ export function CostAnomalyExplainModal({
         </p>
 
         {error !== null && (
-          <div role="alert" className="mb-3 text-sm text-red-500">
+          <div role="alert" className="mb-3 text-sm text-danger">
             {error}
           </div>
         )}
@@ -161,7 +161,7 @@ export function CostAnomalyExplainModal({
           </div>
         )}
 
-        {problem && text.trim() !== "" && <p className="mt-3 text-xs text-red-500">{problem}</p>}
+        {problem && text.trim() !== "" && <p className="mt-3 text-xs text-danger">{problem}</p>}
 
         <p className="mt-3 text-[11px] text-on-surface-faint">
           {rewording

@@ -113,7 +113,7 @@ export function CurrencySection() {
       </div>
 
       {error && (
-        <div className="mb-4 px-3 py-2 text-sm text-red-400 border border-red-900/50 bg-red-950/20 rounded-lg">
+        <div className="mb-4 px-3 py-2 text-sm text-danger border border-red-900/50 bg-red-950/20 rounded-lg">
           {error}
         </div>
       )}
@@ -185,7 +185,7 @@ export function CurrencySection() {
                 role="status"
                 className="px-3 py-2 text-sm rounded-lg border border-amber-500/40 bg-amber-500/10"
               >
-                <p className="text-amber-300">
+                <p className="text-warning">
                   {staleRates.length === 1 ? "One rate is" : `${staleRates.length} rates are`} not
                   used
                 </p>
@@ -234,7 +234,7 @@ export function CurrencySection() {
                         <td className="px-4 py-2 text-sm text-on-surface-secondary">
                           {rate.toCurrency}
                           {displayCurrency && rate.toCurrency !== displayCurrency && (
-                            <span className="ml-2 text-xs text-amber-500">unused</span>
+                            <span className="ml-2 text-xs text-warning">unused</span>
                           )}
                         </td>
                         <td className="px-4 py-2 text-right text-sm tabular-nums text-on-surface-secondary">
@@ -248,7 +248,7 @@ export function CurrencySection() {
                             <button
                               type="button"
                               onClick={() => void removeRate(rate)}
-                              className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+                              className="text-xs text-danger hover:text-danger-strong"
                             >
                               Remove
                             </button>

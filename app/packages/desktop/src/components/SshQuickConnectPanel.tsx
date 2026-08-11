@@ -164,7 +164,7 @@ export function SshQuickConnectPanel({
   return (
     <div className="border-t border-border shrink-0">
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border/60">
-        <span className="font-mono text-green-600 text-xs">SSH</span>
+        <span className="font-mono text-success text-xs">SSH</span>
         <span className="text-on-surface-muted font-mono text-xs">{host}</span>
       </div>
 
@@ -374,7 +374,7 @@ export function SshQuickConnectPanel({
             type="button"
             onClick={() => void connect()}
             disabled={!selectedKey}
-            className="px-4 py-1.5 rounded-lg bg-green-100 dark:bg-green-900 border border-green-300 dark:border-green-700 hover:bg-green-200 dark:hover:bg-green-800 hover:border-green-400 dark:hover:border-green-600 text-green-700 dark:text-green-300 hover:text-green-800 dark:hover:text-green-200 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-4 py-1.5 rounded-lg bg-green-100 dark:bg-green-900 border border-green-300 dark:border-green-700 hover:bg-green-200 dark:hover:bg-green-800 hover:border-green-400 dark:hover:border-green-600 text-success hover:text-success-strong text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Connect
           </button>
@@ -420,7 +420,7 @@ function KeyRow({
               e.stopPropagation();
               onDelete();
             }}
-            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-on-surface-faint hover:text-red-400 text-xs px-1 transition-all"
+            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-on-surface-faint hover:text-danger text-xs px-1 transition-all"
             title="Remove key"
             aria-label="Remove key"
           >

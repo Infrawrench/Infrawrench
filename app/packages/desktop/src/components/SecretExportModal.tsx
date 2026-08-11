@@ -216,7 +216,7 @@ export function SecretExportModal({
 
         <div className="px-5 py-4 space-y-5">
           {loadError ? (
-            <p className="text-sm text-red-400">{loadError}</p>
+            <p className="text-sm text-danger">{loadError}</p>
           ) : (
             <>
               {/* Source info */}
@@ -355,7 +355,7 @@ export function SecretExportModal({
 
               {/* Error */}
               {error && (
-                <p className="text-sm text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{error}</p>
+                <p className="text-sm text-danger bg-red-500/10 rounded-lg px-3 py-2">{error}</p>
               )}
             </>
           )}

@@ -39,8 +39,8 @@ const FILTER_OPTIONS: Array<{ key: StatusFilter; label: string }> = [
 
 /** Pill tones per bucket, matching the PostureSection translucent-badge recipe. */
 const STATUS_BADGE_CLASSES: Record<DnsTargetClassification, string> = {
-  dangling: "bg-red-500/10 text-red-400",
-  owned: "bg-emerald-500/10 text-emerald-400",
+  dangling: "bg-red-500/10 text-danger",
+  owned: "bg-emerald-500/10 text-success",
   external: "bg-surface-overlay text-on-surface-tertiary",
   "not-analysed": "bg-surface-overlay text-on-surface-faint",
 };
@@ -91,7 +91,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
       </p>
 
       {error != null && data === null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           Couldn&apos;t load the DNS inventory — {error}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
@@ -106,7 +106,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
         </p>
       )}
       {error != null && data !== null && (
-        <p role="alert" className="mb-4 text-xs text-red-400">
+        <p role="alert" className="mb-4 text-xs text-danger">
           Couldn&apos;t refresh — showing the last loaded inventory. {error}
         </p>
       )}
@@ -265,7 +265,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                               record.name
                             )}
                             {record.proxied && (
-                              <span className="ml-2 rounded-full bg-orange-500/10 px-2 py-0.5 text-[11px] font-normal text-orange-400">
+                              <span className="ml-2 rounded-full bg-orange-500/10 px-2 py-0.5 text-[11px] font-normal text-severe">
                                 Proxied
                               </span>
                             )}
@@ -278,7 +278,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                                 <span key={target.value} className="block break-all">
                                   <span className="font-mono text-xs">{target.value}</span>
                                   {target.service && (
-                                    <span className="block text-xs text-red-400">
+                                    <span className="block text-xs text-danger">
                                       {target.service.label} — nothing synced claims &ldquo;
                                       {target.service.claimLabel}&rdquo;. {target.service.reason}
                                     </span>

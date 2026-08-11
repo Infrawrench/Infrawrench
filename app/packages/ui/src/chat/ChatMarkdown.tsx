@@ -16,12 +16,7 @@ export function ChatMarkdown({ text }: { text: string }): React.ReactElement {
           ul: ({ children }) => <ul className="list-disc pl-5 space-y-1">{children}</ul>,
           ol: ({ children }) => <ol className="list-decimal pl-5 space-y-1">{children}</ol>,
           a: ({ href, children }) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-              className="text-blue-500 hover:underline"
-            >
+            <a href={href} target="_blank" rel="noreferrer" className="text-info hover:underline">
               {children}
             </a>
           ),

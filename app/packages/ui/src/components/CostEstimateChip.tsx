@@ -72,10 +72,10 @@ export function CostEstimateChip({ label, estimate, caption }: CostEstimateChipP
   const expandable = !!estimate && estimate.lineItems.length > 0;
   const heading = (
     <>
-      <p className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300/80">
+      <p className="text-[10px] uppercase tracking-wide text-success">
         {caption ?? "Estimated cost"}
       </p>
-      <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-200">
+      <p className="text-sm font-semibold text-success">
         {estimate?.partial && <span className="font-normal">at least </span>}
         {label}/mo
       </p>

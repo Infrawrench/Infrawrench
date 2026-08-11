@@ -332,7 +332,7 @@ export function SqlEditorView({
                         <div key={col.name} className="flex items-baseline gap-1.5 py-0.5">
                           {pks.has(col.name) && (
                             <span
-                              className="text-yellow-500 text-xs leading-none"
+                              className="text-warning text-xs leading-none"
                               title="Primary key"
                               aria-label="Primary key"
                             >
@@ -370,7 +370,7 @@ export function SqlEditorView({
             <div className="ml-auto flex items-center gap-2">
               {estimateError && (
                 <span
-                  className="text-xs text-red-400 font-mono max-w-xs truncate"
+                  className="text-xs text-danger font-mono max-w-xs truncate"
                   title={estimateError}
                 >
                   {estimateError}
@@ -449,7 +449,7 @@ export function SqlEditorView({
         {/* Results */}
         <div className="flex-1 overflow-auto bg-surface">
           {error && (
-            <div className="p-4 text-xs text-red-400 font-mono whitespace-pre-wrap">{error}</div>
+            <div className="p-4 text-xs text-danger font-mono whitespace-pre-wrap">{error}</div>
           )}
           {!error && !result && !running && (
             <div className="p-4 text-xs text-on-surface-faint">Run a query to see results.</div>
@@ -462,7 +462,7 @@ export function SqlEditorView({
           {result && result.rows.length > 0 && (
             <>
               {saveError && (
-                <div className="px-3 py-2 text-xs text-red-400 font-mono border-b border-border">
+                <div className="px-3 py-2 text-xs text-danger font-mono border-b border-border">
                   {saveError}
                 </div>
               )}
@@ -486,13 +486,13 @@ export function SqlEditorView({
                         <span
                           className={
                             pkCols.includes(col)
-                              ? "text-yellow-400 font-semibold"
+                              ? "text-warning font-semibold"
                               : "text-on-surface-tertiary font-semibold"
                           }
                         >
                           {col}
                           {pkCols.includes(col) && (
-                            <span className="ml-1 text-yellow-600 text-xs">PK</span>
+                            <span className="ml-1 text-warning text-xs">PK</span>
                           )}
                         </span>
                       </th>
@@ -571,7 +571,7 @@ export function SqlEditorView({
                           return (
                             <td
                               key={col}
-                              className={`px-3 py-1.5 font-mono whitespace-nowrap max-w-xs overflow-hidden text-ellipsis ${isPk ? "text-yellow-600 dark:text-yellow-300/80" : "text-on-surface-secondary"}`}
+                              className={`px-3 py-1.5 font-mono whitespace-nowrap max-w-xs overflow-hidden text-ellipsis ${isPk ? "text-warning" : "text-on-surface-secondary"}`}
                               title={val === null ? "NULL" : String(val)}
                               onDoubleClick={editable ? () => startEdit(i, row) : undefined}
                               tabIndex={editable ? 0 : undefined}

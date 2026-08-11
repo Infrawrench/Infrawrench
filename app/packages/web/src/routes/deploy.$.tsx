@@ -87,7 +87,7 @@ function DeployHotlink() {
   if (failed) {
     return (
       <Shell title="Sign in to deploy">
-        <a href="/" className="text-blue-400 hover:underline">
+        <a href="/" className="text-info hover:underline">
           Sign in
         </a>{" "}
         and open this link again to deploy <span className="text-on-surface">{repo}</span>.

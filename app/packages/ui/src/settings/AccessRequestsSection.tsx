@@ -117,7 +117,7 @@ export function AccessRequestsSection() {
     <div className="space-y-6">
       <Header />
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       {canRequest && (
         <section className={CARD}>
@@ -272,11 +272,11 @@ function RequestRow({
         <span
           className={`text-xs px-2 py-0.5 rounded-md ${
             request.active
-              ? "text-amber-400 bg-amber-500/10"
+              ? "text-warning bg-amber-500/10"
               : request.status === "approved"
                 ? "text-on-surface-tertiary bg-surface-overlay"
                 : request.status === "denied"
-                  ? "text-red-400 bg-red-500/10"
+                  ? "text-danger bg-red-500/10"
                   : "text-on-surface-tertiary bg-surface-overlay"
           }`}
         >

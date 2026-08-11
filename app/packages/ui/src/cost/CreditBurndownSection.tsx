@@ -11,8 +11,8 @@ import {
 import type { CostsClient } from "./types.js";
 
 const URGENCY_CLASS: Record<RunwayUrgency, string> = {
-  critical: "text-red-400 bg-red-500/10",
-  warning: "text-amber-400 bg-amber-500/10",
+  critical: "text-danger bg-red-500/10",
+  warning: "text-warning bg-amber-500/10",
   ok: "text-on-surface-tertiary bg-surface-overlay",
   unknown: "text-on-surface-tertiary bg-surface-overlay",
 };
@@ -79,7 +79,7 @@ export function CreditBurndownSection({ client, onOpenExternal }: CreditBurndown
         </p>
       </div>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       {feed && feed.pots.length > 0 && (
         <ul className="border border-border rounded-xl divide-y divide-border overflow-hidden">
@@ -94,7 +94,7 @@ export function CreditBurndownSection({ client, onOpenExternal }: CreditBurndown
       )}
 
       {feed?.failures.map((failure) => (
-        <p key={failure.accountId} className="text-xs text-amber-400">
+        <p key={failure.accountId} className="text-xs text-warning">
           {failure.accountName}: {failure.error}
           {failure.helpUrl && failure.helpLabel && (
             <>
@@ -145,7 +145,7 @@ function PotRow({
           )}
         </p>
         {pot.limitedByExpiry && (
-          <p className="text-xs text-amber-400 mt-0.5">
+          <p className="text-xs text-warning mt-0.5">
             Limited by the credit&rsquo;s own expiry, not the burn rate.
           </p>
         )}

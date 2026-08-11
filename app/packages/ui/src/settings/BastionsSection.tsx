@@ -118,7 +118,7 @@ export function BastionsSection() {
                     <button
                       type="button"
                       onClick={() => void handleDelete(b.id)}
-                      className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+                      className="text-xs text-danger hover:text-danger-strong"
                     >
                       Revoke
                     </button>
@@ -242,7 +242,7 @@ function CreateBastionModal({
             start the agent container on your infrastructure. The token cannot be retrieved again;
             copy it then.
           </p>
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs text-danger">{error}</p>}
           <button
             type="button"
             onClick={() => void handleCreate()}
@@ -295,7 +295,7 @@ function CreatedBastionModal({
         </h2>
         <p className="text-xs text-on-surface-tertiary mb-3">
           Copy the command below and run it on any Docker host. The bastion will appear as
-          <span className="text-green-500"> Connected </span>
+          <span className="text-success"> Connected </span>
           once the agent dials in. The token is shown only this once.
         </p>
         <span className="block text-xs text-on-surface-muted mb-1">Run command</span>

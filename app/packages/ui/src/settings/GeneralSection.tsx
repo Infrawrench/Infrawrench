@@ -31,7 +31,7 @@ export function GeneralSection() {
     void loadProfile();
   }, [loadProfile]);
 
-  if (error) return <p className="text-sm text-red-400">{error}</p>;
+  if (error) return <p className="text-sm text-danger">{error}</p>;
   if (!profile) return <div className="text-on-surface-muted text-sm animate-pulse">Loading…</div>;
 
   return (
@@ -140,10 +140,10 @@ function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Pr
             <div className="flex items-center gap-2 flex-wrap">
               <p className="text-sm text-on-surface-secondary">{profile.email}</p>
               {profile.emailVerified ? (
-                <span className="text-xs text-emerald-500">Verified</span>
+                <span className="text-xs text-success">Verified</span>
               ) : (
                 <>
-                  <span className="text-xs text-amber-500">Unverified</span>
+                  <span className="text-xs text-warning">Unverified</span>
                   <button
                     type="button"
                     onClick={() => void handleResendVerification()}
@@ -193,8 +193,8 @@ function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Pr
             >
               {saving ? "Saving…" : "Save changes"}
             </button>
-            {status && <span className="text-xs text-emerald-500">{status}</span>}
-            {error && <span className="text-xs text-red-400">{error}</span>}
+            {status && <span className="text-xs text-success">{status}</span>}
+            {error && <span className="text-xs text-danger">{error}</span>}
           </div>
         </div>
       </div>
@@ -292,7 +292,7 @@ function ChangeEmailModal({
                 it.
               </p>
               {hasIdentities && (
-                <p className="text-xs text-amber-500">
+                <p className="text-xs text-warning">
                   You sign in with a connected account. Changing this address here won&apos;t change
                   it there, so make sure you can still sign in afterwards.
                 </p>
@@ -311,7 +311,7 @@ function ChangeEmailModal({
                   className={INPUT}
                 />
               </div>
-              {error && <p className="text-xs text-red-400">{error}</p>}
+              {error && <p className="text-xs text-danger">{error}</p>}
               <button
                 type="button"
                 onClick={() => void handleSend()}
@@ -343,7 +343,7 @@ function ChangeEmailModal({
                   className={`${INPUT} font-mono tracking-widest`}
                 />
               </div>
-              {error && <p className="text-xs text-red-400">{error}</p>}
+              {error && <p className="text-xs text-danger">{error}</p>}
               <button
                 type="button"
                 onClick={() => void handleConfirm()}
@@ -399,7 +399,7 @@ function PasswordCard() {
             Opens a one-time link where you can set a new password. Use it to add a password to an
             account that only signs in with Google or SSO.
           </p>
-          {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+          {error && <p className="text-xs text-danger mt-2">{error}</p>}
         </div>
         <button
           type="button"
@@ -463,7 +463,7 @@ function TwoFactorCard() {
         </button>
       </div>
 
-      {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
+      {error && <p className="text-xs text-danger mb-2">{error}</p>}
 
       {factors === null ? (
         <p className="text-xs text-on-surface-faint">Loading…</p>
@@ -487,7 +487,7 @@ function TwoFactorCard() {
               <button
                 type="button"
                 onClick={() => void handleRemove(factor.id)}
-                className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+                className="text-xs text-danger hover:text-danger-strong"
               >
                 Remove
               </button>
@@ -642,7 +642,7 @@ function EnrollTotpModal({ api, onClose }: { api: SettingsApi; onClose: () => vo
                   className={`${INPUT} font-mono tracking-widest`}
                 />
               </div>
-              {error && <p className="text-xs text-red-400">{error}</p>}
+              {error && <p className="text-xs text-danger">{error}</p>}
               <button
                 type="button"
                 onClick={() => void handleVerify()}
@@ -724,7 +724,7 @@ function SessionsCard() {
         )}
       </div>
 
-      {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
+      {error && <p className="text-xs text-danger mb-2">{error}</p>}
 
       {sessions === null ? (
         <p className="text-xs text-on-surface-faint">Loading…</p>
@@ -738,7 +738,7 @@ function SessionsCard() {
                 <p className="text-sm text-on-surface-secondary truncate">
                   {describeUserAgent(session.userAgent)}
                   {session.current && (
-                    <span className="ml-2 text-xs text-emerald-500">This device</span>
+                    <span className="ml-2 text-xs text-success">This device</span>
                   )}
                 </p>
                 <p className="text-xs text-on-surface-muted truncate">
@@ -750,7 +750,7 @@ function SessionsCard() {
                 <button
                   type="button"
                   onClick={() => void handleRevoke(session.id)}
-                  className="text-xs text-red-400 hover:text-red-500 dark:text-red-300 flex-shrink-0"
+                  className="text-xs text-danger hover:text-danger-strong flex-shrink-0"
                 >
                   Sign out
                 </button>
@@ -803,7 +803,7 @@ function DeleteAccountCard({ email }: { email: string }) {
         membership of every organization. This cannot be undone.
       </p>
 
-      {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+      {error && <p className="text-xs text-danger mb-3">{error}</p>}
 
       {preview && blocked && (
         <div className="mb-3 rounded-lg border border-border bg-surface-overlay p-3">

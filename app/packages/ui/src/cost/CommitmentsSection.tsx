@@ -10,8 +10,8 @@ import {
 import type { CostsClient } from "./types.js";
 
 const STATE_CLASS: Record<CommitmentState, string> = {
-  active: "text-emerald-400 bg-emerald-500/10",
-  queued: "text-sky-400 bg-sky-500/10",
+  active: "text-success bg-emerald-500/10",
+  queued: "text-info bg-sky-500/10",
   expired: "text-on-surface-tertiary bg-surface-overlay",
 };
 
@@ -96,7 +96,7 @@ export function CommitmentsSection({ client }: CommitmentsSectionProps) {
         </p>
       </div>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       {feed && <CoverageLine feed={feed} />}
 
@@ -129,7 +129,7 @@ export function CommitmentsSection({ client }: CommitmentsSectionProps) {
       )}
 
       {feed?.failures.map((failure) => (
-        <p key={failure.accountId} className="text-xs text-amber-400">
+        <p key={failure.accountId} className="text-xs text-warning">
           {failure.accountName}: {failure.message}
         </p>
       ))}

@@ -61,7 +61,7 @@ export function SshHostKeysSection() {
       </div>
 
       {error && (
-        <div className="mb-4 px-3 py-2 text-sm text-red-400 border border-red-900/50 bg-red-950/20 rounded-lg">
+        <div className="mb-4 px-3 py-2 text-sm text-danger border border-red-900/50 bg-red-950/20 rounded-lg">
           {error}
         </div>
       )}
@@ -125,7 +125,7 @@ export function SshHostKeysSection() {
                         type="button"
                         onClick={() => setConfirmId(pin.id)}
                         disabled={deletingId === pin.id}
-                        className="text-xs text-red-400 hover:text-red-500 dark:text-red-300 disabled:opacity-50"
+                        className="text-xs text-danger hover:text-danger-strong disabled:opacity-50"
                       >
                         Revoke
                       </button>

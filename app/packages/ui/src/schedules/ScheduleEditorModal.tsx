@@ -319,7 +319,7 @@ export function ScheduleEditorModal({
           </div>
 
           {error !== null && (
-            <div role="alert" className="text-sm text-red-500">
+            <div role="alert" className="text-sm text-danger">
               {error}
             </div>
           )}

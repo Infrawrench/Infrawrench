@@ -256,7 +256,7 @@ export function StatusPageEditorModal({
                         type="button"
                         onClick={() => removeComponent(index)}
                         aria-label={`Remove ${component.probeName}`}
-                        className="rounded px-2 py-0.5 text-xs text-on-surface-tertiary hover:text-red-500"
+                        className="rounded px-2 py-0.5 text-xs text-on-surface-tertiary hover:text-danger"
                       >
                         Remove
                       </button>
@@ -291,7 +291,7 @@ export function StatusPageEditorModal({
         </div>
 
         {problem !== null && (
-          <p role="alert" className="text-sm text-red-500">
+          <p role="alert" className="text-sm text-danger">
             {problem}
           </p>
         )}

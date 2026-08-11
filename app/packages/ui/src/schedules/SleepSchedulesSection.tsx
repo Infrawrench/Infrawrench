@@ -36,8 +36,8 @@ function LastRunBadge({ schedule }: { schedule: SleepSchedule }) {
     schedule.lastRunStatus === "ok"
       ? "border-border text-on-surface-tertiary"
       : schedule.lastRunStatus === "skipped_freeze"
-        ? "border-amber-500/50 text-amber-500"
-        : "border-red-500/50 text-red-500";
+        ? "border-amber-500/50 text-warning"
+        : "border-red-500/50 text-danger";
   return (
     <span
       className={`rounded-full border px-2 py-0.5 text-xs ${tone}`}
@@ -146,7 +146,7 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
       </div>
 
       {error !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           Couldn&apos;t load sleep schedules — {error}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
             Retry
@@ -234,7 +234,7 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
                         type="button"
                         disabled={busyId === s.id}
                         onClick={() => void remove(s)}
-                        className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-red-500 hover:border-red-500/50 disabled:opacity-50"
+                        className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-danger hover:border-red-500/50 disabled:opacity-50"
                       >
                         Delete
                       </button>

@@ -112,7 +112,7 @@ export function FreezesSection() {
       </div>
 
       {error && (
-        <div className="mb-4 px-3 py-2 text-sm text-red-400 border border-red-900/50 bg-red-950/20 rounded-lg">
+        <div className="mb-4 px-3 py-2 text-sm text-danger border border-red-900/50 bg-red-950/20 rounded-lg">
           {error}
         </div>
       )}
@@ -177,11 +177,11 @@ export function FreezesSection() {
                     </td>
                     <td className="px-4 py-2 text-xs">
                       {inEffect ? (
-                        <span className="inline-block px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300 font-medium">
+                        <span className="inline-block px-2 py-0.5 rounded-full bg-amber-500/15 text-warning font-medium">
                           In effect
                         </span>
                       ) : scheduled ? (
-                        <span className="inline-block px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-300 font-medium">
+                        <span className="inline-block px-2 py-0.5 rounded-full bg-blue-500/15 text-info font-medium">
                           Scheduled
                         </span>
                       ) : (
@@ -204,7 +204,7 @@ export function FreezesSection() {
                               type="button"
                               onClick={() => void endFreeze(freeze.id)}
                               disabled={busyId === freeze.id}
-                              className="text-xs text-amber-600 dark:text-amber-300 hover:opacity-80 disabled:opacity-50"
+                              className="text-xs text-warning hover:opacity-80 disabled:opacity-50"
                             >
                               {busyId === freeze.id ? "Ending…" : "End now"}
                             </button>
@@ -214,7 +214,7 @@ export function FreezesSection() {
                               type="button"
                               onClick={() => void deleteFreeze(freeze.id)}
                               disabled={busyId === freeze.id}
-                              className="text-xs text-red-400 hover:text-red-500 dark:text-red-300 disabled:opacity-50"
+                              className="text-xs text-danger hover:text-danger-strong disabled:opacity-50"
                             >
                               Delete
                             </button>
@@ -313,7 +313,7 @@ function CreateFreezeForm({
           />
         </label>
       </div>
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
       <div className="flex justify-end">
         <button
           type="button"

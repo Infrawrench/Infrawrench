@@ -15,14 +15,14 @@ import type { CostsClient } from "./types.js";
 const PAIRS_SHOWN = 20;
 
 const SCOPE_TONE: Record<string, string> = {
-  internet_egress: "text-red-400 bg-red-500/10",
-  nat_gateway: "text-orange-400 bg-orange-500/10",
-  cross_region: "text-amber-500 bg-amber-500/10",
-  cross_zone: "text-amber-400 bg-amber-500/10",
-  private_interconnect: "text-purple-400 bg-purple-500/10",
-  provider_service: "text-emerald-400 bg-emerald-500/10",
-  intra_zone: "text-emerald-400 bg-emerald-500/10",
-  internet_ingress: "text-sky-400 bg-sky-500/10",
+  internet_egress: "text-danger bg-red-500/10",
+  nat_gateway: "text-severe bg-orange-500/10",
+  cross_region: "text-warning bg-amber-500/10",
+  cross_zone: "text-warning bg-amber-500/10",
+  private_interconnect: "text-notice bg-purple-500/10",
+  provider_service: "text-success bg-emerald-500/10",
+  intra_zone: "text-success bg-emerald-500/10",
+  internet_ingress: "text-info bg-sky-500/10",
   unknown: "text-on-surface-tertiary bg-surface-overlay",
 };
 
@@ -120,7 +120,7 @@ function PairRow({ pair }: { pair: NetworkFlowPairView }) {
           over {pair.days} day{pair.days === 1 ? "" : "s"}
         </span>
         {pair.attribution === "unattributed" && (
-          <span className="text-amber-400">peer not identified</span>
+          <span className="text-warning">peer not identified</span>
         )}
       </div>
     </li>
@@ -188,7 +188,7 @@ function CollectionSwitch({
         Runs one query a day against your provider&apos;s flow logs. Your provider bills those
         queries to your own cloud account by the gigabyte scanned.
       </p>
-      {saveError && <p className="text-xs text-red-400">{saveError}</p>}
+      {saveError && <p className="text-xs text-danger">{saveError}</p>}
     </div>
   );
 }
@@ -243,7 +243,7 @@ function EmptyState({ feed }: { feed: NetworkFlowFeed }) {
     <div className="border border-border rounded-xl p-3 space-y-2">
       <p className="text-sm text-on-surface-secondary">Nothing collected yet.</p>
       {failing.map((account) => (
-        <p key={account.accountId} className="text-xs text-red-400">
+        <p key={account.accountId} className="text-xs text-danger">
           {account.displayName}: {account.lastError}
           {account.lastErrorHelpUrl && (
             <>
@@ -261,7 +261,7 @@ function EmptyState({ feed }: { feed: NetworkFlowFeed }) {
         </p>
       ))}
       {blocked.map(({ account, source }) => (
-        <p key={`${account}:${source.id}`} className="text-xs text-amber-400">
+        <p key={`${account}:${source.id}`} className="text-xs text-warning">
           {account}: {source.unusableReason}
         </p>
       ))}
@@ -333,7 +333,7 @@ export function NetworkFlowSection({ client }: NetworkFlowSectionProps) {
         </p>
       </div>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       {feed && (
         <CollectionSwitch

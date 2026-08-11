@@ -238,7 +238,7 @@ export function MultiSelect({
             {value.length > 0 && (
               <button
                 type="button"
-                className="text-blue-400 hover:text-blue-300"
+                className="text-info hover:text-info-strong"
                 onClick={() => onChange([])}
               >
                 Clear
@@ -316,7 +316,7 @@ export function MultiSelect({
                 {status.onRetry && (
                   <button
                     type="button"
-                    className="text-blue-400 hover:text-blue-300"
+                    className="text-info hover:text-info-strong"
                     onClick={status.onRetry}
                   >
                     Retry

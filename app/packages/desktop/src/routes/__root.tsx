@@ -632,8 +632,8 @@ function RootLayout() {
                 key={banner.message}
                 className={`px-3 py-1.5 text-xs text-center border-b ${
                   banner.variant === "warning"
-                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
-                    : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                    ? "bg-amber-500/10 text-warning border-amber-500/30"
+                    : "bg-blue-500/10 text-info border-blue-500/30"
                 }`}
               >
                 {banner.message}

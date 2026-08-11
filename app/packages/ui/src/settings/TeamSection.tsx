@@ -151,7 +151,7 @@ export function TeamSection() {
             </button>
           </div>
           {error && (
-            <p className="text-xs text-red-400 mt-2">
+            <p className="text-xs text-danger mt-2">
               {error}
               {planRequired && (
                 <>
@@ -159,7 +159,7 @@ export function TeamSection() {
                   <button
                     type="button"
                     onClick={() => openSection("billing")}
-                    className="text-blue-400 hover:text-blue-300 underline"
+                    className="text-info hover:text-info-strong underline"
                   >
                     Upgrade to Pro
                   </button>
@@ -234,7 +234,7 @@ export function TeamSection() {
                         <button
                           type="button"
                           onClick={() => void handleRemove(member.id)}
-                          className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+                          className="text-xs text-danger hover:text-danger-strong"
                         >
                           Remove
                         </button>
@@ -295,7 +295,7 @@ export function TeamSection() {
                           <button
                             type="button"
                             onClick={() => void handleRevokeInvite(invite.id)}
-                            className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+                            className="text-xs text-danger hover:text-danger-strong"
                           >
                             Revoke
                           </button>

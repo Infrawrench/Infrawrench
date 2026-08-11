@@ -242,7 +242,7 @@ export function KvBrowserView({
       )}
 
       {error && (
-        <div className="shrink-0 px-4 py-2 border-b border-border bg-red-500/10 text-red-400 text-xs font-mono whitespace-pre-wrap">
+        <div className="shrink-0 px-4 py-2 border-b border-border bg-red-500/10 text-danger text-xs font-mono whitespace-pre-wrap">
           {error}
         </div>
       )}
@@ -321,7 +321,7 @@ export function KvBrowserView({
                   {selectedKey}
                 </span>
                 {savedNote && (
-                  <span className="text-xs text-emerald-400" aria-live="polite">
+                  <span className="text-xs text-success" aria-live="polite">
                     {savedNote}
                   </span>
                 )}
@@ -336,20 +336,20 @@ export function KvBrowserView({
                 <button
                   type="button"
                   onClick={() => setConfirmDelete(selectedKey)}
-                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-surface-overlay hover:bg-red-500/20 text-red-400 border border-border transition-colors"
+                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-surface-overlay hover:bg-red-500/20 text-danger border border-border transition-colors"
                 >
                   Delete
                 </button>
               </div>
 
               {valueError && (
-                <div className="shrink-0 px-4 py-2 border-b border-border bg-red-500/10 text-red-400 text-xs font-mono whitespace-pre-wrap">
+                <div className="shrink-0 px-4 py-2 border-b border-border bg-red-500/10 text-danger text-xs font-mono whitespace-pre-wrap">
                   {valueError}
                 </div>
               )}
 
               {binary && !valueLoading && (
-                <div className="shrink-0 px-4 py-2 border-b border-border bg-yellow-500/10 text-yellow-400 text-xs">
+                <div className="shrink-0 px-4 py-2 border-b border-border bg-yellow-500/10 text-warning text-xs">
                   This value looks binary, editing has been disabled to avoid corrupting it. Delete
                   the key if you need to replace it.
                 </div>
@@ -411,7 +411,7 @@ export function KvBrowserView({
               className="w-full px-3 py-2 mb-3 rounded text-xs bg-surface-overlay border border-border text-on-surface font-mono focus:outline-none focus:border-border-strong"
             />
             {addError && (
-              <div className="mb-3 text-xs text-red-400 font-mono whitespace-pre-wrap">
+              <div className="mb-3 text-xs text-danger font-mono whitespace-pre-wrap">
                 {addError}
               </div>
             )}

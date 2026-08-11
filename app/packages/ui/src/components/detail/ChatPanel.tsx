@@ -275,7 +275,7 @@ function ChatTurn({ turn }: { turn: Turn }) {
         }`}
       >
         {turn.error ? (
-          <div className="text-red-400 font-mono text-xs">
+          <div className="text-danger font-mono text-xs">
             <div className="font-semibold mb-1">Error</div>
             {turn.error}
           </div>

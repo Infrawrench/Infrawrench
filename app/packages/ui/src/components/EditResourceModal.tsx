@@ -189,7 +189,7 @@ export function EditResourceModal({
         <div className="px-6 py-4 border-t border-border flex-shrink-0">
           {deltaLabel && projected && (
             <details className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
-              <summary className="cursor-pointer text-xs font-medium text-emerald-700 dark:text-emerald-200">
+              <summary className="cursor-pointer text-xs font-medium text-success">
                 {deltaLabel}
               </summary>
               <div className="mt-2 border-t border-emerald-500/20 pt-2 text-xs">
@@ -201,7 +201,7 @@ export function EditResourceModal({
             <ErrorNotice
               message={error}
               className="mb-3 rounded bg-red-100 dark:bg-red-900/20 px-3 py-2 max-h-40 overflow-y-auto"
-              textClassName="text-xs text-red-500 dark:text-red-300 leading-relaxed break-words"
+              textClassName="text-xs text-danger leading-relaxed break-words"
             />
           )}
           <div className="flex gap-3">
@@ -238,7 +238,7 @@ function EditField({ field, value, onChange }: EditFieldProps) {
   const labelEl = (
     <label htmlFor={inputId} className="block text-xs font-medium text-on-surface-secondary mb-1.5">
       {field.label}
-      {field.required && <span className="text-red-500 ml-0.5">*</span>}
+      {field.required && <span className="text-danger ml-0.5">*</span>}
     </label>
   );
   const descriptionEl = field.description ? (

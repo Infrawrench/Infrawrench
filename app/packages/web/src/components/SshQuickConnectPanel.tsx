@@ -79,7 +79,7 @@ export function SshQuickConnectPanel({
     <div className="flex items-center justify-center h-full">
       <div className="w-full max-w-md space-y-4 p-6">
         <div className="flex items-center gap-2 mb-4">
-          <span className="font-mono text-green-600 text-xs">SSH</span>
+          <span className="font-mono text-success text-xs">SSH</span>
           <span className="text-on-surface-muted font-mono text-xs">{host}</span>
         </div>
 
@@ -146,7 +146,7 @@ export function SshQuickConnectPanel({
             type="button"
             onClick={handleConnect}
             disabled={!selectedKeyId}
-            className="px-4 py-1.5 rounded-lg bg-green-100 dark:bg-green-900 border border-green-300 dark:border-green-700 hover:bg-green-200 dark:hover:bg-green-800 hover:border-green-400 dark:hover:border-green-600 text-green-700 dark:text-green-300 hover:text-green-800 dark:hover:text-green-200 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-4 py-1.5 rounded-lg bg-green-100 dark:bg-green-900 border border-green-300 dark:border-green-700 hover:bg-green-200 dark:hover:bg-green-800 hover:border-green-400 dark:hover:border-green-600 text-success hover:text-success-strong text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Connect
           </button>

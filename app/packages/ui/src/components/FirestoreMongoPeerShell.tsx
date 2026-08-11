@@ -61,7 +61,7 @@ export function FirestoreMongoPeerShell({
             wire protocol. Pick an account with a connection string pointing at this Firestore
             database.
           </div>
-          {error && <div className="text-xs text-red-400 mb-2">{error}</div>}
+          {error && <div className="text-xs text-danger mb-2">{error}</div>}
           {accounts.length === 0 ? (
             <div className="text-xs text-on-surface-muted">
               No MongoDB accounts. Add one from the sidebar first.

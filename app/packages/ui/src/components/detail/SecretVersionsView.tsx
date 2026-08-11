@@ -15,9 +15,9 @@ interface Props {
 }
 
 const STATE_COLORS: Record<string, string> = {
-  enabled: "bg-emerald-900/30 text-emerald-300 border border-emerald-900/50",
-  disabled: "bg-yellow-900/30 text-yellow-300 border border-yellow-900/50",
-  destroyed: "bg-red-900/30 text-red-300 border border-red-900/50",
+  enabled: "bg-emerald-900/30 text-success border border-emerald-900/50",
+  disabled: "bg-yellow-900/30 text-warning border border-yellow-900/50",
+  destroyed: "bg-red-900/30 text-danger border border-red-900/50",
 };
 
 function fmt(iso: string | undefined) {
@@ -159,7 +159,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
           <p className="text-xs text-on-surface-muted">{capability.helpText}</p>
         )}
 
-        {error && <div className="text-sm text-red-400 font-mono whitespace-pre-wrap">{error}</div>}
+        {error && <div className="text-sm text-danger font-mono whitespace-pre-wrap">{error}</div>}
 
         <div className="overflow-x-auto rounded border border-border bg-surface-overlay/40">
           <table className="w-full text-sm border-collapse">
@@ -269,7 +269,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                             type="button"
                             disabled={destroyed || isBusy}
                             onClick={() => setConfirm({ version: v, action: "destroy" })}
-                            className="px-2 py-1 text-xs text-red-300 hover:text-red-100 border border-red-900/60 rounded-md transition-colors disabled:opacity-40"
+                            className="px-2 py-1 text-xs text-danger hover:text-danger-strong border border-red-900/60 rounded-md transition-colors disabled:opacity-40"
                           >
                             Destroy
                           </button>
@@ -330,7 +330,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
         <Modal onClose={() => setRevealError(null)} ariaLabel="Cannot reveal">
           <div className="w-[480px] max-w-[92vw] bg-surface-raised border border-border-strong rounded-lg shadow-2xl p-5 space-y-4">
             <h2 className="text-sm font-semibold text-on-surface">Cannot reveal</h2>
-            <p className="text-xs text-red-400 font-mono whitespace-pre-wrap">{revealError}</p>
+            <p className="text-xs text-danger font-mono whitespace-pre-wrap">{revealError}</p>
             <div className="flex items-center justify-end">
               <button
                 type="button"
@@ -378,7 +378,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
               </label>
             )}
             {addError && (
-              <p className="text-xs text-red-400 font-mono whitespace-pre-wrap">{addError}</p>
+              <p className="text-xs text-danger font-mono whitespace-pre-wrap">{addError}</p>
             )}
             <div className="flex items-center justify-end gap-2">
               <button

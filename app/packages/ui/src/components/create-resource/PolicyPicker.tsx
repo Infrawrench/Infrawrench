@@ -152,11 +152,11 @@ function BadgeChip({ badge }: { badge: string }) {
   const upper = badge.toUpperCase();
   const style =
     upper === "DEPRECATED"
-      ? "bg-red-500/15 text-red-300 ring-red-500/30"
+      ? "bg-red-500/15 text-danger ring-red-500/30"
       : upper === "ALPHA"
-        ? "bg-orange-500/15 text-orange-300 ring-orange-500/30"
+        ? "bg-orange-500/15 text-severe ring-orange-500/30"
         : upper === "BETA"
-          ? "bg-amber-500/15 text-amber-300 ring-amber-500/30"
+          ? "bg-amber-500/15 text-warning ring-amber-500/30"
           : "bg-surface-overlay text-on-surface-tertiary ring-border-strong";
   return (
     <span

@@ -116,7 +116,7 @@ export function SessionRecordingsSection() {
     <div className="space-y-6">
       <Header />
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       {settings && (
         <section className={`${CARD} space-y-4`}>
@@ -269,7 +269,7 @@ export function SessionRecordingsSection() {
                   className={`text-xs px-2 py-0.5 rounded-md ${
                     recording.status === "complete"
                       ? "text-on-surface-tertiary bg-surface-overlay"
-                      : "text-amber-400 bg-amber-500/10"
+                      : "text-warning bg-amber-500/10"
                   }`}
                 >
                   {STATUS_LABELS[recording.status]}
@@ -286,7 +286,7 @@ export function SessionRecordingsSection() {
                 {canWrite && (
                   <button
                     type="button"
-                    className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-red-500/10 text-red-400 rounded-lg transition-colors"
+                    className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-red-500/10 text-danger rounded-lg transition-colors"
                     onClick={() => void remove(recording)}
                   >
                     Delete
@@ -366,7 +366,7 @@ function RecordingViewer({
 
   const downloadUrl = useMemo(() => `${castUrl}?download=1`, [castUrl]);
 
-  if (error) return <p className="text-sm text-red-400">{error}</p>;
+  if (error) return <p className="text-sm text-danger">{error}</p>;
   if (!cast) return <p className="text-sm text-on-surface-faint">Loading recording…</p>;
 
   return (

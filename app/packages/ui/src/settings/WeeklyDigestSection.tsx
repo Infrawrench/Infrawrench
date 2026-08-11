@@ -76,9 +76,9 @@ function statusView(settings: DigestSettings): {
 }
 
 const TONE_CLASS = {
-  ok: "text-green-400",
-  warn: "text-amber-400",
-  error: "text-red-400",
+  ok: "text-success",
+  warn: "text-warning",
+  error: "text-danger",
   muted: "text-on-surface-tertiary",
 } as const;
 
@@ -199,7 +199,7 @@ export function WeeklyDigestSection() {
       <section className="border border-border rounded-xl p-5 space-y-2">
         <h2 className="text-sm font-semibold text-on-surface-secondary">Weekly digest</h2>
         {error ? (
-          <p className="text-xs text-red-400">{error}</p>
+          <p className="text-xs text-danger">{error}</p>
         ) : (
           <p className="text-sm text-on-surface-faint">Loading…</p>
         )}
@@ -313,7 +313,7 @@ export function WeeklyDigestSection() {
       <div className="space-y-2 border-t border-border pt-4">
         <h3 className="text-xs font-semibold text-on-surface-secondary">Email recipients</h3>
         {!settings.emailAvailable && (
-          <p className="text-xs text-amber-400">
+          <p className="text-xs text-warning">
             This deployment has no mail provider configured, so email recipients will not receive
             anything.
           </p>
@@ -335,7 +335,7 @@ export function WeeklyDigestSection() {
                   type="button"
                   onClick={() => void handleRemoveRecipient(r.id)}
                   aria-label={`Remove ${r.email}`}
-                  className="text-xs text-on-surface-tertiary hover:text-red-400 transition-colors"
+                  className="text-xs text-on-surface-tertiary hover:text-danger transition-colors"
                 >
                   Remove
                 </button>
@@ -364,7 +364,7 @@ export function WeeklyDigestSection() {
             {addBusy ? "Adding…" : "Add"}
           </button>
         </div>
-        {recipientError && <p className="text-xs text-red-400">{recipientError}</p>}
+        {recipientError && <p className="text-xs text-danger">{recipientError}</p>}
       </div>
 
       {/* Last attempt */}
@@ -393,9 +393,9 @@ export function WeeklyDigestSection() {
         </p>
       )}
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
       {sendMessage && (
-        <p className={`text-xs ${sendMessage.kind === "ok" ? "text-green-400" : "text-red-400"}`}>
+        <p className={`text-xs ${sendMessage.kind === "ok" ? "text-success" : "text-danger"}`}>
           {sendMessage.text}
         </p>
       )}

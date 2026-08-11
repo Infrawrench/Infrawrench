@@ -365,7 +365,7 @@ export function MetricAlertRuleModal({
             </label>
           </div>
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-2">
             <button

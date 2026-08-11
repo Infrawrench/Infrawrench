@@ -50,9 +50,9 @@ const GROUP_OPTIONS: Array<{ key: GroupBy; label: string }> = [
 
 /** Pill tones per bucket, matching the ExpirySection translucent-badge recipe. */
 const SEVERITY_BADGE_CLASSES: Record<PostureSeverity, string> = {
-  critical: "bg-red-500/10 text-red-400",
-  high: "bg-orange-500/10 text-orange-400",
-  medium: "bg-amber-500/10 text-amber-400",
+  critical: "bg-red-500/10 text-danger",
+  high: "bg-orange-500/10 text-severe",
+  medium: "bg-amber-500/10 text-warning",
   low: "bg-surface-overlay text-on-surface-tertiary",
 };
 
@@ -397,7 +397,7 @@ export function PostureSection({
       </p>
 
       {error != null && data === null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           Couldn&apos;t load the posture findings — {error}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
@@ -412,7 +412,7 @@ export function PostureSection({
         </p>
       )}
       {error != null && data !== null && (
-        <p role="alert" className="mb-4 text-xs text-red-400">
+        <p role="alert" className="mb-4 text-xs text-danger">
           Couldn&apos;t refresh — showing the last loaded findings. {error}
         </p>
       )}
@@ -422,7 +422,7 @@ export function PostureSection({
           <SeverityChips data={data} />
 
           {actionError != null && (
-            <p role="alert" className="mb-4 text-xs text-red-400">
+            <p role="alert" className="mb-4 text-xs text-danger">
               {actionError}
             </p>
           )}

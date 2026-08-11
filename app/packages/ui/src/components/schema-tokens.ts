@@ -11,10 +11,10 @@
 /** `BadgeNode.color` → pill classes. Unknown colours fall back to `gray`. */
 const BADGE_CLASSES: Record<string, string> = {
   green:
-    "bg-green-100 text-green-800 border border-green-300 dark:bg-green-900 dark:text-green-300 dark:border-green-700",
+    "bg-green-100 text-success-strong border border-green-300 dark:bg-green-900 dark:border-green-700",
   yellow:
-    "bg-yellow-100 text-yellow-800 border border-yellow-300 dark:bg-yellow-900 dark:text-yellow-300 dark:border-yellow-700",
-  red: "bg-red-100 text-red-800 border border-red-300 dark:bg-red-900 dark:text-red-300 dark:border-red-700",
+    "bg-yellow-100 text-warning-strong border border-yellow-300 dark:bg-yellow-900 dark:border-yellow-700",
+  red: "bg-red-100 text-danger-strong border border-red-300 dark:bg-red-900 dark:border-red-700",
   blue: "bg-accent-muted text-accent-on-muted border border-accent-muted-border",
   gray: "bg-surface-overlay text-on-surface-tertiary border border-border-strong",
 };

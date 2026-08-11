@@ -98,7 +98,7 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
           <div className="px-4 py-2 border-t border-border space-y-2">
             {error && <ErrorNotice message={error} />}
             {result && (
-              <p className="text-xs text-emerald-500 dark:text-emerald-400">
+              <p className="text-xs text-success">
                 Applied {result.applied} document{result.applied === 1 ? "" : "s"}.
               </p>
             )}

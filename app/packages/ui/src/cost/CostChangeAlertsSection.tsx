@@ -183,7 +183,7 @@ export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps
       </div>
 
       {error !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           Couldn&rsquo;t load change alerts — {error}
         </div>
       )}
@@ -213,7 +213,7 @@ export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps
                     {CADENCE_BADGE[alert.cadence]}
                   </span>
                   {!alert.enabled && (
-                    <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-500">
+                    <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning">
                       Paused
                     </span>
                   )}
@@ -231,14 +231,14 @@ export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps
                   <button
                     type="button"
                     onClick={() => setEditing({ alert })}
-                    className="text-xs text-blue-400 hover:text-blue-300"
+                    className="text-xs text-info hover:text-info-strong"
                   >
                     Edit
                   </button>
                   <button
                     type="button"
                     onClick={() => void remove(alert)}
-                    className="text-xs text-on-surface-faint hover:text-red-400"
+                    className="text-xs text-on-surface-faint hover:text-danger"
                   >
                     Delete
                   </button>
@@ -287,7 +287,7 @@ export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps
                     </td>
                     <td
                       className={`whitespace-nowrap px-3 py-2 text-right ${
-                        event.direction === "increase" ? "text-red-500" : "text-emerald-500"
+                        event.direction === "increase" ? "text-danger" : "text-success"
                       }`}
                     >
                       {costAlertEventDeltaLabel(event)}
@@ -565,7 +565,7 @@ export function CostChangeAlertConfigModal({
             Enabled
           </label>
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-2">
             <button

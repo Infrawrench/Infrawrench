@@ -183,7 +183,7 @@ export function PublishPanel({ capability, onPublish }: Props) {
             </label>
 
             {error && (
-              <div className="text-xs text-red-400 font-mono bg-red-500/10 border border-red-500/30 rounded-md px-3 py-2">
+              <div className="text-xs text-danger font-mono bg-red-500/10 border border-red-500/30 rounded-md px-3 py-2">
                 {error}
               </div>
             )}
@@ -361,7 +361,7 @@ function KeyValueListEditor({ value, onChange }: KeyValueListEditorProps) {
           <button
             type="button"
             onClick={() => remove(k)}
-            className="text-xs text-on-surface-faint hover:text-red-400 px-2"
+            className="text-xs text-on-surface-faint hover:text-danger px-2"
             aria-label={`Remove ${k}`}
           >
             ×
@@ -390,7 +390,7 @@ function SendHistoryRow({ entry }: { entry: SendEntry }) {
       }`}
     >
       <div className="flex items-center gap-2 text-[11px] text-on-surface-tertiary">
-        <span className={entry.status === "ok" ? "text-green-400" : "text-red-400"}>
+        <span className={entry.status === "ok" ? "text-success" : "text-danger"}>
           {entry.status === "ok" ? "✓" : "✕"}
         </span>
         <span>{time}</span>

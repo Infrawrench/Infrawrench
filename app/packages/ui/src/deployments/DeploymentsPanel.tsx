@@ -318,7 +318,7 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
         )}
         {busy !== null && <StageIndicator current={stage} />}
         {error && (
-          <p className="text-xs text-red-400 whitespace-pre-wrap" role="alert">
+          <p className="text-xs text-danger whitespace-pre-wrap" role="alert">
             {error}
           </p>
         )}
@@ -406,9 +406,9 @@ function StageIndicator({ current }: { current: DeployStage | null }) {
           key={s}
           className={
             i < index
-              ? "text-green-400"
+              ? "text-success"
               : i === index
-                ? "text-amber-400 font-semibold"
+                ? "text-warning font-semibold"
                 : "text-on-surface-faint"
           }
         >
@@ -426,9 +426,7 @@ function LogPanel({ logs }: { logs: WorkflowRunLog[] }) {
       {logs.map((l, i) => (
         <div
           key={i}
-          className={
-            l.level === "error" ? "text-red-400" : l.level === "warn" ? "text-yellow-400" : ""
-          }
+          className={l.level === "error" ? "text-danger" : l.level === "warn" ? "text-warning" : ""}
         >
           {l.message}
         </div>
@@ -443,9 +441,7 @@ function ResultPanel({ result }: { result: DeployRunResult }) {
       <div className="flex items-center gap-3">
         <span
           className={
-            result.status === "success"
-              ? "text-green-400 font-semibold"
-              : "text-red-400 font-semibold"
+            result.status === "success" ? "text-success font-semibold" : "text-danger font-semibold"
           }
         >
           {result.status}
@@ -457,7 +453,7 @@ function ResultPanel({ result }: { result: DeployRunResult }) {
       </div>
 
       {result.error && (
-        <pre className="whitespace-pre-wrap text-red-400 bg-surface-overlay rounded p-2">
+        <pre className="whitespace-pre-wrap text-danger bg-surface-overlay rounded p-2">
           {result.error.message}
         </pre>
       )}
@@ -627,7 +623,7 @@ function TriggersSection({
       </div>
 
       {selectKeys.length > 0 && (
-        <p className="text-xs text-amber-400">
+        <p className="text-xs text-warning">
           A run reported no answer for {selectKeys.map((k) => `select("${k}")`).join(", ")}. Fill
           those in above — a triggered deploy cannot ask.
         </p>
@@ -641,7 +637,7 @@ function TriggersSection({
       </p>
 
       {error && (
-        <p className="text-xs text-red-400 whitespace-pre-wrap" role="alert">
+        <p className="text-xs text-danger whitespace-pre-wrap" role="alert">
           {error}
         </p>
       )}
@@ -690,9 +686,9 @@ function RunHistory({
               <span
                 className={
                   r.status === "success"
-                    ? "text-green-400"
+                    ? "text-success"
                     : r.status === "failure"
-                      ? "text-red-400"
+                      ? "text-danger"
                       : "text-on-surface-secondary"
                 }
               >

@@ -16,14 +16,14 @@ const MERGED_LINE_CAP = 3000;
 
 /** Per-stream label colors, assigned round-robin as streams are added. */
 const STREAM_COLORS = [
-  "text-sky-400",
-  "text-emerald-400",
-  "text-amber-400",
-  "text-fuchsia-400",
-  "text-rose-400",
-  "text-cyan-400",
-  "text-lime-400",
-  "text-violet-400",
+  "text-series-1",
+  "text-series-2",
+  "text-series-3",
+  "text-series-4",
+  "text-series-5",
+  "text-series-6",
+  "text-series-7",
+  "text-series-8",
 ];
 
 interface StreamState {
@@ -448,13 +448,13 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
                 type="button"
                 onClick={() => void deleteQuery()}
                 disabled={saveBusy}
-                className="px-3 py-1 text-xs text-red-400 hover:text-red-300 border border-border-strong rounded-md transition-colors"
+                className="px-3 py-1 text-xs text-danger hover:text-danger-strong border border-border-strong rounded-md transition-colors"
               >
                 Delete
               </button>
             </>
           )}
-          {saveError && <span className="text-xs text-red-400">{saveError}</span>}
+          {saveError && <span className="text-xs text-danger">{saveError}</span>}
           {!saveError && activeQuery?.alertEnabled && (
             <span className="text-xs text-on-surface-faint">
               {activeQuery.lastEvalError
@@ -525,7 +525,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
             setPaused((p) => !p);
           }}
           className={`px-3 py-1 text-xs border border-border-strong rounded-md transition-colors ${
-            paused ? "text-amber-400" : "text-on-surface-tertiary hover:text-white"
+            paused ? "text-warning" : "text-on-surface-tertiary hover:text-white"
           }`}
         >
           {paused ? "Resume" : "Pause"}
@@ -587,7 +587,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
                   </select>
                 )}
                 {stream.error && (
-                  <span className="text-red-400" title={stream.error}>
+                  <span className="text-danger" title={stream.error}>
                     !
                   </span>
                 )}
@@ -611,12 +611,12 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
       )}
 
       {compiled.error && (
-        <div className="px-3 py-1.5 text-xs text-red-400 font-mono border-b border-border bg-red-500/5 shrink-0">
+        <div className="px-3 py-1.5 text-xs text-danger font-mono border-b border-border bg-red-500/5 shrink-0">
           {compiled.error}
         </div>
       )}
       {optionsError && (
-        <div className="px-3 py-1.5 text-xs text-red-400 font-mono border-b border-border bg-red-500/5 shrink-0">
+        <div className="px-3 py-1.5 text-xs text-danger font-mono border-b border-border bg-red-500/5 shrink-0">
           {optionsError}
         </div>
       )}
@@ -702,7 +702,7 @@ function SplitPane({ title, colorClass, error, lines, paused, empty }: SplitPane
       <div className="px-3 py-1 bg-surface border-b border-border text-xs shrink-0 flex items-center gap-2">
         <span className={`font-semibold ${colorClass}`}>{title}</span>
         {error && (
-          <span className="text-red-400 font-mono truncate" title={error}>
+          <span className="text-danger font-mono truncate" title={error}>
             {error}
           </span>
         )}

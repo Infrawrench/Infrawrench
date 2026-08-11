@@ -176,7 +176,7 @@ export function MetricPingModal({
                     <button
                       type="button"
                       onClick={() => void handleRemove(p.id)}
-                      className="text-xs text-red-400 hover:text-red-300 px-2 py-0.5 rounded hover:bg-surface-overlay"
+                      className="text-xs text-danger hover:text-danger-strong px-2 py-0.5 rounded hover:bg-surface-overlay"
                     >
                       Remove
                     </button>
@@ -187,7 +187,7 @@ export function MetricPingModal({
           </div>
         )}
         {loading && <div className="text-sm text-on-surface-muted px-1 py-2">Loading metrics…</div>}
-        {loadError && <div className="text-sm text-red-400 px-1 py-2">{loadError}</div>}
+        {loadError && <div className="text-sm text-danger px-1 py-2">{loadError}</div>}
         {!loading && !loadError && series.length === 0 && (
           <div className="text-sm text-on-surface-muted px-1 py-2">
             No metrics available for this resource.
@@ -240,7 +240,7 @@ export function MetricPingModal({
                 />
               </label>
             </div>
-            {error && <div className="text-sm text-red-400">{error}</div>}
+            {error && <div className="text-sm text-danger">{error}</div>}
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"

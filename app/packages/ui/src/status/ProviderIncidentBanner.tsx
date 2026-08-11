@@ -54,8 +54,8 @@ export function ProviderIncidentBanner({ client, onOpenUrl }: ProviderIncidentBa
 
   const critical = top.impact === "critical";
   const tone = critical
-    ? "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30"
-    : "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30";
+    ? "bg-red-500/15 text-danger border-red-500/30"
+    : "bg-amber-500/15 text-warning border-amber-500/30";
 
   return (
     <div

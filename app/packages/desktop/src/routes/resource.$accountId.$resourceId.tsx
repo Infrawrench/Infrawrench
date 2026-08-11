@@ -1060,7 +1060,7 @@ export function ResourcePanel({
   }
 
   if (error) {
-    return <div className="p-6 text-red-400 text-sm">{error}</div>;
+    return <div className="p-6 text-danger text-sm">{error}</div>;
   }
 
   if (!schema) return null;
@@ -1292,7 +1292,7 @@ export function ResourcePanel({
 
       {!isSshView && !isSftpView && !hasSqlEditor && pgError && (
         <div className="shrink-0 px-4 py-2 border-t border-border bg-surface">
-          <span className="text-xs text-red-400 font-mono">SQL connection failed: {pgError}</span>
+          <span className="text-xs text-danger font-mono">SQL connection failed: {pgError}</span>
         </div>
       )}
 

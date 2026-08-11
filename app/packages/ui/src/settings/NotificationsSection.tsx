@@ -91,7 +91,7 @@ export function NotificationsSection() {
   }, [orgId]);
 
   if (loadError) {
-    return <p className="text-sm text-red-400">{loadError}</p>;
+    return <p className="text-sm text-danger">{loadError}</p>;
   }
   if (loading || !settings) {
     return <p className="text-sm text-on-surface-faint">Loading…</p>;
@@ -369,8 +369,8 @@ function SettingsForm({
         </Field>
       </div>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
-      {saved && <p className="text-xs text-green-400">Saved.</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
+      {saved && <p className="text-xs text-success">Saved.</p>}
 
       <div className="flex justify-end">
         <button
@@ -452,7 +452,7 @@ function RecipientsPanel({
                 <button
                   type="button"
                   onClick={() => void handleDelete(r.id)}
-                  className="text-red-400 hover:text-red-500 dark:text-red-300"
+                  className="text-danger hover:text-danger-strong"
                 >
                   Remove
                 </button>
@@ -495,7 +495,7 @@ function RecipientsPanel({
         </label>
       </div>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
 
       <div className="flex justify-end">
         <button
@@ -703,7 +703,7 @@ function DriftAlertsSection({ orgId }: { orgId: string }) {
           Last drift digest sent {new Date(settings.lastNotifiedAt).toLocaleString()}.
         </p>
       )}
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
     </section>
   );
 }
@@ -791,7 +791,7 @@ function MsTeamsSection({ orgId, embedded = false }: { orgId: string; embedded?:
       <>
         <h2 className="text-sm font-semibold text-on-surface-secondary">Microsoft Teams</h2>
         {error ? (
-          <p className="text-xs text-red-400">{error}</p>
+          <p className="text-xs text-danger">{error}</p>
         ) : (
           <p className="text-sm text-on-surface-faint">Loading…</p>
         )}
@@ -847,7 +847,7 @@ function MsTeamsSection({ orgId, embedded = false }: { orgId: string; embedded?:
                 <button
                   type="button"
                   onClick={() => void handleRemove(w.id)}
-                  className="text-red-400 hover:text-red-500 dark:text-red-300"
+                  className="text-danger hover:text-danger-strong"
                 >
                   Remove
                 </button>
@@ -859,9 +859,9 @@ function MsTeamsSection({ orgId, embedded = false }: { orgId: string; embedded?:
 
       <AddMsTeamsWebhook orgId={orgId} onAdded={() => void load()} />
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
       {testMessage && (
-        <p className={`text-xs ${testMessage.kind === "ok" ? "text-green-400" : "text-red-400"}`}>
+        <p className={`text-xs ${testMessage.kind === "ok" ? "text-success" : "text-danger"}`}>
           {testMessage.text}
         </p>
       )}
@@ -925,7 +925,7 @@ function AddMsTeamsWebhook({ orgId, onAdded }: { orgId: string; onAdded: () => v
           className={inputClass}
         />
       </Field>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
       <div className="flex justify-end">
         <button
           type="button"
@@ -1060,7 +1060,7 @@ function SlackSection({ orgId, embedded = false }: { orgId: string; embedded?: b
       <>
         <h2 className="text-sm font-semibold text-on-surface-secondary">Slack</h2>
         {error ? (
-          <p className="text-xs text-red-400">{error}</p>
+          <p className="text-xs text-danger">{error}</p>
         ) : (
           <p className="text-sm text-on-surface-faint">Loading…</p>
         )}
@@ -1079,19 +1079,19 @@ function SlackSection({ orgId, embedded = false }: { orgId: string; embedded?: b
       </div>
 
       {installResult === "connected" && (
-        <p className="text-xs text-green-400">Slack workspace connected.</p>
+        <p className="text-xs text-success">Slack workspace connected.</p>
       )}
       {installResult === "cancelled" && (
         <p className="text-xs text-on-surface-muted">Slack install was cancelled.</p>
       )}
       {installResult === "linked" && (
-        <p className="text-xs text-green-400">
+        <p className="text-xs text-success">
           Your Slack account is linked. You can now run /infrawrench commands and decide approvals
           from Slack.
         </p>
       )}
       {installResult === "error" && (
-        <p className="text-xs text-red-400">
+        <p className="text-xs text-danger">
           The Slack install didn&apos;t complete. Try connecting again.
         </p>
       )}
@@ -1127,7 +1127,7 @@ function SlackSection({ orgId, embedded = false }: { orgId: string; embedded?: b
             <button
               type="button"
               onClick={() => void handleDisconnect(install.id)}
-              className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+              className="text-xs text-danger hover:text-danger-strong"
             >
               Disconnect
             </button>
@@ -1156,7 +1156,7 @@ function SlackSection({ orgId, embedded = false }: { orgId: string; embedded?: b
                     <button
                       type="button"
                       onClick={() => void handleRemoveChannel(ch.id)}
-                      className="text-red-400 hover:text-red-500 dark:text-red-300"
+                      className="text-danger hover:text-danger-strong"
                     >
                       Remove
                     </button>
@@ -1179,11 +1179,9 @@ function SlackSection({ orgId, embedded = false }: { orgId: string; embedded?: b
             <code>not_in_channel</code>.
           </p>
 
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs text-danger">{error}</p>}
           {testMessage && (
-            <p
-              className={`text-xs ${testMessage.kind === "ok" ? "text-green-400" : "text-red-400"}`}
-            >
+            <p className={`text-xs ${testMessage.kind === "ok" ? "text-success" : "text-danger"}`}>
               {testMessage.text}
             </p>
           )}
@@ -1275,7 +1273,7 @@ function AddSlackChannel({
         >
           {loading ? "Loading channels…" : "Add a channel"}
         </button>
-        {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+        {error && <p className="text-xs text-danger mt-2">{error}</p>}
       </div>
     );
   }
@@ -1305,7 +1303,7 @@ function AddSlackChannel({
           Every channel the app can see is already routed here.
         </p>
       )}
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
       <div className="flex justify-end">
         <button
           type="button"
@@ -1359,7 +1357,7 @@ function TestPanel({
         credentials and add at least one recipient first.
       </p>
       {message && (
-        <p className={`text-xs ${message.kind === "ok" ? "text-green-400" : "text-red-400"}`}>
+        <p className={`text-xs ${message.kind === "ok" ? "text-success" : "text-danger"}`}>
           {message.text}
         </p>
       )}
@@ -1475,7 +1473,7 @@ function PushPreferencesSection({
         <h2 className="text-sm font-semibold text-on-surface-secondary">
           Your mobile notifications
         </h2>
-        <p className="text-xs text-red-400 mt-2">{error}</p>
+        <p className="text-xs text-danger mt-2">{error}</p>
       </>,
       "",
     );
@@ -1521,7 +1519,7 @@ function PushPreferencesSection({
               <div>
                 <p className="text-on-surface-secondary">
                   {d.deviceName ?? (d.platform === "ios" ? "iPhone" : "Android device")}
-                  {d.disabled && <span className="text-red-400 ml-2 text-xs">(disabled)</span>}
+                  {d.disabled && <span className="text-danger ml-2 text-xs">(disabled)</span>}
                 </p>
                 <p className="text-xs text-on-surface-tertiary">
                   {d.platform} · last seen {new Date(d.lastSeenAt).toLocaleDateString()}
@@ -1530,7 +1528,7 @@ function PushPreferencesSection({
               <button
                 type="button"
                 onClick={() => void handleRemoveDevice(d.id)}
-                className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+                className="text-xs text-danger hover:text-danger-strong"
               >
                 Remove
               </button>
@@ -1540,7 +1538,7 @@ function PushPreferencesSection({
       )}
 
       {testMessage && (
-        <p className={`text-xs ${testMessage.kind === "ok" ? "text-green-400" : "text-red-400"}`}>
+        <p className={`text-xs ${testMessage.kind === "ok" ? "text-success" : "text-danger"}`}>
           {testMessage.text}
         </p>
       )}

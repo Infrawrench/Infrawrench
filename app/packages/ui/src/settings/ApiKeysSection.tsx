@@ -116,11 +116,11 @@ export function ApiKeysSection() {
                   </td>
                   <td className="px-4 py-2">
                     {key.revokedAt ? (
-                      <span className="text-xs text-red-400">Revoked</span>
+                      <span className="text-xs text-danger">Revoked</span>
                     ) : key.expiresAt && new Date(key.expiresAt) < new Date() ? (
-                      <span className="text-xs text-yellow-400">Expired</span>
+                      <span className="text-xs text-warning">Expired</span>
                     ) : (
-                      <span className="text-xs text-green-400">Active</span>
+                      <span className="text-xs text-success">Active</span>
                     )}
                   </td>
                   <td className="px-4 py-2 text-right">
@@ -136,7 +136,7 @@ export function ApiKeysSection() {
                         <button
                           type="button"
                           onClick={() => void handleRevoke(key.id)}
-                          className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+                          className="text-xs text-danger hover:text-danger-strong"
                         >
                           Revoke
                         </button>
@@ -283,7 +283,7 @@ function CreateApiKeyModal({
             </div>
           </div>
           {error && (
-            <p id="api-key-name-error" role="alert" className="text-xs text-red-400">
+            <p id="api-key-name-error" role="alert" className="text-xs text-danger">
               {error}
             </p>
           )}

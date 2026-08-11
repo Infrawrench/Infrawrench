@@ -103,7 +103,7 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
-        <div className="text-red-400 text-sm font-mono whitespace-pre-wrap max-w-lg">{error}</div>
+        <div className="text-danger text-sm font-mono whitespace-pre-wrap max-w-lg">{error}</div>
         <button
           type="button"
           onClick={() => void fetchManifest()}
@@ -128,10 +128,10 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
-          {dirty && !readOnly && <span className="text-xs text-yellow-500">Unsaved changes</span>}
-          {applySuccess && <span className="text-xs text-green-400">Applied</span>}
+          {dirty && !readOnly && <span className="text-xs text-warning">Unsaved changes</span>}
+          {applySuccess && <span className="text-xs text-success">Applied</span>}
           {applyError && (
-            <span className="text-xs text-red-400 max-w-xs truncate" title={applyError}>
+            <span className="text-xs text-danger max-w-xs truncate" title={applyError}>
               {applyError}
             </span>
           )}

@@ -58,7 +58,7 @@ function AdminPage() {
           <p className="text-sm text-on-surface-tertiary mb-4">
             Your account is not on the platform admin allowlist.
           </p>
-          <a href="/" className="text-sm text-blue-400 hover:underline">
+          <a href="/" className="text-sm text-info hover:underline">
             Back to the app
           </a>
         </div>
@@ -71,7 +71,7 @@ function AdminPage() {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-xl font-semibold">Platform admin</h1>
-          <a href="/" className="text-sm text-blue-400 hover:underline">
+          <a href="/" className="text-sm text-info hover:underline">
             Back to the app
           </a>
         </div>
@@ -80,7 +80,7 @@ function AdminPage() {
           billed.
         </p>
 
-        {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
+        {error && <p className="text-sm text-danger mb-3">{error}</p>}
 
         {orgs === undefined ? (
           <p className="text-sm text-on-surface-faint">Loading…</p>
@@ -119,7 +119,7 @@ function AdminPage() {
                     <td className="px-4 py-3 text-on-surface-secondary">{org.memberCount}</td>
                     <td className="px-4 py-3">
                       {org.complimentary ? (
-                        <span className="text-xs font-medium px-2 py-1 rounded-full bg-purple-500/10 text-purple-400">
+                        <span className="text-xs font-medium px-2 py-1 rounded-full bg-purple-500/10 text-notice">
                           Complimentary
                         </span>
                       ) : (

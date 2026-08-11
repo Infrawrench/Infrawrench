@@ -72,7 +72,7 @@ function allowedSections(has: HasPermission, table: Record<OrgConfigSection, str
 
 function ErrorBanner({ message }: { message: string }) {
   return (
-    <div className="px-3 py-2 text-sm text-red-400 border border-red-900/50 bg-red-950/20 rounded-lg">
+    <div className="px-3 py-2 text-sm text-danger border border-red-900/50 bg-red-950/20 rounded-lg">
       {message}
     </div>
   );
@@ -370,7 +370,7 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
 
       {applied && (
         <div className="space-y-3 pt-1">
-          <p className="text-sm text-emerald-500">Applied.</p>
+          <p className="text-sm text-success">Applied.</p>
           <PlanView plan={applied} />
         </div>
       )}
@@ -379,9 +379,9 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
 }
 
 const ACTION_CLASS: Record<OrgConfigChange["action"], string> = {
-  create: "text-emerald-500",
-  update: "text-amber-500",
-  delete: "text-red-400",
+  create: "text-success",
+  update: "text-warning",
+  delete: "text-danger",
   unchanged: "text-on-surface-muted",
 };
 
@@ -439,7 +439,7 @@ function PlanView({ plan }: { plan: OrgConfigPlan }) {
 
       {plan.unresolved.length > 0 && (
         <div className="border-t border-border/50 pt-2">
-          <h3 className="text-xs font-semibold text-amber-500 mb-1">Not applied</h3>
+          <h3 className="text-xs font-semibold text-warning mb-1">Not applied</h3>
           <ul className="space-y-1">
             {plan.unresolved.map((item, i) => (
               <li key={i} className="text-xs text-on-surface-muted">

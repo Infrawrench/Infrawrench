@@ -73,7 +73,7 @@ export function TagGovernanceSection({ client }: { client: CostsClient }) {
       <h2 className="text-sm font-semibold text-on-surface">Tags &amp; allocation</h2>
 
       {error !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           Couldn&rsquo;t load tag governance — {error}
         </div>
       )}

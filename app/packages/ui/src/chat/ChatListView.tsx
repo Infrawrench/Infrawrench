@@ -93,7 +93,7 @@ export function ChatListView({ client, onOpen }: Props): React.ReactElement {
               <button
                 type="button"
                 onClick={() => void handleArchive(c.id)}
-                className="ml-3 text-xs text-on-surface-faint hover:text-red-500"
+                className="ml-3 text-xs text-on-surface-faint hover:text-danger"
               >
                 Archive
               </button>

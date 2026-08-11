@@ -148,7 +148,7 @@ export function SettingsEditorView({
           <ErrorNotice
             message={error}
             className="mb-4 rounded bg-red-100 dark:bg-red-900/20 px-3 py-2"
-            textClassName="text-xs text-red-500 dark:text-red-300 leading-relaxed break-words"
+            textClassName="text-xs text-danger leading-relaxed break-words"
           />
         )}
         {loading ? (

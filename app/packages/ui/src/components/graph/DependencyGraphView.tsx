@@ -216,7 +216,7 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
       </div>
 
       {data.truncated && (
-        <div className="shrink-0 px-4 py-1.5 border-b border-border text-xs text-amber-400">
+        <div className="shrink-0 px-4 py-1.5 border-b border-border text-xs text-warning">
           Too many links to draw them all — showing a partial graph. Open a single resource's
           Dependencies tab for its full neighbourhood.
         </div>

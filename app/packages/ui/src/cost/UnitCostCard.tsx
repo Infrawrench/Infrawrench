@@ -303,7 +303,7 @@ export function UnitCostCard({
           </p>
         )}
         {caveat && (
-          <p className="text-[11px] text-amber-500 mt-0.5" role="note">
+          <p className="text-[11px] text-warning mt-0.5" role="note">
             {caveat}
             {gapSummary ? ` (${gapSummary})` : ""}
           </p>
@@ -331,7 +331,7 @@ export function UnitCostCard({
         ) : error ? (
           <div
             role="alert"
-            className="flex-1 flex items-center justify-center text-sm text-red-400 px-4 text-center"
+            className="flex-1 flex items-center justify-center text-sm text-danger px-4 text-center"
           >
             {error}
           </div>

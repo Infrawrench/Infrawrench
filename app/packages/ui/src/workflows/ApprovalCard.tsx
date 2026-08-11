@@ -56,10 +56,10 @@ export function ApprovalCard({
   return (
     <div className="px-3 py-2 flex items-start gap-3 border-b border-white/5">
       <div className="flex-1 min-w-0">
-        <div className="text-xs font-semibold text-amber-300">
+        <div className="text-xs font-semibold text-warning">
           Approval needed: {approval.title}
           <span
-            className={`ml-2 font-normal ${expired ? "text-red-300" : "opacity-60"}`}
+            className={`ml-2 font-normal ${expired ? "text-danger" : "opacity-60"}`}
             title={new Date(approval.expiresAt).toLocaleString()}
           >
             {formatExpiry(approval.expiresAt)}
@@ -94,7 +94,7 @@ export function ApprovalCard({
             type="button"
             disabled={deciding}
             onClick={() => onDecide?.(approval.id, "approve")}
-            className="px-2 py-1 text-xs rounded bg-green-500/20 text-green-300 hover:bg-green-500/30 disabled:opacity-50"
+            className="px-2 py-1 text-xs rounded bg-green-500/20 text-success hover:bg-green-500/30 disabled:opacity-50"
           >
             Approve
           </button>
@@ -102,7 +102,7 @@ export function ApprovalCard({
             type="button"
             disabled={deciding}
             onClick={() => onDecide?.(approval.id, "deny")}
-            className="px-2 py-1 text-xs rounded bg-red-500/20 text-red-300 hover:bg-red-500/30 disabled:opacity-50"
+            className="px-2 py-1 text-xs rounded bg-red-500/20 text-danger hover:bg-red-500/30 disabled:opacity-50"
           >
             Deny
           </button>

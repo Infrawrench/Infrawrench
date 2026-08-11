@@ -75,7 +75,7 @@ export function CostAnnotationsSection({
       </div>
 
       {error !== null ? (
-        <div role="alert" className="text-xs text-red-500">
+        <div role="alert" className="text-xs text-danger">
           Couldn&rsquo;t load annotations — {error}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
             Retry

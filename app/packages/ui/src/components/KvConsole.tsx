@@ -113,8 +113,8 @@ export function KvConsole({ driverName, connected = true, onCommand }: KvConsole
               line.kind === "input"
                 ? "text-on-surface-tertiary"
                 : line.kind === "error"
-                  ? "text-red-400"
-                  : "text-green-400"
+                  ? "text-danger"
+                  : "text-success"
             }
           >
             {line.text}

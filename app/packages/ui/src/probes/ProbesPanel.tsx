@@ -138,9 +138,9 @@ export function ProbesPanel({ client }: ProbesPanelProps) {
         </div>
 
         {error && (
-          <p className="text-sm text-red-400">
+          <p className="text-sm text-danger">
             {error}{" "}
-            <button type="button" onClick={reload} className="underline hover:text-red-300">
+            <button type="button" onClick={reload} className="underline hover:text-danger">
               Retry
             </button>
           </p>
@@ -182,7 +182,7 @@ export function ProbesPanel({ client }: ProbesPanelProps) {
                           {probe.name}
                         </span>
                         {probe.status === "down" && (
-                          <span className="text-xs text-red-400">
+                          <span className="text-xs text-danger">
                             down{probe.lastError ? ` · ${probe.lastError}` : ""}
                           </span>
                         )}
@@ -221,7 +221,7 @@ export function ProbesPanel({ client }: ProbesPanelProps) {
                         <button
                           type="button"
                           onClick={() => void remove(probe)}
-                          className="px-2 py-1 rounded-lg text-xs text-red-400 hover:bg-surface-sunken transition-colors"
+                          className="px-2 py-1 rounded-lg text-xs text-danger hover:bg-surface-sunken transition-colors"
                         >
                           Delete
                         </button>

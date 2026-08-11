@@ -78,7 +78,7 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
           </h3>
           {fired && (
             <span
-              className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-red-500/15 text-red-400"
+              className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-red-500/15 text-danger"
               title={budget.currentMonthEvents
                 .map((e) => `${e.thresholdType} ≥ ${e.thresholdPercent}%`)
                 .join(", ")}
@@ -138,7 +138,7 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
                 thresholds fire on contains somebody's assumptions, and that
                 has to be visible without hovering. */}
             {budget.scenarioModelName && (
-              <span className="text-amber-500">
+              <span className="text-warning">
                 incl. scenario &ldquo;{budget.scenarioModelName}&rdquo;
                 {trendForecast !== null &&
                   ` · trend ${formatMoney(trendForecast, budget.currency)}`}

@@ -130,7 +130,7 @@ export function AccountResourceSections<T extends SectionTypeDef, R extends Sect
               ))}
             </div>
           ) : activeCategory.error ? (
-            <div className="text-xs text-red-400">{activeCategory.error}</div>
+            <div className="text-xs text-danger">{activeCategory.error}</div>
           ) : (
             <div className="flex flex-wrap gap-2">
               {activeCategory.resources.map((resource) => renderResource(resource, activeCategory))}

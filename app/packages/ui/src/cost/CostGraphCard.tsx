@@ -573,7 +573,7 @@ function SpendGraphCard({
           ) : null}
           {adjustment && (
             <span
-              className="text-[10px] uppercase tracking-wide text-amber-500 border border-amber-500/40 rounded px-1 py-px flex-shrink-0"
+              className="text-[10px] uppercase tracking-wide text-warning border border-amber-500/40 rounded px-1 py-px flex-shrink-0"
               title="The organisation's billing rules are applied to this figure."
             >
               Adjusted
@@ -581,7 +581,7 @@ function SpendGraphCard({
           )}
           {deltaPct !== null && (
             <span
-              className={`text-xs flex-shrink-0 ${deltaPct > 0 ? "text-red-400" : "text-emerald-400"}`}
+              className={`text-xs flex-shrink-0 ${deltaPct > 0 ? "text-danger" : "text-success"}`}
               title={previousTotal ? `Previous period: ${previousTotal}` : undefined}
             >
               {deltaPct > 0 ? "▲" : "▼"} {Math.abs(deltaPct).toFixed(1)}%
@@ -595,7 +595,7 @@ function SpendGraphCard({
           assumption it is, and how much of the projection it accounts for.
         */}
         {adjustment && (
-          <p className="text-[11px] text-amber-500 mt-0.5">
+          <p className="text-[11px] text-warning mt-0.5">
             Billing rules applied — collected spend {adjustedRawTotal}.
             {adjustment.rules.length > 0
               ? ` In force: ${adjustment.rules.map((r) => `${r.name} (${r.summary})`).join("; ")}.`
@@ -612,7 +612,7 @@ function SpendGraphCard({
           </p>
         )}
         {scenario && (
-          <p className="text-[11px] text-amber-500 mt-0.5">
+          <p className="text-[11px] text-warning mt-0.5">
             Projection includes scenario &ldquo;{scenario.modelName}&rdquo; (
             {scenario.totalDelta >= 0 ? "+" : "−"}
             {formatMoney(Math.abs(scenario.totalDelta), scenario.currency)} over the forecast
@@ -653,7 +653,7 @@ function SpendGraphCard({
         ) : error ? (
           <div
             role="alert"
-            className="flex-1 flex items-center justify-center text-sm text-red-400 px-4 text-center"
+            className="flex-1 flex items-center justify-center text-sm text-danger px-4 text-center"
           >
             {error}
           </div>

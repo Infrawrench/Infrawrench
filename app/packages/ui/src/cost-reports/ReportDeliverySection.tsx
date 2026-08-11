@@ -39,8 +39,8 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 function statusTone(status: string | null): string {
-  if (status === "succeeded") return "text-emerald-500";
-  if (status === "partial" || status === "failed" || status === "no_targets") return "text-red-500";
+  if (status === "succeeded") return "text-success";
+  if (status === "partial" || status === "failed" || status === "no_targets") return "text-danger";
   return "text-on-surface-faint";
 }
 
@@ -143,7 +143,7 @@ export function ReportDeliverySection({ reportId, client }: ReportDeliverySectio
       </div>
 
       {error !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           {error}{" "}
           <button
             type="button"
@@ -158,7 +158,7 @@ export function ReportDeliverySection({ reportId, client }: ReportDeliverySectio
         </div>
       )}
       {sendResult !== null && (
-        <div role="status" className="text-xs text-emerald-500">
+        <div role="status" className="text-xs text-success">
           {sendResult}
         </div>
       )}
@@ -200,7 +200,7 @@ export function ReportDeliverySection({ reportId, client }: ReportDeliverySectio
                     : ""}
                 </span>
                 {n.lastError && (
-                  <span role="alert" className="block text-xs text-red-500 mt-0.5">
+                  <span role="alert" className="block text-xs text-danger mt-0.5">
                     {n.lastError}
                   </span>
                 )}
@@ -230,7 +230,7 @@ export function ReportDeliverySection({ reportId, client }: ReportDeliverySectio
                     type="button"
                     disabled={busyId === n.id}
                     onClick={() => void deleteSchedule(n)}
-                    className="hover:text-red-500 underline disabled:opacity-50"
+                    className="hover:text-danger underline disabled:opacity-50"
                   >
                     Delete
                   </button>
@@ -367,7 +367,7 @@ function ScheduleEditorModal({
         </p>
 
         {error !== null && (
-          <div role="alert" className="mb-3 text-sm text-red-500">
+          <div role="alert" className="mb-3 text-sm text-danger">
             {error}
           </div>
         )}

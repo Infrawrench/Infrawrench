@@ -39,7 +39,7 @@ export function ResourceChangesPanel({ orgId, resourceId }: ResourceChangesPanel
   }, [orgId, resourceId]);
 
   if (error) {
-    return <p className="p-6 text-sm text-red-400">{error}</p>;
+    return <p className="p-6 text-sm text-danger">{error}</p>;
   }
   if (entries === null) {
     return <p className="p-6 text-sm text-on-surface-muted animate-pulse">Loading…</p>;

@@ -14,8 +14,8 @@ import { CARD, SECONDARY_BUTTON } from "./styles.js";
 const WINDOW_OPTIONS = [30, 90, 180, 365];
 
 const SEVERITY_CLASS: Record<HygieneSeverity, string> = {
-  high: "text-red-400 bg-red-500/10",
-  medium: "text-amber-400 bg-amber-500/10",
+  high: "text-danger bg-red-500/10",
+  medium: "text-warning bg-amber-500/10",
   low: "text-on-surface-tertiary bg-surface-overlay",
 };
 
@@ -77,7 +77,7 @@ export function CredentialHygieneSection() {
     <div className="space-y-6">
       <Header />
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
 
       <section className={`${CARD} space-y-3`}>
         <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -110,7 +110,7 @@ export function CredentialHygieneSection() {
         </p>
 
         {report?.permissionFindingsWithheld && (
-          <p className="text-xs text-amber-400">
+          <p className="text-xs text-warning">
             {report.auditHistoryDays === null
               ? "This organization has no audit history yet, so the unused-permission findings are withheld."
               : `This organization has ${report.auditHistoryDays} days of audit history — not enough to judge unused permissions, so those findings are withheld rather than guessed at.`}

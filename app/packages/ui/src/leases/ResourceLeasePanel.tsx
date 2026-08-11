@@ -116,7 +116,7 @@ export function ResourceLeasePanel({ client, target }: ResourceLeasePanelProps) 
       </div>
 
       {error !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           {error}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
             Retry
@@ -138,7 +138,7 @@ export function ResourceLeasePanel({ client, target }: ResourceLeasePanelProps) 
               )}
               {lease.status === "canceled" && <>The previous lease was canceled.</>}
               {lease.status === "failed" && (
-                <span className="text-red-500">
+                <span className="text-danger">
                   The previous lease&apos;s auto-delete failed: {lease.lastError ?? "unknown error"}
                 </span>
               )}
@@ -164,14 +164,14 @@ export function ResourceLeasePanel({ client, target }: ResourceLeasePanelProps) 
               {new Date(lease.expiresAt).toLocaleString()}
             </span>
             {lease.autoDelete && (
-              <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-400">
+              <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-danger">
                 auto-delete
               </span>
             )}
           </div>
           <div className="mt-1 text-xs text-on-surface-secondary">
             {lease.note && <>{lease.note} · </>}
-            {lease.lastError && <span className="text-amber-500">{lease.lastError} · </span>}
+            {lease.lastError && <span className="text-warning">{lease.lastError} · </span>}
             {warningStatus}
             {!lease.autoDelete && <>Nag-only — the resource is never deleted automatically</>}
           </div>
@@ -196,7 +196,7 @@ export function ResourceLeasePanel({ client, target }: ResourceLeasePanelProps) 
               type="button"
               disabled={busy}
               onClick={() => void remove()}
-              className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-red-500 hover:border-red-500/50 disabled:opacity-50"
+              className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-danger hover:border-red-500/50 disabled:opacity-50"
             >
               Remove
             </button>

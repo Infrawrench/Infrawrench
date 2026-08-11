@@ -160,9 +160,7 @@ export function TunnelSshAttachModal({
             <div className="space-y-3">
               {result.steps.map((s) => (
                 <div key={s.label} className="flex items-start gap-2 text-sm">
-                  <span className={s.ok ? "text-emerald-400" : "text-red-400"}>
-                    {s.ok ? "✓" : "✗"}
-                  </span>
+                  <span className={s.ok ? "text-success" : "text-danger"}>{s.ok ? "✓" : "✗"}</span>
                   <div>
                     <div className="text-on-surface-secondary">{s.label}</div>
                     {s.detail && (
@@ -189,7 +187,7 @@ export function TunnelSshAttachModal({
                   htmlFor="tunnel-ssh-hostname"
                   className="block text-xs font-medium text-on-surface-secondary mb-1.5"
                 >
-                  Public hostname<span className="text-red-500 ml-0.5">*</span>
+                  Public hostname<span className="text-danger ml-0.5">*</span>
                 </label>
                 <input
                   id="tunnel-ssh-hostname"
@@ -206,7 +204,7 @@ export function TunnelSshAttachModal({
                   htmlFor="tunnel-ssh-zone"
                   className="block text-xs font-medium text-on-surface-secondary mb-1.5"
                 >
-                  Zone<span className="text-red-500 ml-0.5">*</span>
+                  Zone<span className="text-danger ml-0.5">*</span>
                 </label>
                 <select
                   id="tunnel-ssh-zone"
@@ -229,7 +227,7 @@ export function TunnelSshAttachModal({
                     htmlFor="tunnel-ssh-service"
                     className="block text-xs font-medium text-on-surface-secondary mb-1.5"
                   >
-                    Service<span className="text-red-500 ml-0.5">*</span>
+                    Service<span className="text-danger ml-0.5">*</span>
                   </label>
                   <select
                     id="tunnel-ssh-service"
@@ -250,7 +248,7 @@ export function TunnelSshAttachModal({
                     htmlFor="tunnel-ssh-port"
                     className="block text-xs font-medium text-on-surface-secondary mb-1.5"
                   >
-                    Local port<span className="text-red-500 ml-0.5">*</span>
+                    Local port<span className="text-danger ml-0.5">*</span>
                   </label>
                   <input
                     id="tunnel-ssh-port"
@@ -274,7 +272,7 @@ export function TunnelSshAttachModal({
                   htmlFor={sshUsernameId}
                   className="block text-xs font-medium text-on-surface-secondary mb-1.5"
                 >
-                  SSH username<span className="text-red-500 ml-0.5">*</span>
+                  SSH username<span className="text-danger ml-0.5">*</span>
                   <span className="text-on-surface-faint font-normal">
                     {" "}
                     (to install cloudflared)
@@ -296,7 +294,7 @@ export function TunnelSshAttachModal({
                     htmlFor="tunnel-ssh-key"
                     className="block text-xs font-medium text-on-surface-secondary mb-1.5"
                   >
-                    SSH key<span className="text-red-500 ml-0.5">*</span>
+                    SSH key<span className="text-danger ml-0.5">*</span>
                   </label>
                   <select
                     id="tunnel-ssh-key"
@@ -331,7 +329,7 @@ export function TunnelSshAttachModal({
             <ErrorNotice
               message={error}
               className="mb-3 rounded bg-red-100 dark:bg-red-900/20 px-3 py-2 max-h-40 overflow-y-auto"
-              textClassName="text-xs text-red-500 dark:text-red-300 leading-relaxed break-words"
+              textClassName="text-xs text-danger leading-relaxed break-words"
             />
           )}
           <div className="flex gap-3">

@@ -428,7 +428,7 @@ export function PeerPaneView({
                   onClick={() => {
                     void navigator.clipboard.writeText(`localhost:${pf.localPort}`);
                   }}
-                  className="text-xs font-mono text-emerald-700 dark:text-emerald-300 hover:text-emerald-600 dark:hover:text-emerald-200 transition-colors"
+                  className="text-xs font-mono text-success hover:text-success-strong transition-colors"
                   title="Click to copy"
                 >
                   localhost:{pf.localPort} → {pf.remotePort}
@@ -436,7 +436,7 @@ export function PeerPaneView({
                 <button
                   type="button"
                   onClick={() => portForward.onStop(pf.sessionId)}
-                  className="px-2 py-0.5 rounded text-xs text-red-400 hover:text-red-500 dark:text-red-300 hover:bg-red-500/10 transition-colors"
+                  className="px-2 py-0.5 rounded text-xs text-danger hover:text-danger-strong hover:bg-red-500/10 transition-colors"
                 >
                   Stop
                 </button>
@@ -450,7 +450,7 @@ export function PeerPaneView({
         <ErrorNotice
           message={portForward.error}
           className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2"
-          textClassName="text-sm text-red-600 dark:text-red-200"
+          textClassName="text-sm text-danger"
         />
       )}
 
@@ -636,7 +636,7 @@ function PeerResourcePill({
             <p className="text-xs text-on-surface-muted truncate">{resource.subtitle}</p>
           )}
           {activePortForward && (
-            <p className="text-xs text-emerald-400 font-mono truncate">
+            <p className="text-xs text-success font-mono truncate">
               :{activePortForward.localPort} → :{activePortForward.remotePort}
             </p>
           )}
@@ -680,7 +680,7 @@ function PeerResourcePill({
             event.stopPropagation();
             onStopPortForward(activePortForward.sessionId);
           }}
-          className="ml-1 size-6 rounded-full bg-red-100 dark:bg-red-900/50 hover:bg-red-200 dark:hover:bg-red-800/50 text-xs text-red-500 dark:text-red-300 transition-colors"
+          className="ml-1 size-6 rounded-full bg-red-100 dark:bg-red-900/50 hover:bg-red-200 dark:hover:bg-red-800/50 text-xs text-danger transition-colors"
           title="Stop port forward"
         >
           ■

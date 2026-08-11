@@ -169,7 +169,7 @@ export function BillingRulesSection() {
       </div>
 
       {error !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           {error}{" "}
           <button type="button" onClick={() => void load()} className="underline">
             Retry
@@ -230,7 +230,7 @@ export function BillingRulesSection() {
                     <button
                       type="button"
                       onClick={() => void remove(rule)}
-                      className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+                      className="text-xs text-danger hover:text-danger-strong"
                     >
                       Remove
                     </button>
@@ -580,7 +580,7 @@ function NewRuleForm({
           Add rule
         </button>
         {blocker !== null && name.length > 0 && (
-          <span className="text-xs text-amber-500">{blocker}</span>
+          <span className="text-xs text-warning">{blocker}</span>
         )}
         <button
           type="button"

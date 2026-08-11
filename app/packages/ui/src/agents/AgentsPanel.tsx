@@ -457,7 +457,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
               </div>
             )}
             {saveNotice && !configOpen && (
-              <div className="absolute right-0 top-full z-40 mt-2 rounded-md border border-green-500/30 bg-green-500/10 px-3 py-2 text-xs font-medium text-green-200 shadow-lg">
+              <div className="absolute right-0 top-full z-40 mt-2 rounded-md border border-green-500/30 bg-green-500/10 px-3 py-2 text-xs font-medium text-success shadow-lg">
                 Agent defaults saved
               </div>
             )}
@@ -697,7 +697,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                             disabled={!!deletingSessionId}
                             onClick={() => void deleteSession(session)}
                             aria-busy={deletingSessionId === session.id}
-                            className="px-2 py-1 rounded border border-red-500/40 text-xs text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                            className="px-2 py-1 rounded border border-red-500/40 text-xs text-danger hover:bg-red-500/10 disabled:opacity-50"
                           >
                             {deletingSessionId === session.id ? "Deleting..." : "Delete"}
                           </button>

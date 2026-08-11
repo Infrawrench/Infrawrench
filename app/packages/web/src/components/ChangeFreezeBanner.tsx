@@ -59,12 +59,12 @@ export function ChangeFreezeBanner({ orgId }: { orgId: string }) {
   if (!freeze) return null;
 
   return (
-    <div className="flex items-center gap-2 px-4 py-1.5 text-sm bg-amber-500/15 text-amber-700 dark:text-amber-300 border-b border-amber-500/30">
+    <div className="flex items-center gap-2 px-4 py-1.5 text-sm bg-amber-500/15 text-warning border-b border-amber-500/30">
       <span aria-hidden className="font-semibold">
         ❄
       </span>
       <span className="font-medium">Change freeze: {freeze.name}</span>
-      <span className="text-amber-700/80 dark:text-amber-300/80">
+      <span className="text-warning/80">
         Destructive actions are blocked {formatEnd(freeze.endsAt)}.
         {freeze.reason ? ` ${freeze.reason}` : ""}
       </span>

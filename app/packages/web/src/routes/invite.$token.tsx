@@ -101,10 +101,10 @@ function InviteAcceptPage() {
           as a <span className="text-on-surface-secondary font-medium">{invite.role}</span>.
         </p>
 
-        {error && <p className="text-xs text-red-400 mb-4">{error}</p>}
+        {error && <p className="text-xs text-danger mb-4">{error}</p>}
 
         {expired ? (
-          <p className="text-sm text-red-400">This invitation has expired.</p>
+          <p className="text-sm text-danger">This invitation has expired.</p>
         ) : (
           <button
             type="button"

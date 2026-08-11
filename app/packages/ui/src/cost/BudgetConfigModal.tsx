@@ -230,7 +230,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
                   onClick={() =>
                     set({ thresholds: [...input.thresholds, { type: "actual", percent: 90 }] })
                   }
-                  className="text-xs text-blue-400 hover:text-blue-300"
+                  className="text-xs text-info hover:text-info-strong"
                 >
                   + Add threshold
                 </button>
@@ -238,7 +238,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
             </div>
           </div>
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-2">
             <button

@@ -57,9 +57,9 @@ const GROUP_OPTIONS: Array<{ key: GroupBy; label: string }> = [
 
 /** Pill tones per bucket, matching the ExpirySection recipe. */
 const SEVERITY_BADGE_CLASSES: Record<QuotaSeverity, string> = {
-  exhausted: "bg-red-500/10 text-red-400",
-  critical: "bg-orange-500/10 text-orange-400",
-  trending: "bg-amber-500/10 text-amber-400",
+  exhausted: "bg-red-500/10 text-danger",
+  critical: "bg-orange-500/10 text-severe",
+  trending: "bg-amber-500/10 text-warning",
   ok: "bg-surface-overlay text-on-surface-tertiary",
 };
 
@@ -76,9 +76,9 @@ const SEVERITY_BAR_CLASSES: Record<QuotaSeverity, string> = {
 };
 
 const SEVERITY_TEXT_CLASSES: Record<QuotaSeverity, string> = {
-  exhausted: "text-red-400",
-  critical: "text-orange-400",
-  trending: "text-amber-400",
+  exhausted: "text-danger",
+  critical: "text-severe",
+  trending: "text-warning",
   ok: "text-on-surface-tertiary",
 };
 
@@ -189,7 +189,7 @@ function CoverageNotes({
   return (
     <div className="mb-4 flex flex-col gap-2 text-xs">
       {failing.map((account) => (
-        <p key={account.accountId} role="alert" className="text-red-400">
+        <p key={account.accountId} role="alert" className="text-danger">
           <span className="font-medium">{account.accountName}</span> — quotas could not be read:{" "}
           {account.lastError}
           {quotaLinkUrl(account.lastErrorHelpUrl) && (
@@ -263,7 +263,7 @@ export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSe
       </p>
 
       {error != null && data === null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           Couldn&apos;t load the quota radar — {error}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
@@ -278,7 +278,7 @@ export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSe
         </p>
       )}
       {error != null && data !== null && (
-        <p role="alert" className="mb-4 text-xs text-red-400">
+        <p role="alert" className="mb-4 text-xs text-danger">
           Couldn&apos;t refresh — showing the last loaded readings. {error}
         </p>
       )}

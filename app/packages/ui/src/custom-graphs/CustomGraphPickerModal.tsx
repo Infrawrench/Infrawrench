@@ -116,7 +116,7 @@ export function CustomGraphPickerModal({
         </p>
 
         {error && (
-          <p role="alert" className="text-xs text-red-400 mb-3">
+          <p role="alert" className="text-xs text-danger mb-3">
             {error}
           </p>
         )}
@@ -167,7 +167,7 @@ export function CustomGraphPickerModal({
                     onClick={() => void remove(g)}
                     title={`Delete ${g.name}`}
                     aria-label={`Delete ${g.name}`}
-                    className="size-6 flex-shrink-0 mr-1 rounded-full text-on-surface-faint opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-red-400 hover:bg-surface-raised text-xs flex items-center justify-center disabled:opacity-50"
+                    className="size-6 flex-shrink-0 mr-1 rounded-full text-on-surface-faint opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-danger hover:bg-surface-raised text-xs flex items-center justify-center disabled:opacity-50"
                   >
                     ✕
                   </button>
@@ -180,7 +180,7 @@ export function CustomGraphPickerModal({
         )}
 
         {paidPlanNotice ? (
-          <p className="text-xs text-amber-400/90 border-t border-border pt-3">{paidPlanNotice}</p>
+          <p className="text-xs text-warning/90 border-t border-border pt-3">{paidPlanNotice}</p>
         ) : (
           client.create && (
             <div className="border-t border-border pt-3 flex items-center gap-2">

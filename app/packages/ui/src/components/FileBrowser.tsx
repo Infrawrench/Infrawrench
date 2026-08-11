@@ -462,7 +462,7 @@ export function FileBrowser({
                   type="button"
                   onClick={() => setConfirmBulkDelete(true)}
                   disabled={bulkWorking}
-                  className="px-2.5 py-1 text-xs text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 border border-red-300 dark:border-red-900/50 hover:border-red-400 dark:hover:border-red-700/50 rounded transition-colors disabled:opacity-40"
+                  className="px-2.5 py-1 text-xs text-danger hover:text-danger-strong border border-red-300 dark:border-red-900/50 hover:border-red-400 dark:hover:border-red-700/50 rounded transition-colors disabled:opacity-40"
                 >
                   Delete
                 </button>
@@ -481,7 +481,7 @@ export function FileBrowser({
       {/* ── File list ── */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {loading && <div className="px-4 py-3 text-xs text-on-surface-faint">Loading…</div>}
-        {error && <div className="px-4 py-3 text-xs text-red-400">{error}</div>}
+        {error && <div className="px-4 py-3 text-xs text-danger">{error}</div>}
 
         {!loading && !error && (
           <table className="w-full text-xs">
@@ -518,7 +518,7 @@ export function FileBrowser({
                   <td aria-label="Select" />
                   <td className="px-2 py-1.5" colSpan={3}>
                     <div className="flex items-center gap-2">
-                      <span className="text-yellow-600">▶</span>
+                      <span className="text-warning">▶</span>
                       <input
                         ref={newFolderInputRef}
                         aria-label="Folder name"
@@ -552,7 +552,7 @@ export function FileBrowser({
                         Cancel
                       </button>
                       {newFolderError && (
-                        <span className="text-xs text-red-400">{newFolderError}</span>
+                        <span className="text-xs text-danger">{newFolderError}</span>
                       )}
                     </div>
                   </td>
@@ -638,7 +638,7 @@ export function FileBrowser({
                         aria-label={`Open folder ${d.name}`}
                         className="flex items-center gap-2 min-w-0 w-full text-left cursor-pointer"
                       >
-                        <span aria-hidden="true" className="text-yellow-600 flex-shrink-0">
+                        <span aria-hidden="true" className="text-warning flex-shrink-0">
                           ▶
                         </span>
                         <span className="text-on-surface-secondary truncate">{d.name}/</span>
@@ -654,7 +654,7 @@ export function FileBrowser({
                               type="button"
                               onClick={() => void handleDelete(d.key, true)}
                               disabled={deleting}
-                              className="text-xs text-red-400 hover:text-red-500 dark:text-red-300 disabled:opacity-40"
+                              className="text-xs text-danger hover:text-danger-strong disabled:opacity-40"
                             >
                               {deleting ? "…" : "Yes"}
                             </button>
@@ -673,7 +673,7 @@ export function FileBrowser({
                               e.stopPropagation();
                               setConfirmDeleteKey(d.key);
                             }}
-                            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-on-surface-faint hover:text-red-400 transition-all px-1"
+                            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-on-surface-faint hover:text-danger transition-all px-1"
                             title="Delete folder"
                             aria-label={`Delete folder ${d.name}`}
                           >
@@ -733,7 +733,7 @@ export function FileBrowser({
                             type="button"
                             onClick={() => void handleDelete(f.key, false)}
                             disabled={deleting}
-                            className="text-xs text-red-400 hover:text-red-500 dark:text-red-300 disabled:opacity-40"
+                            className="text-xs text-danger hover:text-danger-strong disabled:opacity-40"
                           >
                             {deleting ? "…" : "Delete"}
                           </button>
@@ -766,7 +766,7 @@ export function FileBrowser({
                               <button
                                 type="button"
                                 onClick={() => setConfirmDeleteKey(f.key)}
-                                className="text-on-surface-faint hover:text-red-400 transition-colors px-1"
+                                className="text-on-surface-faint hover:text-danger transition-colors px-1"
                                 title="Delete"
                                 aria-label={`Delete ${f.name}`}
                               >
@@ -803,7 +803,7 @@ export function FileBrowser({
                   {t.name}
                 </span>
                 {t.error ? (
-                  <span className="text-red-400 text-xs flex-shrink-0 truncate max-w-48">
+                  <span className="text-danger text-xs flex-shrink-0 truncate max-w-48">
                     {t.error}
                   </span>
                 ) : (

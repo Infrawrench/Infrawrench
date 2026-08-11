@@ -622,7 +622,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
                       )}
                       {resourceState?.error && (
                         <div
-                          className="px-3 py-1 text-xs text-red-500 truncate"
+                          className="px-3 py-1 text-xs text-danger truncate"
                           title={resourceState.error}
                         >
                           Error loading resources
