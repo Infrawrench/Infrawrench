@@ -360,6 +360,37 @@ app.post("/:changeId/revert", async (c) => {
   // not a verdict — so a crash anywhere above leaves something retryable.
   const revertedAt = new Date();
   const completed = await completeRevert(organizationId, change.id, owner, revertedAt);
+
+  // Audited on the strength of the write having happened, not on the strength
+  // of having kept the claim — and therefore *before* the superseded branch
+  // below returns. Losing a lease race is not a reason for the actor behind a
+  // real mutation to someone's infrastructure to vanish from the record.
+  //
+  // One entry per attempt that wrote, never two per attempt: `outcome` is what
+  // keeps a superseded pair from reading as two independent reverts. A
+  // `superseded` entry means "this actor's write reached the provider, but
+  // another attempt owns the event's recorded state" — and the attempt that
+  // took over logs its own `recorded` entry only if it, too, wrote something
+  // (if this write got there first, its re-read plans `already-reverted` for
+  // every field, so it writes nothing and logs nothing).
+  void logAudit({
+    organizationId,
+    userId,
+    action: "resource.change_revert",
+    entityType: "resource",
+    entityId: change.resourceId,
+    metadata: {
+      changeId: change.id,
+      pluginId: change.pluginId,
+      resourceTypeId: change.resourceTypeId,
+      // Keys only, like `resource.update` — a reverted value can be anything
+      // the plugin declared, and the audit table is not the place for it.
+      fieldKeys: plan.revertibleFields,
+      changeRecordedAt: change.createdAt.toISOString(),
+      outcome: completed ? "recorded" : "superseded",
+    },
+  });
+
   if (!completed) {
     // This request outlived its lease and another attempt took the event over
     // while the provider call was in flight. The write landed, but the outcome
@@ -378,23 +409,6 @@ app.post("/:changeId/revert", async (c) => {
       409,
     );
   }
-
-  void logAudit({
-    organizationId,
-    userId,
-    action: "resource.change_revert",
-    entityType: "resource",
-    entityId: change.resourceId,
-    metadata: {
-      changeId: change.id,
-      pluginId: change.pluginId,
-      resourceTypeId: change.resourceTypeId,
-      // Keys only, like `resource.update` — a reverted value can be anything
-      // the plugin declared, and the audit table is not the place for it.
-      fieldKeys: plan.revertibleFields,
-      changeRecordedAt: change.createdAt.toISOString(),
-    },
-  });
 
   return c.json({
     changeId: change.id,

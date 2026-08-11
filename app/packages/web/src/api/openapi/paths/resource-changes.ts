@@ -341,9 +341,12 @@ export function registerResourceChangePaths(ctx: BuildContext) {
       "so the caller can reconcile rather than assume. Two attempts can overlap in that case, but " +
       "they cannot disagree: both invert the same recorded event to the same values, so the second " +
       "one's patch is a subset of the first's.\n\n" +
-      "Blocked with `423` while an org change freeze is in effect, and audit-logged as " +
-      "`resource.change_revert`. The stored resource snapshot is deliberately left untouched, so " +
-      "the next poll observes the reverted state and records it as an ordinary change event.",
+      "Blocked with `423` while an org change freeze is in effect. Every attempt whose write " +
+      "reached the provider is audit-logged as `resource.change_revert`, including one that lost " +
+      "its claim — the entry's `outcome` is `recorded` or `superseded`, so a superseded pair reads " +
+      "as one mutation with a contested outcome rather than as two reverts. An attempt that wrote " +
+      "nothing logs nothing. The stored resource snapshot is deliberately left untouched, so the " +
+      "next poll observes the reverted state and records it as an ordinary change event.",
     request: { params: ChangeIdParam },
     responses: {
       200: {

@@ -274,6 +274,70 @@ describe("POST /:changeId/revert — claim lifecycle", () => {
     expect(body.appliedFields).toEqual(["size"]);
   });
 
+  /**
+   * A mutation that reached the provider is a mutation someone made to their
+   * infrastructure, and it belongs in the audit trail whoever won the lease
+   * race. Auditing after the superseded branch returned meant a successful
+   * write with no actor attached to it — the one thing the audit log exists to
+   * prevent.
+   */
+  it("audits the write even when the claim was lost, naming the actor", async () => {
+    stubSelect();
+    stubUpdate({ completeWins: false });
+    stubClient();
+
+    await app().request("/chg-1/revert", { method: "POST" });
+
+    expect(mockLogAudit).toHaveBeenCalledTimes(1);
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "org-1",
+        userId: "user-1",
+        action: "resource.change_revert",
+        entityType: "resource",
+        entityId: CHANGE.resourceId,
+        metadata: expect.objectContaining({
+          changeId: "chg-1",
+          fieldKeys: ["size"],
+          // What stops this reading as a clean revert, or as a second one.
+          outcome: "superseded",
+        }),
+      }),
+    );
+  });
+
+  it("marks the attempt that kept its claim as the recorded one", async () => {
+    stubSelect();
+    stubUpdate();
+    stubClient();
+
+    await app().request("/chg-1/revert", { method: "POST" });
+
+    expect(mockLogAudit).toHaveBeenCalledTimes(1);
+    expect(mockLogAudit.mock.calls[0]![0]).toMatchObject({
+      metadata: { outcome: "recorded", fieldKeys: ["size"] },
+    });
+  });
+
+  it("audits nothing when the provider write never landed", async () => {
+    stubSelect();
+    stubUpdate();
+    stubClient({ updateThrows: true });
+
+    await app().request("/chg-1/revert", { method: "POST" });
+    expect(mockLogAudit).not.toHaveBeenCalled();
+  });
+
+  it("audits nothing when there was nothing to write", async () => {
+    stubSelect();
+    stubUpdate();
+    stubClient({ liveSize: "s-1vcpu-1gb" });
+
+    const res = await app().request("/chg-1/revert", { method: "POST" });
+    expect(res.status).toBe(409);
+    expect(mockLogAudit).not.toHaveBeenCalled();
+  });
+
   it("refuses an event that already completed, without touching the provider", async () => {
     stubSelect({ ...CHANGE, revertedAt: new Date("2026-08-10T10:00:00.000Z") });
     stubUpdate();

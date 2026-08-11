@@ -103,7 +103,7 @@ Very occasionally a provider is slow enough that a revert outlives that five-min
 
 - Reverting needs the **Resources: write** permission — the same one editing a resource needs.
 - It is blocked by an active [change freeze](../team-and-billing/change-freeze.md), like any other provider mutation, and can be overridden by an admin the same way.
-- Every revert is written to the [audit log](../team-and-billing/audit-log.md) as `resource.change_revert`, naming the change event and the fields written.
+- Every revert that reaches the provider is written to the [audit log](../team-and-billing/audit-log.md) as `resource.change_revert`, naming who did it, the change event, and the fields written — including the rare superseded case below, which is recorded as `outcome: superseded` so it doesn't read as a second, separate revert. A revert that wrote nothing writes no audit entry either.
 - The revert shows up in the timeline itself. Nothing special-cases it: the next poll sees the resource differ from its stored snapshot and records the undo as an ordinary **Changed** event.
 
 ## Drift alerts
