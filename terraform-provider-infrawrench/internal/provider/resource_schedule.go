@@ -70,6 +70,7 @@ func (r *scheduleResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				ElementType: types.Int64Type,
 				MarkdownDescription: "ISO weekdays the resource is worked on: 1 = Monday … 7 = Sunday. One to " +
 					"seven entries, e.g. `[1, 2, 3, 4, 5]` for a weekday workload.",
+				Validators: []validatorList{elementsBetween(1, 7)},
 			},
 			"stop_time": schema.StringAttribute{
 				Required: true,

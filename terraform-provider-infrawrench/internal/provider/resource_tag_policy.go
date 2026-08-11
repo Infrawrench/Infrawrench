@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -80,12 +82,14 @@ func (r *tagPolicyResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 						"key": schema.StringAttribute{
 							Required:            true,
 							MarkdownDescription: "Tag key, 1–128 characters.",
+							Validators:          []validatorString{stringvalidator.LengthBetween(1, 128)},
 						},
 						"allowed_values": schema.ListAttribute{
 							Optional:    true,
 							ElementType: types.StringType,
 							MarkdownDescription: "Restrict the key to this set of values, at most 64 of them and each " +
 								"1–256 characters. Omit it to accept any non-empty value.",
+							Validators: []validatorList{sizeAtMost(64), elementsLengthBetween(1, 256)},
 						},
 					},
 				},

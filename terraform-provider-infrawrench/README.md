@@ -259,6 +259,7 @@ permissions.
 | Probes, status pages, sleep schedules, log queries                                                                                        | `resources:read`            | `resources:write`                                                          |
 | Metric alerts                                                                                                                             | `metric-alerts:read`        | `metric-alerts:write`                                                      |
 | Custom graphs                                                                                                                             | `dashboards:read`           | `dashboards:write`                                                         |
+| Network flow collection                                                                                                                   | `costs:read`                | `org:settings:write`                                                       |
 | Change freezes                                                                                                                            | `freezes:read`              | `freezes:write`                                                            |
 | Accounts                                                                                                                                  | `accounts:read`             | `accounts:write` (credentials: `secrets:write`; delete: `accounts:delete`) |
 | Bastions                                                                                                                                  | `bastions:read`             | `bastions:write`                                                           |
@@ -581,7 +582,7 @@ terraform import infrawrench_jira_integration.this    org_01HXYZABCDEF
 The full list: `tag_policy`, `alert_routing`, `currency_settings`,
 `anomaly_settings`, `efficiency_alert_settings`, `drift_alert_settings`,
 `expiry_alert_settings`, `posture_alert_settings`,
-`session_recording_settings`, `digest_settings`, `jira_integration`,
+`session_recording_settings`, `network_flow_settings`, `digest_settings`, `jira_integration`,
 `linear_integration`.
 
 **Report notifications** hang off a report, so the notification's own id cannot
@@ -674,6 +675,7 @@ secret store that consumes it rather than into an output.
 | `infrawrench_expiry_alert_settings`      | by org id | Org singleton; destroy is a no-op                         |
 | `infrawrench_posture_alert_settings`     | by org id | Org singleton; destroy is a no-op                         |
 | `infrawrench_session_recording_settings` | by org id | Org singleton; destroy deliberately leaves it running     |
+| `infrawrench_network_flow_settings`      | by org id | Org singleton; destroy turns collection **off**           |
 
 ### Accounts and access
 

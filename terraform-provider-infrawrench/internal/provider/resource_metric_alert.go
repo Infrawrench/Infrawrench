@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -57,6 +59,7 @@ func (r *metricAlertResource) Schema(_ context.Context, _ resource.SchemaRequest
 			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Display name, 1–120 characters.",
+				Validators:          []validatorString{stringvalidator.LengthBetween(1, 120)},
 			},
 			"plugin_id": schema.StringAttribute{
 				Optional: true,
@@ -97,6 +100,7 @@ func (r *metricAlertResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Default:  int64default.StaticInt64(15),
 				MarkdownDescription: "Trailing window in minutes the condition must hold for before firing, " +
 					"5–1440. A momentary spike is not an incident.",
+				Validators: []validatorInt64{between(5, 1440)},
 			},
 			"cooldown_minutes": schema.Int64Attribute{
 				Optional: true,
@@ -104,6 +108,7 @@ func (r *metricAlertResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Default:  int64default.StaticInt64(60),
 				MarkdownDescription: "Least minutes between notified firings for one (rule, resource) pair, " +
 					"0–10080. Per pair rather than per rule, so one noisy instance does not silence the others.",
+				Validators: []validatorInt64{between(0, 10080)},
 			},
 			"enabled": schema.BoolAttribute{
 				Optional:            true,

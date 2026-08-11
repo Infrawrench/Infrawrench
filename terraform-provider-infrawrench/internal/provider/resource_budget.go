@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -74,6 +76,7 @@ func (r *budgetResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Display name, 1–120 characters.",
+				Validators:          []validatorString{stringvalidator.LengthBetween(1, 120)},
 			},
 			"amount_cents": schema.Int64Attribute{
 				Required:            true,
@@ -123,6 +126,7 @@ func (r *budgetResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 						"percent": schema.Int64Attribute{
 							Required:            true,
 							MarkdownDescription: "Percentage of the budget at which to alert, 1–1000.",
+							Validators:          []validatorInt64{between(1, 1000)},
 						},
 					},
 				},

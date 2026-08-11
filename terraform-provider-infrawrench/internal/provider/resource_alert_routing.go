@@ -246,6 +246,7 @@ func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaReques
 										Optional: true,
 										MarkdownDescription: "For `field = \"amountCents\"` — the money the alert " +
 											"is about, in cents.",
+										Validators: []validatorInt64{atLeast(0)},
 									},
 									"value": schema.StringAttribute{
 										Optional:            true,
@@ -295,17 +296,20 @@ func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaReques
 								"start_minute": schema.Int64Attribute{
 									Optional:            true,
 									MarkdownDescription: "Minute of the day the window opens, 0–1439.",
+									Validators:          []validatorInt64{between(0, 1439)},
 								},
 								"end_minute": schema.Int64Attribute{
 									Optional: true,
 									MarkdownDescription: "Minute of the day the window closes, 0–1439. May be **less " +
 										"than** `start_minute` for an overnight window; equal means the window is empty.",
+									Validators: []validatorInt64{between(0, 1439)},
 								},
 								"days": schema.ListAttribute{
 									Optional:    true,
 									ElementType: types.Int64Type,
 									MarkdownDescription: "ISO weekdays the window applies on, matched against the day " +
 										"the window opened. Omit or leave empty for every day.",
+									Validators: []validatorList{elementsBetween(1, 7)},
 								},
 								"urgent_override": schema.StringAttribute{
 									Optional: true,
@@ -325,6 +329,7 @@ func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaReques
 								"after_minutes": schema.Int64Attribute{
 									Optional:            true,
 									MarkdownDescription: "Minutes to wait for an acknowledgement, 1–10080.",
+									Validators:          []validatorInt64{between(1, 10080)},
 								},
 							},
 							Blocks: map[string]schema.Block{

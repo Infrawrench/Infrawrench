@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -61,6 +63,7 @@ func (r *costAnnotationResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"text": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The note, 1–500 characters.",
+				Validators:          []validatorString{stringvalidator.LengthBetween(1, 500)},
 			},
 			"cost_report_id": schema.StringAttribute{
 				Optional: true,

@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -45,6 +47,7 @@ func (r *sshSnippetResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Display name, 1–100 characters.",
+				Validators:          []validatorString{stringvalidator.LengthBetween(1, 100)},
 			},
 			"command": schema.StringAttribute{
 				Required: true,

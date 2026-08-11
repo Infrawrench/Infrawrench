@@ -63,10 +63,12 @@ func (r *driftAlertSettingsResource) Schema(_ context.Context, _ resource.Schema
 				Required: true,
 				MarkdownDescription: "Least time between drift notifications for this organization, 5–1440. One " +
 					"notification per window, no matter how many changes or accounts it covers.",
+				Validators: []validatorInt64{between(5, 1440)},
 			},
 			"min_changes": schema.Int64Attribute{
 				Required:            true,
 				MarkdownDescription: "Fewest matching changes in a window worth notifying about, 1–1000.",
+				Validators:          []validatorInt64{between(1, 1000)},
 			},
 			"account_ids": schema.ListAttribute{
 				Optional:    true,
@@ -77,6 +79,7 @@ func (r *driftAlertSettingsResource) Schema(_ context.Context, _ resource.Schema
 					"Computed as well as optional because the server always returns the key: an empty list and " +
 					"an omitted attribute mean the same thing to it, so removing the attribute keeps whatever " +
 					"was last applied rather than clearing it. Set it to `[]` to widen back to every account.",
+				Validators: []validatorList{sizeAtMost(200)},
 			},
 		},
 	}

@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -51,6 +53,7 @@ func (r *costReportFolderResource) Schema(_ context.Context, _ resource.SchemaRe
 			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Display name, 1–120 characters.",
+				Validators:          []validatorString{stringvalidator.LengthBetween(1, 120)},
 			},
 			"parent_folder_id": schema.StringAttribute{
 				Optional: true,

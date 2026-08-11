@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -50,6 +52,7 @@ func (r *changeFreezeResource) Schema(_ context.Context, _ resource.SchemaReques
 			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Display name, 1–120 characters. Shown to whoever is refused a write.",
+				Validators:          []validatorString{stringvalidator.LengthBetween(1, 120)},
 			},
 			"reason": schema.StringAttribute{
 				Optional:            true,
