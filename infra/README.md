@@ -134,10 +134,18 @@ dropped, `seccompProfile: RuntimeDefault`, and `readOnlyRootFilesystem: true`.
   `api/routes/storage.ts`, and the 0600 kubeconfigs
   `services/kubectl-pty-session.ts` and `services/k8s-pf-proxy.ts` drop before
   spawning `kubectl`/`k9s`. Every one of them builds its path under
-  `os.tmpdir()`, so a tmpfs at `/tmp` covers the lot. SSH session recording
-  (`server-core/src/ssh-recording/`) touches no files — it goes to the database.
-  The `/tmp` mounts carry a `sizeLimit` so a large staged download evicts the
-  pod rather than filling the node's ephemeral disk.
+  `os.tmpdir()`, so one scratch volume mounted at `/tmp` covers the lot. SSH
+  session recording (`server-core/src/ssh-recording/`) touches no files — it
+  goes to the database.
+- **That volume is a plain `emptyDir` with no `medium`, i.e. node-backed
+  ephemeral disk. It is deliberately _not_ `medium: Memory`, and it is not a
+  tmpfs.** A memory-backed `emptyDir` charges every staged byte against the
+  container's memory limit, so a large object-storage download would OOM-kill
+  `web` at its 1Gi ceiling instead of taking the eviction path this is designed
+  around. Do not "tidy" these into `medium: Memory`. The `sizeLimit` (1Gi on
+  `web`, 256Mi on the other two) is the backstop instead: exceed it and the pod
+  is evicted, rather than the node's ephemeral disk filling and taking its
+  neighbours with it.
 - **`NPM_CONFIG_CACHE=/tmp/.npm`** is set in `infra/docker/service.Dockerfile`.
   The container CMD is `npm run start` and npm wants a cache and log dir under
   `$HOME/.npm`, which a read-only root denies it. npm 11 swallows both failures

@@ -58,6 +58,10 @@ spec:
         # the read-only root a small scratch volume rather than betting on which
         # code paths a poll can reach. Also covers npm's cache
         # (NPM_CONFIG_CACHE).
+        #
+        # Node-disk backed, deliberately not `medium: Memory` — that would
+        # charge the staged bytes against this container's 1536Mi limit. Same
+        # reasoning as web; keep all three consistent.
         - name: tmp
           emptyDir:
             sizeLimit: 256Mi

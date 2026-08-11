@@ -57,9 +57,13 @@ spec:
       volumes:
         # Cloud Build sources go up as in-memory buffers (infrafile/
         # build-cloud.ts streams the GitHub tarball straight to GCS), so nothing
-        # here stages to disk. The tmpfs is for npm's cache (NPM_CONFIG_CACHE)
-        # and for the plugin file drivers this pod inherits by calling
-        # loadPlugins() to service git-triggered workflows.
+        # here stages to disk. The scratch volume is for npm's cache
+        # (NPM_CONFIG_CACHE) and for the plugin file drivers this pod inherits
+        # by calling loadPlugins() to service git-triggered workflows.
+        #
+        # Node-disk backed, deliberately not `medium: Memory` — that would
+        # charge the staged bytes against this container's 512Mi limit. Same
+        # reasoning as web; keep all three consistent.
         - name: tmp
           emptyDir:
             sizeLimit: 256Mi
