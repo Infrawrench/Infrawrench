@@ -27,6 +27,7 @@ import {
   costReportsTabTarget,
   invoicesTabTarget,
   getWorkspaceNavigateArgs,
+  isRouteHostedTabPanel,
   navigateToWorkspaceTarget,
   syncWorkspaceRouteFromPath,
 } from "../workspace-tabs";
@@ -490,5 +491,32 @@ describe("invoices tab", () => {
         .replace("$invoiceId", args.params!["invoiceId"] ?? "");
       expect(syncWorkspaceRouteFromPath(path)).toEqual(target);
     }
+  });
+});
+
+describe("isRouteHostedTabPanel", () => {
+  const settingsTab = { target: { kind: "settings" } as const };
+  const dashboardTab = { target: dashboardTabTarget("d1") };
+
+  it("hands the Settings panel to the layout route while a settings URL is open", () => {
+    // The route renders the visible settings UI and carries the tabpanel id;
+    // the viewport must not render a second, hidden element with that id.
+    for (const path of ["/org/myorg/settings", "/org/myorg/settings/team"]) {
+      expect(isRouteHostedTabPanel(syncWorkspaceRouteFromPath(path), settingsTab)).toBe(true);
+    }
+  });
+
+  it("takes the Settings panel back as soon as the URL leaves settings", () => {
+    // The layout route is unmounted here but the tab is still in the strip, so
+    // the viewport owes it a panel — otherwise its aria-controls dangles.
+    for (const path of ["/org/myorg/dashboard/d1", "/org/myorg/costs", "/onboarding", "/"]) {
+      expect(isRouteHostedTabPanel(syncWorkspaceRouteFromPath(path), settingsTab)).toBe(false);
+    }
+  });
+
+  it("never hands over the panel of any other tab kind", () => {
+    expect(
+      isRouteHostedTabPanel(syncWorkspaceRouteFromPath("/org/myorg/settings"), dashboardTab),
+    ).toBe(false);
   });
 });
