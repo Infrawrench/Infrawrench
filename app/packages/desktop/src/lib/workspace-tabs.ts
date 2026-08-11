@@ -17,6 +17,7 @@ import {
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
+  quotasTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -46,6 +47,7 @@ export {
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
+  quotasTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -138,6 +140,8 @@ export function getWorkspaceNavigateArgs(
       return { to: "/metric-alerts", ...(replace ? { replace: true } : {}) };
     case "probes":
       return { to: "/probes", ...(replace ? { replace: true } : {}) };
+    case "quotas":
+      return { to: "/quotas", ...(replace ? { replace: true } : {}) };
     case "settings":
       // Like chat: search passed explicitly so navigating back to the General
       // section CLEARS the ?section= param instead of resolving back to it.
@@ -266,6 +270,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "probes") {
     return probesTabTarget();
+  }
+  if (segments[0] === "quotas") {
+    return quotasTabTarget();
   }
   if (segments[0] === "chat") {
     const params = new URLSearchParams(search ?? "");

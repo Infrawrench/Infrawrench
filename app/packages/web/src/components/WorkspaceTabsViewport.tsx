@@ -51,6 +51,7 @@ import { WebDnsPanel } from "./WebDnsPanel";
 import { WebEnvironmentDiffPanel } from "./WebEnvironmentDiffPanel";
 import { WebMetricAlertsPanel } from "./WebMetricAlertsPanel";
 import { WebProbesPanel } from "./WebProbesPanel";
+import { WebQuotasPanel } from "./WebQuotasPanel";
 import { WebSshFanoutPanel } from "./WebSshFanoutPanel";
 
 interface WebWorkspaceTabsViewportProps {
@@ -473,6 +474,8 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       return <WebMetricAlertsPanel key={orgId} orgId={orgId} />;
     case "probes":
       return <WebProbesPanel key={orgId} orgId={orgId} />;
+    case "quotas":
+      return <WebQuotasPanel key={orgId} orgId={orgId} />;
     case "chat":
       return <WebChatPanel orgId={orgId} conversationId={t.conversationId} />;
     case "settings":

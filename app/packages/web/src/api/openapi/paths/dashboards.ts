@@ -202,6 +202,7 @@ const TabTarget = strict({
     "ssh-fanout",
     "metric-alerts",
     "probes",
+    "quotas",
     "workflows",
     "deployments",
     "settings",

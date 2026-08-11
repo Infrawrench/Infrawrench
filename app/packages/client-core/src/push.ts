@@ -271,6 +271,18 @@ export type PushNotificationData =
       /** Whether this notification announces the outage or the recovery. */
       status: "down" | "up";
     }
+  | {
+      /**
+       * A daily digest of provider quotas at or heading for their limit (see
+       * server-core `quotas/alerts.ts`). Never one notification per quota: the
+       * server batches everything over the org's threshold into this single
+       * payload, at most once per 24h.
+       *
+       * Target route: the quota radar, `/org/{orgId}/quotas`.
+       */
+      type: "quota_alert";
+      orgId: string;
+    }
   | { type: "test"; orgId: string };
 
 export async function registerPushToken(

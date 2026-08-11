@@ -38,13 +38,14 @@ import {
   providerStatusIncidents,
   resources,
 } from "../db/schema";
-import { itemsWithinLead } from "@infrawrench/client-core";
+import { alertableQuotas, itemsWithinLead } from "@infrawrench/client-core";
 import { queryCosts } from "../clickhouse/cost-readers";
 import { convertGroups, mergeConvertedGroups } from "../cost/currency-convert";
 import { getOrgCurrencySettings, listOrgExchangeRates } from "../cost/currency-settings";
 import { listExpiring } from "../expiry/feed";
 import { MAX_RESOURCES_PER_PROJECTION, projectMonthlySpend } from "../cost/estimate";
 import { listPosture } from "../posture/feed";
+import { getQuotaFeed } from "../quotas/feed";
 import { routeAlert } from "../alerts/route";
 import { isEmailConfigured, sendEmails, type EmailMessage } from "../email";
 import { generateDigestNarrative } from "./narrative";
@@ -167,77 +168,94 @@ export async function buildWeeklyDigest(
 
   const { fromDate, toDatePlusOne } = dayRange(window.weekStart, window.weekEnd);
   const count = sql<number>`count(*)::int`;
-  const [[incidents], [added], [removed], [providerIncidents], expiringSoon, postureCounts] =
-    await Promise.all([
-      db
-        .select({ count })
-        .from(pagingIncidents)
-        .where(
-          and(
-            eq(pagingIncidents.organizationId, organizationId),
-            gte(pagingIncidents.openedAt, fromDate),
-            lt(pagingIncidents.openedAt, toDatePlusOne),
-          ),
+  const [
+    [incidents],
+    [added],
+    [removed],
+    [providerIncidents],
+    expiringSoon,
+    postureCounts,
+    quotasAtRisk,
+  ] = await Promise.all([
+    db
+      .select({ count })
+      .from(pagingIncidents)
+      .where(
+        and(
+          eq(pagingIncidents.organizationId, organizationId),
+          gte(pagingIncidents.openedAt, fromDate),
+          lt(pagingIncidents.openedAt, toDatePlusOne),
         ),
-      db
-        .select({ count })
-        .from(resources)
-        .where(
-          and(
-            eq(resources.organizationId, organizationId),
-            gte(resources.createdAt, fromDate),
-            lt(resources.createdAt, toDatePlusOne),
-          ),
+      ),
+    db
+      .select({ count })
+      .from(resources)
+      .where(
+        and(
+          eq(resources.organizationId, organizationId),
+          gte(resources.createdAt, fromDate),
+          lt(resources.createdAt, toDatePlusOne),
         ),
-      db
-        .select({ count })
-        .from(resources)
-        .where(
-          and(
-            eq(resources.organizationId, organizationId),
-            gte(resources.deletedAt, fromDate),
-            lt(resources.deletedAt, toDatePlusOne),
-          ),
+      ),
+    db
+      .select({ count })
+      .from(resources)
+      .where(
+        and(
+          eq(resources.organizationId, organizationId),
+          gte(resources.deletedAt, fromDate),
+          lt(resources.deletedAt, toDatePlusOne),
         ),
-      // Provider status-page incidents whose window overlapped the reported
-      // week, on providers the org holds accounts with. Provider-level, not
-      // per-resource: the digest line is a headcount, not a blast radius.
-      db
-        .select({ count })
-        .from(providerStatusIncidents)
-        .where(
-          and(
-            lt(providerStatusIncidents.startedAt, toDatePlusOne),
-            or(
-              isNull(providerStatusIncidents.resolvedAt),
-              gte(providerStatusIncidents.resolvedAt, fromDate),
-            ),
-            sql`${providerStatusIncidents.pluginId} IN (
+      ),
+    // Provider status-page incidents whose window overlapped the reported
+    // week, on providers the org holds accounts with. Provider-level, not
+    // per-resource: the digest line is a headcount, not a blast radius.
+    db
+      .select({ count })
+      .from(providerStatusIncidents)
+      .where(
+        and(
+          lt(providerStatusIncidents.startedAt, toDatePlusOne),
+          or(
+            isNull(providerStatusIncidents.resolvedAt),
+            gte(providerStatusIncidents.resolvedAt, fromDate),
+          ),
+          sql`${providerStatusIncidents.pluginId} IN (
             SELECT DISTINCT plugin_id FROM accounts
             WHERE organization_id = ${organizationId} AND deleted_at IS NULL
           )`,
-          ),
         ),
-      // Deadlines currently inside the org's expiry lead time. A point-in-time
-      // headcount, not a weekly delta — "what needs attention now" is the useful
-      // digest line for deadlines. Defensive: a broken feed must cost the digest
-      // one line, not the whole send.
-      listExpiring(organizationId)
-        .then((feed) => itemsWithinLead(feed).length)
-        .catch((err) => {
-          console.error(`[expiry] digest feed for org ${organizationId} failed:`, err);
-          return 0;
-        }),
-      // Current critical/high posture findings. Like the expiry line, a
-      // point-in-time headcount — and defensive: a broken feed must cost the
-      // digest one line, not the whole send.
-      listPosture(organizationId)
-        .then((feed) => ({ critical: feed.counts.critical, high: feed.counts.high }))
-        .catch((err) => {
-          console.error(`[posture] digest feed for org ${organizationId} failed:`, err);
-          return { critical: 0, high: 0 };
-        }),
-    ]);
+      ),
+    // Deadlines currently inside the org's expiry lead time. A point-in-time
+    // headcount, not a weekly delta — "what needs attention now" is the useful
+    // digest line for deadlines. Defensive: a broken feed must cost the digest
+    // one line, not the whole send.
+    listExpiring(organizationId)
+      .then((feed) => itemsWithinLead(feed).length)
+      .catch((err) => {
+        console.error(`[expiry] digest feed for org ${organizationId} failed:`, err);
+        return 0;
+      }),
+    // Current critical/high posture findings. Like the expiry line, a
+    // point-in-time headcount — and defensive: a broken feed must cost the
+    // digest one line, not the whole send.
+    listPosture(organizationId)
+      .then((feed) => ({ critical: feed.counts.critical, high: feed.counts.high }))
+      .catch((err) => {
+        console.error(`[posture] digest feed for org ${organizationId} failed:`, err);
+        return { critical: 0, high: 0 };
+      }),
+    // Provider quotas currently at or heading for their limit. Point-in-time
+    // like the two above, and defensive for the same reason. Counted from
+    // the same `alertableQuotas` predicate the quota alert pass fires on, so
+    // the digest and the page cannot disagree about what "at risk" means.
+    getQuotaFeed(organizationId)
+      .then((feed) => alertableQuotas(feed.rows).length)
+      .catch((err) => {
+        console.error(`[quotas] digest feed for org ${organizationId} failed:`, err);
+        return 0;
+      }),
+  ]);
 
   return composeWeeklyDigest({
     window,
@@ -251,6 +269,7 @@ export async function buildWeeklyDigest(
     expiringSoon,
     postureCritical: postureCounts.critical,
     postureHigh: postureCounts.high,
+    quotasAtRisk,
     projection: await buildProjection(organizationId, fromDate, toDatePlusOne),
   });
 }

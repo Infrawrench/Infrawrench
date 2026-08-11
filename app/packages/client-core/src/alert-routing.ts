@@ -229,6 +229,20 @@ export const ALERT_TRIGGERS = [
     defaultSeverity: "critical",
   },
   {
+    // The deadline family's third member, beside expiry and commitment lapse:
+    // a limit you will hit rather than a date you will pass. `warning` and not
+    // `critical` because the alert fires at a *threshold* — 80% by default —
+    // which is by construction a state you have hours or days to act on. The
+    // quota that is already exhausted rides the same message, and the title
+    // leads with it.
+    id: "quotaAlerts",
+    label: "Quotas",
+    description: "A provider quota is over its utilisation threshold or trending to exhaustion.",
+    pushDefaultMuted: false,
+    channelOnly: false,
+    defaultSeverity: "warning",
+  },
+  {
     id: "weeklyDigest",
     label: "Weekly digest",
     description: "The Monday-morning summary. Channels only — never a phone.",

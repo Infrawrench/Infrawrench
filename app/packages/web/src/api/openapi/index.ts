@@ -44,6 +44,7 @@ import { registerResourcePaths } from "./paths/resources";
 import { registerResourceChangePaths } from "./paths/resource-changes";
 import { registerStatusIncidentPaths } from "./paths/status-incidents";
 import { registerExpiringPaths } from "./paths/expiring";
+import { registerQuotaPaths } from "./paths/quotas";
 import { registerPosturePaths } from "./paths/posture";
 import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
@@ -162,6 +163,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerResourceChangePaths(ctx);
   registerStatusIncidentPaths(ctx);
   registerExpiringPaths(ctx);
+  registerQuotaPaths(ctx);
   registerPosturePaths(ctx);
   registerDnsPaths(ctx);
   registerEnvironmentDiffPaths(ctx);
@@ -405,6 +407,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "HTTP uptime/latency checks run on an interval from an edge proxy outside the cluster; results land in the shared metric store and alert after N consecutive failures.",
       },
       {
+        name: "Quota radar",
+        description:
+          "How close each account is to the limits its provider enforces, with the trend fitted over recent readings. Both halves of every row come from the provider — nothing is filled in from published defaults, because an account with an approved increase would otherwise read as exhausted while it has headroom. A provider with no quota API contributes nothing rather than zero.",
+      },
+      {
         name: "Status pages",
         description:
           "Public, unauthenticated views of a chosen set of synthetic probes. A page is created unpublished and reachable only via an unguessable slug; the public payload carries labels, states and uptime history — never probe URLs, resource ids or account names.",
@@ -615,6 +622,12 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /moment": "resources:read",
   "GET /expiring/settings": "org:settings:write",
   "PUT /expiring/settings": "org:settings:write",
+  // quota radar — the feed is a read over already-collected readings; the
+  // threshold decides what the org's channels hear, the same trust level as
+  // the expiry alert settings next door
+  "GET /quotas": "resources:read",
+  "GET /quotas/settings": "org:settings:write",
+  "PUT /quotas/settings": "org:settings:write",
   "GET /posture": "resources:read",
   "POST /posture/dismissals": "resources:write",
   "DELETE /posture/dismissals": "resources:write",

@@ -18,6 +18,7 @@ export type WorkspaceTabTarget =
   | { kind: "ssh-fanout" }
   | { kind: "metric-alerts" }
   | { kind: "probes" }
+  | { kind: "quotas" }
   | { kind: "workflows"; workflowId?: string }
   | { kind: "deployments"; repo?: string }
   | { kind: "settings"; section?: string }
@@ -94,6 +95,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "metric-alerts";
     case "probes":
       return "probes";
+    case "quotas":
+      return "quotas";
     case "workflows":
       return target.workflowId ? `workflows:${target.workflowId}` : "workflows";
     case "deployments":
@@ -151,6 +154,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Alerts";
     case "probes":
       return "Probes";
+    case "quotas":
+      return "Quotas";
     case "workflows":
       return "Workflows";
     case "deployments":
@@ -186,6 +191,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "ssh-fanout":
     case "metric-alerts":
     case "probes":
+    case "quotas":
       return true;
     case "cost-reports":
       // The deployments/settings trick: one tab by id, but comparing the report

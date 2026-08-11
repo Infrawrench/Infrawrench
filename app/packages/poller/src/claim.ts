@@ -255,6 +255,79 @@ export async function claimDueCommitmentAccounts(
   });
 }
 
+/**
+ * Claim up to `limit` accounts due a quota read.
+ *
+ * The credit claim's protocol verbatim, keyed off `account_quota_polls`:
+ * quota-capable plugins are a minority, the LEFT JOIN lets an account with no
+ * poll row yet come due immediately, and the upsert IS the lease.
+ */
+export async function claimDueQuotaAccounts(
+  limit: number,
+  quotaCapablePluginIds: string[],
+): Promise<PollAccountRow[]> {
+  if (quotaCapablePluginIds.length === 0) return [];
+  const rows = await db.execute(sql`
+    INSERT INTO account_quota_polls (account_id, organization_id, next_poll_at)
+    SELECT a.id, a.organization_id,
+           now() + ${COST_LEASE_MS}::float8 * interval '1 millisecond'
+    FROM accounts a
+    LEFT JOIN account_quota_polls p ON p.account_id = a.id
+    WHERE a.deleted_at IS NULL
+      -- IN, not = ANY(): see the note on claimDueCostAccounts.
+      AND a.plugin_id IN ${quotaCapablePluginIds}
+      AND (p.account_id IS NULL OR p.next_poll_at IS NULL OR p.next_poll_at <= now())
+    ORDER BY p.last_polled_at ASC NULLS FIRST, a.id ASC
+    LIMIT ${limit}
+    ON CONFLICT (account_id) DO UPDATE
+      SET next_poll_at = now() + ${COST_LEASE_MS}::float8 * interval '1 millisecond'
+      -- This predicate is what makes the upsert a *claim*. The SELECT above
+      -- reads a snapshot, so two replicas ticking together both see the same
+      -- account as due; the conflict clause is re-evaluated against the row as
+      -- it stands now, so the loser matches nothing, updates nothing, and
+      -- RETURNINGs nothing. Unconditional, both callers get the account back
+      -- and both do the work — which for AWS means paying for the same
+      -- CloudWatch reads twice.
+      WHERE account_quota_polls.next_poll_at IS NULL
+         OR account_quota_polls.next_poll_at <= now()
+    RETURNING account_id, organization_id, failure_count
+  `);
+
+  const claimed = Array.from(rows as Iterable<Record<string, unknown>>, (r) => ({
+    id: String(r["account_id"]),
+    organizationId: String(r["organization_id"]),
+    failureCount: Number(r["failure_count"]),
+  }));
+  if (claimed.length === 0) return [];
+
+  // Same follow-up read as the credit claim: the poll row carries no plugin
+  // id or display name, and denormalizing them would go stale on a rename.
+  const details = await db.execute(sql`
+    SELECT id, plugin_id, display_name FROM accounts
+    WHERE id IN ${claimed.map((c) => c.id)}
+  `);
+  const byId = new Map(
+    Array.from(details as Iterable<Record<string, unknown>>, (r) => [
+      String(r["id"]),
+      { pluginId: String(r["plugin_id"]), displayName: String(r["display_name"]) },
+    ]),
+  );
+
+  return claimed.flatMap((c) => {
+    const detail = byId.get(c.id);
+    if (!detail) return [];
+    return [
+      {
+        id: c.id,
+        organizationId: c.organizationId,
+        pluginId: detail.pluginId,
+        displayName: detail.displayName,
+        pollFailureCount: c.failureCount,
+      },
+    ];
+  });
+}
+
 /** Claim up to `limit` due cron workflows, leasing each for {@link WORKFLOW_LEASE_MS}. */
 export async function claimDueWorkflows(limit: number): Promise<DueWorkflowRow[]> {
   const rows = await db.execute(sql`

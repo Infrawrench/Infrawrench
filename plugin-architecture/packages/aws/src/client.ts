@@ -22,6 +22,7 @@ import type {
   ChatStreamEvent,
   PublishMessagePayload,
   PublishMessageResult,
+  QuotaUsage,
 } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
 import type { ListerContext } from "./resource-listers.js";
@@ -120,7 +121,14 @@ import { estimateAwsCost } from "./cost-estimate.js";
 import { fetchEc2MonthlyPrices, HOURS_PER_MONTH as PRICING_HOURS_PER_MONTH } from "./pricing.js";
 import { fetchAwsCostData } from "./cost-data.js";
 import { fetchAwsCommitments } from "./commitments.js";
+import {
+  fetchAwsQuotas,
+  type AwsGetDefaultServiceQuotaResponse,
+  type AwsListServiceQuotasResponse,
+} from "./quotas.js";
 import { AWS_NETWORK_FLOW_CAPABILITY, fetchAwsNetworkFlows } from "./network-flows.js";
+import { callGetMetricStatistics } from "./metrics/cw-helpers.js";
+import { ensureArray } from "./xml.js";
 import { attachResource as attachResourceImpl } from "./attach-handlers.js";
 import { resolveOutput as resolveOutputImpl } from "./resolve-output.js";
 import { deleteResource as deleteResourceImpl } from "./delete-handlers.js";
@@ -547,6 +555,86 @@ export class AWSClient implements PluginClient {
     // fetched once inside.
     const regions = await this.getEnabledRegions();
     return fetchAwsCommitments(this.creds, regions);
+  }
+
+  /**
+   * Quota readings. Every AWS quota takes two calls — Service Quotas for the
+   * ceiling and CloudWatch (or a describe) for the usage — so the transport is
+   * injected into `quotas.ts` rather than assembled there; see that module's
+   * header for why the fallback to the *default* quota is load-bearing.
+   */
+  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
+    const regions = await this.getEnabledRegions();
+    return fetchAwsQuotas({
+      regions,
+      listServiceQuotas: (region, serviceCode, quotaCode) =>
+        jsonCall<AwsListServiceQuotasResponse>(
+          this.credsFor(region),
+          "servicequotas",
+          "ServiceQuotasV20190624.ListServiceQuotas",
+          // `QuotaCode` narrows the listing to one quota, which is what keeps
+          // this a single unpaginated request: `ec2` alone publishes several
+          // hundred quotas and paging them all to find three is the version of
+          // this feature that shows up on a rate-limit graph.
+          { ServiceCode: serviceCode, QuotaCode: quotaCode, MaxResults: 100 },
+        ),
+      getDefaultServiceQuota: (region, serviceCode, quotaCode) =>
+        jsonCall<AwsGetDefaultServiceQuotaResponse>(
+          this.credsFor(region),
+          "servicequotas",
+          "ServiceQuotasV20190624.GetAWSDefaultServiceQuota",
+          { ServiceCode: serviceCode, QuotaCode: quotaCode },
+        ),
+      usageMetric: (region, usageClass) => this.readVcpuUsage(region, usageClass),
+      countAddresses: (region) => this.countEc2Items(region, "DescribeAddresses", "addressesSet"),
+      countVpcs: (region) => this.countEc2Items(region, "DescribeVpcs", "vpcSet"),
+    });
+  }
+
+  /**
+   * Max of `AWS/Usage`/`ResourceCount` for one vCPU class over the last hour.
+   *
+   * `Maximum` is the statistic AWS's own documentation recommends for this
+   * metric, and it is the right one for a quota: the ceiling is enforced
+   * against the peak, so an average over the window would report an account
+   * that briefly filled its quota as comfortably inside it.
+   *
+   * Returns null when CloudWatch publishes no datapoint — that means the
+   * account has never run an instance of the class, which is a different fact
+   * from "it is running zero right now" and is why the caller skips the quota
+   * rather than storing a 0%.
+   */
+  private async readVcpuUsage(region: string, usageClass: string): Promise<number | null> {
+    const end = new Date();
+    const start = new Date(end.getTime() - 60 * 60 * 1000);
+    const { datapoints } = await callGetMetricStatistics(this.credsFor(region), {
+      Namespace: "AWS/Usage",
+      MetricName: "ResourceCount",
+      Dimensions: [
+        { Name: "Service", Value: "EC2" },
+        { Name: "Resource", Value: "vCPU" },
+        { Name: "Type", Value: "Resource" },
+        { Name: "Class", Value: usageClass },
+      ],
+      StartTime: start.toISOString(),
+      EndTime: end.toISOString(),
+      Period: 300,
+      Statistics: ["Maximum"],
+    });
+    let max: number | null = null;
+    for (const point of datapoints) {
+      const value = Number(point["Maximum"]);
+      if (!Number.isFinite(value)) continue;
+      max = max === null ? value : Math.max(max, value);
+    }
+    return max;
+  }
+
+  /** Count the members of an EC2 Query-API result set (`DescribeVpcs` → `vpcSet`). */
+  private async countEc2Items(region: string, action: string, setKey: string): Promise<number> {
+    const data = await ec2Call<Record<string, unknown>>(this.credsFor(region), action);
+    const container = data[setKey] as Record<string, unknown> | undefined;
+    return ensureArray(container?.["item"]).length;
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

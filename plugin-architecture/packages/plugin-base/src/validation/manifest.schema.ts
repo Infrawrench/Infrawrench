@@ -92,6 +92,15 @@ export const pluginManifestSchema = z.object({
       requiresElevatedCredential: z.boolean().optional(),
     })
     .optional(),
+  quotas: z
+    .object({
+      label: z.string().optional(),
+      increaseUrl: z.string().url().optional(),
+      /** The reported set is representative, not every quota the provider enforces. */
+      partial: z.boolean().optional(),
+      requiresElevatedCredential: z.boolean().optional(),
+    })
+    .optional(),
   statusFeed: z
     .object({
       url: z.string().url(),

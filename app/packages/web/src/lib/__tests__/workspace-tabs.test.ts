@@ -108,6 +108,14 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns quotas route args", () => {
+    const args = getWorkspaceNavigateArgs({ kind: "quotas" });
+    expect(args).toEqual({
+      to: "/org/$orgId/quotas",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns resource route args with ssh hash (fallback without pluginId)", () => {
     const args = getWorkspaceNavigateArgs({
       kind: "resource",
@@ -245,6 +253,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the probes path", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/probes")).toEqual({ kind: "probes" });
+  });
+
+  it("parses the quotas path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/quotas")).toEqual({ kind: "quotas" });
   });
 
   it("parses the chat list path", () => {

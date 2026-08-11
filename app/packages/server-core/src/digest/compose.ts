@@ -88,6 +88,11 @@ export interface DigestInput {
   /** High-severity posture findings currently open. */
   postureHigh: number;
   /**
+   * Provider quotas at or heading for their limit (from the quota feed, the
+   * same `alertableQuotas` predicate the quota alert pass fires on).
+   */
+  quotasAtRisk: number;
+  /**
    * Set when the spend figures above were converted into the org's display
    * currency. Every renderer turns this into a caveat line — a converted total
    * that does not say so is worse than the several totals it replaced.
@@ -136,6 +141,8 @@ export interface WeeklyDigest {
   postureCritical: number;
   /** High-severity posture findings currently open. */
   postureHigh: number;
+  /** Provider quotas at or heading for their limit. */
+  quotasAtRisk: number;
   /** Projected monthly change from the week's churn, when anything priced. */
   projection: DigestProjection | null;
 }
@@ -391,6 +398,7 @@ export function composeWeeklyDigest(input: DigestInput): WeeklyDigest {
     expiringSoon: input.expiringSoon,
     postureCritical: input.postureCritical,
     postureHigh: input.postureHigh,
+    quotasAtRisk: input.quotasAtRisk,
     projection: normalizeProjection(input.projection),
     ...(input.conversion ? { conversion: input.conversion } : {}),
   };
@@ -571,6 +579,15 @@ export function digestSegments(digest: WeeklyDigest, narrative?: string | null):
       { text: "Expiring soon", bold: true },
       {
         text: `: ${pluralize(digest.expiringSoon, "deadline")} within your lead time`,
+        bold: false,
+      },
+    ]);
+  }
+  if (digest.quotasAtRisk > 0) {
+    lines.push([
+      { text: "Quotas", bold: true },
+      {
+        text: `: ${pluralize(digest.quotasAtRisk, "provider limit")} at or heading for exhaustion`,
         bold: false,
       },
     ]);

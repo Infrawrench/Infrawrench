@@ -29,4 +29,8 @@
 // 1.10.0: network flow cost attribution, anomaly acknowledgement, and the
 // Kubernetes storage / load-balancer / control-plane allocation (new routes,
 // new schemas, additive fields on CostAnomaly and CostAnnotation).
-export const API_VERSION = "1.10.0";
+// 1.12.0: the quota & limit radar — provider quota utilisation, trend and an
+// exhaustion alert (new /quotas routes and schemas, a new `quotaAlerts` alert
+// trigger, and `quotas` on the TabTarget kind enum, without which a persisted
+// Quotas tab is silently dropped on reload). All additive.
+export const API_VERSION = "1.12.0";

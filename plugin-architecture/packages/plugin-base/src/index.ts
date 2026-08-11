@@ -48,6 +48,9 @@ export {
 export type { CreditBalance, CreditsCapabilityDeclaration } from "./credits.js";
 export { CreditAccessError } from "./credits.js";
 
+export type { QuotaCapabilityDeclaration, QuotaUsage } from "./quotas.js";
+export { normalizeQuotaUsage, QuotaAccessError, quotaUtilization } from "./quotas.js";
+
 export type {
   NetworkFlowAttribution,
   NetworkFlowCapabilityDeclaration,

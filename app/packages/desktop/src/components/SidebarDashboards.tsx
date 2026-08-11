@@ -8,6 +8,7 @@ import {
   ChangesIcon,
   MetricAlertIcon,
   ProbesIcon,
+  QuotasIcon,
   DeployIcon,
   ExpiryIcon,
   PostureIcon,
@@ -268,6 +269,15 @@ export function SidebarDashboards() {
             label: "Probes",
             icon: <ProbesIcon />,
             onClick: () => void navigate({ to: "/probes" }),
+          },
+          // Cloud-only, and with no local half at all: a quota reading is a
+          // live credentialed provider call on a schedule only the poller
+          // runs, and the trend needs history only the cloud stores.
+          {
+            key: "quotas",
+            label: "Quotas",
+            icon: <QuotasIcon />,
+            onClick: () => void navigate({ to: "/quotas" }),
           },
         ]
       : []),
