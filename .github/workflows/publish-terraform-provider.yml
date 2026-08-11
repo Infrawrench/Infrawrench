@@ -140,12 +140,19 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git" satellite
+          cd satellite
+
+          # Ask the remote whether this version is already tagged, rather than
+          # the clone. A depth-one clone carries only the tags reachable from
+          # the tip it fetched, so a tag from an earlier release — exactly the
+          # case a forced re-run hits — reads as absent locally, and the run
+          # would push the tree and then die on a tag that already exists.
+          RELEASED="$(git ls-remote origin "refs/tags/v${VERSION}")"
 
           # Replace the tree wholesale — the satellite mirrors this directory,
           # so a file dropped here must disappear there too. `.git` is the only
           # thing that survives, so anything the satellite needs to keep across
           # releases has to be added to this exclusion list.
-          cd satellite
           find . -mindepth 1 -maxdepth 1 -not -name .git -exec rm -rf {} +
           cp -R "../terraform-provider-infrawrench/." .
 
@@ -158,6 +165,13 @@ jobs:
           if git diff --cached --quiet; then
             echo "::notice::${OWNER}/${REPO} already matches v${VERSION}."
           else
+            # Refuse before touching the satellite. A released tag is the exact
+            # bytes the Registry ingested and is never moved, so new content
+            # under an already-released version is a version bump, not a force.
+            if [ -n "$RELEASED" ]; then
+              echo "::error::${OWNER}/${REPO} is already tagged v${VERSION}, and the mirrored tree differs from it. A released tag is never moved. Bump terraform-provider-infrawrench/VERSION and re-run."
+              exit 1
+            fi
             git commit -m "Release v${VERSION}
 
           Mirrored from the Infrawrench monorepo. Do not edit here — changes are
@@ -169,7 +183,7 @@ jobs:
           # The tag is what starts the satellite's own release workflow, which
           # runs GoReleaser and attaches the signed artifacts the Registry
           # ingests.
-          if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+          if [ -n "$RELEASED" ]; then
             echo "::notice::${OWNER}/${REPO} is already tagged v${VERSION}."
           else
             git tag -a "v${VERSION}" -m "v${VERSION}"

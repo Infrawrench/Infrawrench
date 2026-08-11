@@ -129,6 +129,29 @@ const apiKeyUnauthorizedHint = "The configured api_key starts with \"iwk_\". The
 	"expired, past its legacy-hash sunset, or owned by somebody who is no longer a member of " +
 	"this organization. Check it on Settings → API keys."
 
+// The two 403s an API key can meet, told apart by the message the server wrote.
+//
+// Every deny-list rule phrases itself as "API keys cannot …" (the server's
+// auth/api-key-route-policy.ts), while a key presented against an organization
+// it was not minted in is refused with its own sentence. Matching "API key"
+// anywhere in the text catches both, and the two have opposite fixes: one says
+// change the credential, the other says the credential is fine and the
+// configured organization is not.
+const (
+	apiKeyDenialMessage   = "API keys cannot"
+	apiKeyWrongOrgMessage = "API key belongs to a different organization"
+)
+
+// apiKeyWrongOrgHint covers org pinning. There is no cross-org key, so nothing
+// about the credential can fix this one — naming the organization the provider
+// is configured for is what makes the mismatch visible.
+func apiKeyWrongOrgHint(orgID string) string {
+	return fmt.Sprintf("The configured api_key was minted in a different organization, and a key "+
+		"is pinned to the organization it was minted in. Point organization_id (or "+
+		"INFRAWRENCH_ORG_ID) at the organization that key belongs to, or configure a key minted "+
+		"in %s. This is not a scope or deny-list failure: the key itself is fine.", orgID)
+}
+
 func (c *Client) newAPIError(method, path string, status int, payload []byte) error {
 	apiErr := &APIError{
 		Method:     method,
@@ -164,7 +187,10 @@ func (c *Client) newAPIError(method, path string, status int, payload []byte) er
 			// plain scope failure is already self-explanatory, and pasting the
 			// deny-list under it would send somebody looking for the wrong
 			// cause.
-			if strings.Contains(apiErr.Message, "API key") {
+			switch {
+			case strings.Contains(apiErr.Message, apiKeyWrongOrgMessage):
+				apiErr.Hint = apiKeyWrongOrgHint(c.orgID)
+			case strings.Contains(apiErr.Message, apiKeyDenialMessage):
 				apiErr.Hint = apiKeyDeniedHint
 			}
 		}

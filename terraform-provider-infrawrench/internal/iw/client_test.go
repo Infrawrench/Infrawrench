@@ -187,6 +187,13 @@ func TestAPIKeyHints(t *testing.T) {
 		_, _ = w.Write([]byte(`{"error":"Missing permission: budgets:write"}`))
 	}
 
+	// Org pinning. The server's own words, and they name an API key too — which
+	// is why the deny-list is matched on its phrasing rather than on "API key".
+	wrongOrg := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"API key belongs to a different organization"}`))
+	}
+
 	t.Run("a 401 says the key itself was refused", func(t *testing.T) {
 		client, _ := newTestClient(t, unauthorized)
 		_, err := client.ListBudgets(context.Background())
@@ -208,6 +215,23 @@ func TestAPIKeyHints(t *testing.T) {
 		}
 	})
 
+	t.Run("a wrong-org 403 points at organization_id, not the credential", func(t *testing.T) {
+		client, _ := newTestClient(t, wrongOrg)
+		_, err := client.ListBudgets(context.Background())
+		if err == nil {
+			t.Fatal("expected an error")
+		}
+		if !strings.Contains(err.Error(), "organization_id") ||
+			!strings.Contains(err.Error(), "org_01TEST") {
+			t.Fatalf("expected the org-pinning hint naming the configured org, got %v", err)
+		}
+		// The fixes are opposite: this key is fine and the configured org is
+		// not, so advising somebody to mint a key elsewhere wastes the outage.
+		if strings.Contains(err.Error(), "closed to API keys") {
+			t.Errorf("a wrong-org 403 must not get the deny-list hint: %v", err)
+		}
+	})
+
 	t.Run("an ordinary scope 403 gets no hint", func(t *testing.T) {
 		client, _ := newTestClient(t, scopeDenied)
 		_, err := client.ListBudgets(context.Background())
@@ -223,8 +247,9 @@ func TestAPIKeyHints(t *testing.T) {
 
 	t.Run("a WorkOS token gets neither", func(t *testing.T) {
 		for name, handler := range map[string]http.HandlerFunc{
-			"401": unauthorized,
-			"403": denied,
+			"401":           unauthorized,
+			"403 deny-list": denied,
+			"403 wrong org": wrongOrg,
 		} {
 			client := workosClient(t, handler)
 			_, err := client.ListBudgets(context.Background())
