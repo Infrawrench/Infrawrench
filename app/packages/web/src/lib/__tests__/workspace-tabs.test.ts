@@ -200,6 +200,13 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(args).toMatchObject({ hash: "sftp" });
   });
 
+  it("returns backups route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "backups" })).toEqual({
+      to: "/org/$orgId/backups",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns posture route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "posture" })).toEqual({
       to: "/org/$orgId/posture",
@@ -256,6 +263,10 @@ describe("syncWorkspaceRouteFromPath", () => {
       kind: "account",
       accountId: "a1",
     });
+  });
+
+  it("parses the org-scoped backups path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/backups")).toEqual({ kind: "backups" });
   });
 
   it("parses the org-scoped posture path", () => {

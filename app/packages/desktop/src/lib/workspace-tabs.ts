@@ -13,6 +13,7 @@ import {
   expiringTabTarget,
   postureTabTarget,
   accessReviewTabTarget,
+  backupsTabTarget,
   dnsTabTarget,
   environmentDiffTabTarget,
   sshFanoutTabTarget,
@@ -45,6 +46,7 @@ export {
   expiringTabTarget,
   postureTabTarget,
   accessReviewTabTarget,
+  backupsTabTarget,
   dnsTabTarget,
   environmentDiffTabTarget,
   sshFanoutTabTarget,
@@ -125,6 +127,8 @@ export function getWorkspaceNavigateArgs(
       return { to: "/posture", ...(replace ? { replace: true } : {}) };
     case "access-review":
       return { to: "/access-review", ...(replace ? { replace: true } : {}) };
+    case "backups":
+      return { to: "/backups", ...(replace ? { replace: true } : {}) };
     case "dns":
       return { to: "/dns", ...(replace ? { replace: true } : {}) };
     // The two accounts ride as query parameters rather than path segments:
@@ -272,6 +276,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "access-review") {
     return accessReviewTabTarget();
+  }
+  if (segments[0] === "backups") {
+    return backupsTabTarget();
   }
   if (segments[0] === "dns") {
     return dnsTabTarget();

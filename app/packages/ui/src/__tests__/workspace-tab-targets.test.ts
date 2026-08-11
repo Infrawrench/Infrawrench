@@ -6,6 +6,7 @@ import {
   invoicesTabTarget,
   postureTabTarget,
   accessReviewTabTarget,
+  backupsTabTarget,
   environmentDiffTabTarget,
   probesTabTarget,
   incidentsTabTarget,
@@ -28,6 +29,10 @@ describe("tab target factories", () => {
 
   it("accountTabTarget", () => {
     expect(accountTabTarget("acc-1")).toEqual({ kind: "account", accountId: "acc-1" });
+  });
+
+  it("backupsTabTarget", () => {
+    expect(backupsTabTarget()).toEqual({ kind: "backups" });
   });
 
   it("postureTabTarget", () => {

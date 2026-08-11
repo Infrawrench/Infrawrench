@@ -12,6 +12,7 @@ import "./expiring";
 import "./quotas";
 import "./posture";
 import "./access-review";
+import "./backups";
 import "./dns";
 import "./environment-diff";
 import "./changes";

@@ -23,6 +23,7 @@ import {
   ExpiryIcon,
   PostureIcon,
   AccessReviewIcon,
+  BackupsIcon,
   DomainsIcon,
   EnvironmentDiffIcon,
   FanoutIcon,
@@ -541,6 +542,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <AccessReviewIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/access-review", params: { orgId: orgId! } }),
+              },
+              {
+                key: "backups",
+                label: "Backups",
+                icon: <BackupsIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/backups", params: { orgId: orgId! } }),
               },
               {
                 key: "dns",

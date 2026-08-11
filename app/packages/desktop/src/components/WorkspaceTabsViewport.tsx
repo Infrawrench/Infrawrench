@@ -47,6 +47,7 @@ import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
 import { DesktopExpiryPanel } from "@/components/DesktopExpiryPanel";
 import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
 import { DesktopAccessReviewPanel } from "@/components/DesktopAccessReviewPanel";
+import { DesktopBackupsPanel } from "@/components/DesktopBackupsPanel";
 import { DesktopDnsPanel } from "@/components/DesktopDnsPanel";
 import { DesktopEnvironmentDiffPanel } from "@/components/DesktopEnvironmentDiffPanel";
 import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel";
@@ -427,6 +428,19 @@ function renderPanel(
                   principal.resourceTypeId,
                 ),
               ),
+            )
+          }
+        />
+      );
+    case "backups":
+      return (
+        <DesktopBackupsPanel
+          // Keyed by mode so switching org (or dropping to local) remounts and
+          // refetches rather than showing the previous org's coverage.
+          key={activeCloudOrgId ?? "local"}
+          openResource={(target) =>
+            void navigate(
+              getWorkspaceNavigateArgs(resourceTabTarget(target.accountId, target.resourceId)),
             )
           }
         />

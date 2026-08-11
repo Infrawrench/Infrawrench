@@ -14,6 +14,7 @@ import {
   ExpiryIcon,
   PostureIcon,
   AccessReviewIcon,
+  BackupsIcon,
   DomainsIcon,
   EnvironmentDiffIcon,
   FanoutIcon,
@@ -40,6 +41,7 @@ import {
   chatTabTarget,
   dashboardTabTarget,
   deploymentsTabTarget,
+  backupsTabTarget,
   dnsTabTarget,
   accessReviewTabTarget,
   environmentDiffTabTarget,
@@ -331,6 +333,17 @@ export function SidebarDashboards() {
       label: "Posture",
       icon: <PostureIcon />,
       onClick: () => void navigate({ to: "/posture" }),
+    },
+    // Backups is cloud only — the coverage could be computed locally, but the
+    // recovery objectives it is judged against are org state with nowhere to
+    // live in a single-machine workspace. A workspace-tab kind so the strip
+    // stays in sync with the active panel.
+    {
+      key: "backups",
+      label: "Backups",
+      icon: <BackupsIcon />,
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, backupsTabTarget(), { label: "Backups" }),
     },
     // Domains also has a local half — the inventory is computed from stored
     // state and the locally loaded plugins' DNS declarations. A workspace-tab

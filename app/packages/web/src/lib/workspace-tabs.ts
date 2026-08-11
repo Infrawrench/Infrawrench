@@ -13,6 +13,7 @@ import {
   expiringTabTarget,
   postureTabTarget,
   accessReviewTabTarget,
+  backupsTabTarget,
   dnsTabTarget,
   environmentDiffTabTarget,
   sshFanoutTabTarget,
@@ -160,6 +161,12 @@ export function getWorkspaceNavigateArgs(
     case "access-review":
       return {
         to: "/org/$orgId/access-review",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "backups":
+      return {
+        to: "/org/$orgId/backups",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -389,6 +396,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "access-review") {
     return accessReviewTabTarget();
+  }
+  if (s[0] === "backups") {
+    return backupsTabTarget();
   }
   if (s[0] === "dns") {
     return dnsTabTarget();

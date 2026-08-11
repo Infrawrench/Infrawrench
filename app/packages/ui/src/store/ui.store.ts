@@ -14,6 +14,7 @@ export type WorkspaceTabTarget =
   | { kind: "expiring" }
   | { kind: "posture" }
   | { kind: "access-review" }
+  | { kind: "backups" }
   | { kind: "dns" }
   | { kind: "environment-diff"; a?: string; b?: string }
   | { kind: "ssh-fanout" }
@@ -92,6 +93,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "posture";
     case "access-review":
       return "access-review";
+    case "backups":
+      return "backups";
     case "dns":
       return "dns";
     // Not keyed by the two accounts: picking a different pair should retarget
@@ -156,6 +159,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Posture";
     case "access-review":
       return "Access review";
+    case "backups":
+      return "Backups";
     case "dns":
       return "Domains";
     case "environment-diff":
@@ -203,6 +208,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "expiring":
     case "posture":
     case "access-review":
+    case "backups":
     case "dns":
     case "ssh-fanout":
     case "metric-alerts":
