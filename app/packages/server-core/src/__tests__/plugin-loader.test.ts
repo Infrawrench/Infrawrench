@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { findUnsafeSvgConstructs } from "@infrawrench/plugin-base";
 
 let loader: typeof import("../plugin-loader");
 
@@ -42,6 +43,28 @@ describe("loadPlugins", () => {
     const loaded = await loader.loadPlugins();
     const ids = loaded.map((l) => l.plugin.manifest.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+/**
+ * Every host surface injects `manifest.logoSvg` with `dangerouslySetInnerHTML`
+ * and there is no script CSP behind those call sites, so the manifest is the
+ * trust boundary for that markup. `pluginManifestSchema` refines it through
+ * `isInertSvg`, which means a logo that could execute or fetch anything makes
+ * the plugin fail to load rather than reach a renderer — assert the property
+ * against the registry that actually ships, in one place, rather than trusting
+ * that each plugin's own contract test was run.
+ */
+describe("plugin logos", () => {
+  it("are inert SVG on every bundled plugin", async () => {
+    const loaded = await loader.loadPlugins();
+    const offenders: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const problem of findUnsafeSvgConstructs(plugin.manifest.logoSvg)) {
+        offenders.push(`${plugin.manifest.id}: ${problem}`);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });
 

@@ -1,5 +1,24 @@
 import { z } from "zod";
 
+import { findUnsafeSvgConstructs } from "../svg-safety.js";
+
+/**
+ * `logoSvg` is injected verbatim with `dangerouslySetInnerHTML` by every host
+ * surface, so the manifest is the trust boundary for that markup and this is
+ * where the boundary is enforced. Both loaders (`server-core/plugin-loader.ts`
+ * and the desktop `plugins/loader.ts`) parse the manifest through this schema
+ * and skip the plugin when it fails, which means a logo that could execute
+ * anything never reaches a renderer. See `../svg-safety.ts` for the rules and
+ * `web/src/api/security-headers.ts` for why there is no script CSP behind it.
+ */
+function logoSvgIsInert(value: string, ctx: z.RefinementCtx): void {
+  for (const problem of findUnsafeSvgConstructs(value)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: `logoSvg is not inert: ${problem}` });
+  }
+}
+
+const inertSvg = z.string().min(1).superRefine(logoSvgIsInert);
+
 export const pluginManifestSchema = z.object({
   id: z
     .string()
@@ -8,7 +27,7 @@ export const pluginManifestSchema = z.object({
   version: z.string().regex(/^\d+\.\d+\.\d+/, "version must be semver"),
   displayName: z.string().min(1),
   description: z.string().optional(),
-  logoSvg: z.string().min(1),
+  logoSvg: inertSvg,
   author: z.string().min(1),
   minHostVersion: z.string().regex(/^\d+\.\d+\.\d+/),
   peerPlugins: z.array(z.string()).optional(),
