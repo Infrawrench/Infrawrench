@@ -26,6 +26,7 @@ import { loadAccountClient } from "../sync-resources";
 import { addDays, isoDay } from "../cost/dates";
 
 import { aggregateNetworkFlows, DEFAULT_MAX_PAIRS } from "./aggregate";
+import type { NetworkFlowLeaseGate } from "./lease";
 import { getNetworkFlowSettings } from "./settings";
 
 /**
@@ -53,11 +54,18 @@ export interface NetworkFlowCollectionResult {
 /**
  * Collect flows for one account. Throws on failure — the caller (the poller
  * pass) owns backoff and reschedule, exactly as `collectAccountCosts` does.
+ *
+ * `lease`, when supplied, is the claim that entitles this process to spend the
+ * customer's money, and it is consulted immediately before each day's provider
+ * query rather than once at the start. See `./lease.ts`; the pass always
+ * supplies one, and callers that are not the pass (tests, one-off backfills)
+ * can leave it out and run unguarded because nothing else is competing for the
+ * account.
  */
 export async function collectAccountNetworkFlows(
   accountId: string,
   organizationId: string,
-  options: { now?: Date; maxPairs?: number } = {},
+  options: { now?: Date; maxPairs?: number; lease?: NetworkFlowLeaseGate } = {},
 ): Promise<NetworkFlowCollectionResult> {
   const settings = await getNetworkFlowSettings(organizationId);
   if (!settings.enabled) {
@@ -120,6 +128,25 @@ export async function collectAccountNetworkFlows(
   const maxPairs = Math.min(options.maxPairs ?? DEFAULT_MAX_PAIRS, capability.maxPairsPerDay);
 
   for (const day of days) {
+    // The gate in front of the money. Every iteration of this loop is at least
+    // one provider query the customer is billed for, and `MAX_DAYS_PER_PASS`
+    // bounds how many of them there are but not how long they take — a day is a
+    // serial walk over every usable flow log on the account, each one a query
+    // with its own multi-minute timeout, so a single pass can run far past the
+    // lease it was granted. Asking here means the lease is re-asserted against
+    // the database immediately before each spend: a pass that has used its
+    // runtime budget stops with its watermark intact and the rest of the
+    // backlog waits for the next pass, and a pass that has lost the lease
+    // outright throws rather than scanning days a second replica is already
+    // scanning.
+    if (options.lease && !(await options.lease.checkpoint())) {
+      console.log(
+        `[network-flow] account ${accountId}: out of pass budget after ` +
+          `${result.daysCollected} day(s), ${days.length - result.daysCollected} left for next time`,
+      );
+      break;
+    }
+
     const answer = normalizeNetworkFlowResult(await client.fetchNetworkFlows(accountId, { day }));
     result.sources = answer.sources;
     if (answer.degraded) result.degraded = true;
