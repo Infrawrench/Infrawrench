@@ -1,10 +1,10 @@
 // Package provider implements the Infrawrench Terraform provider.
 //
-// It manages Infrawrench's *own* configuration — budgets, cost centres,
-// allocation rules, tag policy, saved filters, cost reports and folders, cost
-// alerts, scenario models, billing rules and cost exports — by talking to the
-// org-scoped REST routes directly. See the README for why it does not wrap the
-// existing config-as-code plan/apply surface.
+// It manages Infrawrench's *own* configuration — cost allocation and reporting,
+// monitoring, lifecycle governance, connected accounts and access control, and
+// alert delivery — by talking to the org-scoped REST routes directly. See the
+// README for why it does not wrap the existing config-as-code plan/apply
+// surface.
 package provider
 
 import (
@@ -63,9 +63,15 @@ func (p *infrawrenchProvider) Metadata(_ context.Context, _ provider.MetadataReq
 
 func (p *infrawrenchProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages Infrawrench's own FinOps configuration: budgets, cost centres, " +
-			"allocation rules, tag policy, saved filters, cost reports and folders, cost alerts, " +
-			"scenario models, billing rules and cost exports.",
+		MarkdownDescription: "Manages **Infrawrench's own configuration** as Terraform resources: cost " +
+			"allocation and reporting, monitoring, lifecycle governance, connected accounts and access " +
+			"control, and alert delivery.\n\n" +
+			"It does not manage your cloud resources. Your cloud provider's own Terraform provider " +
+			"creates the database; this one manages the budget that watches what the database costs, the " +
+			"probe that checks it is up, the schedule that powers it down at night, and the rule that " +
+			"decides who gets paged when it is not.\n\n" +
+			"Every object is a resource with its own plan, its own drift detection and a real " +
+			"`terraform import`.",
 		Attributes: map[string]schema.Attribute{
 			"base_url": schema.StringAttribute{
 				Optional: true,

@@ -772,11 +772,15 @@ the API. While the major is `0`, the resource schemas are still allowed to move.
 
 **A released version is never re-cut.** The tag is the exact bytes the Registry
 ingested, so a packaging mistake costs a version number rather than a force
-push — `v0.1.0` was burnt that way, publishing the registry manifest without a
-checksum for it. That is also why the publish workflow dry-runs the release and
-checks the artifacts are ingestible _before_ it touches the satellite: the last
-place you want to discover a packaging bug is the Registry, because by then the
-tag exists and the only way out is another version.
+push. Two have been burnt that way: `v0.1.0` published the registry manifest
+without a checksum for it, and `v0.1.1` shipped with no `docs/` at all, so its
+Documentation tab read "Documentation Unavailable".
+
+Both failed the same way — the release looked complete everywhere except at the
+Registry, which is the one place that decides. That is why the publish workflow
+dry-runs the release and checks the artifacts are ingestible _before_ it touches
+the satellite, and why it asserts `docs/index.md` exists: each of those checks
+is a version number somebody already paid for.
 
 ## Repository notes
 
