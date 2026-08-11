@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.18.0",
+    "version": "1.19.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -16091,6 +16091,671 @@
           "resourceId",
           "ruleId"
         ],
+        "additionalProperties": false
+      },
+      "BackupFinding": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id the finding is on."
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string",
+            "example": "DigitalOcean"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string",
+            "example": "Volume"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider-native id, when known."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unprotected",
+              "rpo-breach",
+              "retention-below-policy",
+              "orphaned-snapshot"
+            ],
+            "description": "What the finding describes: nothing protects the resource; the newest backup is older than the policy's RPO; the provider-native retention window is shorter than the policy asks; or a backup whose source resource no longer exists."
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "How bad the gap is. Orphaned backups are always `low` — they cost money, not data."
+          },
+          "title": {
+            "type": "string",
+            "example": "No backup of this volume"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Sentence explaining the gap and what would close it."
+          },
+          "policyId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The policy that judged this, when one did.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "policyName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rpoHours": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Hours since the newest backup protecting the resource; null when there is none."
+          },
+          "maxRpoHours": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The policy's allowance, when one applied."
+          },
+          "retentionDays": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Provider-native retention window in days, when the plugin syncs one."
+          },
+          "minRetentionDays": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "latestBackupId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBackupName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBackupAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "sizeGb": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Size of an orphaned backup in GiB, when the plugin syncs one."
+          },
+          "monthlyCost": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Trailing-30-day spend on an orphaned backup. Null means the cost could not be determined — never that the backup is free."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "resourceId",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "accountName",
+          "displayName",
+          "externalId",
+          "kind",
+          "severity",
+          "title",
+          "detail",
+          "policyId",
+          "policyName",
+          "rpoHours",
+          "maxRpoHours",
+          "retentionDays",
+          "minRetentionDays",
+          "latestBackupId",
+          "latestBackupName",
+          "latestBackupAt",
+          "sizeGb",
+          "monthlyCost",
+          "currency"
+        ],
+        "additionalProperties": false
+      },
+      "BackupSeverityCounts": {
+        "type": "object",
+        "properties": {
+          "critical": {
+            "type": "integer"
+          },
+          "high": {
+            "type": "integer"
+          },
+          "medium": {
+            "type": "integer"
+          },
+          "low": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "critical",
+          "high",
+          "medium",
+          "low"
+        ],
+        "additionalProperties": false
+      },
+      "BackupKindCounts": {
+        "type": "object",
+        "properties": {
+          "unprotected": {
+            "type": "integer"
+          },
+          "rpo-breach": {
+            "type": "integer"
+          },
+          "retention-below-policy": {
+            "type": "integer"
+          },
+          "orphaned-snapshot": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unprotected",
+          "rpo-breach",
+          "retention-below-policy",
+          "orphaned-snapshot"
+        ],
+        "additionalProperties": false
+      },
+      "BackupCoverageRow": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "protected",
+              "automated",
+              "stale",
+              "unprotected"
+            ],
+            "description": "How the resource reads at a glance. `automated` means the provider is taking backups we cannot enumerate, so there is a restore point but no listable one."
+          },
+          "backupCount": {
+            "type": "integer",
+            "description": "Backups in the inventory that protect this resource."
+          },
+          "latestBackupId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBackupName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBackupAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "rpoHours": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "automatedBackups": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether provider-native automated backups are on. Null means the plugin syncs no signal either way — which never counts as protection and never counts as a fault."
+          },
+          "retentionDays": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "policyId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "policyName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "maxRpoHours": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "minRetentionDays": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "resourceId",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "accountName",
+          "displayName",
+          "externalId",
+          "state",
+          "backupCount",
+          "latestBackupId",
+          "latestBackupName",
+          "latestBackupAt",
+          "rpoHours",
+          "automatedBackups",
+          "retentionDays",
+          "policyId",
+          "policyName",
+          "maxRpoHours",
+          "minRetentionDays"
+        ],
+        "additionalProperties": false
+      },
+      "BackupCoverageSummary": {
+        "type": "object",
+        "properties": {
+          "statefulCount": {
+            "type": "integer",
+            "description": "Stateful resources the plugin declarations can judge."
+          },
+          "protectedCount": {
+            "type": "integer"
+          },
+          "unprotectedCount": {
+            "type": "integer"
+          },
+          "backupCount": {
+            "type": "integer"
+          },
+          "orphanedBackupCount": {
+            "type": "integer"
+          },
+          "unattributableBackupCount": {
+            "type": "integer",
+            "description": "Backups whose source could not be determined — the plugin syncs no source field, the field was empty, or more than one resource answered to it. Reported rather than hidden: 'we found no orphans' and 'we could not tell' are different answers."
+          },
+          "orphanedGb": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "orphanedMonthlyCost": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Null when billing data is unavailable or the orphans span several currencies."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "worstRpoHours": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Largest RPO across resources that have a datable backup at all."
+          }
+        },
+        "required": [
+          "statefulCount",
+          "protectedCount",
+          "unprotectedCount",
+          "backupCount",
+          "orphanedBackupCount",
+          "unattributableBackupCount",
+          "orphanedGb",
+          "orphanedMonthlyCost",
+          "currency",
+          "worstRpoHours"
+        ],
+        "additionalProperties": false
+      },
+      "BackupCoverageResponse": {
+        "type": "object",
+        "properties": {
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupFinding"
+            },
+            "description": "Gaps, worst severity first."
+          },
+          "counts": {
+            "$ref": "#/components/schemas/BackupSeverityCounts"
+          },
+          "kindCounts": {
+            "$ref": "#/components/schemas/BackupKindCounts"
+          },
+          "totalCount": {
+            "type": "integer"
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupCoverageRow"
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/BackupCoverageSummary"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "findings",
+          "counts",
+          "kindCounts",
+          "totalCount",
+          "resources",
+          "summary",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "BackupPolicy": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "resourceTypeIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Resource types the policy selects; empty selects every stateful type."
+          },
+          "tagKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Tag key that must be present. Matched case-insensitively."
+          },
+          "tagValue": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required value of `tagKey`, matched exactly. Null means presence is enough."
+          },
+          "maxRpoHours": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The newest backup must be no older than this. Null means no RPO demand."
+          },
+          "minRetentionDays": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Provider-native retention must be at least this. Null means no demand."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "resourceTypeIds",
+          "tagKey",
+          "tagValue",
+          "maxRpoHours",
+          "minRetentionDays",
+          "enabled",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "BackupPolicyList": {
+        "type": "object",
+        "properties": {
+          "policies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupPolicy"
+            }
+          }
+        },
+        "required": [
+          "policies"
+        ],
+        "additionalProperties": false
+      },
+      "BackupPolicyCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "resourceTypeIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100
+          },
+          "tagKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 128
+          },
+          "tagValue": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 256
+          },
+          "maxRpoHours": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 8760
+          },
+          "minRetentionDays": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 3650
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "BackupPolicyUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "resourceTypeIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100
+          },
+          "tagKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 128
+          },
+          "tagValue": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 256
+          },
+          "maxRpoHours": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 8760
+          },
+          "minRetentionDays": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 3650
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
         "additionalProperties": false
       },
       "DnsZone": {
@@ -43461,6 +44126,258 @@
         },
         "operationId": "deleteOrgOrgIdAccessReviewDismissals",
         "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/backups": {
+      "get": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "summary": "List backup coverage across synced resources",
+        "description": "What protects the organization's stateful resources, what does not, and which backups protect nothing. Derived from already-synced inventory using the `backupRole` and `backupPolicy` declarations plugins carry on their resource types — no provider API calls are made and results reflect the last sync. Findings are recomputed on every read rather than stored. Orphaned backups carry a trailing-30-day spend quote when billing data is available.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Backup coverage, worst findings first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupCoverageResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdBackups"
+      }
+    },
+    "/api/org/{orgId}/backups/policies": {
+      "get": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "summary": "List the organization's backup policies",
+        "description": "The recovery objectives coverage is judged against. A policy selects resources by type and/or tag and demands a maximum RPO, a minimum retention, or both.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's backup policies, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupPolicyList"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdBackupsPolicies"
+      },
+      "post": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "summary": "Create a backup policy",
+        "description": "A policy must demand at least one of `maxRpoHours` and `minRetentionDays` — one that demands nothing could never produce a finding and would read as protection while providing none. An empty `resourceTypeIds` selects every stateful resource type.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupPolicyCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The created policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBackupsPolicies"
+      }
+    },
+    "/api/org/{orgId}/backups/policies/{policyId}": {
+      "patch": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "summary": "Update a backup policy",
+        "description": "Omitted fields are left alone; an explicit `null` clears `tagKey`, `tagValue`, `maxRpoHours` or `minRetentionDays`. The result is validated after merging, so a patch that would leave the policy demanding nothing is rejected.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "policyId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupPolicyUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "patchOrgOrgIdBackupsPoliciesPolicyId"
+      },
+      "delete": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "summary": "Delete a backup policy",
+        "description": "Removes the objective. To stop a policy judging without losing it, set `enabled` to false instead.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "policyId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The policy was deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdBackupsPoliciesPolicyId"
       }
     },
     "/api/org/{orgId}/dns": {
