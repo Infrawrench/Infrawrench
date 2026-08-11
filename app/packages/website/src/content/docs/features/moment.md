@@ -70,4 +70,4 @@ The `what_changed` tool exposes the union to AI agents — a timestamp and a win
 - Drift and expiry alert deliveries record only their most recent send, so older windows won't show them even if one fired then.
 - Incident badges are correlation, not causation: "these changes happened during an incident" is a hint about where to look, not a verdict.
 
-See also: [Change timeline](./change-timeline.md), [Provider status](./provider-status.md), [Cloud costs](./cloud-costs.md), [Audit log](../team-and-billing/audit-log.md), [CLI](./cli.md), [MCP](./mcp.md).
+See also: [Incident mode](./incident-mode.md) (which reuses this same union to build a declared incident's timeline), [Change timeline](./change-timeline.md), [Provider status](./provider-status.md), [Cloud costs](./cloud-costs.md), [Audit log](../team-and-billing/audit-log.md), [CLI](./cli.md), [MCP](./mcp.md).

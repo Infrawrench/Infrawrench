@@ -84,3 +84,9 @@ Probes run through the same egress proxy that powers workflow `fetch()`
 Without it configured, probes simply don't run — they exist to measure from an external
 vantage point, so there is no in-cluster fallback. Private, loopback, and cluster-internal
 addresses are refused by design: a probe can only target endpoints the internet can reach.
+
+## Related
+
+- [Status pages](./status-pages.md) — publishing a chosen set of these probes
+- [Incident mode](./incident-mode.md) — a down probe carries a **Declare incident** button that
+  opens the declare form pre-filled with the probe's name, its error and the moment it went down

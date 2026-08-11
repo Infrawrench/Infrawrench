@@ -188,6 +188,16 @@ infrawrench status-pages "Acme API"   # one page: settings and its components
 infrawrench status-pages --json
 ```
 
+`declared-incidents` lists the incidents [your organization declared](./incident-mode.md) — severity, status, duration, who declared it, and whether anything the declaration asked for (the change freeze, the announcement, the public update) failed. Give it an id or a title fragment for that incident's assembled timeline, artefacts first with failures in red. Cloud-only, and read-only: declaring and resolving happen on the web, desktop and mobile apps.
+
+The long name is deliberate. `infrawrench incidents` above is the _other_ kind — the [provider status correlation](./provider-status.md), somebody else's outage. Two features, one English word; the command names keep them apart:
+
+```
+infrawrench declared-incidents
+infrawrench declared-incidents "checkout"   # one incident: facts, artefacts, joined timeline
+infrawrench declared-incidents --json
+```
+
 `ownership` lists [resource ownership](../core-concepts/resource-ownership.md) — who owns each resource, what it is for, and its ticket link. Only resources with something recorded appear, so a resource absent from this list is unowned; `infrawrench orphans` is where the unowned resources that also look wasted show up. Pass a query to filter by resource name, owner or purpose. Cloud-only, and read-only: owners are set from a resource's Ownership tab, where the picker offers real org members:
 
 ```
