@@ -1,5 +1,18 @@
 # Terraform provider for Infrawrench
 
+> **Developed in the [Infrawrench monorepo](https://github.com/Infrawrench/Infrawrench/tree/main/terraform-provider-infrawrench);
+> mirrored to [Infrawrench/terraform-provider-infrawrench](https://github.com/Infrawrench/terraform-provider-infrawrench).**
+>
+> The Terraform Registry resolves a provider to a dedicated public repository
+> named `terraform-provider-{NAME}` and reads its releases from that
+> repository's tags, which a monorepo subdirectory cannot satisfy. So the
+> provider lives here and the mirror's tree is replaced wholesale on every
+> release, workflows and this file included. Edit the monorepo copy; anything
+> changed or opened in the mirror is overwritten the next time a version ships.
+>
+> Paths outside this directory (`app/packages/…`, `client-core/…`) are monorepo
+> paths and do not exist in the mirror.
+
 Manages **Infrawrench's own configuration** as code: cost allocation and
 reporting, monitoring, lifecycle governance, connected accounts and access
 control, and alert delivery. 45 resources and 6 data sources, each with its own
@@ -11,8 +24,8 @@ is for — see the next section.
 
 ## What this is not
 
-Three things in this repository have "Terraform" in the name. They do different
-jobs and confusing them wastes an afternoon.
+Three things in Infrawrench have "Terraform" in the name. They do different jobs
+and confusing them wastes an afternoon.
 
 | Feature                                                             | What it does                                                                                                                                                        | Direction                       |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
