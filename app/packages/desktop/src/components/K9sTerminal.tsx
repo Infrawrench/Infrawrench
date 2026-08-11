@@ -6,6 +6,7 @@ import { invoke } from "../lib/invoke";
 import {
   attachAltBufferScrollHandler,
   attachTerminalClipboard,
+  getTerminalContainerProps,
   getXtermTerminalOptions,
 } from "@infrawrench/ui";
 import { openK9s, type K8sSessionHandle } from "../lib/k8s-dispatch";
@@ -175,7 +176,11 @@ export function K9sTerminal({ kubeconfig, cloudContext, namespace }: K9sTerminal
 
   return (
     <div className="h-full w-full relative bg-[var(--color-terminal-bg)] overflow-hidden">
-      <div ref={containerRef} className="absolute inset-0 p-2" />
+      <div
+        ref={containerRef}
+        className="absolute inset-0 p-2"
+        {...getTerminalContainerProps({ kind: "k9s", namespace })}
+      />
     </div>
   );
 }

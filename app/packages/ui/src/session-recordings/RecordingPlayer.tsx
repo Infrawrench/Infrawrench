@@ -7,6 +7,7 @@ import {
   type ParsedCast,
 } from "@infrawrench/client-core";
 
+import { getTerminalContainerProps } from "../xterm-options.js";
 import type { MountPlaybackTerminal, PlaybackTerminal } from "./terminal.js";
 
 const PLAYBACK_SPEEDS = [0.5, 1, 2, 4] as const;
@@ -179,6 +180,7 @@ export function RecordingPlayer({
         // The cast's own geometry drives the terminal; the container just
         // scrolls when the recording is wider than the panel.
         style={{ overflowX: "auto" }}
+        {...getTerminalContainerProps({ kind: "playback" })}
       />
 
       <div className="flex items-center gap-3">
