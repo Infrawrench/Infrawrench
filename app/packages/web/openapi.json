@@ -16167,7 +16167,7 @@
               "null"
             ],
             "format": "uuid",
-            "description": "The policy that judged this, when one did.",
+            "description": "The policy supplying the objective this finding breaches — the RPO policy for `rpo-breach`, the retention policy for `retention-below-policy`. Null when no policy applies.",
             "example": "00000000-0000-0000-0000-000000000000"
           },
           "policyName": {
@@ -16361,9 +16361,10 @@
               "protected",
               "automated",
               "stale",
+              "unknown",
               "unprotected"
             ],
-            "description": "How the resource reads at a glance. `automated` means the provider is taking backups we cannot enumerate, so there is a restore point but no listable one."
+            "description": "How the resource reads at a glance. `automated` means the provider is taking backups we cannot enumerate, so there is a restore point but no listable one. `unknown` means the resource type declares a provider-native automated-backup signal but this instance's value could not be read — it is unassessed, not a confirmed gap, and never produces a finding."
           },
           "backupCount": {
             "type": "integer",
@@ -16407,15 +16408,31 @@
               "null"
             ]
           },
-          "policyId": {
+          "rpoPolicyId": {
             "type": [
               "string",
               "null"
             ],
             "format": "uuid",
+            "description": "The policy supplying `maxRpoHours` — the strictest RPO among those selecting this resource. Tracked separately from the retention policy because the two strictest demands routinely come from different policies.",
             "example": "00000000-0000-0000-0000-000000000000"
           },
-          "policyName": {
+          "rpoPolicyName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retentionPolicyId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The policy supplying `minRetentionDays`.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "retentionPolicyName": {
             "type": [
               "string",
               "null"
@@ -16452,8 +16469,10 @@
           "rpoHours",
           "automatedBackups",
           "retentionDays",
-          "policyId",
-          "policyName",
+          "rpoPolicyId",
+          "rpoPolicyName",
+          "retentionPolicyId",
+          "retentionPolicyName",
           "maxRpoHours",
           "minRetentionDays"
         ],
@@ -16470,7 +16489,12 @@
             "type": "integer"
           },
           "unprotectedCount": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Confirmed gaps. Excludes unassessed resources; this is what the digest counts."
+          },
+          "unknownCount": {
+            "type": "integer",
+            "description": "Resources that could not be assessed: the type declares a provider-native automated-backup signal but this instance's value was absent or unrecognised. Reported separately so 'we found no gap' and 'we could not tell' do not read alike."
           },
           "backupCount": {
             "type": "integer"
@@ -16513,6 +16537,7 @@
           "statefulCount",
           "protectedCount",
           "unprotectedCount",
+          "unknownCount",
           "backupCount",
           "orphanedBackupCount",
           "unattributableBackupCount",

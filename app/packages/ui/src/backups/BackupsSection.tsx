@@ -64,6 +64,10 @@ const STATE_BADGE_CLASSES: Record<BackupProtectionState, string> = {
   protected: "bg-emerald-500/10 text-success",
   automated: "bg-sky-500/10 text-info",
   stale: "bg-amber-500/10 text-warning",
+  // Deliberately neutral, not red: an unassessed resource is not a finding,
+  // and colouring it like one would put the false alarm back on the screen
+  // after the computation was careful to keep it out.
+  unknown: "bg-surface-overlay text-on-surface-tertiary",
   unprotected: "bg-red-500/10 text-danger",
 };
 
@@ -71,6 +75,7 @@ const STATE_LABELS: Record<BackupProtectionState, string> = {
   protected: "Backed up",
   automated: "Provider-managed",
   stale: "Stale",
+  unknown: "Not assessed",
   unprotected: "Unprotected",
 };
 
@@ -130,7 +135,10 @@ function SummaryCards({ data }: { data: BackupCoverageResponse }) {
     {
       label: "Unprotected",
       value: `${summary.unprotectedCount} / ${summary.statefulCount}`,
-      hint: "Stateful resources with no backup we can see",
+      hint:
+        summary.unknownCount > 0
+          ? `Confirmed gaps — ${summary.unknownCount} more could not be assessed`
+          : "Stateful resources with no backup we can see",
     },
     {
       label: "Orphaned backups",
@@ -174,6 +182,15 @@ function SeverityChips({ data }: { data: BackupCoverageResponse }) {
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
           <span className="tabular-nums">{data.summary.unattributableBackupCount}</span>
           Unattributable
+        </span>
+      )}
+      {/* Same reason the unattributable count is here: an unassessed resource
+          produces no finding, so without this the severity row would read as a
+          clean bill of health for resources nobody actually checked. */}
+      {data.summary.unknownCount > 0 && (
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
+          <span className="tabular-nums">{data.summary.unknownCount}</span>
+          Not assessed
         </span>
       )}
     </div>
@@ -233,6 +250,16 @@ function FindingRow({
   );
 }
 
+/**
+ * Which policies bind this row. Both are shown when the RPO and the retention
+ * floor come from different policies, because naming only one would send the
+ * reader to edit the wrong objective.
+ */
+function describeRowPolicies(row: BackupCoverageRow): string {
+  const names = [...new Set([row.rpoPolicyName, row.retentionPolicyName].filter(Boolean))];
+  return names.length === 0 ? "—" : names.join(" · ");
+}
+
 function CoverageRow({
   row,
   onOpenResource,
@@ -272,7 +299,7 @@ function CoverageRow({
         {row.retentionDays != null ? `${row.retentionDays}d` : "—"}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap text-xs text-on-surface-tertiary">
-        {row.policyName ?? "—"}
+        {describeRowPolicies(row)}
       </td>
       <td className="px-4 py-2.5 whitespace-nowrap text-right">
         <span

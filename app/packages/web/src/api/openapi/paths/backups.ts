@@ -15,11 +15,16 @@ const BackupFindingKind = z
       "asks; or a backup whose source resource no longer exists.",
   });
 
-const BackupProtectionState = z.enum(["protected", "automated", "stale", "unprotected"]).openapi({
-  description:
-    "How the resource reads at a glance. `automated` means the provider is taking backups we " +
-    "cannot enumerate, so there is a restore point but no listable one.",
-});
+const BackupProtectionState = z
+  .enum(["protected", "automated", "stale", "unknown", "unprotected"])
+  .openapi({
+    description:
+      "How the resource reads at a glance. `automated` means the provider is taking backups we " +
+      "cannot enumerate, so there is a restore point but no listable one. `unknown` means the " +
+      "resource type declares a provider-native automated-backup signal but this instance's " +
+      "value could not be read — it is unassessed, not a confirmed gap, and never produces a " +
+      "finding.",
+  });
 
 export function registerBackupPaths(ctx: BuildContext) {
   const { registry, enums } = ctx;
@@ -38,7 +43,11 @@ export function registerBackupPaths(ctx: BuildContext) {
     severity: BackupSeverity,
     title: z.string().openapi({ example: "No backup of this volume" }),
     detail: z.string().describe("Sentence explaining the gap and what would close it."),
-    policyId: Uuid.nullable().describe("The policy that judged this, when one did."),
+    policyId: Uuid.nullable().describe(
+      "The policy supplying the objective this finding breaches — the RPO policy for " +
+        "`rpo-breach`, the retention policy for `retention-below-policy`. Null when no policy " +
+        "applies.",
+    ),
     policyName: z.string().nullable(),
     rpoHours: z
       .number()
@@ -91,8 +100,14 @@ export function registerBackupPaths(ctx: BuildContext) {
           "signal either way — which never counts as protection and never counts as a fault.",
       ),
     retentionDays: z.number().nullable(),
-    policyId: Uuid.nullable(),
-    policyName: z.string().nullable(),
+    rpoPolicyId: Uuid.nullable().describe(
+      "The policy supplying `maxRpoHours` — the strictest RPO among those selecting this " +
+        "resource. Tracked separately from the retention policy because the two strictest " +
+        "demands routinely come from different policies.",
+    ),
+    rpoPolicyName: z.string().nullable(),
+    retentionPolicyId: Uuid.nullable().describe("The policy supplying `minRetentionDays`."),
+    retentionPolicyName: z.string().nullable(),
     maxRpoHours: z.number().int().nullable(),
     minRetentionDays: z.number().int().nullable(),
   }).openapi("BackupCoverageRow");
@@ -117,7 +132,18 @@ export function registerBackupPaths(ctx: BuildContext) {
       .int()
       .describe("Stateful resources the plugin declarations can judge."),
     protectedCount: z.number().int(),
-    unprotectedCount: z.number().int(),
+    unprotectedCount: z
+      .number()
+      .int()
+      .describe("Confirmed gaps. Excludes unassessed resources; this is what the digest counts."),
+    unknownCount: z
+      .number()
+      .int()
+      .describe(
+        "Resources that could not be assessed: the type declares a provider-native " +
+          "automated-backup signal but this instance's value was absent or unrecognised. " +
+          "Reported separately so 'we found no gap' and 'we could not tell' do not read alike.",
+      ),
     backupCount: z.number().int(),
     orphanedBackupCount: z.number().int(),
     unattributableBackupCount: z

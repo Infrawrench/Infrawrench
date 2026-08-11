@@ -81,7 +81,19 @@ export type BackupProtectionState =
   | "automated"
   /** Backups exist but the newest one is older than the policy allows. */
   | "stale"
-  /** Nothing protects it that we can see. */
+  /**
+   * The type declares a provider-native automated-backup signal, but this
+   * instance's value is absent or unrecognised, and no backup is attributable.
+   * We have **not assessed** this resource — distinct from `unprotected`,
+   * which is a confirmed gap.
+   *
+   * This is the state a row synced before its plugin declared the field lands
+   * in, and it never produces a finding: the whole point of the three-valued
+   * `parseFlag` is that missing data must not alarm, and folding "we don't
+   * know" into "you have no backup" would put invented gaps in the digest.
+   */
+  | "unknown"
+  /** Nothing protects it that we can see, and we had the data to tell. */
   | "unprotected";
 
 /** One gap, on one resource. A resource can carry more than one. */
@@ -152,9 +164,20 @@ export interface BackupCoverageRow {
   /** Whether a provider-native automated backup is switched on, as far as we can tell. */
   automatedBackups: boolean | null;
   retentionDays: number | null;
-  /** The strictest org policy selecting this resource, when one does. */
-  policyId: string | null;
-  policyName: string | null;
+  /**
+   * The policy supplying `maxRpoHours` — the strictest RPO among those
+   * selecting this resource. Null when no selecting policy sets an RPO.
+   *
+   * Tracked separately from the retention policy because the two strictest
+   * demands routinely come from different policies ("everything, 24h RPO"
+   * alongside "production databases, 30 day retention"), and a row that named
+   * one policy for both would link the reader to the wrong one to edit.
+   */
+  rpoPolicyId: string | null;
+  rpoPolicyName: string | null;
+  /** The policy supplying `minRetentionDays`; see {@link rpoPolicyId}. */
+  retentionPolicyId: string | null;
+  retentionPolicyName: string | null;
   maxRpoHours: number | null;
   minRetentionDays: number | null;
 }
@@ -163,8 +186,18 @@ export interface BackupCoverageRow {
 export interface BackupCoverageSummary {
   /** Stateful resources the declarations let us judge at all. */
   statefulCount: number;
+  /** Resources with some protection — a backup, or provider-managed backups. */
   protectedCount: number;
+  /** Confirmed gaps. This is what the digest reports; it excludes unknowns. */
   unprotectedCount: number;
+  /**
+   * Resources we could not assess: the type declares a provider-native
+   * automated-backup signal but this instance's value was absent or
+   * unrecognised. Surfaced rather than folded into either side, the
+   * `unattributableBackupCount` stance — "we found no gap" and "we couldn't
+   * tell" must not render the same.
+   */
+  unknownCount: number;
   /** Backups in the inventory, whatever they protect. */
   backupCount: number;
   orphanedBackupCount: number;
@@ -585,6 +618,7 @@ export function computeBackupCoverage(
       statefulCount: 0,
       protectedCount: 0,
       unprotectedCount: 0,
+      unknownCount: 0,
       backupCount: 0,
       orphanedBackupCount: 0,
       unattributableBackupCount: 0,
@@ -695,6 +729,8 @@ export function computeBackupCoverage(
   const findings: BackupFinding[] = [];
   const rows: BackupCoverageRow[] = [];
   let protectedCount = 0;
+  let unprotectedCount = 0;
+  let unknownCount = 0;
   let worstRpoHours: number | null = null;
 
   for (const resource of input.resources) {
@@ -711,26 +747,42 @@ export function computeBackupCoverage(
     // The strictest demand across every policy that selects this resource:
     // shortest RPO, longest retention. Two policies on one volume must not
     // produce two contradictory findings.
-    let policy: BackupPolicy | null = null;
+    //
+    // The winning policy is tracked *per objective*, not per resource. The two
+    // strictest demands routinely come from different policies — "everything,
+    // 24h RPO" alongside "production databases, 30 day retention" is the
+    // obvious setup — and collapsing them into one `policy` made a retention
+    // finding cite the unrelated policy that happened to win the RPO. A
+    // finding must name the policy that actually supplies the objective it
+    // breaches, because that is the policy the reader has to go and change.
+    let rpoPolicy: BackupPolicy | null = null;
+    let retentionPolicy: BackupPolicy | null = null;
+    let firstMatch: BackupPolicy | null = null;
     let maxRpoHours: number | null = null;
     let minRetentionDays: number | null = null;
     for (const candidate of policies) {
       if (!policySelects(candidate, resource.resourceTypeId, tags)) continue;
-      if (!policy) policy = candidate;
+      if (!firstMatch) firstMatch = candidate;
       if (
         candidate.maxRpoHours != null &&
         (maxRpoHours == null || candidate.maxRpoHours < maxRpoHours)
       ) {
         maxRpoHours = candidate.maxRpoHours;
-        policy = candidate;
+        rpoPolicy = candidate;
       }
       if (
         candidate.minRetentionDays != null &&
         (minRetentionDays == null || candidate.minRetentionDays > minRetentionDays)
       ) {
         minRetentionDays = candidate.minRetentionDays;
+        retentionPolicy = candidate;
       }
     }
+    // "Some policy expects this resource to be recoverable" is what escalates
+    // an unprotected finding, so any binding policy will do — but prefer the
+    // RPO one, since having no backup at all is most directly a failure to
+    // meet a recovery point.
+    const governingPolicy = rpoPolicy ?? retentionPolicy ?? firstMatch;
 
     const protectors = new Set(declaration.protectedBy);
     const own = (backupsBySource.get(resource.id) ?? []).filter(
@@ -764,6 +816,15 @@ export function computeBackupCoverage(
     const automatedBackups =
       retentionDays != null ? retentionDays > 0 : flag === null ? null : flag;
 
+    // Whether this type gives us anything to read about provider-managed
+    // backups at all. A type that declares neither key is saying snapshots are
+    // the only protection it has, so no snapshot really is a gap; a type that
+    // declares one and whose value we could not read is a resource we simply
+    // have not assessed, and must not be reported as a confirmed gap.
+    const declaresAutomated = Boolean(
+      declaration.automatedBackupFieldKey || declaration.retentionDaysFieldKey,
+    );
+
     const state: BackupProtectionState =
       own.length > 0
         ? maxRpoHours != null && (rpoHours == null || rpoHours > maxRpoHours)
@@ -771,8 +832,12 @@ export function computeBackupCoverage(
           : "protected"
         : automatedBackups === true
           ? "automated"
-          : "unprotected";
-    if (state !== "unprotected") protectedCount += 1;
+          : declaresAutomated && automatedBackups === null
+            ? "unknown"
+            : "unprotected";
+    if (state === "unprotected") unprotectedCount += 1;
+    else if (state === "unknown") unknownCount += 1;
+    else protectedCount += 1;
 
     const identity = {
       resourceId: resource.id,
@@ -800,16 +865,21 @@ export function computeBackupCoverage(
       rpoHours,
       automatedBackups,
       retentionDays,
-      policyId: policy?.id ?? null,
-      policyName: policy?.name ?? null,
+      rpoPolicyId: rpoPolicy?.id ?? null,
+      rpoPolicyName: rpoPolicy?.name ?? null,
+      retentionPolicyId: retentionPolicy?.id ?? null,
+      retentionPolicyName: retentionPolicy?.name ?? null,
       maxRpoHours,
       minRetentionDays,
     });
 
+    // Findings override `policyId`/`policyName` with whichever policy supplies
+    // the objective they breach; this is only the fallback for kinds that
+    // breach no specific objective.
     const base = {
       ...identity,
-      policyId: policy?.id ?? null,
-      policyName: policy?.name ?? null,
+      policyId: governingPolicy?.id ?? null,
+      policyName: governingPolicy?.name ?? null,
       rpoHours,
       maxRpoHours,
       retentionDays,
@@ -829,29 +899,33 @@ export function computeBackupCoverage(
         // Under an explicit policy this is a broken promise; without one it is
         // a fact the org may well have chosen. Both are worth saying, at
         // different volumes.
-        severity: policy ? "high" : "medium",
+        severity: governingPolicy ? "high" : "medium",
         title: `No backup of this ${type.displayName.toLowerCase()}`,
         detail:
           `Nothing in the synced inventory protects ${resource.displayName}, and ` +
           `${
-            declaration.automatedBackupFieldKey || declaration.retentionDaysFieldKey
-              ? "its provider-native automated backups are off or unreported"
+            declaresAutomated
+              ? `${pluginEntry.pluginName} reports its automated backups as off`
               : `${pluginEntry.pluginName} exposes no automated backup setting for this type`
           }. ` +
-          (policy
-            ? `Policy "${policy.name}" selects it, so this is an unmet objective.`
+          (governingPolicy
+            ? `Policy "${governingPolicy.name}" selects it, so this is an unmet objective.`
             : `Take a snapshot, or add a backup policy so this is checked continuously.`),
       });
     } else if (state === "stale" && maxRpoHours != null) {
       findings.push({
         ...base,
         kind: "rpo-breach",
+        // Named against the policy that supplies the RPO, which is not
+        // necessarily the one supplying the retention floor below.
+        policyId: rpoPolicy?.id ?? null,
+        policyName: rpoPolicy?.name ?? null,
         severity: rpoHours != null && rpoHours > maxRpoHours * 2 ? "high" : "medium",
         title: "Newest backup is older than the RPO",
         detail:
           (rpoHours == null
             ? `The ${own.length} backup(s) of ${resource.displayName} carry no readable timestamp, so none of them can prove an RPO of ${formatHours(maxRpoHours)}.`
-            : `The newest backup of ${resource.displayName} is ${formatHours(rpoHours)} old, against the ${formatHours(maxRpoHours)} demanded by policy "${policy?.name ?? "—"}".`) +
+            : `The newest backup of ${resource.displayName} is ${formatHours(rpoHours)} old, against the ${formatHours(maxRpoHours)} demanded by policy "${rpoPolicy?.name ?? "—"}".`) +
           ` Losing it now would cost you everything written since${latestBackupAt ? ` ${latestBackupAt}` : ""}.`,
       });
     }
@@ -860,6 +934,10 @@ export function computeBackupCoverage(
       findings.push({
         ...base,
         kind: "retention-below-policy",
+        // Named against the policy that supplies the retention floor, which is
+        // not necessarily the one supplying the RPO above.
+        policyId: retentionPolicy?.id ?? null,
+        policyName: retentionPolicy?.name ?? null,
         severity: retentionDays === 0 ? "high" : "medium",
         title:
           retentionDays === 0
@@ -867,8 +945,8 @@ export function computeBackupCoverage(
             : "Retention is shorter than policy",
         detail:
           retentionDays === 0
-            ? `${resource.displayName} has a retention window of 0 days, which is how ${pluginEntry.pluginName} reports automated backups being disabled. Policy "${policy?.name ?? "—"}" asks for ${minRetentionDays} day(s).`
-            : `${resource.displayName} keeps ${retentionDays} day(s) of automated backups; policy "${policy?.name ?? "—"}" asks for ${minRetentionDays}. A mistake found on day ${minRetentionDays} would be unrecoverable.`,
+            ? `${resource.displayName} has a retention window of 0 days, which is how ${pluginEntry.pluginName} reports automated backups being disabled. Policy "${retentionPolicy?.name ?? "—"}" asks for ${minRetentionDays} day(s).`
+            : `${resource.displayName} keeps ${retentionDays} day(s) of automated backups; policy "${retentionPolicy?.name ?? "—"}" asks for ${minRetentionDays}. A mistake found on day ${minRetentionDays} would be unrecoverable.`,
       });
     }
   }
@@ -975,7 +1053,8 @@ export function computeBackupCoverage(
     summary: {
       statefulCount: rows.length,
       protectedCount,
-      unprotectedCount: rows.length - protectedCount,
+      unprotectedCount,
+      unknownCount,
       backupCount: backups.length,
       orphanedBackupCount: orphanedCount,
       unattributableBackupCount: unattributableCount,
@@ -1028,6 +1107,7 @@ const EMPTY_RESPONSE: BackupCoverageResponse = {
     statefulCount: 0,
     protectedCount: 0,
     unprotectedCount: 0,
+    unknownCount: 0,
     backupCount: 0,
     orphanedBackupCount: 0,
     unattributableBackupCount: 0,

@@ -199,6 +199,83 @@ describe("computeBackupCoverage", () => {
     expect(feed.findings).toHaveLength(1);
     expect(feed.findings[0]?.maxRpoHours).toBe(6);
     expect(feed.findings[0]?.policyId).toBe("tight");
+    expect(feed.resources[0]?.rpoPolicyId).toBe("tight");
+  });
+
+  it("names the policy that supplies each objective, not just the RPO winner", () => {
+    // The regression this guards: one `policy` variable held whichever policy
+    // won the RPO race, so a retention finding cited an unrelated policy — and
+    // the reader would have gone to edit the wrong one. The two strictest
+    // demands routinely come from different policies, which is exactly the
+    // "everything, 24h" plus "prod databases, 30 days" setup below.
+    const input: BackupScanInput = {
+      plugins: [
+        {
+          id: "azure",
+          displayName: "Azure",
+          resourceTypes: [
+            {
+              id: "pg",
+              displayName: "PostgreSQL",
+              backupPolicy: { protectedBy: [], retentionDaysFieldKey: "backupRetentionDays" },
+            },
+          ],
+        },
+      ],
+      accounts: [{ id: "acc-1", displayName: "Prod", pluginId: "azure" }],
+      resources: [
+        res({
+          id: "pg-1",
+          pluginId: "azure",
+          resourceTypeId: "pg",
+          fields: { backupRetentionDays: 3 },
+        }),
+      ],
+      policies: [
+        policy({ id: "rpo-only", name: "Fleet RPO", maxRpoHours: 24, minRetentionDays: null }),
+        policy({
+          id: "retention-only",
+          name: "Database retention",
+          maxRpoHours: null,
+          minRetentionDays: 30,
+        }),
+      ],
+    };
+    const feed = computeBackupCoverage(input, { now: NOW });
+
+    const retention = feed.findings.find((f) => f.kind === "retention-below-policy");
+    expect(retention?.policyId).toBe("retention-only");
+    expect(retention?.policyName).toBe("Database retention");
+    expect(retention?.minRetentionDays).toBe(30);
+    // And the sentence a human reads must name it too, not the RPO policy.
+    expect(retention?.detail).toContain("Database retention");
+    expect(retention?.detail).not.toContain("Fleet RPO");
+
+    const row = feed.resources[0];
+    expect(row?.rpoPolicyId).toBe("rpo-only");
+    expect(row?.retentionPolicyId).toBe("retention-only");
+  });
+
+  it("names the RPO policy on an RPO breach when another policy sets retention", () => {
+    const feed = computeBackupCoverage(
+      scan(
+        [res({ id: "vol-1" }), snapshot("snap", "vol-1", 100)],
+        [
+          policy({ id: "rpo-only", name: "Fleet RPO", maxRpoHours: 24, minRetentionDays: null }),
+          policy({
+            id: "retention-only",
+            name: "Volume retention",
+            maxRpoHours: null,
+            minRetentionDays: 14,
+          }),
+        ],
+      ),
+      { now: NOW },
+    );
+    const breach = feed.findings.find((f) => f.kind === "rpo-breach");
+    expect(breach?.policyId).toBe("rpo-only");
+    expect(breach?.detail).toContain("Fleet RPO");
+    expect(breach?.detail).not.toContain("Volume retention");
   });
 
   it("ignores disabled policies", () => {
@@ -258,14 +335,58 @@ describe("computeBackupCoverage", () => {
       expect(feed.resources[0]?.automatedBackups).toBe(false);
     });
 
-    it("neither clears nor claims to know when the field is absent", () => {
+    it("reports an unreadable field as unknown, never as a gap", () => {
+      // The regression this guards: `parseFlag` returning null used to fall
+      // through to `unprotected`, inventing a gap that reached the digest.
+      // A row synced before its plugin declared the field is a resource we
+      // have not assessed, not a resource with no backup.
       const feed = computeBackupCoverage(scan([res({ id: "d-1", resourceTypeId: "droplet" })]), {
         now: NOW,
       });
       expect(feed.resources[0]?.automatedBackups).toBeNull();
-      // Unknown is not protection, so it still reports — but it says so rather
-      // than claiming backups are switched off.
+      expect(feed.resources[0]?.state).toBe("unknown");
+      expect(feed.findings).toEqual([]);
+      expect(feed.summary.unknownCount).toBe(1);
+      expect(feed.summary.unprotectedCount).toBe(0);
+      expect(feed.summary.protectedCount).toBe(0);
+      expect(feed.summary.statefulCount).toBe(1);
+    });
+
+    it("does not swallow a real gap on a type with no automated-backup signal", () => {
+      // The other side of the same fix. A type declaring only `protectedBy` is
+      // saying snapshots are the only protection it has, so no snapshot is a
+      // confirmed gap — over-correcting to "unknown" here would silently empty
+      // the feature for volumes, servers, branches and databases.
+      const feed = computeBackupCoverage(scan([res({ id: "vol-1" })]), { now: NOW });
+      expect(feed.resources[0]?.state).toBe("unprotected");
       expect(feed.findings[0]?.kind).toBe("unprotected");
+      expect(feed.summary.unprotectedCount).toBe(1);
+      expect(feed.summary.unknownCount).toBe(0);
+    });
+
+    it("still confirms a gap when the field is readable and says off", () => {
+      const feed = computeBackupCoverage(
+        scan([res({ id: "d-1", resourceTypeId: "droplet", fields: { nextBackupStart: "" } })]),
+        { now: NOW },
+      );
+      expect(feed.resources[0]?.state).toBe("unprotected");
+      expect(feed.summary.unknownCount).toBe(0);
+      expect(feed.summary.unprotectedCount).toBe(1);
+    });
+
+    it("keeps unknown resources out of the digest's risk counts", () => {
+      // `riskyBackupFindings` and `kindCounts.unprotected` are what the weekly
+      // digest reports; an unassessed resource must not appear in either.
+      const feed = computeBackupCoverage(
+        scan([
+          res({ id: "d-1", resourceTypeId: "droplet" }),
+          res({ id: "d-2", resourceTypeId: "droplet", fields: { nextBackupStart: "" } }),
+        ]),
+        { now: NOW },
+      );
+      expect(feed.kindCounts.unprotected).toBe(1);
+      expect(riskyBackupFindings(feed)).toHaveLength(1);
+      expect(riskyBackupFindings(feed)[0]?.resourceId).toBe("d-2");
     });
 
     it("reads a positive retention window as proof backups are on", () => {

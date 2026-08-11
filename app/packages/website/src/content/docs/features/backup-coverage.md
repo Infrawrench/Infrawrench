@@ -63,7 +63,7 @@ unprotected, which is worse than saying nothing.
 
 ## Reading the states
 
-A resource on the Coverage table is one of four things:
+A resource on the Coverage table is one of five things:
 
 - **Backed up** — at least one backup in the inventory, inside the RPO (or no
   RPO applies).
@@ -71,9 +71,14 @@ A resource on the Coverage table is one of four things:
   There is a restore point; we just cannot enumerate it, so no RPO can be
   measured.
 - **Stale** — backups exist, but the newest one is older than a policy allows.
-- **Unprotected** — nothing we can see protects it.
+- **Not assessed** — the resource type has a provider-managed backup setting,
+  but this particular resource's value could not be read. Usually a resource
+  synced before Infrawrench knew to ask for that field; a fresh sync clears it.
+  **This is never reported as a gap** and never reaches the weekly digest — it
+  is the difference between "you have no backup" and "we have not checked".
+- **Unprotected** — nothing we can see protects it, and we had the data to tell.
 
-Two answers are deliberately conservative:
+Three answers are deliberately conservative:
 
 - A backup with no readable timestamp counts as a backup, but can never
   satisfy an RPO. An undatable backup is not evidence of a recent one.
@@ -83,8 +88,12 @@ Two answers are deliberately conservative:
   protects nothing when we simply could not tell would be an invitation to
   delete a live backup.
 
-The unattributable count is shown next to the severity chips, so "we found no
-orphans" and "we could not tell" never render the same.
+- A resource whose provider-managed backup setting we cannot read is **not
+  assessed**, never unprotected. Missing data must not raise an alarm.
+
+Both the unattributable and the not-assessed counts are shown next to the
+severity chips, so "we found nothing wrong" and "we could not tell" never
+render the same.
 
 ## Orphaned backups
 
@@ -112,9 +121,13 @@ produce a finding, and would sit in the list looking like protection while
 providing none.
 
 When several policies select the same resource the strictest wins: the
-shortest RPO and the longest retention. Turning a policy **off** keeps it and
-stops it judging anything, so you can silence a noisy objective while you
-investigate without losing it.
+shortest RPO and the longest retention. These can come from different policies
+— "everything, 24 hour RPO" alongside "production databases, 30 day retention"
+is the usual shape — and each finding names the policy that supplies the
+objective it actually breaches, so the link always takes you to the one you
+need to change. Turning a policy **off** keeps it and stops it judging
+anything, so you can silence a noisy objective while you investigate without
+losing it.
 
 Creating, editing and deleting policies needs the **organization settings**
 permission. Everyone who can read your resources can read the coverage — a
