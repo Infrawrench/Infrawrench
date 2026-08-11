@@ -55,6 +55,16 @@ Each resource an environment creates gets a [lease](./resource-leases.md) set to
 
 You can also tear an environment down at any time with **Tear down**. Resources are deleted newest-first, and the operation is safe to repeat: a resource that is already gone, or one the provider answers "not found" for, counts as done. Once an environment is torn down you can **Forget** it to remove the record; Infrawrench refuses to forget one that still owns resources.
 
+### When Infrawrench won't delete for you
+
+Very occasionally a resource is created but the record of its id is lost — a database write failing at exactly the wrong moment, or the process being killed mid-run. Teardown looks for it by the name it would have been given, and if something matches it **tells you rather than deleting it**:
+
+> A resource carries the name this member would have had (`i-0abc123`), but nothing proves this environment created it. It has been left running — delete it yourself if it is not wanted, then tear this environment down again to close it out.
+
+This is deliberate. A matching name is not proof of ownership, and Infrawrench has no signal that reliably distinguishes "the resource we just created" from "a resource of yours that happens to share the name". Deleting on a guess could destroy infrastructure you manage yourself, so it doesn't. An orphaned resource costs money, which you can recover; a wrongly deleted one costs data, which you cannot.
+
+Everything Infrawrench created and recorded normally — which is essentially always — is deleted for you without any of this.
+
 ## Guardrails
 
 Environments spend real money, so the page is fenced:

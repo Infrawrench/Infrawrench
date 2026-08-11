@@ -594,27 +594,6 @@ export async function markMemberFailed(
     );
 }
 
-/** Attach a provider-side id discovered during teardown verification. */
-export async function markMemberResourceId(
-  instanceId: string,
-  memberKey: string,
-  found: { resourceId: string; externalId: string | null },
-): Promise<void> {
-  await db
-    .update(environmentInstanceMembers)
-    .set({
-      resourceId: found.resourceId,
-      externalId: found.externalId,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(environmentInstanceMembers.instanceId, instanceId),
-        eq(environmentInstanceMembers.memberKey, memberKey),
-      ),
-    );
-}
-
 export async function markMemberStatus(
   instanceId: string,
   memberKey: string,

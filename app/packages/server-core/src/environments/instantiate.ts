@@ -15,8 +15,9 @@
  * fail. Two things provide it: a failure record carries the created id in the
  * **same** statement that records the failure (`buildMemberFailureRecord`), and
  * teardown treats a member that was *attempted* but carries no id as needing a
- * provider check (`classifyTeardownMember` → `verifyAndDeleteMember`) rather
- * than as already handled. A missing id never means "nothing was created".
+ * provider check (`classifyTeardownMember` → `checkMemberAgainstProvider`)
+ * rather than as already handled. A missing id never means "nothing was
+ * created".
  *
  * **No member runs without an expiry**, and the way to check that claim is to
  * enumerate the states a member row can end a run in. `status` × `resource_id`
@@ -33,7 +34,7 @@
  * | 7 | failed  | –      | –     | no       | rollback succeeded                   | nothing exists |
  * | 8 | failed  | set    | set   | yes      | lease attached, a later step threw   | **lease** |
  * | 9 | failed  | set    | set   | yes      | teardown delete failed               | **lease** (kept on purpose) |
- * |10 | failed  | –      | –     | maybe    | teardown declined to identify it     | reported by name on a `partial` instance |
+ * |10 | failed  | –      | –     | maybe    | recovery could not prove ownership   | reported by name on a `partial` instance |
  * |11 | deleted | any    | any   | no       | torn down or auto-deleted            | terminal |
  *
  * Every row is leased, provably empty, or visible. **State 6 is the one that
@@ -47,13 +48,16 @@
  * silence.
  *
  * **Delete only when identity is certain; where it is not, report and leave.**
- * The rule that settles the two ways this could destroy something it did not
- * create, and it is asymmetric on purpose — an orphan costs money, a wrong
- * delete costs data. Rolling a member back is a *certain* identity (the
- * provider returned the id seconds earlier), so it deletes. Recovering a member
- * with no recorded id is an *inferred* identity, and a display name is not an
- * identity, so it deletes only when `classifyRecoveryCandidate` finds
- * corroboration and otherwise reports the resource for a human.
+ * Asymmetric on purpose — an orphan costs money, a wrong delete costs data.
+ * Taken to its endpoint, that rule means **recovery does not delete at all**:
+ * `checkMemberAgainstProvider` reports what it finds and leaves it running,
+ * because a display name is not an identity and every signal that looked like
+ * it might upgrade one turned out to be a proxy for a creation time we do not
+ * reliably have (`classifyRecoveryCandidates` lists all three and why).
+ * Deletion lives only where identity is certain: rolling back a resource the
+ * provider handed back seconds earlier, and members whose `resource_id` was
+ * actually recorded — which is what the two-layer id capture above is for. It
+ * makes recovery the rare fallback rather than a load-bearing path.
  *
  * **Everything goes through the ordinary paths.** Creates run through the same
  * `createResource` + `upsertCreatedResource` + secret-state persistence the
@@ -68,7 +72,7 @@ import {
   attemptedPositionCeiling,
   buildInstantiationPlan,
   buildMemberFailureRecord,
-  classifyRecoveryCandidate,
+  classifyRecoveryCandidates,
   classifyTeardownMember,
   expectedMemberDisplayName,
   leaseDeadlineFor,
@@ -88,7 +92,6 @@ import {
   type EnvironmentTemplate,
   type EnvironmentTemplateMember,
   type MemberTeardownOutcome,
-  type RecoveryCandidate,
 } from "@infrawrench/client-core";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { normalizeResourceCreateResult, parseOutputRef } from "@infrawrench/plugin-base";
@@ -116,7 +119,6 @@ import {
   markMemberCreated,
   markMemberFailed,
   markMemberLease,
-  markMemberResourceId,
   markMemberStatus,
   setInstanceStatus,
   type InstanceMemberRow,
@@ -565,7 +567,7 @@ export async function tearDownEnvironment(
       if (action === "delete") {
         outcome = await deleteMemberResource(organizationId, member);
       } else {
-        const verified = await verifyAndDeleteMember(organizationId, row, member, listCache);
+        const verified = await checkMemberAgainstProvider(organizationId, member, listCache);
         outcome = verified.outcome;
         detail = verified.detail ?? null;
       }
@@ -643,26 +645,27 @@ async function deleteMemberResource(
 }
 
 /**
- * Tear down a member whose creation was **attempted but never confirmed**.
+ * Check on a member whose creation was **attempted but never confirmed** — and
+ * report, never delete.
  *
- * The row carries no resource id, which does not mean no resource exists — a
- * create can return right before the write that records it fails, or the
- * process can die mid-call. Concluding "nothing to do" from a missing id is
- * exactly how a resource ends up running with nothing pointing at it, so ask
- * the provider instead.
+ * The row carries no resource id, which does not mean no resource exists: a
+ * create can return right before the write recording it fails, or the process
+ * can die mid-call. So the provider is asked. But a match is only ever
+ * *reported*, because a display name is not an identity and no signal
+ * available here upgrades it into one — see `classifyRecoveryCandidates` for
+ * the three that were tried and why each turned out to be a proxy for a
+ * creation time we do not reliably have.
  *
- * The lookup starts from the name the member would have been given
- * (`expectedMemberDisplayName`, resolved at insert time), using only
- * `listResources` — no provider-specific search. **A name is not an identity**,
- * so a single match is only a candidate: `classifyRecoveryCandidate` then
- * requires our own inventory and the provider's own timestamp to agree that it
- * did not exist before this environment did. Anything short of that is
- * reported for a human rather than deleted, because an orphan costs money and
- * a wrong delete costs data. A failed listing is a failure, never an absence.
+ * Deleting is left to the paths where identity is certain: the rollback of a
+ * resource the provider handed back seconds earlier, and any member whose
+ * `resource_id` was actually recorded. The id found here is deliberately **not**
+ * written to the member row either — doing so would make the next teardown
+ * classify it as `delete` and destroy it through the back door.
+ *
+ * A failed listing is a failure, never an absence.
  */
-async function verifyAndDeleteMember(
+async function checkMemberAgainstProvider(
   organizationId: string,
-  instance: InstanceRow,
   member: InstanceMemberRow,
   listCache: Map<string, ResourceInstance[]>,
 ): Promise<{ outcome: MemberTeardownOutcome; detail?: string }> {
@@ -675,85 +678,21 @@ async function verifyAndDeleteMember(
     listCache.set(cacheKey, listed);
   }
 
-  const matches = listed.filter((candidate) => candidate.displayName === member.displayName);
-  const evidence = await gatherRecoveryEvidence(organizationId, instance.id, matches);
-  const decision = classifyRecoveryCandidate(evidence, instance.createdAt.toISOString());
+  const matches = listed
+    .filter((candidate) => candidate.displayName === member.displayName)
+    .map((candidate) => ({
+      externalId: candidate.externalId ?? null,
+      displayName: candidate.displayName,
+    }));
 
-  if (decision.action === "already-gone") return { outcome: "already-gone" };
-  if (decision.action === "ambiguous") {
-    return {
-      outcome: "ambiguous",
-      detail: `${matches.length} resources are named "${member.displayName}" — delete the right one by hand`,
-    };
-  }
-  if (decision.action === "needs-attention") {
-    return {
-      outcome: "needs-attention",
-      detail: `a resource named "${member.displayName}" was left alone because ${decision.reason} — check it by hand`,
-    };
-  }
-
-  const found = matches[0]!;
-  // Record what the run failed to before deleting it, so a teardown that dies
-  // here leaves the id behind rather than making the next attempt re-derive it.
-  await markMemberResourceId(instance.id, member.memberKey, {
-    resourceId: found.id,
-    externalId: found.externalId ?? null,
-  }).catch((error: unknown) => {
-    console.error("[environments] failed to record a recovered resource id:", error);
-  });
-  return { outcome: await deleteMemberResource(organizationId, member, found.id) };
-}
-
-/**
- * Everything the identity rule needs that the provider cannot fabricate: when
- * *we* first saw the resource, and whether another environment already claims
- * it. Both come from our own tables.
- */
-async function gatherRecoveryEvidence(
-  organizationId: string,
-  instanceId: string,
-  matches: ResourceInstance[],
-): Promise<RecoveryCandidate[]> {
-  if (matches.length === 0) return [];
-  const ids = matches.map((match) => match.id);
-
-  const [known, claimed] = await Promise.all([
-    db
-      .select({ id: resources.id, createdAt: resources.createdAt })
-      .from(resources)
-      .where(and(eq(resources.organizationId, organizationId), inArray(resources.id, ids))),
-    db
-      .select({ resourceId: environmentInstanceMembers.resourceId })
-      .from(environmentInstanceMembers)
-      .where(
-        and(
-          eq(environmentInstanceMembers.organizationId, organizationId),
-          inArray(environmentInstanceMembers.resourceId, ids),
-        ),
-      ),
-  ]);
-
-  const knownSince = new Map(known.map((row) => [row.id, row.createdAt]));
-  const claimedElsewhere = new Set(
-    claimed.filter((row) => row.resourceId !== null).map((row) => row.resourceId!),
-  );
-  // A claim by *this* instance is the member being recovered, not somebody
-  // else's hold on the resource.
-  const ownClaims = await db
-    .select({ resourceId: environmentInstanceMembers.resourceId })
-    .from(environmentInstanceMembers)
-    .where(eq(environmentInstanceMembers.instanceId, instanceId));
-  for (const row of ownClaims) {
-    if (row.resourceId) claimedElsewhere.delete(row.resourceId);
-  }
-
-  return matches.map((match) => ({
-    externalId: match.externalId ?? null,
-    createdAt: match.createdAt,
-    knownSince: knownSince.get(match.id)?.toISOString() ?? null,
-    claimedByAnotherMember: claimedElsewhere.has(match.id),
-  }));
+  const finding = classifyRecoveryCandidates(matches);
+  if (finding.action === "already-gone") return { outcome: "already-gone" };
+  return {
+    outcome: "needs-attention",
+    detail:
+      `${finding.reason}. It has been left running — delete it yourself if it is not wanted, ` +
+      `then tear this environment down again to close it out`,
+  };
 }
 
 /**

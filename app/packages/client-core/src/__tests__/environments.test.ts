@@ -7,7 +7,7 @@ import {
   buildCaptureDraft,
   buildInstantiationPlan,
   buildMemberFailureRecord,
-  classifyRecoveryCandidate,
+  classifyRecoveryCandidates,
   classifyTeardownMember,
   expectedMemberDisplayName,
   leaseDeadlineFor,
@@ -741,150 +741,62 @@ describe("leaseShouldBeCancelled", () => {
   it("keeps the lease when the delete failed, so the lease pass can retry", () => {
     expect(leaseShouldBeCancelled("failed")).toBe(false);
   });
-
-  it("keeps the lease when the match was ambiguous", () => {
-    expect(leaseShouldBeCancelled("ambiguous")).toBe(false);
-  });
 });
 
-describe("classifyRecoveryCandidate", () => {
-  const startedAt = "2026-08-11T12:00:00Z";
-  const during = "2026-08-11T12:00:30Z";
-  const before = "2026-08-10T09:00:00Z";
-
-  it("reports nothing to do when no candidate matched", () => {
-    expect(classifyRecoveryCandidate([], startedAt)).toEqual({ action: "already-gone" });
+describe("classifyRecoveryCandidates", () => {
+  it("settles the member when nothing carries the name", () => {
+    expect(classifyRecoveryCandidates([])).toEqual({ action: "already-gone" });
   });
 
-  it("refuses when two candidates share the name", () => {
-    expect(
-      classifyRecoveryCandidate(
-        [
-          { externalId: "a", createdAt: during },
-          { externalId: "b", createdAt: during },
-        ],
-        startedAt,
-      ),
-    ).toEqual({ action: "ambiguous" });
+  // The whole point of this function: there is no `delete` action to reach.
+  // Three ownership signals were tried and each turned out to be a proxy for a
+  // creation time we do not reliably have — provider `createdAt` (fabricated as
+  // `new Date()` by listers whose provider exposes none), the absence of a
+  // prior `resources` row (absence of evidence, and the ordinary state for a
+  // member whose bookkeeping failed), and `knownSince` (which records when we
+  // first *saw* a resource, so a newly connected account makes a years-old
+  // user-managed resource look brand new). "Probably ours" is not a licence to
+  // destroy someone's infrastructure.
+  it("never authorises a delete, whatever the candidate looks like", () => {
+    const candidates = [
+      [{ externalId: "a", displayName: "pr-482-api" }],
+      [{ externalId: null, displayName: "pr-482-api" }],
+      [
+        { externalId: "a", displayName: "pr-482-api" },
+        { externalId: "b", displayName: "pr-482-api" },
+      ],
+    ];
+    for (const candidate of candidates) {
+      expect(classifyRecoveryCandidates(candidate).action).toBe("needs-attention");
+    }
   });
 
-  it("deletes only when our own inventory saw it appear during the instantiation", () => {
-    expect(
-      classifyRecoveryCandidate(
-        [{ externalId: "a", createdAt: during, knownSince: during }],
-        startedAt,
-      ),
-    ).toEqual({ action: "delete" });
+  it("names the single candidate so an operator knows what to look at", () => {
+    const finding = classifyRecoveryCandidates([
+      { externalId: "i-abc", displayName: "pr-482-api" },
+    ]);
+    expect(finding.action).toBe("needs-attention");
+    expect(finding).toMatchObject({ reason: expect.stringContaining("i-abc") });
+    expect(finding).toMatchObject({ reason: expect.stringContaining("nothing proves") });
   });
 
-  // Regression: the deciding signal used to fall through to the provider
-  // timestamp whenever we had no row of our own. `createdAt` is required on
-  // ResourceInstance, so listers with nothing real to report fill it with the
-  // time of the call — for those types every candidate looks freshly created,
-  // and an unrelated same-name resource was authorised for deletion by a
-  // timestamp that is a sync artifact. Absence of local inventory is the
-  // ordinary state for a member whose bookkeeping failed; it is not evidence.
-  it("refuses when nothing but the name connects the resource to the environment", () => {
-    const decision = classifyRecoveryCandidate(
-      [{ externalId: "a", createdAt: during, knownSince: null }],
-      startedAt,
-    );
-    expect(decision.action).toBe("needs-attention");
-    expect(decision).toMatchObject({ reason: expect.stringContaining("nothing but its name") });
+  it("counts multiple candidates rather than picking one", () => {
+    const finding = classifyRecoveryCandidates([
+      { externalId: "i-a", displayName: "pr-482-api" },
+      { externalId: "i-b", displayName: "pr-482-api" },
+    ]);
+    expect(finding).toMatchObject({ reason: expect.stringContaining("2 resources") });
   });
 
-  it("refuses on a fabricated-looking timestamp with no inventory behind it", () => {
-    // The exact shape of a lister that reports `new Date()` at list time.
-    expect(
-      classifyRecoveryCandidate(
-        [{ externalId: "a", createdAt: new Date().toISOString() }],
-        startedAt,
-      ).action,
-    ).toBe("needs-attention");
-  });
-
-  it("refuses when we cannot tell when we first saw it", () => {
-    const decision = classifyRecoveryCandidate(
-      [{ externalId: "a", createdAt: during, knownSince: "not a date" }],
-      startedAt,
-    );
-    expect(decision.action).toBe("needs-attention");
-  });
-
-  // Regression: a lone display-name match used to be treated as identity and
-  // deleted. A user's own resource that happens to carry the name a template
-  // member would have been given, in the same account and type, was one
-  // automated teardown away from being destroyed.
-  it("refuses a resource we were already tracking before this environment existed", () => {
-    const decision = classifyRecoveryCandidate(
-      [{ externalId: "a", createdAt: during, knownSince: before }],
-      startedAt,
-    );
-    expect(decision.action).toBe("needs-attention");
-    expect(decision).toMatchObject({ reason: expect.stringContaining("existed before") });
-  });
-
-  // The dangerous default: `createdAt` is required on ResourceInstance, so
-  // listers whose provider exposes no creation time fill it with the time of
-  // the call, which always falls inside the window. Absence must not read as
-  // corroboration.
-  it("refuses when the provider offers no creation time and we have no row", () => {
-    expect(classifyRecoveryCandidate([{ externalId: "a" }], startedAt).action).toBe(
-      "needs-attention",
-    );
-  });
-
-  // The provider timestamp keeps its veto even when our inventory would have
-  // authorised the delete.
-  it("lets the provider timestamp veto an otherwise corroborated candidate", () => {
-    const decision = classifyRecoveryCandidate(
-      [{ externalId: "a", createdAt: before, knownSince: during }],
-      startedAt,
-    );
-    expect(decision.action).toBe("needs-attention");
-    expect(decision).toMatchObject({ reason: expect.stringContaining("dates it before") });
-  });
-
-  it("refuses a resource another environment already owns", () => {
-    const decision = classifyRecoveryCandidate(
-      [{ externalId: "a", createdAt: during, knownSince: during, claimedByAnotherMember: true }],
-      startedAt,
-    );
-    expect(decision.action).toBe("needs-attention");
-    expect(decision).toMatchObject({ reason: expect.stringContaining("another environment") });
-  });
-
-  it("tolerates a minute of clock skew but not a day of it", () => {
-    expect(
-      classifyRecoveryCandidate(
-        [{ externalId: "a", createdAt: during, knownSince: "2026-08-11T11:59:45Z" }],
-        startedAt,
-      ),
-    ).toEqual({ action: "delete" });
-    expect(
-      classifyRecoveryCandidate(
-        [{ externalId: "a", createdAt: during, knownSince: "2026-08-11T11:00:00Z" }],
-        startedAt,
-      ).action,
-    ).toBe("needs-attention");
-  });
-
-  it("refuses rather than deleting when the instance has no usable start time", () => {
-    expect(
-      classifyRecoveryCandidate(
-        [{ externalId: "a", createdAt: during, knownSince: during }],
-        "whenever",
-      ).action,
-    ).toBe("needs-attention");
+  it("still reports when the lister gives no external id to name", () => {
+    expect(classifyRecoveryCandidates([{ externalId: null }]).action).toBe("needs-attention");
   });
 });
 
 describe("leaseShouldBeCancelled - declined deletions", () => {
-  // Nothing was deleted in either case, so the resource is still there and
-  // still needs the clock the lease provides.
+  // Nothing was deleted, so the resource is still there and still wants a clock.
   it("keeps the lease when the environment declined to delete", () => {
     expect(leaseShouldBeCancelled("needs-attention")).toBe(false);
-    expect(leaseShouldBeCancelled("ambiguous")).toBe(false);
   });
 });
 

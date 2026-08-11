@@ -823,12 +823,11 @@ export function classifyTeardownMember(
 /**
  * How tearing one member down ended.
  *
- * `ambiguous` and `needs-attention` are separate outcomes from `failed` because
- * nothing was attempted in either case: the environment declined to delete
- * something it could not prove was its own, and said so.
+ * `needs-attention` is separate from `failed` because nothing was attempted:
+ * the environment declined to delete something it could not prove was its own,
+ * and said so. `failed` means a delete was tried and did not work.
  */
-export type MemberTeardownOutcome =
-  "deleted" | "already-gone" | "failed" | "ambiguous" | "needs-attention";
+export type MemberTeardownOutcome = "deleted" | "already-gone" | "failed" | "needs-attention";
 
 // ---------------------------------------------------------------------------
 // The identity rule
@@ -837,106 +836,91 @@ export type MemberTeardownOutcome =
 /**
  * **Delete only when identity is certain. Where it is not, report and leave.**
  *
- * This single rule settles the two ways this feature can destroy something it
- * did not create, and it is deliberately asymmetric because the costs are:
- * an orphaned resource costs money, and money is recoverable; a wrongly
- * deleted resource costs data, and data is not.
+ * Asymmetric on purpose, because the costs are: an orphaned resource costs
+ * money and money is recoverable; a wrongly deleted resource costs data and
+ * data is not.
  *
- * - **Rolling back a member whose TTL could not be attached** is a *certain*
- *   identity — the provider handed us the id seconds earlier — so it deletes.
- * - **Recovering a member with no recorded id** is an *inferred* identity, and
- *   a display name is not an identity. It deletes only on positive
- *   corroboration, and otherwise reports the resource for a human.
+ * Applied to its endpoint, that rule says **the recovery path does not delete
+ * at all**, and this function is the shape of that conclusion — it has no
+ * `delete` branch to reach. Deletion lives only where identity is *certain*:
+ * the rollback of a resource the provider handed back seconds earlier, and any
+ * member whose `resource_id` we actually recorded. Recovery is the rare
+ * fallback for the one case those miss — an id lost to a failed write — and it
+ * classifies, reports, and leaves the resource alone.
  *
- * **The provider's `createdAt` can only ever veto, never authorise.** It is a
- * required field on `ResourceInstance`, so the many listers whose provider
- * exposes no creation time fill it with the time of the call — for those types
- * every candidate looks freshly created, which is precisely the unrelated
- * same-name resource this is meant to protect. Treating a fresh-looking
- * timestamp as evidence would green-light exactly the wrong case, so it is
- * only consulted to *reject*.
+ * Three ownership signals were proposed and all three were unsound, which is
+ * what the absence of a fourth is based on:
  *
- * The one signal that authorises a delete is therefore **our own inventory**:
- * a `resources` row for the candidate, first written at or after this
- * environment started. That is the poller having independently observed the
- * resource appear during the instantiation, and no plugin can fabricate it.
- * Its **absence is not evidence** — it is the ordinary state for a member
- * whose bookkeeping failed — so no row means `needs-attention`, not a delete.
+ * 1. **Provider `createdAt`** — required on `ResourceInstance`, so the many
+ *    listers whose provider exposes no creation time fill it with the time of
+ *    the call. For those types every candidate looks freshly created.
+ * 2. **No prior `resources` row** — absence of evidence, and the *ordinary*
+ *    state for a member whose bookkeeping failed, since `markMemberCreated`
+ *    runs before `upsertCreatedResource`.
+ * 3. **`knownSince`** (when our row was first written) — records when *we
+ *    first saw* a resource, not when it was created. A newly connected
+ *    account, a newly enabled resource type, a lister that only just started
+ *    returning that type, or a re-sync all make a years-old user-managed
+ *    resource "first discovered" after the environment started.
  *
- * The deliberate consequence: recovery leaves more resources alive than a
- * looser rule would. They are reported by name on a `partial` instance rather
- * than silently abandoned, which is the trade this rule exists to make.
+ * Each is a proxy for creation time, and creation time is the thing we do not
+ * reliably have. A unique name, unclaimed, with a plausible timestamp is a
+ * good heuristic for "probably ours" — and "probably ours" is not a licence to
+ * destroy someone's infrastructure.
+ *
+ * The one construct that *would* prove ownership is a marker we write at
+ * create time and read back. It is not available generically: a tag-like
+ * create field exists on a handful of resource types across all the plugins,
+ * spelled differently by each, and inventing one per provider is the
+ * host-side provider knowledge this codebase does not have. Doing it properly
+ * means a declared "tag field" on the resource-type contract — a real answer,
+ * and a much larger change than this. Recorded as a follow-up.
+ *
+ * **The cost, stated plainly:** a member whose id was lost *and* whose lease
+ * could not be attached will sometimes leave an orphan a human has to remove.
+ * That is the deliberate price of never deleting something we cannot prove is
+ * ours. It is charged in visibility, not silence — the resource is named on a
+ * `partial` instance with the reason.
  */
 export interface RecoveryCandidate {
   /** The provider's own id, when the lister supplies one. */
   externalId: string | null;
-  /** Provider-reported creation time. May be the time of the listing call. */
-  createdAt?: string | undefined;
-  /**
-   * When Infrawrench already had a row for this resource, when that row was
-   * first written. Null when we have never seen it before.
-   */
-  knownSince?: string | null | undefined;
-  /** True when another environment member already owns this resource. */
-  claimedByAnotherMember?: boolean | undefined;
+  /** Display name that matched. Reported so an operator knows what to look at. */
+  displayName?: string | undefined;
 }
 
-export type RecoveryDecision =
-  | { action: "already-gone" }
-  | { action: "ambiguous" }
-  | { action: "needs-attention"; reason: string }
-  | { action: "delete" };
+/**
+ * What a recovery check found. Note the absence of a `delete` action — that is
+ * the point, not an omission.
+ */
+export type RecoveryFinding =
+  { action: "already-gone" } | { action: "needs-attention"; reason: string };
 
 /**
- * Allowance for clock skew between a provider's timestamps and ours. Kept
- * small: every second of it is a second of someone else's resource that could
- * be mistaken for ours.
+ * Report what a name-based lookup turned up for a member whose id was lost.
+ *
+ * Nothing found means nothing to do: the member is settled. Anything found is
+ * reported for a human, because a name match is not an identity and no
+ * available signal upgrades it into one.
  */
-const RECOVERY_SKEW_MS = 60_000;
-
-export function classifyRecoveryCandidate(
-  candidates: RecoveryCandidate[],
-  instanceCreatedAt: string,
-): RecoveryDecision {
+export function classifyRecoveryCandidates(candidates: RecoveryCandidate[]): RecoveryFinding {
   if (candidates.length === 0) return { action: "already-gone" };
-  if (candidates.length > 1) return { action: "ambiguous" };
 
-  const candidate = candidates[0]!;
-  const startedAt = Date.parse(instanceCreatedAt);
-  if (Number.isNaN(startedAt)) {
-    return { action: "needs-attention", reason: "this environment has no usable start time" };
-  }
+  const named = candidates
+    .map((candidate) => candidate.externalId)
+    .filter((id): id is string => typeof id === "string" && id !== "");
+  const detail = named.length > 0 ? ` (${named.join(", ")})` : "";
 
-  if (candidate.claimedByAnotherMember) {
-    return { action: "needs-attention", reason: "it belongs to another environment" };
-  }
-
-  // The provider's own timestamp gets to veto and nothing more. For every type
-  // whose lister has no real creation time to report this reads as "just now",
-  // so it can never be the reason a delete goes ahead.
-  const created = candidate.createdAt === undefined ? Number.NaN : Date.parse(candidate.createdAt);
-  if (!Number.isNaN(created) && created < startedAt - RECOVERY_SKEW_MS) {
-    return { action: "needs-attention", reason: "the provider dates it before this environment" };
-  }
-
-  // The only signal that authorises a delete: we have our own row for this
-  // resource, first written at or after the environment started — the poller
-  // independently watching it appear during the instantiation.
-  if (candidate.knownSince == null) {
+  if (candidates.length > 1) {
     return {
       action: "needs-attention",
-      reason: "nothing but its name connects it to this environment",
+      reason: `${candidates.length} resources carry the name this member would have had${detail}`,
     };
   }
-  const known = Date.parse(candidate.knownSince);
-  if (Number.isNaN(known)) {
-    return { action: "needs-attention", reason: "we cannot tell when we first saw it" };
-  }
-  if (known < startedAt - RECOVERY_SKEW_MS) {
-    return { action: "needs-attention", reason: "it existed before this environment did" };
-  }
-
-  return { action: "delete" };
+  return {
+    action: "needs-attention",
+    reason: `a resource carries the name this member would have had${detail}, but nothing proves this environment created it`,
+  };
 }
 
 /**
@@ -946,9 +930,9 @@ export function classifyRecoveryCandidate(
  * it re-attempts the delete at expiry, defers through change freezes and
  * reports when it gives up. Cancelling it after a failed delete turns a
  * transient provider error into a resource that bills until somebody
- * remembers to retry the teardown by hand. `ambiguous` and `needs-attention`
- * keep it for the same reason plus a better one: nothing was deleted, so the
- * resource is still there and still on a clock.
+ * remembers to retry the teardown by hand. `needs-attention` keeps it for the
+ * same reason plus a better one: nothing was deleted, so the resource is still
+ * there and still wants a clock on it.
  */
 export function leaseShouldBeCancelled(outcome: MemberTeardownOutcome): boolean {
   return outcome === "deleted" || outcome === "already-gone";
