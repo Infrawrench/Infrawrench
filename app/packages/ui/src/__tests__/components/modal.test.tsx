@@ -69,4 +69,50 @@ describe("Modal", () => {
     );
     expect(document.querySelector("dialog")!.className).toContain("my-class");
   });
+
+  it("exposes the accessible name it was given", () => {
+    render(
+      <Modal onClose={() => {}} ariaLabel="Budget">
+        <p>x</p>
+      </Modal>,
+    );
+    expect(document.querySelector("dialog")).toHaveAttribute("aria-label", "Budget");
+  });
+
+  // Without onClose the dialog is still a real modal — focus trapped, page
+  // behind it inert — it just can't be dismissed from outside its own controls.
+  describe("without onClose", () => {
+    it("ignores a backdrop click", () => {
+      render(
+        <Modal>
+          <p>content</p>
+        </Modal>,
+      );
+      const dialog = document.querySelector("dialog")!;
+      fireEvent.click(dialog);
+      expect(dialog.open).toBe(true);
+    });
+
+    it("swallows Escape rather than letting the browser close the element", () => {
+      render(
+        <Modal>
+          <p>x</p>
+        </Modal>,
+      );
+      const dialog = document.querySelector("dialog")!;
+      const cancel = new Event("cancel", { cancelable: true });
+      fireEvent(dialog, cancel);
+      expect(cancel.defaultPrevented).toBe(true);
+      expect(dialog.open).toBe(true);
+    });
+  });
+
+  it("marks a fullScreen modal so it fills the viewport", () => {
+    render(
+      <Modal fullScreen>
+        <p>x</p>
+      </Modal>,
+    );
+    expect(document.querySelector("dialog")!.className).toContain("infrawrench-modal--full");
+  });
 });

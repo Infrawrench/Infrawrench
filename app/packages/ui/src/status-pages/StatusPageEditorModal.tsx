@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useId, useState } from "react";
 import {
   STATUS_PAGE_LIMITS,
   validateStatusPageInput,
   type StatusPage,
   type StatusPageComponentInput,
 } from "@infrawrench/client-core";
+import { Modal } from "../components/Modal.js";
 
 export interface StatusPageEditorModalProps {
   /** The page being edited, or null to create a new one. */
@@ -58,14 +59,7 @@ export function StatusPageEditorModal({
   );
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  const uid = useId();
 
   const chosen = new Set(components.map((c) => c.probeId));
   const available = probes.filter((p) => !chosen.has(p.id));
@@ -131,13 +125,8 @@ export function StatusPageEditorModal({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={page ? "Edit status page" : "New status page"}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-    >
-      <div className="flex max-h-full w-full max-w-2xl flex-col gap-4 overflow-auto rounded-2xl border border-border bg-surface p-5">
+    <Modal onClose={onCancel} ariaLabel={page ? "Edit status page" : "New status page"}>
+      <div className="flex max-h-[85vh] w-[42rem] max-w-[90vw] flex-col gap-4 overflow-auto rounded-2xl border border-border bg-surface p-5">
         <h2 className="text-sm font-semibold text-on-surface">
           {page ? "Edit status page" : "New status page"}
         </h2>
@@ -202,6 +191,7 @@ export function StatusPageEditorModal({
             <span className="text-xs font-medium text-on-surface-secondary">Components</span>
             <select
               value=""
+              aria-label="Add a probe"
               onChange={(e) => {
                 if (e.target.value) addProbe(e.target.value);
               }}
@@ -263,22 +253,32 @@ export function StatusPageEditorModal({
                     </span>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row">
-                    <input
-                      type="text"
-                      value={component.label ?? ""}
-                      onChange={(e) => updateComponent(index, { label: e.target.value })}
-                      maxLength={STATUS_PAGE_LIMITS.maxLabelLength}
-                      placeholder={`Public name (default: ${component.probeName})`}
-                      className="flex-1 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface"
-                    />
-                    <input
-                      type="text"
-                      value={component.groupName ?? ""}
-                      onChange={(e) => updateComponent(index, { groupName: e.target.value })}
-                      maxLength={STATUS_PAGE_LIMITS.maxGroupNameLength}
-                      placeholder="Group (optional)"
-                      className="flex-1 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface"
-                    />
+                    <label htmlFor={`${uid}-label-${component.probeId}`} className="flex-1">
+                      <span className="mb-1 block text-xs text-on-surface-tertiary">
+                        Public name
+                      </span>
+                      <input
+                        id={`${uid}-label-${component.probeId}`}
+                        type="text"
+                        value={component.label ?? ""}
+                        onChange={(e) => updateComponent(index, { label: e.target.value })}
+                        maxLength={STATUS_PAGE_LIMITS.maxLabelLength}
+                        placeholder={`Public name (default: ${component.probeName})`}
+                        className="w-full rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface"
+                      />
+                    </label>
+                    <label htmlFor={`${uid}-group-${component.probeId}`} className="flex-1">
+                      <span className="mb-1 block text-xs text-on-surface-tertiary">Group</span>
+                      <input
+                        id={`${uid}-group-${component.probeId}`}
+                        type="text"
+                        value={component.groupName ?? ""}
+                        onChange={(e) => updateComponent(index, { groupName: e.target.value })}
+                        maxLength={STATUS_PAGE_LIMITS.maxGroupNameLength}
+                        placeholder="Group (optional)"
+                        className="w-full rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface"
+                      />
+                    </label>
                   </div>
                 </li>
               ))}
@@ -315,6 +315,6 @@ export function StatusPageEditorModal({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

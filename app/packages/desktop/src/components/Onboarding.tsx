@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Modal } from "@infrawrench/ui";
 import { getCloudAuthStatus, getCloudOrgs, startCloudAuth, type CloudOrg } from "../lib/cloud-api";
 import { invoke } from "../lib/invoke";
 import { CLOUD_URL } from "../../env";
@@ -158,156 +159,156 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
       .finally(() => setRefreshingOrgs(false));
   }
 
+  // No `onClose`: the flow ends by picking an org or choosing local-only, so
+  // Escape and backdrop clicks must not leave the app in a half-onboarded state.
   return (
-    <div
-      role="dialog"
-      aria-label="Welcome to Infrawrench"
-      className="fixed inset-0 z-[90] bg-surface flex flex-col select-none"
-    >
-      {/* Keep the window draggable while the overlay covers the title bar. */}
-      <div
-        className="h-8 flex-shrink-0"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-      />
-      <div className="flex-1 overflow-y-auto flex items-center justify-center px-6 py-8">
-        {step === "welcome" && (
-          <div className="w-full max-w-lg">
-            <h1 className="text-xl font-semibold text-on-surface">Welcome to Infrawrench</h1>
-            <p className="mt-1.5 text-sm text-on-surface-tertiary">
-              All your infrastructure in one place. Sign in to Infrawrench Cloud to get the most out
-              of it:
-            </p>
+    <Modal ariaLabel="Welcome to Infrawrench" fullScreen>
+      <div className="h-full w-full bg-surface flex flex-col select-none">
+        {/* Keep the window draggable while the overlay covers the title bar. */}
+        <div
+          className="h-8 flex-shrink-0"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        />
+        <div className="flex-1 overflow-y-auto flex items-center justify-center px-6 py-8">
+          {step === "welcome" && (
+            <div className="w-full max-w-lg">
+              <h1 className="text-xl font-semibold text-on-surface">Welcome to Infrawrench</h1>
+              <p className="mt-1.5 text-sm text-on-surface-tertiary">
+                All your infrastructure in one place. Sign in to Infrawrench Cloud to get the most
+                out of it:
+              </p>
 
-            <ul className="mt-6 flex flex-col gap-4">
-              {PERKS.map((perk) => (
-                <li key={perk.title} className="flex gap-3">
-                  <div className="mt-0.5 flex-shrink-0">{perk.icon}</div>
-                  <div>
-                    <div className="text-sm font-medium text-on-surface-secondary">
-                      {perk.title}
+              <ul className="mt-6 flex flex-col gap-4">
+                {PERKS.map((perk) => (
+                  <li key={perk.title} className="flex gap-3">
+                    <div className="mt-0.5 flex-shrink-0">{perk.icon}</div>
+                    <div>
+                      <div className="text-sm font-medium text-on-surface-secondary">
+                        {perk.title}
+                      </div>
+                      <div className="text-xs text-on-surface-muted mt-0.5">{perk.description}</div>
                     </div>
-                    <div className="text-xs text-on-surface-muted mt-0.5">{perk.description}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-
-            {error && (
-              <div className="mt-5 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-700 dark:text-red-300">
-                {error}
-              </div>
-            )}
-
-            <div className="mt-7 flex flex-col gap-2">
-              <button
-                type="button"
-                autoFocus
-                onClick={handleSignIn}
-                className="w-full px-4 py-2.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
-              >
-                Sign in to Infrawrench Cloud
-              </button>
-              <button
-                type="button"
-                onClick={() => finish(null)}
-                className="w-full px-4 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-              >
-                Continue without an account
-              </button>
-            </div>
-            <p className="mt-4 text-[11px] text-on-surface-faint text-center">
-              Infrawrench works fully offline too — you can sign in any time from the sidebar.
-            </p>
-          </div>
-        )}
-
-        {step === "signing-in" && (
-          <div className="w-full max-w-sm text-center">
-            <div
-              className="mx-auto size-8 rounded-full border-2 border-border-strong border-t-accent animate-spin"
-              aria-hidden="true"
-            />
-            <h1 className="mt-5 text-base font-semibold text-on-surface">
-              Waiting for your browser…
-            </h1>
-            <p className="mt-1.5 text-xs text-on-surface-muted">
-              Finish signing in in the browser window we just opened. This screen updates
-              automatically.
-            </p>
-            <button
-              type="button"
-              onClick={handleCancelSignIn}
-              className="mt-6 px-4 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-
-        {step === "pick-org" && (
-          <div className="w-full max-w-md">
-            <h1 className="text-xl font-semibold text-on-surface">
-              {orgs.length > 0 ? "Choose an organization" : "You're signed in"}
-            </h1>
-            <p className="mt-1.5 text-sm text-on-surface-tertiary">
-              {orgs.length > 0
-                ? "Pick where you want to start. You can switch any time from the sidebar."
-                : "You're not in an organization yet. Create one on the web, then pick it up here."}
-            </p>
-
-            {orgs.length > 0 ? (
-              <ul className="mt-6 flex flex-col gap-2">
-                {orgs.map((org, i) => (
-                  <li key={org.id}>
-                    <button
-                      type="button"
-                      autoFocus={i === 0}
-                      onClick={() => finish(org.id)}
-                      className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-surface-raised border border-border-strong hover:border-accent hover:bg-surface-overlay transition-colors text-left"
-                    >
-                      <span className="text-sm font-medium text-on-surface-secondary truncate">
-                        {org.displayName}
-                      </span>
-                      <span className="ml-3 flex-shrink-0 text-[11px] text-on-surface-faint uppercase tracking-wide">
-                        {org.role}
-                      </span>
-                    </button>
                   </li>
                 ))}
               </ul>
-            ) : (
-              <div className="mt-6 flex flex-col gap-2">
+
+              {error && (
+                <div className="mt-5 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-700 dark:text-red-300">
+                  {error}
+                </div>
+              )}
+
+              <div className="mt-7 flex flex-col gap-2">
                 <button
                   type="button"
                   autoFocus
-                  onClick={() =>
-                    void invoke("open_external_url", { url: `${CLOUD_URL}/onboarding` })
-                  }
+                  onClick={handleSignIn}
                   className="w-full px-4 py-2.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
                 >
-                  Create an organization
+                  Sign in to Infrawrench Cloud
                 </button>
                 <button
                   type="button"
-                  onClick={handleRefreshOrgs}
-                  disabled={refreshingOrgs}
-                  className="w-full px-4 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors disabled:opacity-50"
+                  onClick={() => finish(null)}
+                  className="w-full px-4 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
                 >
-                  {refreshingOrgs ? "Checking…" : "I created one — check again"}
+                  Continue without an account
                 </button>
               </div>
-            )}
+              <p className="mt-4 text-[11px] text-on-surface-faint text-center">
+                Infrawrench works fully offline too — you can sign in any time from the sidebar.
+              </p>
+            </div>
+          )}
 
-            <button
-              type="button"
-              onClick={() => finish(null)}
-              className="mt-4 w-full px-4 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-            >
-              Use locally for now
-            </button>
-          </div>
-        )}
+          {step === "signing-in" && (
+            <div className="w-full max-w-sm text-center">
+              <div
+                className="mx-auto size-8 rounded-full border-2 border-border-strong border-t-accent animate-spin"
+                aria-hidden="true"
+              />
+              <h1 className="mt-5 text-base font-semibold text-on-surface">
+                Waiting for your browser…
+              </h1>
+              <p className="mt-1.5 text-xs text-on-surface-muted">
+                Finish signing in in the browser window we just opened. This screen updates
+                automatically.
+              </p>
+              <button
+                type="button"
+                onClick={handleCancelSignIn}
+                className="mt-6 px-4 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {step === "pick-org" && (
+            <div className="w-full max-w-md">
+              <h1 className="text-xl font-semibold text-on-surface">
+                {orgs.length > 0 ? "Choose an organization" : "You're signed in"}
+              </h1>
+              <p className="mt-1.5 text-sm text-on-surface-tertiary">
+                {orgs.length > 0
+                  ? "Pick where you want to start. You can switch any time from the sidebar."
+                  : "You're not in an organization yet. Create one on the web, then pick it up here."}
+              </p>
+
+              {orgs.length > 0 ? (
+                <ul className="mt-6 flex flex-col gap-2">
+                  {orgs.map((org, i) => (
+                    <li key={org.id}>
+                      <button
+                        type="button"
+                        autoFocus={i === 0}
+                        onClick={() => finish(org.id)}
+                        className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-surface-raised border border-border-strong hover:border-accent hover:bg-surface-overlay transition-colors text-left"
+                      >
+                        <span className="text-sm font-medium text-on-surface-secondary truncate">
+                          {org.displayName}
+                        </span>
+                        <span className="ml-3 flex-shrink-0 text-[11px] text-on-surface-faint uppercase tracking-wide">
+                          {org.role}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="mt-6 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    autoFocus
+                    onClick={() =>
+                      void invoke("open_external_url", { url: `${CLOUD_URL}/onboarding` })
+                    }
+                    className="w-full px-4 py-2.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+                  >
+                    Create an organization
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRefreshOrgs}
+                    disabled={refreshingOrgs}
+                    className="w-full px-4 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors disabled:opacity-50"
+                  >
+                    {refreshingOrgs ? "Checking…" : "I created one — check again"}
+                  </button>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => finish(null)}
+                className="mt-4 w-full px-4 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+              >
+                Use locally for now
+              </button>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
