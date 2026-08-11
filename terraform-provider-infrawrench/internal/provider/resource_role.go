@@ -42,7 +42,10 @@ func (r *roleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			"to whose access, in a pull request, with a reviewer. The same change made in a settings page " +
 			"leaves only an audit entry saying somebody edited a role.\n\n" +
 			"**Built-in roles cannot be managed.** They are readable but not editable, and importing one " +
-			"fails with an explanation rather than planning an update the API would reject.",
+			"fails with an explanation rather than planning an update the API would reject.\n\n" +
+			"**Writes are closed to API keys.** An `iwk_` credential can read roles and cannot create, " +
+			"change or delete one, whatever scopes it holds: a key should not manufacture durable " +
+			"authority for other principals. Run the root that manages roles with a WorkOS access token.",
 		Attributes: map[string]schema.Attribute{
 			"id": computedIDAttribute("Server-assigned role id. Use it with `terraform import`."),
 			"name": schema.StringAttribute{

@@ -12,3 +12,6 @@ crash.log
 # Local dev override, which points Terraform at an uninstalled build.
 .terraformrc
 terraform.rc
+
+# GoReleaser output.
+dist/

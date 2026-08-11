@@ -1,0 +1,65 @@
+# Builds and publishes a release to the Terraform Registry.
+#
+# THIS FILE RUNS IN THE SATELLITE REPOSITORY, not in the monorepo. GitHub only
+# reads workflows from a repository's own root `.github/workflows/`, so here —
+# nested under `terraform-provider-infrawrench/` — it is inert. It is mirrored
+# to the satellite root, where it becomes live.
+#
+# That is deliberate: the satellite is generated wholesale from this directory
+# on every release, so anything it needs has to come from here or it gets wiped
+# on the next mirror. Nothing in the satellite is hand-maintained.
+#
+# Trigger: the mirror pushes the tree and then pushes a `vX.Y.Z` tag. That tag
+# is what starts this.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# The Registry ingests whatever a release publishes; two runs racing on one tag
+# would be two sets of artifacts for one version.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # Belt and braces. The monorepo verified this tree before mirroring it,
+      # but a release that was never built from the exact bytes being signed is
+      # a release nobody can vouch for.
+      - name: Verify
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./... -count=1
+
+      - uses: crazy-max/ghaction-import-gpg@v6
+        id: import_gpg
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.PASSPHRASE }}
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Selects the signing key. The Registry verifies the detached
+          # signature against the public half registered with the namespace.
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}

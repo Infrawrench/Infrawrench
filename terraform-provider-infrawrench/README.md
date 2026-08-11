@@ -210,24 +210,30 @@ Every argument falls back to an environment variable:
 Use the environment variables in CI so the credential never reaches a `.tf` file
 or a saved plan.
 
-### Known limitation: API keys are rejected on these routes
+### Two resources are closed to API keys
 
 The provider sends `Authorization: Bearer <token>` and accepts either an
-Infrawrench API key (`iwk_…`) or a WorkOS access token.
+Infrawrench API key (`iwk_…`) or a WorkOS access token. Both work against the
+whole org tree, and an API key is the credential to reach for in CI: it is
+long-lived, scoped, revocable and pinned to one organization.
 
-**Today, only the WorkOS access token works.** The org-scoped API tree
-(`/api/org/{orgId}/…`) is guarded by `sessionMiddleware`, whose Bearer branch
-authenticates the token as a WorkOS JWT only; an `iwk_` key is not a JWT, fails
-signature verification, and gets a 401 — even when the key is valid, unrevoked
-and correctly scoped. The codebase acknowledges this directly: chat and cost
-ingest bypass the middleware and call `authenticateOrgRequest` precisely because
-"the org tree's normal middleware stack … 401s an `iwk_` key outright".
+A short deny-list closes two of this provider's resources to API keys, whatever
+scopes they hold:
 
-The provider detects this exact case and attaches an explanatory hint to the
-401, rather than leaving you to debug a credential that is not actually wrong.
-Making `iwk_` keys work end to end is a **server-side change** — moving these
-route groups onto `authenticateOrgRequest`, the way chat and cost ingest already
-are — and is deliberately not attempted here.
+| Resource              | With an API key        | Why                                                                                                     |
+| --------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------- |
+| `infrawrench_api_key` | Closed entirely        | A key that can mint keys can mint a longer-lived, differently-scoped one and outlive its own revocation |
+| `infrawrench_role`    | Readable, not writable | A key should not manufacture durable authority for other principals                                     |
+
+Everything else in the provider is reachable with a correctly scoped key. If
+your configuration manages either of those two, run that root with a WorkOS
+access token — or, better, keep credential and role definitions in a separate
+root a human applies, which is the separation the deny-list is arguing for
+anyway.
+
+The provider recognises this specific 403 and says which resource is affected
+rather than leaving you to read a permission error that is not about
+permissions.
 
 ### Scopes
 
@@ -703,11 +709,65 @@ Acceptance tests create and destroy real objects and are skipped unless `TF_ACC`
 is set **and** `INFRAWRENCH_API_KEY` and `INFRAWRENCH_ORG_ID` are present. Point
 them at a scratch organization, never a production one.
 
+## Releasing
+
+The Terraform Registry resolves straight to a Git URL and requires a **dedicated
+public repository** named `terraform-provider-{NAME}`. A monorepo subdirectory
+cannot be published, so the provider is developed here and mirrored to
+`Infrawrench/terraform-provider-infrawrench` — the same arrangement the Go,
+Swift and PHP SDKs use, and for the same reason.
+
+**The monorepo is the direction of truth.** The satellite's tree is replaced
+wholesale on every release, its own workflows included, so nothing there is
+hand-maintained and a file deleted here disappears there. Do not edit the
+satellite; the next release overwrites it.
+
+To cut a release, change `VERSION` and merge to `main`. That is the whole
+ritual:
+
+1. `.github/workflows/publish-terraform-provider.yml` reads `VERSION` and checks
+   the monorepo for the tag `terraform-provider-v<version>` — the ledger. An
+   unchanged version is a no-op, so an ordinary provider change does not
+   publish.
+2. It re-runs gofmt, build, vet and the tests against the exact bytes about to
+   ship, then mirrors this directory into the satellite and pushes `vX.Y.Z`.
+3. That tag starts the satellite's own `release.yml` (mirrored from
+   `.github/workflows/` in this directory, inert here because GitHub only reads
+   workflows from a repository root). It runs GoReleaser, which builds the
+   platform matrix, writes `_SHA256SUMS`, GPG-signs it, and attaches the
+   registry manifest.
+4. The Registry ingests the release and verifies the signature against the
+   public key registered with the namespace.
+5. The monorepo tag is written last, so it means "the release was handed off"
+   rather than "somebody started one".
+
+What that needs configured once, outside this repository:
+
+- The satellite repository, public, named exactly `terraform-provider-infrawrench`.
+- The SDK publisher GitHub App's installation extended to it. OIDC cannot grant
+  write access to another repository, so this is the one unavoidable stored
+  credential; the App token is installation-scoped and expires in an hour.
+- `GPG_PRIVATE_KEY` and `PASSPHRASE` in the satellite, with the public half
+  registered on the Registry namespace.
+- The namespace `Infrawrench` claimed on registry.terraform.io. It must match
+  the address in `main.go` (`registry.terraform.io/Infrawrench/infrawrench`) and
+  the GitHub org that owns the satellite.
+
+Versioning is the provider's own, not the API's. It is a client: `API_VERSION`
+moving does not oblige a release here, and a provider fix ships without touching
+the API. While the major is `0`, the resource schemas are still allowed to move.
+
 ## Repository notes
 
 - This module is **not** in the pnpm workspace or `turbo.json`. It is a Go
-  module with its own toolchain and its own test command.
+  module with its own toolchain and its own test command, and
+  `.github/workflows/terraform-provider.yml` is its CI.
 - It is **not** added to `cliff.toml`'s `include_paths`. That list scopes the
   desktop changelog to the desktop app and the workspace packages it
   transitively depends on; a standalone Go module is outside that closure, and
   adding it would put provider commits into the desktop app's changelog.
+- The provider is **MIT licensed**, which is not the repository's BUSL-1.1. That
+  is deliberate: a Terraform provider is a client library people vendor into
+  their own infrastructure repositories, and it has to carry a licence that lets
+  them. `LICENSE` in this directory governs everything under it, and the mirror
+  carries it to the satellite.

@@ -149,23 +149,15 @@ func TestQueryErrorIsDecoded(t *testing.T) {
 // The one failure a practitioner cannot diagnose from the wire: an API key that
 // is valid everywhere else is rejected by this route tree. The hint has to be
 // attached, and only for API keys.
-func TestUnauthorizedHintOnlyForAPIKeys(t *testing.T) {
-	handler := func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"error":"Unauthorized"}`))
-	}
-
-	t.Run("api key gets the hint", func(t *testing.T) {
-		client, _ := newTestClient(t, handler)
-		_, err := client.ListBudgets(context.Background())
-		if err == nil || !strings.Contains(err.Error(), "WorkOS access token") {
-			t.Fatalf("expected the API-key hint, got %v", err)
-		}
-	})
-
-	t.Run("workos token does not", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(handler))
-		defer server.Close()
+// The org tree accepts `iwk_` keys, so a 401 or a 403 there means something a
+// key holder can act on — but only if the provider says which. These pin the
+// two hints apart, and pin that neither reaches a WorkOS-token caller, for whom
+// both would be nonsense.
+func TestAPIKeyHints(t *testing.T) {
+	workosClient := func(t *testing.T, handler http.HandlerFunc) *Client {
+		t.Helper()
+		server := httptest.NewServer(handler)
+		t.Cleanup(server.Close)
 		client, err := NewClient(Config{
 			BaseURL:    server.URL,
 			Token:      "eyJhbGciOi.workos.token",
@@ -175,12 +167,73 @@ func TestUnauthorizedHintOnlyForAPIKeys(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewClient: %v", err)
 		}
-		_, err = client.ListBudgets(context.Background())
+		return client
+	}
+
+	unauthorized := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"Unauthorized"}`))
+	}
+
+	// The deny-list's own message, which is what distinguishes "wrong kind of
+	// credential" from "right kind, insufficient scopes".
+	denied := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"API keys cannot manage API keys. Mint and revoke keys from the web UI."}`))
+	}
+
+	scopeDenied := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"Missing permission: budgets:write"}`))
+	}
+
+	t.Run("a 401 says the key itself was refused", func(t *testing.T) {
+		client, _ := newTestClient(t, unauthorized)
+		_, err := client.ListBudgets(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "revoked") {
+			t.Fatalf("expected the key-refused hint, got %v", err)
+		}
+		// The old hint claimed the tree rejected keys outright. It no longer
+		// does, and saying so would send somebody to swap a working credential.
+		if strings.Contains(err.Error(), "rejected with 401 on these routes") {
+			t.Error("the stale categorical-rejection hint is back")
+		}
+	})
+
+	t.Run("a deny-list 403 names the two closed resources", func(t *testing.T) {
+		client, _ := newTestClient(t, denied)
+		_, err := client.ListBudgets(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "infrawrench_api_key") {
+			t.Fatalf("expected the deny-list hint, got %v", err)
+		}
+	})
+
+	t.Run("an ordinary scope 403 gets no hint", func(t *testing.T) {
+		client, _ := newTestClient(t, scopeDenied)
+		_, err := client.ListBudgets(context.Background())
 		if err == nil {
 			t.Fatal("expected an error")
 		}
-		if strings.Contains(err.Error(), "WorkOS access token") {
-			t.Errorf("hint should not appear for a non-key token: %v", err)
+		// Pasting the deny-list under a plain permission failure would send
+		// somebody looking for the wrong cause entirely.
+		if strings.Contains(err.Error(), "closed to API keys") {
+			t.Errorf("a scope failure must not get the deny-list hint: %v", err)
+		}
+	})
+
+	t.Run("a WorkOS token gets neither", func(t *testing.T) {
+		for name, handler := range map[string]http.HandlerFunc{
+			"401": unauthorized,
+			"403": denied,
+		} {
+			client := workosClient(t, handler)
+			_, err := client.ListBudgets(context.Background())
+			if err == nil {
+				t.Fatalf("%s: expected an error", name)
+			}
+			if strings.Contains(err.Error(), "api_key") {
+				t.Errorf("%s: a non-key token must not get an API-key hint: %v", name, err)
+			}
 		}
 	})
 }
