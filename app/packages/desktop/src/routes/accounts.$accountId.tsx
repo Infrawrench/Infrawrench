@@ -811,7 +811,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     );
   }
   if (error) {
-    return <div className="p-6 text-red-400 text-sm">{error}</div>;
+    return <div className="p-6 text-danger text-sm">{error}</div>;
   }
 
   // Account-root plugins (UploadThing) hold exactly one instance of their root
@@ -915,7 +915,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}
-            className="text-xs text-on-surface-faint hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+            className="text-xs text-on-surface-faint hover:text-danger transition-colors px-2 py-1 rounded hover:bg-red-500/10"
           >
             Remove
           </button>

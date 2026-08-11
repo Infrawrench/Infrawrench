@@ -2,9 +2,9 @@ import { CHANGE_KIND_LABELS, formatChangeValue } from "@infrawrench/client-core"
 import type { ResourceChangeEntry, ResourceChangeKind } from "./types.js";
 
 const KIND_BADGE_CLASSES: Record<ResourceChangeKind, string> = {
-  created: "bg-green-500/10 text-green-400",
-  updated: "bg-blue-500/10 text-blue-400",
-  deleted: "bg-red-500/10 text-red-400",
+  created: "bg-green-500/10 text-success",
+  updated: "bg-blue-500/10 text-info",
+  deleted: "bg-red-500/10 text-danger",
 };
 
 /**

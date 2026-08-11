@@ -167,7 +167,7 @@ export function MomentPanel({
         )}
         {badge && (
           <span
-            className="rounded-full border border-amber-500/40 text-amber-500 px-2 py-0.5 text-xs whitespace-nowrap shrink-0"
+            className="rounded-full border border-amber-500/40 text-warning px-2 py-0.5 text-xs whitespace-nowrap shrink-0"
             title="This event falls inside a provider incident's span — correlation, not causation."
           >
             {badge}
@@ -245,7 +245,7 @@ export function MomentPanel({
               key={feed.feed}
               className={`rounded-full border px-2 py-0.5 text-xs whitespace-nowrap ${
                 feed.status === "error"
-                  ? "border-amber-500/40 text-amber-500"
+                  ? "border-amber-500/40 text-warning"
                   : "border-border text-on-surface-faint"
               }`}
               title={
@@ -288,9 +288,7 @@ export function MomentPanel({
                     {incident.pluginName}: {incident.title}
                   </>
                 )}
-                {!incident.resolvedAt && (
-                  <span className="ml-2 text-xs text-amber-500">active</span>
-                )}
+                {!incident.resolvedAt && <span className="ml-2 text-xs text-warning">active</span>}
               </li>
             ))}
           </ul>
@@ -298,7 +296,7 @@ export function MomentPanel({
       )}
 
       {error !== null && (
-        <div role="alert" className="mb-4 text-sm text-red-500">
+        <div role="alert" className="mb-4 text-sm text-danger">
           Couldn&apos;t load the moment — {error}{" "}
           <button type="button" onClick={() => void load()} className="underline">
             Retry
@@ -345,7 +343,7 @@ export function MomentPanel({
                       {describeIncidentBadge(
                         spansById(item.incidentIds, data?.incidents ?? []),
                       ) && (
-                        <span className="rounded-full border border-amber-500/40 text-amber-500 px-2 py-0.5 text-xs whitespace-nowrap shrink-0">
+                        <span className="rounded-full border border-amber-500/40 text-warning px-2 py-0.5 text-xs whitespace-nowrap shrink-0">
                           {describeIncidentBadge(
                             spansById(item.incidentIds, data?.incidents ?? []),
                           )}

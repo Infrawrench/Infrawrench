@@ -59,7 +59,7 @@ export function DesktopGraphPanel({ openResource }: DesktopGraphPanelProps) {
   if (error && !data) {
     return (
       <div className="p-6">
-        <p className="text-red-400 text-sm">{error}</p>
+        <p className="text-danger text-sm">{error}</p>
         <button
           type="button"
           onClick={() => setReloadKey((k) => k + 1)}
@@ -83,7 +83,7 @@ export function DesktopGraphPanel({ openResource }: DesktopGraphPanelProps) {
           references you wire yourself.
         </p>
         {error && (
-          <p className="mt-2 text-xs text-red-400">
+          <p className="mt-2 text-xs text-danger">
             Couldn&rsquo;t refresh — showing the last loaded graph. {error}
           </p>
         )}

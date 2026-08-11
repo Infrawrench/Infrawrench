@@ -159,12 +159,12 @@ export function JiraSection() {
       </div>
 
       {error && (
-        <div className="mb-4 px-3 py-2 text-sm text-red-400 border border-red-900/50 bg-red-950/20 rounded-lg">
+        <div className="mb-4 px-3 py-2 text-sm text-danger border border-red-900/50 bg-red-950/20 rounded-lg">
           {error}
         </div>
       )}
       {notice && (
-        <div className="mb-4 px-3 py-2 text-sm text-emerald-400 border border-emerald-900/50 bg-emerald-950/20 rounded-lg">
+        <div className="mb-4 px-3 py-2 text-sm text-success border border-emerald-900/50 bg-emerald-950/20 rounded-lg">
           {notice}
         </div>
       )}
@@ -182,7 +182,7 @@ export function JiraSection() {
               <button
                 type="button"
                 onClick={() => openExternal("https://id.atlassian.com/manage-profile/security")}
-                className="text-blue-500 hover:text-blue-400"
+                className="text-info hover:text-info-strong"
               >
                 Create an API token
               </button>
@@ -305,7 +305,7 @@ export function JiraSection() {
                 <button
                   type="button"
                   onClick={() => void disconnect()}
-                  className="px-3 py-1.5 text-sm font-medium text-red-400 hover:text-red-500 dark:text-red-300"
+                  className="px-3 py-1.5 text-sm font-medium text-danger hover:text-danger-strong"
                 >
                   Disconnect
                 </button>
@@ -355,7 +355,7 @@ function FiledIssuesList({
               <button
                 type="button"
                 onClick={() => openExternal(link.issueUrl)}
-                className="text-blue-500 hover:text-blue-400 font-medium"
+                className="text-info hover:text-info-strong font-medium"
               >
                 {link.issueKey}
               </button>

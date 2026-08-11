@@ -164,7 +164,7 @@ export function CustomGraphEditorModal({
             {diagnostics && diagnostics.length > 0 && (
               <div
                 role="alert"
-                className="max-h-32 overflow-y-auto border-t border-border px-4 py-2 text-xs text-red-400 font-mono whitespace-pre-wrap"
+                className="max-h-32 overflow-y-auto border-t border-border px-4 py-2 text-xs text-danger font-mono whitespace-pre-wrap"
               >
                 {diagnostics
                   .map((d) => `${d.line}:${d.column} TS${d.code} ${d.message}`)
@@ -175,7 +175,7 @@ export function CustomGraphEditorModal({
 
           <div className="w-[42%] min-w-[320px] flex flex-col">
             {error && (
-              <p role="alert" className="px-4 pt-3 text-xs text-red-400">
+              <p role="alert" className="px-4 pt-3 text-xs text-danger">
                 {error}
               </p>
             )}
@@ -200,7 +200,7 @@ export function CustomGraphEditorModal({
             ) : preview && !preview.ok ? (
               <div
                 role="alert"
-                className="flex-1 flex items-center justify-center text-sm text-red-400 px-6 text-center whitespace-pre-wrap"
+                className="flex-1 flex items-center justify-center text-sm text-danger px-6 text-center whitespace-pre-wrap"
               >
                 {preview.error}
               </div>
@@ -216,9 +216,9 @@ export function CustomGraphEditorModal({
                     key={i}
                     className={
                       l.level === "error"
-                        ? "text-red-400"
+                        ? "text-danger"
                         : l.level === "warn"
-                          ? "text-amber-400"
+                          ? "text-warning"
                           : "text-on-surface-faint"
                     }
                   >

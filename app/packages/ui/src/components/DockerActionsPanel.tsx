@@ -40,7 +40,7 @@ export function DockerActionsPanel({ containerId, onCommand }: DockerActionsPane
           type="button"
           onClick={() => void run("startContainer", "Start")}
           disabled={state === "running"}
-          className="px-3 py-1.5 text-xs bg-green-600/20 hover:bg-green-600/30 border border-green-400 dark:border-green-600/40 text-green-400 rounded-lg transition-colors disabled:opacity-50"
+          className="px-3 py-1.5 text-xs bg-green-600/20 hover:bg-green-600/30 border border-green-400 dark:border-green-600/40 text-success rounded-lg transition-colors disabled:opacity-50"
         >
           Start
         </button>
@@ -48,7 +48,7 @@ export function DockerActionsPanel({ containerId, onCommand }: DockerActionsPane
           type="button"
           onClick={() => void run("stopContainer", "Stop")}
           disabled={state === "running"}
-          className="px-3 py-1.5 text-xs bg-yellow-600/20 hover:bg-yellow-600/30 border border-yellow-600/40 text-yellow-400 rounded-lg transition-colors disabled:opacity-50"
+          className="px-3 py-1.5 text-xs bg-yellow-600/20 hover:bg-yellow-600/30 border border-yellow-600/40 text-warning rounded-lg transition-colors disabled:opacity-50"
         >
           Stop
         </button>
@@ -63,8 +63,8 @@ export function DockerActionsPanel({ containerId, onCommand }: DockerActionsPane
       </div>
 
       {state === "running" && <p className="text-xs text-on-surface-muted mt-2">{lastOp}…</p>}
-      {state === "success" && <p className="text-xs text-green-400 mt-2">{lastOp} succeeded</p>}
-      {state === "error" && error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+      {state === "success" && <p className="text-xs text-success mt-2">{lastOp} succeeded</p>}
+      {state === "error" && error && <p className="text-xs text-danger mt-2">{error}</p>}
     </div>
   );
 }

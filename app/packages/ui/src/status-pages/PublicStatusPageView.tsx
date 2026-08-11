@@ -34,13 +34,13 @@ function stateColor(state: StatusComponentState): string {
 function pageAccent(state: StatusPageState): { bar: string; text: string } {
   switch (state) {
     case "operational":
-      return { bar: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" };
+      return { bar: "bg-emerald-500", text: "text-success" };
     case "degraded":
-      return { bar: "bg-amber-500", text: "text-amber-600 dark:text-amber-400" };
+      return { bar: "bg-amber-500", text: "text-warning" };
     case "major_outage":
-      return { bar: "bg-red-500", text: "text-red-600 dark:text-red-400" };
+      return { bar: "bg-red-500", text: "text-danger" };
     case "unknown":
-      return { bar: "bg-neutral-400", text: "text-neutral-500" };
+      return { bar: "bg-neutral-400", text: "text-on-surface-tertiary" };
   }
 }
 

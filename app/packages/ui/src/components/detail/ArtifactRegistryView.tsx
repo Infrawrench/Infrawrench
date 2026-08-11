@@ -99,7 +99,7 @@ export function ArtifactRegistryView({ capability, onListArtifacts }: Props) {
       </div>
 
       {error && (
-        <div className="shrink-0 px-4 py-2 border-b border-border bg-red-500/10 text-red-400 text-xs font-mono whitespace-pre-wrap">
+        <div className="shrink-0 px-4 py-2 border-b border-border bg-red-500/10 text-danger text-xs font-mono whitespace-pre-wrap">
           {error}
         </div>
       )}

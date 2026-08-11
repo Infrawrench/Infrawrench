@@ -233,7 +233,7 @@ export function SshTunnelModal({
             <ErrorNotice
               message={error}
               className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2"
-              textClassName="text-xs text-red-400"
+              textClassName="text-xs text-danger"
             />
           )}
         </div>

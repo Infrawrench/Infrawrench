@@ -206,7 +206,7 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
       </label>
 
       {maxCharacters != null && (
-        <p className={`text-[11px] ${overLimit ? "text-red-400" : "text-on-surface-faint"}`}>
+        <p className={`text-[11px] ${overLimit ? "text-danger" : "text-on-surface-faint"}`}>
           {text.length} / {maxCharacters} characters
         </p>
       )}
@@ -462,7 +462,7 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
       </div>
 
       {recording && (
-        <p className="text-xs text-red-400" aria-live="polite">
+        <p className="text-xs text-danger" aria-live="polite">
           Recording… speak now, then press Stop.
         </p>
       )}
@@ -480,7 +480,7 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
                 setAudio(null);
                 setResult(null);
               }}
-              className="text-on-surface-faint hover:text-red-400 shrink-0"
+              className="text-on-surface-faint hover:text-danger shrink-0"
             >
               Clear
             </button>
@@ -626,7 +626,7 @@ function OptionSelect({
 
 function ErrorBanner({ message }: { message: string }) {
   return (
-    <div className="text-xs text-red-400 font-mono bg-red-500/10 border border-red-500/30 rounded-md px-3 py-2">
+    <div className="text-xs text-danger font-mono bg-red-500/10 border border-red-500/30 rounded-md px-3 py-2">
       {message}
     </div>
   );

@@ -102,7 +102,7 @@ export function MetricAlertsPanel({ client }: MetricAlertsPanelProps) {
           )}
         </div>
 
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
         {rules === null && !error && (
           <p className="text-sm text-on-surface-faint">Loading rules…</p>
         )}
@@ -137,7 +137,7 @@ export function MetricAlertsPanel({ client }: MetricAlertsPanelProps) {
                       {rule.name}
                     </span>
                     {rule.firingCount > 0 && (
-                      <span className="text-xs text-red-400">
+                      <span className="text-xs text-danger">
                         firing on {rule.firingCount} resource{rule.firingCount === 1 ? "" : "s"}
                       </span>
                     )}
@@ -170,7 +170,7 @@ export function MetricAlertsPanel({ client }: MetricAlertsPanelProps) {
                     <button
                       type="button"
                       onClick={() => void remove(rule)}
-                      className="px-2 py-1 rounded-lg text-xs text-red-400 hover:bg-surface-sunken transition-colors"
+                      className="px-2 py-1 rounded-lg text-xs text-danger hover:bg-surface-sunken transition-colors"
                     >
                       Delete
                     </button>
@@ -223,9 +223,9 @@ export function MetricAlertsPanel({ client }: MetricAlertsPanelProps) {
                     </td>
                     <td className="py-1.5">
                       {e.status === "firing" ? (
-                        <span className="text-red-400">firing</span>
+                        <span className="text-danger">firing</span>
                       ) : (
-                        <span className="text-emerald-400">
+                        <span className="text-success">
                           resolved{e.resolvedAt ? ` ${formatWhen(e.resolvedAt)}` : ""}
                         </span>
                       )}

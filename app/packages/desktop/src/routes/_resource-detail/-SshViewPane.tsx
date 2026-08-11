@@ -196,12 +196,12 @@ export function SshViewPane({
         ) : sshHost ? (
           <>
             {agentLaunchError && (
-              <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-warning">
                 {agentLaunchError}
               </div>
             )}
             {autoConnectError && (
-              <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-warning">
                 Could not auto-connect with {effectiveSshKeyName ?? "the agent key"}:{" "}
                 {autoConnectError}
               </div>
@@ -224,7 +224,7 @@ export function SshViewPane({
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center">
             {agentLaunchError && (
-              <div className="mb-2 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              <div className="mb-2 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-warning">
                 {agentLaunchError}
               </div>
             )}

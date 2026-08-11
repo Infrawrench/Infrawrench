@@ -102,7 +102,7 @@ export function ScenarioModelsSection({ client }: { client: CostsClient }) {
       </div>
 
       {error !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           Couldn&rsquo;t load scenario models &mdash; {error}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
             Retry
@@ -167,7 +167,7 @@ export function ScenarioModelsSection({ client }: { client: CostsClient }) {
                   <button
                     type="button"
                     onClick={() => void deleteModel(model)}
-                    className="hover:text-red-500 underline"
+                    className="hover:text-danger underline"
                   >
                     Delete
                   </button>
@@ -175,7 +175,7 @@ export function ScenarioModelsSection({ client }: { client: CostsClient }) {
               )}
             </div>
             {rowError?.id === model.id && (
-              <p role="alert" className="mt-1.5 text-xs text-red-400">
+              <p role="alert" className="mt-1.5 text-xs text-danger">
                 {rowError.message}
               </p>
             )}
@@ -315,7 +315,7 @@ function ScenarioModelEditModal({
           history is never changed, and the unadjusted trend is always drawn alongside.
         </p>
         {model && referents !== null && referents.length > 0 && (
-          <p className="text-xs text-amber-500 mb-3">
+          <p className="text-xs text-warning mb-3">
             Saving changes {describeCostScenarioReferents(referents)}.
             {budgetReferents.length > 0 &&
               " Those budgets judge their forecast thresholds against this model, so this can change which alerts fire."}
@@ -388,7 +388,7 @@ function ScenarioModelEditModal({
           </div>
 
           {error && (
-            <p role="alert" className="text-sm text-red-400">
+            <p role="alert" className="text-sm text-danger">
               {error}
             </p>
           )}
@@ -476,7 +476,7 @@ function AdjustmentRow({
           type="button"
           aria-label={`Remove adjustment ${index + 1}`}
           onClick={onRemove}
-          className="shrink-0 rounded-lg px-2 py-1.5 text-sm text-on-surface-faint hover:text-red-400"
+          className="shrink-0 rounded-lg px-2 py-1.5 text-sm text-on-surface-faint hover:text-danger"
         >
           ✕
         </button>

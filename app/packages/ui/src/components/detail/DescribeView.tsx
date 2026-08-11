@@ -42,7 +42,7 @@ export function DescribeView({ capability, onGetDescribe }: Props) {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
-        <div className="text-red-400 text-sm font-mono whitespace-pre-wrap max-w-lg">{error}</div>
+        <div className="text-danger text-sm font-mono whitespace-pre-wrap max-w-lg">{error}</div>
         <button
           type="button"
           onClick={() => void fetchDescribe()}

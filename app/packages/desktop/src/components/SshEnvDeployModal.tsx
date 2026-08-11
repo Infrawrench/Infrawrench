@@ -184,7 +184,7 @@ export function SshEnvDeployModal({
 
         <div className="p-6 space-y-4">
           {loadError ? (
-            <p className="text-sm text-red-400">{loadError}</p>
+            <p className="text-sm text-danger">{loadError}</p>
           ) : (
             <>
               <SshKeyPicker
@@ -357,7 +357,7 @@ export function SshEnvDeployModal({
                 <ErrorNotice
                   message={error}
                   className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2"
-                  textClassName="text-xs text-red-400"
+                  textClassName="text-xs text-danger"
                 />
               )}
             </>

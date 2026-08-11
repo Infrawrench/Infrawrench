@@ -126,7 +126,7 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
       </div>
 
       {error !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           Couldn&apos;t compute right-sizing — {error}{" "}
           <button type="button" onClick={() => void refresh(true)} className="underline">
             Retry
@@ -190,7 +190,7 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
                         <> · memory not measured</>
                       )}
                       {rowErrors[r.id] && (
-                        <div role="alert" className="mt-1 text-xs text-red-500">
+                        <div role="alert" className="mt-1 text-xs text-danger">
                           {rowErrors[r.id]}
                         </div>
                       )}

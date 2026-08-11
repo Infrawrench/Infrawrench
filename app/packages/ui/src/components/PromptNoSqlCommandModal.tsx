@@ -114,10 +114,10 @@ export function PromptNoSqlCommandModal({
           {description &&
             (descriptionVariant === "error" ? (
               <div className="mt-2 flex items-start gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2">
-                <span className="text-red-400 text-sm leading-none mt-0.5" aria-hidden>
+                <span className="text-danger text-sm leading-none mt-0.5" aria-hidden>
                   &#9888;
                 </span>
-                <p className="text-xs text-red-300">{description}</p>
+                <p className="text-xs text-danger">{description}</p>
               </div>
             ) : (
               <p className="text-xs text-on-surface-muted mt-1.5">{description}</p>
@@ -135,7 +135,7 @@ export function PromptNoSqlCommandModal({
                   {...(resourcePickerProps ? { resourcePickerProps } : {})}
                 />
               ))}
-              {error && <div className="text-xs text-red-400">{error}</div>}
+              {error && <div className="text-xs text-danger">{error}</div>}
             </div>
             <div className="flex-1 min-w-0 flex flex-col">
               {codeFields.map((f) => (
@@ -162,7 +162,7 @@ export function PromptNoSqlCommandModal({
                   {...(resourcePickerProps ? { resourcePickerProps } : {})}
                 />
               ))}
-              {error && <div className="text-xs text-red-400">{error}</div>}
+              {error && <div className="text-xs text-danger">{error}</div>}
             </div>
           )
         )}

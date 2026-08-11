@@ -53,7 +53,7 @@ function ProxyIndicator({ proxied }: { proxied: boolean }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 text-xs ${
-        proxied ? "text-orange-500" : "text-on-surface-faint"
+        proxied ? "text-severe" : "text-on-surface-faint"
       }`}
       title={proxied ? "Proxied through the CDN" : "DNS only"}
     >
@@ -277,7 +277,7 @@ export function ChildResourceTable({
                           type="button"
                           disabled={deleting === child.id}
                           onClick={() => void handleDelete(child)}
-                          className="text-xs text-on-surface-faint hover:text-red-400 transition-colors disabled:opacity-50"
+                          className="text-xs text-on-surface-faint hover:text-danger transition-colors disabled:opacity-50"
                           title="Delete"
                         >
                           {deleting === child.id ? "…" : "Delete"}

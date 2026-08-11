@@ -34,9 +34,9 @@ const STATUS_LABELS: Record<EnvironmentDiffStatus, string> = {
 
 /** Pill tones per status, matching the PostureSection translucent-badge recipe. */
 const STATUS_BADGE_CLASSES: Record<EnvironmentDiffStatus, string> = {
-  "only-in-a": "bg-amber-500/10 text-amber-400",
-  "only-in-b": "bg-sky-500/10 text-sky-400",
-  changed: "bg-violet-500/10 text-violet-400",
+  "only-in-a": "bg-amber-500/10 text-series-3",
+  "only-in-b": "bg-sky-500/10 text-series-1",
+  changed: "bg-violet-500/10 text-series-8",
 };
 
 interface TypeGroup {
@@ -192,7 +192,7 @@ export function EnvironmentDiffSection({
       />
 
       {accountsError != null && (
-        <p role="alert" className="mb-4 text-sm text-red-500">
+        <p role="alert" className="mb-4 text-sm text-danger">
           Couldn&apos;t load the accounts — {accountsError}
         </p>
       )}
@@ -206,7 +206,7 @@ export function EnvironmentDiffSection({
       )}
 
       {error != null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           {error}{" "}
           <button type="button" onClick={retry} className="underline">
             Retry
@@ -315,15 +315,15 @@ function EnvironmentDiffResults({
   return (
     <>
       <div className="flex flex-wrap items-center gap-2 mb-5">
-        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-amber-500/10 text-amber-400">
+        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-amber-500/10 text-series-3">
           <span className="tabular-nums">{data.totals.onlyInA}</span> only in{" "}
           {nameOf(data.a.accountId)}
         </span>
-        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-sky-500/10 text-sky-400">
+        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-sky-500/10 text-series-1">
           <span className="tabular-nums">{data.totals.onlyInB}</span> only in{" "}
           {nameOf(data.b.accountId)}
         </span>
-        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-violet-500/10 text-violet-400">
+        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-violet-500/10 text-series-8">
           <span className="tabular-nums">{data.totals.changed}</span> differ
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-surface-overlay text-on-surface-tertiary">
@@ -332,7 +332,7 @@ function EnvironmentDiffResults({
       </div>
 
       {data.unavailableTypes.length > 0 && (
-        <p role="alert" className="mb-4 text-xs text-amber-400">
+        <p role="alert" className="mb-4 text-xs text-warning">
           Couldn&apos;t list {data.unavailableTypes.map((t) => t.resourceTypeName).join(", ")} —
           excluded from the comparison rather than reported as missing. (
           {data.unavailableTypes[0]?.message})
@@ -403,7 +403,7 @@ function TypeSummaryTable({ data }: { data: EnvironmentDiffResponse }) {
               <td className="px-4 py-2 align-top text-on-surface">
                 {type.resourceTypeName}
                 {type.missingFrom && (
-                  <span className="ml-2 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-400">
+                  <span className="ml-2 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-warning">
                     missing from{" "}
                     {type.missingFrom === "a" ? data.a.accountName : data.b.accountName}
                   </span>
@@ -499,9 +499,9 @@ function EntryTypeGroup({
                       {entry.changes.map((change) => (
                         <div key={change.field} className="text-xs">
                           <span className="font-medium text-on-surface">{change.field}</span>
-                          <span className="ml-2 text-amber-400">{formatChangeValue(change.a)}</span>
+                          <span className="ml-2 text-series-3">{formatChangeValue(change.a)}</span>
                           <span className="mx-1.5 text-on-surface-faint">→</span>
-                          <span className="text-sky-400">{formatChangeValue(change.b)}</span>
+                          <span className="text-series-1">{formatChangeValue(change.b)}</span>
                         </div>
                       ))}
                       {entry.suppressedCount > 0 && (

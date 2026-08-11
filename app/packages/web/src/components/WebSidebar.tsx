@@ -717,7 +717,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                     onClick={() => void handleArchiveChat(chat.id)}
                     title="Archive chat"
                     aria-label="Archive chat"
-                    className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-red-500 text-xs px-2 py-1.5 transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-danger text-xs px-2 py-1.5 transition-opacity"
                   >
                     ×
                   </button>
@@ -802,7 +802,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                           <div className="px-3 py-1 text-xs text-on-surface-faint">Loading…</div>
                         )}
                         {resourceState && !resourceState.loading && resourceState.error && (
-                          <div className="px-3 py-1 text-xs text-red-400">
+                          <div className="px-3 py-1 text-xs text-danger">
                             Error loading resources
                           </div>
                         )}

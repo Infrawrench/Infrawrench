@@ -40,7 +40,7 @@ function CopyButton({ value }: { value: string }) {
       title={copied ? "Copied" : "Copy"}
       className={`flex-shrink-0 inline-flex items-center justify-center size-6 rounded transition-colors ${
         copied
-          ? "text-emerald-400 bg-emerald-500/10"
+          ? "text-success bg-emerald-500/10"
           : "text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-overlay"
       }`}
     >
@@ -240,8 +240,7 @@ function KeyValueListNodeRenderer({
 
 const ACTION_VARIANT_CLASSES: Record<string, string> = {
   default: "bg-surface-overlay hover:bg-surface-sunken text-on-surface-secondary",
-  danger:
-    "bg-red-100 hover:bg-red-200 text-red-800 dark:bg-red-900 dark:hover:bg-red-800 dark:text-red-200",
+  danger: "bg-red-100 hover:bg-red-200 text-danger-strong dark:bg-red-900 dark:hover:bg-red-800",
   ghost: "bg-transparent hover:bg-surface-overlay text-on-surface-tertiary",
 };
 

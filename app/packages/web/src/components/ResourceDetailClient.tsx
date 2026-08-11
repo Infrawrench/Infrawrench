@@ -1089,12 +1089,12 @@ export function ResourceDetailClient({
             ) : sshHost && !sshQuickConnect ? (
               <>
                 {agentLaunchError && (
-                  <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-warning">
                     {agentLaunchError}
                   </div>
                 )}
                 {autoConnectError && (
-                  <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-warning">
                     Could not auto-connect with {agentLaunch.sshKeyName ?? "the agent key"}:{" "}
                     {autoConnectError}
                   </div>
@@ -1486,7 +1486,7 @@ export function ResourceDetailClient({
               <button
                 type="button"
                 onClick={() => setConfirmDelete(true)}
-                className="text-xs text-on-surface-faint hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+                className="text-xs text-on-surface-faint hover:text-danger transition-colors px-2 py-1 rounded hover:bg-red-500/10"
               >
                 Delete {resourceTypeLabel}…
               </button>

@@ -17,7 +17,7 @@ export interface FileIssueButtonProps {
   className?: string;
 }
 
-const badgeClass = "text-xs font-medium text-blue-500 hover:text-blue-400 whitespace-nowrap";
+const badgeClass = "text-xs font-medium text-info hover:text-info-strong whitespace-nowrap";
 
 /**
  * The one tracker-aware filing affordance, dropped onto any findings row.

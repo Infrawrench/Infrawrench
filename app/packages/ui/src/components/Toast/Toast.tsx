@@ -6,25 +6,25 @@ const variantStyles = {
   success: {
     border: "border-green-500/40",
     bg: "bg-green-500/10",
-    icon: "text-green-600 dark:text-green-300",
+    icon: "text-success",
     iconChar: "✓",
   },
   error: {
     border: "border-red-500/40",
     bg: "bg-red-500/10",
-    icon: "text-red-600 dark:text-red-300",
+    icon: "text-danger",
     iconChar: "✕",
   },
   warning: {
     border: "border-amber-500/40",
     bg: "bg-amber-500/10",
-    icon: "text-amber-600 dark:text-amber-300",
+    icon: "text-warning",
     iconChar: "!",
   },
   info: {
     border: "border-blue-500/40",
     bg: "bg-blue-500/10",
-    icon: "text-blue-600 dark:text-blue-300",
+    icon: "text-info",
     iconChar: "i",
   },
 } as const;

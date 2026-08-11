@@ -553,7 +553,7 @@ export function WorkflowsPanel({
           />
 
           {error && (
-            <div className="px-3 py-2 text-xs text-red-400 border-b border-white/10">{error}</div>
+            <div className="px-3 py-2 text-xs text-danger border-b border-white/10">{error}</div>
           )}
 
           <div className="flex-1 min-h-0">
@@ -922,9 +922,9 @@ function CronTriggerFields({
         className="bg-transparent border border-white/15 rounded px-2 py-1 w-32 font-mono"
       />
       {cronError || timezoneError ? (
-        <span className="text-[11px] text-red-400">{cronError ?? timezoneError}</span>
+        <span className="text-[11px] text-danger">{cronError ?? timezoneError}</span>
       ) : (
-        <span className="text-[11px] text-blue-300/80" title={expression}>
+        <span className="text-[11px] text-info/80" title={expression}>
           {describeCron(expression)}
           {nextRuns.length > 0 && (
             <>
@@ -1009,7 +1009,7 @@ function BudgetTriggerFields({
         <option value="forecast">forecast spend</option>
       </select>
       {selected && (
-        <span className="text-[11px] text-blue-300/80">
+        <span className="text-[11px] text-info/80">
           Runs once a month, when {metric === "actual" ? "spend" : "the month-end forecast"} reaches{" "}
           {formatBudgetAmount(
             Math.round((selected.amountCents * percent) / 100),
@@ -1043,7 +1043,7 @@ function WebhookSecretField({
   if (hasWebhookSecret && webhookSecret === null) {
     return (
       <span className="flex items-center gap-1.5">
-        <span className="text-emerald-300/80" title="Deliveries must carry a valid signature">
+        <span className="text-success/80" title="Deliveries must carry a valid signature">
           Signed ✓
         </span>
         <button
@@ -1205,7 +1205,7 @@ function RunResultPanel({ run }: { run: WorkflowRunResult }) {
     <div className="h-48 border-t border-white/10 flex flex-col min-h-0">
       <div className="px-3 py-1 text-xs border-b border-white/10 flex items-center gap-2">
         <span
-          className={`font-semibold ${run.status === "success" ? "text-green-400" : run.status === "failure" ? "text-red-400" : ""}`}
+          className={`font-semibold ${run.status === "success" ? "text-success" : run.status === "failure" ? "text-danger" : ""}`}
         >
           {run.status}
         </span>
@@ -1216,13 +1216,13 @@ function RunResultPanel({ run }: { run: WorkflowRunResult }) {
           <div
             key={i}
             className={
-              l.level === "error" ? "text-red-400" : l.level === "warn" ? "text-yellow-400" : ""
+              l.level === "error" ? "text-danger" : l.level === "warn" ? "text-warning" : ""
             }
           >
             {l.message}
           </div>
         ))}
-        {run.error && <div className="text-red-400">Error: {run.error.message}</div>}
+        {run.error && <div className="text-danger">Error: {run.error.message}</div>}
         {run.output !== undefined && run.output !== null && (
           <pre className="mt-2 opacity-80">{JSON.stringify(run.output, null, 2)}</pre>
         )}
@@ -1236,14 +1236,14 @@ function LiveLogPanel({ logs }: { logs: WorkflowRunLog[] }) {
   return (
     <div className="h-48 border-t border-white/10 flex flex-col min-h-0">
       <div className="px-3 py-1 text-xs border-b border-white/10 flex items-center gap-2">
-        <span className="font-semibold text-amber-400">running…</span>
+        <span className="font-semibold text-warning">running…</span>
       </div>
       <div className="flex-1 overflow-auto p-2 font-mono text-[11px] leading-relaxed">
         {logs.map((l, i) => (
           <div
             key={i}
             className={
-              l.level === "error" ? "text-red-400" : l.level === "warn" ? "text-yellow-400" : ""
+              l.level === "error" ? "text-danger" : l.level === "warn" ? "text-warning" : ""
             }
           >
             {l.message}

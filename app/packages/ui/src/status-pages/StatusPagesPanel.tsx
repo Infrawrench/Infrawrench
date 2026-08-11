@@ -163,7 +163,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
       </div>
 
       {error !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           {error}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
             Retry
@@ -207,7 +207,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                 <h3 className="flex items-center gap-2 text-sm font-medium text-on-surface">
                   {page.title}
                   {page.published ? (
-                    <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-600 dark:text-emerald-400">
+                    <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-success">
                       Live
                     </span>
                   ) : (
@@ -219,7 +219,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                 <p className="mt-1 text-xs text-on-surface-tertiary">
                   {page.components.length} component{page.components.length === 1 ? "" : "s"}
                   {page.components.some((c) => !c.probeEnabled) && (
-                    <span className="ml-2 text-amber-600 dark:text-amber-400">
+                    <span className="ml-2 text-warning">
                       Some probes are paused — those show as “No data”.
                     </span>
                   )}
@@ -282,7 +282,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                 type="button"
                 onClick={() => void remove(page)}
                 disabled={busy}
-                className="ml-auto rounded-lg px-3 py-1.5 text-sm text-on-surface-tertiary hover:text-red-500 disabled:opacity-50"
+                className="ml-auto rounded-lg px-3 py-1.5 text-sm text-on-surface-tertiary hover:text-danger disabled:opacity-50"
               >
                 Delete
               </button>

@@ -166,7 +166,7 @@ export function CredentialExportModal({
                 <p className="text-xs text-on-surface-faint">{selectedFormat.description}</p>
               )}
               {error && (
-                <div className="rounded-lg bg-red-100 dark:bg-red-900/20 border border-red-500/30 px-3 py-2 text-xs text-red-700 dark:text-red-200 leading-relaxed break-words">
+                <div className="rounded-lg bg-red-100 dark:bg-red-900/20 border border-red-500/30 px-3 py-2 text-xs text-danger leading-relaxed break-words">
                   {error}
                 </div>
               )}
@@ -177,10 +177,8 @@ export function CredentialExportModal({
             <>
               {result.warning && (
                 <div className="rounded-lg bg-amber-500/10 border border-amber-500/40 px-3 py-2 flex gap-2">
-                  <span className="text-amber-500 font-bold leading-none mt-0.5">!</span>
-                  <p className="text-xs text-amber-700 dark:text-amber-200 leading-relaxed">
-                    {result.warning}
-                  </p>
+                  <span className="text-warning font-bold leading-none mt-0.5">!</span>
+                  <p className="text-xs text-warning leading-relaxed">{result.warning}</p>
                 </div>
               )}
 

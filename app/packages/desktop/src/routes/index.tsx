@@ -80,7 +80,7 @@ function IndexPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 h-full text-sm px-6 text-center">
-        <span className="text-red-400 font-medium">Couldn&apos;t open your home dashboard</span>
+        <span className="text-danger font-medium">Couldn&apos;t open your home dashboard</span>
         <span className="text-on-surface-faint break-all">{error}</span>
       </div>
     );

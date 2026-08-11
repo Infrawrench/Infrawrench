@@ -101,7 +101,7 @@ export function TerraformExportModal({
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
           {error && (
-            <div className="rounded-lg bg-red-100 dark:bg-red-900/20 border border-red-500/30 px-3 py-2 text-xs text-red-700 dark:text-red-200 leading-relaxed break-words">
+            <div className="rounded-lg bg-red-100 dark:bg-red-900/20 border border-red-500/30 px-3 py-2 text-xs text-danger leading-relaxed break-words">
               {error}
             </div>
           )}
@@ -111,19 +111,16 @@ export function TerraformExportModal({
             <>
               {result.unsupported.length > 0 && (
                 <div className="rounded-lg bg-amber-500/10 border border-amber-500/40 px-3 py-2.5">
-                  <p className="text-xs font-medium text-amber-700 dark:text-amber-200">
+                  <p className="text-xs font-medium text-warning">
                     {result.unsupported.length} resource
                     {result.unsupported.length === 1 ? " has" : "s have"} no Terraform mapping yet
                     and {result.unsupported.length === 1 ? "was" : "were"} left out:
                   </p>
                   <ul className="mt-1.5 space-y-0.5">
                     {result.unsupported.map((u) => (
-                      <li
-                        key={u.id}
-                        className="text-[11px] text-amber-700/90 dark:text-amber-200/90"
-                      >
+                      <li key={u.id} className="text-[11px] text-warning/90">
                         <span className="font-mono">{u.displayName}</span>{" "}
-                        <span className="text-amber-700/60 dark:text-amber-200/60">
+                        <span className="text-warning/60">
                           ({u.pluginId}/{u.resourceTypeId}) — {u.reason}
                         </span>
                       </li>

@@ -144,7 +144,7 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
       </div>
 
       {error !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           Couldn&rsquo;t load business metrics — {error}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
             Retry
@@ -185,7 +185,7 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
                     : " · all spend"}
                 </span>
                 <span
-                  className={`block text-xs mt-0.5 ${metric.coverage ? "text-on-surface-faint" : "text-amber-500"}`}
+                  className={`block text-xs mt-0.5 ${metric.coverage ? "text-on-surface-faint" : "text-warning"}`}
                 >
                   {describeCoverage(metric)}
                 </span>
@@ -217,7 +217,7 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
                     <button
                       type="button"
                       onClick={() => void remove(metric)}
-                      className="text-on-surface-faint hover:text-red-500 underline"
+                      className="text-on-surface-faint hover:text-danger underline"
                     >
                       Delete
                     </button>
@@ -226,7 +226,7 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
               </div>
             </div>
             {rowError?.id === metric.id && (
-              <p role="alert" className="mt-2 text-xs text-red-500">
+              <p role="alert" className="mt-2 text-xs text-danger">
                 {rowError.message}
               </p>
             )}
@@ -317,7 +317,7 @@ function BusinessMetricModal({
         </h2>
 
         {error !== null && (
-          <div role="alert" className="mb-3 text-sm text-red-500">
+          <div role="alert" className="mb-3 text-sm text-danger">
             {error}
           </div>
         )}
@@ -537,7 +537,7 @@ function MetricValuesModal({
         </p>
 
         {error !== null && (
-          <div role="alert" className="mb-3 text-sm text-red-500">
+          <div role="alert" className="mb-3 text-sm text-danger">
             {error}
           </div>
         )}

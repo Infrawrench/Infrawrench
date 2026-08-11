@@ -285,7 +285,7 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
       <button
         type="button"
         onClick={() => onChange([...filters, { dimension: "provider", op: "in", values: [] }])}
-        className="text-xs text-blue-400 hover:text-blue-300"
+        className="text-xs text-info hover:text-info-strong"
       >
         + Add filter
       </button>
@@ -412,7 +412,7 @@ function SavedFilterPicker({
         </div>
       )}
       {savedFilterId && Array.isArray(saved) && !applied && (
-        <p className="text-xs text-amber-500">
+        <p className="text-xs text-warning">
           This saved filter no longer resolves — queries will fail until it is removed here or
           restored.
         </p>
@@ -440,13 +440,13 @@ function SavedFilterPicker({
             type="button"
             onClick={() => void saveRowsAsFilter()}
             disabled={busy}
-            className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50"
+            className="text-xs text-info hover:text-info-strong disabled:opacity-50"
           >
             Save these rows as a filter…
           </button>
         )}
       </div>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
     </div>
   );
 }
@@ -594,9 +594,7 @@ export function CostFilterEditor({
       )}
 
       {error && (
-        <pre className="whitespace-pre-wrap break-words text-xs text-red-400 font-mono">
-          {error}
-        </pre>
+        <pre className="whitespace-pre-wrap break-words text-xs text-danger font-mono">{error}</pre>
       )}
     </div>
   );
@@ -1020,7 +1018,7 @@ export function CostGraphConfigModal({
             }
           />
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-2">
             <button

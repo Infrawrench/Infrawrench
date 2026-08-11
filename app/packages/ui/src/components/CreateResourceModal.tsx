@@ -100,7 +100,7 @@ export function CreateResourceModal({
 
         {tagField && requiredTags && requiredTags.length > 0 && !form.loadingConfig && (
           <div className="px-6 pt-3 flex-shrink-0">
-            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-warning">
               Org policy requires tags:{" "}
               {requiredTags
                 .map((t) =>
@@ -123,7 +123,7 @@ export function CreateResourceModal({
                   Fetching available options…
                 </div>
               ) : form.configError ? (
-                errorEl(form.configError, { textClassName: "text-sm text-red-400" })
+                errorEl(form.configError, { textClassName: "text-sm text-danger" })
               ) : form.configWithPricing ? (
                 <div className="space-y-6">
                   {regularFields.map((f) =>
@@ -151,7 +151,7 @@ export function CreateResourceModal({
                 Fetching available options…
               </div>
             ) : form.configError ? (
-              errorEl(form.configError, { textClassName: "text-sm text-red-400" })
+              errorEl(form.configError, { textClassName: "text-sm text-danger" })
             ) : form.configWithPricing ? (
               <div className="space-y-6">
                 {regularFields.map((f) =>
@@ -167,7 +167,7 @@ export function CreateResourceModal({
             errorEl(form.error, {
               className:
                 "mb-3 rounded bg-red-100 dark:bg-red-900/20 px-3 py-2 max-h-40 overflow-y-auto",
-              textClassName: "text-xs text-red-500 dark:text-red-300 leading-relaxed break-words",
+              textClassName: "text-xs text-danger leading-relaxed break-words",
             })}
           <div className="flex gap-3">
             <button

@@ -69,7 +69,7 @@ export function CostReportPickerModal({
         </p>
 
         {error !== null && (
-          <div role="alert" className="mb-3 text-sm text-red-500">
+          <div role="alert" className="mb-3 text-sm text-danger">
             {error}
           </div>
         )}

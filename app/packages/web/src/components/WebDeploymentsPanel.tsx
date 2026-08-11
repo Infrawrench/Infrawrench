@@ -72,7 +72,7 @@ function DeploymentsUpsell({ orgId }: { orgId: string }) {
   return (
     <div className="flex h-full min-h-0 items-center justify-center p-8 text-on-surface">
       <div className="max-w-md w-full border border-border rounded-xl p-6">
-        <span className="inline-block text-xs font-medium px-2 py-1 rounded-full bg-blue-500/10 text-blue-400 mb-4">
+        <span className="inline-block text-xs font-medium px-2 py-1 rounded-full bg-blue-500/10 text-info mb-4">
           Pro feature
         </span>
         <h1 className="text-lg font-semibold mb-2">Deploy from GitHub</h1>

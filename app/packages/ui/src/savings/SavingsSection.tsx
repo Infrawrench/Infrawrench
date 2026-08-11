@@ -126,7 +126,7 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
       </div>
 
       {error !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           Couldn&apos;t load potential savings — {error}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
             Retry

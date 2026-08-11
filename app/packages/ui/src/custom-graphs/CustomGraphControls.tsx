@@ -128,7 +128,7 @@ export function CustomGraphControls({
                 className={
                   "rounded-md border px-2.5 py-1 text-xs transition-colors disabled:opacity-50 " +
                   (c.danger
-                    ? "border-red-500/40 text-red-400 hover:bg-red-500/10"
+                    ? "border-red-500/40 text-danger hover:bg-red-500/10"
                     : "border-border text-on-surface-secondary hover:bg-surface-sunken")
                 }
               >

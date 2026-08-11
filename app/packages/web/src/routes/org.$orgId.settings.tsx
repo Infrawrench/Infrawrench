@@ -80,7 +80,7 @@ function SettingsLayout() {
           type="button"
           onClick={signOut}
           disabled={signingOut}
-          className="mt-auto pt-4 px-3 py-1.5 text-left text-sm text-red-400 hover:text-red-500 dark:text-red-300 dark:hover:text-red-200 disabled:opacity-50 transition-colors"
+          className="mt-auto pt-4 px-3 py-1.5 text-left text-sm text-danger hover:text-danger-strong disabled:opacity-50 transition-colors"
         >
           {signingOut ? "Signing out…" : "Sign out"}
         </button>

@@ -100,7 +100,7 @@ export function StringListPicker({
           <button
             type="button"
             onClick={() => removeRow(i)}
-            className="flex-shrink-0 text-on-surface-faint hover:text-red-400 transition-colors text-sm leading-none"
+            className="flex-shrink-0 text-on-surface-faint hover:text-danger transition-colors text-sm leading-none"
             aria-label="Remove"
             title="Remove"
           >

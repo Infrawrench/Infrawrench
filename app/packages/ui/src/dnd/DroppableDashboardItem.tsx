@@ -83,7 +83,7 @@ export function DroppableDashboardItem({
             }}
             title="Delete dashboard"
             aria-label="Delete dashboard"
-            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 mr-1.5 w-5 h-5 flex items-center justify-center rounded text-on-surface-faint hover:text-red-400 hover:bg-red-500/10 transition-all flex-shrink-0"
+            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 mr-1.5 w-5 h-5 flex items-center justify-center rounded text-on-surface-faint hover:text-danger hover:bg-red-500/10 transition-all flex-shrink-0"
           >
             ✕
           </button>

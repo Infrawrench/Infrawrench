@@ -542,7 +542,7 @@ export function DashboardView({
             type="button"
             onClick={() => void deleteDashboard()}
             title="Delete dashboard"
-            className="text-xs text-on-surface-faint hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+            className="text-xs text-on-surface-faint hover:text-danger transition-colors px-2 py-1 rounded hover:bg-red-500/10"
           >
             Delete
           </button>
@@ -960,7 +960,7 @@ function PinCard({
   if (loadError) {
     return (
       <div className="rounded-2xl border border-border bg-surface-raised p-5">
-        <p className="text-xs text-red-500">{loadError}</p>
+        <p className="text-xs text-danger">{loadError}</p>
       </div>
     );
   }
@@ -1046,7 +1046,7 @@ function ConnectionFooter({ status }: { status: ProbeStatus }) {
         title={status.error}
       >
         <img className="size-1.5 rounded-full bg-red-500 flex-shrink-0" alt="Error" />
-        <span className="text-xs text-red-500 truncate">{status.error ?? "Connection failed"}</span>
+        <span className="text-xs text-danger truncate">{status.error ?? "Connection failed"}</span>
       </div>
     );
   }
@@ -1060,11 +1060,11 @@ function ConnectionFooter({ status }: { status: ProbeStatus }) {
       {status.stats?.map((stat) => {
         const color =
           stat.variant === "status-healthy"
-            ? "text-green-400"
+            ? "text-success"
             : stat.variant === "status-degraded"
-              ? "text-yellow-400"
+              ? "text-warning"
               : stat.variant === "status-error"
-                ? "text-red-400"
+                ? "text-danger"
                 : "text-on-surface-tertiary";
         return (
           <div key={stat.label} className="flex justify-between text-xs">

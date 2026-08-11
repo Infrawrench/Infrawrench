@@ -296,7 +296,7 @@ export function SshKeyPicker({
                             e.stopPropagation();
                             void handleDelete(k.id);
                           }}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-on-surface-faint hover:text-red-400 text-xs px-1 transition-all flex-shrink-0"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-on-surface-faint hover:text-danger text-xs px-1 transition-all flex-shrink-0"
                           title="Remove key"
                           aria-label={`Remove SSH key ${k.name}`}
                         >
@@ -315,7 +315,7 @@ export function SshKeyPicker({
       {/* Private key display (shown once after generation) */}
       {showCloudSection && cloudEnabled && generatedPrivateKey && (
         <div className="border-t border-border-strong/40 p-3 space-y-2 bg-yellow-100 dark:bg-yellow-900/10">
-          <p className="text-xs text-yellow-400 font-medium">
+          <p className="text-xs text-warning font-medium">
             Save this private key now, it won't be shown again.
           </p>
           <pre className="w-full bg-surface-raised border border-border-strong rounded px-2 py-1.5 text-[10px] text-on-surface-secondary font-mono overflow-x-auto max-h-32 overflow-y-auto select-all whitespace-pre">
@@ -355,7 +355,7 @@ export function SshKeyPicker({
               aria-label="Key name"
               spellCheck={false}
             />
-            {error && <p className="text-xs text-red-400">{error}</p>}
+            {error && <p className="text-xs text-danger">{error}</p>}
             <div className="flex gap-2 justify-end">
               <button
                 type="button"

@@ -68,7 +68,7 @@ export function CostConversionNotice({ conversion }: CostConversionNoticeProps) 
           role="status"
           className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm"
         >
-          <p className="font-medium text-amber-300">
+          <p className="font-medium text-warning">
             {unconverted.length === 1
               ? `Spend in ${unconverted[0]} is not included in the ${displayCurrency} figure`
               : `Spend in ${unconverted.length} currencies is not included in the ${displayCurrency} figure`}

@@ -127,7 +127,7 @@ export function FieldRenderer({
             ),
           )}
           {actionError && (
-            <span className="text-xs text-red-400 leading-tight" title={actionError}>
+            <span className="text-xs text-danger leading-tight" title={actionError}>
               {actionError.length > 80 ? `${actionError.slice(0, 80)}…` : actionError}
             </span>
           )}
@@ -156,7 +156,7 @@ export function FieldRenderer({
           {/* Monaco isn't reachable by htmlFor; the editor is named via options.ariaLabel. */}
           <span className="text-xs font-medium text-on-surface-tertiary">
             {field.label}
-            {field.required && <span className="text-red-400 ml-1">*</span>}
+            {field.required && <span className="text-danger ml-1">*</span>}
           </span>
           {field.description && (
             <p className="text-[11px] text-on-surface-faint ml-3 truncate">{field.description}</p>
@@ -199,7 +199,7 @@ export function FieldRenderer({
         className="block text-xs font-medium text-on-surface-tertiary mb-2"
       >
         {field.label}
-        {field.required && <span className="text-red-400 ml-1">*</span>}
+        {field.required && <span className="text-danger ml-1">*</span>}
       </label>
       {field.description && (
         <p className="text-xs text-on-surface-faint mb-2">{field.description}</p>
@@ -515,7 +515,7 @@ function ResourcePickerResolver({
 
   if (error) {
     return (
-      <p className="text-xs text-red-400 py-1" title={error}>
+      <p className="text-xs text-danger py-1" title={error}>
         Couldn&apos;t load options: {error}
       </p>
     );

@@ -64,7 +64,7 @@ export function ConfirmDeleteModal({ kind, name, onConfirm, onClose }: ConfirmDe
           className="w-full px-3 py-2 text-sm bg-surface-overlay border border-border-strong rounded-lg text-on-surface placeholder:text-on-surface-faint outline-none focus:border-red-500/60 focus:ring-1 focus:ring-red-500/30 transition-colors"
         />
 
-        {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+        {error && <p className="mt-2 text-xs text-danger">{error}</p>}
 
         <div className="flex justify-end gap-2 mt-4">
           <button

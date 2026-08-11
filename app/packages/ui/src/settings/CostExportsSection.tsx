@@ -42,8 +42,8 @@ import { CARD, INPUT, LABEL, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles.j
 const PICKABLE_DIMENSIONS = COST_DIMENSIONS.filter((d) => d !== "tag");
 
 function statusTone(exp: CostExport): string {
-  if (exp.lastStatus === "failed") return "text-red-400";
-  if (exp.lastStatus === "succeeded") return "text-emerald-400";
+  if (exp.lastStatus === "failed") return "text-danger";
+  if (exp.lastStatus === "succeeded") return "text-success";
   return "text-on-surface-muted";
 }
 
@@ -183,7 +183,7 @@ export function CostExportsSection() {
         )}
       </div>
 
-      <div className="mb-6 px-3 py-2 text-xs text-amber-300/90 border border-amber-900/40 bg-amber-950/20 rounded-lg">
+      <div className="mb-6 px-3 py-2 text-xs text-warning/90 border border-amber-900/40 bg-amber-950/20 rounded-lg">
         <strong>Providers restate spend for days after the fact.</strong> The object written for
         yesterday is not final — credits land late, tax lines are recomputed, and amortization
         shifts. Every run therefore re-writes the periods inside its restatement window, and every
@@ -193,12 +193,12 @@ export function CostExportsSection() {
       </div>
 
       {error !== null && (
-        <div className="mb-4 px-3 py-2 text-sm text-red-400 border border-red-900/50 bg-red-950/20 rounded-lg">
+        <div className="mb-4 px-3 py-2 text-sm text-danger border border-red-900/50 bg-red-950/20 rounded-lg">
           {error}
         </div>
       )}
       {notice !== null && (
-        <div className="mb-4 px-3 py-2 text-sm text-emerald-400 border border-emerald-900/50 bg-emerald-950/20 rounded-lg">
+        <div className="mb-4 px-3 py-2 text-sm text-success border border-emerald-900/50 bg-emerald-950/20 rounded-lg">
           {notice}
         </div>
       )}
@@ -234,7 +234,7 @@ export function CostExportsSection() {
                   </p>
                   <p className={`text-xs mt-1 ${statusTone(exp)}`}>{statusLabel(exp)}</p>
                   {exp.lastStatus === "failed" && exp.lastError && (
-                    <p className="text-xs text-red-400/80 mt-0.5 break-words">{exp.lastError}</p>
+                    <p className="text-xs text-danger/80 mt-0.5 break-words">{exp.lastError}</p>
                   )}
                   {exp.enabled && exp.nextRunAt && (
                     <p className="text-xs text-on-surface-faint mt-0.5">
@@ -262,7 +262,7 @@ export function CostExportsSection() {
                     <button
                       type="button"
                       onClick={() => void remove(exp)}
-                      className="px-3 py-1.5 text-sm font-medium text-red-400 hover:text-red-500"
+                      className="px-3 py-1.5 text-sm font-medium text-danger hover:text-danger-strong"
                     >
                       Delete
                     </button>
@@ -364,7 +364,7 @@ function CostExportEditor({
         </h2>
 
         {error !== null && (
-          <div className="px-3 py-2 text-sm text-red-400 border border-red-900/50 bg-red-950/20 rounded-lg">
+          <div className="px-3 py-2 text-sm text-danger border border-red-900/50 bg-red-950/20 rounded-lg">
             {error}
           </div>
         )}
@@ -617,7 +617,7 @@ function ColumnPicker({
                 onClick={() =>
                   onChange({ ...query, tagKeys: query.tagKeys.filter((k) => k !== key) })
                 }
-                className="ml-1.5 text-on-surface-faint hover:text-red-400"
+                className="ml-1.5 text-on-surface-faint hover:text-danger"
               >
                 ×
               </button>

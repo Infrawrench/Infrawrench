@@ -285,7 +285,7 @@ export function CostReportsPanel({
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 py-6 flex flex-col gap-6">
         {error !== null && (
-          <div role="alert" className="text-sm text-red-500">
+          <div role="alert" className="text-sm text-danger">
             Couldn&rsquo;t load reports — {error}{" "}
             <button type="button" onClick={() => void refresh()} className="underline">
               Retry
@@ -532,7 +532,7 @@ function ReportList({
                   <button
                     type="button"
                     onClick={() => onDeleteFolder(folder)}
-                    className="hover:text-red-500 underline"
+                    className="hover:text-danger underline"
                   >
                     Delete
                   </button>
@@ -633,7 +633,7 @@ function ReportRow({
               <button
                 type="button"
                 onClick={() => onDelete(report)}
-                className="hover:text-red-500 underline"
+                className="hover:text-danger underline"
               >
                 Delete
               </button>
@@ -731,7 +731,7 @@ function ReportDetail({
               >
                 Duplicate
               </button>
-              <button type="button" onClick={onDelete} className="hover:text-red-500 underline">
+              <button type="button" onClick={onDelete} className="hover:text-danger underline">
                 Delete
               </button>
             </>
@@ -839,7 +839,7 @@ function MoveToFolderModal({
         </p>
 
         {error !== null && (
-          <div role="alert" className="mb-3 text-sm text-red-500">
+          <div role="alert" className="mb-3 text-sm text-danger">
             {error}
           </div>
         )}
@@ -925,7 +925,7 @@ function PlacementModal({
         </p>
 
         {error !== null && (
-          <div role="alert" className="mb-3 text-sm text-red-500">
+          <div role="alert" className="mb-3 text-sm text-danger">
             {error}
           </div>
         )}
@@ -948,7 +948,7 @@ function PlacementModal({
                     onClick={() =>
                       void run(() => client.removeReportPlacement!(placement.widgetId))
                     }
-                    className="text-xs text-on-surface-faint hover:text-red-500 underline disabled:opacity-50"
+                    className="text-xs text-on-surface-faint hover:text-danger underline disabled:opacity-50"
                   >
                     Remove
                   </button>

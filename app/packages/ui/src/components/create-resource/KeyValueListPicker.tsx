@@ -136,7 +136,7 @@ export function KeyValueListPicker({
             type="button"
             onClick={() => removeRow(i)}
             disabled={entries.length <= minEntries}
-            className={`flex-shrink-0 text-on-surface-faint hover:text-red-400 transition-colors text-sm leading-none disabled:opacity-30 disabled:hover:text-on-surface-faint ${
+            className={`flex-shrink-0 text-on-surface-faint hover:text-danger transition-colors text-sm leading-none disabled:opacity-30 disabled:hover:text-on-surface-faint ${
               valueLabel && i === 0 ? "mt-5" : "mt-2.5"
             }`}
             aria-label="Remove row"

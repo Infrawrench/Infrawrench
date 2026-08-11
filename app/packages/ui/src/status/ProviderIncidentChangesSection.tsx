@@ -9,10 +9,10 @@ export interface ProviderIncidentChangesSectionProps {
 }
 
 const IMPACT_TONE: Record<string, string> = {
-  critical: "bg-red-500/15 text-red-600 dark:text-red-300",
-  major: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  minor: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-300",
-  maintenance: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  critical: "bg-red-500/15 text-danger",
+  major: "bg-amber-500/15 text-warning",
+  minor: "bg-yellow-500/10 text-warning",
+  maintenance: "bg-blue-500/10 text-info",
 };
 
 /**

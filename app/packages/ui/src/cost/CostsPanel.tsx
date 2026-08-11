@@ -291,7 +291,7 @@ export function CostsPanel({
           </div>
 
           {error !== null && (
-            <div role="alert" className="text-sm text-red-500">
+            <div role="alert" className="text-sm text-danger">
               Couldn&rsquo;t load budgets — {error}{" "}
               <button type="button" onClick={() => void refresh()} className="underline">
                 Retry
@@ -335,7 +335,7 @@ export function CostsPanel({
                       <button
                         type="button"
                         onClick={() => void deleteBudget(budget)}
-                        className="hover:text-red-500 underline"
+                        className="hover:text-danger underline"
                       >
                         Delete
                       </button>
@@ -499,7 +499,7 @@ function PlacementModal({
         </p>
 
         {error !== null && (
-          <div role="alert" className="mb-3 text-sm text-red-500">
+          <div role="alert" className="mb-3 text-sm text-danger">
             {error}
           </div>
         )}
@@ -522,7 +522,7 @@ function PlacementModal({
                     onClick={() =>
                       void run(() => client.removeBudgetPlacement!(placement.widgetId))
                     }
-                    className="text-xs text-on-surface-faint hover:text-red-500 underline disabled:opacity-50"
+                    className="text-xs text-on-surface-faint hover:text-danger underline disabled:opacity-50"
                   >
                     Remove
                   </button>

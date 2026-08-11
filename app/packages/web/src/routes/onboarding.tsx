@@ -107,7 +107,7 @@ function OnboardingPage() {
             <div className="border border-blue-600 rounded-xl p-5 flex flex-col">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-medium text-on-surface-secondary">Pro</h2>
-                <span className="text-xs font-medium px-2 py-1 rounded-full bg-blue-500/10 text-blue-400">
+                <span className="text-xs font-medium px-2 py-1 rounded-full bg-blue-500/10 text-info">
                   Recommended
                 </span>
               </div>
@@ -131,7 +131,7 @@ function OnboardingPage() {
             </div>
           </div>
 
-          {error && <p className="text-xs text-red-400 mb-4">{error}</p>}
+          {error && <p className="text-xs text-danger mb-4">{error}</p>}
 
           <p className="text-xs text-on-surface-muted text-center">
             You can upgrade any time from Settings &rarr; Billing.
@@ -170,7 +170,7 @@ function OnboardingPage() {
           className="w-full bg-surface-overlay border border-border-strong rounded-lg px-4 py-3 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong mb-4"
         />
 
-        {error && <p className="text-xs text-red-400 mb-4">{error}</p>}
+        {error && <p className="text-xs text-danger mb-4">{error}</p>}
 
         <button
           type="button"

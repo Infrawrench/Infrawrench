@@ -216,7 +216,7 @@ export function FileIssueModal({
         </p>
 
         {error !== null && (
-          <div role="alert" className="mb-3 text-sm text-red-500">
+          <div role="alert" className="mb-3 text-sm text-danger">
             {error}
           </div>
         )}
@@ -237,7 +237,7 @@ export function FileIssueModal({
                   }}
                   className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
                     tracker === t
-                      ? "border-blue-600 text-blue-500 bg-blue-600/10"
+                      ? "border-blue-600 text-info bg-blue-600/10"
                       : "border-border text-on-surface-secondary hover:bg-surface-overlay"
                   }`}
                 >

@@ -290,7 +290,7 @@ export function ResourcePanel({
   if (error) {
     return (
       <div className="p-6">
-        <p className="text-red-400 text-sm">{error}</p>
+        <p className="text-danger text-sm">{error}</p>
       </div>
     );
   }

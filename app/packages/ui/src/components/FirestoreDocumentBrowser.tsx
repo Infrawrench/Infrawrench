@@ -259,7 +259,7 @@ export function FirestoreDocumentBrowser({
                 <div key={col} className="group relative">
                   {droppingCollection === col ? (
                     <div className="flex items-center gap-1 px-2 py-1.5">
-                      <span className="text-xs text-red-400 truncate flex-1">Delete {col}?</span>
+                      <span className="text-xs text-danger truncate flex-1">Delete {col}?</span>
                       <button
                         type="button"
                         onClick={() => void handleDropCollection(col)}
@@ -294,7 +294,7 @@ export function FirestoreDocumentBrowser({
                           e.stopPropagation();
                           setDroppingCollection(col);
                         }}
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-on-surface-faint hover:text-red-400 transition-all text-xs px-1"
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-on-surface-faint hover:text-danger transition-all text-xs px-1"
                         title="Delete collection"
                         aria-label="Delete collection"
                       >
@@ -375,7 +375,7 @@ export function FirestoreDocumentBrowser({
               spellCheck={false}
               placeholder='{ "key": "value" }'
             />
-            {insertError && <div className="text-xs text-red-400 mt-1">{insertError}</div>}
+            {insertError && <div className="text-xs text-danger mt-1">{insertError}</div>}
             <div className="flex justify-end mt-2">
               <button
                 type="button"
@@ -390,7 +390,7 @@ export function FirestoreDocumentBrowser({
 
         {error && (
           <div className="px-3 py-2 bg-red-500/10 border-b border-red-500/20">
-            <span className="text-xs text-red-400">{error}</span>
+            <span className="text-xs text-danger">{error}</span>
           </div>
         )}
 
@@ -554,7 +554,7 @@ function FirestoreDocumentRow({
             startEdit();
             if (!expanded) onToggle();
           }}
-          className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-xs text-on-surface-faint hover:text-blue-400 px-1 transition-all flex-shrink-0"
+          className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-xs text-on-surface-faint hover:text-info px-1 transition-all flex-shrink-0"
           title="Edit document"
           aria-label={docId ? `Edit document ${docId}` : "Edit document"}
         >
@@ -566,7 +566,7 @@ function FirestoreDocumentRow({
             e.stopPropagation();
             onDelete();
           }}
-          className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-xs text-on-surface-faint hover:text-red-400 px-1 transition-all flex-shrink-0"
+          className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-xs text-on-surface-faint hover:text-danger px-1 transition-all flex-shrink-0"
           title="Delete document"
           aria-label={docId ? `Delete document ${docId}` : "Delete document"}
         >
@@ -585,7 +585,7 @@ function FirestoreDocumentRow({
                 className="w-full bg-surface-raised border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary font-mono focus:outline-none focus:border-blue-500 resize-y"
                 spellCheck={false}
               />
-              {editError && <div className="text-xs text-red-400">{editError}</div>}
+              {editError && <div className="text-xs text-danger">{editError}</div>}
               <div className="flex gap-2 justify-end">
                 <button
                   type="button"

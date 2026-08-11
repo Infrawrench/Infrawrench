@@ -280,7 +280,7 @@ export function ConnectResourceModal({
           {loadingTemplates ? (
             <div className="text-sm text-on-surface-muted animate-pulse">Loading…</div>
           ) : loadError ? (
-            <p className="text-sm text-red-400">{loadError}</p>
+            <p className="text-sm text-danger">{loadError}</p>
           ) : (
             <>
               {/* Source info */}
@@ -542,7 +542,7 @@ export function ConnectResourceModal({
 
               {/* Error */}
               {error && (
-                <p className="text-sm text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{error}</p>
+                <p className="text-sm text-danger bg-red-500/10 rounded-lg px-3 py-2">{error}</p>
               )}
             </>
           )}

@@ -87,7 +87,7 @@ export function SavedFiltersSection({ client }: { client: CostsClient }) {
       </div>
 
       {error !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           Couldn&rsquo;t load saved filters — {error}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
             Retry
@@ -140,7 +140,7 @@ export function SavedFiltersSection({ client }: { client: CostsClient }) {
                   <button
                     type="button"
                     onClick={() => void deleteFilter(filter)}
-                    className="hover:text-red-500 underline"
+                    className="hover:text-danger underline"
                   >
                     Delete
                   </button>
@@ -148,7 +148,7 @@ export function SavedFiltersSection({ client }: { client: CostsClient }) {
               )}
             </div>
             {rowError?.id === filter.id && (
-              <p role="alert" className="mt-1.5 text-xs text-red-400">
+              <p role="alert" className="mt-1.5 text-xs text-danger">
                 {rowError.message}
               </p>
             )}
@@ -250,7 +250,7 @@ function SavedFilterEditModal({
           {filter ? "Edit saved filter" : "New saved filter"}
         </h2>
         {filter && referents !== null && referents.length > 0 && (
-          <p className="text-xs text-amber-500 mb-3">
+          <p className="text-xs text-warning mb-3">
             Saving changes {describeSavedCostFilterReferents(referents)} — everything referencing
             this filter runs the new rows on its next query.
           </p>
@@ -296,7 +296,7 @@ function SavedFilterEditModal({
             />
           </div>
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-2">
             <button

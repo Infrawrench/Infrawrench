@@ -271,7 +271,7 @@ export function SshFanoutView({
       {/* Host list */}
       <div className="border border-border rounded max-h-64 overflow-y-auto divide-y divide-border">
         {targetsLoading && <div className="p-3 text-sm text-on-surface-muted">Loading hosts…</div>}
-        {targetsError && <div className="p-3 text-sm text-red-400">{targetsError}</div>}
+        {targetsError && <div className="p-3 text-sm text-danger">{targetsError}</div>}
         {!targetsLoading && !targetsError && filtered.length === 0 && (
           <div className="p-3 text-sm text-on-surface-muted">
             No SSH-capable hosts match. SSH accounts and running VMs with an SSH endpoint appear
@@ -431,7 +431,7 @@ export function SshFanoutView({
         </div>
       )}
 
-      {runError && <div className="text-sm text-red-400">{runError}</div>}
+      {runError && <div className="text-sm text-danger">{runError}</div>}
 
       {/* Confirm step */}
       {phase === "confirm" || phase === "running" ? (
@@ -450,7 +450,7 @@ export function SshFanoutView({
             {selectedTargets.length > 8 ? ` and ${selectedTargets.length - 8} more` : ""}
           </div>
           {freezeMessage && (
-            <div className="text-xs text-amber-400 border border-amber-500/40 rounded p-2">
+            <div className="text-xs text-warning border border-amber-500/40 rounded p-2">
               {freezeMessage}
             </div>
           )}
@@ -571,10 +571,10 @@ function FanoutGroup({
       ? "border-border"
       : "border-amber-500/50";
   const badge = group.isFailure
-    ? "bg-red-500/10 text-red-400"
+    ? "bg-red-500/10 text-danger"
     : group.isMajority
       ? "bg-accent-muted text-accent-on-muted"
-      : "bg-amber-500/10 text-amber-400";
+      : "bg-amber-500/10 text-warning";
 
   return (
     <div className={`border ${border} rounded`}>
@@ -633,9 +633,9 @@ function FanoutGroup({
                   key={i}
                   className={
                     line.type === "added"
-                      ? "text-green-400"
+                      ? "text-success"
                       : line.type === "removed"
-                        ? "text-red-400"
+                        ? "text-danger"
                         : "text-on-surface-secondary"
                   }
                 >
@@ -650,7 +650,7 @@ function FanoutGroup({
 
       {group.isFailure && (
         <div className="border-t border-border px-3 py-2">
-          <pre className="text-xs font-mono text-red-400 whitespace-pre-wrap">{group.output}</pre>
+          <pre className="text-xs font-mono text-danger whitespace-pre-wrap">{group.output}</pre>
         </div>
       )}
 

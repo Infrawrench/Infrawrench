@@ -319,7 +319,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
             {spend?.monthlyCapMicros != null ? ` / $${microsToUsd(spend.monthlyCapMicros)}` : ""}
             {spend?.freeTier ? " (free tier)" : spend?.complimentary ? " (complimentary)" : ""}
           </div>
-          {spend?.exceeded && <div className="text-amber-500 font-medium">Cap reached</div>}
+          {spend?.exceeded && <div className="text-warning font-medium">Cap reached</div>}
         </div>
       </header>
 
@@ -352,7 +352,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
                   className="border border-border rounded-lg px-3 py-1.5 text-xs bg-surface-overlay flex items-center justify-between"
                 >
                   <span className="font-mono text-on-surface-secondary">{t.name}</span>
-                  <span className={t.executed ? "text-emerald-500" : "text-on-surface-muted"}>
+                  <span className={t.executed ? "text-success" : "text-on-surface-muted"}>
                     {t.executed ? "Done" : "Running…"}
                   </span>
                 </div>
@@ -368,7 +368,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
             </div>
           )}
           {streaming.error && (
-            <div className="text-red-500 text-sm whitespace-pre-wrap">{streaming.error}</div>
+            <div className="text-danger text-sm whitespace-pre-wrap">{streaming.error}</div>
           )}
           <div ref={bottomRef} />
         </div>
@@ -528,11 +528,11 @@ function BlockView({
               : "Done";
     const statusColor =
       status === "pending" && !resolving
-        ? "text-amber-500"
+        ? "text-warning"
         : status === "rejected" || status === "errored"
-          ? "text-red-500"
+          ? "text-danger"
           : status === "executed"
-            ? "text-emerald-500"
+            ? "text-success"
             : "text-on-surface-muted";
     const resultText = pending?.result ?? result?.text;
 

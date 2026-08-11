@@ -61,7 +61,7 @@ export function LocalDeploymentsPanel() {
           switch to one in the sidebar to get the full Deploy screen.
         </p>
         {error && (
-          <p className="text-xs text-red-400" role="alert">
+          <p className="text-xs text-danger" role="alert">
             {error}
           </p>
         )}
@@ -128,7 +128,7 @@ function RunRow({
           {run.gitSha ? (
             <span title={run.dirty ? "Built from a tree with uncommitted changes" : undefined}>
               {run.gitSha.slice(0, 7)}
-              {run.dirty && <span className="text-amber-400"> ·dirty</span>}
+              {run.dirty && <span className="text-warning"> ·dirty</span>}
             </span>
           ) : (
             "—"
@@ -139,9 +139,9 @@ function RunRow({
           <span
             className={
               run.status === "success"
-                ? "text-green-400"
+                ? "text-success"
                 : run.status === "failure"
-                  ? "text-red-400"
+                  ? "text-danger"
                   : "text-on-surface-secondary"
             }
           >
@@ -171,7 +171,7 @@ function RunRow({
             <div className="space-y-2 bg-surface-overlay rounded p-2">
               <p className="text-[11px] text-on-surface-faint">{run.dir}</p>
               {run.error && (
-                <pre className="whitespace-pre-wrap text-red-400 font-mono">{run.error}</pre>
+                <pre className="whitespace-pre-wrap text-danger font-mono">{run.error}</pre>
               )}
               {run.notes.map((note, i) => (
                 <div key={i} className="font-mono text-[11px]">

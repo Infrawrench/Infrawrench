@@ -110,7 +110,7 @@ export function AccountDraggableRow({
           }}
           title="Delete account"
           aria-label="Delete account"
-          className="flex-shrink-0 size-5 flex items-center justify-center rounded text-on-surface-faint opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:text-red-400 hover:bg-red-500/10 transition-all"
+          className="flex-shrink-0 size-5 flex items-center justify-center rounded text-on-surface-faint opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:text-danger hover:bg-red-500/10 transition-all"
         >
           ✕
         </button>

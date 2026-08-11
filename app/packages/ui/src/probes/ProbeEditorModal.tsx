@@ -227,7 +227,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://api.example.com/health"
               />
-              {urlProblem !== null && <p className="mt-1 text-xs text-red-400">{urlProblem}</p>}
+              {urlProblem !== null && <p className="mt-1 text-xs text-danger">{urlProblem}</p>}
             </div>
           )}
 
@@ -312,7 +312,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
           </div>
 
           {error !== null && (
-            <div role="alert" className="text-sm text-red-500">
+            <div role="alert" className="text-sm text-danger">
               {error}
             </div>
           )}

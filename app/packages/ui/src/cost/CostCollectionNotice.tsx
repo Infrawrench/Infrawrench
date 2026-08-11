@@ -49,7 +49,7 @@ export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectio
           role="status"
           className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm"
         >
-          <p className="font-medium text-amber-300">
+          <p className="font-medium text-warning">
             {failing.length === 1
               ? `Cost collection is failing for ${failing[0]!.displayName}`
               : `Cost collection is failing for ${failing.length} accounts`}
@@ -76,7 +76,7 @@ export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectio
                             }
                           : undefined
                       }
-                      className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 whitespace-nowrap"
+                      className="inline-flex items-center gap-1 text-info hover:text-info-strong whitespace-nowrap"
                     >
                       {s.costPollError!.helpLink!.label}
                       <span aria-hidden="true">↗</span>

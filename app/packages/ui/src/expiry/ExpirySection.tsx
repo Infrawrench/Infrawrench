@@ -42,18 +42,18 @@ const SEVERITY_LABELS: Record<ExpirySeverity, string> = {
 
 /** Pill tones per bucket, matching ChangeKindBadge's translucent-badge recipe. */
 const SEVERITY_BADGE_CLASSES: Record<ExpirySeverity, string> = {
-  expired: "bg-red-500/10 text-red-400",
-  critical: "bg-orange-500/10 text-orange-400",
-  warning: "bg-amber-500/10 text-amber-400",
-  upcoming: "bg-blue-500/10 text-blue-400",
+  expired: "bg-red-500/10 text-danger",
+  critical: "bg-orange-500/10 text-severe",
+  warning: "bg-amber-500/10 text-warning",
+  upcoming: "bg-blue-500/10 text-info",
   ok: "bg-surface-overlay text-on-surface-tertiary",
 };
 
 const SEVERITY_TEXT_CLASSES: Record<ExpirySeverity, string> = {
-  expired: "text-red-400",
-  critical: "text-orange-400",
-  warning: "text-amber-400",
-  upcoming: "text-blue-400",
+  expired: "text-danger",
+  critical: "text-severe",
+  warning: "text-warning",
+  upcoming: "text-info",
   ok: "text-on-surface-tertiary",
 };
 
@@ -147,7 +147,7 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
       </p>
 
       {error != null && data === null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           Couldn&apos;t load the expiry feed — {error}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
@@ -162,7 +162,7 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
         </p>
       )}
       {error != null && data !== null && (
-        <p role="alert" className="mb-4 text-xs text-red-400">
+        <p role="alert" className="mb-4 text-xs text-danger">
           Couldn&apos;t refresh — showing the last loaded feed. {error}
         </p>
       )}
@@ -277,7 +277,7 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
                                 {item.label}
                                 {item.leaseAutoDelete === true && (
                                   <span
-                                    className="ml-2 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-400"
+                                    className="ml-2 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-danger"
                                     title="This lease opted into auto-delete: the resource is deleted at expiry, after two warnings (change freezes pause deletion)."
                                   >
                                     auto-delete

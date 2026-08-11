@@ -114,7 +114,7 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
       {tuning && client.getAnomalySettings && <AnomalyTuningPanel client={client} />}
 
       {error !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           Couldn&rsquo;t load anomalies — {error}
         </div>
       )}
@@ -174,12 +174,12 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                         {COST_ANOMALY_DIMENSION_LABELS[a.dimension]}
                       </span>
                       {isNew && (
-                        <span className="ml-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-500">
+                        <span className="ml-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning">
                           New source
                         </span>
                       )}
                       {explained && (
-                        <span className="ml-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-500">
+                        <span className="ml-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-success">
                           Explained
                         </span>
                       )}
@@ -220,7 +220,7 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                     </td>
                     <td
                       className={`whitespace-nowrap px-3 py-2 text-right ${
-                        isNew ? "text-amber-500" : "text-red-500"
+                        isNew ? "text-warning" : "text-danger"
                       }`}
                     >
                       {delta ?? "new"}
@@ -390,7 +390,7 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
 
   if (loadError !== null) {
     return (
-      <div role="alert" className="rounded-xl border border-border p-4 text-sm text-red-500">
+      <div role="alert" className="rounded-xl border border-border p-4 text-sm text-danger">
         Couldn&rsquo;t load detection settings — {loadError}
       </div>
     );
@@ -521,7 +521,7 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
       </label>
 
       {smsUnreachable && (
-        <div role="alert" className="text-xs text-amber-500">
+        <div role="alert" className="text-xs text-warning">
           This organization can&rsquo;t receive SMS yet. Anomaly texts need paging enabled with
           Twilio credentials and at least one recipient opted into SMS, under Settings &rarr;
           Notifications. Until then this setting is saved but nothing is sent.
@@ -529,7 +529,7 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
       )}
 
       {saveError !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           {saveError}
         </div>
       )}

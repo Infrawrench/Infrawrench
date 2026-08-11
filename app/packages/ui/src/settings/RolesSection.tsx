@@ -87,7 +87,7 @@ export function RolesSection() {
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-400">
+        <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-xs text-danger">
           {error}
         </div>
       )}
@@ -129,7 +129,7 @@ export function RolesSection() {
                     <button
                       type="button"
                       onClick={() => void handleDelete(role)}
-                      className="text-xs text-red-400 hover:text-red-500"
+                      className="text-xs text-danger hover:text-danger-strong"
                     >
                       Delete
                     </button>

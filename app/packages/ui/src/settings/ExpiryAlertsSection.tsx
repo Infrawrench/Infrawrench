@@ -116,7 +116,7 @@ export function ExpiryAlertsSection() {
           Last expiry alert sent {new Date(settings.lastNotifiedAt).toLocaleString()}.
         </p>
       )}
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
     </section>
   );
 }

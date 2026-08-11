@@ -63,7 +63,7 @@ export function HostKeyTrustDialog({
           }`}
         >
           <h2
-            className={`text-base font-semibold ${isMismatch ? "text-red-400" : "text-on-surface"}`}
+            className={`text-base font-semibold ${isMismatch ? "text-danger" : "text-on-surface"}`}
           >
             {isMismatch ? "Host key has changed!" : "Verify SSH host key"}
           </h2>
@@ -75,11 +75,11 @@ export function HostKeyTrustDialog({
         <div className="p-6 space-y-4">
           {isMismatch ? (
             <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 space-y-2">
-              <p className="text-xs text-red-300 font-medium">
+              <p className="text-xs text-danger font-medium">
                 The fingerprint of this host's SSH key does not match the one you previously
                 trusted.
               </p>
-              <p className="text-xs text-red-300/80">
+              <p className="text-xs text-danger/80">
                 This can happen if the server was rebuilt or its key was rotated, but it can also
                 indicate a man-in-the-middle attack. Only continue if you are certain the new key is
                 legitimate (for example, you rotated it yourself or it matches the fingerprint your
@@ -113,7 +113,7 @@ export function HostKeyTrustDialog({
 
           {error && (
             <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
-              <p className="text-xs text-red-400">{error}</p>
+              <p className="text-xs text-danger">{error}</p>
             </div>
           )}
         </div>
@@ -170,7 +170,7 @@ function FingerprintRow({
 
   const valueClass =
     tone === "danger"
-      ? "text-red-300"
+      ? "text-danger"
       : tone === "muted"
         ? "text-on-surface-muted"
         : "text-on-surface-secondary";

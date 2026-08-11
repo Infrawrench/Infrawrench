@@ -14,13 +14,17 @@
   --color-surface-sunken: #e5e7eb;
   --color-surface-inset: #f9fafb;
 
-  /* ── Text (on-surface) ── */
+  /* ── Text (on-surface) ──
+     Every value here clears WCAG AA (4.5:1) against all four surfaces —
+     surface, raised, overlay and sunken — not just the lightest one.
+     #6b7280 used to serve tertiary/muted/faint and only cleared AA on
+     surface (4.83) and raised (4.63); it was 4.39 on overlay and 3.90 on
+     sunken. `theme-contrast.test.ts` enforces the four-surface rule. */
   --color-on-surface: #111827;
   --color-on-surface-secondary: #374151;
-  --color-on-surface-tertiary: #6b7280;
-  --color-on-surface-muted: #6b7280;
-  /* Faint must still clear WCAG AA (4.5:1) on surface/raised; #9ca3af was 2.5:1. */
-  --color-on-surface-faint: #6b7280;
+  --color-on-surface-tertiary: #5b6371;
+  --color-on-surface-muted: #5b6371;
+  --color-on-surface-faint: #5b6371;
 
   /* ── Borders ── */
   --color-border: #e5e7eb;
@@ -34,6 +38,41 @@
   --color-accent-muted: #eff6ff;
   --color-accent-muted-border: #bfdbfe;
   --color-accent-on-muted: #1e40af;
+
+  /* ── Status ──
+     Semantic status text colours. Reach for these instead of a Tailwind
+     palette class (text-red-400, text-amber-500, …): a palette class is the
+     same colour in both schemes, so it can only be legible in one of them.
+     Every value below clears WCAG AA (4.5:1) on all four surfaces in both
+     schemes — see `__tests__/theme-contrast.test.ts`.
+
+     The `-strong` variants are the higher-emphasis step (hover, or a label
+     sitting on a tinted chip): darker than the base in light mode, lighter
+     in dark mode, so "stronger" always means "more contrast". */
+  --color-danger: #b91c1c;
+  --color-danger-strong: #991b1b;
+  --color-warning: #8f5700;
+  --color-warning-strong: #6b4100;
+  --color-success: #0d6b3f;
+  --color-success-strong: #0a5531;
+  --color-info: #1d4ed8;
+  --color-info-strong: #1e40af;
+  /* One step above warning on a severity ladder, below danger. */
+  --color-severe: #ad3c09;
+  /* Non-status highlight (complimentary plan, private interconnect). */
+  --color-notice: #7e22ce;
+
+  /* ── Categorical series ──
+     For palettes assigned by position rather than by meaning: log stream
+     labels, environment-diff sides. Distinct hues, not a severity ramp. */
+  --color-series-1: #0369a1;
+  --color-series-2: #046a4d;
+  --color-series-3: #8f5700;
+  --color-series-4: #a21caf;
+  --color-series-5: #be123c;
+  --color-series-6: #0c6a83;
+  --color-series-7: #436b0c;
+  --color-series-8: #6d28d9;
 }
 
 :root {
@@ -66,11 +105,13 @@
     /* ── Text (on-surface) ── */
     --color-on-surface: #f3f4f6;
     --color-on-surface-secondary: #e5e7eb;
-    --color-on-surface-tertiary: #9ca3af;
-    /* Muted/faint keep the tertiary > muted > faint hierarchy while clearing
-       WCAG AA (4.5:1) on all three surfaces; the old values were 2-3.7:1. */
-    --color-on-surface-muted: #949dab;
-    --color-on-surface-faint: #8b93a1;
+    /* Tertiary > muted > faint in prominence, all clearing WCAG AA (4.5:1)
+       on all four surfaces. The previous values only held on surface,
+       raised and overlay: on sunken (#374151) tertiary was 4.06, muted
+       3.76 and faint 3.33. */
+    --color-on-surface-tertiary: #b0b7c3;
+    --color-on-surface-muted: #aab2bf;
+    --color-on-surface-faint: #a6aebb;
 
     /* ── Borders ── */
     --color-border: #1f2937;
@@ -84,6 +125,32 @@
     --color-accent-muted: #172554;
     --color-accent-muted-border: #1e3a5f;
     --color-accent-on-muted: #93c5fd;
+
+    /* ── Status ──
+       The palette shades these replace (red-400, amber-400, green-400, …),
+       except where that shade did not clear AA on surface-sunken (#374151)
+       and had to be lightened a step: danger was red-400 (3.73) and info
+       was blue-400 (4.05). */
+    --color-danger: #fb9494;
+    --color-danger-strong: #fecaca;
+    --color-warning: #fbbf24;
+    --color-warning-strong: #fcd34d;
+    --color-success: #4ade80;
+    --color-success-strong: #86efac;
+    --color-info: #85b6fc;
+    --color-info-strong: #bfdbfe;
+    --color-severe: #fb923c;
+    --color-notice: #d8b4fe;
+
+    /* ── Categorical series ── */
+    --color-series-1: #38bdf8;
+    --color-series-2: #34d399;
+    --color-series-3: #fbbf24;
+    --color-series-4: #f0abfc;
+    --color-series-5: #fda4af;
+    --color-series-6: #22d3ee;
+    --color-series-7: #a3e635;
+    --color-series-8: #c4b5fd;
 
     /* ── Charts ── */
     --color-chart-grid: #374151;

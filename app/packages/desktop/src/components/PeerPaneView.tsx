@@ -409,7 +409,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
         <ErrorNotice
           message={createError}
           className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2"
-          textClassName="text-sm text-red-600 dark:text-red-200"
+          textClassName="text-sm text-danger"
         />
       )}
 

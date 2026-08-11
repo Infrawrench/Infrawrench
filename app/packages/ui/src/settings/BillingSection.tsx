@@ -131,11 +131,11 @@ export function BillingSection() {
           <span
             className={`text-xs font-medium px-2 py-1 rounded-full ${
               complimentary
-                ? "bg-purple-500/10 text-purple-400"
+                ? "bg-purple-500/10 text-notice"
                 : isActive || isTrial || (!subscriptionPaid && prepaidSeats > 0)
-                  ? "bg-green-500/10 text-green-400"
+                  ? "bg-green-500/10 text-success"
                   : sub?.status === "past_due"
-                    ? "bg-yellow-500/10 text-yellow-400"
+                    ? "bg-yellow-500/10 text-warning"
                     : "bg-surface-overlay text-on-surface-tertiary"
             }`}
           >
@@ -160,7 +160,7 @@ export function BillingSection() {
         )}
       </div>
 
-      {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
+      {error && <p className="text-sm text-danger mb-3">{error}</p>}
 
       {!complimentary && (
         <div className="flex gap-3">
@@ -266,7 +266,7 @@ export function BillingSection() {
                     <span
                       className={`text-xs font-medium px-2 py-1 rounded-full ${
                         slotIsLive(slot)
-                          ? "bg-green-500/10 text-green-400"
+                          ? "bg-green-500/10 text-success"
                           : "bg-surface-overlay text-on-surface-tertiary"
                       }`}
                     >

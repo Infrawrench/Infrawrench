@@ -190,7 +190,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
   if (loadError) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
-        <div className="text-red-400 text-sm font-mono whitespace-pre-wrap max-w-lg">
+        <div className="text-danger text-sm font-mono whitespace-pre-wrap max-w-lg">
           {loadError}
         </div>
         <button
@@ -244,10 +244,10 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          {dirty && <span className="text-xs text-yellow-500">Unsaved changes</span>}
-          {applySuccess && <span className="text-xs text-green-400">Applied</span>}
+          {dirty && <span className="text-xs text-warning">Unsaved changes</span>}
+          {applySuccess && <span className="text-xs text-success">Applied</span>}
           {applyError && (
-            <span className="text-xs text-red-400 max-w-xs truncate" title={applyError}>
+            <span className="text-xs text-danger max-w-xs truncate" title={applyError}>
               {applyError}
             </span>
           )}
@@ -281,9 +281,9 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
                 key={i}
                 className={
                   f.severity === "error"
-                    ? "text-red-400"
+                    ? "text-danger"
                     : f.severity === "warning"
-                      ? "text-yellow-400"
+                      ? "text-warning"
                       : "text-on-surface-tertiary"
                 }
               >
@@ -373,7 +373,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
         ) : (
           <div className="flex-1 min-h-0 flex flex-col">
             {jsonParseError && (
-              <div className="px-3 py-1.5 text-xs text-red-400 border-b border-border bg-red-500/10">
+              <div className="px-3 py-1.5 text-xs text-danger border-b border-border bg-red-500/10">
                 JSON parse error: {jsonParseError}
               </div>
             )}
@@ -454,7 +454,7 @@ function StatementCard({
   onMoveDown,
 }: StatementCardProps) {
   const effectColor =
-    statement.Effect === "Deny" ? "text-red-400 bg-red-500/10" : "text-green-400 bg-green-500/10";
+    statement.Effect === "Deny" ? "text-danger bg-red-500/10" : "text-success bg-green-500/10";
 
   return (
     <div className="border border-border rounded-lg overflow-hidden bg-surface">
@@ -511,7 +511,7 @@ function StatementCard({
               e.stopPropagation();
               onDelete();
             }}
-            className="relative text-on-surface-faint hover:text-red-400 px-1 text-xs"
+            className="relative text-on-surface-faint hover:text-danger px-1 text-xs"
             title="Delete"
           >
             ✕
@@ -573,8 +573,8 @@ function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
               className={`px-2 py-1 ${
                 statement.Effect === e
                   ? e === "Deny"
-                    ? "bg-red-500/20 text-red-300"
-                    : "bg-green-500/20 text-green-300"
+                    ? "bg-red-500/20 text-danger"
+                    : "bg-green-500/20 text-success"
                   : "text-on-surface-tertiary hover:text-on-surface-secondary"
               }`}
             >
@@ -701,7 +701,7 @@ function ActionPicker({
             <button
               type="button"
               onClick={() => remove(a)}
-              className="text-on-surface-faint hover:text-red-400"
+              className="text-on-surface-faint hover:text-danger"
               title="Remove"
             >
               ×
@@ -794,7 +794,7 @@ function ResourceEditor({
           onClick={() => toggle(bucketArn)}
           className={`text-xs px-2 py-0.5 rounded border ${
             values.includes(bucketArn)
-              ? "bg-blue-500/20 border-blue-500/50 text-blue-300"
+              ? "bg-blue-500/20 border-blue-500/50 text-info"
               : "border-border-strong text-on-surface-tertiary hover:text-white"
           }`}
         >
@@ -805,7 +805,7 @@ function ResourceEditor({
           onClick={() => toggle(objectArn)}
           className={`text-xs px-2 py-0.5 rounded border ${
             values.includes(objectArn)
-              ? "bg-blue-500/20 border-blue-500/50 text-blue-300"
+              ? "bg-blue-500/20 border-blue-500/50 text-info"
               : "border-border-strong text-on-surface-tertiary hover:text-white"
           }`}
         >
@@ -824,7 +824,7 @@ function ResourceEditor({
           <button
             type="button"
             onClick={() => removeAt(i)}
-            className="text-on-surface-faint hover:text-red-400 text-xs px-1"
+            className="text-on-surface-faint hover:text-danger text-xs px-1"
             title="Remove"
           >
             ✕
@@ -961,7 +961,7 @@ function ConditionEditor({
           <button
             type="button"
             onClick={() => remove(i)}
-            className="text-on-surface-faint hover:text-red-400 text-xs px-1"
+            className="text-on-surface-faint hover:text-danger text-xs px-1"
             title="Remove"
           >
             ✕
@@ -1106,7 +1106,7 @@ function SummaryText({ text, denyish }: { text: string; denyish: boolean }) {
   // Cheap inline markdown: split on `**...**` and render bold chunks.
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return (
-    <p className={denyish ? "text-red-300" : "text-on-surface-secondary"}>
+    <p className={denyish ? "text-danger" : "text-on-surface-secondary"}>
       {parts.map((part, i) => {
         if (part.startsWith("**") && part.endsWith("**")) {
           return (

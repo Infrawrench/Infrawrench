@@ -240,7 +240,7 @@ export function SshTunnelModal({
 
             {error && (
               <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
-                <p className="text-xs text-red-400">{error}</p>
+                <p className="text-xs text-danger">{error}</p>
               </div>
             )}
           </div>

@@ -342,7 +342,7 @@ function ConditionRow({
         type="button"
         onClick={onRemove}
         aria-label={`Remove the ${fieldLabel} condition`}
-        className="ml-auto text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+        className="ml-auto text-xs text-danger hover:text-danger-strong"
       >
         Remove
       </button>
@@ -659,7 +659,7 @@ function RuleCard({
           type="button"
           onClick={onRemove}
           aria-label={`Delete rule ${index + 1}${rule.name ? `, ${rule.name}` : ""}`}
-          className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+          className="text-xs text-danger hover:text-danger-strong"
         >
           Delete
         </button>
@@ -709,7 +709,7 @@ function RuleCard({
             onClick={() =>
               onChange({ ...rule, conditions: [...rule.conditions, newCondition(addField)] })
             }
-            className="text-xs text-blue-400 hover:text-blue-500 dark:text-blue-300"
+            className="text-xs text-info hover:text-info-strong"
           >
             Add condition
           </button>
@@ -728,7 +728,7 @@ function RuleCard({
           emptyLabel="Connect a Slack or Teams channel below to route alerts to it."
         />
         {rule.destinations.length === 0 && (
-          <p className="text-xs text-amber-500">
+          <p className="text-xs text-warning">
             No destinations — this rule swallows matching alerts and stops the rules below it from
             seeing them.
           </p>
@@ -807,7 +807,7 @@ function RuleCard({
         </div>
       </details>
 
-      {problem && <p className="text-xs text-red-400">{problem}</p>}
+      {problem && <p className="text-xs text-danger">{problem}</p>}
     </li>
   );
 }
@@ -949,7 +949,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
             type="button"
             onClick={() => void handleAdopt()}
             disabled={saving}
-            className="text-xs text-blue-400 hover:text-blue-500 dark:text-blue-300 disabled:opacity-50"
+            className="text-xs text-info hover:text-info-strong disabled:opacity-50"
           >
             Start from the default and edit it
           </button>
@@ -984,7 +984,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
         <button
           type="button"
           onClick={() => update([...rules, blankRule(rules.length)])}
-          className="text-xs text-blue-400 hover:text-blue-500 dark:text-blue-300"
+          className="text-xs text-info hover:text-info-strong"
         >
           Add rule
         </button>
@@ -1010,7 +1010,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
         )}
       </div>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
 
       <AlertDeliveriesPanel orgId={orgId} />
     </section>

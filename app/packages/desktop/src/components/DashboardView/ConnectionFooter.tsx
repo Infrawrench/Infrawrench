@@ -26,7 +26,7 @@ export function ConnectionFooter({
         title={status.error}
       >
         <span className="size-1.5 rounded-full bg-red-500 flex-shrink-0" />
-        <span className="text-xs text-red-500 truncate">{status.error ?? "Connection failed"}</span>
+        <span className="text-xs text-danger truncate">{status.error ?? "Connection failed"}</span>
       </div>
     );
   }
@@ -40,11 +40,11 @@ export function ConnectionFooter({
       {status.stats?.map((stat, index) => {
         const color =
           stat.variant === "status-healthy"
-            ? "text-green-400"
+            ? "text-success"
             : stat.variant === "status-degraded"
-              ? "text-yellow-400"
+              ? "text-warning"
               : stat.variant === "status-error"
-                ? "text-red-400"
+                ? "text-danger"
                 : "text-on-surface-tertiary";
         return (
           <div key={`${stat.label}:${index}`} className="flex justify-between text-xs">
@@ -80,7 +80,7 @@ export function ConnectionFooter({
             e.stopPropagation();
             onConnect();
           }}
-          className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-100 dark:bg-green-950 border border-green-300 dark:border-green-800 hover:bg-green-200 dark:hover:bg-green-900 hover:border-green-400 dark:hover:border-green-700 text-green-700 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 text-xs font-medium transition-colors"
+          className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-100 dark:bg-green-950 border border-green-300 dark:border-green-800 hover:bg-green-200 dark:hover:bg-green-900 hover:border-green-400 dark:hover:border-green-700 text-success hover:text-success-strong text-xs font-medium transition-colors"
         >
           <span>⌨</span>
           Connect

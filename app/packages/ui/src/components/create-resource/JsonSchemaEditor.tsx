@@ -108,7 +108,7 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
             <button
               type="button"
               onClick={() => removeRow(i)}
-              className="w-5 flex-shrink-0 text-on-surface-faint hover:text-red-400 transition-colors text-sm leading-none"
+              className="w-5 flex-shrink-0 text-on-surface-faint hover:text-danger transition-colors text-sm leading-none"
               aria-label="Remove property"
               title="Remove property"
             >

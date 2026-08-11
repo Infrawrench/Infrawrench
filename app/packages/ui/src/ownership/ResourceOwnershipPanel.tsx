@@ -180,7 +180,7 @@ export function ResourceOwnershipPanel({
   return (
     <div className="flex flex-col gap-4 p-4">
       {error !== null && (
-        <div role="alert" className="text-sm text-red-500">
+        <div role="alert" className="text-sm text-danger">
           Couldn&apos;t load ownership — {error}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
             Retry
@@ -281,7 +281,7 @@ export function ResourceOwnershipPanel({
       </label>
 
       {problem !== null && (
-        <p role="alert" className="text-sm text-red-500">
+        <p role="alert" className="text-sm text-danger">
           {problem}
         </p>
       )}
@@ -318,7 +318,7 @@ export function ResourceOwnershipPanel({
             type="button"
             onClick={() => void clear()}
             disabled={busy}
-            className="ml-auto rounded-lg px-3 py-1.5 text-sm text-on-surface-tertiary hover:text-red-500"
+            className="ml-auto rounded-lg px-3 py-1.5 text-sm text-on-surface-tertiary hover:text-danger"
           >
             Remove
           </button>
