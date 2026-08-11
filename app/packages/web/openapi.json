@@ -20531,7 +20531,7 @@
                   "string",
                   "null"
                 ],
-                "description": "The peer's Infrawrench resource id when its flow ref resolved to exactly one synced resource. Null when it resolved to none (an endpoint outside the organization) and also when it resolved to several — a provider id is only unique within one plugin and account, so a ref claimed by two accounts is reported unlinked, with the reason in `unchecked`, rather than attributed to a guess."
+                "description": "The peer's Infrawrench resource id when its flow ref resolved to exactly one synced resource. Null when it resolved to none (an endpoint outside the organization) and also when it resolved to several — a provider id is only unique within one plugin and account, and a flow record does not name the peer's account, so a contested ref is reported unlinked with the reason in `unchecked` rather than attributed to a guess."
               }
             ]
           }

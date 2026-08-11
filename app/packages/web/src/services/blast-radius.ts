@@ -158,11 +158,10 @@ async function loadDependencyGraphSafely(organizationId: string) {
  * A fourth kind of gap comes from the peers themselves. Flow refs are the
  * **provider's** id, not the app's composite one, and `external_id` is unique
  * only within one plugin and one account — so identifying a peer is a scoped
- * lookup that is allowed to fail. `resolveFlowPeerIdentities` prefers a match
- * in the collecting account, accepts a single claimant elsewhere, and reports
- * anything contested through `unchecked` instead of linking a guess. A peer
- * that resolves to nothing is just an endpoint outside the estate and is not a
- * gap at all.
+ * lookup that is allowed to fail. `resolveFlowPeerIdentities` links a ref only
+ * when exactly one resource claims it and reports anything contested through
+ * `unchecked`; a peer that resolves to nothing is just an endpoint outside the
+ * estate and is not a gap at all.
  */
 async function loadFlowPeers(
   organizationId: string,
@@ -221,11 +220,13 @@ async function loadFlowPeers(
   // A peer's Infrawrench id, when its flow ref names exactly one resource we
   // sync. Both ends are looked up in one query rather than per row.
   //
-  // The candidate query is scoped to the flow row's **plugin**: a flow ref is
+  // The candidate query is scoped to the flow row's **plugin** — a flow ref is
   // a provider-native id, so `i-0abc…` from an AWS flow log can only mean an
-  // AWS resource, and `external_id` is not unique across plugins (or across
-  // accounts — see `resolveFlowPeerIdentities`, which does the rest of the
-  // narrowing and refuses to guess when two accounts claim one id).
+  // AWS resource. It is deliberately NOT scoped to the resource's account:
+  // cross-account flows are real and nothing in a flow row names the peer's
+  // account, so narrowing there would silently drop legitimate peers.
+  // `resolveFlowPeerIdentities` links only an unambiguous claimant and reports
+  // the rest, rather than picking the nearest one.
   const peerRefs = new Set<string>();
   for (const pair of pairs) {
     peerRefs.add(pair.src_ref === row.externalId ? pair.dst_ref : pair.src_ref);
@@ -233,11 +234,7 @@ async function loadFlowPeers(
   let identities: FlowPeerIdentities = { idByRef: new Map(), ambiguousRefs: [] };
   if (peerRefs.size > 0) {
     const peerRows = await db
-      .select({
-        id: resources.id,
-        externalId: resources.externalId,
-        accountId: resources.accountId,
-      })
+      .select({ id: resources.id, externalId: resources.externalId })
       .from(resources)
       .where(
         and(
@@ -250,11 +247,8 @@ async function loadFlowPeers(
     identities = resolveFlowPeerIdentities(
       peerRefs,
       peerRows.flatMap((peer) =>
-        peer.externalId
-          ? [{ id: peer.id, externalId: peer.externalId, accountId: peer.accountId }]
-          : [],
+        peer.externalId ? [{ id: peer.id, externalId: peer.externalId }] : [],
       ),
-      row.accountId,
     );
   }
 
@@ -266,8 +260,8 @@ async function loadFlowPeers(
         `${count} network peer${count === 1 ? "" : "s"} could not be identified: the provider ` +
         `id${count === 1 ? "" : "s"} ${identities.ambiguousRefs.join(", ")} ${
           count === 1 ? "is" : "are"
-        } used by resources in more than one account, so the traffic is listed without a link ` +
-        "rather than attributed to a guess.",
+        } used by more than one resource, and a flow record does not say which one it meant, ` +
+        "so the traffic is listed without a link rather than attributed to a guess.",
     });
   }
 

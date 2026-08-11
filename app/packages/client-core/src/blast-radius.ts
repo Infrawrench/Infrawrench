@@ -120,19 +120,24 @@ export interface BlastRadiusFlowPeer {
    * The peer's Infrawrench resource id when the flow ref resolved to exactly
    * one synced resource. Null when it did not — flow refs are provider-side
    * ids, so a peer outside the org (or in an account we do not sync) stays a
-   * label, and so does one whose id is claimed by resources in more than one
-   * account. See {@link resolveFlowPeerIdentities}.
+   * label, and so does one whose id is claimed by more than one resource. See
+   * {@link resolveFlowPeerIdentities}.
    */
   resourceId: string | null;
 }
 
-/** One resource a flow ref might name, as the host reads it out of storage. */
+/**
+ * One resource a flow ref might name, as the host reads it out of storage.
+ *
+ * Deliberately carries no account: the resolver has no business narrowing on
+ * one, because nothing in a flow row says which account the peer is in. See
+ * {@link resolveFlowPeerIdentities}.
+ */
 export interface FlowPeerCandidate {
   /** The app's composite resource id. */
   id: string;
   /** The provider-native id a flow ref would carry. */
   externalId: string;
-  accountId: string;
 }
 
 export interface FlowPeerIdentities {
@@ -140,7 +145,7 @@ export interface FlowPeerIdentities {
   idByRef: Map<string, string>;
   /**
    * Refs claimed by more than one resource, sorted. The report turns these
-   * into a gap rather than a link.
+   * into a gap rather than a link — never into whichever one looked likeliest.
    */
   ambiguousRefs: string[];
 }
@@ -157,26 +162,40 @@ export interface FlowPeerIdentities {
  * in the seconds before somebody deletes something — a peer pointing at the
  * wrong resource is a wrong answer at the worst possible moment.
  *
- * So the scope is narrowed twice and then it gives up rather than guessing:
+ * So the rule is the strictest one that can be stated without guessing:
+ * **exactly one claimant is a link; anything else is not.**
  *
- *  1. **The collecting account wins.** Candidates are already filtered to the
- *     flow row's plugin by the caller; within one plugin and one account the
- *     provider's id is unique by construction, so a same-account match is the
- *     certain case and it is taken first. It is also the common one — most
- *     traffic a resource exchanges is with its own account's estate.
- *  2. **A single claimant elsewhere is accepted.** Cross-account flows are real
- *     (VPC peering, a shared transit gateway), and the flow row names only the
- *     *collecting* account, so the peer's own account cannot be read off it. One
- *     unambiguous claimant across the org is still an answer.
- *  3. **Anything else is a gap, not a link.** Two or more claimants and the ref
- *     stays a bare label, reported through `unchecked`. The refs that resolve to
- *     nothing at all are not ambiguity — they are ordinary external endpoints —
- *     and are silently left unlinked.
+ *  1. **No claimant** is not ambiguity — it is an ordinary endpoint outside the
+ *     estate (`internet`, another provider, an account nobody synced). It is
+ *     left unlinked with no gap recorded, or every report would carry a
+ *     complaint about the internet.
+ *  2. **One claimant** is the answer, wherever it lives. Scoping to the flow
+ *     row's plugin already happened in the caller's query.
+ *  3. **Two or more claimants** is a gap, reported through `unchecked`. The
+ *     peer keeps its row, its bytes and its direction; it just does not get a
+ *     hyperlink.
+ *
+ * There is deliberately **no tie-break on the collecting account**, and that is
+ * the whole point rather than an omission. An earlier version preferred a
+ * claimant in the account the flow was collected from, on the grounds that most
+ * traffic is intra-account. But `network_flow_daily` carries one `account_id`
+ * per row — the *collecting* account — and its endpoint columns are `ref`,
+ * `label`, `zone`, `region`, `service` and `resource_type_id`, none of which
+ * names an account. The scope values are topological (`private_interconnect` is
+ * precisely the cross-account peering case), so they do not constrain it
+ * either. Locality was therefore a prior about which answer is *usually* right,
+ * dressed up as a resolution — and applying it to a contest between a local and
+ * a remote claimant links a cross-account peer to whichever same-named resource
+ * happens to sit in the collecting account.
+ *
+ * Losing that tie-break costs a hyperlink in the contested case and nothing in
+ * the common one (a lone local claimant is still a single claimant, and still
+ * links). Keeping it would cost a wrong resource name in front of somebody
+ * about to press Delete. That is not a trade worth making for a link.
  */
 export function resolveFlowPeerIdentities(
   refs: Iterable<string>,
   candidates: FlowPeerCandidate[],
-  collectingAccountId: string,
 ): FlowPeerIdentities {
   const byRef = new Map<string, FlowPeerCandidate[]>();
   for (const candidate of candidates) {
@@ -190,23 +209,8 @@ export function resolveFlowPeerIdentities(
   for (const ref of refs) {
     const claimants = byRef.get(ref);
     if (!claimants || claimants.length === 0) continue;
-
-    const local = claimants.filter((c) => c.accountId === collectingAccountId);
-    if (local.length === 1) {
-      idByRef.set(ref, (local[0] as FlowPeerCandidate).id);
-      continue;
-    }
-    // Two rows in one account sharing a provider id should be impossible, but
-    // "should be impossible" is not a reason to pick one of them.
-    if (local.length > 1) {
-      ambiguous.add(ref);
-      continue;
-    }
-    if (claimants.length === 1) {
-      idByRef.set(ref, (claimants[0] as FlowPeerCandidate).id);
-      continue;
-    }
-    ambiguous.add(ref);
+    if (claimants.length === 1) idByRef.set(ref, (claimants[0] as FlowPeerCandidate).id);
+    else ambiguous.add(ref);
   }
 
   return { idByRef, ambiguousRefs: [...ambiguous].sort() };

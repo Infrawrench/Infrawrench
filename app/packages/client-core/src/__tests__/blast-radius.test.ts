@@ -208,42 +208,50 @@ describe("resolveFlowPeerIdentities", () => {
   // row a lookup happened to return attributes measured traffic to an
   // arbitrary resource, in a report read seconds before somebody deletes
   // something.
-  const inProd = { id: "aws:prod:default", externalId: "default", accountId: "prod" };
-  const inStaging = { id: "aws:staging:default", externalId: "default", accountId: "staging" };
+  const inProd = { id: "aws:prod:default", externalId: "default" };
+  const inStaging = { id: "aws:staging:default", externalId: "default" };
 
-  it("never links a ref two accounts claim — it reports it as ambiguous", () => {
-    const result = resolveFlowPeerIdentities(["default"], [inStaging, inProd], "other-account");
+  it("never links a ref two resources claim — it reports it as ambiguous", () => {
+    const result = resolveFlowPeerIdentities(["default"], [inStaging, inProd]);
     expect(result.idByRef.has("default")).toBe(false);
     expect(result.ambiguousRefs).toEqual(["default"]);
   });
 
   it("is not decided by candidate order", () => {
-    const forward = resolveFlowPeerIdentities(["default"], [inProd, inStaging], "other-account");
-    const reversed = resolveFlowPeerIdentities(["default"], [inStaging, inProd], "other-account");
+    const forward = resolveFlowPeerIdentities(["default"], [inProd, inStaging]);
+    const reversed = resolveFlowPeerIdentities(["default"], [inStaging, inProd]);
     expect(forward).toEqual(reversed);
   });
 
-  it("prefers the collecting account when one of the claimants is in it", () => {
-    const result = resolveFlowPeerIdentities(["default"], [inStaging, inProd], "prod");
-    expect(result.idByRef.get("default")).toBe("aws:prod:default");
-    expect(result.ambiguousRefs).toEqual([]);
+  // The regression that matters most: a cross-account peer sharing its
+  // provider id with a resource in the account the flow was collected from.
+  // Nothing in a flow row says which account the peer is in, so preferring the
+  // local one links the wrong resource — it just does it plausibly.
+  it("refuses to break a local-vs-remote tie, because the row does not name the peer's account", () => {
+    // `inProd` sits in the collecting account; `inStaging` does not.
+    const result = resolveFlowPeerIdentities(["default"], [inProd, inStaging]);
+    expect(result.idByRef.has("default")).toBe(false);
+    expect(result.ambiguousRefs).toEqual(["default"]);
   });
 
-  it("accepts a single claimant in another account — cross-account flows are real", () => {
-    const result = resolveFlowPeerIdentities(["default"], [inStaging], "prod");
-    expect(result.idByRef.get("default")).toBe("aws:staging:default");
-    expect(result.ambiguousRefs).toEqual([]);
+  it("accepts a lone claimant wherever it lives — cross-account flows are real", () => {
+    expect(resolveFlowPeerIdentities(["default"], [inStaging]).idByRef.get("default")).toBe(
+      "aws:staging:default",
+    );
+    expect(resolveFlowPeerIdentities(["default"], [inProd]).idByRef.get("default")).toBe(
+      "aws:prod:default",
+    );
   });
 
   it("treats an unmatched ref as an ordinary external endpoint, not a gap", () => {
-    const result = resolveFlowPeerIdentities(["internet", "s3.us-east-1"], [inProd], "prod");
+    const result = resolveFlowPeerIdentities(["internet", "s3.us-east-1"], [inProd]);
     expect(result.idByRef.size).toBe(0);
     expect(result.ambiguousRefs).toEqual([]);
   });
 
-  it("refuses to pick between two rows in the collecting account itself", () => {
-    const duplicate = { id: "aws:prod:default-2", externalId: "default", accountId: "prod" };
-    const result = resolveFlowPeerIdentities(["default"], [inProd, duplicate], "prod");
+  it("refuses to pick between two rows that are both in one account", () => {
+    const duplicate = { id: "aws:prod:default-2", externalId: "default" };
+    const result = resolveFlowPeerIdentities(["default"], [inProd, duplicate]);
     expect(result.idByRef.has("default")).toBe(false);
     expect(result.ambiguousRefs).toEqual(["default"]);
   });
@@ -252,13 +260,12 @@ describe("resolveFlowPeerIdentities", () => {
     const result = resolveFlowPeerIdentities(
       ["zeta", "alpha", "unique"],
       [
-        { id: "a", externalId: "zeta", accountId: "x" },
-        { id: "b", externalId: "zeta", accountId: "y" },
-        { id: "c", externalId: "alpha", accountId: "x" },
-        { id: "d", externalId: "alpha", accountId: "y" },
-        { id: "e", externalId: "unique", accountId: "x" },
+        { id: "a", externalId: "zeta" },
+        { id: "b", externalId: "zeta" },
+        { id: "c", externalId: "alpha" },
+        { id: "d", externalId: "alpha" },
+        { id: "e", externalId: "unique" },
       ],
-      "prod",
     );
     expect(result.idByRef.get("unique")).toBe("e");
     expect(result.ambiguousRefs).toEqual(["alpha", "zeta"]);

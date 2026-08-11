@@ -24,7 +24,7 @@ Each dependant is labelled **direct** — it holds a reference to the resource i
 
 When [network flow collection](./network-costs.md) is on, the report lists the peers that measurably exchanged traffic with the resource over the last 14 days, heaviest first, with the boundary each crossed and how many days it appeared on. A standing 400 GB/day flow to a service nobody wired a reference to is exactly the dependency no configuration records.
 
-Flow records identify endpoints by the **provider's** own id, not Infrawrench's, so a peer becomes a clickable link only when that id points at exactly one resource you sync. Anything else stays a plain label: an endpoint outside your estate has nothing to link to, and a provider id that two of your accounts both use — a `default` VPC, a `kube-system` namespace — is reported unlinked and named in the coverage notes, rather than being attached to whichever of them came back first.
+Flow records identify endpoints by the **provider's** own id, not Infrawrench's, so a peer becomes a clickable link only when that id points at exactly one resource you sync. Anything else stays a plain label: an endpoint outside your estate has nothing to link to, and a provider id that two of your resources both use — a `default` VPC, a `kube-system` namespace — is reported unlinked and named in the coverage notes. Flow records don't say which account a peer belongs to, so there is nothing to break the tie with, and guessing at the likeliest one is exactly the mistake this report exists to avoid.
 
 ### Things that point at it
 
@@ -47,7 +47,7 @@ Every report ends with what it was unable to look at, and the report says so eve
 - **Network flow collection is off**, or no traffic data is stored — so nothing is known about what talks to the resource.
 - **Workflows and custom graphs are matched by searching their source for the resource's id verbatim.** A script that assembles the id at runtime, or looks the resource up by name, will not appear.
 - **Metric alert rules select resources by plugin, type and tag rather than by id**, so only alerts currently _firing_ against the resource can be listed by name.
-- **A network peer whose provider id is used in more than one account** — the peer is still listed with its traffic, just without a link, because guessing which of your accounts it meant would be worse than saying so.
+- **A network peer whose provider id is used by more than one resource** — the peer is still listed with its traffic, just without a link, because guessing which one it meant would be worse than saying so.
 - Any check that failed outright.
 
 This is the part to read. "Nothing depends on this" and "nothing depends on this, but half the checks didn't run" are different claims, and the report never renders the second as the first — a report that found nothing but couldn't look everywhere is marked as such rather than as a clean bill of health.
