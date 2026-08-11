@@ -37,9 +37,9 @@ class HostKeyTrustRequiredError extends Error {
 }
 vi.mock("@/services/ssh-host-keys", () => ({ HostKeyTrustRequiredError }));
 
-const mockAssertHostNotInternal = vi.fn();
+const mockResolveSafeHost = vi.fn();
 vi.mock("@/services/host-validation", () => ({
-  assertHostNotInternal: (...a: unknown[]) => mockAssertHostNotInternal(...a),
+  resolveSafeHost: (...a: unknown[]) => mockResolveSafeHost(...a),
 }));
 
 const mockLogAudit = vi.fn();
@@ -55,7 +55,7 @@ const KEY_ROW = { encryptedPrivateKey: "enc", privateKeyIv: "iv" };
 describe("SSH tunnel routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAssertHostNotInternal.mockResolvedValue(undefined);
+    mockResolveSafeHost.mockResolvedValue("198.51.100.7");
   });
 
   function selectKey(rows: unknown[]) {
@@ -79,7 +79,7 @@ describe("SSH tunnel routes", () => {
     };
 
     it("rejects an internal SSH host with 400", async () => {
-      mockAssertHostNotInternal.mockRejectedValue(new Error("host resolves to private range"));
+      mockResolveSafeHost.mockRejectedValue(new Error("host resolves to private range"));
       const res = await buildApp().request("/create-account", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -238,6 +238,15 @@ describe("SSH tunnel routes", () => {
       const body = await res.json();
       expect(body).toMatchObject({ stdout: "up 3 days", code: 0 });
       expect(mockLogAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "ssh.exec" }));
+      // Nothing downstream re-resolves for this route, so the address the
+      // guard cleared has to travel with the config — the name is resolved
+      // once, and `host` stays the name for host-key trust.
+      expect(mockSshExec).toHaveBeenCalledWith(
+        "org-1",
+        expect.objectContaining({ host: "bastion" }),
+        "uptime",
+        { dialAddress: "198.51.100.7" },
+      );
     });
 
     it("returns stderr + code 1 and audit-logs failure on a command error", async () => {

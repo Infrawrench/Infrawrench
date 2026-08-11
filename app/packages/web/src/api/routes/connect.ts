@@ -8,6 +8,7 @@ import { getPlugin } from "../../plugins/loader";
 import { getClientForAccount } from "../../services/plugin-clients";
 import type { SecretExportTemplate } from "@infrawrench/plugin-base";
 import { sshExec } from "../../services/ssh";
+import { resolveSafeHost } from "../../services/host-validation";
 import { HostKeyTrustRequiredError } from "../../services/ssh-host-keys";
 import { hostKeyTrustResponse } from "./ssh-host-keys";
 import { requirePermission } from "../../auth/permissions";
@@ -181,6 +182,18 @@ app.post("/env-deploy", async (c) => {
     append: boolean;
   }>();
 
+  // SSRF: `targetSshHost` is request body, so this route lets anyone with
+  // `resources:execute` pick the destination outright — the same exposure the
+  // SSH terminal frame has, and here it also decides where the source
+  // resource's secrets get written. Vet it and keep the address: `sshExec`
+  // dials what it is given, so nothing downstream re-resolves for us.
+  let dialAddress: string;
+  try {
+    dialAddress = await resolveSafeHost(input.targetSshHost);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : "Invalid SSH host" }, 400);
+  }
+
   const sourceCtx = await getClientForAccount(input.sourceAccountId, organizationId);
   if (!sourceCtx) return c.json({ error: "Source account not found" }, 404);
 
@@ -257,12 +270,15 @@ app.post("/env-deploy", async (c) => {
     await sshExec(
       organizationId,
       {
+        // Identity stays the name the operator typed, so the host-key pin is
+        // the one they already trust; only the socket goes to `dialAddress`.
         host: input.targetSshHost,
         port: 22,
         username: input.sshUsername,
         privateKey,
       },
       `printf '%s' ${quotedContent} ${operator} ${quotedFilePath}`,
+      { dialAddress },
     );
   } catch (err) {
     if (err instanceof HostKeyTrustRequiredError) {

@@ -17,7 +17,7 @@ import { buildPluginHostServices } from "@/services/host-services";
 import { buildInProcessAgent, type AgentAuditContext } from "@/services/ssh-agent";
 import { logAudit } from "@/services/audit";
 import { HostKeyTrustRequiredError, makeHostKeyVerifier } from "@/services/ssh-host-keys";
-import { assertHostNotInternal } from "@/services/host-validation";
+import { resolveSafeHost } from "@/services/host-validation";
 import { makeWsBackpressure, type WsBackpressure } from "@/services/ws-backpressure";
 import {
   startSessionRecording,
@@ -93,6 +93,14 @@ export async function handleSshSession(
   try {
     let targetConfig: { host: string; port: number; username: string; privateKey: string };
     let connectThroughAccountId: string | undefined;
+    /**
+     * The vetted IP the final socket goes to, set only on the one path the
+     * server dials on a client's say-so. Undefined everywhere else — a
+     * bastion-routed session reaches its target over `sock`, and a
+     * plugin-supplied endpoint is not client-chosen — and `dialFinal` then
+     * falls back to the configured host as before.
+     */
+    let targetDialAddress: string | undefined;
 
     if (directSsh) {
       // Direct SSH via SSH key — used for sshHost resources (EC2, droplets, etc.)
@@ -112,8 +120,13 @@ export async function handleSshSession(
       // will happily dial 127.0.0.1 or the cloud metadata endpoint on request.
       // Skipped when jumping through a bastion: the whole point of a jump host
       // is to reach hosts that are private from where we sit.
+      //
+      // Keep the address that cleared, and dial *that*. Validating the name
+      // and then handing the same name to ssh2 leaves it to resolve a second
+      // time, which is a rebinding window: a short-TTL record answers the
+      // check with a public address and the connect with 169.254.169.254.
       if (!directSsh.connectThroughAccountId) {
-        await assertHostNotInternal(directSsh.host);
+        targetDialAddress = await resolveSafeHost(directSsh.host);
       }
 
       const privateKey = await decrypt(
@@ -498,9 +511,18 @@ export async function handleSshSession(
     const dialFinal = (sock?: SshSock) => {
       if (torndown) return;
       conn.connect({
-        ...(sock ? { sock } : { host: finalConfig.host, port: finalConfig.port ?? 22 }),
+        // `targetDialAddress` is only ever set on the single-hop path, where
+        // `finalConfig` *is* the target that was vetted; a chained session
+        // arrives here with a `sock` and no address to pin.
+        ...(sock
+          ? { sock }
+          : { host: targetDialAddress ?? finalConfig.host, port: finalConfig.port ?? 22 }),
         username: finalConfig.username,
         privateKey: finalConfig.privateKey,
+        // Identity, not transport: the verifier is passed the hostname the
+        // user connected to so `ssh_host_keys` rows stay keyed by name. Pin
+        // against the IP instead and every trusted host asks to be trusted
+        // again, and would go on doing so each time the address changed.
         hostVerifier: makeHostKeyVerifier(
           organizationId,
           finalConfig.host,
@@ -518,6 +540,13 @@ export async function handleSshSession(
     if (hops.length === 1) {
       dialFinal();
     } else {
+      // No address pinning anywhere in here, deliberately. Every hop after the
+      // first is dialed *through* the previous one over `sock`, so this
+      // process never resolves it — and the first hop's endpoint comes from a
+      // stored SSH account written by someone with `accounts:write`, not from
+      // the WebSocket frame, and is routinely a private address an operator
+      // configured on purpose. Guarding it would break the documented reason
+      // jump hosts exist without closing a window a member can open.
       try {
         let prev: Client | null = null;
         for (let i = 0; i < hops.length - 1; i++) {

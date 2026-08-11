@@ -7,6 +7,7 @@ const sshClients: FakeSshClient[] = [];
 
 class FakeSshClient extends EventEmitter {
   ended = false;
+  connectConfig: Record<string, unknown> | null = null;
   execCb: ((err: Error | undefined, stream: FakeExecStream) => void) | null = null;
 
   constructor() {
@@ -14,7 +15,9 @@ class FakeSshClient extends EventEmitter {
     sshClients.push(this);
   }
 
-  connect(_cfg: Record<string, unknown>) {}
+  connect(cfg: Record<string, unknown>) {
+    this.connectConfig = cfg;
+  }
 
   exec(_cmd: string, cb: (err: Error | undefined, stream: FakeExecStream) => void) {
     this.execCb = cb;
@@ -40,12 +43,13 @@ vi.mock("@/services/encryption", () => ({
   decrypt: vi.fn().mockResolvedValue("PRIVATE_KEY"),
   buildAad: vi.fn().mockReturnValue("aad"),
 }));
+const mockMakeHostKeyVerifier = vi.fn().mockReturnValue(() => true);
 vi.mock("@/services/ssh-host-keys", () => ({
   HostKeyTrustRequiredError: class extends Error {},
-  makeHostKeyVerifier: vi.fn().mockReturnValue(() => true),
+  makeHostKeyVerifier: (...a: unknown[]) => mockMakeHostKeyVerifier(...a),
 }));
 
-const { sshExecCapture } = await import("@/services/ssh");
+const { sshExecCapture, sshExec } = await import("@/services/ssh");
 
 const CONFIG = { host: "203.0.113.5", port: 22, username: "root", privateKey: "KEY" };
 
@@ -132,5 +136,58 @@ describe("sshExecCapture", () => {
     const { promise, stream } = startCapture();
     stream.emit("close");
     await expect(promise).rejects.toThrow(/without an exit status/);
+  });
+});
+
+/**
+ * A caller that has already run its destination through `resolveSafeHost`
+ * passes the address back in, so the name is resolved exactly once and ssh2
+ * never gets a second answer. Trust records stay keyed by the name.
+ */
+describe("dialAddress", () => {
+  const NAMED = { host: "box.example", port: 2222, username: "root", privateKey: "KEY" };
+
+  /** Run one exec through to a clean exit and return the client it used. */
+  async function run(
+    fn: typeof sshExecCapture | typeof sshExec,
+    dial?: { dialAddress: string },
+  ): Promise<FakeSshClient> {
+    const promise = fn("org-1", NAMED, "uptime", dial);
+    const client = sshClients.at(-1)!;
+    client.emit("ready");
+    const stream = new FakeExecStream();
+    client.execCb!(undefined, stream);
+    stream.emit("close", 0);
+    await promise;
+    return client;
+  }
+
+  it("sends the socket to the vetted address and verifies against the hostname", async () => {
+    const client = await run(sshExecCapture, { dialAddress: "198.51.100.9" });
+    expect(client.connectConfig).toMatchObject({ host: "198.51.100.9", port: 2222 });
+    expect(mockMakeHostKeyVerifier).toHaveBeenCalledWith(
+      "org-1",
+      "box.example",
+      2222,
+      expect.anything(),
+      "ssh",
+    );
+  });
+
+  it("applies to sshExec as well", async () => {
+    const client = await run(sshExec, { dialAddress: "198.51.100.9" });
+    expect(client.connectConfig).toMatchObject({ host: "198.51.100.9" });
+    expect(mockMakeHostKeyVerifier).toHaveBeenCalledWith(
+      "org-1",
+      "box.example",
+      2222,
+      expect.anything(),
+      "ssh",
+    );
+  });
+
+  it("falls back to the configured host when no address was vetted", async () => {
+    const client = await run(sshExecCapture);
+    expect(client.connectConfig).toMatchObject({ host: "box.example" });
   });
 });

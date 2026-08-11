@@ -1,12 +1,27 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../../db/client", () => ({ db: {} }));
-vi.mock("../plugin-clients", () => ({ getClientForAccount: vi.fn() }));
+const mockSelect = vi.fn();
+vi.mock("../../db/client", () => ({ db: { select: (...a: unknown[]) => mockSelect(...a) } }));
+const mockGetClientForAccount = vi.fn();
+vi.mock("../plugin-clients", () => ({
+  getClientForAccount: (...a: unknown[]) => mockGetClientForAccount(...a),
+}));
 vi.mock("../../plugins/loader", () => ({ loadPlugins: vi.fn(), getPlugin: vi.fn() }));
 vi.mock("../encryption", () => ({ decrypt: vi.fn(), buildAad: vi.fn() }));
-vi.mock("../host-validation", () => ({ assertHostNotInternal: vi.fn() }));
 
-const { deriveResourceTarget } = await import("../ssh-fanout");
+const mockResolveSshConfig = vi.fn();
+const mockSshExecCapture = vi.fn();
+vi.mock("../ssh", () => ({
+  resolveSshConfig: (...a: unknown[]) => mockResolveSshConfig(...a),
+  sshExecCapture: (...a: unknown[]) => mockSshExecCapture(...a),
+}));
+
+const mockResolveSafeHost = vi.fn();
+vi.mock("../host-validation", () => ({
+  resolveSafeHost: (...a: unknown[]) => mockResolveSafeHost(...a),
+}));
+
+const { deriveResourceTarget, runFanout } = await import("../ssh-fanout");
 
 const row = {
   id: "res-1",
@@ -78,5 +93,57 @@ describe("deriveResourceTarget", () => {
     expect(t?.needsKey).toBe(true);
     expect(t?.kind).toBe("resource");
     expect(t?.label).toBe("web-01");
+  });
+});
+
+describe("runFanout host pinning", () => {
+  const CONFIG = { host: "box.example", port: 22, username: "root", privateKey: "KEY" };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // accountLabel's lookup — the only query an account target makes.
+    const limit = vi.fn().mockResolvedValue([{ displayName: "bastion" }]);
+    const where = vi.fn().mockReturnValue({ limit });
+    const from = vi.fn().mockReturnValue({ where });
+    mockSelect.mockReturnValue({ from });
+    mockGetClientForAccount.mockResolvedValue({
+      plugin: { manifest: { id: "ssh" } },
+      client: {},
+    });
+    mockResolveSshConfig.mockResolvedValue(CONFIG);
+    mockSshExecCapture.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+  });
+
+  const run = () =>
+    runFanout("org-1", "user-1", {
+      command: "uptime",
+      targets: [{ kind: "account" as const, id: "acct-1" }],
+    });
+
+  it("dials the address the guard cleared, keeping the name for host-key trust", async () => {
+    mockResolveSafeHost.mockResolvedValue("198.51.100.4");
+    const [result] = await run();
+
+    expect(result!.status).toBe("done");
+    expect(mockResolveSafeHost).toHaveBeenCalledWith("box.example");
+    // `config.host` is untouched: it is what the verifier keys trust by, and
+    // what an operator sees in the results. Only the socket moves.
+    expect(mockSshExecCapture).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ host: "box.example" }),
+      "uptime",
+      { dialAddress: "198.51.100.4" },
+    );
+  });
+
+  it("blocks the host and never dials when the guard refuses", async () => {
+    mockResolveSafeHost.mockRejectedValue(
+      new Error("SSH host internal.local resolves to a blocked address (10.0.0.5)"),
+    );
+    const [result] = await run();
+
+    expect(result).toMatchObject({ status: "blocked", label: "bastion" });
+    expect(result!.error).toMatch(/blocked address/);
+    expect(mockSshExecCapture).not.toHaveBeenCalled();
   });
 });

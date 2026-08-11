@@ -32,6 +32,11 @@ vi.mock("../../services/ssh", () => ({
   sshExec: (...a: unknown[]) => mockSshExec(...a),
 }));
 
+const mockResolveSafeHost = vi.fn();
+vi.mock("../../services/host-validation", () => ({
+  resolveSafeHost: (...a: unknown[]) => mockResolveSafeHost(...a),
+}));
+
 vi.mock("../../services/audit", () => ({ logAudit: vi.fn() }));
 // Not importOriginal: the real module pulls in db/client, which requires
 // DATABASE_URL at import time. Only the class identity matters here.
@@ -240,6 +245,58 @@ describe("connectionTools", () => {
       mockSshExec.mockRejectedValue(new Error("conn refused"));
       const r = await tool("ssh_exec").handler({ accountId: "a1", command: "x" }, auth);
       expect(r.isError).toBe(true);
+    });
+
+    // MCP exposes every tool regardless of `risk`, so a caller-named host here
+    // is unguarded outbound SSH for anyone holding `resources:execute` — and
+    // unlike the rebinding case it needs no DNS control, just the address.
+    it("refuses a caller-supplied host in blocked address space", async () => {
+      mockGetClientForAccount.mockResolvedValue({ client: {} });
+      mockResolveSshConfig.mockResolvedValue({ host: "169.254.169.254", port: 22 });
+      mockResolveSafeHost.mockRejectedValue(
+        new Error("SSH host 169.254.169.254 resolves to a blocked address range"),
+      );
+      const r = await tool("ssh_exec").handler(
+        { accountId: "a1", command: "x", sshKeyId: "k1", sshHost: "169.254.169.254" },
+        auth,
+      );
+      expect(r.isError).toBe(true);
+      expect(r.content[0]!.text).toMatch(/blocked address range/);
+      expect(mockSshExec).not.toHaveBeenCalled();
+    });
+
+    it("dials the vetted address for a caller-supplied host, keeping the name", async () => {
+      mockGetClientForAccount.mockResolvedValue({ client: {} });
+      mockResolveSshConfig.mockResolvedValue({ host: "box.example", port: 22 });
+      mockResolveSafeHost.mockResolvedValue("198.51.100.3");
+      mockSshExec.mockResolvedValue("ok\n");
+      const r = await tool("ssh_exec").handler(
+        { accountId: "a1", command: "x", sshKeyId: "k1", sshHost: "box.example" },
+        auth,
+      );
+      expect(r.isError).toBeFalsy();
+      expect(mockResolveSafeHost).toHaveBeenCalledWith("box.example");
+      expect(mockSshExec).toHaveBeenCalledWith(
+        "o1",
+        expect.objectContaining({ host: "box.example" }),
+        "x",
+        { dialAddress: "198.51.100.3" },
+      );
+    });
+
+    // The plugin's own endpoint (Fly, Hetzner, an SSH account's credentials)
+    // is configuration written with `accounts:write`, not something the caller
+    // named — `resolveSshConfig` ignores `sshHost` entirely in that case.
+    it("leaves a plugin-supplied endpoint unpinned", async () => {
+      mockGetClientForAccount.mockResolvedValue({ client: {} });
+      mockResolveSshConfig.mockResolvedValue({ host: "fly-machine.internal", port: 22 });
+      mockSshExec.mockResolvedValue("ok\n");
+      await tool("ssh_exec").handler(
+        { accountId: "a1", command: "x", sshHost: "ignored.example" },
+        auth,
+      );
+      expect(mockResolveSafeHost).not.toHaveBeenCalled();
+      expect(mockSshExec).toHaveBeenCalledWith("o1", expect.anything(), "x", undefined);
     });
   });
 
