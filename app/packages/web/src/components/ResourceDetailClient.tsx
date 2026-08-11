@@ -1714,7 +1714,8 @@ export function ResourceDetailClient({
               <button
                 type="button"
                 onClick={() => setK9sPane(null)}
-                aria-label="Close"
+                aria-label={`Close k9s: ${resourceDisplayName}`}
+                title={`Close k9s: ${resourceDisplayName}`}
                 className="text-on-surface-muted hover:text-on-surface-secondary text-xl leading-none"
               >
                 ×

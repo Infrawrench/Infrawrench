@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 
 import {
   DEPLOY_STAGES,
@@ -225,50 +225,59 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
 
         <div className="flex flex-wrap items-end gap-3">
           <Field label="Repository">
-            <select
-              value={repo}
-              onChange={(e) => chooseRepo(e.target.value)}
-              className={inputClass}
-              disabled={busy !== null}
-            >
-              <option value="">Choose a repository…</option>
-              {repos.map((r) => (
-                <option key={r.fullName} value={r.fullName}>
-                  {r.fullName}
-                </option>
-              ))}
-            </select>
+            {(id) => (
+              <select
+                id={id}
+                value={repo}
+                onChange={(e) => chooseRepo(e.target.value)}
+                className={inputClass}
+                disabled={busy !== null}
+              >
+                <option value="">Choose a repository…</option>
+                {repos.map((r) => (
+                  <option key={r.fullName} value={r.fullName}>
+                    {r.fullName}
+                  </option>
+                ))}
+              </select>
+            )}
           </Field>
 
           <Field label="Branch">
-            <input
-              value={branch}
-              onChange={(e) => setBranch(e.target.value)}
-              onBlur={() => void loadEnvs()}
-              placeholder="main"
-              className={inputClass}
-              disabled={!repo || busy !== null}
-            />
+            {(id) => (
+              <input
+                id={id}
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                onBlur={() => void loadEnvs()}
+                placeholder="main"
+                className={inputClass}
+                disabled={!repo || busy !== null}
+              />
+            )}
           </Field>
 
           <Field label="Environment">
-            <select
-              value={env}
-              onChange={(e) => setEnv(e.target.value)}
-              className={inputClass}
-              disabled={!envInfo || busy !== null}
-            >
-              {!envInfo && <option value="">Load the Infrafile first…</option>}
-              {envInfo?.envs.length === 0 && <option value="">No environments declared</option>}
-              {envInfo && envInfo.envs.length > 0 && (
-                <option value="">Choose an environment…</option>
-              )}
-              {envInfo?.envs.map((e) => (
-                <option key={e} value={e}>
-                  {e}
-                </option>
-              ))}
-            </select>
+            {(id) => (
+              <select
+                id={id}
+                value={env}
+                onChange={(e) => setEnv(e.target.value)}
+                className={inputClass}
+                disabled={!envInfo || busy !== null}
+              >
+                {!envInfo && <option value="">Load the Infrafile first…</option>}
+                {envInfo?.envs.length === 0 && <option value="">No environments declared</option>}
+                {envInfo && envInfo.envs.length > 0 && (
+                  <option value="">Choose an environment…</option>
+                )}
+                {envInfo?.envs.map((e) => (
+                  <option key={e} value={e}>
+                    {e}
+                  </option>
+                ))}
+              </select>
+            )}
           </Field>
 
           <button
@@ -370,12 +379,20 @@ const inputClass =
 const ghostButton =
   "text-xs px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-on-surface-secondary disabled:opacity-40";
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * A captioned control. The caption is a real `<label htmlFor>` rather than a
+ * wrapper, so the control's accessible name survives however the child is
+ * composed — hence the id passed down to the render prop.
+ */
+function Field({ label, children }: { label: string; children: (id: string) => React.ReactNode }) {
+  const id = useId();
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[11px] uppercase tracking-wide text-on-surface-faint">{label}</span>
-      {children}
-    </label>
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-[11px] uppercase tracking-wide text-on-surface-faint">
+        {label}
+      </label>
+      {children(id)}
+    </div>
   );
 }
 
@@ -580,13 +597,16 @@ function TriggersSection({
       <div className="flex flex-wrap items-end gap-3">
         {selectKeys.map((key) => (
           <Field key={key} label={`Answer for ${key}`}>
-            <input
-              value={answers[key] ?? ""}
-              onChange={(e) => onAnswer(key, e.target.value)}
-              placeholder="value"
-              className={inputClass}
-              disabled={busy}
-            />
+            {(id) => (
+              <input
+                id={id}
+                value={answers[key] ?? ""}
+                onChange={(e) => onAnswer(key, e.target.value)}
+                placeholder="value"
+                className={inputClass}
+                disabled={busy}
+              />
+            )}
           </Field>
         ))}
         <button

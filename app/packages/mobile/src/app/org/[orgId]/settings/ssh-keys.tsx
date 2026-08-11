@@ -38,7 +38,12 @@ export default function SshKeysScreen() {
     <Screen onRefresh={() => void keys.refetch()} refreshing={keys.isRefetching}>
       <Card list>
         {list.map((k) => (
-          <Pressable key={k.id} onLongPress={() => copyKey(k)}>
+          <Pressable
+            key={k.id}
+            accessibilityRole="button"
+            accessibilityLabel={`${k.name}, long press to copy the public key`}
+            onLongPress={() => copyKey(k)}
+          >
             <Row
               title={k.name}
               subtitle={[

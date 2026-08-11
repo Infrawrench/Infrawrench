@@ -322,6 +322,7 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
           type="file"
           accept="application/json,.json"
           onChange={chooseFile}
+          aria-label="Configuration document file"
           className="hidden"
         />
         <label className="flex items-center gap-2 text-sm text-on-surface-secondary">

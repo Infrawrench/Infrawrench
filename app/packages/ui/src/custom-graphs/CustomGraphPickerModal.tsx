@@ -192,6 +192,7 @@ export function CustomGraphPickerModal({
                   if (e.key === "Enter") void createNew();
                 }}
                 placeholder="New graph name"
+                aria-label="New graph name"
                 disabled={busy}
                 className="flex-1 bg-surface-sunken border border-border rounded-md px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-border-strong"
               />

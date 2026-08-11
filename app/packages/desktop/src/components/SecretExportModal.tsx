@@ -206,6 +206,8 @@ export function SecretExportModal({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close Create Kubernetes Secret"
+            title="Close Create Kubernetes Secret"
             className="text-on-surface-muted hover:text-on-surface-secondary transition-colors text-lg leading-none"
           >
             x

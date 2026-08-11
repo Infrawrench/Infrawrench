@@ -393,6 +393,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
             }}
             className="text-xs bg-surface-overlay text-on-surface border border-border-strong rounded px-2 py-0.5"
             title="Saved queries"
+            aria-label="Saved queries"
           >
             <option value="">New workspace…</option>
             {saved.map((q) => (
@@ -478,6 +479,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
           disabled={optionsLoading || addableOptions.length === 0}
           className="text-xs bg-surface-overlay text-on-surface border border-border-strong rounded px-2 py-0.5 max-w-64"
           title="Add a log stream"
+          aria-label="Add a log stream"
         >
           <option value="">
             {optionsLoading
@@ -508,6 +510,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
           onChange={(e) => setTailLines(Number(e.target.value))}
           className="text-xs bg-surface-overlay text-on-surface border border-border-strong rounded px-2 py-0.5"
           title="Tail lines per stream"
+          aria-label="Tail lines per stream"
         >
           {TAIL_OPTIONS.map((n) => (
             <option key={n} value={n}>
@@ -574,6 +577,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
                     onChange={(e) => setStreamContainer(key, e.target.value)}
                     className="text-xs bg-surface text-on-surface border border-border rounded px-1"
                     title="Container"
+                    aria-label={`Container for ${stream.label}`}
                   >
                     {stream.containers.map((c) => (
                       <option key={c} value={c}>

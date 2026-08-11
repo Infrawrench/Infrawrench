@@ -256,23 +256,20 @@ export function ConnectResourceModal({
   ]);
 
   const canSwitchMode = supportsSecretImport && !!sshHost;
+  const modalTitle =
+    mode === "secret-export" ? "Create Kubernetes Secret" : "Deploy Credentials via SSH";
 
   return (
-    <Modal
-      onClose={onClose}
-      ariaLabel={
-        mode === "secret-export" ? "Create Kubernetes Secret" : "Deploy Credentials via SSH"
-      }
-    >
+    <Modal onClose={onClose} ariaLabel={modalTitle}>
       <div className="w-[min(520px,90vw)] max-h-[80vh] overflow-y-auto rounded-2xl border border-border-strong bg-surface-raised shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <h2 className="text-base font-semibold text-on-surface">
-            {mode === "secret-export" ? "Create Kubernetes Secret" : "Deploy Credentials via SSH"}
-          </h2>
+          <h2 className="text-base font-semibold text-on-surface">{modalTitle}</h2>
           <button
             type="button"
             onClick={onClose}
+            aria-label={`Close ${modalTitle}`}
+            title={`Close ${modalTitle}`}
             className="text-on-surface-muted hover:text-on-surface-secondary transition-colors text-lg leading-none"
           >
             x
