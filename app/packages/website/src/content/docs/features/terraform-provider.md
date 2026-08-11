@@ -278,6 +278,26 @@ resource "infrawrench_alert_routing" "org" {
     destination {
       kind = "push"
     }
+
+    # Held overnight, not dropped — a held alert is delivered when the window
+    # closes, and critical is exempt from the hold entirely.
+    quiet_hours {
+      timezone        = "Europe/Berlin"
+      start_minute    = 1320 # 22:00
+      end_minute      = 420  # 07:00 — an overnight window
+      days            = [1, 2, 3, 4, 5]
+      urgent_override = "critical"
+    }
+
+    # Nobody acknowledged in fifteen minutes? Widen it.
+    escalation {
+      after_minutes = 15
+
+      destination {
+        kind       = "slack"
+        channel_id = infrawrench_slack_channel.platform.id
+      }
+    }
   }
 
   rule {
@@ -295,6 +315,8 @@ resource "infrawrench_alert_routing" "org" {
 ```
 
 Connecting the Slack workspace itself is an OAuth flow, which a Terraform provider cannot perform. Install the app once on **Settings → Alerts**, then read the installation with `data.infrawrench_slack_installations`.
+
+Because the write replaces the whole table, the resource has to carry **every** field a rule can hold — including quiet hours and escalation policies you may have set up in the app before adopting Terraform. Import the resource first and read what comes back: whatever the configuration does not say, the next apply clears.
 
 ## Adopting what you already have
 
@@ -406,15 +428,15 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 
 ### Alert delivery
 
-| Resource                         | Manages                                                     |
-| -------------------------------- | ----------------------------------------------------------- |
-| `infrawrench_alert_routing`      | The whole ordered [alert routing](./alert-routing.md) table |
-| `infrawrench_slack_channel`      | [Slack](./slack-alerts.md) channels as destinations         |
-| `infrawrench_msteams_webhook`    | [Teams](./teams-alerts.md) webhooks as destinations         |
-| `infrawrench_digest_settings`    | When the [weekly digest](./weekly-digest.md) is sent        |
-| `infrawrench_digest_recipient`   | An email address the digest goes to                         |
-| `infrawrench_jira_integration`   | The [Jira](./jira.md) connection                            |
-| `infrawrench_linear_integration` | The [Linear](./linear.md) connection                        |
+| Resource                         | Manages                                                                                                   |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `infrawrench_alert_routing`      | The whole ordered [alert routing](./alert-routing.md) table, quiet hours and escalation policies included |
+| `infrawrench_slack_channel`      | [Slack](./slack-alerts.md) channels as destinations                                                       |
+| `infrawrench_msteams_webhook`    | [Teams](./teams-alerts.md) webhooks as destinations                                                       |
+| `infrawrench_digest_settings`    | When the [weekly digest](./weekly-digest.md) is sent                                                      |
+| `infrawrench_digest_recipient`   | An email address the digest goes to                                                                       |
+| `infrawrench_jira_integration`   | The [Jira](./jira.md) connection                                                                          |
+| `infrawrench_linear_integration` | The [Linear](./linear.md) connection                                                                      |
 
 ### Data sources
 

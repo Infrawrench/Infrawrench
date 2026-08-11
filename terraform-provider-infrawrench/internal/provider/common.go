@@ -183,6 +183,16 @@ func int64List(ctx context.Context, values []int64) (types.List, diag.Diagnostic
 	return types.ListValueFrom(ctx, types.Int64Type, values)
 }
 
+// int64ListOrNull is nilStringList for numbers — nil becomes null, `[]` stays
+// `[]`. Used for quiet hours' weekday list, where the empty list means "every
+// day" and a configuration that writes it out must read back unchanged.
+func int64ListOrNull(ctx context.Context, values []int64) (types.List, diag.Diagnostics) {
+	if values == nil {
+		return types.ListNull(types.Int64Type), nil
+	}
+	return types.ListValueFrom(ctx, types.Int64Type, values)
+}
+
 // stringMap reads a types.Map of strings. A null or unknown map becomes an
 // empty map rather than nil, so a body always carries the key.
 func stringMap(ctx context.Context, m types.Map) (map[string]string, diag.Diagnostics) {

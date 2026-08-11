@@ -196,6 +196,13 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
+	// The rename has already landed at this point. If the credential rotation
+	// then fails, state has to record the half that succeeded and keep the *old*
+	// credentials — writing the plan's wholesale would claim a rotation that did
+	// not happen, and the next apply would see no diff and never retry it.
+	next := plan
+	next.ID = state.ID
+
 	if !plan.Credentials.Equal(state.Credentials) {
 		credentials, diags := stringMap(ctx, plan.Credentials)
 		resp.Diagnostics.Append(diags...)
@@ -203,13 +210,17 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 			return
 		}
 		if err := r.client.PutAccountCredentials(ctx, id, iw.AccountCredentialsInput{Credentials: credentials}); err != nil {
-			resp.Diagnostics.AddError("Unable to rotate the account's credentials", err.Error())
+			next.Credentials = state.Credentials
+			resp.Diagnostics.Append(resp.State.Set(ctx, &next)...)
+			resp.Diagnostics.AddError(
+				"The account was updated but its credentials could not be rotated",
+				err.Error()+"\n\nRotating a credential is gated on `secrets:write`, which renaming an "+
+					"account is not — a token holding only `accounts:write` reaches exactly this point. "+
+					"The name and bastion binding have been saved; the next apply retries the rotation.")
 			return
 		}
 	}
 
-	next := plan
-	next.ID = state.ID
 	resp.Diagnostics.Append(resp.State.Set(ctx, &next)...)
 }
 

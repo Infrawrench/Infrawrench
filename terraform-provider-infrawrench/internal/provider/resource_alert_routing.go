@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 
 	"github.com/Infrawrench/terraform-provider-infrawrench/internal/iw"
 )
@@ -44,6 +45,8 @@ type alertRuleModel struct {
 	ContinueOnMatch types.Bool   `tfsdk:"continue_on_match"`
 	Condition       types.List   `tfsdk:"condition"`
 	Destination     types.List   `tfsdk:"destination"`
+	QuietHours      types.Object `tfsdk:"quiet_hours"`
+	Escalation      types.Object `tfsdk:"escalation"`
 }
 
 type alertConditionModel struct {
@@ -59,6 +62,19 @@ type alertDestinationModel struct {
 	Kind      types.String `tfsdk:"kind"`
 	ChannelID types.String `tfsdk:"channel_id"`
 	WebhookID types.String `tfsdk:"webhook_id"`
+}
+
+type alertQuietHoursModel struct {
+	Timezone       types.String `tfsdk:"timezone"`
+	StartMinute    types.Int64  `tfsdk:"start_minute"`
+	EndMinute      types.Int64  `tfsdk:"end_minute"`
+	Days           types.List   `tfsdk:"days"`
+	UrgentOverride types.String `tfsdk:"urgent_override"`
+}
+
+type alertEscalationModel struct {
+	AfterMinutes types.Int64 `tfsdk:"after_minutes"`
+	Destination  types.List  `tfsdk:"destination"`
 }
 
 var alertConditionAttrTypes = map[string]attr.Type{
@@ -81,6 +97,24 @@ var (
 	alertDestinationObjectType = types.ObjectType{AttrTypes: alertDestinationAttrTypes}
 )
 
+var alertQuietHoursAttrTypes = map[string]attr.Type{
+	"timezone":        types.StringType,
+	"start_minute":    types.Int64Type,
+	"end_minute":      types.Int64Type,
+	"days":            types.ListType{ElemType: types.Int64Type},
+	"urgent_override": types.StringType,
+}
+
+var alertEscalationAttrTypes = map[string]attr.Type{
+	"after_minutes": types.Int64Type,
+	"destination":   types.ListType{ElemType: alertDestinationObjectType},
+}
+
+var (
+	alertQuietHoursObjectType = types.ObjectType{AttrTypes: alertQuietHoursAttrTypes}
+	alertEscalationObjectType = types.ObjectType{AttrTypes: alertEscalationAttrTypes}
+)
+
 var alertRuleAttrTypes = map[string]attr.Type{
 	"id":                types.StringType,
 	"name":              types.StringType,
@@ -88,6 +122,8 @@ var alertRuleAttrTypes = map[string]attr.Type{
 	"continue_on_match": types.BoolType,
 	"condition":         types.ListType{ElemType: alertConditionObjectType},
 	"destination":       types.ListType{ElemType: alertDestinationObjectType},
+	"quiet_hours":       alertQuietHoursObjectType,
+	"escalation":        alertEscalationObjectType,
 }
 
 var alertRuleObjectType = types.ObjectType{AttrTypes: alertRuleAttrTypes}
@@ -246,6 +282,75 @@ func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaReques
 								},
 							},
 						},
+						"quiet_hours": schema.SingleNestedBlock{
+							MarkdownDescription: "A recurring local-time window during which the rule **holds** its " +
+								"alerts. Held, not dropped: a held alert is queued and delivered when the window " +
+								"closes.\n\n" +
+								"Omit the block for a rule that never holds anything.",
+							Attributes: map[string]schema.Attribute{
+								"timezone": schema.StringAttribute{
+									Optional:            true,
+									MarkdownDescription: "IANA zone the window's minutes are read in, e.g. `Europe/Berlin`.",
+								},
+								"start_minute": schema.Int64Attribute{
+									Optional:            true,
+									MarkdownDescription: "Minute of the day the window opens, 0–1439.",
+								},
+								"end_minute": schema.Int64Attribute{
+									Optional: true,
+									MarkdownDescription: "Minute of the day the window closes, 0–1439. May be **less " +
+										"than** `start_minute` for an overnight window; equal means the window is empty.",
+								},
+								"days": schema.ListAttribute{
+									Optional:    true,
+									ElementType: types.Int64Type,
+									MarkdownDescription: "ISO weekdays the window applies on, matched against the day " +
+										"the window opened. Omit or leave empty for every day.",
+								},
+								"urgent_override": schema.StringAttribute{
+									Optional: true,
+									MarkdownDescription: "Severity at or above which quiet hours do **not** apply, one " +
+										"of `" + joinBackticked(alertSeverities) + "`. Omit it to hold everything.",
+									Validators: []validatorString{oneOfValidator(alertSeverities...)},
+								},
+							},
+						},
+						"escalation": schema.SingleNestedBlock{
+							MarkdownDescription: "Notify a second set of destinations if nobody acknowledges within " +
+								"`after_minutes`.\n\n" +
+								"Acknowledgement comes from the button on the Slack message, so a rule routed only " +
+								"to Teams or to push will **always** escalate. Omit the block for a rule that " +
+								"never escalates.",
+							Attributes: map[string]schema.Attribute{
+								"after_minutes": schema.Int64Attribute{
+									Optional:            true,
+									MarkdownDescription: "Minutes to wait for an acknowledgement, 1–10080.",
+								},
+							},
+							Blocks: map[string]schema.Block{
+								"destination": schema.ListNestedBlock{
+									MarkdownDescription: "Where the escalation goes. Same shape as a rule's own " +
+										"destinations.",
+									NestedObject: schema.NestedBlockObject{
+										Attributes: map[string]schema.Attribute{
+											"kind": schema.StringAttribute{
+												Required:            true,
+												MarkdownDescription: "One of `" + joinBackticked(alertDestinationKind) + "`.",
+												Validators:          []validatorString{oneOfValidator(alertDestinationKind...)},
+											},
+											"channel_id": schema.StringAttribute{
+												Optional:            true,
+												MarkdownDescription: "Required when `kind` is `slack`.",
+											},
+											"webhook_id": schema.StringAttribute{
+												Optional:            true,
+												MarkdownDescription: "Required when `kind` is `msteams`.",
+											},
+										},
+									},
+								},
+							},
+						},
 					},
 				},
 			},
@@ -355,6 +460,10 @@ func alertRulesFrom(ctx context.Context, list types.List) ([]iw.AlertRuleInput, 
 		diags.Append(d...)
 		destinations, d := alertDestinationsFrom(ctx, b.Destination)
 		diags.Append(d...)
+		quietHours, d := alertQuietHoursFrom(ctx, b.QuietHours)
+		diags.Append(d...)
+		escalation, d := alertEscalationFrom(ctx, b.Escalation)
+		diags.Append(d...)
 		if diags.HasError() {
 			return out, diags
 		}
@@ -366,9 +475,69 @@ func alertRulesFrom(ctx context.Context, list types.List) ([]iw.AlertRuleInput, 
 			Conditions:      conditions,
 			Destinations:    destinations,
 			ContinueOnMatch: boolPtr(b.ContinueOnMatch),
+			QuietHours:      quietHours,
+			Escalation:      escalation,
 		})
 	}
 	return out, diags
+}
+
+// alertQuietHoursFrom reads the optional quiet-hours block.
+//
+// Both this and alertEscalationFrom must be wired through, not skipped: the
+// replacement route normalises an omitted `quietHours` to an explicit null, so a
+// provider that dropped the field would silently delete a window configured in
+// the app on the very next apply.
+func alertQuietHoursFrom(ctx context.Context, obj types.Object) (*iw.QuietHours, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if obj.IsNull() || obj.IsUnknown() {
+		return nil, diags
+	}
+
+	var model alertQuietHoursModel
+	diags.Append(obj.As(ctx, &model, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	days, d := int64Slice(ctx, model.Days)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	return &iw.QuietHours{
+		Timezone:       model.Timezone.ValueString(),
+		StartMinute:    model.StartMinute.ValueInt64(),
+		EndMinute:      model.EndMinute.ValueInt64(),
+		Days:           days,
+		UrgentOverride: stringPtr(model.UrgentOverride),
+	}, diags
+}
+
+// alertEscalationFrom reads the optional escalation block.
+func alertEscalationFrom(ctx context.Context, obj types.Object) (*iw.EscalationPolicy, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if obj.IsNull() || obj.IsUnknown() {
+		return nil, diags
+	}
+
+	var model alertEscalationModel
+	diags.Append(obj.As(ctx, &model, basetypes.ObjectAsOptions{})...)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	destinations, d := alertDestinationsFrom(ctx, model.Destination)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	return &iw.EscalationPolicy{
+		AfterMinutes: model.AfterMinutes.ValueInt64(),
+		Destinations: destinations,
+	}, diags
 }
 
 func alertConditionsFrom(ctx context.Context, list types.List) ([]iw.AlertCondition, diag.Diagnostics) {
@@ -430,9 +599,10 @@ func alertDestinationsFrom(ctx context.Context, list types.List) ([]iw.AlertDest
 // alertRoutingStateFrom maps the stored rule list back into blocks.
 //
 // `position` is dropped: it is the list's own index, so storing it would be
-// recording the same fact twice and inviting the two to disagree. Quiet hours
-// and escalation are read back as they are stored but are not surfaced as
-// attributes — see the resource documentation.
+// recording the same fact twice and inviting the two to disagree. Everything
+// else the route carries is surfaced, quiet hours and escalation included —
+// anything this resource failed to read back would be written away as null on
+// the next apply, because the write is a whole-list replacement.
 func alertRoutingStateFrom(ctx context.Context, orgID string, rules []iw.AlertRule) (alertRoutingResourceModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
@@ -465,6 +635,11 @@ func alertRoutingStateFrom(ctx context.Context, orgID string, rules []iw.AlertRu
 		destinationList, d := types.ListValueFrom(ctx, alertDestinationObjectType, destinations)
 		diags.Append(d...)
 
+		quietHours, d := alertQuietHoursTo(ctx, rule.QuietHours)
+		diags.Append(d...)
+		escalation, d := alertEscalationTo(ctx, rule.Escalation)
+		diags.Append(d...)
+
 		blocks = append(blocks, alertRuleModel{
 			ID:              types.StringValue(rule.ID),
 			Name:            types.StringValue(rule.Name),
@@ -472,6 +647,8 @@ func alertRoutingStateFrom(ctx context.Context, orgID string, rules []iw.AlertRu
 			ContinueOnMatch: types.BoolValue(rule.ContinueOnMatch),
 			Condition:       conditionList,
 			Destination:     destinationList,
+			QuietHours:      quietHours,
+			Escalation:      escalation,
 		})
 	}
 
@@ -483,4 +660,61 @@ func alertRoutingStateFrom(ctx context.Context, orgID string, rules []iw.AlertRu
 		Rule:  list,
 		Rules: types.Int64Value(int64(len(rules))),
 	}, diags
+}
+
+// alertQuietHoursTo renders a stored quiet-hours window back into its block. A
+// rule without one gets a null object, which is how an omitted block reads.
+func alertQuietHoursTo(ctx context.Context, quiet *iw.QuietHours) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if quiet == nil {
+		return types.ObjectNull(alertQuietHoursAttrTypes), diags
+	}
+
+	// `days` distinguishes nil from empty for the same reason the condition
+	// clauses do: an empty list means every day, and a configuration that spells
+	// it out must not read back as null.
+	days, d := int64ListOrNull(ctx, quiet.Days)
+	diags.Append(d...)
+	if diags.HasError() {
+		return types.ObjectNull(alertQuietHoursAttrTypes), diags
+	}
+
+	obj, d := types.ObjectValueFrom(ctx, alertQuietHoursAttrTypes, alertQuietHoursModel{
+		Timezone:       types.StringValue(quiet.Timezone),
+		StartMinute:    types.Int64Value(quiet.StartMinute),
+		EndMinute:      types.Int64Value(quiet.EndMinute),
+		Days:           days,
+		UrgentOverride: stringValue(quiet.UrgentOverride),
+	})
+	diags.Append(d...)
+	return obj, diags
+}
+
+// alertEscalationTo renders a stored escalation policy back into its block.
+func alertEscalationTo(ctx context.Context, escalation *iw.EscalationPolicy) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if escalation == nil {
+		return types.ObjectNull(alertEscalationAttrTypes), diags
+	}
+
+	destinations := make([]alertDestinationModel, 0, len(escalation.Destinations))
+	for _, dest := range escalation.Destinations {
+		destinations = append(destinations, alertDestinationModel{
+			Kind:      types.StringValue(dest.Kind),
+			ChannelID: stringValue(dest.ChannelID),
+			WebhookID: stringValue(dest.WebhookID),
+		})
+	}
+	list, d := types.ListValueFrom(ctx, alertDestinationObjectType, destinations)
+	diags.Append(d...)
+	if diags.HasError() {
+		return types.ObjectNull(alertEscalationAttrTypes), diags
+	}
+
+	obj, d := types.ObjectValueFrom(ctx, alertEscalationAttrTypes, alertEscalationModel{
+		AfterMinutes: types.Int64Value(escalation.AfterMinutes),
+		Destination:  list,
+	})
+	diags.Append(d...)
+	return obj, diags
 }

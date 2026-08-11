@@ -134,12 +134,22 @@ func (r *scheduleResource) Create(ctx context.Context, req resource.CreateReques
 	// The create route has no `paused` field — a new schedule is always active.
 	// Honouring `paused = true` therefore takes a second call, which is done
 	// here rather than left as a surprise diff on the next plan.
+	//
+	// If that second call fails the schedule still exists, and it is running:
+	// state has to record it anyway. Returning empty-handed would leave a live
+	// schedule powering somebody's machine on and off with nothing managing it,
+	// and every later apply would try to create another one. Saving state and
+	// then erroring is what the framework asks for — Terraform persists the
+	// state a failed Create returned and marks the resource tainted, so the next
+	// apply replaces it rather than duplicating it.
+	pauseErr := error(nil)
 	if plan.Paused.ValueBool() {
 		paused := true
-		created, err = r.client.UpdateSleepSchedule(ctx, created.ID, iw.SleepScheduleUpdate{Paused: &paused})
+		updated, err := r.client.UpdateSleepSchedule(ctx, created.ID, iw.SleepScheduleUpdate{Paused: &paused})
 		if err != nil {
-			resp.Diagnostics.AddError("Unable to pause the new schedule", err.Error())
-			return
+			pauseErr = err
+		} else {
+			created = updated
 		}
 	}
 
@@ -149,6 +159,15 @@ func (r *scheduleResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+
+	if pauseErr != nil {
+		resp.Diagnostics.AddError(
+			"The schedule was created but could not be paused",
+			"Schedule "+created.ID+" exists and is **running**: it will power the resource off at "+
+				created.StopTime+" and on at "+created.StartTime+".\n\n"+pauseErr.Error()+
+				"\n\nIt has been recorded in state and marked tainted, so the next apply replaces it. "+
+				"Pause or delete it in the app first if the resource must not be cycled meanwhile.")
+	}
 }
 
 func (r *scheduleResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {

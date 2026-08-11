@@ -389,3 +389,71 @@ func TestAlertRoutingRoundTripPreservesRuleIDs(t *testing.T) {
 		t.Error("an empty destination list is meaningful — it swallows matching alerts — and must survive")
 	}
 }
+
+// Quiet hours and escalation must survive a read/write round trip.
+//
+// The write is a whole-list replacement and the route normalises an omitted
+// `quietHours` to an explicit null, so a provider that read a rule without
+// carrying these two forward would silently delete a window or an escalation
+// policy configured in the app — on the very next apply, with nothing in the
+// plan to warn anybody. That is what this test exists to stop.
+func TestAlertRoutingCarriesQuietHoursAndEscalation(t *testing.T) {
+	ctx := context.Background()
+
+	state, diags := alertRoutingStateFrom(ctx, "org_1", []iw.AlertRule{
+		{
+			ID: "rule-1", Name: "Overnight hold", Enabled: true,
+			QuietHours: &iw.QuietHours{
+				Timezone:       "Europe/Berlin",
+				StartMinute:    1320, // 22:00
+				EndMinute:      420,  // 07:00, an overnight window
+				Days:           []int64{1, 2, 3, 4, 5},
+				UrgentOverride: ptr("critical"),
+			},
+			Escalation: &iw.EscalationPolicy{
+				AfterMinutes: 15,
+				Destinations: []iw.AlertDestination{{Kind: "push"}},
+			},
+		},
+		{ID: "rule-2", Name: "Neither", Enabled: true},
+	})
+	if diags.HasError() {
+		t.Fatalf("alertRoutingStateFrom: %v", diags)
+	}
+
+	rules, diags := alertRulesFrom(ctx, state.Rule)
+	if diags.HasError() {
+		t.Fatalf("alertRulesFrom: %v", diags)
+	}
+	if len(rules) != 2 {
+		t.Fatalf("expected 2 rules, got %d", len(rules))
+	}
+
+	quiet := rules[0].QuietHours
+	if quiet == nil {
+		t.Fatal("quiet hours were dropped — the next apply would delete the window")
+	}
+	if quiet.Timezone != "Europe/Berlin" || quiet.StartMinute != 1320 || quiet.EndMinute != 420 {
+		t.Errorf("quiet hours mangled: %+v", quiet)
+	}
+	if len(quiet.Days) != 5 {
+		t.Errorf("quiet-hours days lost: %v", quiet.Days)
+	}
+	if quiet.UrgentOverride == nil || *quiet.UrgentOverride != "critical" {
+		t.Errorf("urgent override lost: %v", quiet.UrgentOverride)
+	}
+
+	escalation := rules[0].Escalation
+	if escalation == nil {
+		t.Fatal("escalation was dropped — the next apply would delete the policy")
+	}
+	if escalation.AfterMinutes != 15 || len(escalation.Destinations) != 1 {
+		t.Errorf("escalation mangled: %+v", escalation)
+	}
+
+	// A rule that genuinely has neither must still send neither, or every rule
+	// would grow an empty policy the practitioner never asked for.
+	if rules[1].QuietHours != nil || rules[1].Escalation != nil {
+		t.Error("a rule with no quiet hours or escalation must send neither")
+	}
+}

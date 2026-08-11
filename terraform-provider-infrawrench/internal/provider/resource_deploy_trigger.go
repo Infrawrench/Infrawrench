@@ -122,16 +122,34 @@ func (r *deployTriggerResource) Create(ctx context.Context, req resource.CreateR
 
 	// A trigger is created enabled. Honouring `enabled = false` therefore takes a
 	// second call, done here rather than left as a surprise diff on the next plan.
+	//
+	// Same rule as infrawrench_schedule: if that call fails the trigger exists
+	// and is armed, so state must record it. Returning empty-handed would leave
+	// a live trigger redeploying on every push with nothing managing it, and
+	// every later apply would create another. Terraform persists the state a
+	// failed Create returned and taints the resource, so the next apply replaces
+	// it instead of duplicating it.
+	disableErr := error(nil)
 	if !plan.Enabled.ValueBool() {
-		created, err = r.client.SetDeployTriggerEnabled(ctx, created.ID, false)
+		updated, err := r.client.SetDeployTriggerEnabled(ctx, created.ID, false)
 		if err != nil {
-			resp.Diagnostics.AddError("Unable to disable the new deploy trigger", err.Error())
-			return
+			disableErr = err
+		} else {
+			created = updated
 		}
 	}
 
 	state := deployTriggerStateFrom(created, plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+
+	if disableErr != nil {
+		resp.Diagnostics.AddError(
+			"The deploy trigger was created but could not be disabled",
+			"Trigger "+created.ID+" exists and is **enabled**: a push to "+created.Branch+" on "+
+				created.Repo+" will deploy to "+created.Env+".\n\n"+disableErr.Error()+
+				"\n\nIt has been recorded in state and marked tainted, so the next apply replaces it. "+
+				"Disable it in the app first if a deploy must not fire meanwhile.")
+	}
 }
 
 func (r *deployTriggerResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {

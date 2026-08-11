@@ -497,6 +497,26 @@ resource "infrawrench_alert_routing" "org" {
     destination {
       kind = "push"
     }
+
+    # Hold overnight rather than dropping: a held alert is delivered when the
+    # window closes. Critical is exempt.
+    quiet_hours {
+      timezone        = "Europe/Berlin"
+      start_minute    = 1320 # 22:00
+      end_minute      = 420  # 07:00 — an overnight window
+      days            = [1, 2, 3, 4, 5]
+      urgent_override = "critical"
+    }
+
+    # Nobody acknowledged in fifteen minutes? Widen it.
+    escalation {
+      after_minutes = 15
+
+      destination {
+        kind       = "slack"
+        channel_id = infrawrench_slack_channel.platform.id
+      }
+    }
   }
 
   rule {
