@@ -23,6 +23,7 @@ import {
   type EnvironmentTemplateInput,
   type EnvironmentTemplateListResponse,
   type EnvironmentTemplateMember,
+  type MemberFailureRecord,
 } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import {
@@ -550,6 +551,62 @@ export async function markMemberLease(
   await db
     .update(environmentInstanceMembers)
     .set({ leaseId, updatedAt: new Date() })
+    .where(
+      and(
+        eq(environmentInstanceMembers.instanceId, instanceId),
+        eq(environmentInstanceMembers.memberKey, memberKey),
+      ),
+    );
+}
+
+/**
+ * Record a member failure — and, when the provider already handed a resource
+ * back, its id, in the **same** statement.
+ *
+ * Splitting these was a way to lose a running resource: if the create
+ * succeeded and the confirming write failed, a failure record without the id
+ * left teardown with a member it believed had created nothing.
+ */
+export async function markMemberFailed(
+  instanceId: string,
+  memberKey: string,
+  record: MemberFailureRecord,
+): Promise<void> {
+  await db
+    .update(environmentInstanceMembers)
+    .set({
+      status: "failed",
+      error: record.error,
+      ...(record.resourceId !== undefined
+        ? {
+            resourceId: record.resourceId,
+            externalId: record.externalId ?? null,
+            ...(record.displayName !== undefined ? { displayName: record.displayName } : {}),
+          }
+        : {}),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(environmentInstanceMembers.instanceId, instanceId),
+        eq(environmentInstanceMembers.memberKey, memberKey),
+      ),
+    );
+}
+
+/** Attach a provider-side id discovered during teardown verification. */
+export async function markMemberResourceId(
+  instanceId: string,
+  memberKey: string,
+  found: { resourceId: string; externalId: string | null },
+): Promise<void> {
+  await db
+    .update(environmentInstanceMembers)
+    .set({
+      resourceId: found.resourceId,
+      externalId: found.externalId,
+      updatedAt: new Date(),
+    })
     .where(
       and(
         eq(environmentInstanceMembers.instanceId, instanceId),

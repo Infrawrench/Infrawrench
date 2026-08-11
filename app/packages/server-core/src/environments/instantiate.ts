@@ -11,6 +11,13 @@
  * pointing at it, which is the one failure mode this feature could produce
  * that costs real money indefinitely.
  *
+ * That guarantee needs a second layer, because the confirming write can itself
+ * fail. Two things provide it: a failure record carries the created id in the
+ * **same** statement that records the failure (`buildMemberFailureRecord`), and
+ * teardown treats a member that was *attempted* but carries no id as needing a
+ * provider check (`classifyTeardownMember` → `verifyAndDeleteMember`) rather
+ * than as already handled. A missing id never means "nothing was created".
+ *
  * **Everything goes through the ordinary paths.** Creates run through the same
  * `createResource` + `upsertCreatedResource` + secret-state persistence the
  * create form uses; deletes run through the same `deleteResource`; the TTL is
@@ -21,7 +28,12 @@
  */
 import { and, eq, inArray, isNull, lte } from "drizzle-orm";
 import {
+  attemptedPositionCeiling,
   buildInstantiationPlan,
+  buildMemberFailureRecord,
+  classifyTeardownMember,
+  expectedMemberDisplayName,
+  leaseShouldBeCancelled,
   resolveMemberFields,
   resolveParameterValues,
   slugifyEnvironmentName,
@@ -35,7 +47,9 @@ import {
   type EnvironmentInstantiateInput,
   type EnvironmentTemplate,
   type EnvironmentTemplateMember,
+  type MemberTeardownOutcome,
 } from "@infrawrench/client-core";
+import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { normalizeResourceCreateResult, parseOutputRef } from "@infrawrench/plugin-base";
 import { db } from "../db/client";
 import { environmentInstances, resourceLeases, resources } from "../db/schema";
@@ -54,7 +68,9 @@ import {
   getInstanceRow,
   insertInstanceWithMembers,
   markMemberCreated,
+  markMemberFailed,
   markMemberLease,
+  markMemberResourceId,
   markMemberStatus,
   setInstanceStatus,
   type InstanceMemberRow,
@@ -182,7 +198,10 @@ export async function instantiateEnvironment(
       pluginId: step.member.pluginId,
       resourceTypeId: step.member.resourceTypeId,
       accountId: accountFor(step.member),
-      displayName: step.member.sourceName,
+      // The name the resource is expected to end up with, not the captured
+      // one: teardown verification looks a member up by this when the run
+      // failed before an id was recorded.
+      displayName: expectedMemberDisplayName(step.member, parameters, namePrefix),
     })),
   });
 
@@ -192,6 +211,14 @@ export async function instantiateEnvironment(
   for (const step of plan.steps) {
     const member = step.member;
     const accountId = accountFor(member);
+    // Held outside the try so the catch can still see a resource the provider
+    // handed back before something downstream — including the write that was
+    // meant to confirm it — threw.
+    let createdRecord: {
+      resourceId: string;
+      externalId: string | null;
+      displayName: string;
+    } | null = null;
     try {
       const resolved = resolveMemberFields(member, { parameters, created, namePrefix });
       if (resolved.problem) throw new Error(resolved.problem);
@@ -218,12 +245,15 @@ export async function instantiateEnvironment(
       const resource = outcome.resource;
 
       // Recorded first, and before anything else can throw: from here on the
-      // resource can always be found and torn down.
-      await markMemberCreated(instance.id, member.key, {
+      // resource can always be found and torn down. `createdRecord` is set
+      // *before* the write, so even a failure of this very write carries the id
+      // into the failure record rather than losing a running resource.
+      createdRecord = {
         resourceId: resource.id,
         externalId: resource.externalId ?? null,
         displayName: resource.displayName,
-      });
+      };
+      await markMemberCreated(instance.id, member.key, createdRecord);
 
       await upsertCreatedResource({
         organizationId,
@@ -280,7 +310,20 @@ export async function instantiateEnvironment(
       }
     } catch (error) {
       failure = `${member.sourceName}: ${errorMessage(error)}`;
-      await markMemberStatus(instance.id, member.key, "failed", errorMessage(error));
+      // One statement, carrying the created id when there is one. A separate
+      // "record the failure" write that dropped the id is how a successful
+      // create became an untracked, billing resource: teardown saw a member
+      // with no id and had nothing to delete.
+      await markMemberFailed(
+        instance.id,
+        member.key,
+        buildMemberFailureRecord(errorMessage(error), createdRecord),
+      ).catch((writeError: unknown) => {
+        // Even this can fail. The member row still exists at its position, and
+        // teardown verifies any attempted member that carries no id against
+        // the provider, so the resource is still reachable.
+        console.error("[environments] failed to record member failure:", writeError);
+      });
       break;
     }
   }
@@ -305,11 +348,20 @@ export async function instantiateEnvironment(
  * Delete every resource an instance created, newest first.
  *
  * Reverse creation order because a dependency has to outlive its dependents.
- * Idempotent by construction: a member with no resource id, a member already
- * marked deleted, a resource row that is already soft-deleted and a provider
- * that answers "not found" all take the same quiet success path, so re-running
- * a teardown — or running one after the lease pass already got there — is a
- * no-op rather than an error.
+ * Idempotent by construction: a member already marked deleted, a resource row
+ * that is already soft-deleted and a provider that answers "not found" all take
+ * the same quiet success path, so re-running a teardown — or running one after
+ * the lease pass already got there — is a no-op rather than an error.
+ *
+ * A member with **no** resource id is not one of those cases. It is either a
+ * member the run never reached (nothing can exist) or one it attempted and
+ * failed to record, which the provider may well be holding a resource for; the
+ * two are told apart by position, and the second is verified against the
+ * provider before anything is concluded.
+ *
+ * A member whose delete **failed** keeps its lease: the lease pass is the retry
+ * machinery, and cancelling it here is what would turn a transient provider
+ * error into a resource that bills until somebody retries by hand.
  */
 export async function tearDownEnvironment(
   organizationId: string,
@@ -326,22 +378,50 @@ export async function tearDownEnvironment(
   await setInstanceStatus(instanceId, "tearing-down");
   const members = (await getInstanceMemberRows(instanceId)).slice().reverse();
 
+  // Everything at or before this position may have reached the provider, even
+  // if the row never got an id written to it.
+  const attemptedCeiling = attemptedPositionCeiling(members);
+  const listCache = new Map<string, ResourceInstance[]>();
+
   const failures: string[] = [];
   for (const member of members) {
-    if (member.status === "deleted" || member.status === "pending" || !member.resourceId) {
-      if (member.status !== "deleted") {
-        await markMemberStatus(instanceId, member.memberKey, "deleted", null);
-      }
+    const action = classifyTeardownMember(member, attemptedCeiling);
+    if (action === "skip") continue;
+    if (action === "unattempted") {
+      // The run never reached this member, so no provider call went out and
+      // nothing can exist for it.
+      await markMemberStatus(instanceId, member.memberKey, "deleted", null);
       continue;
     }
+
+    let outcome: MemberTeardownOutcome;
+    let detail: string | null = null;
     try {
-      await deleteMemberResource(organizationId, member);
-      await markMemberStatus(instanceId, member.memberKey, "deleted", null);
+      outcome =
+        action === "delete"
+          ? await deleteMemberResource(organizationId, member)
+          : await verifyAndDeleteMember(organizationId, instanceId, member, listCache);
     } catch (error) {
-      failures.push(`${member.displayName}: ${errorMessage(error)}`);
-      await markMemberStatus(instanceId, member.memberKey, "failed", errorMessage(error));
+      outcome = "failed";
+      detail = errorMessage(error);
     }
-    await cancelMemberLease(organizationId, member);
+
+    if (outcome === "ambiguous") {
+      detail ??= `more than one resource is named "${member.displayName}" — delete it by hand`;
+    }
+
+    if (outcome === "deleted" || outcome === "already-gone") {
+      await markMemberStatus(instanceId, member.memberKey, "deleted", null);
+    } else {
+      failures.push(`${member.displayName}: ${detail ?? "could not be deleted"}`);
+      await markMemberStatus(instanceId, member.memberKey, "failed", detail);
+    }
+
+    // Only a confirmed outcome releases the lease. A failed delete keeps it, so
+    // the lease pass — which retries, defers through freezes and reports when
+    // it gives up — still owns the resource instead of it billing until a
+    // human happens to retry the teardown.
+    if (leaseShouldBeCancelled(outcome)) await cancelMemberLease(organizationId, member);
   }
 
   const now = new Date();
@@ -356,8 +436,9 @@ export async function tearDownEnvironment(
 async function deleteMemberResource(
   organizationId: string,
   member: InstanceMemberRow,
-): Promise<void> {
-  const resourceId = member.resourceId!;
+  resourceIdOverride?: string,
+): Promise<MemberTeardownOutcome> {
+  const resourceId = resourceIdOverride ?? member.resourceId!;
   const [stored] = await db
     .select({ id: resources.id, deletedAt: resources.deletedAt })
     .from(resources)
@@ -365,7 +446,7 @@ async function deleteMemberResource(
     .limit(1);
   // Already reaped — by the lease pass, by a hand delete, by a previous
   // teardown. Nothing to do, and nothing to complain about.
-  if (stored && stored.deletedAt !== null) return;
+  if (stored && stored.deletedAt !== null) return "already-gone";
 
   const ctxClient = await getOrgAccountClient(member.accountId, organizationId).catch(() => null);
   if (!ctxClient) throw new Error("That account is no longer connected");
@@ -373,10 +454,12 @@ async function deleteMemberResource(
     throw new Error(`The ${member.pluginId} plugin cannot delete ${member.resourceTypeId}`);
   }
 
+  let outcome: MemberTeardownOutcome = "deleted";
   try {
     await ctxClient.client.deleteResource(member.resourceTypeId, resourceId, member.accountId);
   } catch (error) {
     if (!looksAlreadyGone(error)) throw error;
+    outcome = "already-gone";
   }
 
   await db
@@ -392,6 +475,53 @@ async function deleteMemberResource(
     .catch((error: unknown) => {
       console.error("[environments] failed to soft-delete resource row:", error);
     });
+  return outcome;
+}
+
+/**
+ * Tear down a member whose creation was **attempted but never confirmed**.
+ *
+ * The row carries no resource id, which does not mean no resource exists — a
+ * create can return right before the write that records it fails, or the
+ * process can die mid-call. Concluding "nothing to do" from a missing id is
+ * exactly how a resource ends up running with nothing pointing at it, so ask
+ * the provider instead.
+ *
+ * The lookup is by the name the member would have been given
+ * (`expectedMemberDisplayName`, resolved at insert time), using only
+ * `listResources` — no provider-specific search. Two candidates is a refusal,
+ * not a guess: deleting the wrong resource is worse than leaving this one for a
+ * human. A failed listing is a failure, never an absence.
+ */
+async function verifyAndDeleteMember(
+  organizationId: string,
+  instanceId: string,
+  member: InstanceMemberRow,
+  listCache: Map<string, ResourceInstance[]>,
+): Promise<MemberTeardownOutcome> {
+  const cacheKey = `${member.accountId}:${member.resourceTypeId}`;
+  let listed = listCache.get(cacheKey);
+  if (!listed) {
+    const ctxClient = await getOrgAccountClient(member.accountId, organizationId).catch(() => null);
+    if (!ctxClient) throw new Error("That account is no longer connected");
+    listed = await ctxClient.client.listResources(member.resourceTypeId, member.accountId);
+    listCache.set(cacheKey, listed);
+  }
+
+  const matches = listed.filter((candidate) => candidate.displayName === member.displayName);
+  if (matches.length === 0) return "already-gone";
+  if (matches.length > 1) return "ambiguous";
+
+  const found = matches[0]!;
+  // Record what the run failed to before deleting it, so a teardown that dies
+  // here leaves the id behind rather than making the next attempt re-derive it.
+  await markMemberResourceId(instanceId, member.memberKey, {
+    resourceId: found.id,
+    externalId: found.externalId ?? null,
+  }).catch((error: unknown) => {
+    console.error("[environments] failed to record a recovered resource id:", error);
+  });
+  return deleteMemberResource(organizationId, member, found.id);
 }
 
 /**

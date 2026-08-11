@@ -3,8 +3,13 @@ import {
   ENVIRONMENT_LIMITS,
   applyChosenParameters,
   applyNamePrefix,
+  attemptedPositionCeiling,
   buildCaptureDraft,
   buildInstantiationPlan,
+  buildMemberFailureRecord,
+  classifyTeardownMember,
+  expectedMemberDisplayName,
+  leaseShouldBeCancelled,
   formatTimeRemaining,
   memberDependencies,
   normalizeEnvironmentSettings,
@@ -563,6 +568,170 @@ describe("suggestParameters / applyChosenParameters", () => {
     const draft = buildCaptureDraft({ resources, createFields });
     const applied = applyChosenParameters(draft, ["region"]);
     expect(validateTemplate({ name: "Staging", ...applied })).toBeNull();
+  });
+});
+
+describe("buildMemberFailureRecord", () => {
+  const created = { resourceId: "res-1", externalId: "i-abc", displayName: "pr-482-api" };
+
+  it("records a failure that created nothing without an id", () => {
+    expect(buildMemberFailureRecord("provider said no", null)).toEqual({
+      status: "failed",
+      error: "provider said no",
+    });
+  });
+
+  // Regression: the create succeeded and the *confirming write* is what threw.
+  // Recording the failure without the returned id lost a running resource —
+  // teardown saw a member with no id and treated it as nothing to do, so the
+  // resource billed indefinitely. The id must travel with the failure, in the
+  // same statement, so there is no second write left to lose.
+  it("carries the created resource id when the failure came after the create", () => {
+    expect(buildMemberFailureRecord("bookkeeping write failed", created)).toEqual({
+      status: "failed",
+      error: "bookkeeping write failed",
+      resourceId: "res-1",
+      externalId: "i-abc",
+      displayName: "pr-482-api",
+    });
+  });
+
+  it("keeps a null external id rather than dropping the field", () => {
+    const record = buildMemberFailureRecord("boom", { ...created, externalId: null });
+    expect(record.resourceId).toBe("res-1");
+    expect(record.externalId).toBeNull();
+  });
+});
+
+describe("attemptedPositionCeiling / classifyTeardownMember", () => {
+  const pending = (position: number) => ({ status: "pending" as const, position });
+
+  it("puts the ceiling one past the last member the run touched", () => {
+    // Instantiation stops at the first failure, so 3+ were never reached; the
+    // +1 covers the member that was in flight when a process died.
+    expect(
+      attemptedPositionCeiling([
+        { status: "created", position: 0 },
+        { status: "failed", position: 1 },
+        pending(2),
+        pending(3),
+      ]),
+    ).toBe(2);
+  });
+
+  it("is 0 when nothing was touched at all", () => {
+    expect(attemptedPositionCeiling([pending(0), pending(1)])).toBe(0);
+  });
+
+  it("skips a member already torn down", () => {
+    expect(classifyTeardownMember({ status: "deleted", resourceId: "r", position: 0 }, 2)).toBe(
+      "skip",
+    );
+  });
+
+  it("deletes a member that has a resource id", () => {
+    expect(classifyTeardownMember({ status: "created", resourceId: "r", position: 0 }, 2)).toBe(
+      "delete",
+    );
+  });
+
+  it("still deletes a failed member that got as far as an id", () => {
+    expect(classifyTeardownMember({ status: "failed", resourceId: "r", position: 1 }, 2)).toBe(
+      "delete",
+    );
+  });
+
+  // Regression: this used to be treated as handled — marked deleted without
+  // ever asking the provider. A create that succeeded and then lost its
+  // bookkeeping lands exactly here, so "handled" meant a resource nobody would
+  // ever delete.
+  it("verifies an attempted member that carries no id", () => {
+    expect(classifyTeardownMember({ status: "failed", resourceId: null, position: 1 }, 2)).toBe(
+      "verify",
+    );
+  });
+
+  it("verifies the in-flight member a dead process left pending", () => {
+    expect(classifyTeardownMember({ status: "pending", resourceId: null, position: 2 }, 2)).toBe(
+      "verify",
+    );
+  });
+
+  it("does not go asking the provider about members the run never reached", () => {
+    expect(classifyTeardownMember({ status: "pending", resourceId: null, position: 3 }, 2)).toBe(
+      "unattempted",
+    );
+  });
+});
+
+describe("leaseShouldBeCancelled", () => {
+  it("cancels the lease once the resource is confirmed gone", () => {
+    expect(leaseShouldBeCancelled("deleted")).toBe(true);
+    expect(leaseShouldBeCancelled("already-gone")).toBe(true);
+  });
+
+  // Regression: cancelling on failure removed the only retry path. The lease
+  // *is* the retry machinery — it re-attempts at expiry, defers through
+  // freezes and reports when it gives up. Cancelling it turned a transient
+  // provider error into a resource billing until a human retried by hand.
+  it("keeps the lease when the delete failed, so the lease pass can retry", () => {
+    expect(leaseShouldBeCancelled("failed")).toBe(false);
+  });
+
+  it("keeps the lease when the match was ambiguous", () => {
+    expect(leaseShouldBeCancelled("ambiguous")).toBe(false);
+  });
+});
+
+describe("expectedMemberDisplayName", () => {
+  const base = {
+    key: "api",
+    pluginId: "acme",
+    resourceTypeId: "app",
+    accountId: "a",
+    sourceName: "staging-api",
+  };
+
+  it("prefixes a literal name field", () => {
+    expect(
+      expectedMemberDisplayName(
+        { ...base, nameFieldKey: "name", fields: { name: { kind: "literal", value: "api" } } },
+        {},
+        "pr-482",
+      ),
+    ).toBe("pr-482-api");
+  });
+
+  it("resolves a parameterised name field", () => {
+    expect(
+      expectedMemberDisplayName(
+        {
+          ...base,
+          nameFieldKey: "name",
+          fields: { name: { kind: "parameter", parameter: "svc" } },
+        },
+        { svc: "worker" },
+        "pr-482",
+      ),
+    ).toBe("pr-482-worker");
+  });
+
+  it("falls back to the captured name when the plugin has no name field", () => {
+    expect(expectedMemberDisplayName({ ...base, fields: {} }, {}, "pr-482")).toBe("staging-api");
+  });
+
+  it("falls back rather than inventing a name from an unresolvable field", () => {
+    expect(
+      expectedMemberDisplayName(
+        {
+          ...base,
+          nameFieldKey: "name",
+          fields: { name: { kind: "output", member: "db", outputKey: "host" } },
+        },
+        {},
+        "pr-482",
+      ),
+    ).toBe("staging-api");
   });
 });
 

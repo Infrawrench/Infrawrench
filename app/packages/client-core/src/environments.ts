@@ -677,6 +677,130 @@ export function resolveMemberFields(
   return { fields };
 }
 
+/**
+ * The display name a member's resource is expected to end up with.
+ *
+ * Teardown needs this to find a resource whose creation **succeeded but was
+ * never confirmed** — a create that returned right before the confirming write
+ * failed. It resolves the name field the same way `resolveMemberFields` does
+ * (literal or parameter; both are known before the run starts, unlike output
+ * references) and falls back to the captured name when the plugin has no name
+ * field to prefix.
+ */
+export function expectedMemberDisplayName(
+  member: EnvironmentTemplateMember,
+  parameters: Record<string, string>,
+  namePrefix: string,
+): string {
+  const key = member.nameFieldKey;
+  if (!key) return member.sourceName;
+  const value = member.fields[key];
+  const raw =
+    value?.kind === "literal"
+      ? value.value
+      : value?.kind === "parameter"
+        ? parameters[value.parameter]
+        : undefined;
+  if (raw === undefined || raw === "") return member.sourceName;
+  return applyNamePrefix(raw, namePrefix);
+}
+
+// ---------------------------------------------------------------------------
+// Failure bookkeeping and teardown recovery
+// ---------------------------------------------------------------------------
+
+/** The row patch that records a failed member. */
+export interface MemberFailureRecord {
+  status: "failed";
+  error: string;
+  /** Present whenever the provider returned a resource before the failure. */
+  resourceId?: string;
+  externalId?: string | null;
+  displayName?: string;
+}
+
+/**
+ * Build the single write that records a member failure.
+ *
+ * When the create **succeeded** and something after it threw — including the
+ * write that was supposed to confirm the creation — the id has to travel with
+ * the failure. Recording the failure without it was a way to lose a running,
+ * billing resource: teardown would see a member with no resource id and treat
+ * it as nothing to do. One statement, so there is no second write to lose.
+ */
+export function buildMemberFailureRecord(
+  error: string,
+  created: { resourceId: string; externalId: string | null; displayName: string } | null,
+): MemberFailureRecord {
+  if (!created) return { status: "failed", error };
+  return {
+    status: "failed",
+    error,
+    resourceId: created.resourceId,
+    externalId: created.externalId,
+    displayName: created.displayName,
+  };
+}
+
+/**
+ * What teardown must do with one recorded member.
+ *
+ * - `skip` — already torn down.
+ * - `delete` — a resource id is on record; delete it.
+ * - `verify` — the member was attempted and carries **no** id, so the provider
+ *   may or may not hold a resource for it. Ask the provider before concluding
+ *   anything; treating this as "handled" is how a resource bills forever.
+ * - `unattempted` — the run never reached this member, so nothing can exist.
+ */
+export type TeardownAction = "skip" | "delete" | "verify" | "unattempted";
+
+/**
+ * The highest position the run can possibly have touched.
+ *
+ * Instantiation stops at the first failure, so every member past that point is
+ * untouched. The `+ 1` covers the member that was **in flight** when a process
+ * died: its row is still `pending`, but a provider call may have gone out.
+ */
+export function attemptedPositionCeiling(
+  members: { status: EnvironmentMemberStatus; position: number }[],
+): number {
+  let highest = -1;
+  for (const member of members) {
+    if (member.status !== "pending" && member.position > highest) highest = member.position;
+  }
+  return highest + 1;
+}
+
+export function classifyTeardownMember(
+  member: { status: EnvironmentMemberStatus; resourceId: string | null; position: number },
+  attemptedCeiling: number,
+): TeardownAction {
+  if (member.status === "deleted") return "skip";
+  if (member.resourceId) return "delete";
+  return member.position <= attemptedCeiling ? "verify" : "unattempted";
+}
+
+/**
+ * How tearing one member down ended.
+ *
+ * `ambiguous` is its own outcome because more than one candidate matched the
+ * name: deleting the wrong resource is worse than leaving this one for a human.
+ */
+export type MemberTeardownOutcome = "deleted" | "already-gone" | "failed" | "ambiguous";
+
+/**
+ * Whether the member's auto-delete lease may be cancelled.
+ *
+ * **Only a confirmed outcome cancels it.** The lease *is* the retry machinery —
+ * it re-attempts the delete at expiry, defers through change freezes and
+ * reports when it gives up. Cancelling it after a failed delete turns a
+ * transient provider error into a resource that bills until somebody
+ * remembers to retry the teardown by hand.
+ */
+export function leaseShouldBeCancelled(outcome: MemberTeardownOutcome): boolean {
+  return outcome === "deleted" || outcome === "already-gone";
+}
+
 // ---------------------------------------------------------------------------
 // Capture
 // ---------------------------------------------------------------------------
