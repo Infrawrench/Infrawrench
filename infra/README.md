@@ -122,6 +122,70 @@ and unprotected while it lasts.
 Reissues on renewal are unaffected: the record already points at this cluster,
 so HTTP-01 resolves correctly with the proxy on.
 
+## Workload hardening
+
+All three Deployments run with a restrictive `securityContext`: `runAsNonRoot`
+as uid/gid **1000** (the `node` user the runtime image already switches to, and
+the owner of `/app`), `allowPrivilegeEscalation: false`, all capabilities
+dropped, `seccompProfile: RuntimeDefault`, and `readOnlyRootFilesystem: true`.
+
+- **`readOnlyRootFilesystem` needs the `/tmp` emptyDir**, not optimism. `web`
+  genuinely writes at runtime: object-storage downloads staged by
+  `api/routes/storage.ts`, and the 0600 kubeconfigs
+  `services/kubectl-pty-session.ts` and `services/k8s-pf-proxy.ts` drop before
+  spawning `kubectl`/`k9s`. Every one of them builds its path under
+  `os.tmpdir()`, so a tmpfs at `/tmp` covers the lot. SSH session recording
+  (`server-core/src/ssh-recording/`) touches no files — it goes to the database.
+  The `/tmp` mounts carry a `sizeLimit` so a large staged download evicts the
+  pod rather than filling the node's ephemeral disk.
+- **`NPM_CONFIG_CACHE=/tmp/.npm`** is set in `infra/docker/service.Dockerfile`.
+  The container CMD is `npm run start` and npm wants a cache and log dir under
+  `$HOME/.npm`, which a read-only root denies it. npm 11 swallows both failures
+  (its own source comments the read-only case), so this is defence-in-depth
+  against that behaviour changing, not a fix for a crash.
+- **`automountServiceAccountToken: false` everywhere.** Workload Identity
+  resolves a pod's Google identity through the GKE metadata server keyed off the
+  KSA name, never the projected token, so Vertex AI (`web`) and hosted Cloud
+  Build (`github-watcher`) keep working. Nothing in the tree reads the projected
+  token or calls the in-cluster Kubernetes API — the `kubernetes` plugin talks
+  to _customer_ clusters from a user-supplied kubeconfig.
+
+### NetworkPolicy — ingress only, and not yet enforced
+
+`infra/k8s/network-policy.yaml` default-denies ingress to the three app
+workloads and re-opens exactly one path: `ingress-nginx` → `web:3000`, plus the
+node subnet for kubelet probes. `poller` and `github-watcher` expose no ports
+and keep the bare deny. The selector is an explicit label list rather than
+`podSelector: {}` because the ClickHouse StatefulSet and Keeper quorum share
+this namespace — an empty selector would sever their replication mesh.
+
+**There is deliberately no egress policy.** `web`, `poller` and
+`github-watcher` all dial arbitrary customer infrastructure by design — SSH to
+customer hosts, raw TCP to customer databases, customer Kubernetes API servers,
+~50 provider APIs, and tunnels that intentionally reach RFC1918 space behind a
+bastion. A NetworkPolicy matches CIDRs rather than names, so even the fixed SaaS
+dependencies can't be written down. The only egress rule that wouldn't break
+customer connections is `0.0.0.0/0`, which is not a control. That is the same
+conclusion the egress proxy reaches from the other side: workflow `fetch()` is
+isolated _structurally_, by running off-cluster on a Cloudflare Worker, rather
+than by a policy in the pod.
+
+**Enforcement is off.** The cluster in `infra/terraform/main.tf` sets neither
+`datapath_provider = "ADVANCED_DATAPATH"` nor `network_policy { enabled = true }`,
+so GKE accepts these objects and enforces nothing. Turning it on is an operator
+decision with real disruption cost:
+
+- **Dataplane V2** (`datapath_provider = "ADVANCED_DATAPATH"`) is the better
+  long-term answer, but it cannot be enabled in place on an existing cluster —
+  it means recreating the cluster, and `deletion_protection = true` is set.
+- **The Calico addon** (`network_policy { enabled = true }` plus
+  `addons_config.network_policy_config`) can be enabled on the running cluster,
+  at the cost of a rolling node-pool recreation.
+
+Verify enforcement is live before trusting the policy — apply it, then confirm a
+connection that _should_ be blocked actually is. A NetworkPolicy that is present
+but inert is worse than none, because it reads as protection.
+
 ## Day-2 notes
 
 - **Deploys are push-to-main.** Every deploy is a full image rebuild pinned to

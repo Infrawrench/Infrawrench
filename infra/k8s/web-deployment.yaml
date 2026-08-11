@@ -25,9 +25,29 @@ spec:
       # (see infra/terraform/vertex.tf) so chat can call Gemini with ADC and no
       # API key. Terraform owns this service account object.
       serviceAccountName: web
+      # Workload Identity resolves the pod's Google identity through the GKE
+      # metadata server, keyed off the KSA name above — it never reads the
+      # projected token. Nothing in the tree touches the in-cluster Kubernetes
+      # API either (the kubernetes plugin talks to *customer* clusters with a
+      # user-supplied kubeconfig), so the token is pure blast radius. Vertex AI
+      # keeps working with this off.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # The `node` user baked into the runtime image, which also owns /app.
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: web
           image: REGION-docker.pkg.dev/PROJECT_ID/infrawrench/web:bootstrap
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           ports:
             - name: http
               containerPort: 3000
@@ -55,6 +75,34 @@ spec:
               cpu: 250m
               memory: 512Mi
             limits:
+              # No CPU limit on purpose. This pod multiplexes long-lived
+              # interactive sessions — SSH terminals, SQL editors, the k9s and
+              # kubectl PTYs — where a CFS quota shows up directly as keystroke
+              # latency: once the pod exhausts its slice it is throttled for the
+              # rest of the 100ms period regardless of how idle the node is. The
+              # CPU *request* already gives it a weighted share under
+              # contention, which is the protection that matters, and the node
+              # pool autoscales. Memory is incompressible, so that limit stays.
               memory: 1Gi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # Read-only root, so the paths that are genuinely written at runtime get
+        # a scratch volume instead of dropping the flag: object-storage
+        # downloads staged by api/routes/storage.ts, and the 0600 kubeconfigs
+        # that services/kubectl-pty-session.ts and services/k8s-pf-proxy.ts
+        # write before spawning kubectl/k9s. All of them build paths under
+        # os.tmpdir().
+        #
+        # Node-disk backed, deliberately not `medium: Memory` — a memory-backed
+        # emptyDir counts against the container's memory limit, so a large
+        # staged download would OOM-kill the pod at the 1Gi ceiling above.
+        # sizeLimit is the backstop instead: exceed it and this pod is evicted,
+        # rather than the node's ephemeral disk filling and taking its
+        # neighbours with it.
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
       # Give in-flight requests and WS sessions a moment to drain on rollout.
       terminationGracePeriodSeconds: 60
