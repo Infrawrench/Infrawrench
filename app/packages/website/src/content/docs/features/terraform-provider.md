@@ -86,6 +86,17 @@ Beyond cost, each area uses the permission the matching page in the app uses —
 
 Two of those need care. Alert routing, Slack, Teams and the digest have **no separate read permission** — their GET is gated on `org:settings:write` too, so a read-only key cannot even refresh them. And an account needs three: `accounts:write` to connect, `secrets:write` to rotate its credentials, `accounts:delete` to disconnect.
 
+### Two resources need a signed-in credential
+
+An API key reaches everything in the provider except two things, whatever scopes you give it:
+
+| Resource              | With an API key        | Why                                                                                 |
+| --------------------- | ---------------------- | ----------------------------------------------------------------------------------- |
+| `infrawrench_api_key` | Closed entirely        | A key that can mint keys can mint a longer-lived one and outlive its own revocation |
+| `infrawrench_role`    | Readable, not writable | A key shouldn't manufacture durable authority for other principals                  |
+
+If you manage either, keep them in a separate Terraform root that a person applies with a WorkOS access token — which is the separation the restriction is arguing for anyway. The provider recognises this particular 403 and tells you which resource is affected, rather than leaving you staring at a permission error that isn't about permissions.
+
 <insert [The API keys page under Settings with the scope checkboxes visible, showing a key being created with costs:read and costs:write selected] here>
 
 ## A worked example

@@ -1,0 +1,84 @@
+# Release build for the Terraform Registry.
+#
+# This file runs in the *satellite* repository (Infrawrench/terraform-provider-
+# infrawrench), not here — the monorepo mirrors this directory there and pushes
+# a tag, and the satellite's own release workflow invokes GoReleaser. It lives
+# here because this is where the provider's source lives, and a build config
+# that drifts from the code it builds is worse than no config.
+#
+# The Registry's ingestion is strict about names. It looks for
+# `terraform-provider-{NAME}_{VERSION}_{OS}_{ARCH}.zip`, a `_SHA256SUMS` file,
+# a detached `_SHA256SUMS.sig`, and `{NAME}_{VERSION}_manifest.json`. Every
+# `name_template` below exists to produce exactly those strings — none of it is
+# stylistic, and a "tidier" template silently produces a release the Registry
+# ignores.
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      # A provider is executed by Terraform as a plugin subprocess on whatever
+      # machine runs the plan. Static linking is what makes one artifact work
+      # across the glibc/musl split.
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      # main.version is what the provider reports to Terraform and stamps into
+      # its User-Agent, so a bug report names a build rather than "dev".
+      - "-s -w -X main.version={{.Version}}"
+    goos:
+      - darwin
+      - freebsd
+      - linux
+      - windows
+    goarch:
+      - "386"
+      - amd64
+      - arm
+      - arm64
+    ignore:
+      # Combinations Terraform does not ship for, and nobody can run.
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: arm
+    binary: "{{ .ProjectName }}_v{{ .Version }}"
+
+archives:
+  - formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
+  algorithm: sha256
+
+signs:
+  - artifacts: checksum
+    args:
+      # The Registry verifies this detached signature against the public key
+      # registered with the namespace, which is how it knows a release came
+      # from us. GPG_FINGERPRINT selects the key; the passphrase arrives on
+      # stdin so it never reaches the process table.
+      - "--batch"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+
+release:
+  extra_files:
+    - glob: terraform-registry-manifest.json
+      # Renamed on the way out: the file is committed under a fixed name so the
+      # repository reads clearly, and published under the versioned one the
+      # Registry looks for. ProjectName resolves to the repository name, which
+      # is why the satellite has to be called terraform-provider-infrawrench.
+      name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
+
+changelog:
+  disable: true

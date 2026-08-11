@@ -1,0 +1,216 @@
+# Mirror the Terraform provider to its satellite repository and tag a release.
+#
+# Shape: the same one the Go, Swift and PHP SDKs use in publish-sdks.yml. The
+# Terraform Registry, like Go modules and SwiftPM, resolves straight to a Git
+# URL — it requires a dedicated public repository named `terraform-provider-
+# {NAME}` and reads releases from its tags. A monorepo subdirectory cannot be
+# published, so the provider is developed here and mirrored there.
+#
+# Direction of truth: the monorepo. The satellite's tree is replaced wholesale
+# on every release, workflows included, so nothing there is hand-maintained and
+# a file deleted here disappears there.
+#
+# Gate: publishing happens when the version changes. `VERSION` in the provider
+# directory is the single source, and the tag `terraform-provider-v<version>`
+# in *this* repository is the ledger — so a re-run on an unchanged version is a
+# no-op, and a re-run after a partial failure resumes rather than double
+# publishing.
+#
+# What this workflow does NOT do: build binaries. The satellite's own release
+# workflow runs GoReleaser when it sees the tag, because the artifacts have to
+# be attached to a release in the repository the Registry is watching.
+name: Publish Terraform provider
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "terraform-provider-infrawrench/**"
+      - ".github/workflows/publish-terraform-provider.yml"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Mirror even if this version was already released"
+        type: boolean
+        default: false
+
+# Not cancel-safe: a half-cancelled run can leave the satellite's tree pushed
+# and its tag missing, which reads as "released" to nobody and as "changed" to
+# the next run.
+concurrency:
+  group: publish-terraform-provider
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # The repository name is load-bearing twice over: the Registry derives the
+  # provider name from it, and `registry.terraform.io/Infrawrench/infrawrench`
+  # in main.go must agree with the namespace that owns it.
+  PROVIDER_REPO: terraform-provider-infrawrench
+
+jobs:
+  gate:
+    name: Decide whether to publish
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.gate.outputs.version }}
+      publish: ${{ steps.gate.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Tags are the publish ledger; a shallow clone cannot see them.
+          fetch-depth: 0
+
+      - id: gate
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < terraform-provider-infrawrench/VERSION)"
+          if [ -z "$VERSION" ]; then
+            echo "::error::terraform-provider-infrawrench/VERSION is empty."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ inputs.force }}" = "true" ]; then
+            echo "::notice::Forced: publishing v$VERSION regardless of the ledger."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          elif git rev-parse -q --verify "refs/tags/terraform-provider-v$VERSION" >/dev/null; then
+            echo "::notice::v$VERSION is already released; nothing to do."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    name: Mirror and tag
+    needs: gate
+    if: needs.gate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      # Writes the ledger tag at the end.
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: terraform-provider-infrawrench/go.mod
+          cache-dependency-path: terraform-provider-infrawrench/go.sum
+
+      # Verify before mirroring. terraform-provider.yml runs on the same push,
+      # but nothing guarantees it finished — and shipping a version whose tests
+      # were never run against these exact bytes is the failure this exists to
+      # prevent.
+      - name: Verify
+        working-directory: terraform-provider-infrawrench
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::Not gofmt'd: $unformatted"
+            exit 1
+          fi
+          go build ./...
+          go vet ./...
+          go test ./... -count=1
+
+      # OIDC cannot grant write access to a different repository, so a stored
+      # credential is unavoidable here. Same GitHub App the SDK satellites use:
+      # installation-scoped and expires in an hour. The app's installation must
+      # include this repository.
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.SDK_PUBLISHER_APP_ID }}
+          private-key: ${{ secrets.SDK_PUBLISHER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ env.PROVIDER_REPO }}
+
+      - name: Mirror and tag
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ env.PROVIDER_REPO }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git" satellite
+          cd satellite
+
+          # Ask the remote whether this version is already tagged, rather than
+          # the clone. A depth-one clone carries only the tags reachable from
+          # the tip it fetched, so a tag from an earlier release — exactly the
+          # case a forced re-run hits — reads as absent locally, and the run
+          # would push the tree and then die on a tag that already exists.
+          RELEASED="$(git ls-remote origin "refs/tags/v${VERSION}")"
+
+          # Replace the tree wholesale — the satellite mirrors this directory,
+          # so a file dropped here must disappear there too. `.git` is the only
+          # thing that survives, so anything the satellite needs to keep across
+          # releases has to be added to this exclusion list.
+          find . -mindepth 1 -maxdepth 1 -not -name .git -exec rm -rf {} +
+          cp -R "../terraform-provider-infrawrench/." .
+
+          # The ledger lives in the monorepo, not here.
+          rm -f VERSION
+
+          git config user.name "infrawrench-sdk-bot"
+          git config user.email "astrid@infrawrench.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::notice::${OWNER}/${REPO} already matches v${VERSION}."
+          else
+            # Refuse before touching the satellite. A released tag is the exact
+            # bytes the Registry ingested and is never moved, so new content
+            # under an already-released version is a version bump, not a force.
+            if [ -n "$RELEASED" ]; then
+              echo "::error::${OWNER}/${REPO} is already tagged v${VERSION}, and the mirrored tree differs from it. A released tag is never moved. Bump terraform-provider-infrawrench/VERSION and re-run."
+              exit 1
+            fi
+            git commit -m "Release v${VERSION}
+
+          Mirrored from the Infrawrench monorepo. Do not edit here — changes are
+          overwritten on the next release. See
+          https://github.com/${{ github.repository }}/tree/main/terraform-provider-infrawrench."
+            git push origin HEAD
+          fi
+
+          # The tag is what starts the satellite's own release workflow, which
+          # runs GoReleaser and attaches the signed artifacts the Registry
+          # ingests.
+          if [ -n "$RELEASED" ]; then
+            echo "::notice::${OWNER}/${REPO} is already tagged v${VERSION}."
+          else
+            git tag -a "v${VERSION}" -m "v${VERSION}"
+            git push origin "v${VERSION}"
+          fi
+
+      # Written only after the satellite has the tree and the tag, so the
+      # ledger means "the release was handed off" — which is what the gate
+      # reads back.
+      - name: Record the release
+        run: |
+          set -euo pipefail
+          V="${{ needs.gate.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git rev-parse -q --verify "refs/tags/terraform-provider-v$V" >/dev/null; then
+            echo "::notice::terraform-provider-v$V already recorded."
+          else
+            git tag -a "terraform-provider-v$V" -m "Terraform provider released as v$V"
+            git push origin "terraform-provider-v$V"
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "### Terraform provider v${{ needs.gate.outputs.version }}"
+            echo
+            echo "Mirrored to \`${{ github.repository_owner }}/${{ env.PROVIDER_REPO }}\` and tagged."
+            echo "GoReleaser runs there; the Registry ingests the release once its artifacts are signed."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -28,7 +28,7 @@ type APIError struct {
 	// Body is the raw response, for the cases the envelope did not cover.
 	Body string
 	// Hint is provider-side advice appended to the diagnostic, e.g. the
-	// API-key auth caveat on a 401.
+	// explanation for a 403 on a route closed to API keys.
 	Hint string
 }
 
@@ -103,15 +103,54 @@ func AsAPIError(err error) (*APIError, bool) {
 	return apiErr, ok
 }
 
-// apiKeyAuthHint explains the one failure mode a user cannot debug from the
-// error text alone: Infrawrench API keys are rejected by the org-scoped API
-// tree, which authenticates Bearer tokens as WorkOS access tokens only. A key
-// that is valid everywhere else still 401s here.
-const apiKeyAuthHint = "The configured api_key starts with \"iwk_\". The org-scoped " +
-	"Infrawrench API (/api/org/{org_id}/…) currently authenticates Bearer tokens as WorkOS " +
-	"access tokens, so an Infrawrench API key is rejected with 401 on these routes even when " +
-	"the key is valid and correctly scoped. Until the server accepts API keys on this tree, " +
-	"configure the provider with a WorkOS access token instead."
+// apiKeyDeniedHint explains a 403 that is about the *kind* of credential rather
+// than its scopes, which is the one authorization failure the server's message
+// alone does not let you act on.
+//
+// The org tree accepts `iwk_` API keys, but a short deny-list closes a few
+// paths to them whatever scopes they hold — minting credentials and granting
+// authority to other principals are acts a person performs, and a key that can
+// mint a longer-lived key outlives its own revocation. Two of this provider's
+// resources sit behind that list, so a practitioner running Terraform with an
+// API key meets it as a 403 on a resource that works perfectly well for a
+// signed-in user.
+const apiKeyDeniedHint = "The configured api_key starts with \"iwk_\", and this route is " +
+	"closed to API keys whatever scopes they hold. infrawrench_api_key is closed entirely " +
+	"(a key that can mint keys can outlive its own revocation) and infrawrench_role is " +
+	"closed to writes (a key should not manufacture authority for other principals); both " +
+	"remain readable. Manage those two from the web UI, or run the provider with a WorkOS " +
+	"access token."
+
+// apiKeyUnauthorizedHint covers the 401 case. An API key reaching this is a
+// key problem — revoked, expired, past its hash sunset, or aimed at an org its
+// owner has left — rather than the categorical rejection it used to be.
+const apiKeyUnauthorizedHint = "The configured api_key starts with \"iwk_\". The org-scoped " +
+	"API does accept API keys, so a 401 here means the key itself was refused: revoked, " +
+	"expired, past its legacy-hash sunset, or owned by somebody who is no longer a member of " +
+	"this organization. Check it on Settings → API keys."
+
+// The two 403s an API key can meet, told apart by the message the server wrote.
+//
+// Every deny-list rule phrases itself as "API keys cannot …" (the server's
+// auth/api-key-route-policy.ts), while a key presented against an organization
+// it was not minted in is refused with its own sentence. Matching "API key"
+// anywhere in the text catches both, and the two have opposite fixes: one says
+// change the credential, the other says the credential is fine and the
+// configured organization is not.
+const (
+	apiKeyDenialMessage   = "API keys cannot"
+	apiKeyWrongOrgMessage = "API key belongs to a different organization"
+)
+
+// apiKeyWrongOrgHint covers org pinning. There is no cross-org key, so nothing
+// about the credential can fix this one — naming the organization the provider
+// is configured for is what makes the mismatch visible.
+func apiKeyWrongOrgHint(orgID string) string {
+	return fmt.Sprintf("The configured api_key was minted in a different organization, and a key "+
+		"is pinned to the organization it was minted in. Point organization_id (or "+
+		"INFRAWRENCH_ORG_ID) at the organization that key belongs to, or configure a key minted "+
+		"in %s. This is not a scope or deny-list failure: the key itself is fine.", orgID)
+}
 
 func (c *Client) newAPIError(method, path string, status int, payload []byte) error {
 	apiErr := &APIError{
@@ -139,8 +178,22 @@ func (c *Client) newAPIError(method, path string, status int, payload []byte) er
 		apiErr.Message = http.StatusText(status)
 	}
 
-	if status == http.StatusUnauthorized && c.TokenIsAPIKey() {
-		apiErr.Hint = apiKeyAuthHint
+	if c.TokenIsAPIKey() {
+		switch status {
+		case http.StatusUnauthorized:
+			apiErr.Hint = apiKeyUnauthorizedHint
+		case http.StatusForbidden:
+			// Only when the server said this is about the credential's kind. A
+			// plain scope failure is already self-explanatory, and pasting the
+			// deny-list under it would send somebody looking for the wrong
+			// cause.
+			switch {
+			case strings.Contains(apiErr.Message, apiKeyWrongOrgMessage):
+				apiErr.Hint = apiKeyWrongOrgHint(c.orgID)
+			case strings.Contains(apiErr.Message, apiKeyDenialMessage):
+				apiErr.Hint = apiKeyDeniedHint
+			}
+		}
 	}
 
 	return apiErr

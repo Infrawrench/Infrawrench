@@ -49,7 +49,11 @@ func (r *apiKeyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"output.\n\n" +
 			"Every attribute forces replacement, because the API has no update: changing a key's name or " +
 			"its scopes means minting a new key and revoking the old one, and Terraform doing that visibly " +
-			"in a plan is better than a diff the API would refuse.",
+			"in a plan is better than a diff the API would refuse.\n\n" +
+			"**This resource cannot be managed with an API key.** The route is closed to `iwk_` " +
+			"credentials whatever scopes they hold — a key that can mint keys can mint a longer-lived one " +
+			"and outlive its own revocation, which turns \"revoke that key\" from a decision into a race. " +
+			"Run the root that manages keys with a WorkOS access token.",
 		Attributes: map[string]schema.Attribute{
 			"id": computedIDAttribute("Server-assigned key id. `terraform import` works, but see `key` — an " +
 				"imported key's secret is not recoverable."),
