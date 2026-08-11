@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.9.0",
+    "version": "1.10.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -63,6 +63,10 @@
     {
       "name": "Commitments",
       "description": "Reserved instances, savings plans and committed-use discounts: the inventory of what was purchased, how much of the usage bill it covers (reported as a range — there is no single honest denominator), utilization measured only over days with collected cost data, and a planner that recommends commitment sizes at the p10 floor of uncovered spend. Read-only: nothing here ever purchases."
+    },
+    {
+      "name": "Network flows",
+      "description": "Priced source→destination attribution of egress and cross-zone traffic — which two things are talking, across which billing boundary, and what that costs. It exists because every cost dimension describes one side of a transfer while a network charge describes a pair, so the total is visible in the cost surface and the cause is not. Everything here is an estimate: flow logs sample, and prices are published list rates with no free tier, volume tier or negotiated discount applied. Collection is off until an organization enables it, because the queries are billed to the customer's own cloud account."
     },
     {
       "name": "Cost reports",
@@ -3580,6 +3584,46 @@
               "type": "string"
             },
             "description": "Root-cause hints computed when the anomaly fired: human-readable facts from the change timeline and audit log for the anomalous day and the day before (e.g. \"12 gce-instance resources appeared\", a workflow run, a lifted change freeze), ranked by likely relevance and capped at three. Empty when nothing notable happened in the window or the anomaly predates hint collection."
+          },
+          "acknowledgement": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "explanation": {
+                "type": "string",
+                "description": "What somebody established this finding was. Also the annotation's text."
+              },
+              "acknowledgedAt": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the current explanation was recorded — restamped by a correction."
+              },
+              "acknowledgedByUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "annotationId": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "The cost annotation this created, drawn on every chart covering the anomalous day. Null once that note has been deleted — which removes the marker, never the acknowledgement: the finding stays explained.",
+                "example": "00000000-0000-0000-0000-000000000000"
+              }
+            },
+            "required": [
+              "explanation",
+              "acknowledgedAt",
+              "acknowledgedByUserId",
+              "annotationId"
+            ],
+            "additionalProperties": false,
+            "description": "Present once somebody has explained this finding, null while it is still an open question. Acknowledging does not suppress detection — the same key spiking again on a later day is a new anomaly and fires as normal."
           }
         },
         "required": [
@@ -3594,7 +3638,8 @@
           "thresholdCents",
           "detectedAt",
           "notifiedAt",
-          "hints"
+          "hints",
+          "acknowledgement"
         ],
         "additionalProperties": false
       },
@@ -4745,6 +4790,15 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "costAnomalyId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The detected cost anomaly this note was written to explain (see POST /costs/anomalies/{anomalyId}/acknowledge), or null for a note written by hand. The reverse of the anomaly's own `acknowledgement.annotationId`, resolved from that same single link rather than stored twice.",
+            "example": "00000000-0000-0000-0000-000000000000"
           }
         },
         "required": [
@@ -4755,7 +4809,8 @@
           "costReportId",
           "createdByUserId",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "costAnomalyId"
         ],
         "additionalProperties": false
       },
@@ -17704,6 +17759,456 @@
         ],
         "additionalProperties": false
       },
+      "NetworkFlowScopeSummary": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "intra_zone",
+              "cross_zone",
+              "cross_region",
+              "internet_egress",
+              "internet_ingress",
+              "provider_service",
+              "nat_gateway",
+              "private_interconnect",
+              "unknown"
+            ],
+            "description": "Which billing boundary the traffic crossed. `unknown` means the provider's record did not determine one — it is priced at zero and labelled rather than folded into a neighbouring boundary."
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "egress",
+              "ingress"
+            ]
+          },
+          "bytes": {
+            "type": "number"
+          },
+          "estimatedCost": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "crossedZone": {
+            "type": "boolean"
+          },
+          "crossedRegion": {
+            "type": "boolean"
+          },
+          "leftCloud": {
+            "type": "boolean"
+          },
+          "unattributedBytes": {
+            "type": "number",
+            "description": "Bytes inside `bytes` whose endpoints could not be tied to a workload. A subset, not an addition — nothing here has been apportioned across the attributed rows."
+          },
+          "truncatedBytes": {
+            "type": "number",
+            "description": "Bytes inside `bytes` that fell below the stored top-N pair cap, computed by subtraction against the provider's exact totals rather than estimated."
+          }
+        },
+        "required": [
+          "scope",
+          "direction",
+          "bytes",
+          "estimatedCost",
+          "currency",
+          "crossedZone",
+          "crossedRegion",
+          "leftCloud",
+          "unattributedBytes",
+          "truncatedBytes"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowEndpoint": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "Stable endpoint identity — a provider resource id where one could be resolved, otherwise a class token (`internet`, `aws:s3`, `infrawrench:unattributed`). Never a raw IP address: addresses churn, so the same workload would be a different row every day."
+          },
+          "label": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string",
+            "description": "Set when `ref` is a resource this organization syncs, so the row can link out."
+          }
+        },
+        "required": [
+          "ref",
+          "label",
+          "zone",
+          "region",
+          "service",
+          "resourceTypeId"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowPair": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/NetworkFlowEndpoint"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/NetworkFlowEndpoint"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "intra_zone",
+              "cross_zone",
+              "cross_region",
+              "internet_egress",
+              "internet_ingress",
+              "provider_service",
+              "nat_gateway",
+              "private_interconnect",
+              "unknown"
+            ],
+            "description": "Which billing boundary the traffic crossed. `unknown` means the provider's record did not determine one — it is priced at zero and labelled rather than folded into a neighbouring boundary."
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "egress",
+              "ingress"
+            ]
+          },
+          "attribution": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "unattributed"
+            ]
+          },
+          "bytes": {
+            "type": "number"
+          },
+          "packets": {
+            "type": "number"
+          },
+          "estimatedCost": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "days": {
+            "type": "integer",
+            "description": "Days in the range this pair appeared on."
+          }
+        },
+        "required": [
+          "source",
+          "destination",
+          "scope",
+          "direction",
+          "attribution",
+          "bytes",
+          "packets",
+          "estimatedCost",
+          "currency",
+          "accountId",
+          "pluginId",
+          "days"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowSource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "description": "What the flow log is attached to — a VPC id, a network."
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "destinationType": {
+            "type": "string"
+          },
+          "usable": {
+            "type": "boolean"
+          },
+          "unusableReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the source cannot be read, in terms that name the fix."
+          },
+          "helpUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "target",
+          "region",
+          "destinationType",
+          "usable",
+          "unusableReason",
+          "helpUrl"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowAccountStatus": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "supportsFlows": {
+            "type": "boolean",
+            "description": "False when the account's provider has no flow source we can read. Such accounts are listed and excluded from the totals rather than contributing zero bytes — zero would be a claim about their network, this is a statement about our coverage."
+          },
+          "collectedThrough": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastPolledAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failureCount": {
+            "type": "integer"
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastErrorHelpUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowSource"
+            }
+          },
+          "lastQueryBytesScanned": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Log data the provider billed this account for the last collection's queries."
+          }
+        },
+        "required": [
+          "accountId",
+          "pluginId",
+          "displayName",
+          "supportsFlows",
+          "collectedThrough",
+          "lastPolledAt",
+          "failureCount",
+          "lastError",
+          "lastErrorHelpUrl",
+          "sources",
+          "lastQueryBytesScanned"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowRateCard": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "asOf": {
+            "type": "string",
+            "description": "Date the rates were last checked against the provider's pricing page."
+          },
+          "perGb": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "queriesBillable": {
+            "type": "boolean",
+            "description": "True when collecting flows runs queries the provider bills to your cloud account."
+          },
+          "sampled": {
+            "type": "boolean",
+            "description": "True when the flow source samples rather than recording all flows."
+          }
+        },
+        "required": [
+          "pluginId",
+          "currency",
+          "asOf",
+          "perGb",
+          "queriesBillable",
+          "sampled"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowFeed": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "initialLookbackDays": {
+            "type": "integer"
+          },
+          "estimated": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "Always true. Flow bytes come from logs that sample or drop under load and are priced at published list rates with no free tier, no volume tier and no negotiated discount modelled — the ranking is sound, the absolute figure will not reconcile to the invoice."
+          },
+          "range": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "additionalProperties": false
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowScopeSummary"
+            }
+          },
+          "topFlows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowPair"
+            }
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowAccountStatus"
+            }
+          },
+          "rateCards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NetworkFlowRateCard"
+            }
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "bytes": {
+                "type": "number"
+              },
+              "estimatedCost": {
+                "type": "number"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "unattributedBytes": {
+                "type": "number"
+              },
+              "truncatedBytes": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "bytes",
+              "estimatedCost",
+              "currency",
+              "unattributedBytes",
+              "truncatedBytes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "enabled",
+          "initialLookbackDays",
+          "estimated",
+          "range",
+          "scopes",
+          "topFlows",
+          "accounts",
+          "rateCards",
+          "totals"
+        ],
+        "additionalProperties": false
+      },
+      "NetworkFlowSettings": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "initialLookbackDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          }
+        },
+        "required": [
+          "enabled",
+          "initialLookbackDays"
+        ],
+        "additionalProperties": false
+      },
       "SyntheticProbe": {
         "type": "object",
         "properties": {
@@ -27397,6 +27902,100 @@
         },
         "operationId": "getOrgOrgIdCostsAnomalies",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/costs/anomalies/{anomalyId}/acknowledge": {
+      "post": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Explain a detected cost anomaly",
+        "description": "Record what a finding actually was, and publish that sentence as a cost annotation on **every** chart covering the anomalous day — the point being that 'we migrated the fleet' is not a fact about whichever report somebody happened to open. The note's date (the anomalous day) and its org-wide scope are derived from the anomaly and are not the caller's to choose.\n\nThe reply is the updated anomaly, carrying `acknowledgement` with the id of the note it created. Sending it again replaces the sentence and rewords that note rather than filing a second one; it will not recreate a note that has since been deleted, since deleting a note is a deliberate act and the finding stays explained without it.\n\nThis does not suppress detection. If the same provider or service spikes again on a later day, that is a new anomaly and it is detected and alerted on as normal.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "anomalyId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "explanation": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "description": "One sentence on what caused the spend. Becomes the annotation's text, so the annotation's 500-character ceiling applies."
+                  }
+                },
+                "required": [
+                  "explanation"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The acknowledged anomaly",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostAnomaly"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostsAnomaliesAnomalyIdAcknowledge"
       }
     },
     "/api/org/{orgId}/costs/anomaly-settings": {
@@ -41161,6 +41760,217 @@
         },
         "operationId": "getOrgOrgIdCommitments",
         "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/network-flows": {
+      "get": {
+        "tags": [
+          "Network flows"
+        ],
+        "summary": "Priced source→destination network flow attribution",
+        "description": "Which two things are talking, across which billing boundary, and what that costs. Answers the question the cost dimensions structurally cannot: every cost dimension is about one side of a transfer, and a network charge is about a pair.\n\nAll figures are **estimates** and the `estimated` field says so unconditionally. Bytes come from the provider's flow logs (which sample, or drop records under capacity pressure) and are priced at published list rates with no free tier, no volume tier and no negotiated discount applied. Use the ranking; do not reconcile the total against an invoice line.\n\nAccounts whose provider has no readable flow source appear in `accounts` with `supportsFlows: false` and contribute nothing to the totals — never zero bytes.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Inclusive start day. Defaults to 13 days ago."
+            },
+            "required": false,
+            "description": "Inclusive start day. Defaults to 13 days ago.",
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Inclusive end day. Defaults to today."
+            },
+            "required": false,
+            "description": "Inclusive end day. Defaults to today.",
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "intra_zone",
+                "cross_zone",
+                "cross_region",
+                "internet_egress",
+                "internet_ingress",
+                "provider_service",
+                "nat_gateway",
+                "private_interconnect",
+                "unknown"
+              ],
+              "description": "Narrow to one billing boundary."
+            },
+            "required": false,
+            "description": "Narrow to one billing boundary.",
+            "name": "scope",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Narrow to one connected account."
+            },
+            "required": false,
+            "description": "Narrow to one connected account.",
+            "name": "accountId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "description": "Pairs to return in `topFlows`, largest cost first. Defaults to 50."
+            },
+            "required": false,
+            "description": "Pairs to return in `topFlows`, largest cost first. Defaults to 50.",
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Flow attribution for the range",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkFlowFeed"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdNetworkFlows",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/network-flows/settings": {
+      "get": {
+        "tags": [
+          "Network flows"
+        ],
+        "summary": "Read the network flow collection switch",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkFlowSettings"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdNetworkFlowsSettings",
+        "x-required-permission": "costs:read",
+        "description": "_Requires permission: `costs:read`._"
+      },
+      "put": {
+        "tags": [
+          "Network flows"
+        ],
+        "summary": "Turn network flow collection on or off",
+        "description": "Collection is **off by default**. Enabling it authorizes Infrawrench to run daily queries against the provider's log store — and on AWS those queries are billed to your own cloud account per GB of log data scanned, every day, until you turn them off. That is why the write is governed by `org:settings:write` rather than `costs:write`, and why it is audit-logged.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkFlowSettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkFlowSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdNetworkFlowsSettings",
+        "x-required-permission": "org:settings:write"
       }
     },
     "/api/org/{orgId}/probes": {

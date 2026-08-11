@@ -2430,6 +2430,40 @@ Coverage was inert on ship: no collector stamped `commitmentId`, so it honestly 
 
 **Nested cost centres**: `parent_id` on the existing table rather than a second "segment" noun, so there is one allocation model and one rule list. `totals` keeps its exact old meaning (directly-allocated spend) and `subtreeTotals` is new, so a consumer summing centres still gets the org total and cannot be made to double count. The `multiIf` still resolves a row to one centre in one scan; the tree is assembled in application code afterwards.
 
+## Network flow attribution
+
+Egress and cross-zone transfer are billed as a total with no cause attached. The answer is a **pair** — who talked to what, across which boundary — which no existing cost dimension expresses.
+
+**Raw flows never move.** The `GROUP BY` runs inside the provider's log query service; only the grouped result crosses the wire. A second low-cardinality totals query exists so the truncated tail is an exact subtraction rather than an estimate — that second scan is the price of having a denominator. Addresses, ports and protocols are resolved to resource refs _before_ storage and never persisted: a churning address would mint a new row per day for the same workload, which is the cardinality bomb here.
+
+**`network_flow_daily` is its own table, deliberately not `cost_daily`.** Merging would stack a derived second opinion of data transfer on top of the provider's own billed `DataTransfer` line and double-count it into every budget, anomaly, export and invoice. The key is `(scope, direction, attribution, src/dst ref, zone, service)` folded into a `pair_hash`, capped at ~518 rows per account-day, TTL 90 days — this explains a bill rather than being a record of one.
+
+Collection is **forward-only** behind a watermark: flow logs do not restate, so re-querying a settled day charges the customer again for a byte-identical answer. A day missed during an outage stays missed, and that is stated rather than papered over.
+
+Amounts are **unconditionally `estimated`** with no off switch, because no configuration makes them reconcile: the free monthly allowance is consumed by services these records cannot see, and volume tiers and negotiated rates are invisible. All errors run in known directions, so the _ranking_ holds even where the absolute figure does not. Cross-zone is priced **per direction** on purpose — AWS captures at both ENIs and bills both ends. GB is 10^9; GiB would under-report by 7.4%, small enough to read as drift.
+
+Enabling collection is `org:settings:write`, not `costs:write`: it authorizes daily queries **billed to the customer's own cloud account per GB scanned**, in perpetuity. The claim predicate joins on the switch so a collector bug cannot run a billable query for an org that never opted in.
+
+## Kubernetes cost beyond node compute
+
+Volumes follow their mounting pod to a workload; a claim mounted by several goes to the **namespace** rather than being split N ways, because dividing a shared disk is an invention. Load-balancer Services match through `spec.selector`, which is equality-only, so the match is an exact subset test rather than a partial selector engine.
+
+Two buckets join `idle` and `systemReserved` as nobody's cost: the **control plane** (a flat per-cluster fee with no per-workload quantity to divide by — correctly absent for self-managed clusters, whose control-plane nodes are already in `/api/v1/nodes`) and **unattached volumes** (bound and billing, mounted by nothing; the usual cause is StatefulSet `volumeClaimTemplates` defaulting to `Retain`).
+
+**Egress is not attributable from inside the cluster.** `metrics.k8s.io` carries a `ResourceList` of CPU and memory only — there is no per-workload byte counter anywhere in the Kubernetes API, so any figure would be invented. It belongs to the flow-log path.
+
+The efficiency report **could not reuse `cost_reports`**: that config column is validated against a closed graph schema, `runCostReport` is hard-wired to the cost warehouse with no data-source indirection, and the numbers this report is about — requested, used, wasted — are computed live and never written there. It lives on the cluster's own surfaces instead.
+
+It also **stops at the argument and names no target size**. The existing right-sizing is a discrete priced-SKU matcher over stored p95 quantiles; a pod request is continuous, two-dimensional per container, applied by patching a manifest, and the cluster metrics API is an instant with no history. None of those four pieces transfers.
+
+## Anomaly acknowledgement
+
+Acknowledging writes the explanation onto the anomaly _and_ creates an org-wide annotation on its day, in one transaction — a failure between them orphans a note and a retry mints a second. Linked by one FK with a partial unique index, resolved backwards by a join rather than stored twice: two columns for one fact is how the two disagree.
+
+An explained anomaly is **marked, not hidden or deleted**; the heading count becomes "N unexplained". **Detection never reads the acknowledgement columns**, so a later spike on the same key fires normally — an acknowledged spike is explained, not exempt, and a repeat of something you believed you understood is the finding you most want. Suppression was considered and declined; if ever wanted it should be a separate time-boxed per-key mute with an expiry.
+
+Re-acknowledging rewords the note **text-only** (its date and scope may have been edited deliberately since). Deleting the note nulls the link but leaves the anomaly explained — removing a marker is not a retraction of the work.
+
 ## Period-native plugins must date to the period _start_
 
 Mistral dated an in-progress month's running total to a clamped month-end — a date that moved every collection, so each pass wrote a new `cost_daily` key instead of replacing the last. The month summed to the sum of its own prefixes: an inflation factor of **(N+1)/2**, roughly 16x over a full month, and permanent, because incremental collection never revisits days outside the restatement window.

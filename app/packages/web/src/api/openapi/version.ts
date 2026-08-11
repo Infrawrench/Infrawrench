@@ -26,4 +26,7 @@
 // 1.9.0: invoice delivery, and commitment-expiry, idle-commitment and
 // unit-cost-regression alerts (new routes, new schemas, three new alert
 // trigger enum members). All additive.
-export const API_VERSION = "1.9.0";
+// 1.10.0: network flow cost attribution, anomaly acknowledgement, and the
+// Kubernetes storage / load-balancer / control-plane allocation (new routes,
+// new schemas, additive fields on CostAnomaly and CostAnnotation).
+export const API_VERSION = "1.10.0";
