@@ -139,6 +139,14 @@ export function createWebCostsClient(orgId: string): CostsClient {
       );
       return res.anomalies;
     },
+    // Offered unconditionally, like the annotation writes: the server enforces
+    // `costs:write`, so a viewer's 403 surfaces as the action's error rather
+    // than as an action that quietly isn't there.
+    acknowledgeAnomaly: (anomalyId: string, explanation: string) =>
+      apiPost<CostAnomaly>(
+        `/api/org/${orgId}/costs/anomalies/${encodeURIComponent(anomalyId)}/acknowledge`,
+        { explanation },
+      ),
     getAnomalySettings: () =>
       apiGet<CostAnomalySettingsView>(`/api/org/${orgId}/costs/anomaly-settings`),
     updateAnomalySettings: (settings: CostAnomalySettings) =>

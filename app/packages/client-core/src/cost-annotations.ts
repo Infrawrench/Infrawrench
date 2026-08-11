@@ -28,7 +28,12 @@
  * exactly {@link CostAnnotationInput}.
  */
 
-import { costBucketStart, type CostBinningId } from "./costs";
+import {
+  costAnomalyDeltaPercent,
+  costBucketStart,
+  type CostAnomaly,
+  type CostBinningId,
+} from "./costs";
 import type { CloudFetch } from "./fetch";
 
 /** Bounds the API enforces on an annotation. */
@@ -71,6 +76,17 @@ export interface CostAnnotation {
   createdByUserId: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The detected anomaly this note was written to explain, when it came from
+   * acknowledging one, and null for a hand-written note.
+   *
+   * The other half of {@link CostAnomalyAcknowledgement.annotationId}, resolved
+   * by the API from the same single foreign key rather than stored twice — two
+   * columns for one fact is how the two disagree. It is what makes a marker on
+   * a chart traceable back to the finding it closed, so "we migrated the fleet"
+   * can be checked against the spike it explains.
+   */
+  costAnomalyId?: string | null;
 }
 
 /** Create/update payload (POST/PUT /cost-annotations). */
@@ -259,6 +275,76 @@ export function describeCostAnnotationScope(
   annotation: Pick<CostAnnotation, "costReportId">,
 ): string {
   return annotation.costReportId === null ? "Org-wide" : "This report";
+}
+
+/* ------------------------------------------------------------------ *
+ * Turning an explained anomaly into an annotation.
+ *
+ * The bridge between the two features lives here, next to the annotation
+ * types, because everything in it is a statement about the *note* an
+ * acknowledgement produces. Both ends import it: the composer to check what it
+ * will send, the server to build what it stores. A second derivation of "which
+ * day does this note go on" is exactly how a marker ends up explaining the
+ * wrong bar.
+ * ------------------------------------------------------------------ */
+
+/**
+ * The annotation an acknowledgement creates.
+ *
+ * Three decisions, all deliberate:
+ *
+ * - **The anomaly's own day**, never today. The note explains a bar that may be
+ *   a month old, and dating it to when somebody got round to writing it would
+ *   put the marker nowhere near the money.
+ * - **A moment, not a span.** An anomaly is one UTC day by construction.
+ * - **Org-wide** (`costReportId: null`), which is the whole point: "we migrated
+ *   the fleet" explains that day's step on every chart that draws it, not just
+ *   on whichever report somebody happened to be looking at.
+ */
+export function costAnomalyAnnotationInput(
+  anomaly: Pick<CostAnomaly, "day">,
+  explanation: string,
+): CostAnnotationInput {
+  return {
+    startDate: anomaly.day,
+    endDate: null,
+    text: explanation.trim(),
+    costReportId: null,
+  };
+}
+
+/**
+ * Why this explanation cannot be saved, or null when it can.
+ *
+ * Delegates to {@link costAnnotationInputError} against the note that would
+ * actually be created, so the composer refuses exactly what the API refuses —
+ * including the 500-character ceiling, which is a fact about annotations rather
+ * than about anomalies and should only ever be stated once.
+ */
+export function costAnomalyExplanationError(
+  anomaly: Pick<CostAnomaly, "day">,
+  explanation: string,
+): string | null {
+  return costAnnotationInputError(costAnomalyAnnotationInput(anomaly, explanation));
+}
+
+/**
+ * The half-written sentence the composer opens with.
+ *
+ * Prefill is the difference between this feature being used and not: facing an
+ * empty box, people write nothing; facing "Amazon EC2 spend up 173% — ", they
+ * finish the sentence. It restates what the row already knows so the *note* is
+ * self-contained on a chart, where the reader has no anomaly next to it — the
+ * date is not repeated, because the marker's position is the date.
+ */
+export function costAnomalyExplanationPrefill(
+  anomaly: Pick<CostAnomaly, "kind" | "dimensionKey" | "actualCents" | "baselineCents">,
+): string {
+  const delta = costAnomalyDeltaPercent(anomaly);
+  if (anomaly.kind === "new_source" || delta === null) {
+    return `${anomaly.dimensionKey} started spending — `;
+  }
+  return `${anomaly.dimensionKey} spend ${delta} — `;
 }
 
 /**

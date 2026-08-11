@@ -5,6 +5,7 @@ import {
   type EfficiencyAlertKind,
 } from "@infrawrench/client-core";
 import {
+  costAnomalyAcknowledgeSchema,
   costAnomalySettingsSchema,
   costEfficiencySettingsSchema,
   costQueryRequestSchema,
@@ -27,7 +28,12 @@ import {
   listCostTagKeys,
   runCostQuery,
 } from "../../services/cost-query";
-import { listRecentCostAnomalies } from "../../services/cost-anomalies";
+import {
+  acknowledgeCostAnomaly,
+  CostAnomalyAcknowledgeError,
+  listRecentCostAnomalies,
+} from "../../services/cost-anomalies";
+import { logAudit } from "../../services/audit";
 import { getUntaggedSpendReport } from "../../services/tag-policy";
 import { getShowbackReport } from "../../services/showback";
 import type { AuthSession } from "../auth-middleware";
@@ -112,6 +118,62 @@ app.get("/anomalies", async (c) => {
   }
 
   return c.json({ anomalies: await listRecentCostAnomalies(organizationId, days) });
+});
+
+/**
+ * POST /api/org/:orgId/costs/anomalies/:id/acknowledge — explain a finding.
+ *
+ * Body: `{ "explanation": "Migrated the API fleet to Graviton" }`.
+ *
+ * Acknowledging records the sentence on the anomaly **and** creates the
+ * annotation that says it on every cost chart covering that day — the point of
+ * the whole thing being that "we migrated the fleet" is not a fact about
+ * whichever chart the reader happened to open. The reply is the updated
+ * anomaly, carrying the acknowledgement and the id of the note it made.
+ *
+ * `costs:write`, matching the annotation it creates. It does not suppress
+ * anything: the same key spiking again next month is a new finding, detected
+ * and alerted on as normal.
+ */
+app.post("/anomalies/:id/acknowledge", async (c) => {
+  requirePermission(c, "costs:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+  const anomalyId = c.req.param("id");
+
+  const parsed = costAnomalyAcknowledgeSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ error: "Invalid acknowledgement", issues: parsed.error.issues }, 400);
+  }
+
+  try {
+    const anomaly = await acknowledgeCostAnomaly(
+      organizationId,
+      anomalyId,
+      parsed.data.explanation,
+      session.userId ?? null,
+    );
+    if (!anomaly) return c.json({ error: "Not found" }, 404);
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "cost_anomaly.acknowledge",
+      entityType: "cost_anomaly",
+      entityId: anomaly.id,
+      metadata: {
+        day: anomaly.day,
+        dimension: anomaly.dimension,
+        dimensionKey: anomaly.dimensionKey,
+        explanation: anomaly.acknowledgement?.explanation ?? null,
+        annotationId: anomaly.acknowledgement?.annotationId ?? null,
+      },
+    });
+    return c.json(anomaly);
+  } catch (e) {
+    // An empty sentence, or one past the annotation ceiling.
+    if (e instanceof CostAnomalyAcknowledgeError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
 });
 
 /**

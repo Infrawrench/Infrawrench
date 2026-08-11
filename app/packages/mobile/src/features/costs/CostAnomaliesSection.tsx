@@ -21,6 +21,13 @@ import { ANOMALY_WINDOW_DAYS, useCostAnomalies } from "./useCostAnomalies";
  * `/org/:orgId/costs`), so the notification has to open something that
  * actually contains the anomaly it is about.
  *
+ * Explaining a finding is **read-only here**: the composer, the annotation it
+ * creates and the org-wide scope choice all live on web and desktop, where the
+ * charts it draws on are. What mobile owes a reader is the answer — an
+ * explained anomaly says so, and says what somebody established it was, so the
+ * person who gets the push at 7am is not left working out a spike that was
+ * settled yesterday.
+ *
  * A row is one of two findings and they read differently: a **spike** is spend
  * far above the key's own trailing baseline, so it shows the baseline and the
  * percentage it cleared it by; a **new spend source** has no baseline at all,
@@ -109,6 +116,11 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
               <Text style={styles.badgeText}>New source</Text>
             </View>
           )}
+          {anomaly.acknowledgement && (
+            <View style={styles.explainedBadge}>
+              <Text style={styles.explainedBadgeText}>Explained</Text>
+            </View>
+          )}
         </View>
         <Text style={styles.subtitle} numberOfLines={1}>
           {formatDay(anomaly.day)} · {COST_ANOMALY_DIMENSION_LABELS[anomaly.dimension]}
@@ -118,6 +130,12 @@ function AnomalyRow({ anomaly }: { anomaly: CostAnomaly }) {
             ? "No prior spend in the trailing 28 days"
             : `Baseline ${formatMoney(anomaly.baselineCents / 100, anomaly.currency)}/day`}
         </Text>
+        {/* Read-only on purpose — see the component note. */}
+        {anomaly.acknowledgement && (
+          <Text style={styles.explanation} numberOfLines={3}>
+            {anomaly.acknowledgement.explanation}
+          </Text>
+        )}
         {hints.map((hint) => (
           <Text key={hint} style={styles.hint} numberOfLines={2}>
             · {hint}
@@ -207,6 +225,7 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 15, fontWeight: "500", flexShrink: 1 },
   subtitle: { color: colors.textMuted, fontSize: 12 },
   baseline: { color: colors.textFaint, fontSize: 11 },
+  explanation: { color: colors.text, fontSize: 12, marginTop: 2 },
   hint: { color: colors.textFaint, fontSize: 11 },
   linkRow: { flexDirection: "row", gap: spacing.sm },
   issueLink: { color: colors.accent, fontSize: 11, fontWeight: "600", marginTop: 2 },
@@ -222,6 +241,15 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
   badgeText: { color: colors.warning, fontSize: 10, fontWeight: "600" },
+  explainedBadge: {
+    borderColor: "rgba(16, 185, 129, 0.4)",
+    backgroundColor: "rgba(16, 185, 129, 0.1)",
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  explainedBadgeText: { color: colors.success, fontSize: 10, fontWeight: "600" },
   muted: { color: colors.textMuted, fontSize: 13 },
   error: { color: colors.danger, fontSize: 13 },
   footnote: { color: colors.textFaint, fontSize: 11 },

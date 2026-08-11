@@ -91,6 +91,28 @@ vi.mock("../../../services/efficiency-alerts", () => ({
   listEfficiencyAlerts: (...args: unknown[]) => mockListEfficiencyAlerts(...args),
 }));
 
+const mockListAnomalies = vi.fn();
+const mockAcknowledgeAnomaly = vi.fn();
+
+/**
+ * The anomaly service is mocked rather than exercised: acknowledging writes to
+ * two tables in a transaction, and these tests own the transport contract —
+ * permissions, validation, status codes, audit. The rules it applies to those
+ * writes are pure and have their own suite in server-core
+ * (`anomaly-acknowledge.test.ts`).
+ */
+class FakeCostAnomalyAcknowledgeError extends Error {}
+vi.mock("../../../services/cost-anomalies", () => ({
+  CostAnomalyAcknowledgeError: FakeCostAnomalyAcknowledgeError,
+  listRecentCostAnomalies: (...args: unknown[]) => mockListAnomalies(...args),
+  acknowledgeCostAnomaly: (...args: unknown[]) => mockAcknowledgeAnomaly(...args),
+}));
+
+const mockLogAudit = vi.fn();
+vi.mock("../../../services/audit", () => ({
+  logAudit: (...args: unknown[]) => mockLogAudit(...args),
+}));
+
 const mockIsSmsPagingConfigured = vi.fn();
 
 // Same reason as above: the pager module reaches server-core's db client.
@@ -176,6 +198,28 @@ const defaultEfficiencySettings = {
   unitCostMinSpendCents: 10_000,
 };
 
+/** What the service answers with once a finding has been explained. */
+const acknowledgedAnomaly = {
+  id: "anom-1",
+  day: "2026-07-30",
+  kind: "spike",
+  dimension: "service",
+  dimensionKey: "Amazon EC2",
+  currency: "USD",
+  actualCents: 27_300,
+  baselineCents: 10_000,
+  thresholdCents: 15_000,
+  detectedAt: "2026-07-31T02:00:00.000Z",
+  notifiedAt: null,
+  hints: [],
+  acknowledgement: {
+    explanation: "Migrated the API fleet to Graviton",
+    acknowledgedAt: "2026-08-01T09:00:00.000Z",
+    acknowledgedByUserId: "user-1",
+    annotationId: "ann-1",
+  },
+};
+
 /** An org that has not opted into conversion — the default in every test. */
 const noConversion = { displayCurrency: null, rates: [] };
 
@@ -210,6 +254,8 @@ beforeEach(() => {
     Promise.resolve(settings),
   );
   mockListEfficiencyAlerts.mockResolvedValue([]);
+  mockListAnomalies.mockResolvedValue([]);
+  mockAcknowledgeAnomaly.mockResolvedValue(acknowledgedAnomaly);
 });
 
 describe("POST /query", () => {
@@ -887,5 +933,71 @@ describe("efficiency alerts", () => {
   it("rejects an out-of-range limit", async () => {
     const res = await buildApp().request("/efficiency-alerts?limit=9999");
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /anomalies/:id/acknowledge", () => {
+  const body = JSON.stringify({ explanation: "Migrated the API fleet to Graviton" });
+
+  it("rejects a costs:read-only caller without writing", async () => {
+    const res = await buildAppWithPermissions(["costs:read"]).request(
+      "/anomalies/anom-1/acknowledge",
+      {
+        method: "POST",
+        body,
+      },
+    );
+    expect(res.status).toBe(403);
+    expect(mockAcknowledgeAnomaly).not.toHaveBeenCalled();
+  });
+
+  it("explains the finding, answers the updated anomaly, and audits", async () => {
+    const res = await buildApp().request("/anomalies/anom-1/acknowledge", { method: "POST", body });
+
+    expect(res.status).toBe(200);
+    expect(mockAcknowledgeAnomaly).toHaveBeenCalledWith(
+      "org-1",
+      "anom-1",
+      "Migrated the API fleet to Graviton",
+      "user-1",
+    );
+    // The reply carries the note it made, which is how a client links the two
+    // without a second request.
+    expect(await res.json()).toMatchObject({
+      acknowledgement: { annotationId: "ann-1", explanation: "Migrated the API fleet to Graviton" },
+    });
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "cost_anomaly.acknowledge",
+        entityType: "cost_anomaly",
+        entityId: "anom-1",
+        metadata: expect.objectContaining({ day: "2026-07-30", annotationId: "ann-1" }),
+      }),
+    );
+  });
+
+  it("404s for an anomaly that isn't this org's, and audits nothing", async () => {
+    mockAcknowledgeAnomaly.mockResolvedValue(null);
+    const res = await buildApp().request("/anomalies/anom-9/acknowledge", { method: "POST", body });
+    expect(res.status).toBe(404);
+    expect(mockLogAudit).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty explanation before reaching the service", async () => {
+    const res = await buildApp().request("/anomalies/anom-1/acknowledge", {
+      method: "POST",
+      body: JSON.stringify({ explanation: "" }),
+    });
+    expect(res.status).toBe(400);
+    expect(mockAcknowledgeAnomaly).not.toHaveBeenCalled();
+  });
+
+  it("maps a rejected explanation to a 400 rather than a 500", async () => {
+    mockAcknowledgeAnomaly.mockRejectedValue(
+      new FakeCostAnomalyAcknowledgeError("Keep the note under 500 characters."),
+    );
+    const res = await buildApp().request("/anomalies/anom-1/acknowledge", { method: "POST", body });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Keep the note under 500 characters." });
   });
 });

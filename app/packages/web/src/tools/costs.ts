@@ -6,11 +6,17 @@
  */
 import { z } from "zod";
 import {
+  COST_ANNOTATION_LIMITS,
   COST_DIMENSIONS,
   COST_QUERY_LANGUAGE_SUMMARY,
   budgetInputSchema,
   costQueryRequestSchema,
 } from "@infrawrench/ui/cost/config";
+import {
+  acknowledgeCostAnomaly,
+  CostAnomalyAcknowledgeError,
+  listRecentCostAnomalies,
+} from "../services/cost-anomalies";
 import {
   CostQueryError,
   getOrgCostStatus,
@@ -259,6 +265,107 @@ export function costTools(): ToolDefinition[] {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
         return ok(await getOrgCostStatus(auth.organizationId));
+      },
+    },
+
+    {
+      name: "list_cost_anomalies",
+      title: "List cost anomalies",
+      description:
+        "Spend anomalies detected by the daily background pass, newest day first. Two kinds " +
+        "share the list and read differently: a `spike` is a day whose spend for one provider " +
+        "or service cleared its own trailing 28-day baseline (mean + N standard deviations, " +
+        "plus an absolute floor), and a `new_source` is a key with no prior spend at all that " +
+        "started costing money — it has no baseline, so never quote a percentage for one.\n\n" +
+        "`hints` are facts the detector collected from the change timeline and audit log around " +
+        "the anomalous day ('12 gce-instance resources appeared'); they are leads, not " +
+        "conclusions. `acknowledgement` is present when somebody has already established what " +
+        "the finding was — say so rather than re-deriving it, and never contradict it without " +
+        "saying you are. Use an id from here with acknowledge_cost_anomaly.",
+      inputSchema: {
+        days: z
+          .number()
+          .int()
+          .min(1)
+          .max(90)
+          .optional()
+          .describe("Window in days over anomalous days, 1-90. Defaults to 30."),
+      },
+      risk: "read",
+      permission: "costs:read",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:read");
+        if (denied) return denied;
+        const days = (input["days"] as number | undefined) ?? 30;
+        return ok(await listRecentCostAnomalies(auth.organizationId, days));
+      },
+    },
+
+    {
+      name: "acknowledge_cost_anomaly",
+      title: "Explain a cost anomaly",
+      description:
+        "Record what a detected anomaly actually was, in a sentence, and publish that sentence " +
+        "as a dated annotation on **every** cost chart covering the anomalous day. This is the " +
+        "tool for the case where you have worked out the cause — from the hints, the change " +
+        "timeline, a deployment, a workflow run — and the knowledge would otherwise be lost the " +
+        "moment the conversation ends.\n\n" +
+        "Write what happened, not what the numbers did: the row already says spend tripled, and " +
+        "the reader six weeks from now needs 'migrated the API fleet from m5 to m7g' or " +
+        "'backfill job re-ran over the whole bucket'. **Only acknowledge a cause you have " +
+        "evidence for** — this writes an explanation into the organization's shared record of " +
+        "its own spending, and a confident guess is worse than an open question. If you are " +
+        "inferring, say so in the sentence.\n\n" +
+        "The annotation's date and scope are derived server-side from the anomaly, so there is " +
+        "nothing to get wrong there. Acknowledging does **not** suppress detection: if the same " +
+        "provider or service spikes again on a later day, that is a new finding and it will " +
+        "fire. Calling this again on the same anomaly replaces the sentence and rewords the note " +
+        "rather than filing a second one. Audit-logged.",
+      inputSchema: {
+        anomalyId: z.string().describe("From list_cost_anomalies."),
+        explanation: z
+          .string()
+          .min(1)
+          .max(COST_ANNOTATION_LIMITS.maxTextLength)
+          .describe(
+            "One sentence on what caused the spend, in the past tense. Becomes the text of the " +
+              "annotation drawn on the charts.",
+          ),
+      },
+      risk: "write",
+      permission: "costs:write",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "costs:write");
+        if (denied) return denied;
+        const { anomalyId, explanation } = input as { anomalyId: string; explanation: string };
+        try {
+          const anomaly = await acknowledgeCostAnomaly(
+            auth.organizationId,
+            anomalyId,
+            explanation,
+            auth.userId,
+          );
+          if (!anomaly) return err(`Cost anomaly not found: ${anomalyId}`);
+          void logAudit({
+            organizationId: auth.organizationId,
+            userId: auth.userId,
+            action: "cost_anomaly.acknowledge",
+            entityType: "cost_anomaly",
+            entityId: anomaly.id,
+            metadata: {
+              day: anomaly.day,
+              dimension: anomaly.dimension,
+              dimensionKey: anomaly.dimensionKey,
+              explanation: anomaly.acknowledgement?.explanation ?? null,
+              annotationId: anomaly.acknowledgement?.annotationId ?? null,
+              source: auth.source,
+            },
+          });
+          return ok(anomaly);
+        } catch (e) {
+          if (e instanceof CostAnomalyAcknowledgeError) return err(e.message);
+          throw e;
+        }
       },
     },
 

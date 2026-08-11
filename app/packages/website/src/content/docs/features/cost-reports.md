@@ -135,6 +135,12 @@ Annotations never change the numbers. The series, the totals, the forecast and t
 
 Every marker is also a button in the strip under the chart, showing its number, its date and its text. Tab to one and press Enter to expand every note on that bucket, with **Edit** on each. Nothing about annotations is hover-only, which is also what makes them work on a phone.
 
+### Notes that came from an anomaly
+
+Some notes are not written from a chart at all. Explaining a detected [cost anomaly](./cost-anomaly-alerts.md#explaining-an-anomaly) creates one automatically: dated to the anomalous day, scoped org-wide, with the sentence somebody wrote about what the spike was. Those markers say **Explains a detected anomaly** next to their date, so a claim on a chart can be checked against the finding it closed rather than taken on trust.
+
+From that moment it is an ordinary annotation — reword it, narrow it to one report, move its date, delete it. Deleting it removes the marker only: the anomaly stays explained and does not go back to being an open question. Re-explaining the anomaly rewords this note rather than adding a second one to the same bar.
+
 ### Managing them
 
 The **Annotations** list on a report's page shows every note the report's chart draws — its own and the org-wide ones, each labelled with which it is. That is where you go to fix a date you can no longer see, reword a note, move one between org-wide and this report, or delete it.

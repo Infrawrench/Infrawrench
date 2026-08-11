@@ -153,6 +153,16 @@ export interface CostsClient extends CostApi {
    */
   listAnomalies?(days?: number): Promise<CostAnomaly[]>;
   /**
+   * Explain a finding: record what it was, and put that sentence on every cost
+   * chart covering the day as an annotation. Answers the updated anomaly.
+   *
+   * Optional on the usual rule — a host that hasn't wired it renders the
+   * anomalies list without the "Explain" action, exactly as it looked before
+   * this existed, rather than offering a button that can only fail. The server
+   * still enforces `costs:write`.
+   */
+  acknowledgeAnomaly?(anomalyId: string, explanation: string): Promise<CostAnomaly>;
+  /**
    * The org's detection thresholds, plus the derived `smsConfigured` fact the
    * SMS control needs to tell the truth about what turning it on would do.
    * Optional like `listAnomalies`; a host that hasn't wired it shows the list

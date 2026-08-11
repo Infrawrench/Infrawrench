@@ -160,8 +160,10 @@ baseline and `new` for the change — a key with no prior spend has no percentag
 The **mobile app** shows the same list on its **Costs** tab, under the month-to-date chart and
 your budgets, with the same distinction between the two kinds. Tapping a cost anomaly push
 notification opens the [moment view](./moment.md) — the anomaly in context with everything else
-that happened around it, with Costs one tap away. Detection thresholds are read-only there —
-see below.
+that happened around it, with Costs one tap away. An anomaly somebody has
+[explained](#explaining-an-anomaly) carries an **Explained** badge and the sentence, so the
+person who gets the push at 7am is not working out a spike that was settled yesterday.
+Detection thresholds, and writing an explanation, are read-only there — see below.
 
 <insert [Mobile app Costs tab scrolled to the Anomalies section, showing a spike row with its baseline and percentage change and a new-spend-source row with its New source badge and "new" change] here>
 
@@ -178,7 +180,12 @@ infrawrench costs --anomalies --json       # stable JSON for scripting
 
 It is a flag on `costs` rather than a command of its own: it answers a question about the same data the chart draws. Text mode prints a table of the day, what spiked (the provider or service, and which of the two it is), the actual spend, the trailing baseline per day, and the percentage change — `new` where the key had no baseline to be up from. New spend sources are marked `[new source]` and print `none` for their baseline. A `notified` column shows the day the alert was delivered, or a dash for anomalies detected while no channel was connected or inside another anomaly's cooldown.
 
-The `--json` output carries a `kind` field on every row (`spike` or `new_source`), so a script can route the two differently.
+An `explained` column carries the first line of the explanation for any finding somebody has
+[explained](#explaining-an-anomaly), or a dash for one nobody has. Explaining itself is a web and
+desktop action — it publishes a note onto charts, which is not a thing to do blind from a
+terminal — but the [MCP tool](./mcp.md) `acknowledge_cost_anomaly` covers scripted and agent use.
+
+The `--json` output carries a `kind` field on every row (`spike` or `new_source`), so a script can route the two differently, and the full `acknowledgement` object where there is one.
 
 <insert [Terminal showing `infrawrench costs --anomalies` output: the table of day, what spiked, actual vs baseline spend, the red percentage-change column, and the notified column] here>
 
@@ -254,6 +261,27 @@ anomaly fired, as an array of up to three strings, empty when nothing notable ha
 window or the row predates hint collection. The CLI's `costs --anomalies --json` output
 includes the same field.
 
+Each row also carries `acknowledgement` — `null` while the finding is still an open question,
+and otherwise the explanation, when it was recorded, who recorded it, and `annotationId`: the
+[cost annotation](./cost-reports.md#annotations) it created. `annotationId` is `null` once that
+note has been deleted, which removes the marker and never the acknowledgement. The annotation
+carries the reverse of the link as `costAnomalyId`, so a marker on a chart is traceable back to
+the finding it closed.
+
+Explaining a finding is a `costs:write` POST:
+
+```
+POST /api/org/{orgId}/costs/anomalies/{anomalyId}/acknowledge
+{ "explanation": "Migrated the API fleet to Graviton" }
+```
+
+The reply is the updated anomaly. The annotation's date (the anomalous day) and its org-wide
+scope are derived server-side and are not part of the body — a client that could date the note
+would be a client that could put the marker on the wrong bar. Posting again replaces the
+sentence and rewords the note rather than filing a second one, and will not recreate a note that
+has been deleted. It does not suppress anything: a later spike on the same key is a new
+anomaly.
+
 The thresholds are readable and writable too:
 
 ```
@@ -273,6 +301,60 @@ could actually be delivered (paging enabled, Twilio credentials stored, at least
 opted into SMS). It is derived, and is not accepted on `PUT`. See the
 [API reference](../team-and-billing/openapi.md) for the full schema.
 
+## Explaining an anomaly
+
+Detection finds a spike; a person works out that it was a deliberate migration. Without
+somewhere to put that, the knowledge dies in their head and the next person to open the chart
+asks the same question.
+
+**Explain** on an anomaly row opens a small composer. It is prefilled with what the row already
+knows — "Amazon EC2 spend +173% — " — so you finish a sentence rather than compose one, and any
+[root-cause hints](#root-cause-hints) detection collected are one click away as a starting
+point. Saving does two things:
+
+- **Records the explanation on the finding.** The row is marked **Explained**, shows the
+  sentence inline, and stops counting towards the "N unexplained" total next to the section
+  heading.
+- **Creates a [cost annotation](./cost-reports.md#annotations) at the anomaly's day**, scoped
+  org-wide, so the explanation is drawn as a marker on **every** cost chart covering that day —
+  the report, the dashboard card, the overview. That is the whole point: "we migrated the fleet"
+  is not a fact about whichever chart you happened to have open.
+
+The note's date and scope are derived from the anomaly and are not editable in the composer;
+there is nothing there to get wrong. Afterwards the note is an ordinary annotation — you can
+reword it, narrow it to one report, or move its date from the annotation editor like any other.
+
+A few consequences worth stating plainly:
+
+- **Explained rows are marked, never hidden.** The detection was correct and the record matters;
+  hiding it would lose the history and invite somebody to work the same spike out from scratch.
+- **Explaining does not suppress detection.** If the same provider or service spikes again on a
+  later day, that is a new finding and it is detected and alerted on exactly as before. An
+  explained spike is explained, not exempt. There is deliberately no "mute this key" — the
+  silencing that does exist is the [7-day notification cooldown](#deduplication-and-cooldown),
+  which is about not paging twice for one level shift and knows nothing about explanations.
+- **Deleting the annotation does not reopen the anomaly.** The marker disappears from the
+  charts, the row keeps its explanation and stays out of the unexplained count, and the list
+  says the note was removed. Somebody did work out what that spike was, and deleting their chart
+  marker is not a retraction of it.
+- **Editing an explanation rewords the existing note** rather than adding a second marker to the
+  same bar. If the note was deleted, the correction updates the record without putting the
+  marker back.
+
+Explaining needs `costs:write` — the same permission the annotation it creates needs. Reading
+the list, and any explanations on it, needs `costs:read`. Each acknowledgement is written to the
+[audit log](../team-and-billing/audit-log.md).
+
+Explaining is a web and desktop action. The mobile app shows an explained anomaly — the badge
+and the sentence — but does not compose one: the note it creates lands on charts you are not
+looking at from a phone, and the answer is what mobile owes you at 7am.
+
+<insert [Costs panel Anomalies section with one row marked Explained showing its inline explanation, the "1 unexplained" count next to the section heading, and the Explain link on an unexplained row] here>
+
+<insert [The Explain composer open over the Anomalies list, showing the read-only day/service/spend facts, the note box prefilled with "Amazon EC2 spend +173% — ", and a root-cause hint offered as a one-click suggestion] here>
+
+<insert [A cost chart with an annotation marker on the anomalous day, its popover open showing the explanation text and the "Explains a detected anomaly" line] here>
+
 ## Filing an anomaly as an issue
 
 An anomaly usually needs someone to go and look at something. If your organization has
@@ -280,3 +362,7 @@ An anomaly usually needs someone to go and look at something. If your organizati
 a file link that opens an issue prefilled with the day, the dimension, the spend, the
 baseline, the percentage over, and any root-cause hints already computed for it. Once filed,
 the row shows the issue key instead, so the same spike doesn't get raised twice.
+
+The two actions sit next to each other and answer different questions: file it when somebody
+needs to go and look, explain it when you already know. A row often gets both — filed on the
+morning it fired, explained the afternoon somebody found the cause.

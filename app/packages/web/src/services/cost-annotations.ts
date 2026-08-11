@@ -21,14 +21,21 @@ import {
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
-import { costAnnotations, costReports } from "../db/schema";
+import { costAnnotations, costAnomalies, costReports } from "../db/schema";
 
 type CostAnnotationRow = typeof costAnnotations.$inferSelect;
 
 /** A bad request rather than a server fault — the API maps this to a 400. */
 export class CostAnnotationError extends Error {}
 
-function toCostAnnotation(row: CostAnnotationRow): CostAnnotation {
+/**
+ * @param costAnomalyId The finding this note was written to explain, when it
+ * came from acknowledging one. Resolved from `cost_anomalies.annotation_id` —
+ * the same single foreign key the anomaly reads forwards — so the link cannot
+ * disagree with itself. Null on the create path, where a note written by hand
+ * explains no finding by definition.
+ */
+function toCostAnnotation(row: CostAnnotationRow, costAnomalyId: string | null): CostAnnotation {
   return {
     id: row.id,
     // `date` columns come back as YYYY-MM-DD strings, which is exactly the
@@ -41,7 +48,21 @@ function toCostAnnotation(row: CostAnnotationRow): CostAnnotation {
     createdByUserId: row.createdByUserId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    costAnomalyId,
   };
+}
+
+/**
+ * The finding that points at this note, if any — the reverse of the link, read
+ * from the anomaly's side because that is where the only copy of it lives.
+ */
+async function anomalyIdForAnnotation(annotationId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ id: costAnomalies.id })
+    .from(costAnomalies)
+    .where(eq(costAnomalies.annotationId, annotationId))
+    .limit(1);
+  return row?.id ?? null;
 }
 
 /**
@@ -92,12 +113,17 @@ export async function listCostAnnotations(
       )
     : eq(costAnnotations.organizationId, organizationId);
 
+  // Left-joined rather than a second query: an annotation that came from
+  // acknowledging an anomaly should say so wherever it is drawn, and the join
+  // is on `cost_anomalies.annotation_id`, which is unique where it is set — so
+  // this can only ever add one id per note, never duplicate a row.
   const rows = await db
-    .select()
+    .select({ annotation: costAnnotations, anomalyId: costAnomalies.id })
     .from(costAnnotations)
+    .leftJoin(costAnomalies, eq(costAnomalies.annotationId, costAnnotations.id))
     .where(scope)
     .orderBy(desc(costAnnotations.startDate), asc(costAnnotations.id));
-  return rows.map(toCostAnnotation);
+  return rows.map(({ annotation, anomalyId }) => toCostAnnotation(annotation, anomalyId));
 }
 
 export async function createCostAnnotation(
@@ -121,7 +147,10 @@ export async function createCostAnnotation(
       createdByUserId,
     })
     .returning();
-  return toCostAnnotation(created!);
+  // A note written by hand explains no finding, so the reverse link is null
+  // without a lookup — only an acknowledgement can create that link, and it
+  // writes the anomaly's side of it in the same transaction.
+  return toCostAnnotation(created!, null);
 }
 
 /**
@@ -150,7 +179,12 @@ export async function updateCostAnnotation(
       and(eq(costAnnotations.id, annotationId), eq(costAnnotations.organizationId, organizationId)),
     )
     .returning();
-  return updated ? toCostAnnotation(updated) : null;
+  if (!updated) return null;
+  // Editing a note never changes which finding points at it — the link lives on
+  // the anomaly and this endpoint cannot reach that column — but the answer
+  // still has to carry it, or rewording an anomaly's note would read back as
+  // having severed it.
+  return toCostAnnotation(updated, await anomalyIdForAnnotation(updated.id));
 }
 
 /**
@@ -158,6 +192,12 @@ export async function updateCostAnnotation(
  *
  * A hard delete: a withdrawn explanation should stop appearing on charts, and
  * there is no config inside a note that anything else references.
+ *
+ * An acknowledged anomaly pointing at this note is **not** reopened by it. The
+ * foreign key nulls `cost_anomalies.annotation_id` (ON DELETE SET NULL) and
+ * nothing else changes: the finding keeps its explanation and stays out of the
+ * unexplained count, because somebody did work out what it was and deleting
+ * their chart marker is not a retraction of that.
  */
 export async function deleteCostAnnotation(
   organizationId: string,

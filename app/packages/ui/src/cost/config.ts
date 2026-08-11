@@ -156,9 +156,16 @@ export {
   bucketCostAnnotations,
   formatCostAnnotationDates,
   describeCostAnnotationScope,
+  // …and the bridge from a detected anomaly to the note that explains it.
+  costAnomalyAnnotationInput,
+  costAnomalyExplanationError,
+  costAnomalyExplanationPrefill,
+  countUnexplainedCostAnomalies,
+  isCostAnomalyExplained,
   type CostAnnotation,
   type CostAnnotationInput,
   type CostAnnotationMarker,
+  type CostAnomalyAcknowledgement,
   type CostReport,
   type CostReportInput,
   type CostReportFolder,
@@ -426,6 +433,23 @@ export const costAnnotationInputSchema = z.object({
   endDate: isoDate.nullable().optional(),
   text: z.string().min(1).max(COST_ANNOTATION_LIMITS.maxTextLength),
   costReportId: z.string().min(1).nullable().optional(),
+});
+
+/**
+ * Body for acknowledging an anomaly
+ * (POST /costs/anomalies/:id/acknowledge).
+ *
+ * One field, because everything else about the note it creates is derived from
+ * the finding: the date is the anomalous day and the scope is org-wide, and
+ * neither is the caller's to choose — a client that could date the note would
+ * be a client that could put the marker on the wrong bar.
+ *
+ * The ceiling is the annotation's, since the sentence becomes one. The semantic
+ * check is `costAnomalyExplanationError` (client-core), run by both the composer
+ * and the service.
+ */
+export const costAnomalyAcknowledgeSchema = z.object({
+  explanation: z.string().min(1).max(COST_ANNOTATION_LIMITS.maxTextLength),
 });
 
 export const budgetThresholdSchema = z.object({
