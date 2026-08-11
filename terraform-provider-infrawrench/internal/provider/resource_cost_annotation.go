@@ -23,11 +23,12 @@ func NewCostAnnotationResource() resource.Resource { return &costAnnotationResou
 type costAnnotationResource struct{ client *iw.Client }
 
 type costAnnotationResourceModel struct {
-	ID           types.String `tfsdk:"id"`
-	StartDate    types.String `tfsdk:"start_date"`
-	EndDate      types.String `tfsdk:"end_date"`
-	Text         types.String `tfsdk:"text"`
-	CostReportID types.String `tfsdk:"cost_report_id"`
+	ID            types.String `tfsdk:"id"`
+	StartDate     types.String `tfsdk:"start_date"`
+	EndDate       types.String `tfsdk:"end_date"`
+	Text          types.String `tfsdk:"text"`
+	CostReportID  types.String `tfsdk:"cost_report_id"`
+	CostAnomalyID types.String `tfsdk:"cost_anomaly_id"`
 }
 
 func (r *costAnnotationResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -66,6 +67,16 @@ func (r *costAnnotationResource) Schema(_ context.Context, _ resource.SchemaRequ
 				MarkdownDescription: "The report this note is scoped to. Omit it for an **org-wide** note, which is " +
 					"the useful default: an org-wide note is drawn on every cost chart, because \"we changed " +
 					"instance types\" is not a fact about one report.",
+			},
+
+			"cost_anomaly_id": schema.StringAttribute{
+				Computed: true,
+				MarkdownDescription: "The detected cost anomaly this note explains, or null for a note written by " +
+					"hand — which is every note Terraform creates.\n\n" +
+					"Read-only, and there is no way to set it: the link is minted server-side when somebody " +
+					"acknowledges an anomaly with an explanation, and that acknowledgement writes its own " +
+					"annotation. Adopting one of those into Terraform is possible but rarely what you want; the " +
+					"explanation belongs to whoever investigated the spike.",
 			},
 		},
 	}
@@ -179,10 +190,11 @@ func costAnnotationInputFrom(model costAnnotationResourceModel) iw.CostAnnotatio
 
 func costAnnotationStateFrom(remote *iw.CostAnnotation) costAnnotationResourceModel {
 	return costAnnotationResourceModel{
-		ID:           types.StringValue(remote.ID),
-		StartDate:    types.StringValue(remote.StartDate),
-		EndDate:      stringValue(remote.EndDate),
-		Text:         types.StringValue(remote.Text),
-		CostReportID: stringValue(remote.CostReportID),
+		ID:            types.StringValue(remote.ID),
+		StartDate:     types.StringValue(remote.StartDate),
+		EndDate:       stringValue(remote.EndDate),
+		Text:          types.StringValue(remote.Text),
+		CostReportID:  stringValue(remote.CostReportID),
+		CostAnomalyID: stringValue(remote.CostAnomalyID),
 	}
 }
