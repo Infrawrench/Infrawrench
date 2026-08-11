@@ -140,6 +140,16 @@ export function MultiSelect({
       );
       return;
     }
+    if (e.key === "Home" && filtered.length > 0) {
+      e.preventDefault();
+      setActiveIndex(0);
+      return;
+    }
+    if (e.key === "End" && filtered.length > 0) {
+      e.preventDefault();
+      setActiveIndex(filtered.length - 1);
+      return;
+    }
     if (e.key === "Enter") {
       e.preventDefault();
       const opt = filtered[activeIndex];
@@ -236,6 +246,21 @@ export function MultiSelect({
             )}
           </div>
 
+          {/*
+            An `aria-activedescendant` listbox: focus never leaves the combobox
+            input above, which owns the whole keyboard path (Arrow/Home/End to
+            move `activeIndex`, Enter to toggle, Escape to close). The options
+            are therefore deliberately not tab stops — `tabIndex={-1}` makes
+            them programmatically focusable so assistive tech can reach the
+            active one, and the `onClick` is the mouse half of the same
+            pattern, not the only way in. Do not "fix" it by hanging an
+            onKeyDown here: the option never has focus, so it would never fire.
+
+            Only options live inside the listbox; the loading / empty / error /
+            no-match copy is a sibling status region, because a listbox whose
+            children are not `option`s announces those messages as selectable
+            values.
+          */}
           <ul
             ref={listRef}
             id={listboxId}
@@ -252,6 +277,7 @@ export function MultiSelect({
                   id={`${uid}-opt-${i}`}
                   data-index={i}
                   role="option"
+                  tabIndex={-1}
                   aria-selected={isSelected}
                   className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm ${
                     i === activeIndex ? "bg-surface-sunken" : ""
@@ -271,19 +297,21 @@ export function MultiSelect({
                 </li>
               );
             })}
+          </ul>
 
+          <div role="status">
             {filtered.length === 0 && options.length > 0 && (
-              <li className="px-2 py-1 text-sm text-on-surface-faint">No matches for “{query}”</li>
+              <p className="px-2 py-1 text-sm text-on-surface-faint">No matches for “{query}”</p>
             )}
 
             {options.length === 0 && status?.kind === "loading" && (
-              <li className="px-2 py-1 text-sm text-on-surface-faint">Loading values…</li>
+              <p className="px-2 py-1 text-sm text-on-surface-faint">Loading values…</p>
             )}
             {options.length === 0 && status?.kind === "empty" && (
-              <li className="px-2 py-1 text-sm text-on-surface-faint">{status.message}</li>
+              <p className="px-2 py-1 text-sm text-on-surface-faint">{status.message}</p>
             )}
             {options.length === 0 && status?.kind === "error" && (
-              <li className="px-2 py-1 text-sm text-on-surface-faint">
+              <p className="px-2 py-1 text-sm text-on-surface-faint">
                 {status.message}{" "}
                 {status.onRetry && (
                   <button
@@ -294,9 +322,9 @@ export function MultiSelect({
                     Retry
                   </button>
                 )}
-              </li>
+              </p>
             )}
-          </ul>
+          </div>
         </div>
       )}
     </div>

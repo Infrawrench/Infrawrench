@@ -246,24 +246,23 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
                           {group.items.map((item) => (
                             <tr
                               key={`${item.resourceId}:${item.fieldKey}`}
-                              className={`border-b border-border last:border-b-0 ${
-                                onOpenResource ? "cursor-pointer hover:bg-surface-raised" : ""
-                              }`}
-                              onClick={onOpenResource ? () => onOpenResource(item) : undefined}
-                              onKeyDown={
-                                onOpenResource
-                                  ? (e) => {
-                                      if (e.key === "Enter" || e.key === " ") {
-                                        e.preventDefault();
-                                        onOpenResource(item);
-                                      }
-                                    }
-                                  : undefined
-                              }
-                              tabIndex={onOpenResource ? 0 : undefined}
+                              className="border-b border-border last:border-b-0 hover:bg-surface-raised"
                             >
                               <td className="px-4 py-2.5 whitespace-nowrap font-medium text-on-surface">
-                                {item.displayName}
+                                {/* The name is the navigation control, not the
+                                    row — a <tr> has no role a screen reader
+                                    announces as activatable. */}
+                                {onOpenResource ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenResource(item)}
+                                    className="cursor-pointer text-left font-medium text-on-surface hover:underline"
+                                  >
+                                    {item.displayName}
+                                  </button>
+                                ) : (
+                                  item.displayName
+                                )}
                               </td>
                               <td className="px-3 py-2.5 whitespace-nowrap">
                                 <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">

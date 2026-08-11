@@ -220,84 +220,109 @@ export function SpotlightSearch({
             : `${results.length} results`}
       </div>
 
-      {/* Results */}
-      <div ref={listRef} id="spotlight-results" role="listbox" className="overflow-y-auto flex-1">
-        {results.length === 0 && !loading ? (
-          <div className="flex items-center justify-center py-12 text-sm text-on-surface-faint">
-            {query ? `No results for \u201c${query}\u201d` : "No resources found"}
-          </div>
-        ) : (
-          Object.entries(grouped).map(([key, items]) => {
-            const first = items[0];
-            if (!first) return null;
-            return (
-              <div key={key}>
-                {/* Plugin section header */}
-                <div className="flex items-center gap-2 px-4 py-2 bg-surface/50 sticky top-0">
-                  {first.pluginLogoSvg ? (
-                    <div
-                      className="w-3.5 h-3.5 flex-shrink-0"
-                      aria-hidden="true"
-                      dangerouslySetInnerHTML={{ __html: first.pluginLogoSvg }}
-                    />
-                  ) : null}
-                  <span className="text-xs font-medium text-on-surface-muted">
-                    {first.pluginDisplayName}
-                  </span>
-                  {first.accountName && (
-                    <span className="text-xs text-on-surface-faint">
-                      &middot; {first.accountName}
-                    </span>
-                  )}
-                </div>
+      {/*
+        Results: an `aria-activedescendant` listbox. Focus stays in the search
+        input above, which owns the keyboard path (ArrowUp/Down to move
+        `selectedIndex`, Enter to open, Escape via the dialog's cancel event).
+        The options are deliberately not tab stops \u2014 `tabIndex={-1}` makes them
+        programmatically focusable so assistive tech can reach the selected
+        one, and the `onClick` is the mouse half of the same pattern rather
+        than the only way in. An onKeyDown on an option would never fire: the
+        option never holds focus.
 
-                {items.map((result) => {
-                  const globalIdx = results.indexOf(result);
-                  const isSelected = globalIdx === selectedIndex;
-                  return (
-                    <div
-                      key={result.id}
-                      id={`spotlight-option-${globalIdx}`}
-                      role="option"
-                      aria-selected={isSelected}
-                      data-idx={globalIdx}
-                      onClick={() => handleSelect(result)}
-                      onMouseEnter={() => setSelectedIndex(globalIdx)}
-                      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
-                        isSelected
-                          ? "bg-accent-muted text-on-surface"
-                          : "text-on-surface-secondary hover:bg-surface-overlay"
-                      }`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">{result.displayName}</div>
-                        {result.subtitle && (
-                          <div className="text-xs text-on-surface-muted truncate">
-                            {result.subtitle}
-                          </div>
-                        )}
-                      </div>
-                      <span
-                        className={`text-xs flex-shrink-0 ${isSelected ? "text-accent" : "text-on-surface-faint"}`}
-                      >
-                        {result.resourceTypeLabel}
-                      </span>
-                      {isSelected && (
-                        <kbd className="text-xs text-accent flex-shrink-0">
-                          {mode === "navigate"
-                            ? "\u21b5 open"
-                            : mode === "drop"
-                              ? "\u21b5 connect"
-                              : "\u21b5 add"}
-                        </kbd>
+        Each plugin section is a `role="group"` labelled by its own header, so
+        every child of the listbox is an `option` or a `group` as ARIA
+        requires \u2014 a bare header <div>, or the empty-state copy below, would
+        otherwise be announced as a selectable value. The count is already
+        announced by the live region above.
+      */}
+      {results.length === 0 && !loading && (
+        <div className="flex flex-1 items-center justify-center py-12 text-sm text-on-surface-faint">
+          {query ? `No results for \u201c${query}\u201d` : "No resources found"}
+        </div>
+      )}
+      <div
+        ref={listRef}
+        id="spotlight-results"
+        role="listbox"
+        aria-label="Results"
+        className={results.length === 0 ? "hidden" : "overflow-y-auto flex-1"}
+      >
+        {Object.entries(grouped).map(([key, items]) => {
+          const first = items[0];
+          if (!first) return null;
+          const headerId = `spotlight-group-${key}`;
+          return (
+            <div key={key} role="group" aria-labelledby={headerId}>
+              {/* Plugin section header */}
+              <div
+                id={headerId}
+                className="flex items-center gap-2 px-4 py-2 bg-surface/50 sticky top-0"
+              >
+                {first.pluginLogoSvg ? (
+                  <div
+                    className="w-3.5 h-3.5 flex-shrink-0"
+                    aria-hidden="true"
+                    dangerouslySetInnerHTML={{ __html: first.pluginLogoSvg }}
+                  />
+                ) : null}
+                <span className="text-xs font-medium text-on-surface-muted">
+                  {first.pluginDisplayName}
+                </span>
+                {first.accountName && (
+                  <span className="text-xs text-on-surface-faint">
+                    &middot; {first.accountName}
+                  </span>
+                )}
+              </div>
+
+              {items.map((result) => {
+                const globalIdx = results.indexOf(result);
+                const isSelected = globalIdx === selectedIndex;
+                return (
+                  <div
+                    key={result.id}
+                    id={`spotlight-option-${globalIdx}`}
+                    role="option"
+                    tabIndex={-1}
+                    aria-selected={isSelected}
+                    data-idx={globalIdx}
+                    onClick={() => handleSelect(result)}
+                    onMouseEnter={() => setSelectedIndex(globalIdx)}
+                    className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
+                      isSelected
+                        ? "bg-accent-muted text-on-surface"
+                        : "text-on-surface-secondary hover:bg-surface-overlay"
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{result.displayName}</div>
+                      {result.subtitle && (
+                        <div className="text-xs text-on-surface-muted truncate">
+                          {result.subtitle}
+                        </div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            );
-          })
-        )}
+                    <span
+                      className={`text-xs flex-shrink-0 ${isSelected ? "text-accent" : "text-on-surface-faint"}`}
+                    >
+                      {result.resourceTypeLabel}
+                    </span>
+                    {isSelected && (
+                      <kbd className="text-xs text-accent flex-shrink-0">
+                        {mode === "navigate"
+                          ? "\u21b5 open"
+                          : mode === "drop"
+                            ? "\u21b5 connect"
+                            : "\u21b5 add"}
+                      </kbd>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
 
       {results.length > 0 && (

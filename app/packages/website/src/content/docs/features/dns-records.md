@@ -13,7 +13,7 @@ Open a DNS zone (Cloudflare zone, DigitalOcean domain, Route 53 hosted zone, Clo
 - The **Type** column is a colored badge (A, AAAA, CNAME, MX, TXT, …).
 - The **Name** column shows the short record name (`www`) rather than the full FQDN; the zone apex shows as `@`.
 - The **Proxy** column shows an orange cloud for proxied records and a grey cloud for DNS-only (Cloudflare).
-- Clicking a row opens an **inline edit form** right on the zone page (no navigation); the trailing **Delete** button removes the record.
+- The first cell of each row is a button (**Edit _name_**, or **Open _name_** for tables that navigate). Activating it opens an **inline edit form** right on the zone page (no navigation); the trailing **Delete** button removes the record. Both are ordinary tab stops.
 - **+ Create DNS Record** opens the create form.
 
 <insert [DNS zone detail page showing the DNS Records table with type badges and proxy indicators] here>
