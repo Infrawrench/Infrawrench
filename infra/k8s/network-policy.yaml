@@ -1,0 +1,121 @@
+# Ingress isolation for the three app workloads.
+#
+# ---------------------------------------------------------------------------
+# Read this before adding an egress rule
+# ---------------------------------------------------------------------------
+#
+# These policies restrict *ingress only*, and that is a deliberate design
+# decision rather than an unfinished job.
+#
+# `app/packages/egress-proxy/src/index.ts` opens by explaining that if the
+# `web`/`poller` pods made a workflow's own HTTP requests, "the blast radius of
+# fetch(...) would be the cluster's own network: other pods' Services, the
+# kubelet, the GCP metadata server on 169.254.169.254 (which hands out node
+# credentials to anyone who asks)". That problem was solved *structurally* —
+# the request is handed to a Cloudflare Worker that has no route into the VPC —
+# precisely because an in-pod control could not be trusted to hold. These
+# policies are the in-cluster half of the same argument, and they stop at the
+# same honest boundary the Worker's README draws: "the line is who chooses the
+# destination, not who makes the request."
+#
+# For everything the app itself dials, an egress allowlist is not expressible:
+#
+#   * `web` opens SSH to customer hosts (services/ssh-proxy.ts, ssh.ts,
+#     agent-setup.ts), raw TCP to customer databases (postgres, mysql, mssql,
+#     mongodb, redis, memcached, kafka, opensearch plugins), and HTTPS to
+#     customer Kubernetes API servers from a user-supplied kubeconfig. The
+#     host:port is org-configured — it is the product. Tunnels deliberately
+#     reach RFC1918 space: services/host-validation.ts validates the bastion
+#     endpoint and notes that the inner remote host is not validated, "reaching
+#     private hosts via the bastion is the whole point".
+#   * `poller` loads all ~50 provider plugins in-process and calls them
+#     directly, so its destination set is the same.
+#   * `github-watcher` is not GitHub-only — it calls loadPlugins() too ("the git
+#     trigger runs the workflow, which needs the plugin clients") and runs
+#     hosted Cloud Builds off the metadata server.
+#
+# A NetworkPolicy matches on CIDRs, not names, so even the fixed SaaS
+# dependencies (*.neon.tech, api.stripe.com, api.workos.com, slack.com,
+# exp.host, *-aiplatform.googleapis.com) cannot be written down here — their
+# addresses move. The only egress policy that would not break customer
+# connections is one that allows 0.0.0.0/0, which is not a control.
+#
+# ---------------------------------------------------------------------------
+# Enforcement is NOT enabled on this cluster
+# ---------------------------------------------------------------------------
+#
+# `infra/terraform/main.tf` sets neither `datapath_provider =
+# "ADVANCED_DATAPATH"` (Dataplane V2) nor a `network_policy { enabled = true }`
+# block, so a GKE Standard cluster accepts these objects and enforces nothing.
+# They are inert until an operator turns enforcement on — see the NetworkPolicy
+# section of infra/README.md for the two options and their disruption cost.
+# Applying them now is still worth it: it makes the rules reviewable, and it
+# means enabling enforcement is a one-line terraform change rather than a
+# change plus a scramble to work out what should be allowed.
+---
+# Default-deny ingress for the three app workloads.
+#
+# Scoped by an explicit label list rather than `podSelector: {}` on purpose:
+# the ClickHouse StatefulSet and its Keeper quorum live in THIS namespace
+# (infra/terraform/clickhouse.tf), and an empty selector would sever the
+# replica/Keeper mesh on 9000/9009/9181/9234 the moment enforcement came on.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app-default-deny-ingress
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - web
+          - poller
+          - github-watcher
+  policyTypes:
+    - Ingress
+---
+# The one hole in the deny above. `poller` and `github-watcher` expose no
+# ports, have no Service, and take no inbound traffic at all, so they keep the
+# bare deny and need nothing here.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-allow-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: web
+  policyTypes:
+    - Ingress
+  ingress:
+    # Public traffic arrives through ingress-nginx (helm release in the
+    # `ingress-nginx` namespace, infra/terraform/helm.tf) — including the
+    # inbound WebSockets from customer-run bastion-agent containers, which dial
+    # in through the same ingress. `kubernetes.io/metadata.name` is set
+    # automatically by the API server on every namespace, so this needs no
+    # label to be added by hand.
+    #
+    # Note this is an ingress-nginx LoadBalancer fronted by a GCP *passthrough*
+    # L4 load balancer, not a GCE proxy Ingress: the 130.211.0.0/22 and
+    # 35.191.0.0/16 health-check ranges do not apply, because the LB probes the
+    # nginx controller rather than these pods.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000
+    # kubelet readiness/liveness probes against /healthz originate from the
+    # node, not from a pod, so no selector can express them — hence the node
+    # subnet (infra/terraform/main.tf, `ip_cidr_range = "10.0.0.0/20"`; keep
+    # these in step). Dataplane V2 permits node→pod health checks implicitly,
+    # but the Calico addon does not, and a probe blackholed by policy fails the
+    # pod rather than degrading it.
+    - from:
+        - ipBlock:
+            cidr: 10.0.0.0/20
+      ports:
+        - protocol: TCP
+          port: 3000

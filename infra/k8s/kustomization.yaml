@@ -14,6 +14,7 @@ resources:
   - poller-deployment.yaml
   - github-watcher-deployment.yaml
   - cluster-issuer.yaml
+  - network-policy.yaml
 
 # The image names below are deliberately unresolvable placeholders: the real
 # Artifact Registry host embeds the region and project id, which live in CI

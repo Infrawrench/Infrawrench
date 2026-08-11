@@ -16,9 +16,26 @@ spec:
       labels:
         app: poller
     spec:
+      # Runs under the namespace default KSA, which is bound to nothing; the
+      # poller reaches provider APIs with per-account credentials out of the
+      # database and never calls the in-cluster Kubernetes API.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # The `node` user baked into the runtime image, which also owns /app.
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: poller
           image: REGION-docker.pkg.dev/PROJECT_ID/infrawrench/poller:bootstrap
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: POLLER_CONCURRENCY
               value: "8"
@@ -32,5 +49,21 @@ spec:
             limits:
               # All 16+ provider plugins load in-process; SDKs are heavy.
               memory: 1536Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # The poller itself writes nothing to disk, but it loads every provider
+        # plugin in-process and some of them carry node file drivers, so give
+        # the read-only root a small scratch volume rather than betting on which
+        # code paths a poll can reach. Also covers npm's cache
+        # (NPM_CONFIG_CACHE).
+        #
+        # Node-disk backed, deliberately not `medium: Memory` — that would
+        # charge the staged bytes against this container's 1536Mi limit. Same
+        # reasoning as web; keep all three consistent.
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
       # loop.stop() drains in-flight polls for up to 30s on SIGTERM.
       terminationGracePeriodSeconds: 45

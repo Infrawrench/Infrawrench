@@ -22,9 +22,26 @@ spec:
       # identity — without the annotated KSA, every triggered hosted build
       # fails at auth while the same deploy works fine from the web app.
       serviceAccountName: web
+      # The Cloud Build token comes from the GKE metadata server via Workload
+      # Identity, keyed off the KSA above — not from the projected token, which
+      # nothing here reads.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # The `node` user baked into the runtime image, which also owns /app.
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: github-watcher
           image: REGION-docker.pkg.dev/PROJECT_ID/infrawrench/github-watcher:bootstrap
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           envFrom:
             - secretRef:
                 name: infrawrench-env
@@ -34,4 +51,20 @@ spec:
               memory: 192Mi
             limits:
               memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # Cloud Build sources go up as in-memory buffers (infrafile/
+        # build-cloud.ts streams the GitHub tarball straight to GCS), so nothing
+        # here stages to disk. The scratch volume is for npm's cache
+        # (NPM_CONFIG_CACHE) and for the plugin file drivers this pod inherits
+        # by calling loadPlugins() to service git-triggered workflows.
+        #
+        # Node-disk backed, deliberately not `medium: Memory` — that would
+        # charge the staged bytes against this container's 512Mi limit. Same
+        # reasoning as web; keep all three consistent.
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
       terminationGracePeriodSeconds: 45

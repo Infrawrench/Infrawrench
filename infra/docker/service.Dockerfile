@@ -56,8 +56,23 @@ RUN pnpm install --prod --frozen-lockfile --ignore-scripts
 FROM node:${NODE_VERSION}-bookworm-slim AS runner
 ARG APP_DIR
 ENV NODE_ENV=production
+# npm is only a launcher here (`start` is a bare `node dist/*.mjs`), but it
+# still tries to mkdir a cache and a log dir under $HOME/.npm, which is not
+# writable under the manifests' `readOnlyRootFilesystem: true`.
+#
+# This is belt-and-braces, not a fix for a crash: npm 11 `.catch()`es both
+# mkdirs and wraps the log-file open in a try/catch explicitly commented "if
+# the user has a readonly logdir…", so a read-only root costs a suppressed
+# verbose line and nothing else. Pointing it at the scratch volume the
+# Deployments mount just means we are not relying on that swallowing behaviour
+# staying true across an npm major.
+ENV NPM_CONFIG_CACHE=/tmp/.npm \
+    NPM_CONFIG_UPDATE_NOTIFIER=false
 COPY --from=builder --chown=node:node /repo /app
 WORKDIR /app/${APP_DIR}
+# uid/gid 1000, created by the official node image. The Deployments pin
+# runAsUser/runAsGroup to the same numbers — `runAsNonRoot` alone only proves
+# the id isn't 0, and the COPY above chowns to this user specifically.
 USER node
 # Every service package defines a `start` script (node dist/*.mjs)
 CMD ["npm", "run", "start"]
