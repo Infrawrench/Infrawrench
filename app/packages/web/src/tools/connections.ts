@@ -8,6 +8,7 @@ import { sqlDrivers, kvDrivers, dockerDrivers } from "../services/drivers";
 import { rewriteConnectionForTunnel } from "../services/tunnel-resolver";
 import { getClientForAccount, getClientForResource } from "../services/plugin-clients";
 import { resolveSshConfig, sshExec } from "../services/ssh";
+import { resolveSafeHost } from "../services/host-validation";
 import { HostKeyTrustRequiredError } from "../services/ssh-host-keys";
 import { logAudit } from "../services/audit";
 import { ok, err, type ToolDefinition } from "./types";
@@ -348,9 +349,33 @@ export function connectionTools(): ToolDefinition[] {
           return err(e instanceof Error ? e.message : "Failed to resolve SSH config");
         }
 
+        // SSRF: `sshHost` is whatever the tool call said. MCP exposes every
+        // tool regardless of `risk` (see tools/types.ts), so this is reachable
+        // by an API key holding nothing but `resources:execute` — the same
+        // permission the WebSocket terminal needs — and it takes no DNS
+        // trickery at all, just typing 169.254.169.254. Vet it and dial the
+        // address that cleared, exactly as /ssh-tunnels/exec does.
+        //
+        // The condition is the security property stated directly: pin only
+        // when the host about to be dialed is the one the caller named. When
+        // the plugin supplies the endpoint (Fly, Hetzner, an SSH account's
+        // stored credentials) `resolveSshConfig` ignores `sshHost` entirely,
+        // and that host is configuration written with `accounts:write` — the
+        // same trust tier as every SQL and Docker credential host this server
+        // already dials unguarded, including `docker_command` above. See the
+        // SSH SSRF section in KNOWLEDGE.md for why that line sits there.
+        let dial: { dialAddress: string } | undefined;
+        if (sshHost && config.host === sshHost) {
+          try {
+            dial = { dialAddress: await resolveSafeHost(config.host) };
+          } catch (e) {
+            return err(e instanceof Error ? e.message : "Invalid SSH host");
+          }
+        }
+
         const commandSnippet = command.slice(0, 200);
         try {
-          const stdout = await sshExec(auth.organizationId, config, command);
+          const stdout = await sshExec(auth.organizationId, config, command, dial);
           void logAudit({
             organizationId: auth.organizationId,
             userId: auth.userId,

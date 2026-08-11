@@ -20,6 +20,11 @@ vi.mock("@/services/plugin-clients", () => ({
 const mockSshExec = vi.fn();
 vi.mock("@/services/ssh", () => ({ sshExec: (...a: unknown[]) => mockSshExec(...a) }));
 
+const mockResolveSafeHost = vi.fn();
+vi.mock("@/services/host-validation", () => ({
+  resolveSafeHost: (...a: unknown[]) => mockResolveSafeHost(...a),
+}));
+
 class HostKeyTrustRequiredError extends Error {
   kind = "unknown" as const;
   host = "h";
@@ -33,7 +38,10 @@ const { connectRoutes } = await import("@/api/routes/connect");
 const buildApp = () => buildTestApp(connectRoutes);
 
 describe("Connect routes", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockResolveSafeHost.mockResolvedValue("198.51.100.11");
+  });
 
   describe("POST /templates", () => {
     it("404s when the source plugin is unknown", async () => {
@@ -235,6 +243,27 @@ describe("Connect routes", () => {
       expect(mockSshExec).toHaveBeenCalled();
       const cmd = mockSshExec.mock.calls[0]![2] as string;
       expect(cmd).toContain("printf");
+      // `targetSshHost` is request body: vetted, then dialed by address while
+      // the config keeps the name for host-key trust.
+      expect(mockResolveSafeHost).toHaveBeenCalledWith("host.example.com");
+      expect(mockSshExec.mock.calls[0]![1]).toMatchObject({ host: "host.example.com" });
+      expect(mockSshExec.mock.calls[0]![3]).toEqual({ dialAddress: "198.51.100.11" });
+    });
+
+    it("400s on a target host in blocked address space, before decrypting a key", async () => {
+      sourceCtxWithOutput();
+      mockResolveSafeHost.mockRejectedValue(
+        new Error("SSH host 169.254.169.254 resolves to a blocked address range"),
+      );
+
+      const res = await buildApp().request("/env-deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...baseBody, targetSshHost: "169.254.169.254" }),
+      });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(/blocked address range/);
+      expect(mockSshExec).not.toHaveBeenCalled();
     });
   });
 });
