@@ -30,6 +30,7 @@ import {
 import {
   GetQueryResultsCommand,
   StartQueryCommand,
+  StopQueryCommand,
   type ResultField,
 } from "@aws-sdk/client-cloudwatch-logs";
 import {
@@ -118,6 +119,66 @@ export const AWS_NETWORK_FLOW_CAPABILITY: NetworkFlowCapabilityDeclaration = {
 /** How long to wait for a Logs Insights query before giving up on the day. */
 const QUERY_TIMEOUT_MS = 120_000;
 const QUERY_POLL_MS = 2_000;
+
+/**
+ * Thrown when the host withdrew its authorization mid-day.
+ *
+ * Deliberately not a `NetworkFlowSetupError` and deliberately not swallowed by
+ * the per-log-group `catch` below: nothing is wrong with the account, and the
+ * day must come back as *no answer at all* rather than as a short one, because
+ * the host advances a watermark per day and never revisits it. The host
+ * recognizes its own abort and ends the pass without recording a failure.
+ */
+class FlowAuthorizationWithdrawnError extends Error {
+  constructor(day: string) {
+    super(`Host withdrew network-flow authorization while collecting ${day}`);
+    this.name = "FlowAuthorizationWithdrawnError";
+  }
+}
+
+/**
+ * Sleep, but wake immediately if authorization is withdrawn.
+ *
+ * The poll interval is where nearly all of a query's wall-clock goes, so
+ * sleeping through an abort would leave up to `QUERY_POLL_MS` of a scan we have
+ * already decided to stop paying for.
+ */
+function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort() {
+      clearTimeout(timer);
+      resolve();
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * Stop a running query at the provider, best effort.
+ *
+ * Abandoning the result locally does not stop the scan: Logs Insights goes on
+ * reading the log group and goes on billing the customer for every gigabyte it
+ * reads, for up to fifteen minutes. This is the only thing that actually turns
+ * the meter off, so it runs both when the host withdraws authorization and when
+ * a query overruns our own timeout — the second case has always been leaving a
+ * scan running for nothing.
+ *
+ * Failure is ignored on purpose. The common one is the query having finished a
+ * moment ago (`InvalidParameterException`), and there is nothing useful to do
+ * about any of the others while unwinding.
+ */
+async function stopQuery(creds: AwsCredentials, queryId: string): Promise<void> {
+  try {
+    await getAwsClients(creds).cloudWatchLogs.send(new StopQueryCommand({ queryId }));
+  } catch {
+    // Already finished, already stopped, or unreachable — nothing to do.
+  }
+}
 
 /** Only CloudWatch Logs destinations are readable — see the module header. */
 const READABLE_DESTINATION = "cloud-watch-logs";
@@ -238,13 +299,22 @@ function toEndpoint(local: LocalEndpoint): NetworkFlowEndpoint {
   };
 }
 
-/** Run a Logs Insights query over one UTC day and wait for it. */
+/**
+ * Run a Logs Insights query over one UTC day and wait for it.
+ *
+ * `signal` is the host's authorization to spend the customer's money. It is
+ * checked before the query is started — a scan begun without it is money spent
+ * on a claim we no longer hold — and again on every poll, where withdrawing it
+ * stops the query at the provider rather than merely walking away from it.
+ */
 async function runInsightsQuery(
   creds: AwsCredentials,
   logGroupName: string,
   queryString: string,
   day: string,
+  signal?: AbortSignal,
 ): Promise<{ rows: ResultField[][]; bytesScanned: number }> {
+  if (signal?.aborted) throw new FlowAuthorizationWithdrawnError(day);
   const logs = getAwsClients(creds).cloudWatchLogs;
   const startMs = Date.parse(`${day}T00:00:00.000Z`);
   const endMs = Date.parse(`${day}T23:59:59.999Z`);
@@ -261,6 +331,10 @@ async function runInsightsQuery(
 
   const deadline = Date.now() + QUERY_TIMEOUT_MS;
   for (;;) {
+    if (signal?.aborted) {
+      await stopQuery(creds, queryId);
+      throw new FlowAuthorizationWithdrawnError(day);
+    }
     const result = await logs.send(new GetQueryResultsCommand({ queryId }));
     const status = result.status ?? "Running";
     if (status === "Complete") {
@@ -273,12 +347,13 @@ async function runInsightsQuery(
       throw new Error(`CloudWatch Logs Insights query ${status.toLowerCase()} for ${logGroupName}`);
     }
     if (Date.now() > deadline) {
+      await stopQuery(creds, queryId);
       throw new Error(
         `CloudWatch Logs Insights query for ${logGroupName} did not finish within ` +
           `${QUERY_TIMEOUT_MS / 1000}s — the log group is too large for a single-day scan`,
       );
     }
-    await new Promise((resolve) => setTimeout(resolve, QUERY_POLL_MS));
+    await sleep(QUERY_POLL_MS, signal);
   }
 }
 
@@ -534,12 +609,22 @@ function foldTotals(
  * Throws {@link NetworkFlowSetupError} when nothing on the account can be read,
  * so the host backs off for half a day and shows the reason with its fix rather
  * than retrying an unanswerable question hourly at the customer's expense.
+ *
+ * **`signal` is what keeps this affordable when the host loses its claim.** A
+ * day here is one or two Logs Insights scans per usable flow log, serially, and
+ * an account can have a hundred of them — so the day is not a unit anyone can
+ * schedule around, and the entitlement to run it has to be revocable while it
+ * runs. When it is withdrawn, the query in flight is stopped *at the provider*,
+ * no further one is started, and the day comes back as a throw rather than as a
+ * partial answer the host would watermark as complete.
  */
 export async function fetchAwsNetworkFlows(
   creds: AwsCredentials,
   day: string,
   maxPairs: number = AWS_NETWORK_FLOW_CAPABILITY.maxPairsPerDay,
+  signal?: AbortSignal,
 ): Promise<NetworkFlowFetchResult> {
+  if (signal?.aborted) throw new FlowAuthorizationWithdrawnError(day);
   const ec2 = getAwsClients(creds).ec2;
   const described = await ec2.send(new DescribeFlowLogsCommand({ MaxResults: 100 }));
   const discovered = discover(described.FlowLogs ?? [], creds.region);
@@ -577,6 +662,7 @@ export async function fetchAwsNetworkFlows(
         entry.logGroupName,
         buildPairQuery(entry.fields, maxPairs),
         day,
+        signal,
       );
       bytesScanned += pairResult.bytesScanned;
       const pairs = pairResult.rows
@@ -601,13 +687,20 @@ export async function fetchAwsNetworkFlows(
         entry.logGroupName,
         buildTotalsQuery(entry.fields),
         day,
+        signal,
       );
       bytesScanned += totalsResult.bytesScanned;
       totals.push(...foldTotals(totalsResult.rows, entry.fields, day, pairs));
     } catch (e) {
-      // One log group failing is not the day failing. The pass is marked
-      // degraded so the surface does not present a partial day as a quiet one,
-      // and the other groups still report.
+      // Losing authorization is not one log group failing: every remaining
+      // group would fail the same way, at the cost of a round trip each, and
+      // the day is incomplete regardless of what the earlier groups returned.
+      // Degrading it and carrying on would hand the host a partial day dressed
+      // as a whole one, which it would then watermark and never revisit.
+      if (e instanceof FlowAuthorizationWithdrawnError) throw e;
+      // One log group failing *is* just that. The pass is marked degraded so
+      // the surface does not present a partial day as a quiet one, and the
+      // other groups still report.
       degraded = true;
       console.error(
         `[aws] flow log ${entry.source.id} failed for ${day}:`,

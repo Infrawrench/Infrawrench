@@ -14,11 +14,14 @@
  *   days each. Cost collection can afford to be greedy because a Cost Explorer
  *   call is free; a Logs Insights scan is not.
  * - **The lease is held for as long as the collection runs, not for a fixed
- *   window.** Every other pass here sizes its lease at a guess of the
+ *   window, and the collection spends only against the part of it the database
+ *   has acknowledged.** Every other pass here sizes its lease at a guess of the
  *   worst-case run and accepts that an overrun means someone else redoing the
  *   work; the worst case for this one is hours, and redoing the work is a
  *   charge on the customer's bill. See `./lease.ts` — a renewing lease is what
- *   makes the exclusivity below mean anything past the first thirty minutes.
+ *   makes the exclusivity below mean anything past the first thirty minutes,
+ *   and authorizing work against the last *confirmed* renewal rather than
+ *   against elapsed time is what keeps that true when the database goes quiet.
  */
 import { randomUUID } from "node:crypto";
 
@@ -40,7 +43,9 @@ import {
 export {
   NETWORK_FLOW_HEARTBEAT_MS,
   NETWORK_FLOW_LEASE_MS,
+  NETWORK_FLOW_LEASE_RESERVE_MS,
   NETWORK_FLOW_MAX_RUNTIME_MS,
+  NETWORK_FLOW_MIN_WORK_WINDOW_MS,
 } from "./lease";
 
 /** Nominal cadence — once a day, plus jitter so orgs don't stampede. */
@@ -185,11 +190,12 @@ function fencedWhere(claimed: ClaimedNetworkFlowAccount, lease: NetworkFlowLease
   return and(where, eq(accountNetworkFlowPolls.leaseOwner, owner));
 }
 
-async function runOne(claimed: ClaimedNetworkFlowAccount): Promise<void> {
+async function runOne(claimed: ClaimedNetworkFlowAccount, claimedAt: number): Promise<void> {
   const lease = startNetworkFlowLease(
     claimed.accountId,
     claimed.organizationId,
     claimed.leaseOwner ?? null,
+    { claimedAt },
   );
 
   let result: NetworkFlowCollectionResult;
@@ -272,11 +278,18 @@ export async function runNetworkFlowPass(
   const flowCapable = loaded
     .filter((l) => l.plugin.manifest.networkFlows)
     .map((l) => l.plugin.manifest.id);
+  // Read before the claim is sent, and handed to every lease it hands back.
+  // The lease each row is held under expires a fixed period after the database
+  // ran this statement, so the earliest instant this process can prove that
+  // statement had not yet run is the only honest anchor for the deadline it
+  // wrote — see `startNetworkFlowLease`. Taking it afterwards would credit the
+  // lease with the round trip.
+  const claimedAt = Date.now();
   const claimed = await claimDueNetworkFlowAccounts(
     opts.limit ?? NETWORK_FLOWS_PER_TICK,
     flowCapable,
   );
   if (claimed.length === 0) return { claimed: 0 };
-  await Promise.allSettled(claimed.map((row) => runOne(row)));
+  await Promise.allSettled(claimed.map((row) => runOne(row, claimedAt)));
   return { claimed: claimed.length };
 }

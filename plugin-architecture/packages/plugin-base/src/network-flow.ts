@@ -280,6 +280,42 @@ export interface NetworkFlowCapabilityDeclaration {
 export interface NetworkFlowFetchRange {
   /** YYYY-MM-DD, UTC. Inclusive; the whole day. */
   day: string;
+  /**
+   * The host's authorization to spend the customer's money, withdrawn when it
+   * aborts.
+   *
+   * A day is not a bounded unit of work: it is a walk over every flow log on
+   * the account, each one a query with its own timeout, so the host cannot
+   * decide up front whether a day fits in the time it is entitled to run for.
+   * What the host *does* know, continuously, is whether it still holds the
+   * cluster-wide claim on this account — and the moment it can no longer prove
+   * that it does, another replica may take the account over and start the same
+   * scans. Two replicas scanning the same log group is a duplicate charge on
+   * the customer's bill, so the authorization has to be revocable while the
+   * work is running rather than only between days.
+   *
+   * When this aborts, a plugin must:
+   *
+   * 1. **Start no further billable work.** Not one more query, not for the day
+   *    in hand.
+   * 2. **Stop what is already running, at the provider**, where the provider
+   *    offers it (`StopQuery`, `jobs.cancel`). Abandoning the result locally
+   *    does not stop the meter.
+   * 3. **Throw.** Do not return a partial day: the host advances a watermark
+   *    per day and never revisits one, so a short answer accepted as complete
+   *    is a permanent undercount. The host recognizes its own abort and ends
+   *    the pass cleanly — no failure recorded, no backoff, the day left for
+   *    next time.
+   *
+   * A plugin that ignores this behaves exactly as it did before the signal
+   * existed, and the host still refuses to record a day it revoked mid-flight;
+   * what it cannot do is stop that plugin from spending. Honouring it is the
+   * difference between a bounded overrun and an unbounded one.
+   *
+   * Absent when nobody is competing for the account — a backfill, a test, a
+   * host that does not lease.
+   */
+  signal?: AbortSignal;
 }
 
 /**

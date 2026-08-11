@@ -120,7 +120,7 @@ import { estimateAwsCost } from "./cost-estimate.js";
 import { fetchEc2MonthlyPrices, HOURS_PER_MONTH as PRICING_HOURS_PER_MONTH } from "./pricing.js";
 import { fetchAwsCostData } from "./cost-data.js";
 import { fetchAwsCommitments } from "./commitments.js";
-import { fetchAwsNetworkFlows } from "./network-flows.js";
+import { AWS_NETWORK_FLOW_CAPABILITY, fetchAwsNetworkFlows } from "./network-flows.js";
 import { attachResource as attachResourceImpl } from "./attach-handlers.js";
 import { resolveOutput as resolveOutputImpl } from "./resolve-output.js";
 import { deleteResource as deleteResourceImpl } from "./delete-handlers.js";
@@ -533,7 +533,12 @@ export class AWSClient implements PluginClient {
     _accountId: string,
     range: NetworkFlowFetchRange,
   ): Promise<NetworkFlowFetchResult> {
-    return fetchAwsNetworkFlows(this.creds, range.day);
+    return fetchAwsNetworkFlows(
+      this.creds,
+      range.day,
+      AWS_NETWORK_FLOW_CAPABILITY.maxPairsPerDay,
+      range.signal,
+    );
   }
 
   async fetchCommitments(_accountId: string): Promise<CommitmentRecord[]> {
