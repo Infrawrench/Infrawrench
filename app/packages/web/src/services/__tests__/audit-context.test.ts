@@ -51,7 +51,9 @@ describe("runWithAuditPrincipal", () => {
    * when the promise starts, so an un-awaited call still records the key.
    */
   it("covers a fire-and-forget logAudit", async () => {
-    let pending: Promise<void> | undefined;
+    // `logAudit` resolves to whether the row landed; fire-and-forget callers
+    // ignore it, and this one only cares that the principal was captured.
+    let pending: Promise<boolean> | undefined;
     await runWithAuditPrincipal(PRINCIPAL, async () => {
       pending = logAudit({
         organizationId: "org-1",

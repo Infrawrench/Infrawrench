@@ -21,8 +21,19 @@ interface AuditParams {
  * with (see `services/audit-context.ts`), so a write made through an `iwk_` key
  * names that key even though the call site only knows the acting user. An
  * explicit `apiKeyId` always wins.
+ *
+ * Returns whether the row was actually inserted. Almost every caller ignores it
+ * and should: they record a change to Infrawrench's own database, so an audit
+ * insert that fails failed alongside the thing it was describing. It exists for
+ * the handful of callers that record an **irreversible side effect on somebody
+ * else's system** — a revert's provider write is the first — where the mutation
+ * outlives the failure and "we could not say who did this" is a fact worth
+ * surfacing rather than swallowing.
+ *
+ * It is deliberately still a boolean rather than a throw: an audit failure must
+ * never be the reason a mutation that already happened is reported as failed.
  */
-export async function logAudit(params: AuditParams): Promise<void> {
+export async function logAudit(params: AuditParams): Promise<boolean> {
   try {
     await db.insert(auditLogs).values({
       id: uuid(),
@@ -35,7 +46,9 @@ export async function logAudit(params: AuditParams): Promise<void> {
       metadata: params.metadata ?? null,
       ipAddress: params.ipAddress ?? null,
     });
+    return true;
   } catch (e) {
     console.error("[audit] Failed to log event:", e);
+    return false;
   }
 }

@@ -168,6 +168,16 @@ const RevertApplyResponse = strict({
         "attempt's write — the resource was already back, and the event is now marked reverted. " +
         "Nothing was sent to the provider by this request.",
     }),
+  auditRecorded: z
+    .boolean()
+    .optional()
+    .openapi({
+      description:
+        "Present and `false` only when the audit entry could not be written. The provider change " +
+        "still happened; its attribution did not reach the audit table and was written to the " +
+        "server log instead. Attribution is best-effort — nothing transactional spans a " +
+        "third-party cloud API and Infrawrench's database.",
+    }),
 }).openapi("RevertApplyResponse");
 
 export function registerResourceChangePaths(ctx: BuildContext) {
@@ -363,8 +373,11 @@ export function registerResourceChangePaths(ctx: BuildContext) {
       "reached the provider is audit-logged as `resource.change_revert`, including one that lost " +
       "its claim or could not record — the entry's `outcome` is `recorded`, `superseded`, " +
       "`unrecorded` or `reconciled`, so a contested outcome reads as one mutation rather than as " +
-      "several reverts. An attempt that neither wrote nor recorded anything logs nothing. The " +
-      "stored resource snapshot is deliberately left untouched, so the next poll observes the " +
+      "several reverts. An attempt that neither wrote nor recorded anything logs nothing. " +
+      "Attribution is best-effort: no transaction spans a third-party cloud API and Infrawrench's " +
+      "database, so if the audit insert itself fails the response carries `auditRecorded: false` " +
+      "and the details go to the server log rather than being silently dropped.\n\n" +
+      "The stored resource snapshot is deliberately left untouched, so the next poll observes the " +
       "reverted state and records it as an ordinary change event.",
     request: { params: ChangeIdParam },
     responses: {

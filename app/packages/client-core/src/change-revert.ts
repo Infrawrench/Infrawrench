@@ -335,6 +335,18 @@ export interface RevertApplyResponse {
    * the provider by this request.
    */
   reconciled?: boolean;
+  /**
+   * Present and `false` only when the audit entry for this revert could not be
+   * written. The provider change still happened — this says the *attribution*
+   * for it did not reach the audit table, and the details were written to the
+   * server log instead. Absent means audited normally.
+   *
+   * Attribution is best-effort by construction: nothing transactional spans a
+   * third-party cloud API and Infrawrench's database, so the gap between the
+   * provider accepting a write and the audit row committing cannot be closed
+   * from here. Surfacing it beats swallowing it.
+   */
+  auditRecorded?: boolean;
 }
 
 /**

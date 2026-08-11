@@ -31,7 +31,7 @@ describe("logAudit", () => {
   });
 
   it("inserts an audit log into the database", async () => {
-    await logAudit({
+    const recorded = await logAudit({
       organizationId: "org1",
       userId: "user1",
       action: "create",
@@ -39,6 +39,7 @@ describe("logAudit", () => {
       entityId: "r1",
     });
 
+    expect(recorded).toBe(true);
     expect(mockInsert).toHaveBeenCalled();
     expect(mockValues).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -52,10 +53,13 @@ describe("logAudit", () => {
     );
   });
 
-  it("does not throw when db insert fails", async () => {
+  it("does not throw when db insert fails, and reports that it didn't land", async () => {
     mockValues.mockRejectedValue(new Error("db down"));
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
+    // Never a throw: an audit failure must not make a mutation that already
+    // happened read as failed. The boolean is how the handful of callers that
+    // record irreversible external side effects can surface the gap instead.
     await expect(
       logAudit({
         organizationId: "org1",
@@ -63,7 +67,7 @@ describe("logAudit", () => {
         entityType: "resource",
         entityId: "r1",
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
 
     expect(consoleSpy).toHaveBeenCalled();
     consoleSpy.mockRestore();

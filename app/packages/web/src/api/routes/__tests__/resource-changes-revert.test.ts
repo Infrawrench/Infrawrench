@@ -120,6 +120,7 @@ const releasedClaim = (writes: Record<string, unknown>[]) =>
 interface ClientOpts {
   liveSize?: string;
   updateThrows?: boolean;
+  getResourceThrows?: boolean;
 }
 
 /**
@@ -136,6 +137,7 @@ function stubClient(opts: ClientOpts = {}) {
   });
   const getResource = vi.fn(async () => {
     calls.push("getResource");
+    if (opts.getResourceThrows) throw new Error("provider unreachable");
     return {
       id: CHANGE.resourceId,
       pluginId: CHANGE.pluginId,
@@ -430,6 +432,52 @@ describe("POST /:changeId/revert — a write that landed but was never recorded"
     // Claim released, event still not marked reverted.
     expect(releasedClaim(writes)).toBe(true);
     expect(writes.some((w) => w.revertedAt instanceof Date)).toBe(false);
+  });
+
+  /**
+   * The reconciliation path's own failure mode, and the sharpest case of the
+   * rule row 8 follows: the claim this attempt holds *is* the evidence that
+   * brought it down this path. Releasing it here means no later attempt ever
+   * recognises the interrupted write, and the event stays un-reverted forever
+   * while the provider stays reverted.
+   */
+  it("keeps the claim when the reconciliation write itself fails", async () => {
+    stubSelect({ ...CHANGE, revertClaimedAt: new Date("2026-08-10T09:05:00.000Z") });
+    const writes = stubUpdate({ completeThrows: true });
+    const { updateResource } = stubClient({ liveSize: "s-1vcpu-1gb" });
+
+    const res = await app().request("/chg-1/revert", { method: "POST" });
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toMatch(/already applied to the provider/);
+    expect(updateResource).not.toHaveBeenCalled();
+    // The evidence survives, so the next attempt can still reconcile.
+    expect(releasedClaim(writes)).toBe(false);
+  });
+
+  /**
+   * The same rule generalised: an attempt that inherited an unresolved claim
+   * must not clear it on *any* exit, or it destroys the reconciliation signal
+   * for everyone after it.
+   */
+  it("does not release an inherited claim when planning fails", async () => {
+    stubSelect({ ...CHANGE, revertClaimedAt: new Date("2026-08-10T09:05:00.000Z") });
+    const writes = stubUpdate();
+    stubClient({ getResourceThrows: true });
+
+    const res = await app().request("/chg-1/revert", { method: "POST" });
+    expect(res.status).toBe(502);
+    expect(releasedClaim(writes)).toBe(false);
+  });
+
+  it("does release its own claim when planning fails and nothing was inherited", async () => {
+    stubSelect({ ...CHANGE, revertClaimedAt: null });
+    const writes = stubUpdate();
+    stubClient({ getResourceThrows: true });
+
+    const res = await app().request("/chg-1/revert", { method: "POST" });
+    expect(res.status).toBe(502);
+    // Nothing to protect, so the ordinary "retryable at once" behaviour holds.
+    expect(releasedClaim(writes)).toBe(true);
   });
 
   it("still reverts normally when the stale claim's attempt never wrote", async () => {

@@ -105,7 +105,7 @@ If the revert reaches the provider but Infrawrench then fails to record it, you 
 
 - Reverting needs the **Resources: write** permission — the same one editing a resource needs.
 - It is blocked by an active [change freeze](../team-and-billing/change-freeze.md), like any other provider mutation, and can be overridden by an admin the same way.
-- Every revert that reaches the provider is written to the [audit log](../team-and-billing/audit-log.md) as `resource.change_revert`, naming who did it, the change event, and the fields written — including the rare superseded case below, which is recorded as `outcome: superseded` so it doesn't read as a second, separate revert. A revert that wrote nothing writes no audit entry either.
+- Every revert that reaches the provider is written to the [audit log](../team-and-billing/audit-log.md) as `resource.change_revert`, naming who did it, the change event, and the fields written — including the rare superseded case below, which is recorded as `outcome: superseded` so it doesn't read as a second, separate revert. A revert that wrote nothing writes no audit entry either. Attribution is best-effort rather than guaranteed: a cloud provider's API and Infrawrench's database can't be written to together as one transaction, so in the rare case the audit entry itself fails the API says so explicitly and the details go to the server log instead of being dropped quietly.
 - The revert shows up in the timeline itself. Nothing special-cases it: the next poll sees the resource differ from its stored snapshot and records the undo as an ordinary **Changed** event.
 
 ## Drift alerts

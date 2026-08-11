@@ -294,10 +294,11 @@ app.get("/:changeId/revert", async (c) => {
  * | 2 | not reached (plan failed, no client) | — | 502/404 | claim released | retry |
  * | 3 | not reached (nothing writable) | — | 409 | claim released | n/a — correct |
  * | 4 | not reached (already applied earlier) | yes, as `reconciled` | 200 | reverted | n/a |
- * | 5 | threw | — | 400 | claim released | retry |
+ * | 4b | not reached (as row 4) | no — DB threw | 500 | **claim kept** | lease expiry → row 4 |
+ * | 5 | threw | — | 400 | claim released* | retry |
  * | 6 | ok | yes | 200 | reverted | n/a |
  * | 7 | ok | no — superseded | 409 | replacement's claim | the replacement |
- * | 8 | ok | no — DB threw | 500 | **claim deliberately kept** | lease expiry → row 4 |
+ * | 8 | ok | no — DB threw | 500 | **claim kept** | lease expiry → row 4 |
  * | 9 | ok | never attempted (process died) | — | claim expires | lease expiry → row 4 |
  *
  * Rows 4, 8 and 9 are one loop and the reason this handler is not simply
@@ -308,14 +309,25 @@ app.get("/:changeId/revert", async (c) => {
  * completes it instead: `revertLooksAlreadyApplied` in client-core carries that
  * judgement and explains how it avoids mistaking a hand-edit for a revert.
  *
- * Row 8 is why the claim is *not* released when the completion throws. The
- * stale claim is the only evidence that a write may have gone unrecorded, so
- * dropping it there would destroy exactly what row 4 reads. The cost is that
- * such an attempt is not retryable until the lease expires; that is a database
- * outage, and five minutes is an acceptable price for not losing the trail.
+ * **The general rule the starred exits follow**: `revert_claimed_at` is the
+ * only evidence that an earlier attempt may have written without recording, so
+ * no exit may clear a claim it inherited and did not resolve. That is why rows
+ * 4b and 8 hold it, and why every other release goes through
+ * {@link releaseIfSafe} rather than releasing unconditionally — row 2 and row 5
+ * would otherwise destroy an inherited claim on their way past. The cost is
+ * five minutes of not being retryable, against a permanent disagreement.
+ *
+ * *Row 5's residual, named rather than hidden: a provider that errors *after*
+ * applying is treated as not having applied, because that is what throwing
+ * means in the plugin contract. On a first attempt (nothing inherited) the
+ * claim is released, so a later retry sees the fields already back with no
+ * claim to reconcile from and reports "already back at its previous value" —
+ * accurate about the resource, but the event keeps no revert badge. Holding the
+ * claim on every failed revert would close that at the price of a five-minute
+ * lockout after every bad input, which is the common case and this is not.
  *
  * Every row that reached the provider is audit-logged whatever happened next —
- * see {@link auditOutcome}.
+ * see {@link auditOutcome}, including why attribution is best-effort.
  *
  * The stored `resources` snapshot is deliberately left alone (unlike
  * `POST /api/resources/update`), so the next poll sees the difference and
@@ -362,9 +374,37 @@ app.post("/:changeId/revert", async (c) => {
     );
   }
 
+  /**
+   * Did this attempt inherit an unresolved earlier one?
+   *
+   * A claim outlives its holder only when that holder reached neither of its
+   * exits, so a claim still lying on the row at load time means "somebody was
+   * mid-revert and never recorded an outcome" — and until we know otherwise,
+   * that outcome might have been a provider write. `revert_claimed_at` is the
+   * only trace of it, so while it is unresolved this attempt must not clear it.
+   */
+  const inheritedUnresolvedAttempt = change.revertClaimedAt !== null;
+
+  /**
+   * Release the claim, unless releasing would destroy the evidence some later
+   * attempt needs to reconcile.
+   *
+   * Releasing normally is what makes an ordinary failure retryable at once
+   * rather than at lease expiry, and that is worth having. But every
+   * reconciliation depends on `revert_claimed_at` still being set (see
+   * `revertLooksAlreadyApplied`), so an attempt that inherited an unresolved
+   * claim and did not resolve it hands the claim back by *lease expiry* instead
+   * — five minutes of not being retryable, against a permanent disagreement
+   * between the feed and the provider. The same trade row 8 makes.
+   */
+  const releaseIfSafe = async () => {
+    if (inheritedUnresolvedAttempt) return;
+    await releaseRevert(organizationId, change.id, owner);
+  };
+
   const result = await buildRevertPlan(organizationId, change);
   if (!result.ok) {
-    await releaseRevert(organizationId, change.id, owner);
+    await releaseIfSafe();
     return revertFailureResponse(c, result.failure);
   }
   const { plan, client } = result.result;
@@ -380,13 +420,30 @@ app.post("/:changeId/revert", async (c) => {
    * irreversible mutation to somebody else's cloud infrastructure, and the
    * process ending between the provider accepting it and the insert landing
    * would leave that mutation with no actor against it. Awaiting costs one
-   * insert on a route that has just made a provider round-trip. (It narrows
-   * rather than closes: a process that dies during the provider call itself is
-   * unattributable no matter what we do here — there is no transaction that
-   * spans us and the provider.)
+   * insert on a route that has just made a provider round-trip.
+   *
+   * **Attribution here is best-effort, and that is a property of the problem
+   * rather than of this code.** There is no transaction spanning a third-party
+   * cloud API and our Postgres, so between "the provider accepted the write"
+   * and "the audit row committed" there is a gap nothing at this layer can
+   * close: a process that dies inside it leaves a real mutation unattributed,
+   * and failing the response would not bring the attribution back — it would
+   * only change what the caller is told about a change that already happened.
+   * Guaranteeing it needs a durable outbox (a row written in the same
+   * transaction as the claim, drained by the poller), which is a platform-level
+   * design and not something to bolt onto one route.
+   *
+   * What is done instead is to make the gap **loud and recoverable** rather
+   * than silent: the failure is logged at error level with the actor, the event
+   * and the fields written — so the trail exists in the application log even
+   * when the audit table refused it — and reported to the caller as
+   * `auditRecorded: false` rather than quietly dropped.
    */
-  const auditOutcome = async (outcome: RevertAuditOutcome, fieldKeys: string[]) => {
-    await logAudit({
+  const auditOutcome = async (
+    outcome: RevertAuditOutcome,
+    fieldKeys: string[],
+  ): Promise<boolean> => {
+    const recorded = await logAudit({
       organizationId,
       userId,
       action: "resource.change_revert",
@@ -403,6 +460,26 @@ app.post("/:changeId/revert", async (c) => {
         outcome,
       },
     });
+    if (!recorded) {
+      // The audit table would not take it. Say everything the row would have
+      // said, here, where it is at least durable in the log shipper.
+      console.error(
+        "[change-revert] AUDIT GAP: provider mutation not attributable in the audit table.",
+        JSON.stringify({
+          organizationId,
+          userId: userId ?? null,
+          action: "resource.change_revert",
+          resourceId: change.resourceId,
+          changeId: change.id,
+          pluginId: change.pluginId,
+          resourceTypeId: change.resourceTypeId,
+          fieldKeys,
+          outcome,
+          at: new Date().toISOString(),
+        }),
+      );
+    }
+    return recorded;
   };
 
   const patch = buildRevertPatch(plan);
@@ -413,19 +490,34 @@ app.post("/:changeId/revert", async (c) => {
     // never got to say so. Recording it here is what stops the feed disagreeing
     // with the provider forever. `revertLooksAlreadyApplied` is what keeps this
     // from also firing on a resource somebody put back by hand.
-    if (revertLooksAlreadyApplied(plan, change.revertClaimedAt !== null)) {
+    if (revertLooksAlreadyApplied(plan, inheritedUnresolvedAttempt)) {
       const reconciledAt = new Date();
-      let recorded = false;
+      let recorded: boolean;
       try {
         recorded = await completeRevert(organizationId, change.id, owner, reconciledAt);
       } catch (err) {
+        // Row 8's rule, one branch over — and the branch where it bites
+        // hardest. The claim this attempt is holding *is* the evidence that
+        // brought it down this path; releasing it here would mean no later
+        // attempt ever recognises the interrupted write, and the event stays
+        // un-reverted forever while the provider stays reverted. So: no
+        // release, and the lease expiry hands it to the next attempt intact.
         console.error("[change-revert] Failed to record a reconciled revert:", err);
+        return c.json(
+          {
+            error:
+              "This change was already applied to the provider by an earlier attempt, but " +
+              "recording that against the event failed. The resource is correct; the timeline " +
+              "will catch up when the revert is retried.",
+          },
+          500,
+        );
       }
       if (recorded) {
         // No provider call was made by this request, and the audit entry says
         // so — `reconciled` is not folded into `recorded` precisely so nobody
         // reads this as "this user resized the machine".
-        await auditOutcome("reconciled", []);
+        const audited = await auditOutcome("reconciled", []);
         return c.json({
           changeId: change.id,
           resourceId: change.resourceId,
@@ -433,10 +525,14 @@ app.post("/:changeId/revert", async (c) => {
           plan,
           revertedAt: reconciledAt.toISOString(),
           reconciled: true,
+          ...(audited ? {} : { auditRecorded: false }),
         });
       }
+      // `recorded === false` means another attempt took the event over while we
+      // were planning. It holds the claim and will reconcile; `releaseIfSafe`
+      // below is a no-op for us anyway, since release is owner-fenced.
     }
-    await releaseRevert(organizationId, change.id, owner);
+    await releaseIfSafe();
     return c.json(
       {
         error: plan.blockedReason ?? "Nothing about this change can be reverted.",
@@ -451,14 +547,21 @@ app.post("/:changeId/revert", async (c) => {
   // credential rewriters *between* the read and the write, widening the window
   // for exactly the lost update the re-read is trying to catch.
   if (!client?.updateResource) {
-    await releaseRevert(organizationId, change.id, owner);
+    await releaseIfSafe();
     return c.json({ error: "The account this change belongs to no longer exists" }, 404);
   }
 
   try {
     await client.updateResource(change.resourceTypeId, change.resourceId, change.accountId, patch);
   } catch (err) {
-    await releaseRevert(organizationId, change.id, owner);
+    // Row 5. A throw is taken to mean the write did not apply, which is what
+    // throwing means in the plugin contract, so the claim goes back and the
+    // caller can retry at once. The residual is named in the table above: a
+    // provider that errors *after* applying leaves the event un-reverted with
+    // nothing to reconcile from. Holding the claim on every failed revert would
+    // close it, at the price of a five-minute lockout after every bad input —
+    // which is the common case, and this is not.
+    await releaseIfSafe();
     const message = err instanceof Error ? err.message : "The revert failed";
     return c.json({ error: message }, 400);
   }
@@ -478,13 +581,14 @@ app.post("/:changeId/revert", async (c) => {
     // 4). Releasing here would trade a five-minute wait for a permanent
     // disagreement between the feed and the provider.
     console.error("[change-revert] Provider write landed but could not be recorded:", err);
-    await auditOutcome("unrecorded", plan.revertibleFields);
+    const audited = await auditOutcome("unrecorded", plan.revertibleFields);
     return c.json(
       {
         error:
           "The revert was applied to the provider, but recording it against this change failed. " +
           "The resource has been put back; the timeline will catch up when the revert is retried.",
         appliedFields: plan.revertibleFields,
+        ...(audited ? {} : { auditRecorded: false }),
       },
       500,
     );
@@ -497,7 +601,7 @@ app.post("/:changeId/revert", async (c) => {
   // took over logs its own `recorded` entry only if it, too, wrote something
   // (if this write got there first, its re-read plans `already-reverted` for
   // every field, so it writes nothing and reconciles instead).
-  await auditOutcome(completed ? "recorded" : "superseded", plan.revertibleFields);
+  const audited = await auditOutcome(completed ? "recorded" : "superseded", plan.revertibleFields);
 
   if (!completed) {
     // This request outlived its lease and another attempt took the event over
@@ -513,6 +617,7 @@ app.post("/:changeId/revert", async (c) => {
           "against this event. Re-check the resource before retrying.",
         code: REVERT_CONFLICT_CODE,
         appliedFields: plan.revertibleFields,
+        ...(audited ? {} : { auditRecorded: false }),
       },
       409,
     );
@@ -524,6 +629,7 @@ app.post("/:changeId/revert", async (c) => {
     appliedFields: plan.revertibleFields,
     plan,
     revertedAt: revertedAt.toISOString(),
+    ...(audited ? {} : { auditRecorded: false }),
   });
 });
 
