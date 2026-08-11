@@ -39,3 +39,25 @@ export function workspaceTabDomId(tabId: string): string {
 export function workspaceTabPanelDomId(tabId: string): string {
   return `${WORKSPACE_PANEL_ID_PREFIX}-${encodeTabIdForDom(tabId)}`;
 }
+
+/**
+ * The full attribute set that makes an element a workspace tab's panel.
+ *
+ * `WorkspaceTabsViewport` spreads this onto every panel it renders. A host
+ * that renders a tab's content outside the viewport — web's Settings tab,
+ * whose sections are a router subtree — spreads it onto the element that
+ * actually contains that content, and tells the viewport not to render a
+ * second element for the tab (`panelRenderedByHost`). Either way the tab's
+ * `aria-controls` resolves to the one element holding what the tab opens.
+ */
+export function workspaceTabPanelProps(tabId: string): {
+  id: string;
+  role: "tabpanel";
+  "aria-labelledby": string;
+} {
+  return {
+    id: workspaceTabPanelDomId(tabId),
+    role: "tabpanel",
+    "aria-labelledby": workspaceTabDomId(tabId),
+  };
+}

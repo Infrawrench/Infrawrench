@@ -12,6 +12,7 @@ import { AccountPanel } from "@/routes/org.$orgId.accounts.$accountId";
 import { ResourcePanel } from "@/routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId";
 import {
   getWorkspaceNavigateArgs,
+  isRouteHostedTabPanel,
   navigateToWorkspaceTarget,
   syncWorkspaceRouteFromPath,
 } from "@/lib/workspace-tabs";
@@ -77,8 +78,10 @@ export function WebWorkspaceTabsViewport({ orgId, tabsValidated }: WebWorkspaceT
   // On non-tab routes (onboarding) we hide all tab panels so the route's
   // <Outlet/> renders alone — tabs stay mounted in the DOM. Settings is a
   // hybrid: it lives in the tab strip like any other tab, but its content is
-  // route-rendered (the section pages are a router subtree), so its panel here
-  // is empty and the viewport steps aside for the <Outlet/> the same way.
+  // route-rendered (the section pages are a router subtree), so the viewport
+  // steps aside for the <Outlet/> the same way — and hands the Settings tab's
+  // panel over to the layout route, which is the element that holds what the
+  // tab opens (see isRouteHostedTabPanel).
   const routeTarget = syncWorkspaceRouteFromPath(pathname, hash);
   const showActive = routeTarget !== null && routeTarget.kind !== "settings";
 
@@ -99,6 +102,7 @@ export function WebWorkspaceTabsViewport({ orgId, tabsValidated }: WebWorkspaceT
   return (
     <BaseViewport
       showActive={showActive}
+      panelRenderedByHost={(tab: WorkspaceTab) => isRouteHostedTabPanel(routeTarget, tab)}
       {...(tabsValidated
         ? {}
         : {

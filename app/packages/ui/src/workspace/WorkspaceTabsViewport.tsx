@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useUIStore, type WorkspaceTab } from "../store/ui.store.js";
 import { WorkspaceTabProvider } from "./WorkspaceTabContext.js";
-import { workspaceTabDomId, workspaceTabPanelDomId } from "./tab-dom-ids.js";
+import { workspaceTabPanelProps } from "./tab-dom-ids.js";
 
 interface WorkspaceTabsViewportProps {
   /** Maps a workspace tab to the React element that renders its content. */
@@ -24,6 +24,20 @@ interface WorkspaceTabsViewportProps {
    * resolve to something.
    */
   shouldMountTab?: (tab: WorkspaceTab) => boolean;
+  /**
+   * Returns true for a tab whose panel element the **host** renders, outside
+   * this viewport. Web's Settings tab is the case: its sections are a router
+   * subtree that draws into `__root`'s `<Outlet />`, a sibling of the
+   * viewport, so the visible settings content can never be inside a panel the
+   * viewport owns. That host element spreads `workspaceTabPanelProps(tab.id)`
+   * and the viewport renders nothing for the tab, leaving exactly one
+   * `role="tabpanel"` with that id — the one the user can see.
+   *
+   * Return true **only while the host's element is mounted**. A tab this
+   * returns true for with nothing rendering its panel is the dangling
+   * `aria-controls` this whole mechanism exists to prevent.
+   */
+  panelRenderedByHost?: (tab: WorkspaceTab) => boolean;
 }
 
 /**
@@ -39,12 +53,15 @@ interface WorkspaceTabsViewportProps {
  * in `GlobalTabBar` points at with `aria-controls`; both sides derive the ids
  * from the tab id (see `tab-dom-ids.ts`). `display: none` keeps the inactive
  * panels out of the accessibility tree, so a screen reader sees exactly one
- * panel — the selected tab's — while the DOM keeps them all alive.
+ * panel — the selected tab's — while the DOM keeps them all alive. A tab
+ * whose content the host renders elsewhere is skipped entirely; see
+ * `panelRenderedByHost`.
  */
 export function WorkspaceTabsViewport({
   renderTabPanel,
   showActive = true,
   shouldMountTab,
+  panelRenderedByHost,
 }: WorkspaceTabsViewportProps) {
   const tabs = useUIStore((s) => s.workspaceTabs);
   const activeTabId = useUIStore((s) => s.activeWorkspaceTabId);
@@ -52,14 +69,15 @@ export function WorkspaceTabsViewport({
   return (
     <>
       {tabs.map((tab) => {
+        // The host is rendering this tab's panel itself — rendering one here
+        // too would duplicate the id and hide the copy the user can see.
+        if (panelRenderedByHost?.(tab)) return null;
         const mounted = shouldMountTab?.(tab) ?? true;
         const isActive = mounted && showActive && tab.id === activeTabId;
         return (
           <div
             key={tab.id}
-            id={workspaceTabPanelDomId(tab.id)}
-            role="tabpanel"
-            aria-labelledby={workspaceTabDomId(tab.id)}
+            {...workspaceTabPanelProps(tab.id)}
             // `hidden` rather than unmount: the DOM and React state for
             // inactive tabs stay alive, preserving terminal sessions etc.
             style={{ display: isActive ? "flex" : "none" }}
