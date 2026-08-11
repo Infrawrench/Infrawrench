@@ -485,9 +485,10 @@ export function FileBrowser({
 
         {!loading && !error && (
           <table className="w-full text-xs">
+            <caption className="sr-only">Files and folders</caption>
             <thead className="sticky top-0 bg-surface z-10">
               <tr className="text-on-surface-faint border-b border-border/50">
-                <th className="px-3 py-1.5 w-8">
+                <th scope="col" className="px-3 py-1.5 w-8">
                   <input
                     type="checkbox"
                     aria-label="Select all items"
@@ -499,9 +500,15 @@ export function FileBrowser({
                     className="size-3 accent-blue-500 cursor-pointer"
                   />
                 </th>
-                <th className="text-left px-2 py-1.5 font-medium">Name</th>
-                <th className="text-right px-4 py-1.5 font-medium w-24">Size</th>
-                <th className="text-right px-4 py-1.5 font-medium w-48">Last modified</th>
+                <th scope="col" className="text-left px-2 py-1.5 font-medium">
+                  Name
+                </th>
+                <th scope="col" className="text-right px-4 py-1.5 font-medium w-24">
+                  Size
+                </th>
+                <th scope="col" className="text-right px-4 py-1.5 font-medium w-48">
+                  Last modified
+                </th>
               </tr>
             </thead>
             <tbody>

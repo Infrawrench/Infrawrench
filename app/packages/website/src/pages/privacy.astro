@@ -91,7 +91,7 @@ const subprocessors = [
   <body>
     <Nav />
 
-    <main class="legal-shell">
+    <main class="legal-shell" id="main-content" tabindex="-1">
       <article class="docs-article legal-article">
         <header class="docs-article-header">
           <h1 class="docs-article-title">{title}</h1>
@@ -247,12 +247,12 @@ const subprocessors = [
             These are the third parties involved in handling your data. Several are engaged only if
             you choose the sign-in method or turn on the feature they support, as noted below.
           </p>
-          <table>
+          <table aria-labelledby="subprocessors">
             <thead>
               <tr>
-                <th>Provider</th>
-                <th>Purpose</th>
-                <th>Data involved</th>
+                <th scope="col">Provider</th>
+                <th scope="col">Purpose</th>
+                <th scope="col">Data involved</th>
               </tr>
             </thead>
             <tbody>

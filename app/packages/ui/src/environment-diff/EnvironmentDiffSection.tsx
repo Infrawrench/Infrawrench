@@ -377,13 +377,24 @@ function TypeSummaryTable({ data }: { data: EnvironmentDiffResponse }) {
   return (
     <div className="border border-border rounded-xl overflow-hidden mb-6">
       <table className="w-full text-sm">
+        <caption className="sr-only">Resource counts by type</caption>
         <thead>
           <tr className="border-b border-border text-xs text-on-surface-faint">
-            <th className="px-4 py-2 text-left font-normal">Resource type</th>
-            <th className="px-3 py-2 text-right font-normal">{data.a.accountName}</th>
-            <th className="px-3 py-2 text-right font-normal">{data.b.accountName}</th>
-            <th className="px-3 py-2 text-right font-normal">Delta</th>
-            <th className="px-4 py-2 text-right font-normal">Differences</th>
+            <th scope="col" className="px-4 py-2 text-left font-normal">
+              Resource type
+            </th>
+            <th scope="col" className="px-3 py-2 text-right font-normal">
+              {data.a.accountName}
+            </th>
+            <th scope="col" className="px-3 py-2 text-right font-normal">
+              {data.b.accountName}
+            </th>
+            <th scope="col" className="px-3 py-2 text-right font-normal">
+              Delta
+            </th>
+            <th scope="col" className="px-4 py-2 text-right font-normal">
+              Differences
+            </th>
           </tr>
         </thead>
         <tbody>

@@ -530,12 +530,21 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
               {showWords && (
                 <div className="mt-1 max-h-56 overflow-auto rounded-md border border-border">
                   <table className="w-full text-[11px] font-mono">
+                    <caption className="sr-only">Word timings</caption>
                     <thead className="sticky top-0 bg-surface">
                       <tr className="text-on-surface-muted">
-                        <th className="text-left px-2 py-1 font-semibold">Word</th>
-                        <th className="text-left px-2 py-1 font-semibold">Start</th>
-                        <th className="text-left px-2 py-1 font-semibold">End</th>
-                        <th className="text-left px-2 py-1 font-semibold">Speaker</th>
+                        <th scope="col" className="text-left px-2 py-1 font-semibold">
+                          Word
+                        </th>
+                        <th scope="col" className="text-left px-2 py-1 font-semibold">
+                          Start
+                        </th>
+                        <th scope="col" className="text-left px-2 py-1 font-semibold">
+                          End
+                        </th>
+                        <th scope="col" className="text-left px-2 py-1 font-semibold">
+                          Speaker
+                        </th>
                       </tr>
                     </thead>
                     <tbody>

@@ -163,18 +163,31 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
 
         <div className="overflow-x-auto rounded border border-border bg-surface-overlay/40">
           <table className="w-full text-sm border-collapse">
+            <caption className="sr-only">Secret versions</caption>
             <thead>
               <tr className="border-b border-border bg-surface-overlay/60">
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-on-surface-muted w-24">
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-on-surface-muted w-24"
+                >
                   Version
                 </th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-on-surface-muted w-32">
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-on-surface-muted w-32"
+                >
                   State
                 </th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-on-surface-muted"
+                >
                   Created
                 </th>
-                <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-on-surface-muted"
+                >
                   Actions
                 </th>
               </tr>

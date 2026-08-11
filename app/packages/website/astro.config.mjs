@@ -4,6 +4,7 @@ import cloudflare from "@astrojs/cloudflare";
 import tailwindcss from "@tailwindcss/vite";
 
 import remarkDocs from "./src/lib/remark-docs.mjs";
+import rehypeTableScope from "./src/lib/rehype-table-scope.mjs";
 
 export default defineConfig({
   site: "https://infrawrench.com",
@@ -16,6 +17,7 @@ export default defineConfig({
 
   markdown: {
     remarkPlugins: [remarkDocs],
+    rehypePlugins: [rehypeTableScope],
     shikiConfig: { theme: "github-dark-default" },
   },
 

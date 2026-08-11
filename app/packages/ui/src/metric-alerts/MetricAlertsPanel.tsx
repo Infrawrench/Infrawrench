@@ -193,11 +193,21 @@ export function MetricAlertsPanel({ client }: MetricAlertsPanelProps) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-on-surface-faint">
-                  <th className="py-1.5 pr-3 font-medium">Rule</th>
-                  <th className="py-1.5 pr-3 font-medium">Resource</th>
-                  <th className="py-1.5 pr-3 font-medium">Observed</th>
-                  <th className="py-1.5 pr-3 font-medium">Fired</th>
-                  <th className="py-1.5 font-medium">Status</th>
+                  <th scope="col" className="py-1.5 pr-3 font-medium">
+                    Rule
+                  </th>
+                  <th scope="col" className="py-1.5 pr-3 font-medium">
+                    Resource
+                  </th>
+                  <th scope="col" className="py-1.5 pr-3 font-medium">
+                    Observed
+                  </th>
+                  <th scope="col" className="py-1.5 pr-3 font-medium">
+                    Fired
+                  </th>
+                  <th scope="col" className="py-1.5 font-medium">
+                    Status
+                  </th>
                 </tr>
               </thead>
               <tbody>

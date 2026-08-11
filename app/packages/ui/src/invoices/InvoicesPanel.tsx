@@ -985,12 +985,24 @@ function LineTable({ invoice }: { invoice: ManagedInvoice }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-xs uppercase tracking-wide text-on-surface-faint">
-                <th className="px-3 py-2 text-left font-normal">Line</th>
-                <th className="px-3 py-2 text-right font-normal">Collected</th>
-                <th className="px-3 py-2 text-right font-normal">Adjustment</th>
-                <th className="px-3 py-2 text-right font-normal">Subtotal</th>
-                <th className="px-3 py-2 text-right font-normal">Rate</th>
-                <th className="px-3 py-2 text-right font-normal">Invoiced</th>
+                <th scope="col" className="px-3 py-2 text-left font-normal">
+                  Line
+                </th>
+                <th scope="col" className="px-3 py-2 text-right font-normal">
+                  Collected
+                </th>
+                <th scope="col" className="px-3 py-2 text-right font-normal">
+                  Adjustment
+                </th>
+                <th scope="col" className="px-3 py-2 text-right font-normal">
+                  Subtotal
+                </th>
+                <th scope="col" className="px-3 py-2 text-right font-normal">
+                  Rate
+                </th>
+                <th scope="col" className="px-3 py-2 text-right font-normal">
+                  Invoiced
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
