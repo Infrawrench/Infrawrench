@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.13.0",
+    "version": "1.14.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -151,6 +151,10 @@
     {
       "name": "Session recordings",
       "description": "Replayable asciicasts of SSH sessions opened through the cloud. Cloud SSH is already proxied server-side, so recording tees a stream the server holds rather than needing an agent on the host; casts download in asciinema's own format. Opt-in per organization, retained on a per-organization window."
+    },
+    {
+      "name": "Shared consoles",
+      "description": "Pair-on-prod: fan a live cloud SSH session out to invited colleagues, with exactly one of them holding the keyboard. The invite link is a locator, never a capability — joining needs live org membership and the same `resources:execute` a direct terminal to that resource needs, re-derived on join, on attach and on a sweep while attached. Every join, leave, role change, handover and revocation is audit-logged, and participants are attributed in the session recording's metadata and on its timeline."
     },
     {
       "name": "Synthetic probes",
@@ -16732,6 +16736,65 @@
             "type": "boolean",
             "description": "True when the cast also contains keystrokes (the org opted into input capture)."
           },
+          "sharedConsoleId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Set when this session was shared with colleagues while it ran.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "participants": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "userName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "observer",
+                    "driver"
+                  ]
+                },
+                "joinedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "leftAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "userId",
+                "userName",
+                "role",
+                "joinedAt",
+                "leftAt"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Everyone who was attached to this session and in what role — the **highest** role they held, not their role at the end. Null or empty for an ordinary solo session. Once a session can be shared, `userId` alone stops answering 'whose hands were on this box'; this does. The cast carries the same facts in-band as asciicast `\"m\"` marker events, so a viewer sees *when* the keyboard moved."
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -16860,6 +16923,339 @@
             "maximum": 3650
           }
         },
+        "additionalProperties": false
+      },
+      "SharedConsoleParticipant": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "userName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display-name snapshot taken when they joined."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "observer",
+              "driver"
+            ],
+            "description": "`driver` holds the keyboard; `observer` sees the terminal and cannot type into it. Exactly one participant per console is a driver at any moment, enforced by a partial unique index rather than by the application — two simultaneous handovers cannot both win."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "joined",
+              "left",
+              "removed"
+            ],
+            "description": "`left` walked away and may resume on the same row without a new invite; `removed` was ejected or lost the permission mid-session and needs a fresh one."
+          },
+          "driverRequestedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Set when this participant has asked for the keyboard and nobody has answered yet. Asking grants nothing — only the current driver or the sharer can move it."
+          },
+          "joinedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "userName",
+          "role",
+          "status",
+          "driverRequestedAt",
+          "joinedAt"
+        ],
+        "additionalProperties": false
+      },
+      "SharedConsole": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "routingKey": {
+            "type": "string",
+            "description": "Load-balancer affinity hint. A guest's WebSocket must carry it as `?sid=` so the upgrade lands on the replica holding the pty. Not a secret and not authorisation."
+          },
+          "ownerUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ownerName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "resourceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "host": {
+            "type": "string",
+            "description": "Final hop, as the proxy dialled it — never as a client asserted it."
+          },
+          "port": {
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          },
+          "allowHandover": {
+            "type": "boolean",
+            "description": "False makes the share strictly read-only: nobody but the sharer can ever type. This is the one hard safety property the feature offers, as opposed to inferring intent from command text."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "revoked",
+              "ended"
+            ],
+            "description": "`revoked` — somebody ended the share; `ended` — the underlying SSH session closed. Either way the fan-out stops and attached guests are disconnected."
+          },
+          "inviteTokenPrefix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inviteExpiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "inviteConsumedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Set once an invite admitted somebody new. The link stops working for anyone else at that moment; the sharer mints a replacement for the next guest."
+          },
+          "recordingId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The session recording this console is being taped into, when the org records. Participants are attributed in that recording's own metadata and as asciicast markers on its timeline.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "ptyCols": {
+            "type": "integer"
+          },
+          "ptyRows": {
+            "type": "integer",
+            "description": "The pty's geometry, which is the **driver's** geometry. One pty has one size, so everyone else letterboxes rather than reflowing."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "routingKey",
+          "ownerUserId",
+          "ownerName",
+          "accountId",
+          "resourceId",
+          "host",
+          "port",
+          "username",
+          "allowHandover",
+          "status",
+          "inviteTokenPrefix",
+          "inviteExpiresAt",
+          "inviteConsumedAt",
+          "recordingId",
+          "ptyCols",
+          "ptyRows",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "SharedConsoleSummary": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SharedConsole"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "participants": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SharedConsoleParticipant"
+                }
+              }
+            },
+            "required": [
+              "participants"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "SharedConsoleCreated": {
+        "type": "object",
+        "properties": {
+          "share": {
+            "$ref": "#/components/schemas/SharedConsole"
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SharedConsoleParticipant"
+            }
+          },
+          "inviteToken": {
+            "type": "string",
+            "description": "The invite, returned exactly once. Only its sha256 is stored, so it cannot be shown again — mint a replacement instead."
+          }
+        },
+        "required": [
+          "share",
+          "participants",
+          "inviteToken"
+        ],
+        "additionalProperties": false
+      },
+      "CreateSharedConsole": {
+        "type": "object",
+        "properties": {
+          "liveConsoleId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The pty to share, as the terminal's WebSocket reported it in its `ssh:connected` frame. Everything else about the session — host, account, recording — is read from the proxy's own registration rather than from this body.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "routingKey": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
+          },
+          "allowHandover": {
+            "type": "boolean",
+            "description": "Defaults to true."
+          },
+          "inviteTtlMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 120,
+            "description": "Defaults to 15."
+          }
+        },
+        "required": [
+          "liveConsoleId",
+          "routingKey"
+        ],
+        "additionalProperties": false
+      },
+      "SharedConsoleInvitePreview": {
+        "type": "object",
+        "properties": {
+          "share": {
+            "$ref": "#/components/schemas/SharedConsole"
+          },
+          "joinable": {
+            "type": "boolean"
+          },
+          "rejoin": {
+            "type": "boolean",
+            "description": "You are already on this console and would resume."
+          },
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "share",
+          "joinable"
+        ],
+        "additionalProperties": false
+      },
+      "SharedConsoleState": {
+        "type": "object",
+        "properties": {
+          "share": {
+            "$ref": "#/components/schemas/SharedConsole"
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SharedConsoleParticipant"
+            }
+          }
+        },
+        "required": [
+          "share",
+          "participants"
+        ],
+        "additionalProperties": false
+      },
+      "SharedConsoleJoined": {
+        "type": "object",
+        "properties": {
+          "share": {
+            "$ref": "#/components/schemas/SharedConsole"
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SharedConsoleParticipant"
+            }
+          },
+          "you": {
+            "$ref": "#/components/schemas/SharedConsoleParticipant"
+          },
+          "routingKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "share",
+          "participants",
+          "you",
+          "routingKey"
+        ],
         "additionalProperties": false
       },
       "AccessRequest": {
@@ -41875,6 +42271,872 @@
         },
         "operationId": "getOrgOrgIdSessionRecordingsRecordingIdCast",
         "x-required-permission": "session-recordings:read"
+      }
+    },
+    "/api/org/{orgId}/shared-consoles": {
+      "get": {
+        "tags": [
+          "Shared consoles"
+        ],
+        "summary": "List sessions currently shared",
+        "description": "Live shared SSH sessions in this organization, with who is on each. Only cloud SSH can be shared: those sessions are already proxied by the server, so fanning the pty out to a second socket is a consumer of a stream it holds. A desktop session dialling a host directly never reaches the server and cannot be shared.\n\n_Requires permission: `resources:execute`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Live shared consoles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SharedConsoleSummary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSharedConsoles",
+        "x-required-permission": "resources:execute"
+      },
+      "post": {
+        "tags": [
+          "Shared consoles"
+        ],
+        "summary": "Share a live SSH session",
+        "description": "Opens a share on a session you already have running and mints its first invite. You become the driver.\n\nReturns 409 `console_not_here` when the pty is held by a different server replica than the one answering this call — reopen the terminal and share again. Writing the share anyway would produce a link that authorises correctly and then finds nothing to attach to.\n\nRequires `resources:execute` — the same permission as opening the terminal. Closed to API keys: sharing a shell is an act a person performs.\n\n_Requires permission: `resources:execute`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSharedConsole"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The share, its participants, and the one-time invite token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedConsoleCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSharedConsoles",
+        "x-required-permission": "resources:execute"
+      }
+    },
+    "/api/org/{orgId}/shared-consoles/invites/{token}": {
+      "get": {
+        "tags": [
+          "Shared consoles"
+        ],
+        "summary": "Preview what an invite link points at",
+        "description": "What the join screen shows before anyone commits: which host, whose session, and whether you may join it. Reachable with a valid token by a signed-in member who already holds `resources:execute` — the token says *which* session, never *whether*. Returns nothing from the session itself.\n\n_Requires permission: `resources:execute`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "token",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The share and whether the caller may join it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedConsoleInvitePreview"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSharedConsolesInvitesToken",
+        "x-required-permission": "resources:execute"
+      }
+    },
+    "/api/org/{orgId}/shared-consoles/{consoleId}": {
+      "get": {
+        "tags": [
+          "Shared consoles"
+        ],
+        "summary": "Get one shared console",
+        "description": "Visible to participants and to anyone who could revoke it (the sharer, or a holder of `org:settings:write`). Others get 404 — that a named colleague has a root shell open on a named production host right now is operational information.\n\n_Requires permission: `resources:execute`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "consoleId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The share and its participants",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedConsoleState"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdSharedConsolesConsoleId",
+        "x-required-permission": "resources:execute"
+      },
+      "delete": {
+        "tags": [
+          "Shared consoles"
+        ],
+        "summary": "Revoke a share",
+        "description": "Disconnects every guest and stops the fan-out. The sharer's own SSH session carries on — revoking a share is not killing a terminal.\n\nThe sharer or a holder of `org:settings:write`. Deliberately does **not** require `resources:execute`: ending access must never be gated on still holding the access, or an owner whose role was narrowed mid-incident could not close the session they opened.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "consoleId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdSharedConsolesConsoleId"
+      }
+    },
+    "/api/org/{orgId}/shared-consoles/{consoleId}/join": {
+      "post": {
+        "tags": [
+          "Shared consoles"
+        ],
+        "summary": "Redeem an invite and join",
+        "description": "Admission needs live org membership **and** `resources:execute` — the invite is a locator, never a capability, so a leaked link admits nobody who could not have opened the shell themselves.\n\nThe invite is consumed by the first person it admits. Somebody already on the console resumes their own row without a token, so a reload costs them nothing and obliges the sharer to mint nothing. New joiners always start as observers whatever the link said.\n\nAudit-logged as `shared_console.join`, and written onto the recording's timeline as an asciicast marker.\n\n_Requires permission: `resources:execute`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "consoleId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "token"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "You are on the console",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedConsoleJoined"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSharedConsolesConsoleIdJoin",
+        "x-required-permission": "resources:execute"
+      }
+    },
+    "/api/org/{orgId}/shared-consoles/{consoleId}/leave": {
+      "post": {
+        "tags": [
+          "Shared consoles"
+        ],
+        "summary": "Leave a shared console",
+        "description": "Steps you off without ending the session. Your row survives, so the same invite is not needed again. Deliberately does not require `resources:execute`: giving access up must never be gated on still holding it.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "consoleId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedConsoleState"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSharedConsolesConsoleIdLeave"
+      }
+    },
+    "/api/org/{orgId}/shared-consoles/{consoleId}/handover": {
+      "post": {
+        "tags": [
+          "Shared consoles"
+        ],
+        "summary": "Move the keyboard to another participant",
+        "description": "Authorised by the **current driver** (the keyboard is theirs to give) or by the **sharer** (it is their box, and asking permission from somebody who has stopped responding is not a control). An observer cannot promote themselves — that is `/request-driver`.\n\nTwo simultaneous grants cannot both win: the database's partial unique index decides the order, and the loser gets 409 `driver-race-lost`.\n\nThe pty resizes to the new driver's viewport; everyone else letterboxes.\n\n_Requires permission: `resources:execute`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "consoleId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "participantId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "00000000-0000-0000-0000-000000000000"
+                  }
+                },
+                "required": [
+                  "participantId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedConsoleState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSharedConsolesConsoleIdHandover",
+        "x-required-permission": "resources:execute"
+      }
+    },
+    "/api/org/{orgId}/shared-consoles/{consoleId}/request-driver": {
+      "post": {
+        "tags": [
+          "Shared consoles"
+        ],
+        "summary": "Ask for the keyboard",
+        "description": "Raises a flag the driver and the sharer can see. Grants nothing on its own — that is the point.\n\n_Requires permission: `resources:execute`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "consoleId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedConsoleState"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSharedConsolesConsoleIdRequestDriver",
+        "x-required-permission": "resources:execute"
+      }
+    },
+    "/api/org/{orgId}/shared-consoles/{consoleId}/invites": {
+      "post": {
+        "tags": [
+          "Shared consoles"
+        ],
+        "summary": "Mint a replacement invite",
+        "description": "An invite is spent by the first person it admits, so inviting a second guest means minting a second link. Replaces any outstanding one. Sharer or `org:settings:write`.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "consoleId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "inviteTtlMinutes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 120
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The new invite",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedConsoleCreated"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSharedConsolesConsoleIdInvites"
+      },
+      "delete": {
+        "tags": [
+          "Shared consoles"
+        ],
+        "summary": "Withdraw the outstanding invite",
+        "description": "Kills the link without touching the session or anyone already on it.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "consoleId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedConsoleState"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdSharedConsolesConsoleIdInvites"
+      }
+    },
+    "/api/org/{orgId}/shared-consoles/{consoleId}/participants/{participantId}": {
+      "delete": {
+        "tags": [
+          "Shared consoles"
+        ],
+        "summary": "Remove somebody from a shared console",
+        "description": "Their socket is closed immediately on the replica holding the pty, and within one two-second sweep on any other. They are marked `removed` rather than `left`, so they cannot resume without a fresh invite. The sharer cannot be removed — revoke the share.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "consoleId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "participantId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedConsoleState"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdSharedConsolesConsoleIdParticipantsParticipantId"
       }
     },
     "/api/org/{orgId}/access-requests": {

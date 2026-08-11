@@ -11,6 +11,9 @@ resources:
   - web-deployment.yaml
   - web-service.yaml
   - web-ingress.yaml
+  # A more specific /api/ws location with consistent hashing on ?sid=, so a
+  # shared console's guests reach the replica holding the pty. See the file.
+  - web-ws-ingress.yaml
   - poller-deployment.yaml
   - github-watcher-deployment.yaml
   - cluster-issuer.yaml

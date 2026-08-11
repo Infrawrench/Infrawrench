@@ -72,6 +72,10 @@ The SSH view has a **Forward SSH agent** checkbox above the terminal. When enabl
 
 Sessions opened through the cloud are already proxied by our servers, which makes recording them cheap: turn it on and every one becomes a replayable [asciinema cast](./session-recording.md) — who connected, to what, and exactly what crossed the terminal. Off by default, retained on a window you set, and gated behind its own permission pair.
 
+## Sharing a session
+
+A live cloud session can be shared with a colleague: they watch the same terminal in real time, and you can hand them the keyboard. Observers cannot type — their keystrokes are dropped by the server, not hidden by the UI — and joining requires the same permission opening the terminal does, so the invite link is a locator rather than access. See [shared consoles](./shared-consoles.md).
+
 ## Running one command on many hosts
 
 A terminal is one shell on one box. To ask the same question of a whole fleet — which machines are on the old kernel, which are low on disk — use [Fan-out SSH](./ssh-fanout.md): pick the hosts, type one command, and identical output is collapsed so only the odd one out needs reading.

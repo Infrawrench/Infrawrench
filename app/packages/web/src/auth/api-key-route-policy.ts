@@ -102,6 +102,20 @@ export const API_KEY_DENY_RULES: readonly DenyRule[] = [
     reason:
       "API keys cannot request, approve, deny or revoke break-glass access. They may read the queue.",
   },
+  {
+    // Shared consoles, by the same argument as break-glass one entry up. A
+    // share is a person deciding to put a named colleague on a live shell for
+    // the length of a conversation; joining one is that colleague accepting.
+    // Neither act has an unattended reading. A key that could redeem an invite
+    // would turn a link pasted into a chat window into a durable, unwatched
+    // foothold on the box — which is exactly the failure mode the short expiry
+    // and the single-use invite exist to prevent, reintroduced from the other
+    // side. Reads stay open so a monitor can see which sessions are shared
+    // right now; that is the visibility half of the control.
+    prefix: "/shared-consoles",
+    methods: MUTATING,
+    reason: "API keys cannot share or join a console. They may list the sessions currently shared.",
+  },
 ];
 
 /**

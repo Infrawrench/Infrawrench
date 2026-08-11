@@ -74,6 +74,7 @@ function RootLayout() {
     if (
       pathname.startsWith("/onboarding") ||
       pathname.startsWith("/invite/") ||
+      pathname.startsWith("/share/") ||
       pathname.startsWith("/admin")
     ) {
       // These routes still need an auth check, but we don't redirect them to onboarding.
@@ -114,6 +115,7 @@ function RootLayout() {
     if (
       pathname.startsWith("/onboarding") ||
       pathname.startsWith("/invite/") ||
+      pathname.startsWith("/share/") ||
       pathname.startsWith("/admin")
     ) {
       return <Outlet />;
@@ -129,6 +131,7 @@ function RootLayout() {
   if (
     pathname.startsWith("/onboarding") ||
     pathname.startsWith("/invite/") ||
+    pathname.startsWith("/share/") ||
     pathname.startsWith("/admin")
   ) {
     return <Outlet />;

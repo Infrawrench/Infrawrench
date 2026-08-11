@@ -14,6 +14,7 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as DeploySplatRouteImport } from './routes/deploy.$'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as OrgOrgIdRouteImport } from './routes/org.$orgId'
+import { Route as ShareTokenRouteImport } from './routes/share.$token'
 import { Route as StatusSlugRouteImport } from './routes/status.$slug'
 import { Route as OrgOrgIdIndexRouteImport } from './routes/org.$orgId.index'
 import { Route as OrgOrgIdAgentsRouteImport } from './routes/org.$orgId.agents'
@@ -91,6 +92,11 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
 const OrgOrgIdRoute = OrgOrgIdRouteImport.update({
   id: '/org/$orgId',
   path: '/org/$orgId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ShareTokenRoute = ShareTokenRouteImport.update({
+  id: '/share/$token',
+  path: '/share/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StatusSlugRoute = StatusSlugRouteImport.update({
@@ -383,6 +389,7 @@ export interface FileRoutesByFullPath {
   '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
+  '/share/$token': typeof ShareTokenRoute
   '/status/$slug': typeof StatusSlugRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
@@ -442,6 +449,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/share/$token': typeof ShareTokenRoute
   '/status/$slug': typeof StatusSlugRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
@@ -501,6 +509,7 @@ export interface FileRoutesById {
   '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
+  '/share/$token': typeof ShareTokenRoute
   '/status/$slug': typeof StatusSlugRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
@@ -563,6 +572,7 @@ export interface FileRouteTypes {
     | '/deploy/$'
     | '/invite/$token'
     | '/org/$orgId'
+    | '/share/$token'
     | '/status/$slug'
     | '/org/$orgId/agents'
     | '/org/$orgId/changes'
@@ -622,6 +632,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/deploy/$'
     | '/invite/$token'
+    | '/share/$token'
     | '/status/$slug'
     | '/org/$orgId/agents'
     | '/org/$orgId/changes'
@@ -680,6 +691,7 @@ export interface FileRouteTypes {
     | '/deploy/$'
     | '/invite/$token'
     | '/org/$orgId'
+    | '/share/$token'
     | '/status/$slug'
     | '/org/$orgId/agents'
     | '/org/$orgId/changes'
@@ -741,6 +753,7 @@ export interface RootRouteChildren {
   DeploySplatRoute: typeof DeploySplatRoute
   InviteTokenRoute: typeof InviteTokenRoute
   OrgOrgIdRoute: typeof OrgOrgIdRouteWithChildren
+  ShareTokenRoute: typeof ShareTokenRoute
   StatusSlugRoute: typeof StatusSlugRoute
 }
 
@@ -779,6 +792,13 @@ declare module '@tanstack/react-router' {
       path: '/org/$orgId'
       fullPath: '/org/$orgId'
       preLoaderRoute: typeof OrgOrgIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/share/$token': {
+      id: '/share/$token'
+      path: '/share/$token'
+      fullPath: '/share/$token'
+      preLoaderRoute: typeof ShareTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/status/$slug': {
@@ -1315,6 +1335,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeploySplatRoute: DeploySplatRoute,
   InviteTokenRoute: InviteTokenRoute,
   OrgOrgIdRoute: OrgOrgIdRouteWithChildren,
+  ShareTokenRoute: ShareTokenRoute,
   StatusSlugRoute: StatusSlugRoute,
 }
 export const routeTree = rootRouteImport
