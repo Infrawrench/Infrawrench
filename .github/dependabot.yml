@@ -1,0 +1,33 @@
+# Automated dependency updates.
+#
+# Scoped to the Go module on purpose. Dependabot's *security* scanning is
+# repository-wide and already raises alerts everywhere; what this file adds is
+# automated update PRs, and switching that on for the pnpm workspace would open
+# a great many at once across every package. That is a decision worth taking
+# deliberately rather than as a side effect of fixing a Go advisory — add an
+# `npm` entry when somebody wants it.
+#
+# The provider is the module that needs it most: it ships compiled binaries to
+# the Terraform Registry, so a vulnerable transitive dependency is not something
+# a user can patch on their side. They run what was signed.
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: /terraform-provider-infrawrench
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      # Matches the repository's conventional-commit style, and scopes to the
+      # provider so these are legible next to everything else in the log.
+      prefix: "chore(terraform)"
+    groups:
+      # One PR for the whole set rather than one per module. Every dependency
+      # here is transitive — the provider directly requires four
+      # terraform-plugin-* modules and nothing else — so they move together,
+      # and five separate PRs updating five pieces of the same dependency tree
+      # would each need the same review and the same CI run.
+      go-dependencies:
+        patterns:
+          - "*"

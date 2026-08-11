@@ -907,6 +907,24 @@ func (c *Client) PutSessionRecordingSettings(ctx context.Context, in SessionReco
 	return &out, nil
 }
 
+/* ------------------------------ network flows ------------------------------ */
+
+func (c *Client) GetNetworkFlowSettings(ctx context.Context) (*NetworkFlowSettings, error) {
+	var out NetworkFlowSettings
+	if err := c.Get(ctx, "/network-flows/settings", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) PutNetworkFlowSettings(ctx context.Context, in NetworkFlowSettings) (*NetworkFlowSettings, error) {
+	var out NetworkFlowSettings
+	if err := c.Put(ctx, "/network-flows/settings", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 /* ----------------------------- issue trackers ------------------------------ */
 
 // GetJiraIntegration unwraps the {"integration": …} envelope. A disconnected

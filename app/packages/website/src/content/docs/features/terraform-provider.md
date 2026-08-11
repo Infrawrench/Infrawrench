@@ -423,6 +423,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | `infrawrench_expiry_alert_settings`      | [Expiry radar](./expiry-radar.md) lead time                     |
 | `infrawrench_posture_alert_settings`     | Whether [posture findings](./posture-checks.md) notify          |
 | `infrawrench_session_recording_settings` | [Session recording](./session-recording.md) and retention       |
+| `infrawrench_network_flow_settings`      | Whether [network flow costs](./network-costs.md) are collected  |
 
 ### Accounts and access
 
@@ -472,6 +473,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 - Currency settings **clear the display currency**, which turns conversion off. Your stated exchange rates survive, so you can turn it back on without re-entering them.
 - [Session recording](./session-recording.md) is deliberately **left running**. Silently disabling an audit control because someone deleted a resource block is not a safe default.
 - The drift, expiry and posture alert settings are **left alone** — they have no documented shipped values to restore to.
+- [Network flow collection](./network-costs.md) is **turned off**, and it's the one singleton where destroy deliberately changes something. Collection runs queries your cloud provider bills to your own account; leaving it running for a resource you deleted would keep spending your money with nothing in Terraform left to explain why.
 
 **Deletes can be refused.** Saved filters and scenario models something still points at return a conflict rather than being deleted, and the error names what's referencing them. A role members still hold, and a managed account with invoices against it, are refused the same way. Repoint or reassign first — Terraform won't decide for you which permission set those people should get instead.
 
