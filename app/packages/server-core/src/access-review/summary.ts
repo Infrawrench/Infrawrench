@@ -17,6 +17,7 @@
  * 3am.
  */
 import type { AccessFinding } from "@infrawrench/client-core";
+import { escapeMrkdwnFragment } from "../slack-escape";
 import type { PostureAlertSummary } from "../posture/summary";
 
 /**
@@ -68,21 +69,42 @@ function plural(n: number, one: string): string {
 }
 
 /**
+ * Every fragment of a finding line that came out of the customer's cloud, in
+ * render order. Nothing else in a line is attacker-influenced: the title, the
+ * severity and the punctuation are ours.
+ */
+function untrustedFragments(finding: AccessFinding): [string, string] {
+  return [finding.principal.displayName, finding.principal.accountName];
+}
+
+/**
  * `"<principal> (<account>) — <title> (high)"`. The account is in the line
  * because a principal named `deploy` exists in most of them.
+ *
+ * **Both names are synced from the customer's cloud**, so a transport that
+ * interprets markup has to be handed an `escape` that neutralises them — see
+ * `escapeMrkdwnFragment`. The default is identity, for the plain-text
+ * transports (Teams strips markdown in its Adaptive Card escaper; a push
+ * banner renders none).
  */
-export function accessFindingLine(finding: AccessFinding): string {
-  return `${finding.principal.displayName} (${finding.principal.accountName}) — ${finding.title} (${finding.severity})`;
+export function accessFindingLine(
+  finding: AccessFinding,
+  escape: (s: string) => string = (s) => s,
+): string {
+  const [principal, account] = untrustedFragments(finding);
+  return `${escape(principal)} (${escape(account)}) — ${finding.title} (${finding.severity})`;
 }
 
 /**
  * The access-review block as plain-text lines. `bold` wraps a fragment in the
  * transport's bold markup, or returns it unchanged for plain text (the Teams
- * Adaptive Card escaper turns `*` into a literal asterisk).
+ * Adaptive Card escaper turns `*` into a literal asterisk). `escape`
+ * neutralises the synced names for transports that interpret markup.
  */
 export function accessReviewLines(
   summary: AccessAlertSummary,
   bold: (s: string) => string,
+  escape: (s: string) => string = (s) => s,
 ): string[] {
   const lines: string[] = [
     `${bold(plural(summary.total, "access finding"))} on cloud principals`,
@@ -90,7 +112,7 @@ export function accessReviewLines(
   ];
   if (summary.findings.length > 0) {
     lines.push("");
-    for (const finding of summary.findings) lines.push(`• ${accessFindingLine(finding)}`);
+    for (const finding of summary.findings) lines.push(`• ${accessFindingLine(finding, escape)}`);
   }
   if (summary.omitted > 0) {
     lines.push(`…and ${plural(summary.omitted, "more finding")} on the access review`);
@@ -126,14 +148,27 @@ export function securityAlertTitle(
   )}`;
 }
 
-/** The two blocks joined into one Slack mrkdwn body. */
+/**
+ * The blocks joined into one body. Empty blocks are dropped rather than left
+ * as a blank paragraph, so a window with only one half — or one whose access
+ * half failed — still reads as one message.
+ */
 export function joinSecurityBody(blocks: readonly string[]): string {
   return blocks.filter((b) => b !== "").join("\n\n");
 }
 
+/**
+ * The caveat appended when the access half of a security window threw but the
+ * posture half had something to say. The message still goes out; it must not
+ * read as a complete picture (the unknown-versus-clean distinction the review
+ * keeps everywhere else).
+ */
+export const ACCESS_REVIEW_UNAVAILABLE_NOTE =
+  "The access review could not be computed for this scan; only posture findings are listed.";
+
 /** Slack mrkdwn body for the access-review block. */
 export function formatAccessReviewSlackBody(summary: AccessAlertSummary): string {
-  return accessReviewLines(summary, (s) => `*${s}*`).join("\n");
+  return accessReviewLines(summary, (s) => `*${s}*`, escapeMrkdwnFragment).join("\n");
 }
 
 /** Teams plain-text body for the access-review block. */

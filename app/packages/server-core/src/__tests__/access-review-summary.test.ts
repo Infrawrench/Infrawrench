@@ -154,3 +154,70 @@ describe("bodies", () => {
     expect(joinSecurityBody(["a", "b"])).toBe("a\n\nb");
   });
 });
+
+/**
+ * Principal and account names are synced out of the customer's cloud, so they
+ * are attacker-influenced text going into a body Slack interprets as markup.
+ * `escapeMrkdwn` (which the transport applies to the whole body) deliberately
+ * leaves `*` alone so the message's own `*bold*` survives — which is exactly
+ * why the fragments have to be neutralised where they are composed.
+ */
+describe("Slack mrkdwn injection through synced names", () => {
+  function named(displayName: string, accountName = "Production"): AccessFinding {
+    return {
+      resourceId: "res-x",
+      ruleId: "access-review:admin-principal",
+      title: "Administrative or wildcard permissions",
+      severity: "critical",
+      reason: "because",
+      principal: principal({ displayName, accountName, resourceId: "res-x" }),
+    };
+  }
+
+  /** Everything Slack would still interpret — i.e. outside any code span. */
+  function outsideCodeSpans(line: string): string {
+    return line.replace(/`[^`]*`/g, "");
+  }
+
+  it.each([
+    ["bold", "*root*"],
+    ["italic", "_root_"],
+    // The nastiest of the four: struck-through reads as "already dealt with".
+    ["strikethrough", "~root~"],
+    ["code", "`root`"],
+  ])("does not let a %s name format the Slack body", (_kind, displayName) => {
+    const body = formatAccessReviewSlackBody(summarizeAccessReview([named(displayName)]));
+    const line = body.split("\n").find((l) => l.startsWith("•"));
+    expect(line).toBeDefined();
+    // The name survives verbatim, but inside a code span — which suppresses
+    // every inline format — so nothing Slack would still interpret is left.
+    expect(line).toMatch(/^• `/);
+    expect(outsideCodeSpans(line!)).not.toMatch(/[*_~`]/);
+  });
+
+  it("neutralises the account name too", () => {
+    const body = formatAccessReviewSlackBody(summarizeAccessReview([named("deploy", "~prod~")]));
+    expect(body).toContain("(`~prod~`)");
+  });
+
+  it("keeps the name readable rather than stripping characters", () => {
+    const body = formatAccessReviewSlackBody(summarizeAccessReview([named("*root*")]));
+    expect(body).toContain("`*root*`");
+  });
+
+  // A backtick would close the code span early and hand the rest of the line
+  // back to the formatter, so it is the one character that cannot survive.
+  it("cannot be escaped out of the code span with a backtick", () => {
+    const body = formatAccessReviewSlackBody(summarizeAccessReview([named("a`b*c*d")]));
+    const line = body.split("\n").find((l) => l.startsWith("•"));
+    expect(line).toBe(
+      "• `a′b*c*d` (`Production`) — Administrative or wildcard permissions (critical)",
+    );
+  });
+
+  it("leaves the plain-text transports alone", () => {
+    const summary = summarizeAccessReview([named("*root*")]);
+    expect(formatAccessReviewTeamsBody(summary)).toContain("*root* (Production)");
+    expect(formatAccessReviewPushBody(summary)).toContain("*root* (Production)");
+  });
+});

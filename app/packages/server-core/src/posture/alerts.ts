@@ -24,9 +24,11 @@
  * 2. **`last_notified_at` means "last alert scan", not "last message".** A
  *    completed scan that found nothing alertable keeps the window spent —
  *    posture only changes when a sync lands a changed field, so re-scanning a
- *    clean org every tick would only reconfirm the same silence. Only a scan
- *    whose message reached *nobody* (or that threw) is rolled back, so a
- *    failed delivery retries next tick rather than starting a quiet day.
+ *    clean org every tick would only reconfirm the same silence. A scan whose
+ *    message reached *nobody*, that threw, or **whose access half threw while
+ *    posture found nothing**, is rolled back instead: none of those
+ *    established that the org is clean, and spending the window on one would
+ *    make a broken feed indistinguishable from a quiet day for 24 hours.
  * 3. **A bounded body** — see `./summary.ts`.
  *
  * Never throws. The pass runs inside the poller loop and must not be able to
@@ -39,6 +41,7 @@ import { accounts, orgPostureSettings } from "../db/schema";
 import { routeAlert } from "../alerts/route";
 import { listAccessReview } from "../access-review/feed";
 import {
+  ACCESS_REVIEW_UNAVAILABLE_NOTE,
   formatAccessReviewPushBody,
   formatAccessReviewSlackBody,
   formatAccessReviewTeamsBody,
@@ -77,6 +80,13 @@ export type PostureOrgOutcome =
       msTeams: number;
     }
   | { status: "undelivered"; findings: number; accessFindings: number }
+  /**
+   * The access review threw and posture found nothing alertable, so this scan
+   * established nothing. The claim is rolled back on the way out and the next
+   * tick retries — a failed scan must never spend the window, or one broken
+   * feed silences the org for a day.
+   */
+  | { status: "scan-failed"; error: string }
   /**
    * `claimed` is true only after the cooldown claim landed — pre-claim
    * failures (settings read, claim SQL) leave it false so `scanned` stays
@@ -245,18 +255,33 @@ async function deliverWindow(
 ): Promise<PostureOrgOutcome> {
   // One security window covering both recomputed-finding surfaces. The access
   // review answers to this same `postureAlerts` trigger and this same 24h
-  // claim on purpose — see `access-review/summary.ts` for the argument. A
-  // broken access review costs the message one section, never the whole alert.
+  // claim on purpose — see `access-review/summary.ts` for the argument.
+  //
+  // The access half is caught rather than thrown so a broken review cannot
+  // stop a posture alert going out. What it must never do is *look like a
+  // clean review* — see the `scan-failed` branch below.
   const [feed, review] = await Promise.all([
     listPosture(organizationId, { now: now.getTime() }),
-    listAccessReview(organizationId, { now: now.getTime() }).catch((err) => {
-      console.error(`[posture] access review for org ${organizationId} failed:`, err);
-      return undefined;
-    }),
+    listAccessReview(organizationId, { now: now.getTime() }).then(
+      (r) => ({ ok: true as const, review: r }),
+      (err: unknown) => {
+        console.error(`[posture] access review for org ${organizationId} failed:`, err);
+        return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+      },
+    ),
   ]);
   const alertable = alertablePostureFindings(feed);
-  const alertableAccess = review ? alertableAccessFindings(review) : [];
+  const alertableAccess = review.ok ? alertableAccessFindings(review.review) : [];
   if (alertable.length === 0 && alertableAccess.length === 0) {
+    if (!review.ok) {
+      // A half that threw is not a quiet scan. Spending the window here would
+      // suppress both the retry and every access finding for 24h, and would
+      // make a broken feed indistinguishable from a clean org — the same
+      // unknown-versus-clean distinction the findings themselves keep. Leaving
+      // `spent` false means the guard on the way out rolls the claim back and
+      // the next tick tries again.
+      return { status: "scan-failed", error: review.error };
+    }
     // A completed scan consumes the cooldown even when it found nothing —
     // `last_notified_at` means "last alert scan", and a clean org re-scanned
     // every tick would only reconfirm the same silence until a sync changes
@@ -273,6 +298,9 @@ async function deliverWindow(
   const title = securityAlertTitle(summary, accessSummary) ?? postureTitle(summary);
   const context = postureContext();
   const url = postureUrl(organizationId);
+  // The message goes out on the posture findings, but it must say that half of
+  // the review is missing rather than reading as a complete picture.
+  const accessUnavailable = review.ok ? "" : ACCESS_REVIEW_UNAVAILABLE_NOTE;
 
   const routed = await routeAlert({
     organizationId,
@@ -281,10 +309,12 @@ async function deliverWindow(
     body: joinSecurityBody([
       alertable.length > 0 ? formatPostureSlackBody(summary) : "",
       alertableAccess.length > 0 ? formatAccessReviewSlackBody(accessSummary) : "",
+      accessUnavailable,
     ]),
     teamsBody: joinSecurityBody([
       alertable.length > 0 ? formatPostureTeamsBody(summary) : "",
       alertableAccess.length > 0 ? formatAccessReviewTeamsBody(accessSummary) : "",
+      accessUnavailable,
     ]),
     pushBody:
       alertable.length > 0
@@ -384,6 +414,7 @@ export async function runPostureAlerts(
       outcome.status === "quiet" ||
       outcome.status === "sent" ||
       outcome.status === "undelivered" ||
+      outcome.status === "scan-failed" ||
       (outcome.status === "failed" && outcome.claimed);
     if (claimed) result.scanned += 1;
     if (outcome.status === "sent") result.sent += 1;
