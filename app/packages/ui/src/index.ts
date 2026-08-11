@@ -9,6 +9,10 @@ export {
 
 export { WorkspaceTabsViewport } from "./workspace/WorkspaceTabsViewport.js";
 export { WorkspaceTabProvider, useTabId } from "./workspace/WorkspaceTabContext.js";
+// Shared by GlobalTabBar (aria-controls) and WorkspaceTabsViewport
+// (id / aria-labelledby); exported so a host that renders its own tab strip or
+// panel container keeps the pair in agreement.
+export { workspaceTabDomId, workspaceTabPanelDomId } from "./workspace/tab-dom-ids.js";
 
 export { AgentsPanel } from "./agents/AgentsPanel.js";
 export {

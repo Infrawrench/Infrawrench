@@ -1,5 +1,6 @@
-import { useId, useRef, type KeyboardEvent } from "react";
+import { useRef, type KeyboardEvent } from "react";
 import type { WorkspaceTab } from "../store/ui.store.js";
+import { workspaceTabDomId, workspaceTabPanelDomId } from "../workspace/tab-dom-ids.js";
 
 export interface GlobalTabBarProps {
   tabs: WorkspaceTab[];
@@ -28,7 +29,6 @@ export function GlobalTabBar({
   rootRef,
   showEmptyHint = false,
 }: GlobalTabBarProps) {
-  const baseId = useId();
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   if (!showEmptyHint && tabs.length === 0) return null;
@@ -80,8 +80,12 @@ export function GlobalTabBar({
               active={tab.id === activeTabId}
               onActivate={onActivate}
               onClose={onClose}
-              tabId={`${baseId}-tab-${tab.id}`}
-              panelId={`${baseId}-panel-${tab.id}`}
+              // Derived from the tab id rather than a useId(): the panel this
+              // tab controls is rendered by WorkspaceTabsViewport, a sibling
+              // component that has to arrive at the same string. See
+              // workspace/tab-dom-ids.ts.
+              tabId={workspaceTabDomId(tab.id)}
+              panelId={workspaceTabPanelDomId(tab.id)}
               tabIndex={tab.id === activeTabId ? 0 : -1}
               onKeyDown={(e) => onTabKeyDown(e, index)}
               buttonRef={(el) => {
