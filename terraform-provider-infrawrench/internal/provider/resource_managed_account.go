@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -61,6 +63,7 @@ func (r *managedAccountResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Customer name, 1–120 characters. Appears on their invoices.",
+				Validators:          []validatorString{stringvalidator.LengthBetween(1, 120)},
 			},
 			"contact_name": schema.StringAttribute{
 				Optional:            true,

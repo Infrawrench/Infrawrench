@@ -2,11 +2,14 @@ package provider
 
 import (
 	"context"
+	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 )
 
@@ -88,5 +91,90 @@ func TestEveryResourceCanBeImported(t *testing.T) {
 		if _, ok := res.(resource.ResourceWithConfigure); !ok {
 			t.Errorf("%T does not implement Configure, so it can never reach the API client", res)
 		}
+	}
+}
+
+// TestDocumentedRangesAreValidated is the check that would have caught the gap
+// a reviewer found: `initial_lookback_days` said "1–30" in its description and
+// enforced nothing, so an out-of-range value reached apply and came back as an
+// HTTP 400 from the server rather than as a plan-time attribute error.
+//
+// The description is the contract a practitioner reads. A schema that states a
+// bound and does not enforce it is worse than one that states nothing: it reads
+// as a promise the provider has no intention of keeping, and the failure lands
+// halfway through an apply that may already have created other resources.
+//
+// So this asserts the invariant rather than the individual fix — any numeric
+// attribute whose description spells a range must carry a validator. It scans
+// the served gRPC schema, which is what Terraform actually sees.
+func TestDocumentedRangesAreValidated(t *testing.T) {
+	ctx := context.Background()
+	p := New("test")()
+
+	// "5–1440", "0–23", "1–100000" — an en dash or a hyphen between two
+	// numbers, which is how every bounded attribute in this provider is
+	// written. Deliberately narrow: prose like "at most one every six hours"
+	// is not a bound on the attribute's value.
+	documentsRange := regexp.MustCompile(`\b\d[\d,]*\s*[–-]\s*\d[\d,]*\b`)
+
+	var offenders []string
+
+	var walk func(typeName string, attrs map[string]schema.Attribute, blocks map[string]schema.Block)
+	walk = func(typeName string, attrs map[string]schema.Attribute, blocks map[string]schema.Block) {
+		for name, attr := range attrs {
+			description := attr.GetMarkdownDescription()
+			if !documentsRange.MatchString(description) {
+				continue
+			}
+			var validated bool
+			switch a := attr.(type) {
+			case schema.Int64Attribute:
+				validated = len(a.Validators) > 0
+			case schema.Float64Attribute:
+				validated = len(a.Validators) > 0
+			case schema.ListAttribute:
+				validated = len(a.Validators) > 0
+			case schema.StringAttribute:
+				validated = len(a.Validators) > 0
+			default:
+				// Bools, maps and sets carry no ranges worth bounding; a number
+				// in their description is prose.
+				continue
+			}
+			if !validated {
+				offenders = append(offenders, typeName+"."+name)
+			}
+		}
+		for name, block := range blocks {
+			nested, ok := block.(schema.ListNestedBlock)
+			if !ok {
+				continue
+			}
+			walk(typeName+"."+name, nested.NestedObject.Attributes, nested.NestedObject.Blocks)
+		}
+	}
+
+	for _, constructor := range p.Resources(ctx) {
+		r := constructor()
+
+		metaResp := &resource.MetadataResponse{}
+		r.Metadata(ctx, resource.MetadataRequest{ProviderTypeName: "infrawrench"}, metaResp)
+
+		schemaResp := &resource.SchemaResponse{}
+		r.Schema(ctx, resource.SchemaRequest{}, schemaResp)
+		if schemaResp.Diagnostics.HasError() {
+			continue
+		}
+		walk(metaResp.TypeName, schemaResp.Schema.Attributes, schemaResp.Schema.Blocks)
+	}
+
+	sort.Strings(offenders)
+	if len(offenders) > 0 {
+		t.Errorf("these attributes document a range and do not enforce it:\n  %s\n\n"+
+			"Add a validator from validators.go — between, betweenFloat, elementsBetween, "+
+			"sizeBetween, sizeAtMost — or reword the description if the bound is not real. "+
+			"An unenforced bound fails at apply, as an HTTP 400, after other resources "+
+			"in the graph have already been created.",
+			strings.Join(offenders, "\n  "))
 	}
 }

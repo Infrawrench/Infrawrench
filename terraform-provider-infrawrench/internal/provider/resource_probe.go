@@ -79,12 +79,14 @@ func (r *probeResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				MarkdownDescription: "Seconds between checks. Clamped server-side to 60–86400, so a value outside " +
 					"that range is stored as the nearest bound rather than rejected — which would read as " +
 					"permanent drift against the configuration. Keep it in range.",
+				Validators: []validatorInt64{between(60, 86400)},
 			},
 			"timeout_ms": schema.Int64Attribute{
 				Optional:            true,
 				Computed:            true,
 				Default:             int64default.StaticInt64(10000),
 				MarkdownDescription: "Per-check timeout in milliseconds. Clamped server-side to 1000–60000.",
+				Validators:          []validatorInt64{between(1000, 60000)},
 			},
 			"failure_threshold": schema.Int64Attribute{
 				Optional: true,
@@ -92,6 +94,7 @@ func (r *probeResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Default:  int64default.StaticInt64(3),
 				MarkdownDescription: "Consecutive failures before the probe flips to `down` and notifies. Clamped " +
 					"server-side to 1–20.",
+				Validators: []validatorInt64{between(1, 20)},
 			},
 			"enabled": schema.BoolAttribute{
 				Optional:            true,

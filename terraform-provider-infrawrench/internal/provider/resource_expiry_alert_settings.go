@@ -48,6 +48,7 @@ func (r *expiryAlertSettingsResource) Schema(_ context.Context, _ resource.Schem
 				Required: true,
 				MarkdownDescription: "Days of lead time before a deadline counts as upcoming and alertable, " +
 					"1–365. Ships as 60.",
+				Validators: []validatorInt64{between(1, 365)},
 			},
 		},
 	}

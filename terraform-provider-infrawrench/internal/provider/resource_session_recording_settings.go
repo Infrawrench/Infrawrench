@@ -61,6 +61,7 @@ func (r *sessionRecordingSettingsResource) Schema(_ context.Context, _ resource.
 			"retention_days": schema.Int64Attribute{
 				Required:            true,
 				MarkdownDescription: "How long recordings are kept, 1–3650 days. Older ones are deleted.",
+				Validators:          []validatorInt64{between(1, 3650)},
 			},
 		},
 	}

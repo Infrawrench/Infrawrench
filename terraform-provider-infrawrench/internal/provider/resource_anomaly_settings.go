@@ -62,18 +62,21 @@ func (r *anomalySettingsResource) Schema(_ context.Context, _ resource.SchemaReq
 				MarkdownDescription: "Standard deviations above a key's own trailing mean that count as a spike, " +
 					"1–10. Lower is more sensitive. Bounded at 1 — below that roughly a third of ordinary days " +
 					"clear the bar — and at 10, above which nothing short of a 10× jump fires. The default is 3.",
+				Validators: []validatorFloat64{betweenFloat(1, 10)},
 			},
 			"min_delta_cents": schema.Int64Attribute{
 				Required: true,
 				MarkdownDescription: "Minimum rise over the baseline mean before a spike alerts, in USD cents " +
 					"(converted per series, so it means the same real amount in every currency). 100–10000000; " +
 					"the default is 1000 ($10).",
+				Validators: []validatorInt64{between(100, 10000000)},
 			},
 			"new_source_min_cents": schema.Int64Attribute{
 				Required: true,
 				MarkdownDescription: "Minimum first-day spend before a **new** spend source alerts, in USD cents. " +
 					"A key with no prior spend has no statistical bar to clear, so this absolute floor is the " +
 					"only thing keeping a new $0.02/day service quiet. 100–10000000; the default is 2500 ($25).",
+				Validators: []validatorInt64{between(100, 10000000)},
 			},
 			"sms_alerts": schema.StringAttribute{
 				Required: true,

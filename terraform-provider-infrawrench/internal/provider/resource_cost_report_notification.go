@@ -76,16 +76,19 @@ func (r *costReportNotificationResource) Schema(_ context.Context, _ resource.Sc
 					"`weekly`.\n\n" +
 					"Computed as well as optional because the server stores a default in the column whatever " +
 					"the cadence is, and reads back null here for any cadence that does not use it.",
+				Validators: []validatorInt64{between(1, 7)},
 			},
 			"send_day_of_month": schema.Int64Attribute{
 				Optional: true,
 				Computed: true,
 				MarkdownDescription: "Day of month, 1–31. Read only when `cadence` is `monthly`. A day the month " +
 					"doesn't have clamps to its last day, so 31 means month end everywhere.",
+				Validators: []validatorInt64{between(1, 31)},
 			},
 			"hour": schema.Int64Attribute{
 				Required:            true,
 				MarkdownDescription: "Local hour (0–23) in `timezone` the delivery fires at.",
+				Validators:          []validatorInt64{between(0, 23)},
 			},
 			"timezone": schema.StringAttribute{
 				Required:            true,
@@ -109,6 +112,7 @@ func (r *costReportNotificationResource) Schema(_ context.Context, _ resource.Sc
 				Computed:            true,
 				ElementType:         types.StringType,
 				MarkdownDescription: "Email addresses, at most 20. Lowercased server-side.",
+				Validators:          []validatorList{sizeAtMost(20)},
 			},
 			"enabled": schema.BoolAttribute{
 				Optional:            true,

@@ -63,6 +63,7 @@ func (r *networkFlowSettingsResource) Schema(_ context.Context, _ resource.Schem
 					"collection moves forward a day at a time.\n\n" +
 					"Optional and Computed because the route reads an omitted value as \"keep the stored one\", " +
 					"so leaving it out keeps whatever is set rather than resetting it to 7.",
+				Validators: []validatorInt64{between(1, 30)},
 			},
 		},
 	}

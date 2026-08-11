@@ -86,6 +86,7 @@ func (r *efficiencyAlertSettingsResource) Schema(_ context.Context, _ resource.S
 					"commitment per term end. Ships as `[60, 30, 7]`. A commitment fires at the *smallest* " +
 					"horizon it has reached, so an account connected 30 days before a term ends gets one " +
 					"alert, not two.",
+				Validators: []validatorList{elementsBetween(1, 730), sizeBetween(1, 6)},
 			},
 			"commitment_expiry_alert_on_expired": schema.BoolAttribute{
 				Required: true,
@@ -103,12 +104,14 @@ func (r *efficiencyAlertSettingsResource) Schema(_ context.Context, _ resource.S
 				Required: true,
 				MarkdownDescription: "Utilization percent the whole window must stay under, 1–99. Ships as 70 — " +
 					"roughly where a 1-year no-upfront commitment stops beating on-demand for the usage it covers.",
+				Validators: []validatorInt64{between(1, 99)},
 			},
 			"commitment_idle_window_days": schema.Int64Attribute{
 				Required: true,
 				MarkdownDescription: "Trailing days utilization is aggregated over, 7–90. Ships as 30. Aggregated, " +
 					"never sampled per day: a weekday-only workload reads about 71% over a month and does not " +
 					"fire, which is the point.",
+				Validators: []validatorInt64{between(7, 90)},
 			},
 			"commitment_idle_min_measured_days": schema.Int64Attribute{
 				Required: true,
@@ -116,11 +119,13 @@ func (r *efficiencyAlertSettingsResource) Schema(_ context.Context, _ resource.S
 					"as 14. A commitment whose utilization cannot be measured at all — a unit-denominated GCP " +
 					"CUD, or an account whose plugin reports no commitment attribution — never alerts, whatever " +
 					"this is set to.",
+				Validators: []validatorInt64{between(3, 90)},
 			},
 			"commitment_idle_min_waste_cents": schema.Int64Attribute{
 				Required: true,
 				MarkdownDescription: "Least wasted money (obligation − delivered) before alerting, in USD cents, " +
 					"restated per currency. 100–100000000; ships as 5000 ($50).",
+				Validators: []validatorInt64{between(100, 100000000)},
 			},
 
 			"unit_cost_regression_enabled": schema.BoolAttribute{
@@ -130,11 +135,13 @@ func (r *efficiencyAlertSettingsResource) Schema(_ context.Context, _ resource.S
 			"unit_cost_threshold_percent": schema.Int64Attribute{
 				Required:            true,
 				MarkdownDescription: "Percent the unit cost must rise versus the prior window, 1–1000. Ships as 20.",
+				Validators:          []validatorInt64{between(1, 1000)},
 			},
 			"unit_cost_window_days": schema.Int64Attribute{
 				Required: true,
 				MarkdownDescription: "Length of each of the two compared windows, 7–90. Ships as 14 — two whole " +
 					"weekly cycles a side, so a weekday-shaped unit cost compares like with like.",
+				Validators: []validatorInt64{between(7, 90)},
 			},
 			"unit_cost_min_reported_days": schema.Int64Attribute{
 				Required: true,
@@ -142,11 +149,13 @@ func (r *efficiencyAlertSettingsResource) Schema(_ context.Context, _ resource.S
 					"value, 5–90. Ships as 10. A day with no reported value is a gap and contributes to neither " +
 					"the numerator nor the denominator; a window that fails this bar produces no comparison at " +
 					"all rather than a comparison against a gap.",
+				Validators: []validatorInt64{between(5, 90)},
 			},
 			"unit_cost_min_spend_cents": schema.Int64Attribute{
 				Required: true,
 				MarkdownDescription: "Least spend in the current window before alerting, in USD cents, restated " +
 					"per currency. 100–100000000; ships as 10000 ($100).",
+				Validators: []validatorInt64{between(100, 100000000)},
 			},
 		},
 	}

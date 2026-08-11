@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -69,6 +71,7 @@ func (r *logQueryResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Display name, 1–120 characters.",
+				Validators:          []validatorString{stringvalidator.LengthBetween(1, 120)},
 			},
 			"search": schema.StringAttribute{
 				Required: true,
@@ -90,6 +93,7 @@ func (r *logQueryResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 		Blocks: map[string]schema.Block{
 			"stream": schema.ListNestedBlock{
 				MarkdownDescription: "A log stream to tail. One to eight of them; a write replaces the whole set.",
+				Validators:          []validatorList{sizeBetween(1, 8)},
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"resource_id": schema.StringAttribute{

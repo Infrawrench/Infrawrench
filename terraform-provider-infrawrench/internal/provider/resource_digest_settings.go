@@ -60,10 +60,12 @@ func (r *digestSettingsResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"send_day": schema.Int64Attribute{
 				Required:            true,
 				MarkdownDescription: "ISO day of week the digest is sent on: 1 = Monday … 7 = Sunday.",
+				Validators:          []validatorInt64{between(1, 7)},
 			},
 			"send_hour": schema.Int64Attribute{
 				Required:            true,
 				MarkdownDescription: "Local hour (0–23) in `timezone` the digest is sent at.",
+				Validators:          []validatorInt64{between(0, 23)},
 			},
 			"narrative_enabled": schema.BoolAttribute{
 				Required: true,

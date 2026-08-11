@@ -78,6 +78,7 @@ func (r *allocationRuleResource) Schema(_ context.Context, _ resource.SchemaRequ
 					"first match wins, so a row allocated by a rule is never reconsidered by a later one. " +
 					"Priorities are not unique-constrained: two rules may share one, and which of them " +
 					"wins is then unspecified, so give rules you care about distinct priorities.",
+				Validators: []validatorInt64{between(0, 100000)},
 			},
 		},
 		Blocks: map[string]schema.Block{
