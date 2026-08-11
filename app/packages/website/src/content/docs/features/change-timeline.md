@@ -81,11 +81,21 @@ Whether a field can be written at all is decided by the plugin, not by Infrawren
 
 <insert [The revert confirmation dialog for a changed resource, showing a mix of Will revert / Changed since / Not writable field verdicts above the Revert button] here>
 
+### The one race it can't win
+
+The plan is rebuilt against a fresh read of the resource immediately before the write, so pressing **Revert** on a stale dialog is safe: anything that moved in the meantime comes back as **Changed since** and is left alone.
+
+What that check cannot do is hold the field still while the write happens. If someone edits the same field in the provider's own console — or a Terraform run does — in the fraction of a second between Infrawrench reading the field and writing it, their value is overwritten with no warning. Infrawrench can't prevent this, because setting a field goes through one generic update call that has no way to say "only if it still equals this"; providers that support conditional writes have no route to express one here.
+
+In practice the window is one API round-trip wide, and reverting a change nobody else is touching is not a risky operation. But it is a real window, and it is worth knowing about before you revert something during an incident that several people are working on at once.
+
 ### What can't be reverted
 
 - **Appearances and disappearances.** Undoing a resource showing up means deleting it, and undoing one vanishing means recreating it. Neither is a field write, so neither is a revert — the button is present but disabled and says which action to take instead.
 - **Events with no field diff.** There is nothing to invert.
 - **Events already reverted.** Reverting is a one-shot: once an event has been reverted the row is labelled **reverted** and the button is disabled. If two people press Revert at the same moment, exactly one write happens and the other is told so.
+
+An event only counts as reverted once the provider has accepted the write. If a revert is interrupted part-way — a deploy, a restart, a dropped connection — the event is held for five minutes and then becomes revertible again, so an undo that never landed is never left looking like one that did.
 
 ### Guardrails
 

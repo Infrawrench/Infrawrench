@@ -181,17 +181,25 @@ export const resourceChanges = pgTable(
     origin: text("origin").$type<"schedule">(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     /**
-     * When this event was reverted, and by whom. The revert route claims the
-     * row with a conditional `UPDATE ... WHERE reverted_at IS NULL`, so two
-     * concurrent reverts of the same event can never both reach the provider;
-     * the loser gets a 409. Cleared again if the provider call fails, so a
-     * failed attempt stays retryable.
+     * When the revert's provider write actually landed, and who asked for it.
+     * Only `completeRevert` sets `reverted_at`, so a row carrying it is a row
+     * whose resource really was put back.
      *
      * No FK on the user id: the audit trail is the record of who did it, and
      * this column must survive a member being removed from the org.
      */
     revertedAt: timestamp("reverted_at"),
     revertedByUserId: text("reverted_by_user_id"),
+    /**
+     * Lease held by an in-flight revert, distinct from `reverted_at` on
+     * purpose. The route claims with `WHERE reverted_at IS NULL AND
+     * (revert_claimed_at IS NULL OR revert_claimed_at < now() - lease)`, so two
+     * concurrent reverts can't both reach the provider *and* a process that
+     * dies mid-write leaves a claim that expires instead of a row that is stuck
+     * forever. Cleared on success and on failure; the lease only matters when
+     * neither path ran.
+     */
+    revertClaimedAt: timestamp("revert_claimed_at"),
   },
   (t) => ({
     orgCreatedIdx: index("resource_changes_org_created_idx").on(t.organizationId, t.createdAt),

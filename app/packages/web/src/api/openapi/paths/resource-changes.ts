@@ -322,11 +322,19 @@ export function registerResourceChangePaths(ctx: BuildContext) {
     description:
       "Applies the inverse patch through the plugin's ordinary `updateResource` path — the same " +
       "call the Edit form makes — and only for the fields the dry run marked `revertible`.\n\n" +
-      "The plan is recomputed against a fresh live read before the write, so a field that moved " +
-      "between the preview and the apply becomes a conflict and drops out of the patch. On top of " +
-      "that, the event itself is claimed with a conditional update: two concurrent reverts of the " +
-      "same event cannot both reach the provider, and the loser gets `409`. A provider failure " +
-      "releases the claim, so a failed attempt stays retryable.\n\n" +
+      "The plan is rebuilt against a fresh live read immediately before the write, so a field that " +
+      "moved between the preview and the apply becomes a conflict and drops out of the patch.\n\n" +
+      "**This is a last-moment re-read, not an atomic compare-and-swap.** The gap between reading " +
+      "a field and writing it is one provider round-trip wide, and a third party writing inside " +
+      "that gap will be overwritten without warning. It cannot be closed generically: the plugin " +
+      "update contract carries no expected value, ETag or version token, so no conditional write " +
+      "can be expressed for a provider that supports one. Treat the conflict detection as a strong " +
+      "guard against stale plans, not as a mutual-exclusion guarantee against other writers.\n\n" +
+      "Reverts of the *same event* are mutually exclusive: the event is claimed with a conditional " +
+      "update under a five-minute lease, so two concurrent reverts cannot both reach the provider " +
+      "and the loser gets `409`. A provider failure releases the claim immediately; a process that " +
+      "dies mid-write leaves a claim that expires, so an interrupted revert is retryable rather " +
+      "than permanently stuck. `revertedAt` is only set once the provider accepted the write.\n\n" +
       "Blocked with `423` while an org change freeze is in effect, and audit-logged as " +
       "`resource.change_revert`. The stored resource snapshot is deliberately left untouched, so " +
       "the next poll observes the reverted state and records it as an ordinary change event.",

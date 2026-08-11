@@ -13,10 +13,10 @@ import { resourceChanges, accounts } from "../../db/schema";
 import { requirePermission } from "../../auth/permissions";
 import { checkChangeFreeze } from "../../services/change-freezes";
 import { logAudit } from "../../services/audit";
-import { getClientForAccount } from "../../services/plugin-clients";
 import {
   buildRevertPlan,
   claimRevert,
+  completeRevert,
   loadChange,
   releaseRevert,
 } from "../../services/change-revert";
@@ -208,9 +208,10 @@ app.get("/resource", async (c) => {
  * POST /changes/:changeId/revert — apply it
  *
  * Same path, and the verb carries the whole difference: the plan is computed
- * identically either way, the POST just recomputes it against a fresher read
- * and then writes. See `services/change-revert.ts` for why that recomputation
- * is the compare-and-swap.
+ * identically either way, the POST just rebuilds it against a fresher read and
+ * then writes. That re-read is a last-moment check rather than an atomic
+ * compare-and-swap — `buildRevertPlan` in `services/change-revert.ts` documents
+ * the window it leaves and why the plugin contract can't close it.
  */
 
 function revertFailureResponse(c: Context, failure: { kind: string; message?: string }) {
@@ -252,7 +253,7 @@ app.get("/:changeId/revert", async (c) => {
     pluginId: change.pluginId,
     resourceTypeId: change.resourceTypeId,
     accountId: change.accountId,
-    plan: result.plan,
+    plan: result.result.plan,
     revertedAt: change.revertedAt ? change.revertedAt.toISOString() : null,
   });
 });
@@ -264,11 +265,16 @@ app.get("/:changeId/revert", async (c) => {
  *
  * 1. permission, then the change freeze — a revert is a provider mutation like
  *    any other, so it goes through the same gate a delete or a resize does;
- * 2. claim the event (conditional UPDATE), which settles a race between two
- *    reverts of the same event before either can reach the provider;
+ * 2. claim the event under a lease, which settles a race between two reverts of
+ *    the same event before either can reach the provider;
  * 3. rebuild the plan against a *fresh* live read — anything that moved since
  *    the preview is now a conflict and drops out of the patch;
- * 4. write, and release the claim on any failure so the attempt is retryable.
+ * 4. write **through the client that read**, so nothing (least of all a
+ *    credential decrypt and a client rebuild) sits between the read and the
+ *    write. The remaining gap is one provider round-trip and is documented on
+ *    `buildRevertPlan`; it is a narrow window, not an absence of one.
+ * 5. record completion, releasing the claim on any failure so the attempt is
+ *    retryable at once rather than at lease expiry.
  *
  * The stored `resources` snapshot is deliberately left alone (unlike
  * `POST /api/resources/update`), so the next poll sees the difference and
@@ -318,7 +324,7 @@ app.post("/:changeId/revert", async (c) => {
     await releaseRevert(organizationId, change.id);
     return revertFailureResponse(c, result.failure);
   }
-  const plan = result.plan;
+  const { plan, client } = result.result;
   const patch = buildRevertPatch(plan);
   if (Object.keys(patch).length === 0) {
     await releaseRevert(organizationId, change.id);
@@ -331,24 +337,27 @@ app.post("/:changeId/revert", async (c) => {
     );
   }
 
-  const ctx = await getClientForAccount(change.accountId, organizationId);
-  if (!ctx?.client.updateResource) {
+  // The client that performed the live read, reused rather than rebuilt: a
+  // second `getClientForAccount` here would decrypt credentials and run
+  // credential rewriters *between* the read and the write, widening the window
+  // for exactly the lost update the re-read is trying to catch.
+  if (!client?.updateResource) {
     await releaseRevert(organizationId, change.id);
     return c.json({ error: "The account this change belongs to no longer exists" }, 404);
   }
 
   try {
-    await ctx.client.updateResource(
-      change.resourceTypeId,
-      change.resourceId,
-      change.accountId,
-      patch,
-    );
+    await client.updateResource(change.resourceTypeId, change.resourceId, change.accountId, patch);
   } catch (err) {
     await releaseRevert(organizationId, change.id);
     const message = err instanceof Error ? err.message : "The revert failed";
     return c.json({ error: message }, 400);
   }
+
+  // Only now is the event reverted. Until this commits the row carries a lease,
+  // not a verdict — so a crash anywhere above leaves something retryable.
+  const revertedAt = new Date();
+  await completeRevert(organizationId, change.id, revertedAt);
 
   void logAudit({
     organizationId,
@@ -372,7 +381,7 @@ app.post("/:changeId/revert", async (c) => {
     resourceId: change.resourceId,
     appliedFields: plan.revertibleFields,
     plan,
-    revertedAt: claimedAt.toISOString(),
+    revertedAt: revertedAt.toISOString(),
   });
 });
 

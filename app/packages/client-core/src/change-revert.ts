@@ -8,8 +8,13 @@
  * again since. `computeRevertPlan` is that reconciliation, and it is
  * deliberately pure so both the dry run and the apply path compute the plan the
  * same way — the apply recomputes against a fresh read rather than trusting the
- * preview, which is what makes the write a compare-and-swap (see
- * `services/change-revert.ts` in the web app).
+ * preview.
+ *
+ * That re-read *narrows* the window in which a third party's newer value could
+ * be overwritten; it does not eliminate it, because `updateResource` takes no
+ * precondition and no conditional write can be expressed generically. The size
+ * of the residual window and the reasoning behind leaving it are documented on
+ * `buildRevertPlan` in the web app's `services/change-revert.ts`.
  *
  * Nothing provider-specific lives here. The writable field set arrives as a
  * list of keys derived from the plugin's own field schema through
