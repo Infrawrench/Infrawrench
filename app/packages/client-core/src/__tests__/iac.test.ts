@@ -292,6 +292,87 @@ describe("parseTerraformStateDocument", () => {
     expect(error?.code).toBe("too-large");
   });
 
+  /**
+   * A document carrying one attribute, spliced in as raw JSON text.
+   *
+   * Deliberately built by string concatenation rather than `JSON.stringify`:
+   * the deep cases below are precisely the ones `JSON.stringify` cannot
+   * serialize, so the fixture cannot use it to construct them.
+   */
+  const stateWithAttributeJson = (valueJson: string) =>
+    `{"version":4,"resources":[{"mode":"managed","type":"demo_server","name":"web",` +
+    `"instances":[{"attributes":{"id":"srv-1","config":${valueJson}}}]}]}`;
+
+  const stateWithAttribute = (value: unknown) => stateWithAttributeJson(JSON.stringify(value));
+
+  /** `depth` nested objects as JSON text, scalar at the bottom. */
+  const nestObjectsJson = (depth: number) =>
+    `${'{"next":'.repeat(depth)}"bottom"${"}".repeat(depth)}`;
+
+  /** `depth` nested arrays as JSON text. */
+  const nestArraysJson = (depth: number) => `${"[".repeat(depth)}"bottom"${"]".repeat(depth)}`;
+
+  const parseError = (document: string) => {
+    try {
+      parseTerraformStateDocument(document);
+      return null;
+    } catch (e) {
+      return e;
+    }
+  };
+
+  // The regression, at a depth that genuinely overflows the stack.
+  //
+  // `JSON.parse` is iterative in V8, so the document loads fine; `JSON.stringify`
+  // — which is what the old size measurement used — is recursive and throws
+  // `RangeError: Maximum call stack size exceeded` here. That escaped the
+  // parser's own error type and surfaced as an HTTP 500.
+  it("rejects stack-overflowing nesting as a controlled error, not a RangeError", () => {
+    const document = stateWithAttributeJson(nestObjectsJson(20_000));
+    // Size-compliant: this is a shape problem, not a volume problem.
+    expect(document.length).toBeLessThan(IAC_STATE_LIMITS.maxDocumentBytes);
+    // The document loads fine — it is the *measurement* that used to blow up.
+    const loaded: unknown = JSON.parse(document);
+    expect(() => JSON.stringify(loaded)).toThrow(RangeError);
+
+    const error = parseError(document);
+    expect(error).toBeInstanceOf(TerraformStateParseError);
+    expect(error).not.toBeInstanceOf(RangeError);
+    expect((error as TerraformStateParseError).code).toBe("too-deep");
+  });
+
+  it("rejects at the documented depth bound, naming the attribute", () => {
+    const error = parseError(
+      stateWithAttributeJson(nestObjectsJson(IAC_STATE_LIMITS.maxAttributeDepth + 2)),
+    );
+    expect((error as TerraformStateParseError).code).toBe("too-deep");
+    // Actionable: says which attribute of which block to look at.
+    expect((error as Error).message).toContain("demo_server.web.config");
+  });
+
+  it("applies the depth bound to arrays as well as objects", () => {
+    const error = parseError(
+      stateWithAttributeJson(nestArraysJson(IAC_STATE_LIMITS.maxAttributeDepth + 2)),
+    );
+    expect((error as TerraformStateParseError).code).toBe("too-deep");
+  });
+
+  it("accepts nesting just inside the bound", () => {
+    const parsed = parseTerraformStateDocument(
+      stateWithAttributeJson(nestObjectsJson(IAC_STATE_LIMITS.maxAttributeDepth - 2)),
+    );
+    expect(parsed.resources).toHaveLength(1);
+    expect(parsed.resources[0]?.attributes["config"]).toBeTypeOf("object");
+  });
+
+  it("measures a wide structure without recursing into a stack overflow", () => {
+    // Wide and shallow: must be clamped on size, never throw.
+    const wide = Array.from({ length: 20_000 }, (_, i) => `item-${i}`);
+    const parsed = parseTerraformStateDocument(stateWithAttribute(wide));
+    expect(parsed.resources[0]?.attributes["config"]).toBe(IAC_OMITTED);
+    expect(parsed.resources[0]?.redactedAttributeKeys).toContain("config");
+  });
+
   it("truncates an attribute value too long to be a useful diff", () => {
     const long = "x".repeat(IAC_STATE_LIMITS.maxAttributeValueChars + 500);
     const parsed = parseTerraformStateDocument(

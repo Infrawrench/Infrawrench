@@ -195,12 +195,30 @@ export async function saveIacState(args: SaveIacStateArgs): Promise<SaveIacState
     throw new IacInputError(`Label is limited to ${IAC_LIMITS.maxLabelChars} characters.`);
   }
 
+  // Total translation, not an allow-list of recognised error types.
+  //
+  // Parsing is the trust boundary: everything past this point is our data,
+  // everything before it is a file a stranger uploaded. So *any* throw from the
+  // parse stage is a statement about the document, and must reach the client as
+  // a 400. Matching on specific error classes is what let a `RangeError` from a
+  // deeply nested attribute escape as a 500 — and a 500 is not just the wrong
+  // status, it is the wrong instruction: it tells a user holding an
+  // unacceptable file that we broke, so they retry it unchanged.
+  //
+  // The parser is expected to classify its own rejections; anything it does not
+  // is a gap worth seeing, so it is logged even though the caller still gets a
+  // clean 400.
   let parsed: ParsedTerraformState;
   try {
     parsed = parseTerraformStateDocument(args.document);
   } catch (e) {
     if (e instanceof TerraformStateParseError) throw new IacInputError(e.message, 400);
-    throw e;
+    console.error("[iac] unclassified parse failure — the parser should have caught this:", e);
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new IacInputError(
+      `State document could not be parsed (${detail}). It must be a \`.tfstate\` (format version 4) or the output of \`terraform show -json\`.`,
+      400,
+    );
   }
 
   if (args.accountId) {

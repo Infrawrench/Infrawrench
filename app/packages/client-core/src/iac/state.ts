@@ -16,11 +16,28 @@
  *    resources live at `values.root_module` and recursively in
  *    `values.root_module.child_modules[]`.
  *
- * Everything here is pure and total: it never throws for malformed *content*,
- * only for a document that cannot be a Terraform state at all, and it is the
- * only place that knows either file layout. A state document is untrusted
- * user input, so every bound is enforced here and every attribute Terraform
- * marked sensitive is dropped before the value leaves this module.
+ * Everything here is pure, and every failure is a `TerraformStateParseError` —
+ * a statement about the document rather than about us. That matters at the
+ * boundary: callers translate a parse failure into a 400, and anything that
+ * escapes as some other error class becomes a 500, which tells a user holding
+ * an unacceptable file that *we* broke and invites them to retry it unchanged.
+ * This module is also the only place that knows either file layout.
+ *
+ * A state document is untrusted input, so every bound lives here, and each is
+ * enforced **ahead of the work it guards** rather than after it:
+ *
+ * | Bound                      | Checked                                          |
+ * | -------------------------- | ------------------------------------------------ |
+ * | `maxDocumentBytes`         | on the raw text, before `JSON.parse`              |
+ * | `maxResources`             | on each append, so it stops at the limit          |
+ * | `maxAttributesPerResource` | at the top of each attribute, before reading it   |
+ * | `maxAttributeValueChars`   | incrementally while measuring, short-circuiting   |
+ * | `maxAttributeDepth`        | on every node, depth-first, so it trips in O(d)   |
+ * | `maxAttributeNodes`        | on every node, bounding measurement outright      |
+ *
+ * Nothing measures a whole structure and then asks whether it was too big —
+ * that ordering is what made a deeply nested attribute a stack overflow rather
+ * than a rejection.
  */
 
 /** Hard bounds applied to an uploaded state document. */
@@ -33,6 +50,25 @@ export const IAC_STATE_LIMITS = {
   maxAttributesPerResource: 250,
   /** Longest string value kept; longer values are truncated (they cannot be a useful diff). */
   maxAttributeValueChars: 4_000,
+  /**
+   * Deepest structure accepted inside one attribute.
+   *
+   * The other bounds are about *volume*; this one is about *shape*, and a
+   * small document can carry a very deep one. Without it, measuring a deeply
+   * nested attribute is what overflows the stack — the failure is a
+   * `RangeError` from the runtime rather than a statement about the document,
+   * which is exactly the wrong thing to tell a user holding a file they will
+   * otherwise retry unchanged. 64 is far past anything real Terraform state
+   * contains and far below any runtime limit, so crossing it says the document
+   * is not a state file rather than that it is a big one.
+   */
+  maxAttributeDepth: 64,
+  /**
+   * Nodes visited while measuring one attribute. A belt-and-braces cap so the
+   * measurement is bounded work even for a wide-but-shallow structure that
+   * never trips the depth or size bound early.
+   */
+  maxAttributeNodes: 50_000,
   /** State documents retained per org before the oldest are pruned. */
   maxStatesPerOrg: 20,
   /** Age at which a superseded state document is pruned. */
@@ -53,7 +89,12 @@ export const IAC_OMITTED = "«omitted: too large»";
 export type IacStateFormat = "tfstate" | "show-json";
 
 export type TerraformStateParseErrorCode =
-  "too-large" | "not-json" | "unknown-format" | "unsupported-version" | "too-many-resources";
+  | "too-large"
+  | "too-deep"
+  | "not-json"
+  | "unknown-format"
+  | "unsupported-version"
+  | "too-many-resources";
 
 /** Every rejection a state upload can produce, with a code the API maps to a 400. */
 export class TerraformStateParseError extends Error {
@@ -147,23 +188,82 @@ function collectIdentifiers(attributes: Record<string, unknown>): string[] {
 }
 
 /**
+ * Measure a structured attribute's size and depth without recursing.
+ *
+ * `JSON.stringify` did this job and was the one unbounded primitive left in
+ * the parser: it recurses, so a size-compliant document carrying a deeply
+ * nested attribute overflowed the stack and threw a `RangeError` — a runtime
+ * failure where the truthful answer is "this document is not acceptable".
+ * An explicit stack has no such ceiling, and short-circuiting on the first
+ * violated bound means the work is bounded by the limits rather than by the
+ * input.
+ *
+ * Depth is checked on every popped node and the traversal is depth-first, so a
+ * chain deep enough to matter is reached in as many steps as it is deep —
+ * always well inside the node budget. That is what makes the outcome
+ * deterministic rather than a function of traversal order.
+ */
+function measureStructure(root: unknown): { tooLarge: boolean; tooDeep: boolean } {
+  const stack: { value: unknown; depth: number }[] = [{ value: root, depth: 1 }];
+  let chars = 0;
+  let nodes = 0;
+
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node) break;
+    if (node.depth > IAC_STATE_LIMITS.maxAttributeDepth) return { tooLarge: false, tooDeep: true };
+    if (++nodes > IAC_STATE_LIMITS.maxAttributeNodes) return { tooLarge: true, tooDeep: false };
+
+    const { value, depth } = node;
+    if (Array.isArray(value)) {
+      chars += 2 + value.length; // brackets + separators
+      for (const item of value) stack.push({ value: item, depth: depth + 1 });
+    } else if (isRecord(value)) {
+      chars += 2;
+      for (const [key, entry] of Object.entries(value)) {
+        chars += key.length + 4; // quotes, colon, separator
+        stack.push({ value: entry, depth: depth + 1 });
+      }
+    } else if (typeof value === "string") {
+      chars += value.length + 2;
+    } else {
+      chars += String(value).length;
+    }
+
+    if (chars > IAC_STATE_LIMITS.maxAttributeValueChars) return { tooLarge: true, tooDeep: false };
+  }
+  return { tooLarge: false, tooDeep: false };
+}
+
+/**
  * Clamp one attribute value: truncate long strings, drop huge structures whole.
  *
  * `omitted` says the stored value is **not** what the state actually carried,
  * which is the only thing the caller needs to know: a value we changed can
  * never be compared, or the clamp itself reads as drift.
+ *
+ * Throws {@link TerraformStateParseError} for a structure past
+ * {@link IAC_STATE_LIMITS.maxAttributeDepth}. Over-depth rejects the document
+ * rather than omitting the attribute, unlike the size bound: an oversized blob
+ * is a normal thing for real state to carry, whereas nesting that deep says
+ * this is not a state file, and quietly dropping it would let a document that
+ * cannot be trusted produce a confident classification.
  */
-function clampValue(value: unknown): { value: unknown; omitted: boolean } {
+function clampValue(value: unknown, where: string): { value: unknown; omitted: boolean } {
   if (typeof value === "string") {
     return value.length > IAC_STATE_LIMITS.maxAttributeValueChars
       ? { value: value.slice(0, IAC_STATE_LIMITS.maxAttributeValueChars), omitted: true }
       : { value, omitted: false };
   }
   if (Array.isArray(value) || isRecord(value)) {
-    const serialized = JSON.stringify(value) ?? "";
-    if (serialized.length > IAC_STATE_LIMITS.maxAttributeValueChars) {
-      return { value: IAC_OMITTED, omitted: true };
+    const measured = measureStructure(value);
+    if (measured.tooDeep) {
+      throw new TerraformStateParseError(
+        "too-deep",
+        `Attribute \`${where}\` nests more than ${IAC_STATE_LIMITS.maxAttributeDepth} levels deep. Real Terraform state does not nest that far — check the document is a state file and not something else.`,
+      );
     }
+    if (measured.tooLarge) return { value: IAC_OMITTED, omitted: true };
     return { value, omitted: false };
   }
   return { value, omitted: false };
@@ -183,6 +283,8 @@ interface SanitizeOutcome {
 function sanitizeAttributes(
   raw: Record<string, unknown>,
   sensitiveKeys: ReadonlySet<string>,
+  /** `type.name` of the owning block, so a rejection can name what to look at. */
+  owner: string,
 ): SanitizeOutcome {
   const attributes: Record<string, unknown> = {};
   const redactedAttributeKeys: string[] = [];
@@ -202,7 +304,7 @@ function sanitizeAttributes(
       sensitiveCount += 1;
       continue;
     }
-    const clamped = clampValue(value);
+    const clamped = clampValue(value, `${owner}.${key}`);
     attributes[key] = clamped.value;
     // A clamped value is a value we did not store faithfully. It must join the
     // excluded list or reconciliation compares our placeholder (or our
@@ -345,7 +447,7 @@ function parseStateFileV4(doc: Record<string, unknown>, acc: Accumulator): void 
       const rawAttributes = instance["attributes"];
       if (!isRecord(rawAttributes)) continue;
       const sensitiveKeys = sensitiveKeysFromPaths(instance["sensitive_attributes"]);
-      const sanitized = sanitizeAttributes(rawAttributes, sensitiveKeys);
+      const sanitized = sanitizeAttributes(rawAttributes, sensitiveKeys, `${type}.${name}`);
       if (sanitized.truncated) acc.truncatedAttributes = true;
       const indexKey = normalizeIndexKey(instance["index_key"]);
       push(
@@ -394,7 +496,7 @@ function parseShowJsonModule(
       const rawValues = entry["values"];
       const values = isRecord(rawValues) ? rawValues : {};
       const sensitiveKeys = sensitiveKeysFromMirror(entry["sensitive_values"]);
-      const sanitized = sanitizeAttributes(values, sensitiveKeys);
+      const sanitized = sanitizeAttributes(values, sensitiveKeys, `${type}.${name}`);
       if (sanitized.truncated) acc.truncatedAttributes = true;
       const indexKey = normalizeIndexKey(entry["index"]);
       const address =
@@ -494,7 +596,17 @@ export function parseTerraformStateDocument(input: string | unknown): ParsedTerr
     }
     try {
       doc = JSON.parse(input);
-    } catch {
+    } catch (e) {
+      // Defence in depth, and engine-dependent: V8's `JSON.parse` is iterative
+      // and handles pathological nesting, but engines whose parser recurses
+      // throw `RangeError` here. Saying "not valid JSON" about a document that
+      // is perfectly valid JSON would send the user looking in the wrong place.
+      if (e instanceof RangeError) {
+        throw new TerraformStateParseError(
+          "too-deep",
+          "State document is nested too deeply to parse. Real Terraform state does not nest that far — check the document is a state file and not something else.",
+        );
+      }
       throw new TerraformStateParseError("not-json", "State document is not valid JSON.");
     }
   } else {
