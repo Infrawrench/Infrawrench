@@ -136,6 +136,18 @@ AWS accounts feed the [Commitments](../features/commitments.md) section: **EC2 R
 - Savings Plans' recurring payment is deliberately not shown — AWS documents no period for the figure its API returns, and guessing between hourly and monthly would be a 730× error.
 - Cost rows are not linked back to an individual reservation or plan — see [what is not attributed](#what-is-not-attributed-individual-commitments) above for why, and what you get instead.
 
+## Network costs
+
+AWS is the one provider that can feed [network costs](../features/network-costs.md) — priced source→destination attribution read from **VPC Flow Logs**.
+
+- Needs `ec2:DescribeFlowLogs`, `ec2:DescribeNetworkInterfaces`, `logs:StartQuery` and `logs:GetQueryResults`.
+- **Off until you turn it on.** CloudWatch Logs Insights bills the scan to _your_ account per GB, and a busy VPC's flow log group is not small, so nothing runs until an org admin enables collection.
+- Only flow logs delivering to **CloudWatch Logs** can be read. An S3 or Firehose destination is listed as a source we can see but not query.
+- The record format must be **custom** and include at least `srcaddr`, `dstaddr`, `bytes` and `flow-direction`. The default format is version 2, which predates `flow-direction` by three versions — without it the local end of a record is unknowable. Add `az-id`, `instance-id`, `traffic-path`, `interface-type` and `pkt-dst-aws-service` too; they are what turn an address into a resource.
+- Flows are read for the credential's **own region only**, not fanned out across every enabled region — each region is a separate log group and a separate charge, and a silent fan-out would multiply a cost you did not agree to.
+
+Cross-AZ transfer is priced at $0.01/GB **in each direction**, which is why both directions are stored and priced separately: AWS captures the flow at both network interfaces and bills both ends, so the two records at $0.01 each reproduce the real charge exactly.
+
 ## Dependency graph
 
 The VPC wiring is declared, so the [dependency graph](../features/dependency-graph.md) draws it exactly rather than inferring it: EC2 instances link to their VPC, subnet and security groups, and subnets, security groups, load balancers, target groups, NAT gateways and internet gateways link to their VPC. These arrows appear as soon as the account syncs — nothing to wire by hand.

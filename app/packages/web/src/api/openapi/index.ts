@@ -54,6 +54,7 @@ import { registerAccessRequestPaths } from "./paths/access-requests";
 import { registerCredentialHygienePaths } from "./paths/credential-hygiene";
 import { registerCreditPaths } from "./paths/credits";
 import { registerCommitmentPaths } from "./paths/commitments";
+import { registerNetworkFlowPaths } from "./paths/network-flows";
 import { registerProbePaths } from "./paths/probes";
 import { registerStatusPagePaths } from "./paths/status-pages";
 import { registerOwnershipPaths } from "./paths/ownership";
@@ -172,6 +173,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCredentialHygienePaths(ctx);
   registerCreditPaths(ctx);
   registerCommitmentPaths(ctx);
+  registerNetworkFlowPaths(ctx);
   registerProbePaths(ctx);
   registerStatusPagePaths(ctx);
   registerOwnershipPaths(ctx);
@@ -247,6 +249,18 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "no single honest denominator), utilization measured only over days with collected " +
           "cost data, and a planner that recommends commitment sizes at the p10 floor of " +
           "uncovered spend. Read-only: nothing here ever purchases.",
+      },
+      {
+        name: "Network flows",
+        description:
+          "Priced source\u2192destination attribution of egress and cross-zone traffic \u2014 which two " +
+          "things are talking, across which billing boundary, and what that costs. It exists " +
+          "because every cost dimension describes one side of a transfer while a network charge " +
+          "describes a pair, so the total is visible in the cost surface and the cause is not. " +
+          "Everything here is an estimate: flow logs sample, and prices are published list " +
+          "rates with no free tier, volume tier or negotiated discount applied. Collection is " +
+          "off until an organization enables it, because the queries are billed to the " +
+          "customer's own cloud account.",
       },
       {
         name: "Cost reports",
@@ -649,6 +663,12 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // one that should govern "how much is left".
   "GET /credits": "costs:read",
   "GET /commitments": "costs:read",
+  "GET /network-flows": "costs:read",
+  "GET /network-flows/settings": "costs:read",
+  // Not `costs:write`: enabling collection spends the organization's money in
+  // its own cloud account every day until somebody turns it off, which is a
+  // governance act rather than an edit to a cost object.
+  "PUT /network-flows/settings": "org:settings:write",
   "GET /credential-hygiene": "audit:read",
   "GET /access-requests": "access:read",
   "GET /access-requests/catalog": "access:read",

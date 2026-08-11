@@ -3,6 +3,7 @@ import { AWSClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { awsPreflight, buildAwsPolicyTemplate } from "./preflight.js";
 import { awsTerraformExport } from "./terraform.js";
+import { AWS_NETWORK_FLOW_CAPABILITY as awsNetworkFlowCapability } from "./network-flows.js";
 import { AWS_REGIONS } from "./constants.js";
 import { EC2InstanceResourceType } from "./resources/ec2-instance.js";
 import { EBSVolumeResourceType } from "./resources/ebs-volume.js";
@@ -132,6 +133,15 @@ const manifest: PluginManifest = {
   // ec2:DescribeReservedInstances, rds:DescribeReservedDBInstances and
   // savingsplans:DescribeSavingsPlans — surfaced in the plugin docs.
   commitments: { kinds: ["reservation", "savings_plan"] },
+  // Priced VPC Flow Log attribution. Needs ec2:DescribeFlowLogs,
+  // ec2:DescribeNetworkInterfaces, logs:StartQuery and logs:GetQueryResults —
+  // surfaced in the plugin docs.
+  //
+  // Off until the org enables it, because `queriesBillable` is true: Logs
+  // Insights charges the *customer's* account per GB scanned, and only flow
+  // logs written to CloudWatch Logs in a custom record format can be read at
+  // all. See `network-flows.ts` for both constraints.
+  networkFlows: awsNetworkFlowCapability,
   statusFeed,
   preflight: awsPreflight,
 };

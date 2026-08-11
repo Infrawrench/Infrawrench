@@ -34,6 +34,7 @@ import type {
   CostScenarioModelInput,
   CostScenarioReferent,
   CommitmentsFeed,
+  NetworkFlowFeed,
   CreditBurndown,
   ShowbackReport,
   TagComplianceReport,
@@ -252,6 +253,25 @@ export function createWebCostsClient(orgId: string): CostsClient {
       ),
     getCreditBurndown: () => apiGet<CreditBurndown>(`/api/org/${orgId}/credits`),
     getCommitments: () => apiGet<CommitmentsFeed>(`/api/org/${orgId}/commitments`),
+    getNetworkFlows: (options?: { from?: string; to?: string; scope?: string; limit?: number }) => {
+      const params = new URLSearchParams();
+      if (options?.from) params.set("from", options.from);
+      if (options?.to) params.set("to", options.to);
+      if (options?.scope) params.set("scope", options.scope);
+      if (options?.limit !== undefined) params.set("limit", String(options.limit));
+      const qs = params.toString();
+      return apiGet<NetworkFlowFeed>(`/api/org/${orgId}/network-flows${qs ? `?${qs}` : ""}`);
+    },
+    // Included unconditionally, like the annotation writes above: the server
+    // enforces `org:settings:write` (a stricter permission than the rest of
+    // this client, because enabling collection spends the org's money in its
+    // own cloud account daily), and a viewer's 403 surfaces as the switch's
+    // error rather than as a control that silently isn't there.
+    updateNetworkFlowSettings: (settings: { enabled: boolean; initialLookbackDays?: number }) =>
+      apiPut<{ enabled: boolean; initialLookbackDays: number }>(
+        `/api/org/${orgId}/network-flows/settings`,
+        settings,
+      ),
     listEfficiencyAlerts: async (options?: { kind?: EfficiencyAlertKind; limit?: number }) => {
       const params = new URLSearchParams();
       if (options?.kind) params.set("kind", options.kind);
