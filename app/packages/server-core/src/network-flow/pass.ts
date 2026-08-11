@@ -20,6 +20,8 @@
  *   charge on the customer's bill. See `./lease.ts` — a renewing lease is what
  *   makes the exclusivity below mean anything past the first thirty minutes.
  */
+import { randomUUID } from "node:crypto";
+
 import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "../db/client";
@@ -60,14 +62,17 @@ export interface ClaimedNetworkFlowAccount {
   organizationId: string;
   failureCount: number;
   /**
-   * The lease deadline this claim wrote, to the millisecond.
+   * The owner token this claim wrote.
    *
-   * Not decoration: it is the token every renewal compares against, so a holder
-   * whose lease lapsed can tell "still mine" from "somebody else's now" rather
-   * than blindly pushing the column forward. Null only if the claim's
-   * `RETURNING` lost the column, which the claim test pins against.
+   * Not decoration: it is what every renewal and every write to the row is
+   * matched against, so a holder whose lease lapsed can tell "still mine" from
+   * "somebody else's now" rather than blindly pushing the column forward. It
+   * identifies the claim rather than its state, which is what makes that answer
+   * survive a renewal whose outcome this process never learned — see
+   * `./lease.ts`. Undefined only if the claim's `RETURNING` lost the column,
+   * which the claim test pins against.
    */
-  leaseExpiresAt: Date | undefined;
+  leaseOwner: string | undefined;
 }
 
 /**
@@ -84,24 +89,29 @@ export interface ClaimedNetworkFlowAccount {
  * row while holding a lock on it, so the loser of the race sees the winner's
  * lease, updates nothing, and therefore returns nothing.
  *
- * **The winner is handed the deadline it wrote**, because exclusivity at the
- * moment of the claim is only half of it: the collection that follows outlives
- * a fixed lease easily, and the same predicate that keeps a second replica out
- * now will let it in the moment the lease lapses. `./lease.ts` renews against
- * that deadline for as long as the collection runs. `date_trunc` to
- * milliseconds so the value survives the round trip through a JS `Date`, and
- * the epoch-millisecond alias so it is read back on the same clock and calendar
- * as drizzle would map it, whatever the connection's time zone.
+ * **The winner is handed an owner token**, because exclusivity at the moment of
+ * the claim is only half of it: the collection that follows outlives a fixed
+ * lease easily, and the same predicate that keeps a second replica out now will
+ * let it in the moment the lease lapses. `./lease.ts` renews for as long as the
+ * collection runs, matching on that token. It is minted per claim rather than
+ * per process, so a replica that loses an account and later re-claims it cannot
+ * present the identity it held the first time; one token covers every row in
+ * one statement because a renewal names its account too, and the accounts in a
+ * batch are distinct by construction.
  */
 export async function claimDueNetworkFlowAccounts(
   limit: number,
   flowCapablePluginIds: string[],
 ): Promise<ClaimedNetworkFlowAccount[]> {
   if (flowCapablePluginIds.length === 0) return [];
+  const owner = randomUUID();
   const rows = await db.execute(sql`
-    INSERT INTO account_network_flow_polls (account_id, organization_id, next_poll_at)
+    INSERT INTO account_network_flow_polls (account_id, organization_id, next_poll_at, lease_owner)
     SELECT a.id, a.organization_id,
-           date_trunc('milliseconds', now() + ${NETWORK_FLOW_LEASE_MS}::float8 * interval '1 millisecond')
+           now() + ${NETWORK_FLOW_LEASE_MS}::float8 * interval '1 millisecond',
+           -- Cast, because a bare placeholder in the select list of an
+           -- INSERT … SELECT has no column to take its type from.
+           ${owner}::text
     FROM accounts a
     JOIN org_network_flow_settings s ON s.organization_id = a.organization_id
     LEFT JOIN account_network_flow_polls p ON p.account_id = a.id
@@ -114,22 +124,25 @@ export async function claimDueNetworkFlowAccounts(
     ORDER BY p.last_polled_at ASC NULLS FIRST, a.id ASC
     LIMIT ${limit}
     ON CONFLICT (account_id) DO UPDATE
-      SET next_poll_at = date_trunc('milliseconds', now() + ${NETWORK_FLOW_LEASE_MS}::float8 * interval '1 millisecond')
+      SET next_poll_at = now() + ${NETWORK_FLOW_LEASE_MS}::float8 * interval '1 millisecond',
+          -- Taking the account over means taking its identity over: whatever
+          -- replica held it before now matches nothing, renews nothing and
+          -- writes nothing.
+          lease_owner = ${owner}::text
       -- Re-checked against the row as it stands now, not as the SELECT saw it.
       -- Without this the update is unconditional and a racing replica gets the
       -- same account back — see the doc comment.
       WHERE account_network_flow_polls.next_poll_at IS NULL
          OR account_network_flow_polls.next_poll_at <= now()
-    RETURNING account_id, organization_id, failure_count,
-              floor(extract(epoch from next_poll_at) * 1000) AS next_poll_at_ms
+    RETURNING account_id, organization_id, failure_count, lease_owner
   `);
   return Array.from(rows as Iterable<Record<string, unknown>>, (r) => {
-    const ms = r["next_poll_at_ms"];
+    const claimedBy = r["lease_owner"];
     return {
       accountId: String(r["account_id"]),
       organizationId: String(r["organization_id"]),
       failureCount: Number(r["failure_count"]),
-      leaseExpiresAt: ms === null || ms === undefined ? undefined : new Date(Number(ms)),
+      leaseOwner: claimedBy === null || claimedBy === undefined ? undefined : String(claimedBy),
     };
   });
 }
@@ -142,23 +155,23 @@ function jittered(base: number, jitter: number): Date {
  * The pass's terminal write, addressed so that it can only land on a row this
  * replica still holds.
  *
- * The lease deadline is the fence. A collection that overran badly enough to
- * lose the lease — the heartbeat could not reach the database for a whole lease
- * period, say — would otherwise finish and write its reschedule over the top of
- * whichever replica has the account now, releasing a lease that is not ours to
- * release. Matching zero rows is the correct outcome there: the new holder
- * records the run it actually performed.
+ * The lease's owner token is the fence. A collection that overran badly enough
+ * to lose the lease — the heartbeat could not reach the database for a whole
+ * lease period, say — would otherwise finish and write its reschedule over the
+ * top of whichever replica has the account now, releasing a lease that is not
+ * ours to release. Matching zero rows is the correct outcome there: the new
+ * holder records the run it actually performed.
  *
- * **The lease is asked for the token, and is never handed one.** It renews
- * itself, so the only deadline that fences anything is the one it holds at the
- * moment of the write; a `Date` captured earlier — at the claim, or before the
- * last renewal — names a value the row has already stopped having, and fencing
- * on it drops the very write this function exists to protect. Taking the lease
- * rather than a deadline is what stops that being reintroduced by a caller
- * reaching for the nearest `Date` in scope. Await `lease.stop()` first: until
- * it resolves, a renewal may still be on its way to the database.
+ * **The fence is the claim's identity, not any value the lease has been
+ * moving.** Fencing on the deadline instead meant fencing on the column the
+ * heartbeat rewrites every ten minutes, so the write only landed if this
+ * process had correctly tracked every renewal — and one whose answer was lost
+ * left it tracking a deadline the row had stopped having, which silently
+ * dropped the reschedule and re-ran the whole customer-billed scan. The token
+ * moves only when the account is claimed by somebody else, so there is nothing
+ * to keep in step and no window in which to be wrong.
  *
- * The deadline is null only when the claim did not hand one back, in which case
+ * The token is null only when the claim did not hand one back, in which case
  * there is nothing to fence with and the write is unconditional, exactly as it
  * was before renewal existed.
  */
@@ -167,16 +180,16 @@ function fencedWhere(claimed: ClaimedNetworkFlowAccount, lease: NetworkFlowLease
     eq(accountNetworkFlowPolls.accountId, claimed.accountId),
     eq(accountNetworkFlowPolls.organizationId, claimed.organizationId),
   );
-  const expiresAt = lease.expiresAt;
-  if (!expiresAt) return where;
-  return and(where, eq(accountNetworkFlowPolls.nextPollAt, expiresAt));
+  const owner = lease.owner;
+  if (!owner) return where;
+  return and(where, eq(accountNetworkFlowPolls.leaseOwner, owner));
 }
 
 async function runOne(claimed: ClaimedNetworkFlowAccount): Promise<void> {
   const lease = startNetworkFlowLease(
     claimed.accountId,
     claimed.organizationId,
-    claimed.leaseExpiresAt ?? null,
+    claimed.leaseOwner ?? null,
   );
 
   let result: NetworkFlowCollectionResult;
@@ -184,8 +197,8 @@ async function runOne(claimed: ClaimedNetworkFlowAccount): Promise<void> {
     result = await collectAccountNetworkFlows(claimed.accountId, claimed.organizationId, { lease });
   } catch (e) {
     // Before anything else: the heartbeat must not outlive the work it was
-    // guarding, and the fence below has to read a deadline that has stopped
-    // moving — hence awaiting, which also waits out a renewal in flight.
+    // guarding — hence awaiting, which also waits out a renewal in flight so
+    // this pass leaves no write of its own behind it.
     await lease.stop();
     if (e instanceof NetworkFlowLeaseLostError) {
       // Deliberately no write at all. The row belongs to whichever replica
@@ -205,6 +218,9 @@ async function runOne(claimed: ClaimedNetworkFlowAccount): Promise<void> {
       .set({
         lastPolledAt: new Date(),
         nextPollAt: jittered(backoff, NETWORK_FLOW_JITTER_MS),
+        // Releasing the lease is part of the same write that ends the pass.
+        // See below.
+        leaseOwner: null,
         failureCount: failures,
         lastError: message.slice(0, 1000),
         lastErrorHelpUrl: setup ? ((e as NetworkFlowSetupError).helpUrl ?? null) : null,
@@ -214,15 +230,21 @@ async function runOne(claimed: ClaimedNetworkFlowAccount): Promise<void> {
     return;
   }
 
-  // Awaited for the same reason as above: a renewal that lands after this write
-  // would leave the row holding a lease rather than tomorrow's schedule, and
-  // the account would come due again and re-run the whole billable scan.
+  // Awaited for the same reason as above: nothing this lease started should
+  // still be on its way to the database once the pass has released the account.
   await lease.stop();
   await db
     .update(accountNetworkFlowPolls)
     .set({
       lastPolledAt: new Date(),
       nextPollAt: jittered(NETWORK_FLOW_INTERVAL_MS, NETWORK_FLOW_JITTER_MS),
+      // Handing the lease back in the same statement that schedules tomorrow.
+      // The two belong together: `next_poll_at` stops being a lease and goes
+      // back to being a due time at exactly this point, and clearing the token
+      // is what makes that stick — a renewal that escaped `stop()` because its
+      // answer was lost, and which the database may still apply, now matches
+      // nothing and cannot put a lease back over tomorrow's schedule.
+      leaseOwner: null,
       failureCount: 0,
       lastError: null,
       lastErrorHelpUrl: null,

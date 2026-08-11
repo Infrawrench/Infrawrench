@@ -114,7 +114,7 @@ function conditionMatches(cond: unknown, row: Record<string, unknown>): boolean 
  * - `ON CONFLICT DO UPDATE` re-checks its `WHERE` against the **latest**
  *   committed version of the conflicting row, under a lock;
  * - a renewal is a plain conditional `UPDATE`, so it touches nothing when the
- *   deadline it names is no longer the one in the row.
+ *   owner token it names is no longer the one in the row.
  *
  * Nothing else about either statement is interpreted, so this can only ever
  * prove a claim non-exclusive for the reason a real deployment would.
@@ -123,6 +123,14 @@ class FakePostgres {
   now = Date.parse("2026-08-11T12:00:00.000Z");
   /** account_id → next_poll_at (epoch ms), or null. Absent means no poll row. */
   rows = new Map<string, number | null>();
+  /**
+   * account_id → lease_owner. The row's other half, kept beside {@link rows}
+   * rather than folded into it so that the deadline — which is what due-ness
+   * and every reschedule are about — stays directly readable in the assertions.
+   */
+  owners = new Map<string, string | null>();
+  /** Distinct per claim, as `randomUUID` is in the real one. */
+  private claims = 0;
   /** Accounts the SELECT half finds, frozen for the whole round. */
   private snapshot: string[] = [];
 
@@ -138,6 +146,7 @@ class FakePostgres {
   execute = (q: CapturedQuery): Record<string, unknown>[] => {
     const text = q.strings.join("?");
     const predicate = conflictPredicate(text);
+    const owner = `lease-${(this.claims += 1)}`;
     const claimed: Record<string, unknown>[] = [];
     for (const id of this.snapshot) {
       if (this.rows.has(id)) {
@@ -145,15 +154,17 @@ class FakePostgres {
         // decides. A row the predicate rejects is neither updated nor returned.
         if (predicate && !predicate(this.rows.get(id)!, this.now)) continue;
       }
-      const leased = this.now + NETWORK_FLOW_LEASE_MS;
-      this.rows.set(id, leased);
+      this.rows.set(id, this.now + NETWORK_FLOW_LEASE_MS);
+      // Claiming an account replaces whatever identity it was held under, so
+      // the previous holder's renewals stop matching from here on.
+      this.owners.set(id, owner);
       claimed.push({
         account_id: id,
         organization_id: "org-1",
         failure_count: 0,
-        // The claim hands the winner the deadline it wrote; that value is the
-        // token every later renewal is checked against.
-        next_poll_at_ms: leased,
+        // The claim hands the winner the token it wrote; that value is what
+        // every later renewal and the terminal write are checked against.
+        lease_owner: owner,
       });
     }
     return claimed;
@@ -166,7 +177,12 @@ class FakePostgres {
       const updated: Record<string, unknown>[] = [];
       for (const [id, next] of [...this.rows]) {
         if (
-          !conditionMatches(cond, { account_id: id, organization_id: "org-1", next_poll_at: next })
+          !conditionMatches(cond, {
+            account_id: id,
+            organization_id: "org-1",
+            next_poll_at: next,
+            lease_owner: this.owners.get(id) ?? null,
+          })
         )
           continue;
         const raw = values["nextPollAt"];
@@ -179,7 +195,10 @@ class FakePostgres {
               ? this.now + NETWORK_FLOW_LEASE_MS
               : next;
         this.rows.set(id, written);
-        updated.push({ nextPollAt: written === null ? null : new Date(written) });
+        // Only the pass's terminal writes name this column, and they name it to
+        // hand the lease back.
+        if ("leaseOwner" in values) this.owners.set(id, values["leaseOwner"] as string | null);
+        updated.push({ accountId: id });
       }
       return updated;
     };
@@ -215,6 +234,15 @@ interface RenewalControl {
   /** Fail this many renewals the way a dropped connection does. */
   failRenewals: number;
   /**
+   * Lose the *answer* to this many renewals, after the write has committed.
+   *
+   * The third outcome, and the one the holder cannot tell apart from the
+   * second: the `UPDATE` reached the row and took effect, and the connection
+   * died before the reply came back. The rejection the caller sees is
+   * byte-for-byte the one {@link failRenewals} produces; only the row differs.
+   */
+  dropAnswers: number;
+  /**
    * Keep each renewal's promise pending for this long on the fake clock *after*
    * it has already reached the row — which is how a real one behaves, since an
    * `UPDATE` in flight cannot be recalled by the process that sent it.
@@ -230,7 +258,13 @@ interface RenewalControl {
  * told apart the same way the fake itself tells them apart.
  */
 function wireWithRenewals(pg: FakePostgres, control: Partial<RenewalControl> = {}): RenewalControl {
-  const state: RenewalControl = { passWrites: [], failRenewals: 0, renewalDelayMs: 0, ...control };
+  const state: RenewalControl = {
+    passWrites: [],
+    failRenewals: 0,
+    dropAnswers: 0,
+    renewalDelayMs: 0,
+    ...control,
+  };
   execute.mockImplementation((q: CapturedQuery) => Promise.resolve(pg.execute(q)));
   update.mockImplementation(() => {
     const inner = pg.update();
@@ -252,6 +286,19 @@ function wireWithRenewals(pg: FakePostgres, control: Partial<RenewalControl> = {
             returning: fail,
             then: (ok: (v: unknown) => unknown, err?: (e: unknown) => unknown) =>
               fail().then(ok, err),
+          };
+        }
+        if (renewal && state.dropAnswers > 0) {
+          state.dropAnswers -= 1;
+          // Committed, and then the connection died. The row has moved; the
+          // holder is told only that its renewal did not come back.
+          const committed = inner.where(cond).returning();
+          const drop = () =>
+            committed.then(() => Promise.reject(new Error("connection terminated unexpectedly")));
+          return {
+            returning: drop,
+            then: (ok: (v: unknown) => unknown, err?: (e: unknown) => unknown) =>
+              drop().then(ok, err),
           };
         }
         const applied = inner.where(cond).returning();
@@ -395,9 +442,12 @@ describe("claimDueNetworkFlowAccounts", () => {
           accountId: "acct-1",
           organizationId: "org-1",
           failureCount: 0,
-          leaseExpiresAt: new Date(pg.now + NETWORK_FLOW_LEASE_MS),
+          // A fresh identity, not the one the dead replica held.
+          leaseOwner: "lease-2",
         },
       ]);
+      expect(pg.owners.get("acct-1")).toBe("lease-2");
+      expect(pg.rows.get("acct-1")).toBe(pg.now + NETWORK_FLOW_LEASE_MS);
     });
   });
 
@@ -414,27 +464,31 @@ describe("claimDueNetworkFlowAccounts", () => {
    * duplicate charge on somebody else's bill, not wasted CPU on ours.
    */
   describe("while a claimed collection is still running", () => {
-    it("returns the lease deadline it wrote, as the token renewals check", async () => {
+    it("returns the owner token it wrote, as the token renewals check", async () => {
       execute.mockResolvedValue([
         {
           account_id: "acct-1",
           organization_id: "org-1",
           failure_count: 0,
-          next_poll_at_ms: 1_760_000_000_000,
+          lease_owner: "lease-abc",
         },
       ]);
 
       // Pinned: `startNetworkFlowLease` degrades to a no-op lease without this
-      // column, which would put the overlap back without failing anything.
+      // column, which would put the overlap back without failing anything. And
+      // it has to be written as well as returned, or every renewal matches a
+      // null token and the lease is nobody's.
       await claimDueNetworkFlowAccounts(2, ["aws"]);
-      expect(statementText()).toContain("next_poll_at");
+      const text = statementText();
+      expect(text).toContain("lease_owner = ");
+      expect(/RETURNING[\s\S]*lease_owner/.test(text)).toBe(true);
 
       await expect(claimDueNetworkFlowAccounts(2, ["aws"])).resolves.toEqual([
         {
           accountId: "acct-1",
           organizationId: "org-1",
           failureCount: 0,
-          leaseExpiresAt: new Date(1_760_000_000_000),
+          leaseOwner: "lease-abc",
         },
       ]);
     });
@@ -484,7 +538,7 @@ describe("claimDueNetworkFlowAccounts", () => {
         wire(pg);
 
         const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
-        const lease = startNetworkFlowLease("acct-1", "org-1", claimed!.leaseExpiresAt ?? null);
+        const lease = startNetworkFlowLease("acct-1", "org-1", claimed!.leaseOwner ?? null);
 
         // No checkpoint at all — this is the one query that runs long, with no
         // day boundary to hang a renewal off.
@@ -509,7 +563,7 @@ describe("claimDueNetworkFlowAccounts", () => {
       wire(pg);
 
       const [first] = await claimDueNetworkFlowAccounts(2, ["aws"]);
-      const stale = startNetworkFlowLease("acct-1", "org-1", first!.leaseExpiresAt ?? null);
+      const stale = startNetworkFlowLease("acct-1", "org-1", first!.leaseOwner ?? null);
 
       // The first replica stalls long enough to lose the lease, and a second
       // one takes the account over.
@@ -524,18 +578,20 @@ describe("claimDueNetworkFlowAccounts", () => {
       await stale.stop();
     });
 
-    // The heartbeat and a checkpoint can be renewing at the same moment. Two
-    // renewals from the same expected deadline would have the second match
-    // nothing and report a loss that never happened — stopping a collection
-    // this replica does still own, which is expensive in the other direction.
-    it("coalesces concurrent renewals instead of racing itself into a false loss", async () => {
+    // The heartbeat and a checkpoint can be renewing at the same moment, and
+    // one write is enough. This used to be load-bearing rather than tidy: two
+    // renewals issued from the same expected *deadline* had the second match
+    // nothing and report a loss that never happened. Against the owner token
+    // both would match, so what is pinned here is only that the two collapse
+    // into one renewal and both callers are told the lease is held.
+    it("coalesces concurrent renewals rather than issuing the same write twice", async () => {
       const pg = new FakePostgres();
       pg.rows.set("acct-1", pg.now - 60_000);
       pg.beginRound(["acct-1"]);
       wire(pg);
 
       const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
-      const lease = startNetworkFlowLease("acct-1", "org-1", claimed!.leaseExpiresAt ?? null);
+      const lease = startNetworkFlowLease("acct-1", "org-1", claimed!.leaseOwner ?? null);
 
       // Move the clock on, so the renewal actually writes a different deadline
       // and a second one issued from the stale expected value would miss.
@@ -558,7 +614,7 @@ describe("claimDueNetworkFlowAccounts", () => {
       const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
       // The holder starts work and the pod is then killed: no checkpoint ever
       // runs, no heartbeat ever fires, nothing writes the row again.
-      startNetworkFlowLease("acct-1", "org-1", claimed!.leaseExpiresAt ?? null);
+      startNetworkFlowLease("acct-1", "org-1", claimed!.leaseOwner ?? null);
 
       pg.now += NETWORK_FLOW_LEASE_MS + 1;
       pg.beginRound(["acct-1"]);
@@ -568,9 +624,10 @@ describe("claimDueNetworkFlowAccounts", () => {
           accountId: "acct-1",
           organizationId: "org-1",
           failureCount: 0,
-          leaseExpiresAt: new Date(pg.now + NETWORK_FLOW_LEASE_MS),
+          leaseOwner: "lease-2",
         },
       ]);
+      expect(pg.rows.get("acct-1")).toBe(pg.now + NETWORK_FLOW_LEASE_MS);
     });
 
     // The other half of the answer to an overrun: work that cannot be made to
@@ -584,7 +641,7 @@ describe("claimDueNetworkFlowAccounts", () => {
 
       const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
       const leased = pg.rows.get("acct-1");
-      const lease = startNetworkFlowLease("acct-1", "org-1", claimed!.leaseExpiresAt ?? null, {
+      const lease = startNetworkFlowLease("acct-1", "org-1", claimed!.leaseOwner ?? null, {
         maxRuntimeMs: 0,
       });
 
@@ -607,6 +664,11 @@ describe("claimDueNetworkFlowAccounts", () => {
      * coming due again the moment it lapsed, and re-running the whole
      * customer-billed scan. Which is the exact failure the lease exists to
      * prevent, arrived at by way of the fix for it.
+     *
+     * The fence is the owner token now, so the write no longer depends on
+     * having tracked that renewal; the draining is still what keeps the pass
+     * from returning with a write of its own outstanding, and both halves are
+     * pinned here.
      */
     it("lands its terminal write when the collection ends with a renewal in flight", async () => {
       vi.useFakeTimers();
@@ -634,9 +696,10 @@ describe("claimDueNetworkFlowAccounts", () => {
         await vi.advanceTimersByTimeAsync(NETWORK_FLOW_HEARTBEAT_MS + 120_000);
         await expect(pass).resolves.toEqual({ claimed: 1 });
 
-        // The reschedule landed, on the deadline the lease actually held.
+        // The reschedule landed, and handed the lease back with it.
         const write = control.passWrites.at(-1);
-        expect(write).toMatchObject({ failureCount: 0, lastError: null });
+        expect(write).toMatchObject({ failureCount: 0, lastError: null, leaseOwner: null });
+        expect(pg.owners.get("acct-1")).toBeNull();
         expect(pg.rows.get("acct-1")).toBe((write!["nextPollAt"] as Date).getTime());
         expect(pg.rows.get("acct-1")).toBeGreaterThan(started + NETWORK_FLOW_INTERVAL_MS);
 
@@ -706,6 +769,7 @@ describe("claimDueNetworkFlowAccounts", () => {
 
       let days = 0;
       let heldBySecond: number | null | undefined;
+      let ownedBySecond: string | null | undefined;
       collect.mockImplementation((async (
         _accountId: string,
         _organizationId: string,
@@ -718,6 +782,7 @@ describe("claimDueNetworkFlowAccounts", () => {
         pg.beginRound(["acct-1"]);
         await claimDueNetworkFlowAccounts(2, ["aws"]);
         heldBySecond = pg.rows.get("acct-1");
+        ownedBySecond = pg.owners.get("acct-1");
         await options.lease?.checkpoint();
         days += 1;
         return collected(2);
@@ -726,10 +791,65 @@ describe("claimDueNetworkFlowAccounts", () => {
       await expect(runNetworkFlowPass()).resolves.toEqual({ claimed: 1 });
 
       // Stopped at the first checkpoint after the loss, and the new holder's
-      // row is untouched: no reschedule, no failure, no lease pushed forward.
+      // row is untouched: no reschedule, no failure, no lease pushed forward,
+      // and its claim on the account not released on its behalf.
       expect(days).toBe(1);
       expect(control.passWrites).toEqual([]);
       expect(pg.rows.get("acct-1")).toBe(heldBySecond);
+      expect(pg.owners.get("acct-1")).toBe(ownedBySecond);
+    });
+
+    /*
+     * Regression: a renewal that committed and then lost its answer was read as
+     * a lost lease.
+     *
+     * The two outcomes above are the two the holder can prove. This is the
+     * third, and it is the reason the lease cannot be identified by its own
+     * deadline: the write landed, the reply did not, and a holder that keeps
+     * the deadline it had is now holding a value the row has stopped having.
+     * Its next renewal matches nothing and reports a loss that never happened —
+     * so the collection is abandoned with no terminal write, the committed
+     * renewal lapses on schedule, and the account comes back due to re-run
+     * every day it had already paid to collect.
+     */
+    it("carries on through a renewal that committed but never answered", async () => {
+      const pg = new FakePostgres();
+      pg.rows.set("acct-1", pg.now - 60_000);
+      pg.beginRound(["acct-1"]);
+      const control = wireWithRenewals(pg, { dropAnswers: 1 });
+      const claimedAt = pg.now;
+
+      // The deadline in the row as each day's checkpoint left it.
+      const afterCheckpoint: (number | null | undefined)[] = [];
+      collect.mockImplementation((async (
+        _accountId: string,
+        _organizationId: string,
+        options: { lease?: { checkpoint(): Promise<boolean> } },
+      ) => {
+        for (let day = 0; day < 2; day += 1) {
+          // Before each, so every renewal writes a visibly different deadline —
+          // otherwise the dropped answer would be indistinguishable from a
+          // renewal that never reached the row.
+          pg.now += 60_000;
+          await options.lease?.checkpoint();
+          afterCheckpoint.push(pg.rows.get("acct-1"));
+        }
+        return collected(2);
+      }) as unknown as () => Promise<Record<string, unknown>>);
+
+      await expect(runNetworkFlowPass()).resolves.toEqual({ claimed: 1 });
+
+      // Both days ran, and both renewals landed: the first one's *answer* was
+      // lost, not its write, and the second was not thrown off by that.
+      expect(afterCheckpoint).toEqual([
+        claimedAt + 60_000 + NETWORK_FLOW_LEASE_MS,
+        claimedAt + 120_000 + NETWORK_FLOW_LEASE_MS,
+      ]);
+      // And the pass finished: a success recorded, and tomorrow's schedule in
+      // the row rather than a lease that is about to lapse.
+      expect(control.passWrites).toHaveLength(1);
+      expect(control.passWrites[0]).toMatchObject({ failureCount: 0, lastError: null });
+      expect(pg.rows.get("acct-1")).toBe((control.passWrites[0]!["nextPollAt"] as Date).getTime());
     });
   });
 });
