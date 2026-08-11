@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   blastRadiusHeadline,
   blastRadiusSeverity,
+  resolveFlowPeerIdentities,
   summarizeBlastRadius,
   type BlastRadiusFlowPeer,
   type BlastRadiusReference,
@@ -197,6 +198,70 @@ describe("summarizeBlastRadius — references and traffic", () => {
       input({ flowPeers: [peer("a", 1), peer("b", 9)], flowsChecked: true }),
     );
     expect(report.flowPeers.map((p) => p.ref)).toEqual(["b", "a"]);
+  });
+});
+
+describe("resolveFlowPeerIdentities", () => {
+  // `resources.external_id` has no uniqueness constraint — its index is
+  // (plugin_id, external_id), deliberately non-unique — so two accounts
+  // legitimately hold a VPC whose provider id is "default". Keeping the first
+  // row a lookup happened to return attributes measured traffic to an
+  // arbitrary resource, in a report read seconds before somebody deletes
+  // something.
+  const inProd = { id: "aws:prod:default", externalId: "default", accountId: "prod" };
+  const inStaging = { id: "aws:staging:default", externalId: "default", accountId: "staging" };
+
+  it("never links a ref two accounts claim — it reports it as ambiguous", () => {
+    const result = resolveFlowPeerIdentities(["default"], [inStaging, inProd], "other-account");
+    expect(result.idByRef.has("default")).toBe(false);
+    expect(result.ambiguousRefs).toEqual(["default"]);
+  });
+
+  it("is not decided by candidate order", () => {
+    const forward = resolveFlowPeerIdentities(["default"], [inProd, inStaging], "other-account");
+    const reversed = resolveFlowPeerIdentities(["default"], [inStaging, inProd], "other-account");
+    expect(forward).toEqual(reversed);
+  });
+
+  it("prefers the collecting account when one of the claimants is in it", () => {
+    const result = resolveFlowPeerIdentities(["default"], [inStaging, inProd], "prod");
+    expect(result.idByRef.get("default")).toBe("aws:prod:default");
+    expect(result.ambiguousRefs).toEqual([]);
+  });
+
+  it("accepts a single claimant in another account — cross-account flows are real", () => {
+    const result = resolveFlowPeerIdentities(["default"], [inStaging], "prod");
+    expect(result.idByRef.get("default")).toBe("aws:staging:default");
+    expect(result.ambiguousRefs).toEqual([]);
+  });
+
+  it("treats an unmatched ref as an ordinary external endpoint, not a gap", () => {
+    const result = resolveFlowPeerIdentities(["internet", "s3.us-east-1"], [inProd], "prod");
+    expect(result.idByRef.size).toBe(0);
+    expect(result.ambiguousRefs).toEqual([]);
+  });
+
+  it("refuses to pick between two rows in the collecting account itself", () => {
+    const duplicate = { id: "aws:prod:default-2", externalId: "default", accountId: "prod" };
+    const result = resolveFlowPeerIdentities(["default"], [inProd, duplicate], "prod");
+    expect(result.idByRef.has("default")).toBe(false);
+    expect(result.ambiguousRefs).toEqual(["default"]);
+  });
+
+  it("resolves each ref independently and sorts the ambiguous ones", () => {
+    const result = resolveFlowPeerIdentities(
+      ["zeta", "alpha", "unique"],
+      [
+        { id: "a", externalId: "zeta", accountId: "x" },
+        { id: "b", externalId: "zeta", accountId: "y" },
+        { id: "c", externalId: "alpha", accountId: "x" },
+        { id: "d", externalId: "alpha", accountId: "y" },
+        { id: "e", externalId: "unique", accountId: "x" },
+      ],
+      "prod",
+    );
+    expect(result.idByRef.get("unique")).toBe("e");
+    expect(result.ambiguousRefs).toEqual(["alpha", "zeta"]);
   });
 });
 

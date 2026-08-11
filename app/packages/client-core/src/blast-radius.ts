@@ -117,11 +117,99 @@ export interface BlastRadiusFlowPeer {
   /** Days in the window this peer appeared on — a spike versus a standing flow. */
   days: number;
   /**
-   * The peer's Infrawrench resource id when the flow ref resolved to a synced
-   * resource. Null when it did not — flow refs are provider-side ids, so a
-   * peer outside the org (or in an account we do not sync) stays a label.
+   * The peer's Infrawrench resource id when the flow ref resolved to exactly
+   * one synced resource. Null when it did not — flow refs are provider-side
+   * ids, so a peer outside the org (or in an account we do not sync) stays a
+   * label, and so does one whose id is claimed by resources in more than one
+   * account. See {@link resolveFlowPeerIdentities}.
    */
   resourceId: string | null;
+}
+
+/** One resource a flow ref might name, as the host reads it out of storage. */
+export interface FlowPeerCandidate {
+  /** The app's composite resource id. */
+  id: string;
+  /** The provider-native id a flow ref would carry. */
+  externalId: string;
+  accountId: string;
+}
+
+export interface FlowPeerIdentities {
+  /** Flow ref → the one resource it unambiguously names. */
+  idByRef: Map<string, string>;
+  /**
+   * Refs claimed by more than one resource, sorted. The report turns these
+   * into a gap rather than a link.
+   */
+  ambiguousRefs: string[];
+}
+
+/**
+ * Resolve flow refs to resource ids, or to nothing.
+ *
+ * A flow ref is the **provider's** id, and `resources.external_id` carries no
+ * uniqueness constraint — its index is `(plugin_id, external_id)`, deliberately
+ * non-unique, because plenty of providers use a name as the id and two accounts
+ * legitimately both hold a `default` VPC, a `kube-system` namespace or a volume
+ * called `data`. An org-wide lookup that keeps the first row it finds therefore
+ * attributes measured traffic to an arbitrary resource, and this report is read
+ * in the seconds before somebody deletes something — a peer pointing at the
+ * wrong resource is a wrong answer at the worst possible moment.
+ *
+ * So the scope is narrowed twice and then it gives up rather than guessing:
+ *
+ *  1. **The collecting account wins.** Candidates are already filtered to the
+ *     flow row's plugin by the caller; within one plugin and one account the
+ *     provider's id is unique by construction, so a same-account match is the
+ *     certain case and it is taken first. It is also the common one — most
+ *     traffic a resource exchanges is with its own account's estate.
+ *  2. **A single claimant elsewhere is accepted.** Cross-account flows are real
+ *     (VPC peering, a shared transit gateway), and the flow row names only the
+ *     *collecting* account, so the peer's own account cannot be read off it. One
+ *     unambiguous claimant across the org is still an answer.
+ *  3. **Anything else is a gap, not a link.** Two or more claimants and the ref
+ *     stays a bare label, reported through `unchecked`. The refs that resolve to
+ *     nothing at all are not ambiguity — they are ordinary external endpoints —
+ *     and are silently left unlinked.
+ */
+export function resolveFlowPeerIdentities(
+  refs: Iterable<string>,
+  candidates: FlowPeerCandidate[],
+  collectingAccountId: string,
+): FlowPeerIdentities {
+  const byRef = new Map<string, FlowPeerCandidate[]>();
+  for (const candidate of candidates) {
+    const claimants = byRef.get(candidate.externalId);
+    if (claimants) claimants.push(candidate);
+    else byRef.set(candidate.externalId, [candidate]);
+  }
+
+  const idByRef = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  for (const ref of refs) {
+    const claimants = byRef.get(ref);
+    if (!claimants || claimants.length === 0) continue;
+
+    const local = claimants.filter((c) => c.accountId === collectingAccountId);
+    if (local.length === 1) {
+      idByRef.set(ref, (local[0] as FlowPeerCandidate).id);
+      continue;
+    }
+    // Two rows in one account sharing a provider id should be impossible, but
+    // "should be impossible" is not a reason to pick one of them.
+    if (local.length > 1) {
+      ambiguous.add(ref);
+      continue;
+    }
+    if (claimants.length === 1) {
+      idByRef.set(ref, (claimants[0] as FlowPeerCandidate).id);
+      continue;
+    }
+    ambiguous.add(ref);
+  }
+
+  return { idByRef, ambiguousRefs: [...ambiguous].sort() };
 }
 
 /**

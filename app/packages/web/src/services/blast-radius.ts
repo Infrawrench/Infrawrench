@@ -28,11 +28,13 @@
 import { and, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   buildDependencyGraph,
+  resolveFlowPeerIdentities,
   summarizeBlastRadius,
   type BlastRadiusFlowPeer,
   type BlastRadiusGap,
   type BlastRadiusReference,
   type BlastRadiusReport,
+  type FlowPeerIdentities,
 } from "@infrawrench/client-core";
 import { isClickHouseConfigured } from "@infrawrench/server-core/clickhouse/client";
 import { readTopNetworkFlows } from "@infrawrench/server-core/clickhouse/network-flow-readers";
@@ -151,14 +153,20 @@ async function loadDependencyGraphSafely(organizationId: string) {
  *
  * Three separate reasons this can decline to answer, and each says which:
  * collection is off for the org, there is no warehouse configured, or the
- * resource has no external id for the flow refs to match on. Flow refs are the
- * **provider's** id, not the app's composite one, which is why the match is on
- * `external_id` within the resource's own account — and why a peer in an
- * unsynced account stays a label rather than becoming a link.
+ * resource has no external id for the flow refs to match on.
+ *
+ * A fourth kind of gap comes from the peers themselves. Flow refs are the
+ * **provider's** id, not the app's composite one, and `external_id` is unique
+ * only within one plugin and one account — so identifying a peer is a scoped
+ * lookup that is allowed to fail. `resolveFlowPeerIdentities` prefers a match
+ * in the collecting account, accepts a single claimant elsewhere, and reports
+ * anything contested through `unchecked` instead of linking a guess. A peer
+ * that resolves to nothing is just an endpoint outside the estate and is not a
+ * gap at all.
  */
 async function loadFlowPeers(
   organizationId: string,
-  row: { accountId: string; externalId: string | null } | null,
+  row: { accountId: string; externalId: string | null; pluginId: string } | null,
   unchecked: BlastRadiusGap[],
 ): Promise<{ peers: BlastRadiusFlowPeer[]; checked: boolean }> {
   const off = (reason: string) => {
@@ -210,29 +218,57 @@ async function loadFlowPeers(
     return off("The network flow query failed, so this resource's traffic could not be read.");
   }
 
-  // A peer's Infrawrench id, when its flow ref names a resource we sync. Both
-  // ends are looked up in one query rather than per row.
+  // A peer's Infrawrench id, when its flow ref names exactly one resource we
+  // sync. Both ends are looked up in one query rather than per row.
+  //
+  // The candidate query is scoped to the flow row's **plugin**: a flow ref is
+  // a provider-native id, so `i-0abc…` from an AWS flow log can only mean an
+  // AWS resource, and `external_id` is not unique across plugins (or across
+  // accounts — see `resolveFlowPeerIdentities`, which does the rest of the
+  // narrowing and refuses to guess when two accounts claim one id).
   const peerRefs = new Set<string>();
   for (const pair of pairs) {
     peerRefs.add(pair.src_ref === row.externalId ? pair.dst_ref : pair.src_ref);
   }
-  const peerIdByRef = new Map<string, string>();
+  let identities: FlowPeerIdentities = { idByRef: new Map(), ambiguousRefs: [] };
   if (peerRefs.size > 0) {
     const peerRows = await db
-      .select({ id: resources.id, externalId: resources.externalId })
+      .select({
+        id: resources.id,
+        externalId: resources.externalId,
+        accountId: resources.accountId,
+      })
       .from(resources)
       .where(
         and(
           eq(resources.organizationId, organizationId),
           isNull(resources.deletedAt),
+          eq(resources.pluginId, row.pluginId),
           inArray(resources.externalId, [...peerRefs]),
         ),
       );
-    for (const peer of peerRows) {
-      if (peer.externalId && !peerIdByRef.has(peer.externalId)) {
-        peerIdByRef.set(peer.externalId, peer.id);
-      }
-    }
+    identities = resolveFlowPeerIdentities(
+      peerRefs,
+      peerRows.flatMap((peer) =>
+        peer.externalId
+          ? [{ id: peer.id, externalId: peer.externalId, accountId: peer.accountId }]
+          : [],
+      ),
+      row.accountId,
+    );
+  }
+
+  if (identities.ambiguousRefs.length > 0) {
+    const count = identities.ambiguousRefs.length;
+    unchecked.push({
+      kind: "network-flows",
+      reason:
+        `${count} network peer${count === 1 ? "" : "s"} could not be identified: the provider ` +
+        `id${count === 1 ? "" : "s"} ${identities.ambiguousRefs.join(", ")} ${
+          count === 1 ? "is" : "are"
+        } used by resources in more than one account, so the traffic is listed without a link ` +
+        "rather than attributed to a guess.",
+    });
   }
 
   const peers: BlastRadiusFlowPeer[] = pairs.map((pair) => {
@@ -250,7 +286,7 @@ async function loadFlowPeers(
       estimatedCost: pair.estimated_cost,
       currency: pair.currency || "USD",
       days: pair.days,
-      resourceId: peerIdByRef.get(ref) ?? null,
+      resourceId: identities.idByRef.get(ref) ?? null,
     };
   });
 

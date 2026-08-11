@@ -88,8 +88,11 @@ const BlastRadiusFlowPeer = strict({
   }),
   resourceId: ResourceId.nullable().openapi({
     description:
-      "The peer's Infrawrench resource id when its flow ref resolved to a synced resource; " +
-      "null when it did not.",
+      "The peer's Infrawrench resource id when its flow ref resolved to exactly one synced " +
+      "resource. Null when it resolved to none (an endpoint outside the organization) and " +
+      "also when it resolved to several — a provider id is only unique within one plugin and " +
+      "account, so a ref claimed by two accounts is reported unlinked, with the reason in " +
+      "`unchecked`, rather than attributed to a guess.",
   }),
 }).openapi("BlastRadiusFlowPeer");
 
