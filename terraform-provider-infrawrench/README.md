@@ -770,6 +770,14 @@ Versioning is the provider's own, not the API's. It is a client: `API_VERSION`
 moving does not oblige a release here, and a provider fix ships without touching
 the API. While the major is `0`, the resource schemas are still allowed to move.
 
+**A released version is never re-cut.** The tag is the exact bytes the Registry
+ingested, so a packaging mistake costs a version number rather than a force
+push — `v0.1.0` was burnt that way, publishing the registry manifest without a
+checksum for it. That is also why the publish workflow dry-runs the release and
+checks the artifacts are ingestible _before_ it touches the satellite: the last
+place you want to discover a packaging bug is the Registry, because by then the
+tag exists and the only way out is another version.
+
 ## Repository notes
 
 - This module is **not** in the pnpm workspace or `turbo.json`. It is a Go
