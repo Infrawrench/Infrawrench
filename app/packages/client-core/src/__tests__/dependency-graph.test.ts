@@ -3,6 +3,7 @@ import {
   buildDependencyGraph,
   collectDependencies,
   collectDependents,
+  collectDependentsWithDepth,
   directDependencies,
   layoutDependencyGraph,
   type DependencyGraphEdge,
@@ -109,6 +110,37 @@ describe("collectDependents / collectDependencies", () => {
   it("terminates on cycles", () => {
     const model = buildDependencyGraph([node("a"), node("b")], [edge("a", "b"), edge("b", "a")]);
     expect(collectDependents(model, "a")).toEqual(new Set(["a", "b"]));
+  });
+});
+
+describe("collectDependentsWithDepth", () => {
+  it("stamps the start at 0 and each dependant at its hop count", () => {
+    const model = buildDependencyGraph(nodes, edges);
+    expect(collectDependentsWithDepth(model, "db")).toEqual(
+      new Map([
+        ["db", 0],
+        ["api", 1],
+        ["worker", 1],
+        ["web", 2],
+      ]),
+    );
+  });
+
+  it("takes the shortest path when a dependant is reachable two ways", () => {
+    // web depends on db directly *and* through api — the direct hop wins, so
+    // it is reported as a direct dependant rather than a transitive one.
+    const model = buildDependencyGraph(nodes, [...edges, edge("web", "db", "dbUrl")]);
+    expect(collectDependentsWithDepth(model, "db").get("web")).toBe(1);
+  });
+
+  it("keeps a cycle's start at depth 0", () => {
+    const model = buildDependencyGraph([node("a"), node("b")], [edge("a", "b"), edge("b", "a")]);
+    expect(collectDependentsWithDepth(model, "a")).toEqual(
+      new Map([
+        ["a", 0],
+        ["b", 1],
+      ]),
+    );
   });
 });
 

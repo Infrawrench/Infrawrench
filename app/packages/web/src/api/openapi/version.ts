@@ -33,4 +33,7 @@
 // exhaustion alert (new /quotas routes and schemas, a new `quotaAlerts` alert
 // trigger, and `quotas` on the TabTarget kind enum, without which a persisted
 // Quotas tab is silently dropped on reload). All additive.
-export const API_VERSION = "1.12.0";
+// 1.13.0: the blast-radius impact report — one new read route answering "what
+// breaks if I delete this?" from the dependency graph, network flow
+// attribution and the org objects that name a resource. Additive.
+export const API_VERSION = "1.13.0";

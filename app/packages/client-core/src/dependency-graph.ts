@@ -254,7 +254,7 @@ export function directDependencies(
  * radius), so it can be used directly as a highlight set.
  */
 export function collectDependents(model: DependencyGraphModel, resourceId: string): Set<string> {
-  return walk(model.dependedOnBy, resourceId, (edge) => edge.consumerResourceId);
+  return new Set(collectDependentsWithDepth(model, resourceId).keys());
 }
 
 /**
@@ -262,27 +262,57 @@ export function collectDependents(model: DependencyGraphModel, resourceId: strin
  * depends on. Includes the starting resource itself.
  */
 export function collectDependencies(model: DependencyGraphModel, resourceId: string): Set<string> {
-  return walk(model.dependsOn, resourceId, (edge) => edge.providerResourceId);
+  return new Set(walkWithDepth(model.dependsOn, resourceId, (e) => e.providerResourceId).keys());
 }
 
-function walk(
+/**
+ * The blast radius, with each dependant's **shortest** hop count from the
+ * start — 0 for the start itself, 1 for a direct dependant, 2+ for a
+ * transitive one.
+ *
+ * This is the one traversal in the module: {@link collectDependents} and
+ * {@link collectDependencies} both drop the depths and keep the key set, so
+ * "who is reachable" and "how far away are they" can never disagree. The
+ * impact report needs the distance to say *direct* versus *transitive*, which
+ * is the difference between "this will break now" and "this may break", and
+ * inventing a second walker for it is how the two answers drift apart.
+ */
+export function collectDependentsWithDepth(
+  model: DependencyGraphModel,
+  resourceId: string,
+): Map<string, number> {
+  return walkWithDepth(model.dependedOnBy, resourceId, (edge) => edge.consumerResourceId);
+}
+
+/**
+ * Breadth-first reachability with depths. Breadth-first rather than the
+ * cheaper stack walk because a depth is only meaningful when it is the
+ * shortest one: a resource reachable in one hop and again in four is a direct
+ * dependant, and a depth-first walk that happened to find the long path first
+ * would label it transitive.
+ *
+ * `visited` is stamped on enqueue, so a cycle terminates and a self-edge (the
+ * model drops those anyway) cannot re-enter the start at a non-zero depth.
+ */
+function walkWithDepth(
   adjacency: Map<string, DependencyGraphEdge[]>,
   start: string,
   next: (edge: DependencyGraphEdge) => string,
-): Set<string> {
-  const visited = new Set<string>([start]);
+): Map<string, number> {
+  const depths = new Map<string, number>([[start, 0]]);
   const queue = [start];
-  while (queue.length > 0) {
-    const current = queue.pop() as string;
+  for (let head = 0; head < queue.length; head++) {
+    const current = queue[head] as string;
+    const depth = depths.get(current) as number;
     for (const edge of adjacency.get(current) ?? []) {
       const target = next(edge);
-      if (!visited.has(target)) {
-        visited.add(target);
+      if (!depths.has(target)) {
+        depths.set(target, depth + 1);
         queue.push(target);
       }
     }
   }
-  return visited;
+  return depths;
 }
 
 export interface DependencyGraphLayoutOptions {

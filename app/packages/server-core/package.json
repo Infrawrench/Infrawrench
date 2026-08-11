@@ -51,6 +51,7 @@
     "./clickhouse/writers": "./src/clickhouse/writers.ts",
     "./clickhouse/cost-readers": "./src/clickhouse/cost-readers.ts",
     "./clickhouse/cost-writers": "./src/clickhouse/cost-writers.ts",
+    "./clickhouse/network-flow-readers": "./src/clickhouse/network-flow-readers.ts",
     "./cost/collect": "./src/cost/collect.ts",
     "./cost/dates": "./src/cost/dates.ts",
     "./cost/estimate": "./src/cost/estimate.ts",

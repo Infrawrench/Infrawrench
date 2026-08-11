@@ -3,6 +3,8 @@ import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
   DetailView,
   DraggableChildPill,
+  BlastRadiusPanel,
+  BlastRadiusSummary,
   ConfirmDeleteModal,
   CredentialExportModal,
   TerraformExportModal,
@@ -79,6 +81,7 @@ import { ResourceChangesPanel } from "@/components/ResourceChangesPanel";
 import { createWebSchedulesClient } from "@/lib/schedules-client";
 import { createWebLeasesClient } from "@/lib/leases-client";
 import { createWebOwnershipClient } from "@/lib/ownership-client";
+import { createWebBlastRadiusClient } from "@/lib/blast-radius-client";
 import { SftpBrowser } from "@/components/SftpBrowser";
 import { WebTerminal } from "@/components/WebTerminal";
 import { SshQuickConnectPanel } from "@/components/SshQuickConnectPanel";
@@ -223,6 +226,7 @@ export function ResourceDetailClient({
   const schedulesClient = useMemo(() => createWebSchedulesClient(orgId), [orgId]);
   const leasesClient = useMemo(() => createWebLeasesClient(orgId), [orgId]);
   const ownershipClient = useMemo(() => createWebOwnershipClient(orgId), [orgId]);
+  const blastRadiusClient = useMemo(() => createWebBlastRadiusClient(orgId), [orgId]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
@@ -1403,6 +1407,13 @@ export function ResourceDetailClient({
                   resourceName={resourceDisplayName}
                 />
               )}
+              renderBlastRadiusTab={() => (
+                <BlastRadiusPanel
+                  client={blastRadiusClient}
+                  resourceId={resourceId}
+                  onOpenResource={handleOpenDependency}
+                />
+              )}
             />
           </div>
         </div>
@@ -1500,6 +1511,7 @@ export function ResourceDetailClient({
           name={resourceDisplayName}
           onConfirm={handleDelete}
           onClose={() => setConfirmDelete(false)}
+          summary={<BlastRadiusSummary client={blastRadiusClient} resourceId={resourceId} />}
         />
       )}
 

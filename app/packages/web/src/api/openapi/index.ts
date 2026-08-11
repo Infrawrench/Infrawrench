@@ -63,6 +63,7 @@ import { registerLogWorkspacePaths } from "./paths/log-workspaces";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
 import { registerAssociationPaths } from "./paths/associations";
 import { registerDependencyGraphPaths } from "./paths/dependency-graph";
+import { registerBlastRadiusPaths } from "./paths/blast-radius";
 import { registerSearchPaths } from "./paths/search";
 import { registerConnectPaths } from "./paths/connect";
 import { registerStorageUploadPaths } from "./paths/storage-upload";
@@ -183,6 +184,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerConnectionFeaturePaths(ctx);
   registerAssociationPaths(ctx);
   registerDependencyGraphPaths(ctx);
+  registerBlastRadiusPaths(ctx);
   registerSearchPaths(ctx);
   registerConnectPaths(ctx);
   registerStorageUploadPaths(ctx);
@@ -962,6 +964,7 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /associations": "secrets:write",
   "POST /associations/literal": "secrets:write",
   "GET /dependency-graph": "resources:read",
+  "GET /blast-radius": "resources:read",
   // connection-features
   "POST /sql/query": "resources:execute",
   "POST /sql/execute": "resources:execute",

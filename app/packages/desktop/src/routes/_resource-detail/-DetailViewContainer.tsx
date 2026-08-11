@@ -29,6 +29,7 @@ import {
   ResourceSchedulePanel,
   ResourceLeasePanel,
   ResourceOwnershipPanel,
+  BlastRadiusPanel,
   RESOURCES_CHANGED_EVENT,
   buildDependencyGraph,
   directDependencies,
@@ -48,7 +49,13 @@ import { getPlugin } from "../../plugins/loader";
 import { createDesktopSchedulesClient } from "../../lib/schedules-client";
 import { createDesktopLeasesClient } from "../../lib/leases-client";
 import { createDesktopOwnershipClient } from "../../lib/ownership-client";
-import type { LeasesClient, OwnershipClient, SchedulesClient } from "@infrawrench/ui";
+import { createDesktopBlastRadiusClient } from "../../lib/blast-radius-client";
+import type {
+  BlastRadiusClient,
+  LeasesClient,
+  OwnershipClient,
+  SchedulesClient,
+} from "@infrawrench/ui";
 import { navigateToWorkspaceTarget, resourceTabTarget } from "../../lib/workspace-tabs";
 import { fetchCloudDependencyGraph } from "../../lib/cloud-resources";
 import { loadLocalDependencyGraph } from "../../lib/local-dependency-graph";
@@ -133,6 +140,12 @@ let desktopOwnershipClient: OwnershipClient | null = null;
 function getOwnershipClient(): OwnershipClient {
   if (!desktopOwnershipClient) desktopOwnershipClient = createDesktopOwnershipClient();
   return desktopOwnershipClient;
+}
+
+let desktopBlastRadiusClient: BlastRadiusClient | null = null;
+function getBlastRadiusClient(): BlastRadiusClient {
+  if (!desktopBlastRadiusClient) desktopBlastRadiusClient = createDesktopBlastRadiusClient();
+  return desktopBlastRadiusClient;
 }
 
 export function DetailViewContainer({
@@ -419,6 +432,15 @@ export function DetailViewContainer({
                   client={getOwnershipClient()}
                   resourceId={decodedResourceId}
                   resourceName={resource?.displayName ?? decodedResourceId}
+                />
+              ),
+              // Blast radius — cloud only for the same reason, and ungated by
+              // type: "nothing depends on this" is worth knowing everywhere.
+              renderBlastRadiusTab: () => (
+                <BlastRadiusPanel
+                  client={getBlastRadiusClient()}
+                  resourceId={decodedResourceId}
+                  onOpenResource={handleOpenDependency}
                 />
               ),
             }
