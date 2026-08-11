@@ -39,6 +39,36 @@ ipcMain.handle(
     cloudFetch(orgId, `/changes/${encodeURIComponent(changeId)}/revert`, { method: "POST" }),
 );
 
+/**
+ * Cost per change — batched for a whole feed page.
+ *
+ * Cloud-only for the same reason the feed is, and additionally because the
+ * comparison reads collected provider spend out of ClickHouse, which only the
+ * cloud has. Nothing is stored: the answer is recomputed server-side on every
+ * call so late-arriving cost keeps moving it.
+ */
+ipcMain.handle(
+  "cloud_changes_cost_impacts",
+  async (_e, { orgId, changeIds }: { orgId: string; changeIds: string[] }) =>
+    cloudFetch(orgId, "/changes/cost-impacts", {
+      method: "POST",
+      body: JSON.stringify({ changeIds }),
+    }),
+);
+
+/** Pin a change's or a deploy's cost impact onto the cost charts. */
+ipcMain.handle(
+  "cloud_cost_impact_annotate",
+  async (
+    _e,
+    { orgId, subjectKind, subjectId }: { orgId: string; subjectKind: string; subjectId: string },
+  ) =>
+    cloudFetch(orgId, "/cost-annotations/change-impact", {
+      method: "POST",
+      body: JSON.stringify({ subjectKind, subjectId }),
+    }),
+);
+
 // Provider status correlation ("is it me or is it them?") — also cloud-only:
 // the incident cache is filled by the cloud poller watching provider status
 // feeds, so the desktop reads the correlated view from the API rather than

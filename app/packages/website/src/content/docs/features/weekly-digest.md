@@ -13,6 +13,7 @@ Each digest covers the last complete Monday-to-Sunday week and contains:
 - **Sync incidents** opened during the week.
 - **Resources added and removed** during the week.
 - **Projected spend** — what those additions and removals do to your _monthly run-rate_, from the same [cost estimates](./cost-estimates.md) the create form quotes. This is deliberately separate from the spend total above: a cluster spun up last Sunday barely registers in last week's bill and is most of next month's. Omitted when nothing that changed could be priced.
+- **Biggest cost move** — the single change of the week that moved the run rate most, from [cost per change](./cost-per-change.md), with the charge-type basis and the window it was measured over. Different again from the two lines above it: the total is what was billed, the projection is what the rate cards _think_ new resources will cost, and this is what the provider's own daily billing says one specific edit actually did. Omitted when nothing in the week could be measured — which is not the same as nothing having moved.
 - Optionally, an **AI-written opening paragraph** summarizing what changed (off by default — see below).
 
 > **Cloud only.** Like the alert transports, the digest is composed and sent by the cloud's background poller. The desktop app does not send digests.

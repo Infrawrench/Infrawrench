@@ -750,6 +750,13 @@
       "when": 1786752000000,
       "tag": "0106_change_revert",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1786838400000,
+      "tag": "0107_cost_per_change",
+      "breakpoints": true
     }
   ]
 }

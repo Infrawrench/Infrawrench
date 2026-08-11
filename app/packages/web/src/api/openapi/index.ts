@@ -42,6 +42,7 @@ import { registerDeploymentPaths } from "./paths/deployments";
 import { registerPagePaths } from "./paths/pages";
 import { registerResourcePaths } from "./paths/resources";
 import { registerResourceChangePaths } from "./paths/resource-changes";
+import { registerChangeCostImpactPaths } from "./paths/change-cost-impact";
 import { registerStatusIncidentPaths } from "./paths/status-incidents";
 import { registerExpiringPaths } from "./paths/expiring";
 import { registerQuotaPaths } from "./paths/quotas";
@@ -165,6 +166,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerPagePaths(ctx);
   registerResourcePaths(ctx);
   registerResourceChangePaths(ctx);
+  registerChangeCostImpactPaths(ctx);
   registerStatusIncidentPaths(ctx);
   registerExpiringPaths(ctx);
   registerQuotaPaths(ctx);
@@ -576,6 +578,9 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /deployments/plan": "deployments:plan",
   "GET /deployments/runs": "deployments:read",
   "GET /deployments/runs/{id}": "deployments:read",
+  // cost per deploy — same rule as the change feed's: deployments:read for the
+  // run, costs:read for the spend it moved.
+  "GET /deployments/runs/{id}/cost-impact": "costs:read",
   "POST /deployments/runs": "deployments:write",
   "POST /deployments/runs/{id}/rollback": "deployments:write",
   "GET /deployments/triggers": "deployments:read",
@@ -627,6 +632,9 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // change timeline
   "GET /changes": "resources:read",
   "GET /changes/resource": "resources:read",
+  // cost per change — the response is money, so it takes the cost read scope
+  // on top of the resource one the feed itself needs.
+  "POST /changes/cost-impacts": "costs:read",
   // provider status correlation — reads the same resource set the incidents
   // are matched against, so it rides the resources read scope
   "GET /status-incidents": "resources:read",
@@ -964,6 +972,7 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // data with words on it, not dashboard furniture.
   "GET /cost-annotations": "costs:read",
   "POST /cost-annotations": "costs:write",
+  "POST /cost-annotations/change-impact": "costs:write",
   "PUT /cost-annotations/{id}": "costs:write",
   "DELETE /cost-annotations/{id}": "costs:write",
   // change-based cost alerts — a cost-scoped alert config, so it rides the

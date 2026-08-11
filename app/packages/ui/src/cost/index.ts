@@ -3,6 +3,7 @@ export * from "./transform.js";
 export * from "./types.js";
 export { CostGraphCard, type CostGraphCardProps } from "./CostGraphCard.js";
 export { CostAnnotationModal, type CostAnnotationModalProps } from "./CostAnnotationModal.js";
+export { ChangeCostImpactLine, ChangeCostImpactFootnote } from "./ChangeCostImpactLine.js";
 export { CostCollectionNotice, type CostCollectionNoticeProps } from "./CostCollectionNotice.js";
 export { CostConversionNotice, type CostConversionNoticeProps } from "./CostConversionNotice.js";
 export {

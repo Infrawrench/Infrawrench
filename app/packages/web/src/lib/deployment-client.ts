@@ -6,6 +6,7 @@
  * streams output for minutes; that is the same split interactive workflow runs
  * use.
  */
+import type { DeploymentCostImpact } from "@infrawrench/client-core";
 import type {
   DeployEnvs,
   DeployRepo,
@@ -136,5 +137,15 @@ export function createWebDeploymentClient(orgId: string): DeploymentClient {
       fetch(`${base}/runs${env ? `?env=${encodeURIComponent(env)}` : ""}`, jsonInit("GET")).then(
         (r) => jsonOrThrow<DeploymentRunRow[]>(r),
       ),
+    costImpact: (runId) =>
+      fetch(`${base}/runs/${encodeURIComponent(runId)}/cost-impact`, jsonInit("GET")).then((r) =>
+        jsonOrThrow<DeploymentCostImpact>(r),
+      ),
+    annotateCostImpact: async (runId) => {
+      await fetch(`/api/org/${orgId}/cost-annotations/change-impact`, {
+        ...jsonInit("POST"),
+        body: JSON.stringify({ subjectKind: "deployment", subjectId: runId }),
+      }).then((r) => jsonOrThrow<unknown>(r));
+    },
   };
 }

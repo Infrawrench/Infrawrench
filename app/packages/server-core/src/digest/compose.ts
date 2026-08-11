@@ -60,6 +60,36 @@ export interface DigestProjection {
   truncated: boolean;
 }
 
+/**
+ * The single change that moved the run rate most last week, measured rather
+ * than estimated.
+ *
+ * Different again from both figures above: {@link DigestTotal} is what was
+ * billed, {@link DigestProjection} is what the plugins *think* the churn will
+ * cost, and this is what the provider's own daily cost says a specific edit
+ * actually did — a before/after comparison on one resource (see
+ * `cost/change-impact.ts`).
+ *
+ * Only ever a `measured` impact with real confidence gets here. The line is
+ * omitted entirely rather than reported as "no change": a week where nothing
+ * could be measured is not a week where nothing moved.
+ */
+export interface DigestCostMover {
+  /** The resource's display name at the time of the change. */
+  displayName: string;
+  /** created / updated / deleted. */
+  changeKind: string;
+  currency: string;
+  /** Money per day, signed. Positive means the change costs more. */
+  deltaPerDay: number;
+  /** Named on the line, because a delta whose basis is unstated is unreadable. */
+  costBasis: string;
+  /** Comparable days per side, so the reader can weigh it. */
+  windowDays: number;
+  /** True when other changes touched the same resource inside the window. */
+  contested: boolean;
+}
+
 export interface DigestInput {
   window: DigestWindow;
   /** Daily costs from `prevWeekStart` through `weekEnd`, grouped by provider. */
@@ -111,6 +141,11 @@ export interface DigestInput {
    * changed hands, or when nothing that did could be priced.
    */
   projection?: DigestProjection | null;
+  /**
+   * The week's largest measured cost-moving change. Null when nothing in the
+   * week could be measured — which is not the same as nothing having moved.
+   */
+  costMover?: DigestCostMover | null;
 }
 
 export interface DigestTotal {
@@ -157,6 +192,8 @@ export interface WeeklyDigest {
   accessFindingsSevere: number;
   /** Projected monthly change from the week's churn, when anything priced. */
   projection: DigestProjection | null;
+  /** The week's largest measured cost-moving change, when one was measurable. */
+  costMover: DigestCostMover | null;
 }
 
 const MAX_MOVERS = 3;
@@ -414,6 +451,7 @@ export function composeWeeklyDigest(input: DigestInput): WeeklyDigest {
     accessFindings: input.accessFindings,
     accessFindingsSevere: input.accessFindingsSevere,
     projection: normalizeProjection(input.projection),
+    costMover: input.costMover ?? null,
     ...(input.conversion ? { conversion: input.conversion } : {}),
   };
 }
@@ -634,6 +672,8 @@ export function digestSegments(digest: WeeklyDigest, narrative?: string | null):
   ]);
   const projectionLine = projectionSegments(digest.projection);
   if (projectionLine) lines.push(projectionLine);
+  const costMoverLine = costMoverSegments(digest.costMover);
+  if (costMoverLine) lines.push(costMoverLine);
   return lines;
 }
 
@@ -668,6 +708,30 @@ function projectionSegments(projection: DigestProjection | null): DigestLine | n
     { text: "Projected spend", bold: true },
     {
       text: `: ${formatDelta(net, currency)}/month from last week's changes${suffix}`,
+      bold: false,
+    },
+  ];
+}
+
+/**
+ * The week's biggest measured cost-moving change.
+ *
+ * Three things are on the line on purpose. The **basis** — an unlabelled delta
+ * cannot be read, because cash and amortized answer different questions. The
+ * **window** — a two-day comparison and a two-week one are not the same claim.
+ * And "**other changes overlapped**" when they did, because a delta is
+ * correlation: naming the resource without that caveat would be blaming it.
+ */
+function costMoverSegments(mover: DigestCostMover | null): DigestLine | null {
+  if (!mover) return null;
+  const caveat = mover.contested ? "; other changes overlapped" : "";
+  return [
+    { text: "Biggest cost move", bold: true },
+    {
+      text:
+        `: ${mover.displayName} (${mover.changeKind}) — ` +
+        `${formatDelta(mover.deltaPerDay, mover.currency)}/day ` +
+        `(${mover.costBasis}, ${mover.windowDays}d before/after${caveat})`,
       bold: false,
     },
   ];

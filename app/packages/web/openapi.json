@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.17.0",
+    "version": "1.18.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -14157,6 +14157,390 @@
           "appliedFields",
           "plan",
           "revertedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ChangeCostImpactStatus": {
+        "type": "string",
+        "enum": [
+          "measured",
+          "insufficient_data",
+          "unknown"
+        ],
+        "description": "`measured` — both windows had collected data and the delta is real. `insufficient_data` — the windows exist but are too short to compare. `unknown` — nothing here can answer the question. **`unknown` is never zero**: a resource with no cost data reports that we cannot say, not that the change was free."
+      },
+      "ChangeCostBasis": {
+        "type": "string",
+        "enum": [
+          "cash",
+          "amortized"
+        ],
+        "description": "Which charge-type basis both windows are read on. `cash` (the default) is what the provider charged on the day it charged it; `amortized` spreads a commitment's up-front fee across the term it buys. It is echoed on every response because a delta whose basis is unstated is unreadable — an amortized 'after' against a cash 'before' looks exactly like a saving."
+      },
+      "ChangeCostImpactWindow": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "Inclusive first UTC day, `YYYY-MM-DD`."
+          },
+          "to": {
+            "type": "string",
+            "description": "Inclusive last UTC day."
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "additionalProperties": false
+      },
+      "ChangeCostImpactSeries": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 code. Currencies are never summed."
+          },
+          "beforePerDay": {
+            "type": "number"
+          },
+          "afterPerDay": {
+            "type": "number"
+          },
+          "deltaPerDay": {
+            "type": "number",
+            "description": "`afterPerDay - beforePerDay`. Positive means the change costs more."
+          },
+          "deltaPercent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Null when the before window spent nothing — there is no percentage."
+          },
+          "beforeTotal": {
+            "type": "number"
+          },
+          "afterTotal": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "currency",
+          "beforePerDay",
+          "afterPerDay",
+          "deltaPerDay",
+          "deltaPercent",
+          "beforeTotal",
+          "afterTotal"
+        ],
+        "additionalProperties": false
+      },
+      "ChangeCostImpactConfidence": {
+        "type": "string",
+        "enum": [
+          "high",
+          "medium",
+          "low",
+          "none"
+        ],
+        "description": "How much the delta is worth believing. Derived from the number of comparable days per side (7+ high, 4+ medium, otherwise low) and dropped one tier when other recorded changes touched the same resource inside the window."
+      },
+      "ChangeCostImpactReason": {
+        "type": "string",
+        "enum": [
+          "no_cost_identity",
+          "period_native_provider",
+          "no_cost_data",
+          "no_coverage_before",
+          "no_coverage_after",
+          "short_window",
+          "window_clamped",
+          "overlapping_changes"
+        ],
+        "description": "Why the result reads the way it does. Every non-`measured` status carries at least one, and `measured` carries whatever lowered its confidence. `period_native_provider` is the notable one: a provider that dates a whole invoice period to the period's start cannot be read by a day-window comparison at all."
+      },
+      "ChangeCostImpact": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ChangeCostImpactStatus"
+          },
+          "costBasis": {
+            "$ref": "#/components/schemas/ChangeCostBasis"
+          },
+          "windowDays": {
+            "type": "integer",
+            "description": "The half-window that was requested."
+          },
+          "effectiveWindowDays": {
+            "type": "integer",
+            "description": "The half-window the data supported. Clamped symmetrically, so both means always average the same number of days."
+          },
+          "eventDay": {
+            "type": "string",
+            "description": "UTC day the change landed on. Excluded from both windows — it is a mixed day."
+          },
+          "before": {
+            "$ref": "#/components/schemas/ChangeCostImpactWindow"
+          },
+          "after": {
+            "$ref": "#/components/schemas/ChangeCostImpactWindow"
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChangeCostImpactSeries"
+            }
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/ChangeCostImpactConfidence"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChangeCostImpactReason"
+            }
+          },
+          "overlappingChanges": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Other recorded changes to the same resource inside the window. A delta is correlation, never causation; this is the number that says how much else was going on."
+          }
+        },
+        "required": [
+          "status",
+          "costBasis",
+          "windowDays",
+          "effectiveWindowDays",
+          "eventDay",
+          "before",
+          "after",
+          "series",
+          "confidence",
+          "reasons",
+          "overlappingChanges"
+        ],
+        "additionalProperties": false
+      },
+      "ChangeCostImpactEntry": {
+        "type": "object",
+        "properties": {
+          "changeId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "impact": {
+            "$ref": "#/components/schemas/ChangeCostImpact"
+          }
+        },
+        "required": [
+          "changeId",
+          "resourceId",
+          "impact"
+        ],
+        "additionalProperties": false
+      },
+      "ChangeCostImpactsResponse": {
+        "type": "object",
+        "properties": {
+          "impacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChangeCostImpactEntry"
+            }
+          }
+        },
+        "required": [
+          "impacts"
+        ],
+        "additionalProperties": false
+      },
+      "ChangeCostImpactsRequest": {
+        "type": "object",
+        "properties": {
+          "changeIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "maxItems": 50,
+            "description": "Change ids from `GET /changes`. At most 50 — one feed page."
+          },
+          "windowDays": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 30,
+            "description": "Days either side of the change. Default 7; clamped server-side."
+          },
+          "costBasis": {
+            "$ref": "#/components/schemas/ChangeCostBasis"
+          }
+        },
+        "required": [
+          "changeIds"
+        ],
+        "additionalProperties": false
+      },
+      "DeploymentCostImpactResource": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "impact": {
+            "$ref": "#/components/schemas/ChangeCostImpact"
+          }
+        },
+        "required": [
+          "resourceId",
+          "displayName",
+          "pluginId",
+          "resourceTypeId",
+          "impact"
+        ],
+        "additionalProperties": false
+      },
+      "DeploymentCostImpact": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "costBasis": {
+            "$ref": "#/components/schemas/ChangeCostBasis"
+          },
+          "windowDays": {
+            "type": "integer"
+          },
+          "eventDay": {
+            "type": "string",
+            "description": "The run's start day, UTC — what both windows hang off."
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeploymentCostImpactResource"
+            },
+            "description": "One row per resource the run provisioned through `infra.accounts.*.create(...)`. That is the only set attributable to a run with certainty: a deploy that merely re-shipped an image links to nothing and honestly reports an empty breakdown."
+          },
+          "total": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "currency": {
+                  "type": "string"
+                },
+                "deltaPerDay": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "currency",
+                "deltaPerDay"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Summed `deltaPerDay` per currency across the **measured** rows only, so the breakdown always adds up to it. An unmeasurable resource contributes nothing rather than zero."
+          },
+          "unknownResources": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Rows excluded from `total` because their impact could not be measured."
+          },
+          "confidence": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ChangeCostImpactConfidence"
+              },
+              {
+                "description": "The weakest confidence among the measured rows — a breakdown is only as good as its worst row."
+              }
+            ]
+          }
+        },
+        "required": [
+          "runId",
+          "costBasis",
+          "windowDays",
+          "eventDay",
+          "resources",
+          "total",
+          "unknownResources",
+          "confidence"
+        ],
+        "additionalProperties": false
+      },
+      "ChangeCostImpactAnnotationResponse": {
+        "type": "object",
+        "properties": {
+          "annotationId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "text": {
+            "type": "string"
+          },
+          "impact": {
+            "$ref": "#/components/schemas/ChangeCostImpact"
+          }
+        },
+        "required": [
+          "annotationId",
+          "text",
+          "impact"
+        ],
+        "additionalProperties": false
+      },
+      "ChangeCostImpactAnnotationRequest": {
+        "type": "object",
+        "properties": {
+          "subjectKind": {
+            "type": "string",
+            "enum": [
+              "change",
+              "deployment"
+            ]
+          },
+          "subjectId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "windowDays": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 30
+          },
+          "costBasis": {
+            "$ref": "#/components/schemas/ChangeCostBasis"
+          }
+        },
+        "required": [
+          "subjectKind",
+          "subjectId"
         ],
         "additionalProperties": false
       },
@@ -42066,6 +42450,211 @@
           }
         },
         "operationId": "postOrgOrgIdChangesChangeIdRevert"
+      }
+    },
+    "/api/org/{orgId}/changes/cost-impacts": {
+      "post": {
+        "tags": [
+          "Changes"
+        ],
+        "summary": "Cost impact of a page of changes",
+        "description": "For each change, compares the resource's per-day spend over the window before it against the window after, and reports the difference as a run-rate delta.\n\nA POST because it takes a list of ids, not because it writes: nothing is stored. The answer is recomputed on every call, deliberately — provider cost arrives late and is then restated, so a stored number would be a wrong number that never corrects itself.\n\nBoth windows exclude the change's own day (spend on it is half old shape, half new) and today (an accruing day always reads as a dip), and are clamped symmetrically to the days cost collection actually covers.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeCostImpactsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One entry per change id that belongs to the organization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeCostImpactsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdChangesCostImpacts",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/deployments/runs/{id}/cost-impact": {
+      "get": {
+        "tags": [
+          "Deployments"
+        ],
+        "summary": "Cost impact of a deployment run",
+        "description": "The same comparison as `POST /changes/cost-impacts`, run over the resources this deploy provisioned, with a per-resource breakdown that sums to the total.\n\n_Requires permission: `costs:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 30
+            },
+            "required": false,
+            "name": "windowDays",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ChangeCostBasis"
+            },
+            "required": false,
+            "description": "Which charge-type basis both windows are read on. `cash` (the default) is what the provider charged on the day it charged it; `amortized` spreads a commitment's up-front fee across the term it buys. It is echoed on every response because a delta whose basis is unstated is unreadable — an amortized 'after' against a cash 'before' looks exactly like a saving.",
+            "name": "costBasis",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-resource cost impact for the run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentCostImpact"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDeploymentsRunsIdCostImpact",
+        "x-required-permission": "costs:read"
+      }
+    },
+    "/api/org/{orgId}/cost-annotations/change-impact": {
+      "post": {
+        "tags": [
+          "Costs"
+        ],
+        "summary": "Pin a change's or deploy's cost impact onto the cost charts",
+        "description": "Writes the finding as a cost annotation, so the step in the run rate is explained on the graph where it shows. Re-posting the same subject **rewords the existing note** rather than adding a second — which is what makes it safe to pin a finding again once the provider has finished restating. The note's date and report scope are never rewritten: they may have been edited deliberately.\n\nA subject with no measurable impact is a 400, not a note reading `$0.00/day`.\n\n_Requires permission: `costs:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeCostImpactAnnotationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The annotation that was written or reworded, with the impact it describes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeCostImpactAnnotationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostAnnotationsChangeImpact",
+        "x-required-permission": "costs:write"
       }
     },
     "/api/org/{orgId}/status-incidents": {

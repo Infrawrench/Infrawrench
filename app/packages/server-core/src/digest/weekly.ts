@@ -27,7 +27,7 @@
  * recorded on the row (so the settings UI can show them), logged, and the tick
  * carries on.
  */
-import { and, eq, gte, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 
 import { db } from "../db/client";
 import {
@@ -36,9 +36,16 @@ import {
   organizations,
   pagingIncidents,
   providerStatusIncidents,
+  resourceChanges,
   resources,
 } from "../db/schema";
-import { alertableQuotas, itemsWithinLead } from "@infrawrench/client-core";
+import {
+  alertableQuotas,
+  costBasisLabel,
+  itemsWithinLead,
+  MAX_CHANGE_IMPACT_BATCH,
+} from "@infrawrench/client-core";
+import { loadChangeCostImpacts } from "../cost/change-impact-load";
 import { queryCosts } from "../clickhouse/cost-readers";
 import { convertGroups, mergeConvertedGroups } from "../cost/currency-convert";
 import { getOrgCurrencySettings, listOrgExchangeRates } from "../cost/currency-settings";
@@ -62,6 +69,7 @@ import {
   formatDigestTeamsBody,
   isDigestDue,
   isValidTimeZone,
+  type DigestCostMover,
   type DigestProjection,
   type DigestSchedule,
   type DigestWindow,
@@ -288,7 +296,93 @@ export async function buildWeeklyDigest(
     accessFindings: accessCounts.total,
     accessFindingsSevere: accessCounts.severe,
     projection: await buildProjection(organizationId, fromDate, toDatePlusOne),
+    costMover: await buildCostMover(organizationId, fromDate, toDatePlusOne),
   });
+}
+
+/**
+ * How many of the week's changes are measured for the "biggest cost move"
+ * line. A bound rather than a limit on ambition: each batch is two ClickHouse
+ * range-scans, and a busy org can record thousands of changes a week.
+ *
+ * The changes are taken newest-first, which is the sample most likely to have
+ * cost data on both sides of it by the time the digest runs.
+ */
+const MAX_CHANGES_PER_COST_MOVER = 200;
+
+/**
+ * The single change that moved the run rate most last week.
+ *
+ * Measured, not estimated — this is the provider's own daily cost either side
+ * of the edit, so it is a different (and stronger) claim than the projection
+ * line above. Wrapped whole: like the projection, it must never be the reason
+ * a digest fails to send.
+ *
+ * Only `measured` impacts with better than `none` confidence are eligible. A
+ * week in which nothing could be measured yields null and the line is dropped,
+ * rather than reporting "no cost-moving changes" — which would assert we had
+ * looked and found nothing, when in fact we could not look.
+ */
+async function buildCostMover(
+  organizationId: string,
+  fromDate: Date,
+  toDatePlusOne: Date,
+): Promise<DigestCostMover | null> {
+  try {
+    const rows = await db
+      .select({
+        id: resourceChanges.id,
+        displayName: resourceChanges.displayName,
+        changeKind: resourceChanges.changeKind,
+      })
+      .from(resourceChanges)
+      .where(
+        and(
+          eq(resourceChanges.organizationId, organizationId),
+          gte(resourceChanges.createdAt, fromDate),
+          lt(resourceChanges.createdAt, toDatePlusOne),
+        ),
+      )
+      .orderBy(desc(resourceChanges.createdAt))
+      .limit(MAX_CHANGES_PER_COST_MOVER);
+    if (rows.length === 0) return null;
+
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    let best: DigestCostMover | null = null;
+    let bestMagnitude = 0;
+
+    // Batched in the size the API caps a request at, so one org's busy week
+    // issues a bounded number of reads rather than one per change.
+    for (let i = 0; i < rows.length; i += MAX_CHANGE_IMPACT_BATCH) {
+      const slice = rows.slice(i, i + MAX_CHANGE_IMPACT_BATCH).map((r) => r.id);
+      const impacts = await loadChangeCostImpacts(organizationId, slice);
+      for (const entry of impacts) {
+        if (entry.impact.status !== "measured" || entry.impact.confidence === "none") continue;
+        const row = byId.get(entry.changeId);
+        if (!row) continue;
+        for (const series of entry.impact.series) {
+          const magnitude = Math.abs(series.deltaPerDay);
+          if (magnitude <= bestMagnitude) continue;
+          bestMagnitude = magnitude;
+          best = {
+            displayName: row.displayName,
+            changeKind: row.changeKind,
+            currency: series.currency,
+            deltaPerDay: series.deltaPerDay,
+            costBasis: costBasisLabel(entry.impact.costBasis),
+            windowDays: entry.impact.effectiveWindowDays,
+            contested: entry.impact.overlappingChanges > 0,
+          };
+        }
+      }
+    }
+    // A movement of nothing is not a mover: zero deltas would otherwise win
+    // the line on a week where every measurable resource was flat.
+    return bestMagnitude > 0 ? best : null;
+  } catch (err) {
+    console.error(`[digest] cost mover for org ${organizationId} failed:`, err);
+    return null;
+  }
 }
 
 /**

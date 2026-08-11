@@ -3,9 +3,13 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
+  fetchChangeCostImpacts,
   fetchOrgChanges,
+  formatChangeCostImpact,
+  MAX_CHANGE_IMPACT_BATCH,
   summarizeChange,
   type Account,
+  type ChangeCostImpact,
   type ResourceChangeEntry,
   type ResourceChangeKind,
 } from "@infrawrench/client-core";
@@ -121,6 +125,29 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
   const entries = feed.data?.pages.flatMap((page) => page.entries) ?? [];
   const total = feed.data?.pages[0]?.total ?? 0;
 
+  /**
+   * Cost impact for the rows on screen — "what did this change do to the run
+   * rate?". One batched request, capped at the endpoint's own batch size, and
+   * deliberately its own query: a member without `costs:read` still gets the
+   * feed, they just get no cost line.
+   *
+   * Nothing is cached server-side (the answer is recomputed as provider cost
+   * arrives), so this key is the visible ids and refetches with the page.
+   */
+  const impactIds = entries.slice(0, MAX_CHANGE_IMPACT_BATCH).map((e) => e.id);
+  const impacts = useQuery({
+    queryKey: ["change-cost-impacts", orgId, impactIds],
+    enabled: impactIds.length > 0,
+    queryFn: async () => {
+      const rows = await fetchChangeCostImpacts(api, orgId, { changeIds: impactIds });
+      const byId: Record<string, ChangeCostImpact> = {};
+      for (const row of rows) byId[row.changeId] = row.impact;
+      return byId;
+    },
+    // A cost failure must cost the feed nothing at all.
+    retry: false,
+  });
+
   const filters = (
     <View style={{ gap: spacing.sm }}>
       <ChipRow>
@@ -207,6 +234,7 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
             <ChangeEntryRow
               key={entry.id}
               entry={entry}
+              impact={impacts.data?.[entry.id]}
               expanded={expandedId === entry.id}
               onToggle={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
               onReverted={() => void feed.refetch()}
@@ -240,12 +268,14 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
  */
 function ChangeEntryRow({
   entry,
+  impact,
   expanded,
   onToggle,
   onOpenResource,
   onReverted,
 }: {
   entry: ResourceChangeEntry;
+  impact?: ChangeCostImpact | undefined;
   expanded: boolean;
   onToggle: () => void;
   onOpenResource: () => void;
@@ -272,12 +302,22 @@ function ChangeEntryRow({
           <Text style={styles.summary} numberOfLines={1}>
             {new Date(entry.createdAt).toLocaleString()} · {summarizeChange(entry)}
           </Text>
+          {/* Null when there is nothing measured to say — never a "$0" line
+              beside a resource that was never billable in the first place. */}
+          {impact && formatChangeCostImpact(impact) && (
+            <Text style={styles.costImpact} numberOfLines={1}>
+              {formatChangeCostImpact(impact)}
+            </Text>
+          )}
         </View>
         <ChangeKindBadge kind={entry.changeKind} />
       </Pressable>
       {expanded && (
         <View style={styles.detail}>
           <ChangeDiffList entry={entry} />
+          {impact && (
+            <Text style={styles.hint}>{formatChangeCostImpact(impact, { verbose: true })}</Text>
+          )}
           {entry.origin === "schedule" && (
             <Text style={styles.hint}>Executed by a sleep/wake schedule.</Text>
           )}
@@ -314,6 +354,7 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 15, fontWeight: "500" },
   subtitle: { color: colors.textMuted, fontSize: 12 },
   summary: { color: colors.textFaint, fontSize: 11 },
+  costImpact: { color: colors.textMuted, fontSize: 11 },
   detail: { gap: spacing.sm, paddingBottom: spacing.md },
   hint: { color: colors.textFaint, fontSize: 12 },
   resourceId: { color: colors.textFaint, fontSize: 11, fontFamily: "monospace" },

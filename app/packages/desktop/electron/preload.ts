@@ -181,6 +181,8 @@ const INVOKE_CHANNELS = [
   "cloud_changes_list",
   "cloud_change_revert_preview",
   "cloud_change_revert_apply",
+  "cloud_changes_cost_impacts",
+  "cloud_cost_impact_annotate",
   "cloud_status_incidents",
   // Agents mode against an org — the local pipeline has its own (non-cloud)
   // channels; these drive the org's sessions through the web API instead.
@@ -331,6 +333,7 @@ const INVOKE_CHANNELS = [
   "cloud_deploy_envs",
   "cloud_deploy_plan",
   "cloud_deploy_runs",
+  "cloud_deploy_cost_impact",
   "cloud_deploy_rollback",
   "cloud_deploy_triggers",
   "cloud_deploy_create_trigger",

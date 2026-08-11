@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { summarizeChange } from "@infrawrench/client-core";
+import { summarizeChange, type ChangeCostImpact } from "@infrawrench/client-core";
+import { ChangeCostImpactLine } from "../cost/ChangeCostImpactLine.js";
 import { ChangeDiffList, ChangeKindBadge } from "./ChangeParts.js";
 import { RevertChangeButton } from "./RevertChange.js";
 import { ProviderIncidentChangesSection } from "../status/ProviderIncidentChangesSection.js";
@@ -62,6 +63,10 @@ export function ChangesPanel({
   const [accountFilter, setAccountFilter] = useState("");
   const [accounts, setAccounts] = useState<ChangeFeedAccount[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [impacts, setImpacts] = useState<Record<string, ChangeCostImpact>>({});
+  const [annotatingId, setAnnotatingId] = useState<string | null>(null);
+  const [annotateError, setAnnotateError] = useState<string | null>(null);
+  const [annotatedIds, setAnnotatedIds] = useState<string[]>([]);
   // Bumped per request so a slow page can't overwrite a later one that already
   // landed — filters change faster than a feed query returns.
   const requestSeq = useRef(0);
@@ -110,6 +115,55 @@ export function ChangesPanel({
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * Cost impacts for the page that just landed, in one request.
+   *
+   * A separate effect from the feed rather than part of it: the feed must
+   * render immediately whether or not spend can be read, and a `costs:read`
+   * failure (a member without the scope, an unconfigured ClickHouse) has to
+   * cost the page its cost column and nothing else.
+   */
+  useEffect(() => {
+    const fetchImpacts = client.costImpacts;
+    if (!fetchImpacts || entries.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await fetchImpacts.call(
+          client,
+          entries.map((e) => e.id),
+        );
+        if (cancelled) return;
+        const next: Record<string, ChangeCostImpact> = {};
+        for (const row of rows) next[row.changeId] = row.impact;
+        setImpacts(next);
+      } catch {
+        if (!cancelled) setImpacts({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, entries]);
+
+  const annotate = useCallback(
+    async (changeId: string) => {
+      const write = client.annotateCostImpact;
+      if (!write) return;
+      setAnnotatingId(changeId);
+      setAnnotateError(null);
+      try {
+        await write.call(client, changeId);
+        setAnnotatedIds((ids) => (ids.includes(changeId) ? ids : [...ids, changeId]));
+      } catch (e) {
+        setAnnotateError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setAnnotatingId(null);
+      }
+    },
+    [client],
+  );
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
@@ -274,12 +328,38 @@ export function ChangesPanel({
                     )}
                   </span>
                 </div>
+                {impacts[entry.id] && (
+                  <div className="flex items-center gap-3 mt-1 pl-[9.75rem]">
+                    <ChangeCostImpactLine impact={impacts[entry.id]!} compact />
+                    {client.annotateCostImpact && impacts[entry.id]!.status === "measured" && (
+                      <button
+                        type="button"
+                        onClick={() => void annotate(entry.id)}
+                        disabled={annotatingId === entry.id}
+                        className="text-xs text-on-surface-faint hover:text-on-surface-secondary disabled:opacity-40 shrink-0"
+                        title="Write this finding onto the cost charts as an annotation"
+                      >
+                        {annotatedIds.includes(entry.id)
+                          ? "Annotated"
+                          : annotatingId === entry.id
+                            ? "Annotating…"
+                            : "Annotate cost graph"}
+                      </button>
+                    )}
+                  </div>
+                )}
                 {expandedId === entry.id && <ChangeDiffList entry={entry} />}
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      {annotateError && (
+        <p role="alert" className="text-xs text-danger mt-2">
+          {annotateError}
+        </p>
+      )}
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-4">

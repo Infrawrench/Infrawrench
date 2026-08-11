@@ -51,4 +51,7 @@
 // 1.17.0: reverting a change-timeline event — a dry-run plan and an apply on
 // `/changes/{changeId}/revert`, plus an additive `revertedAt` on both change
 // feed entry schemas. All additive.
-export const API_VERSION = "1.17.0";
+// 1.18.0: cost per change / cost per deploy — a batched change-impact query,
+// a per-deploy breakdown, and a route that pins either finding onto the cost
+// charts as an annotation. Three new routes, no existing shape changed.
+export const API_VERSION = "1.18.0";

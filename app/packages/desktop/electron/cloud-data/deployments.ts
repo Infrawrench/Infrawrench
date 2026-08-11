@@ -44,6 +44,17 @@ ipcMain.handle("cloud_deploy_runs", async (_e, { orgId, env }: { orgId: string; 
   return (await cloudFetch<unknown[]>(orgId, `/deployments/runs${query}`)) ?? [];
 });
 
+/**
+ * What a deploy did to the run rate, per resource it provisioned. Recomputed
+ * server-side on every call — nothing here caches it, because provider cost
+ * arrives late and a cached answer would be a stale one.
+ */
+ipcMain.handle(
+  "cloud_deploy_cost_impact",
+  async (_e, { orgId, runId }: { orgId: string; runId: string }) =>
+    cloudFetch(orgId, `/deployments/runs/${encodeURIComponent(runId)}/cost-impact`),
+);
+
 ipcMain.handle(
   "cloud_deploy_rollback",
   async (_e, { orgId, runId }: { orgId: string; runId: string }) => {
