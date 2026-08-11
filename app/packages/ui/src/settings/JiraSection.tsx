@@ -228,6 +228,7 @@ export function JiraSection() {
                   onChange={(e) => setApiToken(e.target.value)}
                   autoComplete="new-password"
                   placeholder={integration ? "Leave blank to keep the stored token" : "API token"}
+                  aria-label="API token"
                   className={inputClass}
                 />
               </label>

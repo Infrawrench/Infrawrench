@@ -492,6 +492,8 @@ function TerminalOverlay({
           <button
             type="button"
             onClick={onClose}
+            aria-label={`Close ${title}`}
+            title={`Close ${title}`}
             className="text-on-surface-muted hover:text-on-surface-secondary text-xl leading-none"
           >
             ×

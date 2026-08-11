@@ -558,6 +558,9 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                               ? "/path/to/local/repo"
                               : "Local folders are available in the desktop app"
                         }
+                        aria-label={
+                          repoSource === "git-url" ? "Repository Git URL" : "Local repository path"
+                        }
                         className="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-1.5 text-sm"
                       />
                     )}

@@ -343,6 +343,8 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
                     <button
                       type="button"
                       onClick={() => toggle(p)}
+                      aria-label={`Remove permission ${p}`}
+                      title={`Remove permission ${p}`}
                       className="text-on-surface-tertiary hover:text-on-surface"
                     >
                       ×

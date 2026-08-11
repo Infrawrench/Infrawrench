@@ -334,6 +334,7 @@ export function WeeklyDigestSection() {
                 <button
                   type="button"
                   onClick={() => void handleRemoveRecipient(r.id)}
+                  aria-label={`Remove ${r.email}`}
                   className="text-xs text-on-surface-tertiary hover:text-red-400 transition-colors"
                 >
                   Remove
@@ -351,6 +352,7 @@ export function WeeklyDigestSection() {
               if (e.key === "Enter") void handleAddRecipient();
             }}
             placeholder="finance@example.com"
+            aria-label="Email recipient to add"
             className="flex-1 px-2 py-1.5 text-sm bg-surface-overlay border border-border rounded-lg text-on-surface-secondary"
           />
           <button

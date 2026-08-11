@@ -81,6 +81,7 @@ export function LogsView({ capability, onGetLogs }: Props) {
             onChange={(e) => setContainer(e.target.value)}
             className="text-xs bg-surface-overlay text-on-surface border border-border-strong rounded px-2 py-0.5"
             title="Container"
+            aria-label="Container"
           >
             {containers.map((c) => (
               <option key={c} value={c}>
@@ -94,6 +95,7 @@ export function LogsView({ capability, onGetLogs }: Props) {
           onChange={(e) => setTailLines(Number(e.target.value))}
           className="text-xs bg-surface-overlay text-on-surface border border-border-strong rounded px-2 py-0.5"
           title="Tail lines"
+          aria-label="Tail lines"
         >
           {TAIL_OPTIONS.map((n) => (
             <option key={n} value={n}>

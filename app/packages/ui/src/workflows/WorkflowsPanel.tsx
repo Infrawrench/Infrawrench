@@ -1161,6 +1161,8 @@ function MetricsEditor({
           <button
             type="button"
             onClick={() => onChange(defs.filter((_, idx) => idx !== i))}
+            aria-label={`Remove metric ${d.key || d.label || i + 1}`}
+            title={`Remove metric ${d.key || d.label || i + 1}`}
             className="px-1 opacity-60 hover:opacity-100"
           >
             ✕

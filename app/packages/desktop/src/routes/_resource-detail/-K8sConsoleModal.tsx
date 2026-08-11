@@ -27,6 +27,8 @@ export function K8sConsoleModal({
           <button
             type="button"
             onClick={onClose}
+            aria-label={`Close console for ${resource.displayName}`}
+            title={`Close console for ${resource.displayName}`}
             className="text-on-surface-muted hover:text-on-surface-secondary text-xl leading-none"
           >
             ×
