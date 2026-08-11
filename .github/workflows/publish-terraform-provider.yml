@@ -166,6 +166,16 @@ jobs:
             exit 1
           fi
 
+          # The Registry renders documentation from `docs/` at the release tag
+          # and from nowhere else — no docs directory means a published provider
+          # whose Documentation tab reads "Documentation Unavailable", which is
+          # how v0.1.1 shipped. The mirror copies this directory wholesale, so
+          # the only way that happens is docs/ being absent here.
+          if [ ! -f docs/index.md ]; then
+            echo "::error::docs/index.md is missing, so the release would publish with no documentation. Run: go tool tfplugindocs generate --provider-name infrawrench"
+            exit 1
+          fi
+
           echo "Release artifacts look ingestible:"
           cat "$SUMS"
           rm -rf dist

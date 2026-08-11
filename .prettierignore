@@ -22,3 +22,10 @@ routeTree.gen.ts
 # spurious mega-diff on the next regeneration.
 app/packages/web/openapi.json
 app/packages/web/src/db/migrations/
+
+# Terraform Registry documentation, written wholesale by `tfplugindocs generate`
+# from the provider's schemas. Formatting it would put Prettier and the
+# generator in a loop: format:check passes, the CI drift check then fails
+# because the bytes no longer match what the generator produces, and fixing
+# either one breaks the other.
+terraform-provider-infrawrench/docs/

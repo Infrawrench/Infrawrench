@@ -1,7 +1,6 @@
-// terraform-provider-infrawrench manages Infrawrench's own FinOps
-// configuration — budgets, cost centres, allocation rules, tag policy, saved
-// filters, cost reports and folders, cost alerts, scenario models, billing
-// rules and cost exports.
+// terraform-provider-infrawrench manages Infrawrench's own configuration —
+// cost allocation and reporting, monitoring, lifecycle governance, connected
+// accounts and access control, and alert delivery.
 //
 // It is not the "eject to Terraform" exporter, which writes HCL for your cloud
 // resources so you can leave, and it is not org config as code, which moves a

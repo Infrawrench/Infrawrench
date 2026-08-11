@@ -66,6 +66,28 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      # The Registry renders `docs/` from the release tag and nothing else. A
+      # schema change that never reached the generated pages ships a provider
+      # whose documentation describes the previous version — silently, because
+      # the docs still exist and still look right.
+      #
+      # tfplugindocs drives a real Terraform to read the served schema, so it
+      # needs the binary. The generator itself is pinned as a Go tool
+      # dependency, so CI and a laptop produce identical bytes.
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Documentation is up to date
+        run: |
+          set -euo pipefail
+          go tool tfplugindocs generate --provider-name infrawrench
+          if ! git diff --quiet -- docs; then
+            echo "::error::docs/ is stale. Run: cd terraform-provider-infrawrench && go tool tfplugindocs generate --provider-name infrawrench"
+            git diff --stat -- docs
+            exit 1
+          fi
+
       # Acceptance tests are skipped without TF_ACC, which is deliberate: they
       # create and destroy real objects in a real organization. `-count=1`
       # defeats Go's test cache so a green run always means the tests actually
