@@ -6,6 +6,7 @@ import type {
   TerraformValue,
 } from "@infrawrench/plugin-base";
 import {
+  IAC_OMITTED,
   IAC_REDACTED,
   IAC_STATE_LIMITS,
   TerraformStateParseError,
@@ -309,6 +310,66 @@ describe("parseTerraformStateDocument", () => {
     expect(String(parsed.resources[0]?.attributes["user_data"]).length).toBe(
       IAC_STATE_LIMITS.maxAttributeValueChars,
     );
+    // A truncated value is not the value the state carried, so it must be
+    // excluded from comparison or the truncation itself reads as drift.
+    expect(parsed.resources[0]?.redactedAttributeKeys).toContain("user_data");
+    expect(parsed.omittedAttributeCount).toBe(1);
+    // …but it is not *sensitive*, and the two counts must not be conflated.
+    expect(parsed.redactedAttributeCount).toBe(0);
+  });
+
+  it("registers an oversized structure so it is never compared", () => {
+    const huge = Array.from({ length: 400 }, (_, i) => ({
+      cidr: `10.0.${i}.0/24`,
+      note: "x".repeat(20),
+    }));
+    const parsed = parseTerraformStateDocument(
+      JSON.stringify({
+        version: 4,
+        resources: [
+          {
+            mode: "managed",
+            type: "demo_server",
+            name: "web",
+            instances: [{ attributes: { id: "srv-1", rules: huge, size: "s-1vcpu" } }],
+          },
+        ],
+      }),
+    );
+    const entry = parsed.resources[0];
+    expect(entry?.attributes["rules"]).toBe(IAC_OMITTED);
+    expect(entry?.redactedAttributeKeys).toContain("rules");
+    // Untouched attributes are unaffected.
+    expect(entry?.attributes["size"]).toBe("s-1vcpu");
+    expect(entry?.redactedAttributeKeys).not.toContain("size");
+    expect(parsed.omittedAttributeCount).toBe(1);
+    expect(parsed.redactedAttributeCount).toBe(0);
+    expect(parsed.warnings.join(" ")).toContain("too large to store");
+  });
+
+  it("keeps the sensitive and oversized counts apart while excluding both", () => {
+    const huge = { blob: "y".repeat(IAC_STATE_LIMITS.maxAttributeValueChars + 100) };
+    const parsed = parseTerraformStateDocument(
+      JSON.stringify({
+        format_version: "1.0",
+        values: {
+          root_module: {
+            resources: [
+              {
+                mode: "managed",
+                type: "demo_server",
+                name: "web",
+                values: { id: "srv-1", policy: huge, password: "hunter2" },
+                sensitive_values: { password: true },
+              },
+            ],
+          },
+        },
+      }),
+    );
+    expect(parsed.redactedAttributeCount).toBe(1);
+    expect(parsed.omittedAttributeCount).toBe(1);
+    expect(parsed.resources[0]?.redactedAttributeKeys.sort()).toEqual(["password", "policy"]);
   });
 });
 
@@ -578,6 +639,43 @@ describe("reconcileTerraformState", () => {
     });
     expect(out.resources[0]?.status).toBe("managed");
     expect(out.resources[0]?.drift).toEqual([]);
+  });
+
+  // The regression: a value we clamped is not the value the state carried, so
+  // comparing it reports drift caused by our own storage limit.
+  it("does not read a clamped oversized attribute as drift", () => {
+    const clamped = parseTerraformStateDocument(
+      JSON.stringify({
+        version: 4,
+        resources: [
+          {
+            mode: "managed",
+            type: "demo_server",
+            name: "api",
+            instances: [
+              {
+                attributes: {
+                  id: "srv-2",
+                  name: "api",
+                  // Longer than the limit, so only a prefix is stored.
+                  size: "s".repeat(IAC_STATE_LIMITS.maxAttributeValueChars + 200),
+                  backups: false,
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(clamped.resources[0]?.redactedAttributeKeys).toContain("size");
+    const out = reconcileTerraformState({
+      stateResources: clamped.resources,
+      inventory: [inventory[1]!],
+      capabilityFor,
+      typeMap,
+    });
+    expect(out.resources[0]?.drift).toEqual([]);
+    expect(out.resources[0]?.status).toBe("managed");
   });
 
   it("does not read a numeric string as drift against a number", () => {

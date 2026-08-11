@@ -8,8 +8,9 @@ import {
   sanitizeTerraformName,
 } from "../terraform-hcl.js";
 import {
+  NO_IMPORT_ID_REASON,
+  exportResourcesForAdoption,
   exportResourcesToTerraform,
-  renderTerraformAdoptionDocument,
   renderTerraformImportBlocks,
 } from "../terraform-export.js";
 
@@ -149,9 +150,31 @@ describe("exportResourcesToTerraform", () => {
   });
 });
 
-describe("renderTerraformImportBlocks / renderTerraformAdoptionDocument", () => {
-  const adoptable = () =>
-    exportResourcesToTerraform(
+describe("renderTerraformImportBlocks", () => {
+  const exported = () =>
+    exportResourcesToTerraform([makeResource({ fields: { name: "web-1" } })], () => capability)
+      .exported;
+
+  it("emits a Terraform 1.5+ import block per adoptable resource", () => {
+    const hcl = renderTerraformImportBlocks(exported());
+    expect(hcl).toContain("import {");
+    expect(hcl).toContain("to = hcloud_server.web_1");
+    expect(hcl).toContain('id = "1"');
+  });
+
+  it("emits nothing when no resource carries an import id", () => {
+    const noIds = exportResourcesToTerraform(
+      [makeResource({ externalId: "", fields: { name: "web-2" } })],
+      () => capability,
+    );
+    expect(renderTerraformImportBlocks(noIds.exported)).toBe("");
+  });
+});
+
+describe("exportResourcesForAdoption", () => {
+  /** One importable resource and one the provider gives no import id for. */
+  const mixed = () =>
+    exportResourcesForAdoption(
       [
         makeResource({ fields: { name: "web-1" } }),
         makeResource({
@@ -164,29 +187,75 @@ describe("renderTerraformImportBlocks / renderTerraformAdoptionDocument", () => 
       () => capability,
     );
 
-  it("emits a Terraform 1.5+ import block per adoptable resource", () => {
-    const hcl = renderTerraformImportBlocks(adoptable().exported);
-    expect(hcl).toContain("import {");
-    expect(hcl).toContain("to = hcloud_server.web_1");
-    expect(hcl).toContain('id = "1"');
+  it("puts the import blocks ahead of the configuration", () => {
+    const { hcl } = mixed();
+    expect(hcl.indexOf("import {")).toBeLessThan(hcl.indexOf('resource "hcloud_server"'));
   });
 
-  it("skips resources with no import id rather than emitting a broken block", () => {
-    const blocks = renderTerraformImportBlocks(adoptable().exported);
-    expect(blocks.match(/import \{/g)).toHaveLength(1);
-    expect(blocks).not.toContain("web_2");
+  // The regression: a stanza with no matching import block is a *create*.
+  // Handing that to someone told to run `terraform plan` either fails with
+  // already-exists or builds a second copy of a resource they already have.
+  it("never declares a resource it cannot import", () => {
+    const { hcl } = mixed();
+    expect(hcl).toContain('resource "hcloud_server" "web_1"');
+    expect(hcl).not.toContain("web_2");
+    // Every declared resource has an import block, and vice versa.
+    expect(hcl.match(/^resource "/gm)).toHaveLength(1);
+    expect(hcl.match(/^import \{/gm)).toHaveLength(1);
   });
 
-  it("puts the import blocks ahead of the configuration in the adoption document", () => {
-    const doc = renderTerraformAdoptionDocument(adoptable());
-    expect(doc.indexOf("import {")).toBeLessThan(doc.indexOf('resource "hcloud_server"'));
+  it("reports the unimportable resource with a reason instead of dropping it silently", () => {
+    const { unsupported } = mixed();
+    expect(unsupported).toContainEqual({
+      id: "acct:server:2",
+      displayName: "no-id",
+      pluginId: "hetzner",
+      resourceTypeId: "server",
+      reason: NO_IMPORT_ID_REASON,
+    });
   });
 
-  it("falls back to the plain configuration when nothing can be imported", () => {
-    const nothing = exportResourcesToTerraform(
+  it("leaves it out of `exported` too, so no caller thinks it shipped", () => {
+    const { exported } = mixed();
+    expect(exported.map((e) => e.id)).toEqual(["acct:server:1"]);
+  });
+
+  it("produces an empty document rather than an unrunnable one when nothing is importable", () => {
+    const outcome = exportResourcesForAdoption(
       [makeResource({ externalId: "", fields: { name: "web-2" } })],
       () => capability,
     );
-    expect(renderTerraformAdoptionDocument(nothing)).toBe(nothing.hcl);
+    expect(outcome.hcl).toBe("");
+    expect(outcome.exported).toEqual([]);
+    expect(outcome.unsupported.map((u) => u.reason)).toEqual([NO_IMPORT_ID_REASON]);
+  });
+
+  it("keeps reporting genuinely unmappable resources alongside unimportable ones", () => {
+    const outcome = exportResourcesForAdoption(
+      [
+        makeResource({ fields: { name: "web-1" } }),
+        makeResource({ id: "x", pluginId: "unknown", displayName: "other" }),
+        makeResource({ id: "acct:server:2", externalId: "", fields: { name: "web-2" } }),
+      ],
+      (pluginId) => (pluginId === "hetzner" ? capability : undefined),
+    );
+    const reasons = outcome.unsupported.map((u) => u.reason);
+    expect(reasons).toContain("Plugin has no Terraform mapping yet");
+    expect(reasons).toContain(NO_IMPORT_ID_REASON);
+    expect(outcome.exported).toHaveLength(1);
+  });
+
+  it("does not leave dedup suffixes behind when a colliding resource is dropped", () => {
+    // Both map to the local name `web`; the unimportable one is dropped, so the
+    // survivor must not keep the `_2` it would have needed to avoid it.
+    const outcome = exportResourcesForAdoption(
+      [
+        makeResource({ id: "acct:server:1", externalId: "", fields: { name: "web" } }),
+        makeResource({ id: "acct:server:2", externalId: "2", fields: { name: "web" } }),
+      ],
+      () => capability,
+    );
+    expect(outcome.exported.map((e) => e.address)).toEqual(["hcloud_server.web"]);
+    expect(outcome.hcl).toContain("to = hcloud_server.web\n");
   });
 });

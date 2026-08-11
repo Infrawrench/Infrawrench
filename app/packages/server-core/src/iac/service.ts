@@ -8,10 +8,7 @@ import type {
 } from "@infrawrench/client-core";
 import { deriveTerraformTypeMap, reconcileTerraformState } from "@infrawrench/client-core";
 import type { ResourceInstance, TerraformExportCapability } from "@infrawrench/plugin-base";
-import {
-  exportResourcesToTerraform,
-  renderTerraformAdoptionDocument,
-} from "@infrawrench/plugin-base";
+import { exportResourcesForAdoption } from "@infrawrench/plugin-base";
 import { db } from "../db/client.js";
 import { resourceChanges, resources } from "../db/schema.js";
 import { loadPlugins } from "../plugin-loader.js";
@@ -218,9 +215,13 @@ export async function runIacReconciliation({
 /**
  * Generate `import` blocks plus the matching resource stanzas for a set of
  * unmanaged resources — the payoff. Built on the *existing* export mappers and
- * HCL serializer, so what this emits is byte-identical to what
- * "Export to Terraform…" would produce for the same resources, plus the
- * adoption blocks.
+ * HCL serializer, so what this emits is what "Export to Terraform…" would
+ * produce for the same resources, plus the adoption blocks.
+ *
+ * Uses `exportResourcesForAdoption`, not the plain export: the document is
+ * advertised as safe to paste and `terraform plan`, so a resource that cannot
+ * be imported must not be *declared* either — it would plan a create for a
+ * resource that already exists. Those come back in `unsupported` with a reason.
  */
 export async function buildIacImportPlan(
   organizationId: string,
@@ -246,10 +247,10 @@ export async function buildIacImportPlan(
   if (rows.length === 0) throw new IacInputError("No matching resources.", 404);
 
   const { capabilityFor } = await loadCapabilities();
-  const outcome = exportResourcesToTerraform(rows.map(toResourceInstance), capabilityFor);
+  const outcome = exportResourcesForAdoption(rows.map(toResourceInstance), capabilityFor);
 
   return {
-    hcl: renderTerraformAdoptionDocument(outcome),
+    hcl: outcome.hcl,
     exported: outcome.exported.map((entry) => ({
       resourceId: entry.id,
       address: entry.address,
@@ -299,9 +300,14 @@ export async function getIacResourceStatus(
   const row = rows[0];
   if (!row) return empty;
 
+  // Two scopes may legitimately cover this resource: a document uploaded for
+  // its own account, and an org-wide one. Nothing else does — falling back to
+  // "the newest document in the org" would happily reconcile this resource
+  // against a *different account's* state and report a confident, wrong badge.
+  // "No state covers this account" is a true answer; a wrong badge is not.
   const state =
     (await getLatestIacState(organizationId, row.accountId)) ??
-    (await getLatestIacState(organizationId));
+    (await getLatestIacState(organizationId, null));
   if (!state) return empty;
 
   const [stateResources, { capabilityFor, typeMap }] = await Promise.all([

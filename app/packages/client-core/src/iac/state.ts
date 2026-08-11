@@ -42,6 +42,14 @@ export const IAC_STATE_LIMITS = {
 /** Placeholder written in place of an attribute the state marks sensitive. */
 export const IAC_REDACTED = "«redacted»";
 
+/**
+ * Placeholder written in place of a structure too large to keep. Distinct from
+ * {@link IAC_REDACTED} so a reader can tell "this was a secret" from "this was
+ * a 40 KB policy document" — both are values we did not store, but only one of
+ * them is a thing to be careful with.
+ */
+export const IAC_OMITTED = "«omitted: too large»";
+
 export type IacStateFormat = "tfstate" | "show-json";
 
 export type TerraformStateParseErrorCode =
@@ -72,9 +80,22 @@ export interface IacStateResourceEntry {
   indexKey: string | number | null;
   /** Provider address as the document reports it, e.g. `registry.terraform.io/hashicorp/aws`. */
   providerName: string | null;
-  /** Attributes with sensitive values already replaced by {@link IAC_REDACTED}. */
+  /**
+   * Attributes, with values we chose not to store replaced by a placeholder:
+   * {@link IAC_REDACTED} when the state marked them sensitive,
+   * {@link IAC_OMITTED} when the structure was too large to keep.
+   */
   attributes: Record<string, unknown>;
-  /** Attribute keys whose values were dropped as sensitive. */
+  /**
+   * Attribute keys whose value was **not stored** — sensitive or oversized.
+   *
+   * This is the list reconciliation filters the drift diff by, and that is the
+   * whole reason it exists: comparing a placeholder against a live value
+   * reports drift that isn't there. Anything that puts a placeholder into
+   * `attributes` must add its key here, or the placeholder becomes a phantom
+   * diff. Use {@link ParsedTerraformState.redactedAttributeCount} when you
+   * specifically mean *sensitive*.
+   */
   redactedAttributeKeys: string[];
   /** Lower-cased identity strings usable for matching (`id`, `arn`, …). */
   identifiers: string[];
@@ -91,7 +112,10 @@ export interface ParsedTerraformState {
   resources: IacStateResourceEntry[];
   /** Data-source entries are parsed but never matched; counted so the UI can say so. */
   dataSourceCount: number;
+  /** Values dropped because the state marked them **sensitive**. Drives the UI's redaction line. */
   redactedAttributeCount: number;
+  /** Values dropped because the structure was **too large**. Reported as a warning. */
+  omittedAttributeCount: number;
   /** Non-fatal notes: truncation, skipped modules, unusual shapes. */
   warnings: string[];
 }
@@ -122,24 +146,37 @@ function collectIdentifiers(attributes: Record<string, unknown>): string[] {
   return out;
 }
 
-/** Clamp one attribute value: truncate long strings, drop deep/huge structures whole. */
-function clampValue(value: unknown): unknown {
+/**
+ * Clamp one attribute value: truncate long strings, drop huge structures whole.
+ *
+ * `omitted` says the stored value is **not** what the state actually carried,
+ * which is the only thing the caller needs to know: a value we changed can
+ * never be compared, or the clamp itself reads as drift.
+ */
+function clampValue(value: unknown): { value: unknown; omitted: boolean } {
   if (typeof value === "string") {
     return value.length > IAC_STATE_LIMITS.maxAttributeValueChars
-      ? value.slice(0, IAC_STATE_LIMITS.maxAttributeValueChars)
-      : value;
+      ? { value: value.slice(0, IAC_STATE_LIMITS.maxAttributeValueChars), omitted: true }
+      : { value, omitted: false };
   }
   if (Array.isArray(value) || isRecord(value)) {
     const serialized = JSON.stringify(value) ?? "";
-    if (serialized.length > IAC_STATE_LIMITS.maxAttributeValueChars) return IAC_REDACTED;
-    return value;
+    if (serialized.length > IAC_STATE_LIMITS.maxAttributeValueChars) {
+      return { value: IAC_OMITTED, omitted: true };
+    }
+    return { value, omitted: false };
   }
-  return value;
+  return { value, omitted: false };
 }
 
 interface SanitizeOutcome {
   attributes: Record<string, unknown>;
+  /** Sensitive **and** oversized keys — everything excluded from the diff. */
   redactedAttributeKeys: string[];
+  /** Of those, the ones dropped for being sensitive. */
+  sensitiveCount: number;
+  /** Of those, the ones dropped for being too large. */
+  omittedCount: number;
   truncated: boolean;
 }
 
@@ -150,6 +187,8 @@ function sanitizeAttributes(
   const attributes: Record<string, unknown> = {};
   const redactedAttributeKeys: string[] = [];
   let count = 0;
+  let sensitiveCount = 0;
+  let omittedCount = 0;
   let truncated = false;
   for (const [key, value] of Object.entries(raw)) {
     if (count >= IAC_STATE_LIMITS.maxAttributesPerResource) {
@@ -160,11 +199,20 @@ function sanitizeAttributes(
     if (sensitiveKeys.has(key)) {
       attributes[key] = IAC_REDACTED;
       redactedAttributeKeys.push(key);
+      sensitiveCount += 1;
       continue;
     }
-    attributes[key] = clampValue(value);
+    const clamped = clampValue(value);
+    attributes[key] = clamped.value;
+    // A clamped value is a value we did not store faithfully. It must join the
+    // excluded list or reconciliation compares our placeholder (or our
+    // truncation) against the live value and reports drift that isn't there.
+    if (clamped.omitted) {
+      redactedAttributeKeys.push(key);
+      omittedCount += 1;
+    }
   }
-  return { attributes, redactedAttributeKeys, truncated };
+  return { attributes, redactedAttributeKeys, sensitiveCount, omittedCount, truncated };
 }
 
 /**
@@ -243,10 +291,21 @@ interface Accumulator {
   warnings: string[];
   dataSourceCount: number;
   redactedAttributeCount: number;
+  omittedAttributeCount: number;
   truncatedAttributes: boolean;
 }
 
-function push(acc: Accumulator, entry: IacStateResourceEntry): void {
+/**
+ * The two counts are taken from the sanitizer rather than derived from
+ * `entry.redactedAttributeKeys.length`, because that list deliberately mixes
+ * sensitive and oversized keys — they behave identically for the diff but they
+ * are not the same thing to report to a user.
+ */
+function push(
+  acc: Accumulator,
+  entry: IacStateResourceEntry,
+  counts: { sensitiveCount: number; omittedCount: number },
+): void {
   if (acc.resources.length >= IAC_STATE_LIMITS.maxResources) {
     throw new TerraformStateParseError(
       "too-many-resources",
@@ -255,7 +314,8 @@ function push(acc: Accumulator, entry: IacStateResourceEntry): void {
   }
   acc.resources.push(entry);
   if (entry.mode === "data") acc.dataSourceCount += 1;
-  acc.redactedAttributeCount += entry.redactedAttributeKeys.length;
+  acc.redactedAttributeCount += counts.sensitiveCount;
+  acc.omittedAttributeCount += counts.omittedCount;
 }
 
 /** Raw `.tfstate`, format version 4. */
@@ -288,18 +348,22 @@ function parseStateFileV4(doc: Record<string, unknown>, acc: Accumulator): void 
       const sanitized = sanitizeAttributes(rawAttributes, sensitiveKeys);
       if (sanitized.truncated) acc.truncatedAttributes = true;
       const indexKey = normalizeIndexKey(instance["index_key"]);
-      push(acc, {
-        address: buildAddress(module, mode, type, name, indexKey),
-        module,
-        mode,
-        type,
-        name,
-        indexKey,
-        providerName,
-        attributes: sanitized.attributes,
-        redactedAttributeKeys: sanitized.redactedAttributeKeys,
-        identifiers: collectIdentifiers(sanitized.attributes),
-      });
+      push(
+        acc,
+        {
+          address: buildAddress(module, mode, type, name, indexKey),
+          module,
+          mode,
+          type,
+          name,
+          indexKey,
+          providerName,
+          attributes: sanitized.attributes,
+          redactedAttributeKeys: sanitized.redactedAttributeKeys,
+          identifiers: collectIdentifiers(sanitized.attributes),
+        },
+        sanitized,
+      );
     }
   }
 }
@@ -337,18 +401,22 @@ function parseShowJsonModule(
         typeof entry["address"] === "string" && entry["address"] !== ""
           ? entry["address"]
           : buildAddress(moduleAddress, mode, type, name, indexKey);
-      push(acc, {
-        address,
-        module: moduleAddress,
-        mode,
-        type,
-        name,
-        indexKey,
-        providerName: typeof entry["provider_name"] === "string" ? entry["provider_name"] : null,
-        attributes: sanitized.attributes,
-        redactedAttributeKeys: sanitized.redactedAttributeKeys,
-        identifiers: collectIdentifiers(sanitized.attributes),
-      });
+      push(
+        acc,
+        {
+          address,
+          module: moduleAddress,
+          mode,
+          type,
+          name,
+          indexKey,
+          providerName: typeof entry["provider_name"] === "string" ? entry["provider_name"] : null,
+          attributes: sanitized.attributes,
+          redactedAttributeKeys: sanitized.redactedAttributeKeys,
+          identifiers: collectIdentifiers(sanitized.attributes),
+        },
+        sanitized,
+      );
     }
   }
   const children = moduleNode["child_modules"];
@@ -442,6 +510,7 @@ export function parseTerraformStateDocument(input: string | unknown): ParsedTerr
     warnings: [],
     dataSourceCount: 0,
     redactedAttributeCount: 0,
+    omittedAttributeCount: 0,
     truncatedAttributes: false,
   };
 
@@ -492,6 +561,11 @@ export function parseTerraformStateDocument(input: string | unknown): ParsedTerr
       `${acc.redactedAttributeCount} attribute value(s) marked sensitive were redacted and never stored.`,
     );
   }
+  if (acc.omittedAttributeCount > 0) {
+    acc.warnings.push(
+      `${acc.omittedAttributeCount} attribute value(s) were too large to store and are excluded from drift comparison.`,
+    );
+  }
 
   return {
     format,
@@ -502,6 +576,7 @@ export function parseTerraformStateDocument(input: string | unknown): ParsedTerr
     resources: acc.resources,
     dataSourceCount: acc.dataSourceCount,
     redactedAttributeCount: acc.redactedAttributeCount,
+    omittedAttributeCount: acc.omittedAttributeCount,
     warnings: acc.warnings,
   };
 }

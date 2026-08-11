@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import type {
   IacStateResourceEntry,
   IacStateSummary,
@@ -119,16 +119,27 @@ export async function getIacState(
   return row ? toSummary(row) : null;
 }
 
-/** The newest state for an org, optionally narrowed to one account. */
+/**
+ * The newest state document for one **scope**.
+ *
+ * `accountId` is a string for an account-scoped document, or `null` for an
+ * org-wide one (`account_id IS NULL`). There is deliberately no "any scope"
+ * mode: the newest document in the org can belong to a *different* account,
+ * and reconciling account A's resources against account B's state produces a
+ * confidently wrong managed/unmanaged answer. A caller that wants a fallback
+ * must ask for the org-wide scope explicitly — those documents really do
+ * cover every account.
+ */
 export async function getLatestIacState(
   organizationId: string,
-  accountId?: string | null,
+  accountId: string | null,
 ): Promise<IacStateSummary | null> {
   const rows = await selectStates()
     .where(
-      accountId
-        ? and(eq(iacStates.organizationId, organizationId), eq(iacStates.accountId, accountId))
-        : eq(iacStates.organizationId, organizationId),
+      and(
+        eq(iacStates.organizationId, organizationId),
+        accountId === null ? isNull(iacStates.accountId) : eq(iacStates.accountId, accountId),
+      ),
     )
     .orderBy(desc(iacStates.createdAt))
     .limit(1);

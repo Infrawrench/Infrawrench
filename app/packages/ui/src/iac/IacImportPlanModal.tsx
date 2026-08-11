@@ -111,8 +111,10 @@ export function IacImportPlanModal({
             <div className="rounded-lg bg-amber-500/10 border border-amber-500/40 px-3 py-2.5">
               <p className="text-xs font-medium text-amber-700 dark:text-amber-200">
                 {result.unsupported.length} resource
-                {result.unsupported.length === 1 ? " has" : "s have"} no Terraform mapping yet and{" "}
-                {result.unsupported.length === 1 ? "was" : "were"} left out:
+                {result.unsupported.length === 1 ? "" : "s"} could not be adopted and{" "}
+                {result.unsupported.length === 1 ? "was" : "were"} left out of the document entirely
+                — declaring one without an import block would plan a <em>create</em> for something
+                that already exists:
               </p>
               <ul className="mt-1.5 space-y-0.5">
                 {result.unsupported.map((u) => (
@@ -144,7 +146,8 @@ export function IacImportPlanModal({
               </>
             ) : (
               <p className="text-xs text-on-surface-faint">
-                Nothing to adopt — none of the selected resources have a Terraform mapping yet.
+                Nothing to adopt — none of the selected resources can be both declared and imported.
+                See the reasons above.
               </p>
             ))}
         </div>

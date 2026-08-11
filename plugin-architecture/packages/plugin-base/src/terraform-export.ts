@@ -153,9 +153,9 @@ export function exportResourcesToTerraform(
  * configuration itself, so a whole set of hand-made resources comes under
  * management in one `terraform apply` rather than N imperative commands.
  *
- * Only resources whose plugin supplied an `importId` can be adopted; the rest
- * are skipped (their stanza still renders, so the resource can be adopted once
- * an id is known).
+ * Only resources whose plugin supplied an `importId` produce a block. Callers
+ * building an adoption document must not render the others' stanzas either —
+ * see {@link exportResourcesForAdoption}, which is the safe entry point.
  */
 export function renderTerraformImportBlocks(
   exported: readonly TerraformExportedResource[],
@@ -168,15 +168,79 @@ export function renderTerraformImportBlocks(
   return blocks.length > 0 ? blocks.join("\n\n") + "\n" : "";
 }
 
+/** Why a mapped resource still could not be adopted. */
+export const NO_IMPORT_ID_REASON =
+  "The provider gives no Terraform import ID for this resource, so it cannot be adopted — " +
+  "declaring it without an import block would plan a create for something that already exists";
+
 /**
- * One document that both declares the resources and adopts them: `import`
- * blocks first (so a reader sees what is about to be taken over), then the
- * generated configuration. This is the payoff surface of IaC reconciliation —
- * "here is the Terraform for the 40 things somebody made by hand".
+ * An adoption document plus the resources deliberately left out of it.
+ *
+ * Same shape as {@link TerraformExportOutcome}, so callers that already render
+ * `unsupported` get the unadoptable resources reported for free.
  */
-export function renderTerraformAdoptionDocument(outcome: TerraformExportOutcome): string {
-  const imports = renderTerraformImportBlocks(outcome.exported);
-  if (!imports) return outcome.hcl;
-  if (!outcome.hcl) return imports;
-  return `${imports}\n${outcome.hcl}`;
+export interface TerraformAdoptionOutcome extends TerraformExportOutcome {
+  /** The `import` blocks on their own, for callers that want to show them apart. */
+  importHcl: string;
+}
+
+/**
+ * Build a document that both declares a set of resources **and** adopts them:
+ * `import` blocks first (so a reader sees what is about to be taken over), then
+ * the generated configuration. The payoff surface of IaC reconciliation —
+ * "here is the Terraform for the 40 things somebody made by hand".
+ *
+ * The invariant that makes it safe to run: **a resource is declared only if it
+ * is also imported.** A stanza with no matching `import` block is a *create*,
+ * so handing one to someone who was told "paste this and run `terraform plan`"
+ * either fails with already-exists or, worse, builds a second copy of a
+ * resource they already have. A mapper that produces no `importId` therefore
+ * gets its resource dropped from the HCL entirely and reported in
+ * `unsupported` with {@link NO_IMPORT_ID_REASON} — the same way an unmappable
+ * resource and an underivable type are reported, rather than silently emitted.
+ *
+ * This is why adoption is its own function rather than a renderer over an
+ * existing outcome: the decision has to happen before the bundle is rendered,
+ * because dropping a resource also renames nothing else in it.
+ */
+export function exportResourcesForAdoption(
+  resourcesToExport: ResourceInstance[],
+  capabilityForPlugin: (pluginId: string) => TerraformExportCapability | undefined,
+): TerraformAdoptionOutcome {
+  const first = exportResourcesToTerraform(resourcesToExport, capabilityForPlugin);
+  const unadoptable = first.exported.filter((entry) => !entry.importId);
+
+  if (unadoptable.length === 0) {
+    const importHcl = renderTerraformImportBlocks(first.exported);
+    return {
+      ...first,
+      importHcl,
+      hcl: importHcl && first.hcl ? `${importHcl}\n${first.hcl}` : importHcl || first.hcl,
+    };
+  }
+
+  // Re-render without them. Name deduplication is computed over the rendered
+  // set, so dropping a resource must not leave the others carrying suffixes
+  // that were only there to avoid a collision with something now absent.
+  const dropped = new Set(unadoptable.map((entry) => entry.id));
+  const second = exportResourcesToTerraform(
+    resourcesToExport.filter((resource) => !dropped.has(resource.id)),
+    capabilityForPlugin,
+  );
+  const importHcl = renderTerraformImportBlocks(second.exported);
+  return {
+    hcl: importHcl && second.hcl ? `${importHcl}\n${second.hcl}` : importHcl || second.hcl,
+    importHcl,
+    exported: second.exported,
+    unsupported: [
+      ...second.unsupported,
+      ...unadoptable.map((entry) => ({
+        id: entry.id,
+        displayName: entry.displayName,
+        pluginId: entry.pluginId,
+        resourceTypeId: entry.resourceTypeId,
+        reason: NO_IMPORT_ID_REASON,
+      })),
+    ],
+  };
 }
