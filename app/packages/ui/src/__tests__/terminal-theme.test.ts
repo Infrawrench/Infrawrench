@@ -62,6 +62,20 @@ describe("getTerminalAccessibleName", () => {
     expect(getTerminalAccessibleName({ kind: "ssh", host: "web-1" })).toBe("SSH terminal, web-1");
   });
 
+  // Without `sshHost` the server dials whatever the plugin's getSshConfig()
+  // reads out of the account credentials. Naming the resource or account id
+  // here would announce an internal identifier in the slot a hostname
+  // occupies, which reads as though it *is* the destination.
+  it("asserts no destination when the host is unknown", () => {
+    expect(getTerminalAccessibleName({ kind: "ssh" })).toBe("SSH terminal");
+  });
+
+  it("does not fall back to the username when the host is unknown", () => {
+    const name = getTerminalAccessibleName({ kind: "ssh", username: "deploy" });
+    expect(name).toBe("SSH terminal");
+    expect(name).not.toContain("deploy");
+  });
+
   it("names a k8s exec terminal by pod, namespace and container", () => {
     expect(
       getTerminalAccessibleName({
@@ -79,11 +93,14 @@ describe("getTerminalAccessibleName", () => {
     ).toBe("Kubernetes exec terminal, pod api-7f9 in namespace prod");
   });
 
-  it("names a k9s terminal by namespace, or says all namespaces", () => {
+  // An omitted namespace means the --namespace flag is not passed and k9s
+  // opens on the kubeconfig context's default, which is not necessarily every
+  // namespace — so the name must not claim a scope it cannot confirm.
+  it("names a k9s terminal by namespace, and claims no scope without one", () => {
     expect(getTerminalAccessibleName({ kind: "k9s", namespace: "prod" })).toBe(
       "k9s terminal, namespace prod",
     );
-    expect(getTerminalAccessibleName({ kind: "k9s" })).toBe("k9s terminal, all namespaces");
+    expect(getTerminalAccessibleName({ kind: "k9s" })).toBe("k9s terminal");
   });
 });
 

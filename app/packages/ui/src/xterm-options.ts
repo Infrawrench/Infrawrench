@@ -79,7 +79,16 @@ export function getXtermTerminalOptions(overrides?: XtermTerminalOptionOverrides
  * point can carry an accessible name that says *which* terminal it is.
  */
 export type TerminalDescription =
-  | { kind: "ssh"; host: string; username?: string | undefined }
+  | {
+      kind: "ssh";
+      /**
+       * Omitted when the caller does not know the destination — a web session
+       * opened without `sshHost` connects to whatever the plugin's
+       * `getSshConfig()` reads out of the account credentials, server-side.
+       */
+      host?: string | undefined;
+      username?: string | undefined;
+    }
   | {
       kind: "k8s-exec";
       namespace: string;
@@ -93,19 +102,31 @@ export type TerminalDescription =
  * The accessible name for a terminal mount point. A screen reader user lands
  * on the terminal with no visual context, so the name has to identify the
  * host, pod or container rather than just say "terminal".
+ *
+ * Every branch here only states what the caller actually knows. A name is read
+ * out as the destination, so a guess is worse than an omission: it sounds
+ * exactly as authoritative as a real answer, and the user has no way to tell
+ * which they got. Hence no host rather than an internal id, and no namespace
+ * rather than a claim about which namespaces are in view.
  */
 export function getTerminalAccessibleName(target: TerminalDescription): string {
   switch (target.kind) {
-    case "ssh":
+    case "ssh": {
+      // Without a host there is nothing truthful to add: `username` is only
+      // honoured on the same direct-SSH path that carries the host, so on its
+      // own it describes the connection no better than silence does.
+      if (!target.host) return "SSH terminal";
       return `SSH terminal, ${target.username ? `${target.username}@${target.host}` : target.host}`;
+    }
     case "k8s-exec": {
       const container = target.containerName ? `, container ${target.containerName}` : "";
       return `Kubernetes exec terminal, pod ${target.podName} in namespace ${target.namespace}${container}`;
     }
     case "k9s":
-      return target.namespace
-        ? `k9s terminal, namespace ${target.namespace}`
-        : "k9s terminal, all namespaces";
+      // No namespace means the `--namespace` flag is simply not passed, so k9s
+      // opens on whatever the kubeconfig context defaults to — which is not
+      // necessarily every namespace, so this must not say that it is.
+      return target.namespace ? `k9s terminal, namespace ${target.namespace}` : "k9s terminal";
     case "playback":
       return "Session recording playback terminal";
   }

@@ -296,11 +296,11 @@ export function WebTerminal({
       <div
         ref={containerRef}
         className="absolute inset-0 p-2"
-        {...getTerminalContainerProps({
-          kind: "ssh",
-          host: sshHost ?? resourceId ?? accountId,
-          username: sshUsername,
-        })}
+        // No `resourceId`/`accountId` fallback: without `sshHost` the server
+        // takes the plugin-config branch and dials whatever `getSshConfig()`
+        // reads out of the account credentials, so an id here would announce
+        // something that is not the destination.
+        {...getTerminalContainerProps({ kind: "ssh", host: sshHost, username: sshUsername })}
       />
       {dialog}
     </div>
