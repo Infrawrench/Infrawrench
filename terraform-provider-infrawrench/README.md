@@ -1,8 +1,13 @@
 # Terraform provider for Infrawrench
 
-Manages **Infrawrench's own FinOps configuration** as code: budgets, cost
-centres, allocation rules, tag policy, saved filters, cost reports and folders,
-cost alerts, scenario models, billing rules and cost exports.
+Manages **Infrawrench's own configuration** as code: cost allocation and
+reporting, monitoring, lifecycle governance, connected accounts and access
+control, and alert delivery. 45 resources and 6 data sources, each with its own
+plan, its own drift detection and a real `terraform import`.
+
+It does **not** manage your cloud resources. Those belong to your cloud's own
+provider, and getting them out of Infrawrench as HCL is what eject-to-Terraform
+is for — see the next section.
 
 ## What this is not
 
@@ -14,6 +19,11 @@ jobs and confusing them wastes an afternoon.
 | **Eject to Terraform** (`infrawrench export`, per-plugin exporters) | Writes HCL describing **your cloud resources** — the EC2 instances, the buckets — so you can walk away from Infrawrench                                             | Infrawrench → HCL, one shot     |
 | **Org config as code** (`infrawrench config export/plan/apply`)     | Moves a **whole organization's configuration** as one JSON document: dashboards, workflows, budgets, probes. For cloning an org, seeding staging, disaster recovery | Document ↔ org, whole-org       |
 | **This provider**                                                   | Manages **individual Infrawrench configuration objects** as Terraform resources, with per-object plans, drift detection and import                                  | Terraform ↔ objects, per-object |
+
+The dividing line is worth stating plainly: your cloud provider's Terraform
+provider creates the database; this one manages the budget that watches what the
+database costs, the probe that checks it is up, the schedule that powers it down
+at night, and the rule that decides who gets paged when it is not.
 
 They compose fine. Org config as code is the right tool for "make staging look
 like production". This provider is the right tool for "budgets live in the
@@ -37,13 +47,16 @@ referential integrity.
 `customGraphs`, `workflows`, `dashboards`, `metricAlerts`, `probes`,
 `costCentres`, `tagPolicy`, `alertSettings`.
 
-Of the eleven object types this provider manages, the document carries **three**
-— budgets, cost centres (with allocation rules nested inside them) and tag
-policy. Saved filters, cost reports, report folders, cost alerts, scenario
-models, billing rules and cost exports have no section and no representation.
-Wrapping would mean shipping a provider that could not manage eight of the
-eleven things it exists to manage. Nothing about that is fixable on the provider
-side; it is a change to the document format and its server-side apply.
+Of the forty-five object types this provider manages, the document carries
+**four** — budgets, cost centres (with allocation rules nested inside them), tag
+policy and metric alerts, plus probes and custom graphs in a lossy form. Saved
+filters, cost reports, report folders, cost alerts, scenario models, billing
+rules, cost exports, business metrics, accounts, roles, API keys, bastions,
+status pages, schedules, freezes, the alert routing table and everything else
+have no section and no representation. Wrapping would mean shipping a provider
+that could not manage the great majority of what it exists to manage. Nothing
+about that is fixable on the provider side; it is a change to the document
+format and its server-side apply.
 
 ### 2. There is no per-object identity, so there can be no import
 
@@ -117,10 +130,13 @@ Go among them, and adding a tenth target would have inherited version stamping
 and the publish gate for free. It was still the wrong choice here, for two
 reasons that are specific to this provider rather than to the generator.
 
-**The spec does not describe two of these objects.** Scenario models and billing
-rules are absent from `openapi.json` entirely — their routes exist and their
-OpenAPI sources exist, but the document has not been regenerated since they
-landed. Generating from it would have produced a provider missing two resources.
+**The spec lags the routes.** When this provider was written, scenario models
+and billing rules were absent from `openapi.json` entirely — their routes
+existed and their OpenAPI sources existed, but the document had not been
+regenerated since they landed. Generating from it would have produced a provider
+missing two resources. The 1.9.0 regeneration brought them in, and
+`schemasKnownAbsent` in the drift test is empty as a result; the gap it records
+is a recurring condition rather than a one-off, so the mechanism stays.
 
 **The generator's IR drops the signals a provider needs.** It does not read
 `discriminator`, so tagged unions collapse to `any` — which is precisely what
@@ -130,18 +146,22 @@ and those are exactly the signals that decide whether a Terraform attribute is
 `Computed` and whether a plan diff is spurious. A generated type would have been
 `any` where the schema matters most.
 
-So the wire shapes are hand-written, in one file — `internal/iw/wire.go` — and
-nothing outside `internal/iw` builds a URL or a JSON body. The single source of
-truth is that package, and `internal/iw/wire_spec_test.go` guards it: for every
+So the wire shapes are hand-written, in `internal/iw/wire.go` (cost allocation
+and reporting) and `internal/iw/wire_platform.go` (everything else), and nothing
+outside `internal/iw` builds a URL or a JSON body. The split is by domain and
+purely for readability — the invariant that matters is the package boundary, not
+the file count. The single source of truth is that package, and
+`internal/iw/wire_spec_test.go` guards it: for every
 schema `openapi.json` _does_ carry, it asserts that each property is either
 decoded by the corresponding Go struct or named in an explicit ignore list with
 a written reason. A field added to the API fails the build until somebody has
 looked at it. The check runs one way only — extra Go fields are expected,
 because the checked-in spec lags the routes.
 
-It also records the seven schemas known to be missing, and fails when they
-appear, so regenerating the spec pulls them into coverage rather than leaving
-them silently uncovered.
+It also records the schemas known to be missing, and fails when they appear, so
+regenerating the spec pulls them into coverage rather than leaving them silently
+uncovered. That list is empty today; the test says so out loud rather than
+passing in silence.
 
 ---
 
@@ -211,15 +231,40 @@ are — and is deliberately not attempted here.
 
 ### Scopes
 
-| Objects                                                                                  | Read             | Write                |
-| ---------------------------------------------------------------------------------------- | ---------------- | -------------------- |
-| Budgets                                                                                  | `budgets:read`   | `budgets:write`      |
-| Cost centres, allocation rules, saved filters, reports, folders, alerts, scenario models | `costs:read`     | `costs:write`        |
-| Tag policy                                                                               | `resources:read` | `org:settings:write` |
-| Billing rules, cost exports                                                              | `costs:read`     | `org:settings:write` |
+| Objects                                                                                                                                   | Read                        | Write                                                                      |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------- |
+| Budgets                                                                                                                                   | `budgets:read`              | `budgets:write`                                                            |
+| Cost centres, allocation rules, saved filters, reports, folders, alerts, annotations, scenario models, business metrics, managed accounts | `costs:read`                | `costs:write`                                                              |
+| Tag policy                                                                                                                                | `resources:read`            | `org:settings:write`                                                       |
+| Billing rules, cost exports, report notifications, currency and exchange rates                                                            | `costs:read`                | `org:settings:write`                                                       |
+| Probes, status pages, sleep schedules, log queries                                                                                        | `resources:read`            | `resources:write`                                                          |
+| Metric alerts                                                                                                                             | `metric-alerts:read`        | `metric-alerts:write`                                                      |
+| Custom graphs                                                                                                                             | `dashboards:read`           | `dashboards:write`                                                         |
+| Change freezes                                                                                                                            | `freezes:read`              | `freezes:write`                                                            |
+| Accounts                                                                                                                                  | `accounts:read`             | `accounts:write` (credentials: `secrets:write`; delete: `accounts:delete`) |
+| Bastions                                                                                                                                  | `bastions:read`             | `bastions:write`                                                           |
+| SSH keys, SSH snippets                                                                                                                    | `ssh-keys:read`             | `ssh-keys:write`                                                           |
+| API keys                                                                                                                                  | `apikeys:read`              | `apikeys:write`                                                            |
+| Roles                                                                                                                                     | `team:read`                 | `team:role:write`                                                          |
+| Deploy triggers                                                                                                                           | `deployments:read`          | `deployments:write`                                                        |
+| Workflow schedules                                                                                                                        | `workflows:read`            | `workflows:write`                                                          |
+| Session recording settings                                                                                                                | `session-recordings:read`   | `session-recordings:write`                                                 |
+| Jira / Linear connections                                                                                                                 | `jira:read` / `linear:read` | `jira:write` / `linear:write`                                              |
+| Alert routing, Slack channels, Teams webhooks, digest, drift / expiry / posture alert settings                                            | `org:settings:write`        | `org:settings:write`                                                       |
 
-Billing rules and cost exports are the asymmetric ones: a token holding only
-`costs:write` can read them but cannot manage them.
+Three shapes are worth noticing.
+
+- **Asymmetric pairs.** Billing rules, cost exports and report notifications read
+  with `costs:read` but write with `org:settings:write`: a token holding only
+  `costs:write` can see them and cannot manage them.
+- **Org settings read with the write scope.** Alert routing, Slack, Teams and the
+  digest have no separate read permission — the GET is gated on
+  `org:settings:write` too, so a read-only token cannot refresh them at all.
+- **Accounts need three.** Connecting is `accounts:write`, rotating credentials
+  is `secrets:write`, disconnecting is `accounts:delete`. They are separate
+  routes because they are separate decisions, and the provider surfaces a
+  failure on whichever half a token may not do rather than refusing the whole
+  update.
 
 ---
 
@@ -336,58 +381,316 @@ resource "infrawrench_cost_report" "platform_by_service" {
   }
 }
 
+# The report lands in Slack every Monday morning.
+resource "infrawrench_cost_report_notification" "platform_weekly" {
+  cost_report_id    = infrawrench_cost_report.platform_by_service.id
+  cadence           = "weekly"
+  send_day          = 1
+  hour              = 9
+  timezone          = "Europe/Berlin"
+  slack_channel_ids = [infrawrench_slack_channel.platform.id]
+}
+
 output "platform_account_ids" {
   value = [for a in data.infrawrench_accounts.production.accounts : a.id]
 }
 ```
 
+### Beyond cost: the rest of the surface
+
+The same file can carry the monitoring, governance and delivery configuration
+that a platform team would otherwise click together by hand.
+
+```hcl
+# Alerts have to land somewhere before routing them means anything. The
+# workspace connection itself is an OAuth flow, so it is read, not created.
+data "infrawrench_slack_installations" "workspace" {}
+
+resource "infrawrench_slack_channel" "platform" {
+  installation_id = data.infrawrench_slack_installations.workspace.installations[0].id
+  channel_id      = "C0123456789"
+  channel_name    = "platform-alerts"
+}
+
+# One rule written once covers every instance the team creates afterwards:
+# resources are selected by query, never by id.
+resource "infrawrench_metric_alert" "cpu" {
+  name        = "Platform CPU sustained"
+  tag_key     = "team"
+  tag_value   = "platform"
+  metric_key  = "CPU %"
+  comparator  = ">"
+  threshold   = 90
+  for_minutes = 20
+}
+
+# Resolve the resource rather than hard-coding its id.
+data "infrawrench_resources" "api" {
+  account_id       = data.infrawrench_accounts.production.accounts[0].id
+  resource_type_id = "ec2_instance"
+  name_contains    = "api"
+}
+
+resource "infrawrench_schedule" "api_nights" {
+  resource_id  = data.infrawrench_resources.api.resources[0].id
+  account_id   = data.infrawrench_resources.api.resources[0].account_id
+  days_of_week = [1, 2, 3, 4, 5]
+  stop_time    = "19:00"
+  start_time   = "08:00"
+  timezone     = "Europe/Berlin"
+}
+
+resource "infrawrench_probe" "api" {
+  name = "API health"
+  url  = "https://api.example.com/health"
+}
+
+resource "infrawrench_status_page" "public" {
+  title     = "Acme status"
+  published = true
+
+  component {
+    probe_id = infrawrench_probe.api.id
+    label    = "API"
+  }
+}
+
+# The graph is code, so it lives beside the code.
+resource "infrawrench_custom_graph" "burn" {
+  name   = "Platform burn"
+  source = file("${path.module}/graphs/burn.ts")
+}
+
+# A permission set whose diff is the point: adding a grant is a reviewed line.
+resource "infrawrench_role" "finance" {
+  name        = "Finance"
+  description = "Read spend, own budgets, touch nothing else."
+  permissions = ["costs:read", "budgets:read", "budgets:write", "invoices:read"]
+}
+
+# Order is the semantics: narrow rules first, broad ones after.
+resource "infrawrench_alert_routing" "org" {
+  rule {
+    name = "Spend goes to the platform channel"
+
+    condition {
+      field  = "trigger"
+      op     = "in"
+      values = ["budgetAlerts", "anomalyAlerts", "costChangeAlerts"]
+    }
+
+    destination {
+      kind       = "slack"
+      channel_id = infrawrench_slack_channel.platform.id
+    }
+  }
+
+  rule {
+    name = "Anything critical also wakes phones"
+
+    condition {
+      field    = "severity"
+      op       = "gte"
+      severity = "critical"
+    }
+
+    destination {
+      kind = "push"
+    }
+
+    # Hold overnight rather than dropping: a held alert is delivered when the
+    # window closes. Critical is exempt.
+    quiet_hours {
+      timezone        = "Europe/Berlin"
+      start_minute    = 1320 # 22:00
+      end_minute      = 420  # 07:00 — an overnight window
+      days            = [1, 2, 3, 4, 5]
+      urgent_override = "critical"
+    }
+
+    # Nobody acknowledged in fifteen minutes? Widen it.
+    escalation {
+      after_minutes = 15
+
+      destination {
+        kind       = "slack"
+        channel_id = infrawrench_slack_channel.platform.id
+      }
+    }
+  }
+
+  rule {
+    name = "Swallow drift chatter"
+
+    condition {
+      field  = "trigger"
+      op     = "in"
+      values = ["resourceDrift"]
+    }
+    # No destination: an enabled rule with nowhere to go silences the category
+    # without deleting the rules that would otherwise catch it.
+  }
+}
+```
+
 ## Importing existing objects
 
-Everything that has a server-assigned id imports by that id:
+Nobody adopts a provider into an empty organization, so everything with a
+server-assigned id imports by that id:
 
 ```sh
-terraform import infrawrench_budget.platform            b1f2c3d4-...
-terraform import infrawrench_cost_centre.platform       9a8b7c6d-...
+terraform import infrawrench_budget.platform              b1f2c3d4-...
+terraform import infrawrench_cost_centre.platform         9a8b7c6d-...
 terraform import infrawrench_allocation_rule.platform_tag 4e5f6a7b-...
-terraform import infrawrench_saved_filter.platform      2c3d4e5f-...
-terraform import infrawrench_cost_report.platform_by_service 7b8c9d0e-...
+terraform import infrawrench_saved_filter.platform        2c3d4e5f-...
+terraform import infrawrench_probe.api                    7b8c9d0e-...
+terraform import infrawrench_role.finance                 1a2b3c4d-...
 ```
 
-`infrawrench_tag_policy` is an organization singleton with no id of its own, so
-it imports under the organization id — any value is accepted, since there is
-only ever one:
+Three shapes differ.
+
+**Organization singletons** have no id of their own, so they import under the
+organization id — any value is accepted, since there is only ever one:
 
 ```sh
-terraform import infrawrench_tag_policy.this org_01HXYZABCDEF
+terraform import infrawrench_tag_policy.this          org_01HXYZABCDEF
+terraform import infrawrench_alert_routing.org        org_01HXYZABCDEF
+terraform import infrawrench_currency_settings.this   org_01HXYZABCDEF
+terraform import infrawrench_jira_integration.this    org_01HXYZABCDEF
 ```
 
-**Cost export credentials cannot be imported.** The access key, secret and
-webhook URL are write-only: no route returns them, by design. After importing an
-`infrawrench_cost_export` you must supply them in configuration. The provider
-cannot detect drift on them either — `has_credentials` and `credential_hint` are
-the only readable signals that a credential exists.
+The full list: `tag_policy`, `alert_routing`, `currency_settings`,
+`anomaly_settings`, `efficiency_alert_settings`, `drift_alert_settings`,
+`expiry_alert_settings`, `posture_alert_settings`,
+`session_recording_settings`, `digest_settings`, `jira_integration`,
+`linear_integration`.
+
+**Report notifications** hang off a report, so the notification's own id cannot
+build a URL. They import under a composite address:
+
+```sh
+terraform import infrawrench_cost_report_notification.weekly <report-id>/<notification-id>
+```
+
+**Workflow schedules** are addressed by the workflow they belong to:
+
+```sh
+terraform import infrawrench_workflow_schedule.nightly <workflow-id>
+```
+
+### Secrets do not come back
+
+Several resources hold write-only material that no route returns. Importing them
+works; recovering the secret does not. After importing, supply it in
+configuration — or, where the API accepts an omitted credential as "keep the
+stored one", leave it out.
+
+| Resource                         | Not recoverable                    | What is readable                     |
+| -------------------------------- | ---------------------------------- | ------------------------------------ |
+| `infrawrench_cost_export`        | access key, secret, webhook URL    | `has_credentials`, `credential_hint` |
+| `infrawrench_account`            | the whole `credentials` map        | nothing                              |
+| `infrawrench_api_key`            | `key` — returned once, at creation | `prefix`                             |
+| `infrawrench_ssh_key`            | `private_key` — returned once      | `public_key`, `fingerprint`          |
+| `infrawrench_bastion`            | `token` — returned once            | `token_prefix`                       |
+| `infrawrench_msteams_webhook`    | `url`                              | `url_hint`                           |
+| `infrawrench_jira_integration`   | `api_token`                        | `token_hint`                         |
+| `infrawrench_linear_integration` | `api_key`                          | `key_hint`                           |
+| `infrawrench_deploy_trigger`     | `answers`                          | nothing                              |
+
+The provider cannot detect drift on any of them. That is a property of the API
+rather than a shortcut here: the values are genuinely not returned, by design.
+
+### State-file warning
+
+`infrawrench_api_key`, `infrawrench_ssh_key` (in generate mode) and
+`infrawrench_bastion` each write a credential into Terraform state in plaintext,
+because the API returns it exactly once and never again. Use them only with a
+state backend you would put any other secret in — encrypted, access-controlled,
+not a local file in a repository — and prefer piping the value straight into the
+secret store that consumes it rather than into an output.
 
 ## Resources and data sources
 
-| Resource                         | Import    | Notes                                            |
-| -------------------------------- | --------- | ------------------------------------------------ |
-| `infrawrench_budget`             | by id     | Live spend status is deliberately not exposed    |
-| `infrawrench_cost_centre`        | by id     | No single-GET route; read lists and filters      |
-| `infrawrench_allocation_rule`    | by id     | Lower priority wins; first match only            |
-| `infrawrench_tag_policy`         | by org id | Org singleton; destroy resets to unenforced      |
-| `infrawrench_saved_filter`       | by id     | `filter` and `query` are mutually exclusive      |
-| `infrawrench_cost_report`        | by id     |                                                  |
-| `infrawrench_cost_report_folder` | by id     | No single-GET route                              |
-| `infrawrench_cost_alert`         | by id     | Needs at least one threshold                     |
-| `infrawrench_scenario_model`     | by id     | Adjustment `key` is caller-assigned              |
-| `infrawrench_billing_rule`       | by id     | Query-time restatement; `amount` is a major unit |
-| `infrawrench_cost_export`        | by id     | Credentials are write-only and never imported    |
+### Cost allocation and reporting
 
-| Data source                | Purpose                                     |
-| -------------------------- | ------------------------------------------- |
-| `infrawrench_accounts`     | Resolve account ids for rule matches        |
-| `infrawrench_plugins`      | Resolve valid plugin ids                    |
-| `infrawrench_cost_centres` | Reference centres created outside Terraform |
+| Resource                                | Import    | Notes                                                |
+| --------------------------------------- | --------- | ---------------------------------------------------- |
+| `infrawrench_budget`                    | by id     | Live spend status is deliberately not exposed        |
+| `infrawrench_cost_centre`               | by id     | No single-GET route; read lists and filters          |
+| `infrawrench_allocation_rule`           | by id     | Lower priority wins; first match only                |
+| `infrawrench_tag_policy`                | by org id | Org singleton; destroy resets to unenforced          |
+| `infrawrench_saved_filter`              | by id     | `filter` and `query` are mutually exclusive          |
+| `infrawrench_cost_report`               | by id     |                                                      |
+| `infrawrench_cost_report_folder`        | by id     | No single-GET route                                  |
+| `infrawrench_cost_report_notification`  | composite | `<report-id>/<notification-id>`; needs a destination |
+| `infrawrench_cost_alert`                | by id     | Needs at least one threshold                         |
+| `infrawrench_cost_annotation`           | by id     | An end equal to the start is stored as null          |
+| `infrawrench_scenario_model`            | by id     | Adjustment `key` is caller-assigned                  |
+| `infrawrench_billing_rule`              | by id     | Query-time restatement; `amount` is a major unit     |
+| `infrawrench_cost_export`               | by id     | Credentials are write-only and never imported        |
+| `infrawrench_business_metric`           | by id     | Definition only; values are a pushed time series     |
+| `infrawrench_managed_account`           | by id     | A centre or account belongs to at most one           |
+| `infrawrench_currency_settings`         | by org id | Org singleton; destroy clears, rates survive         |
+| `infrawrench_exchange_rate`             | by id     | Upsert keyed on (from, to, effective_from)           |
+| `infrawrench_anomaly_settings`          | by org id | Org singleton; destroy restores the defaults         |
+| `infrawrench_efficiency_alert_settings` | by org id | Org singleton; destroy restores the defaults         |
+
+### Monitoring
+
+| Resource                   | Import | Notes                                                 |
+| -------------------------- | ------ | ----------------------------------------------------- |
+| `infrawrench_probe`        | by id  | Numeric fields are clamped server-side                |
+| `infrawrench_status_page`  | by id  | `slug` is minted with entropy; rotation is not a plan |
+| `infrawrench_metric_alert` | by id  | Selects resources by query, so it covers future ones  |
+| `infrawrench_log_query`    | by id  | One to eight streams; alerting is opt-in              |
+| `infrawrench_custom_graph` | by id  | `source` is TypeScript — use `file()`                 |
+
+### Lifecycle governance
+
+| Resource                                 | Import    | Notes                                                     |
+| ---------------------------------------- | --------- | --------------------------------------------------------- |
+| `infrawrench_schedule`                   | by id     | Resource and account are create-only                      |
+| `infrawrench_change_freeze`              | by id     | `starts_at` is Optional and Computed; ending is an action |
+| `infrawrench_drift_alert_settings`       | by org id | Org singleton; destroy is a no-op                         |
+| `infrawrench_expiry_alert_settings`      | by org id | Org singleton; destroy is a no-op                         |
+| `infrawrench_posture_alert_settings`     | by org id | Org singleton; destroy is a no-op                         |
+| `infrawrench_session_recording_settings` | by org id | Org singleton; destroy deliberately leaves it running     |
+
+### Accounts and access
+
+| Resource                        | Import         | Notes                                                       |
+| ------------------------------- | -------------- | ----------------------------------------------------------- |
+| `infrawrench_account`           | by id          | Credentials are write-only; three permissions, three routes |
+| `infrawrench_bastion`           | by id          | Token returned once; renaming re-enrols                     |
+| `infrawrench_role`              | by id          | Built-in roles are refused rather than half-managed         |
+| `infrawrench_api_key`           | by id          | Every attribute replaces; delete is revoke                  |
+| `infrawrench_ssh_key`           | by id          | Import a public key, or generate and hold the private one   |
+| `infrawrench_ssh_snippet`       | by id          | Registers a command; does not run it                        |
+| `infrawrench_deploy_trigger`    | by id          | `enabled` is the only mutable field                         |
+| `infrawrench_workflow_schedule` | by workflow id | Attaches a cron to a workflow it does not own               |
+
+### Alert delivery
+
+| Resource                         | Import    | Notes                                                       |
+| -------------------------------- | --------- | ----------------------------------------------------------- |
+| `infrawrench_alert_routing`      | by org id | The whole ordered table; destroy restores the defaults      |
+| `infrawrench_slack_channel`      | by id     | The workspace connection is an OAuth flow, read not written |
+| `infrawrench_msteams_webhook`    | by id     | URL is write-only and Microsoft-host-restricted             |
+| `infrawrench_digest_settings`    | by org id | Org singleton; destinations come from the routing table     |
+| `infrawrench_digest_recipient`   | by id     | Address is normalized server-side                           |
+| `infrawrench_jira_integration`   | by org id | Org singleton; omitting the token keeps the stored one      |
+| `infrawrench_linear_integration` | by org id | Org singleton; omitting the key keeps the stored one        |
+
+### Data sources
+
+| Data source                       | Purpose                                              |
+| --------------------------------- | ---------------------------------------------------- |
+| `infrawrench_accounts`            | Resolve account ids for rule matches                 |
+| `infrawrench_plugins`             | Resolve valid plugin ids                             |
+| `infrawrench_cost_centres`        | Reference centres created outside Terraform          |
+| `infrawrench_resources`           | Resolve a synced resource id for a probe or schedule |
+| `infrawrench_permissions`         | The catalogue roles and API keys grant from          |
+| `infrawrench_slack_installations` | Resolve the workspace a channel belongs to           |
 
 ## Testing
 

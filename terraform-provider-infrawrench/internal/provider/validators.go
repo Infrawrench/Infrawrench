@@ -7,6 +7,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 )
 
+// validatorString aliases validator.String so a schema file can spell
+// `[]validatorString{oneOfValidator(…)}` without importing the framework's
+// validator package. Forty-odd resource files each carrying that import for one
+// literal is noise, and the alias keeps the type identical.
+type validatorString = validator.String
+
 // oneOfValidator is the enum check used throughout the schemas.
 //
 // The server's zod schemas are `strict()` with closed enums, so an invalid

@@ -543,6 +543,206 @@ type CostExport struct {
 	UpdatedAt       string                `json:"updatedAt"`
 }
 
+/* ----------------------------- business metrics ---------------------------- */
+
+// BusinessMetricInput is the POST/PUT body.
+//
+// Currency is an omitempty pointer because the server's rule is cross-field
+// rather than optional: it is required when Kind is "currency" and rejected
+// otherwise, so the only safe way to express "count metric" is to leave the key
+// out entirely.
+type BusinessMetricInput struct {
+	Key           string       `json:"key"`
+	Name          string       `json:"name"`
+	Unit          string       `json:"unit"`
+	Description   *string      `json:"description,omitempty"`
+	Kind          string       `json:"kind"`
+	Currency      *string      `json:"currency,omitempty"`
+	CostScope     []CostFilter `json:"costScope"`
+	SavedFilterID *string      `json:"savedFilterId,omitempty"`
+}
+
+// BusinessMetricCoverage summarises which days carry a reported value. Read
+// only, and null until the metric has any values at all.
+type BusinessMetricCoverage struct {
+	FirstDay     string `json:"firstDay"`
+	LastDay      string `json:"lastDay"`
+	ReportedDays int64  `json:"reportedDays"`
+}
+
+// BusinessMetric is the denominator of a unit-cost query: the customers,
+// requests or gigabytes that spend is divided by.
+//
+// The values themselves are deliberately not managed here. They are a
+// time series pushed continuously by a job, not configuration, and a Terraform
+// resource that owned them would plan a diff every time the business changed.
+type BusinessMetric struct {
+	ID              string                  `json:"id"`
+	Key             string                  `json:"key"`
+	Name            string                  `json:"name"`
+	Unit            string                  `json:"unit"`
+	Description     *string                 `json:"description"`
+	Kind            string                  `json:"kind"`
+	Currency        *string                 `json:"currency"`
+	CostScope       []CostFilter            `json:"costScope"`
+	SavedFilterID   *string                 `json:"savedFilterId"`
+	CreatedByUserID *string                 `json:"createdByUserId"`
+	CreatedAt       string                  `json:"createdAt"`
+	UpdatedAt       string                  `json:"updatedAt"`
+	Coverage        *BusinessMetricCoverage `json:"coverage"`
+}
+
+/* ----------------------------- cost annotations ---------------------------- */
+
+// CostAnnotationInput is the POST/PUT body.
+//
+// Both nullable fields are explicit nulls rather than omissions, because for
+// both of them null is the meaningful value: a null EndDate is a note about one
+// moment rather than a span, and a null CostReportID is an org-wide note drawn
+// on every cost chart rather than one scoped to a single report.
+type CostAnnotationInput struct {
+	StartDate    string  `json:"startDate"`
+	EndDate      *string `json:"endDate"`
+	Text         string  `json:"text"`
+	CostReportID *string `json:"costReportId"`
+}
+
+// CostAnnotation is a note pinned to a date or a span on cost charts.
+//
+// CostAnomalyID is read-only and has no counterpart on the input: it is set when
+// somebody acknowledges a detected anomaly with an explanation, which mints the
+// annotation server-side. An annotation Terraform created is always null there.
+type CostAnnotation struct {
+	ID              string  `json:"id"`
+	StartDate       string  `json:"startDate"`
+	EndDate         *string `json:"endDate"`
+	Text            string  `json:"text"`
+	CostReportID    *string `json:"costReportId"`
+	CostAnomalyID   *string `json:"costAnomalyId"`
+	CreatedByUserID *string `json:"createdByUserId"`
+	CreatedAt       string  `json:"createdAt"`
+	UpdatedAt       string  `json:"updatedAt"`
+}
+
+/* -------------------------- report notifications --------------------------- */
+
+// ReportNotificationInput is the POST/PUT body for a report's delivery
+// schedule. Like the report's own PUT it is a full replace.
+//
+// SendDay and SendDayOfMonth are omitempty pointers because the server reads
+// only the one its cadence names; sending a weekday alongside a monthly cadence
+// would store a number nothing ever looks at.
+type ReportNotificationInput struct {
+	Cadence         string   `json:"cadence"`
+	SendDay         *int64   `json:"sendDay,omitempty"`
+	SendDayOfMonth  *int64   `json:"sendDayOfMonth,omitempty"`
+	Hour            int64    `json:"hour"`
+	Timezone        string   `json:"timezone"`
+	SlackChannelIDs []string `json:"slackChannelIds"`
+	TeamsWebhookIDs []string `json:"teamsWebhookIds"`
+	EmailRecipients []string `json:"emailRecipients"`
+	Enabled         bool     `json:"enabled"`
+}
+
+// ReportNotification is a stored delivery schedule for one cost report.
+type ReportNotification struct {
+	ID              string   `json:"id"`
+	CostReportID    string   `json:"costReportId"`
+	Cadence         string   `json:"cadence"`
+	SendDay         int64    `json:"sendDay"`
+	SendDayOfMonth  int64    `json:"sendDayOfMonth"`
+	Hour            int64    `json:"hour"`
+	Timezone        string   `json:"timezone"`
+	SlackChannelIDs []string `json:"slackChannelIds"`
+	TeamsWebhookIDs []string `json:"teamsWebhookIds"`
+	EmailRecipients []string `json:"emailRecipients"`
+	Enabled         bool     `json:"enabled"`
+	NextSendAt      *string  `json:"nextSendAt"`
+	LastSentAt      *string  `json:"lastSentAt"`
+	LastStatus      *string  `json:"lastStatus"`
+	LastError       *string  `json:"lastError"`
+	CreatedByUserID *string  `json:"createdByUserId"`
+	CreatedAt       string   `json:"createdAt"`
+	UpdatedAt       string   `json:"updatedAt"`
+}
+
+/* ------------------------------ cost settings ------------------------------ */
+
+// CostAnomalySettings is the org singleton tuning spike detection. Every field
+// is required on PUT, so none of them is a pointer.
+type CostAnomalySettings struct {
+	Sigmas            float64 `json:"sigmas"`
+	MinDeltaCents     int64   `json:"minDeltaCents"`
+	NewSourceMinCents int64   `json:"newSourceMinCents"`
+	SMSAlerts         string  `json:"smsAlerts"`
+
+	// SMSConfigured is derived and returned on GET only; the PUT schema is
+	// strict, so it must never be sent back. Its json tag has omitempty and the
+	// input path builds a fresh struct rather than echoing this one.
+	SMSConfigured *bool `json:"smsConfigured,omitempty"`
+}
+
+// CostEfficiencySettings is the org singleton tuning the three efficiency
+// alerts: a commitment approaching its term end, a commitment sitting idle, and
+// cost per business-metric unit regressing.
+type CostEfficiencySettings struct {
+	CommitmentExpiryEnabled        bool    `json:"commitmentExpiryEnabled"`
+	CommitmentExpiryHorizonDays    []int64 `json:"commitmentExpiryHorizonDays"`
+	CommitmentExpiryAlertOnExpired bool    `json:"commitmentExpiryAlertOnExpired"`
+	CommitmentIdleEnabled          bool    `json:"commitmentIdleEnabled"`
+	CommitmentIdleThresholdPercent int64   `json:"commitmentIdleThresholdPercent"`
+	CommitmentIdleWindowDays       int64   `json:"commitmentIdleWindowDays"`
+	CommitmentIdleMinMeasuredDays  int64   `json:"commitmentIdleMinMeasuredDays"`
+	CommitmentIdleMinWasteCents    int64   `json:"commitmentIdleMinWasteCents"`
+	UnitCostRegressionEnabled      bool    `json:"unitCostRegressionEnabled"`
+	UnitCostThresholdPercent       int64   `json:"unitCostThresholdPercent"`
+	UnitCostWindowDays             int64   `json:"unitCostWindowDays"`
+	UnitCostMinReportedDays        int64   `json:"unitCostMinReportedDays"`
+	UnitCostMinSpendCents          int64   `json:"unitCostMinSpendCents"`
+}
+
+/* --------------------------------- currency -------------------------------- */
+
+// CurrencySettings is the PUT body for the org's display currency. The pointer
+// has no omitempty: null is how conversion is turned off, and an absent key
+// would be a different request.
+type CurrencySettings struct {
+	DisplayCurrency *string `json:"displayCurrency"`
+}
+
+// CurrencyConfig is what GET /currency returns — the display currency plus the
+// whole stated rate table.
+type CurrencyConfig struct {
+	DisplayCurrency *string        `json:"displayCurrency"`
+	Rates           []ExchangeRate `json:"rates"`
+}
+
+// ExchangeRateInput is the upsert body. The route is keyed on
+// (fromCurrency, toCurrency, effectiveFrom): restating a rate for a day it
+// already covers replaces it rather than adding a second one.
+type ExchangeRateInput struct {
+	FromCurrency  string `json:"fromCurrency"`
+	ToCurrency    string `json:"toCurrency"`
+	Rate          string `json:"rate"`
+	EffectiveFrom string `json:"effectiveFrom"`
+}
+
+// ExchangeRate is one stated rate.
+//
+// Rate is a decimal string rather than a number on purpose: the column is
+// numeric(20, 10) and a float64 could not promise the digits finance used
+// survive the round trip.
+type ExchangeRate struct {
+	ID            string  `json:"id"`
+	FromCurrency  string  `json:"fromCurrency"`
+	ToCurrency    string  `json:"toCurrency"`
+	Rate          string  `json:"rate"`
+	EffectiveFrom string  `json:"effectiveFrom"`
+	CreatedBy     *string `json:"createdBy"`
+	CreatedAt     string  `json:"createdAt"`
+	UpdatedAt     string  `json:"updatedAt"`
+}
+
 /* --------------------------- read-only reference --------------------------- */
 
 // Account is a connected cloud account. No credential material is returned by

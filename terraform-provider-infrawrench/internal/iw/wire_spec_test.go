@@ -90,7 +90,168 @@ func specChecks() []specCheck {
 		{schema: "CostExportInput", value: CostExportInput{}},
 		{schema: "CostExportQuery", value: CostExportQuery{}},
 
+		// Scenario models and billing rules were absent from the checked-in spec
+		// until the 1.9.0 regeneration; they are covered here now, which is what
+		// TestKnownAbsentSchemasAreStillAbsent existed to prompt.
+		{schema: "CostScenarioModel", value: CostScenarioModel{}},
+		{schema: "CostScenarioModelInput", value: CostScenarioModelInput{}},
+		{schema: "CostScenarioAdjustment", value: CostScenarioAdjustment{}},
+		{schema: "CostScenarioScopeTerm", value: CostFilter{}},
+
+		{schema: "BillingRule", value: BillingRule{}},
+		{schema: "BillingRuleInput", value: BillingRuleInput{}},
+		{schema: "BillingRuleMatch", value: BillingRuleMatch{}},
+		{schema: "BillingRuleAdjustment", value: BillingRuleAdjustment{}},
+
+		{schema: "BusinessMetricInput", value: BusinessMetricInput{}},
+		{schema: "BusinessMetricScopeTerm", value: CostFilter{}},
+		{schema: "BusinessMetricCoverage", value: BusinessMetricCoverage{}},
+		{schema: "BusinessMetric", value: BusinessMetric{}},
+
+		{schema: "CostAnnotation", value: CostAnnotation{}},
+		{schema: "CostAnnotationInput", value: CostAnnotationInput{}},
+
+		{schema: "ReportNotification", value: ReportNotification{}},
+		{schema: "ReportNotificationInput", value: ReportNotificationInput{}},
+
+		{schema: "CostAnomalySettings", value: CostAnomalySettings{}},
+		{schema: "CostEfficiencySettings", value: CostEfficiencySettings{}},
+
+		{schema: "CurrencyConfig", value: CurrencyConfig{}},
+		{schema: "CurrencySettings", value: CurrencySettings{}},
+		{schema: "ExchangeRate", value: ExchangeRate{}},
+		{schema: "ExchangeRateInput", value: ExchangeRateInput{}},
+
+		{schema: "SyntheticProbe", value: SyntheticProbe{}},
+		{schema: "SyntheticProbeCreate", value: SyntheticProbeCreate{}},
+		{schema: "SyntheticProbeUpdate", value: SyntheticProbeUpdate{}},
+
+		{schema: "MetricAlertRule", value: MetricAlertRule{}},
+		{schema: "MetricAlertRuleInput", value: MetricAlertRuleInput{}},
+		{schema: "MetricAlertRuleWithStatus", value: MetricAlertRule{}},
+
+		{schema: "StatusPage", value: StatusPage{}},
+		{schema: "StatusPageCreate", value: StatusPageInput{}},
+		{schema: "StatusPagePatch", value: StatusPageInput{}},
+		{schema: "StatusPageComponent", value: StatusPageComponent{}},
+		{schema: "StatusPageComponentInput", value: StatusPageComponentInput{}},
+
+		{schema: "SleepSchedule", value: SleepSchedule{}},
+		{schema: "SleepScheduleCreate", value: SleepScheduleCreate{}},
+		{schema: "SleepScheduleUpdate", value: SleepScheduleUpdate{}},
+
+		{schema: "ChangeFreeze", value: ChangeFreeze{}},
+		{schema: "ChangeFreezeInput", value: ChangeFreezeInput{}},
+
+		{schema: "CustomGraphFull", value: CustomGraph{}},
+		{schema: "CustomGraphInput", value: CustomGraphInput{}},
+		{schema: "CustomGraphUpdate", value: CustomGraphInput{}},
+
+		{schema: "LogWorkspaceQuery", value: LogWorkspaceQuery{}},
+		{schema: "LogWorkspaceQueryCreate", value: LogWorkspaceQueryInput{}},
+		{schema: "LogWorkspaceQueryUpdate", value: LogWorkspaceQueryInput{}},
+		{schema: "LogStreamSelector", value: LogStreamSelector{}},
+
+		{schema: "RoleSummary", value: Role{}},
+		{schema: "RoleCreateRequest", value: RoleInput{}},
+		{schema: "RoleUpdateRequest", value: RoleInput{}},
+
+		{
+			schema: "SshKey",
+			value:  SSHKey{},
+			// Who registered the key. Real information, but it is a property of
+			// a person rather than of the configuration, and a key imported into
+			// Terraform would show a diff every time it changed hands.
+			ignored: []string{"userId", "ownerEmail", "ownerName"},
+		},
+		{schema: "GenerateSshKeyRequest", value: GenerateSSHKeyRequest{}},
+		{schema: "ImportSshKeyRequest", value: ImportSSHKeyRequest{}},
+		{schema: "GeneratedSshKey", value: GeneratedSSHKey{}},
+		{schema: "ImportedSshKey", value: GeneratedSSHKey{}},
+
+		{schema: "Bastion", value: Bastion{}},
+		{schema: "CreateBastionRequest", value: CreateBastionRequest{}},
+		{schema: "CreateBastionResponse", value: CreatedBastion{}},
+
+		{schema: "ApiKey", value: APIKey{}},
+		{schema: "CreateApiKeyRequest", value: CreateAPIKeyRequest{}},
+		{schema: "CreatedApiKey", value: CreatedAPIKey{}},
+
+		{schema: "SshSnippet", value: SSHSnippet{}},
+		{schema: "SshSnippetInput", value: SSHSnippetInput{}},
+
+		{schema: "CreateAccountRequest", value: CreateAccountRequest{}},
+		{schema: "CreateAccountResponse", value: CreatedAccount{}},
+		{schema: "UpdateAccountRequest", value: UpdateAccountRequest{}},
+
+		{schema: "ManagedAccount", value: ManagedAccount{}},
+		{schema: "ManagedAccountInput", value: ManagedAccountInput{}},
+
+		{schema: "DeployTrigger", value: DeployTrigger{}},
+		{schema: "DeployTriggerInput", value: DeployTriggerInput{}},
+
+		{schema: "SlackStatus", value: SlackStatus{}},
+		{schema: "SlackInstallation", value: SlackInstallation{}},
+		{schema: "SlackChannel", value: SlackChannel{}},
+		{schema: "SlackChannelCreate", value: SlackChannelCreate{}},
+		{schema: "SlackChannelUpdate", value: SlackChannelUpdate{}},
+
+		{schema: "MsTeamsWebhook", value: MSTeamsWebhook{}},
+		{schema: "MsTeamsWebhookCreate", value: MSTeamsWebhookCreate{}},
+		{schema: "MsTeamsWebhookUpdate", value: MSTeamsWebhookUpdate{}},
+
+		{schema: "DigestSettings", value: DigestSettings{}},
+		{schema: "DigestSettingsUpdate", value: DigestSettingsUpdate{}},
+		{schema: "DigestEmailRecipient", value: DigestRecipient{}},
+		{schema: "DigestEmailRecipientCreate", value: DigestRecipientInput{}},
+
+		{
+			schema: "AlertRule",
+			value:  AlertRule{},
+			// The list's own index. Storing it in Terraform state as well as in
+			// the block order would record the same fact twice and invite the
+			// two to disagree.
+			ignored: []string{"position"},
+		},
+		{schema: "AlertRuleInput", value: AlertRuleInput{}},
+		{schema: "AlertRulesResponse", value: AlertRulesResponse{}},
+		{schema: "QuietHours", value: QuietHours{}},
+		{schema: "EscalationPolicy", value: EscalationPolicy{}},
+
+		{schema: "DriftAlertSettings", value: DriftAlertSettings{}},
+		{schema: "DriftAlertSettingsUpdate", value: DriftAlertSettingsUpdate{}},
+		{schema: "ExpiryAlertSettings", value: ExpiryAlertSettings{}},
+		{schema: "ExpiryAlertSettingsUpdate", value: ExpiryAlertSettingsUpdate{}},
+		{schema: "PostureAlertSettings", value: PostureAlertSettings{}},
+		{schema: "PostureAlertSettingsUpdate", value: PostureAlertSettingsUpdate{}},
+		{schema: "SessionRecordingSettings", value: SessionRecordingSettings{}},
+		{schema: "SessionRecordingSettingsUpdate", value: SessionRecordingSettingsUpdate{}},
+		{schema: "SessionRecordingUsage", value: SessionRecordingUsage{}},
+
+		{schema: "JiraIntegration", value: JiraIntegration{}},
+		{schema: "JiraIntegrationInput", value: JiraIntegrationInput{}},
+		{schema: "LinearIntegration", value: LinearIntegration{}},
+		{schema: "LinearIntegrationInput", value: LinearIntegrationInput{}},
+
+		{
+			schema: "WorkflowSchedule",
+			value:  WorkflowSchedule{},
+			// Recomputed from the clock at read time, so it would change on
+			// every refresh of a schedule nobody edited.
+			ignored: []string{"nextRuns"},
+		},
+		{schema: "WorkflowScheduleInput", value: WorkflowScheduleInput{}},
+
 		{schema: "Account", value: Account{}},
+		{
+			schema: "Resource",
+			value:  Resource{},
+			// Unbounded provider-shaped blobs. Putting them in state would write
+			// a resource's whole configuration — including anything sensitive in
+			// it — into every state file that lists resources.
+			ignored: []string{"fieldsJson", "outputsJson"},
+		},
+		{schema: "OrgMember", value: OrgMember{}},
 		{
 			schema: "PluginSummary",
 			value:  PluginSummary{},
@@ -108,15 +269,12 @@ func specChecks() []specCheck {
 // exist, but openapi.json has not been regenerated since they landed. They are
 // listed here so the gap is visible rather than merely absent, and so that
 // regenerating the spec makes this test start covering them.
-var schemasKnownAbsent = []string{
-	"CostScenarioModel",
-	"CostScenarioModelInput",
-	"CostScenarioAdjustment",
-	"BillingRule",
-	"BillingRuleInput",
-	"BillingRuleMatch",
-	"BillingRuleAdjustment",
-}
+//
+// It is empty as of the 1.9.0 regeneration, which brought scenario models and
+// billing rules into the document. Keeping the list and its test rather than
+// deleting them is deliberate: the next object added ahead of a spec refresh
+// goes here, and the test then says out loud when the refresh catches up.
+var schemasKnownAbsent = []string{}
 
 func loadSpecSchemas(t *testing.T) map[string]map[string]any {
 	t.Helper()
@@ -229,6 +387,10 @@ func TestKnownAbsentSchemasAreStillAbsent(t *testing.T) {
 		t.Fatalf("these schemas are now in the OpenAPI document: %s\n"+
 			"Move them from schemasKnownAbsent into specChecks so their wire structs are checked.",
 			strings.Join(appeared, ", "))
+	}
+	if len(schemasKnownAbsent) == 0 {
+		t.Log("every schema this provider manages is described by openapi.json")
+		return
 	}
 	t.Logf("%d schemas this provider manages are still missing from openapi.json: %s",
 		len(schemasKnownAbsent), strings.Join(schemasKnownAbsent, ", "))

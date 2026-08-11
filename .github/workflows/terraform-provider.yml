@@ -1,0 +1,74 @@
+name: Terraform provider
+
+# The provider is a standalone Go module outside the pnpm workspace, so nothing
+# in Test.yml reaches it. This is its whole CI.
+#
+# The two path lists are duplicated because GitHub Actions does not support YAML
+# anchors in workflow files. Keep them in step.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "terraform-provider-infrawrench/**"
+      - ".github/workflows/terraform-provider.yml"
+      # The wire drift test reads the checked-in spec and fails when a schema
+      # property is neither decoded nor excused. A spec regeneration that adds a
+      # property is therefore a change that can break this module without
+      # touching a single file in it — which is exactly the case the test exists
+      # to catch, and exactly the case a folder-only filter would let through.
+      - "app/packages/web/openapi.json"
+  pull_request:
+    branches: [main]
+    paths:
+      - "terraform-provider-infrawrench/**"
+      - ".github/workflows/terraform-provider.yml"
+      - "app/packages/web/openapi.json"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Build, vet and test
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: terraform-provider-infrawrench
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          # The single source of truth for the toolchain, so a `go` directive
+          # bump does not need a second edit here.
+          go-version-file: terraform-provider-infrawrench/go.mod
+          cache-dependency-path: terraform-provider-infrawrench/go.sum
+
+      # gofmt first: it is the cheapest check and the one most likely to fail,
+      # and `gofmt -l` exits 0 whatever it finds, so the file list has to be
+      # turned into the failure itself.
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt'd:"
+            echo "$unformatted"
+            echo
+            echo "Run: cd terraform-provider-infrawrench && gofmt -w ."
+            exit 1
+          fi
+
+      - name: go build
+        run: go build ./...
+
+      - name: go vet
+        run: go vet ./...
+
+      # Acceptance tests are skipped without TF_ACC, which is deliberate: they
+      # create and destroy real objects in a real organization. `-count=1`
+      # defeats Go's test cache so a green run always means the tests actually
+      # ran against this commit.
+      - name: go test
+        run: go test ./... -count=1
