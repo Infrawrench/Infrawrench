@@ -140,7 +140,11 @@ function DeployCostImpact({ runId }: { runId: string }) {
   const impact = useQuery({
     queryKey: ["deploy-cost-impact", orgId, runId],
     queryFn: () => fetchDeploymentCostImpact(api, orgId, runId),
-    retry: false,
+    // Takes the app-wide `retry` from `_layout.tsx`, like the change feed's
+    // impact queries: a transient blip should heal rather than needing the row
+    // collapsed and re-opened. A failure here is already *visible* below
+    // ("Cost impact unavailable for this run"), which is the rule that matters
+    // — it is never mistaken for a finding that the deploy cost nothing.
   });
 
   if (impact.isLoading) {

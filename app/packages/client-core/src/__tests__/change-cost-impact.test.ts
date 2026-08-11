@@ -4,6 +4,7 @@ import {
   changeCostImpactAnnotationText,
   chunkChangeImpactIds,
   clampChangeImpactWindowDays,
+  collectChangeImpactResults,
   costBasisLabel,
   MAX_CHANGE_IMPACT_BATCH,
   formatChangeCostImpact,
@@ -164,6 +165,79 @@ describe("chunkChangeImpactIds", () => {
 
   it("issues nothing for an empty feed", () => {
     expect(chunkChangeImpactIds([])).toEqual([]);
+  });
+});
+
+describe("collectChangeImpactResults", () => {
+  const entry = (changeId: string) => ({
+    changeId,
+    resourceId: `res-${changeId}`,
+    impact: measured(),
+  });
+
+  it("marks a failed chunk's rows unresolved instead of leaving them blank", () => {
+    // The regression: a failed lookup used to render exactly like a successful
+    // one that found nothing. Blank already means "no measurable impact" on
+    // this surface, so a transient network error silently became a confident,
+    // wrong claim about the bill — on a row that otherwise looks fine.
+    const chunks = [
+      ["a", "b"],
+      ["c", "d"],
+    ];
+    const { impacts, unresolved } = collectChangeImpactResults(chunks, [
+      { data: [entry("a"), entry("b")], isError: false },
+      { data: undefined, isError: true },
+    ]);
+    expect(Object.keys(impacts).sort()).toEqual(["a", "b"]);
+    expect([...unresolved].sort()).toEqual(["c", "d"]);
+  });
+
+  it("clears the unresolved rows once the endpoint recovers", () => {
+    // Derived from current results rather than accumulated, so recovery needs
+    // no latch to clear and a stale failure cannot outlive it.
+    const chunks = [["c", "d"]];
+    const failed = collectChangeImpactResults(chunks, [{ data: undefined, isError: true }]);
+    expect([...failed.unresolved].sort()).toEqual(["c", "d"]);
+
+    const recovered = collectChangeImpactResults(chunks, [
+      { data: [entry("c"), entry("d")], isError: false },
+    ]);
+    expect(recovered.unresolved.size).toBe(0);
+    expect(Object.keys(recovered.impacts).sort()).toEqual(["c", "d"]);
+  });
+
+  it("leaves a chunk still in flight blank rather than calling it unresolved", () => {
+    // Loading is not failure: a spinner-less blank for a moment is right, an
+    // "unavailable" that turns into a number a second later is not.
+    const { impacts, unresolved } = collectChangeImpactResults(
+      [["a"]],
+      [{ data: undefined, isError: false }],
+    );
+    expect(impacts).toEqual({});
+    expect(unresolved.size).toBe(0);
+  });
+
+  it("keeps rows that did answer when their chunk errors on a later refetch", () => {
+    // react-query reports `data` and `isError` together on a failed background
+    // refetch. Those rows have a real answer; only the ones with nothing don't.
+    const { impacts, unresolved } = collectChangeImpactResults(
+      [["a", "b"]],
+      [{ data: [entry("a")], isError: true }],
+    );
+    expect(Object.keys(impacts)).toEqual(["a"]);
+    expect([...unresolved]).toEqual(["b"]);
+  });
+
+  it("does not confuse a measurable-but-unknown impact with a failed lookup", () => {
+    // "We looked and cannot say" is an answer and stays blank; "we could not
+    // look" is not, and says so. Collapsing the two is the whole bug.
+    const unknown = measured({ status: "unknown", series: [], reasons: ["no_cost_data"] });
+    const { impacts, unresolved } = collectChangeImpactResults(
+      [["a"]],
+      [{ data: [{ changeId: "a", resourceId: "res-a", impact: unknown }], isError: false }],
+    );
+    expect(impacts["a"]?.status).toBe("unknown");
+    expect(unresolved.size).toBe(0);
   });
 });
 

@@ -225,6 +225,58 @@ export function chunkChangeImpactIds(ids: readonly string[]): string[][] {
   return chunks;
 }
 
+/** One batched lookup's outcome, in the shape any query library reports it. */
+export interface ChangeImpactChunkResult {
+  data?: ChangeCostImpactEntry[] | undefined;
+  isError: boolean;
+}
+
+/**
+ * What a paged caller knows about its rows right now: which have an impact, and
+ * which asked and did not get an answer.
+ */
+export interface ChangeImpactLookup {
+  impacts: Record<string, ChangeCostImpact>;
+  /**
+   * Ids whose batch **failed**. These must render as unresolved, never blank.
+   *
+   * Blank already means something on this surface — "no measurable impact" —
+   * so a failed lookup that renders blank converts a transient network error
+   * into a confident, wrong claim about the bill. That is the same silent
+   * omission {@link chunkChangeImpactIds} exists to prevent, one layer down,
+   * and it is worse here because it is invisible on a row that looks fine.
+   */
+  unresolved: Set<string>;
+}
+
+/**
+ * Fold per-chunk results back into a per-id view.
+ *
+ * Derived from the **current** results every time rather than accumulated, so a
+ * chunk that fails and is then refetched successfully stops being unresolved on
+ * its own — no latch to clear, and no way for a stale failure to outlive the
+ * recovery.
+ */
+export function collectChangeImpactResults(
+  chunks: ReadonlyArray<readonly string[]>,
+  results: readonly ChangeImpactChunkResult[],
+): ChangeImpactLookup {
+  const impacts: Record<string, ChangeCostImpact> = {};
+  const unresolved = new Set<string>();
+
+  chunks.forEach((chunkIds, index) => {
+    const result = results[index];
+    if (!result) return;
+    for (const row of result.data ?? []) impacts[row.changeId] = row.impact;
+    if (!result.isError) return;
+    // Data can be present *and* stale-erroring on a refetch; those rows still
+    // have a real answer, so only the ones with nothing are unresolved.
+    for (const id of chunkIds) if (!impacts[id]) unresolved.add(id);
+  });
+
+  return { impacts, unresolved };
+}
+
 /**
  * Validate a wire `costBasis`. Absent means `cash`, the documented default;
  * anything else present is `null` so the caller can 400 rather than silently
