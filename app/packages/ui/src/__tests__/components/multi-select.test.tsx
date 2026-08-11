@@ -105,6 +105,39 @@ describe("MultiSelect", () => {
     expect(onChange).toHaveBeenCalledWith(["cr-storage"]);
   });
 
+  it("jumps to the first and last option with Home and End", () => {
+    const onChange = vi.fn();
+    render(<MultiSelect options={options} value={[]} onChange={onChange} label="Services" />);
+    open();
+    const search = screen.getByRole("combobox");
+    fireEvent.keyDown(search, { key: "End" });
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith(["vat-uk"]);
+
+    onChange.mockClear();
+    fireEvent.keyDown(search, { key: "Home" });
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith(["cr-basic"]);
+  });
+
+  // A listbox may only contain options (or groups). Status copy left inside it
+  // is announced as a selectable value, so it lives in a sibling live region.
+  it("keeps status copy out of the listbox", () => {
+    render(
+      <MultiSelect
+        options={[]}
+        value={[]}
+        onChange={() => {}}
+        label="Services"
+        status={{ kind: "empty", message: "No values in cost data yet" }}
+      />,
+    );
+    open();
+    const listbox = screen.getByRole("listbox");
+    expect(listbox).toBeEmptyDOMElement();
+    expect(screen.getByRole("status")).toHaveTextContent("No values in cost data yet");
+  });
+
   it("removes the last chip on Backspace with an empty query", () => {
     const onChange = vi.fn();
     render(

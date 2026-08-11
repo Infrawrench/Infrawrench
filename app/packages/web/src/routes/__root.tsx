@@ -333,6 +333,15 @@ function AuthenticatedShell() {
       onTunnelSshAttach={(t, h) => void handleTunnelSshAttach(t, h)}
     >
       <div className="flex flex-col h-screen bg-surface text-on-surface">
+        {/* First tab stop on every page: without it a keyboard user walks the
+            whole tab strip and sidebar again after each navigation. Mirrors
+            desktop's `__root.tsx`. */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:px-3 focus:py-1.5 focus:rounded focus:bg-surface-overlay focus:text-on-surface focus:border focus:border-border-strong focus:shadow-lg"
+        >
+          Skip to content
+        </a>
         <GlobalTabBar
           tabs={workspaceTabs}
           activeTabId={activeWorkspaceTabId}
@@ -344,7 +353,7 @@ function AuthenticatedShell() {
         {orgId && <ProviderIncidentShellBanner orgId={orgId} />}
         <div className="flex flex-1 overflow-hidden">
           <WebSidebar orgId={orgId} />
-          <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <main id="main-content" className="flex-1 flex flex-col min-w-0 overflow-hidden">
             {/* Tabs are rendered via WorkspaceTabsViewport: every open tab
                 stays mounted so SSH sessions / xterm scrollback / websocket
                 subscriptions survive tab switches. <Outlet/> still renders

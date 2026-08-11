@@ -238,33 +238,36 @@ export function ChildResourceTable({
                 return (
                   <tr
                     key={child.id}
-                    onClick={rowClickable ? () => handleRowClick(child) : undefined}
-                    onKeyDown={
-                      rowClickable
-                        ? (e) => {
-                            // Only activate for keys on the row itself, not on
-                            // the Delete button (whose keydown bubbles up here).
-                            if (e.target !== e.currentTarget) return;
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              handleRowClick(child);
-                            }
-                          }
-                        : undefined
-                    }
-                    tabIndex={rowClickable ? 0 : undefined}
                     className={`border-b border-border last:border-0 ${
-                      rowClickable ? "cursor-pointer hover:bg-surface-overlay/40" : ""
+                      rowClickable ? "hover:bg-surface-overlay/40" : ""
                     }`}
                   >
-                    {spec.columns.map((col) => (
+                    {spec.columns.map((col, colIndex) => (
                       <td
                         key={col.key}
                         className={`px-3 py-2 align-middle ${
                           FIXED_FORMATS.has(col.format ?? "") ? "whitespace-nowrap" : ""
                         }`}
                       >
-                        <CellContent col={col} child={child} />
+                        {/* The first cell carries the row's action as a real
+                            <button>: a <tr> can take tabIndex but has no role a
+                            screen reader announces as activatable, and a
+                            whole-row click target means every sibling action
+                            (Delete) has to stopPropagation to escape it. The
+                            aria-label names the row even when column one
+                            renders a badge rather than the name. */}
+                        {colIndex === 0 && rowClickable ? (
+                          <button
+                            type="button"
+                            onClick={() => handleRowClick(child)}
+                            aria-label={`${editMode ? "Edit" : "Open"} ${child.displayName}`}
+                            className="block w-full cursor-pointer text-left hover:underline"
+                          >
+                            <CellContent col={col} child={child} />
+                          </button>
+                        ) : (
+                          <CellContent col={col} child={child} />
+                        )}
                       </td>
                     ))}
                     {canDelete && (
@@ -272,10 +275,7 @@ export function ChildResourceTable({
                         <button
                           type="button"
                           disabled={deleting === child.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void handleDelete(child);
-                          }}
+                          onClick={() => void handleDelete(child)}
                           className="text-xs text-on-surface-faint hover:text-red-400 transition-colors disabled:opacity-50"
                           title="Delete"
                         >

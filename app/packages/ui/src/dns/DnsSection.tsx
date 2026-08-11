@@ -150,24 +150,24 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                         {data.zones.map((zone) => (
                           <tr
                             key={zone.resourceId}
-                            className={`border-b border-border last:border-b-0 ${
-                              onOpenZone ? "cursor-pointer hover:bg-surface-raised" : ""
-                            }`}
-                            onClick={onOpenZone ? () => onOpenZone(zone) : undefined}
-                            onKeyDown={
-                              onOpenZone
-                                ? (e) => {
-                                    if (e.key === "Enter" || e.key === " ") {
-                                      e.preventDefault();
-                                      onOpenZone(zone);
-                                    }
-                                  }
-                                : undefined
-                            }
-                            tabIndex={onOpenZone ? 0 : undefined}
+                            className="border-b border-border last:border-b-0 hover:bg-surface-raised"
                           >
                             <td className="px-4 py-2.5 align-top font-medium text-on-surface">
-                              {zone.domain}
+                              {/* The zone name is the navigation control, not the
+                                  row: a <tr> can be given tabIndex but never a
+                                  role a screen reader announces as activatable,
+                                  so the name carries the button. */}
+                              {onOpenZone ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenZone(zone)}
+                                  className="cursor-pointer text-left font-medium text-on-surface hover:underline"
+                                >
+                                  {zone.domain}
+                                </button>
+                              ) : (
+                                zone.domain
+                              )}
                               {zone.isPrivate && (
                                 <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-[11px] font-normal text-on-surface-faint">
                                   Private
@@ -245,21 +245,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                       {records.map((record) => (
                         <tr
                           key={record.resourceId}
-                          className={`border-b border-border last:border-b-0 ${
-                            onOpenRecord ? "cursor-pointer hover:bg-surface-raised" : ""
-                          }`}
-                          onClick={onOpenRecord ? () => onOpenRecord(record) : undefined}
-                          onKeyDown={
-                            onOpenRecord
-                              ? (e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    onOpenRecord(record);
-                                  }
-                                }
-                              : undefined
-                          }
-                          tabIndex={onOpenRecord ? 0 : undefined}
+                          className="border-b border-border last:border-b-0 hover:bg-surface-raised"
                         >
                           <td className="px-4 py-2.5 whitespace-nowrap align-top">
                             <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
@@ -267,7 +253,17 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                             </span>
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap align-top font-medium text-on-surface">
-                            {record.name}
+                            {onOpenRecord ? (
+                              <button
+                                type="button"
+                                onClick={() => onOpenRecord(record)}
+                                className="cursor-pointer text-left font-medium text-on-surface hover:underline"
+                              >
+                                {record.name}
+                              </button>
+                            ) : (
+                              record.name
+                            )}
                             {record.proxied && (
                               <span className="ml-2 rounded-full bg-orange-500/10 px-2 py-0.5 text-[11px] font-normal text-orange-400">
                                 Proxied

@@ -23,7 +23,7 @@ Every finding lands in a severity bucket: **critical**, **high**, **medium** or 
 
 ## The Posture screen
 
-Web, desktop and mobile all get a **Posture** screen: severity totals up top, then the findings grouped by severity, category or account, each row naming the resource, the check that matched, and the plugin's reason. Click through to the resource itself to fix it.
+Web, desktop and mobile all get a **Posture** screen: severity totals up top, then the findings grouped by severity, category or account, each row naming the resource, the check that matched, and the plugin's reason. The resource name is a button — activate it (mouse or keyboard) to open the resource itself and fix it.
 
 <insert [Web Posture screen showing the severity summary chips (critical / high / medium / low counts) and findings grouped by severity, with a publicly accessible Redshift cluster at the top marked critical] here>
 

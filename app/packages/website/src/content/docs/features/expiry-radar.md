@@ -19,7 +19,7 @@ Every item lands in a severity bucket: **expired**, **critical** (within 7 days)
 
 ## The Expiring screen
 
-Web, desktop and mobile all get an **Expiring** screen: severity totals up top, then the feed grouped by kind (TLS certificates, domains, API tokens, secret versions, …), by account, or by severity, each row naming the resource, what exactly expires, and how long is left. Click through to the resource itself to renew, rotate or delete it.
+Web, desktop and mobile all get an **Expiring** screen: severity totals up top, then the feed grouped by kind (TLS certificates, domains, API tokens, secret versions, …), by account, or by severity, each row naming the resource, what exactly expires, and how long is left. The resource name is a button — activate it (mouse or keyboard) to open the resource itself and renew, rotate or delete it.
 
 <insert [Web Expiring screen showing the severity summary (expired / 7d / 30d / lead-time counts) and the feed grouped by kind, with a TLS certificate at "in 5d" marked critical] here>
 

@@ -40,7 +40,6 @@ function OwnerCell({ owner }: { owner: ResourceOwnerAnnotation | null }) {
           href={owner.ticketUrl}
           target="_blank"
           rel="noreferrer noopener"
-          onClick={(e) => e.stopPropagation()}
           className="text-xs text-on-surface-tertiary underline hover:text-on-surface"
         >
           {formatTicketRef(owner.ticketUrl)}
@@ -169,24 +168,23 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                 {group.resources.map((r) => (
                   <tr
                     key={r.id}
-                    className={`border-b border-border last:border-b-0 ${
-                      onOpenResource ? "cursor-pointer hover:bg-surface-raised" : ""
-                    }`}
-                    onClick={onOpenResource ? () => onOpenResource(r, group.accountId) : undefined}
-                    onKeyDown={
-                      onOpenResource
-                        ? (e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              onOpenResource(r, group.accountId);
-                            }
-                          }
-                        : undefined
-                    }
-                    tabIndex={onOpenResource ? 0 : undefined}
+                    className="border-b border-border last:border-b-0 hover:bg-surface-raised"
                   >
                     <td className="px-4 py-2.5 whitespace-nowrap font-medium text-on-surface">
-                      {r.displayName}
+                      {/* The name is the navigation control, not the row — a
+                          <tr> has no role a screen reader announces as
+                          activatable. */}
+                      {onOpenResource ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenResource(r, group.accountId)}
+                          className="cursor-pointer text-left font-medium text-on-surface hover:underline"
+                        >
+                          {r.displayName}
+                        </button>
+                      ) : (
+                        r.displayName
+                      )}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
@@ -213,13 +211,7 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                         )}
                       </td>
                     )}
-                    {/* Stop propagation: the row itself opens the resource, and
-                        filing an issue is a different intent entirely. */}
-                    <td
-                      className="px-3 py-2.5 whitespace-nowrap text-right"
-                      onClick={(e) => e.stopPropagation()}
-                      onKeyDown={(e) => e.stopPropagation()}
-                    >
+                    <td className="px-3 py-2.5 whitespace-nowrap text-right">
                       <FileIssueButton
                         sourceKind="orphan"
                         sourceId={r.id}

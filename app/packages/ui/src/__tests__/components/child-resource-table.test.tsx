@@ -93,6 +93,31 @@ describe("ChildResourceTable", () => {
     );
   });
 
+  // The row's action is a real <button> in the first cell rather than a
+  // handler on the <tr>: a table row can take tabIndex but has no role a
+  // screen reader announces as activatable, and the aria-label names the row
+  // even when column one renders a badge instead of the name.
+  it("exposes the row action as a named button", () => {
+    const rows = [child({ id: "r1", displayName: "r1", fields: { type: "A" } })];
+    render(<ChildResourceTable spec={spec} group={group(rows)} onRowClick={() => {}} />);
+    expect(screen.getByRole("button", { name: "Open r1" })).toBeInTheDocument();
+  });
+
+  it("names the row action for its verb in edit mode", () => {
+    const editSpec = { ...spec, onRowClick: "edit" } as ChildTableSchema;
+    const rows = [child({ id: "r1", displayName: "r1", fields: { type: "A" } })];
+    render(
+      <ChildResourceTable
+        spec={editSpec}
+        group={group(rows, {
+          fields: [{ key: "type", label: "Type", kind: "string", required: false }],
+        })}
+        onEdit={async () => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Edit r1" })).toBeInTheDocument();
+  });
+
   it("does not make rows clickable when onRowClick is none", () => {
     const onRowClick = vi.fn();
     const noneSpec = { ...spec, onRowClick: "none" } as ChildTableSchema;

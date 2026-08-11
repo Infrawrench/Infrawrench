@@ -1,4 +1,4 @@
-import { useMemo, useState, type KeyboardEvent } from "react";
+import { useMemo, useState } from "react";
 import {
   POSTURE_CATEGORY_LABELS,
   POSTURE_SEVERITIES,
@@ -103,18 +103,32 @@ function formatDismissedAt(iso: string): string {
 }
 
 /**
- * Enter/Space on a row opens its resource — but only when the row itself has
- * focus. The Dismiss and Restore buttons live inside the row and bring their
- * own activation; without the target guard the row would swallow their key
- * presses (and `preventDefault` them), leaving both actions mouse-only.
+ * The resource name doubles as the row's "open" control. A `<tr>` can be given
+ * `tabIndex`, but there is no row role a screen reader announces as
+ * activatable — and a whole-row click target has to be un-done with
+ * `stopPropagation` on every sibling action (Dismiss, Restore, File issue).
+ * One real `<button>` in the first cell is both the accessible answer and the
+ * simpler one.
  */
-function rowKeyHandler(open: () => void) {
-  return (e: KeyboardEvent<HTMLTableRowElement>) => {
-    if (e.target !== e.currentTarget) return;
-    if (e.key !== "Enter" && e.key !== " ") return;
-    e.preventDefault();
-    open();
-  };
+function OpenResourceName({
+  finding,
+  onOpenResource,
+  className,
+}: {
+  finding: PostureFinding;
+  onOpenResource?: ((finding: PostureFinding) => void) | undefined;
+  className: string;
+}) {
+  if (!onOpenResource) return <>{finding.displayName}</>;
+  return (
+    <button
+      type="button"
+      onClick={() => onOpenResource(finding)}
+      className={`cursor-pointer text-left font-medium hover:underline ${className}`}
+    >
+      {finding.displayName}
+    </button>
+  );
 }
 
 /** The severity tally, plus a dismissed count so "clean" reads differently from "silenced". */
@@ -170,18 +184,14 @@ function ActiveFindingRow({
   onConfirm,
   onCancel,
 }: ActiveFindingRowProps) {
-  const open = onOpenResource ? () => onOpenResource(finding) : undefined;
   return (
-    <tr
-      className={`border-b border-border last:border-b-0 ${
-        open ? "cursor-pointer hover:bg-surface-raised" : ""
-      }`}
-      onClick={open}
-      onKeyDown={open ? rowKeyHandler(open) : undefined}
-      tabIndex={open ? 0 : undefined}
-    >
+    <tr className="border-b border-border last:border-b-0 hover:bg-surface-raised">
       <td className="px-4 py-2.5 whitespace-nowrap align-top font-medium text-on-surface">
-        {finding.displayName}
+        <OpenResourceName
+          finding={finding}
+          onOpenResource={onOpenResource}
+          className="text-on-surface"
+        />
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap align-top">
         <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
@@ -198,13 +208,7 @@ function ActiveFindingRow({
         {/* The reason box lives inside the row's own cell so opening it never
             reflows the table. */}
         {editing && (
-          <span
-            className="mt-2 flex flex-wrap items-center gap-2"
-            // The row is a click target; typing in the box must not open the
-            // resource.
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          >
+          <span className="mt-2 flex flex-wrap items-center gap-2">
             <input
               type="text"
               autoFocus
@@ -245,22 +249,14 @@ function ActiveFindingRow({
           <button
             type="button"
             disabled={pending}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleReason();
-            }}
+            onClick={onToggleReason}
             className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-50"
           >
             Dismiss
           </button>
         </td>
       )}
-      {/* Stop propagation: the row opens the resource, and filing is a different intent. */}
-      <td
-        className="px-3 py-2.5 whitespace-nowrap align-top text-right"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-      >
+      <td className="px-3 py-2.5 whitespace-nowrap align-top text-right">
         <FileIssueButton
           sourceKind="posture_finding"
           // A posture finding has no id of its own — it is the pairing of a
@@ -300,18 +296,14 @@ function DismissedFindingRow({
   /** Omitted, the row is listed but not undoable. */
   onRestore?: (() => void) | undefined;
 }) {
-  const open = onOpenResource ? () => onOpenResource(finding) : undefined;
   return (
-    <tr
-      className={`border-b border-border last:border-b-0 ${
-        open ? "cursor-pointer hover:bg-surface-raised" : ""
-      }`}
-      onClick={open}
-      onKeyDown={open ? rowKeyHandler(open) : undefined}
-      tabIndex={open ? 0 : undefined}
-    >
+    <tr className="border-b border-border last:border-b-0 hover:bg-surface-raised">
       <td className="px-4 py-2.5 whitespace-nowrap align-top font-medium text-on-surface-secondary">
-        {finding.displayName}
+        <OpenResourceName
+          finding={finding}
+          onOpenResource={onOpenResource}
+          className="text-on-surface-secondary"
+        />
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-on-surface-tertiary">
         {finding.pluginName}
@@ -335,10 +327,7 @@ function DismissedFindingRow({
           <button
             type="button"
             disabled={pending}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRestore();
-            }}
+            onClick={onRestore}
             className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-50"
           >
             {pending ? "Restoring…" : "Restore"}

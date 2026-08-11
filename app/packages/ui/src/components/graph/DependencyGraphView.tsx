@@ -332,6 +332,11 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
                     ? `${node.displayName} (${node.resourceTypeLabel}), ${groupSize} identical resources`
                     : `${node.displayName} (${node.resourceTypeLabel})`
                 }
+                // theme.css's global :focus-visible outline is invisible here:
+                // Firefox and Safari do not paint CSS `outline` on SVG
+                // elements, so a keyboard user tabbing the graph would land on
+                // an unmarked node. The ring below is drawn in SVG instead.
+                className="group/node focus:outline-none"
                 style={{ cursor: "pointer" }}
                 opacity={inBlast ? 1 : 0.35}
                 onClick={(e) => {
@@ -393,6 +398,21 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
                         : "var(--color-border-strong)"
                   }
                   strokeWidth={isSelected ? 2 : 1}
+                />
+                {/* Focus ring, painted as SVG rather than a CSS outline so it
+                    shows in every browser. Hidden until the group takes
+                    keyboard focus. */}
+                <rect
+                  x={-3}
+                  y={-3}
+                  width={NODE_WIDTH + 6}
+                  height={NODE_HEIGHT + 6}
+                  rx={11}
+                  fill="none"
+                  stroke="var(--color-accent)"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                  className="opacity-0 group-focus-visible/node:opacity-100"
                 />
                 <foreignObject x={10} y={(NODE_HEIGHT - 18) / 2} width={18} height={18}>
                   <div

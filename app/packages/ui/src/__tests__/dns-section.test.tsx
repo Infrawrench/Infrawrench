@@ -149,4 +149,26 @@ describe("DnsSection", () => {
     fireEvent.click(screen.getByText("www.example.com"));
     expect(onOpenRecord).toHaveBeenCalledWith(expect.objectContaining({ resourceId: "r1" }));
   });
+
+  // A <tr> can be given tabIndex but has no role a screen reader announces as
+  // activatable, so navigation lives on a real button in the name cell — which
+  // is what makes both listings keyboard-operable at all.
+  it("carries record and zone navigation on real buttons, not the row", () => {
+    render(<DnsSection data={inventory()} onOpenRecord={() => {}} onOpenZone={() => {}} />);
+    expect(screen.getByRole("button", { name: "www.example.com" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "example.com" })).toBeInTheDocument();
+  });
+
+  it("opens the zone from its name button", () => {
+    const onOpenZone = vi.fn();
+    render(<DnsSection data={inventory()} onOpenZone={onOpenZone} />);
+    fireEvent.click(screen.getByRole("button", { name: "example.com" }));
+    expect(onOpenZone).toHaveBeenCalledWith(expect.objectContaining({ resourceId: "z1" }));
+  });
+
+  it("leaves names as plain text when the host offers no navigation", () => {
+    render(<DnsSection data={inventory()} />);
+    expect(screen.queryByRole("button", { name: "www.example.com" })).toBeNull();
+    expect(screen.getByText("www.example.com")).toBeInTheDocument();
+  });
 });

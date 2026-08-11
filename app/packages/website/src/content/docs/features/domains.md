@@ -25,7 +25,7 @@ Open **Domains** from the sidebar on web or desktop, or run `infrawrench dns`.
 | **External**      | The target points somewhere we have no declaration for: a third-party SaaS, someone else's nameserver, an IP you never synced. Not a finding. |
 | **Not analysed**  | The record type carries no host target we reason about (TXT, MX, SOA, CAA, SRV). Listed, never judged.                                        |
 
-Clicking any row opens the underlying resource, which is where the edit or delete actually happens.
+The zone domain and the record name are buttons: activating one opens the underlying resource, which is where the edit or delete actually happens. They are ordinary tab stops, so the table is navigable from the keyboard alone.
 
 <insert [Domains screen showing the zones roll-up above the records table, with one record marked Dangling and its explanation visible] here>
 

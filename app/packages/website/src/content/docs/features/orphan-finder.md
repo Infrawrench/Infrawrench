@@ -16,7 +16,7 @@ Flagged resources are grouped by account, each row showing the resource, its typ
 
 <insert [Costs page scrolled to the Potential savings section, showing flagged resources grouped by account — each row with resource name, type badge, reason string, and a 30-day cost figure on the right] here>
 
-Click any row to jump to the resource's detail page, where you can confirm it really is unused and delete it in place.
+Each resource name is a button — activate it to jump to that resource's detail page, where you can confirm it really is unused and delete it in place. It is an ordinary tab stop, so you can reach every flagged resource from the keyboard.
 
 The **mobile app** has the same section at the bottom of its **Costs** tab, grouped by account the same way, and tapping a row opens that resource. It reads your organization's synced resources, so it needs you signed in — there is no local mode on a phone.
 
