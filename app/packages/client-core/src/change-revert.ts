@@ -258,6 +258,46 @@ export function buildRevertPatch(plan: RevertPlan): Record<string, string> {
   return patch;
 }
 
+/**
+ * Whether the most likely explanation for this plan is "an earlier attempt of
+ * *this* revert wrote, and never got to record it".
+ *
+ * This is the reconciliation half of the claim lifecycle. A revert that reaches
+ * the provider and then fails to write `reverted_at` — the database blinked,
+ * the process died — leaves the resource reverted and the event marked
+ * un-reverted. The retry sees every field already back at its old value, has
+ * nothing to write, and would otherwise release the claim and walk away,
+ * leaving the feed permanently disagreeing with the world.
+ *
+ * The hard part is that "already back at its old value" has an innocent
+ * explanation too: somebody put it back by hand, or with Terraform, and never
+ * asked Infrawrench to revert anything. Recording *that* as a revert would
+ * attribute a change to a person who did not make it.
+ *
+ * The two are told apart by `hadInterruptedAttempt` — whether the change row
+ * still carried a claim when this attempt took it over. A claim outlives only
+ * one thing: a holder that never reached either of its exits (both
+ * `completeRevert` and `releaseRevert` clear it). So a stale claim means "an
+ * attempt was in flight and never recorded an outcome", which is exactly and
+ * only the state in which an unrecorded write is possible. No stale claim means
+ * nobody was mid-revert, and fields that moved back moved back by other means.
+ *
+ * The rest of the predicate is deliberately conservative: nothing left to write
+ * (no `revertible`), nothing ambiguous (no `conflict` — a field that moved on
+ * again is not evidence of anything), and at least one field that actually did
+ * move back. `not-writable` and `provider-derived` entries are ignored because
+ * a revert would never have written them in the first place.
+ */
+export function revertLooksAlreadyApplied(
+  plan: RevertPlan,
+  hadInterruptedAttempt: boolean,
+): boolean {
+  if (!hadInterruptedAttempt) return false;
+  if (plan.fields.length === 0) return false;
+  if (plan.fields.some((f) => f.status === "revertible" || f.status === "conflict")) return false;
+  return plan.fields.some((f) => f.status === "already-reverted");
+}
+
 /* ------------------------------------------------------------------ *
  * Wire shapes
  * ------------------------------------------------------------------ */
@@ -283,12 +323,37 @@ export interface RevertPreviewResponse {
 export interface RevertApplyResponse {
   changeId: string;
   resourceId: string;
-  /** The fields written, in plan order. */
+  /** The fields written, in plan order. Empty on a reconciliation. */
   appliedFields: string[];
   /** The plan as recomputed against the live read that the write raced. */
   plan: RevertPlan;
   revertedAt: string;
+  /**
+   * True when this request wrote nothing and instead recorded an *earlier*
+   * interrupted attempt's write (see `revertLooksAlreadyApplied`). The event is
+   * now marked reverted and the resource was already back; nothing was sent to
+   * the provider by this request.
+   */
+  reconciled?: boolean;
 }
+
+/**
+ * What an attempt did, as recorded in its `resource.change_revert` audit entry.
+ *
+ * The four values are the four ways an attempt that got as far as mattering can
+ * end, and they exist so a reader of the audit log can tell them apart:
+ *
+ * - `recorded` — wrote to the provider and recorded it. The ordinary success.
+ * - `superseded` — wrote to the provider, but its lease had lapsed and another
+ *   attempt owned the event by the time it finished. The write is real; the
+ *   recorded outcome belongs to the other attempt.
+ * - `unrecorded` — wrote to the provider, and could not record it at all. The
+ *   resource moved and the feed does not yet know; a later attempt reconciles.
+ * - `reconciled` — wrote nothing, and recorded an earlier attempt's write. The
+ *   only outcome that involves no provider call, which is why it is not simply
+ *   folded into `recorded`.
+ */
+export type RevertAuditOutcome = "recorded" | "superseded" | "unrecorded" | "reconciled";
 
 /** 409 body when another revert of the same event already claimed it. */
 export const REVERT_CONFLICT_CODE = "change_revert_conflict";

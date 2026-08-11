@@ -99,6 +99,8 @@ An event only counts as reverted once the provider has accepted the write. If a 
 
 Very occasionally a provider is slow enough that a revert outlives that five-minute hold and someone else's retry picks the event up first. When that happens the slow request tells you so explicitly, listing the fields it did write, rather than quietly reporting success — both attempts are putting back the same recorded values, so the resource ends up correct either way, but the message is worth reading before you retry again.
 
+If the revert reaches the provider but Infrawrench then fails to record it, you get an explicit error saying the resource **has** been put back and the timeline hasn't caught up. Retry it: the retry sees the fields are already back, records the revert without touching the provider again, and the event picks up its **reverted** label. That reconciliation only happens for a revert that was actually interrupted — a resource you put back by hand is never claimed as somebody's revert.
+
 ### Guardrails
 
 - Reverting needs the **Resources: write** permission — the same one editing a resource needs.

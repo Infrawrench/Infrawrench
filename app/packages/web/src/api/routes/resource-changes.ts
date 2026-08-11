@@ -7,7 +7,12 @@ import {
   type DriftAlertSettings,
   type DriftAlertSettingsPatch,
 } from "@infrawrench/server-core/drift/settings";
-import { buildRevertPatch, REVERT_CONFLICT_CODE } from "@infrawrench/client-core";
+import {
+  buildRevertPatch,
+  revertLooksAlreadyApplied,
+  REVERT_CONFLICT_CODE,
+  type RevertAuditOutcome,
+} from "@infrawrench/client-core";
 import { db } from "../../db/client";
 import { resourceChanges, accounts } from "../../db/schema";
 import { requirePermission } from "../../auth/permissions";
@@ -276,6 +281,42 @@ app.get("/:changeId/revert", async (c) => {
  * 5. record completion, releasing the claim on any failure so the attempt is
  *    retryable at once rather than at lease expiry.
  *
+ * ## Every way an attempt can end
+ *
+ * The claim, the provider write and the completion each have their own failure
+ * mode, so the terminal states are worth writing down rather than reasoning
+ * about one at a time. `claim` below is the row's `revert_claimed_at` /
+ * `revert_claim_owner` pair.
+ *
+ * | # | Provider write | Recorded | Response | Row afterwards | Recovers by |
+ * |---|---|---|---|---|---|
+ * | 1 | not reached (404/409/423, claim lost) | — | 404/409/423 | untouched | n/a |
+ * | 2 | not reached (plan failed, no client) | — | 502/404 | claim released | retry |
+ * | 3 | not reached (nothing writable) | — | 409 | claim released | n/a — correct |
+ * | 4 | not reached (already applied earlier) | yes, as `reconciled` | 200 | reverted | n/a |
+ * | 5 | threw | — | 400 | claim released | retry |
+ * | 6 | ok | yes | 200 | reverted | n/a |
+ * | 7 | ok | no — superseded | 409 | replacement's claim | the replacement |
+ * | 8 | ok | no — DB threw | 500 | **claim deliberately kept** | lease expiry → row 4 |
+ * | 9 | ok | never attempted (process died) | — | claim expires | lease expiry → row 4 |
+ *
+ * Rows 4, 8 and 9 are one loop and the reason this handler is not simply
+ * "write, then record". A write that lands and is not recorded leaves the feed
+ * disagreeing with the provider *permanently* — the retry finds nothing to do
+ * and, before this, released the claim and walked away. So a retry that finds
+ * every field already back, on an event whose claim was still lying around,
+ * completes it instead: `revertLooksAlreadyApplied` in client-core carries that
+ * judgement and explains how it avoids mistaking a hand-edit for a revert.
+ *
+ * Row 8 is why the claim is *not* released when the completion throws. The
+ * stale claim is the only evidence that a write may have gone unrecorded, so
+ * dropping it there would destroy exactly what row 4 reads. The cost is that
+ * such an attempt is not retryable until the lease expires; that is a database
+ * outage, and five minutes is an acceptable price for not losing the trail.
+ *
+ * Every row that reached the provider is audit-logged whatever happened next —
+ * see {@link auditOutcome}.
+ *
  * The stored `resources` snapshot is deliberately left alone (unlike
  * `POST /api/resources/update`), so the next poll sees the difference and
  * records the revert as an ordinary change event.
@@ -327,8 +368,74 @@ app.post("/:changeId/revert", async (c) => {
     return revertFailureResponse(c, result.failure);
   }
   const { plan, client } = result.result;
+
+  /**
+   * One `resource.change_revert` entry per attempt that did something worth
+   * recording, tagged with which of the four endings it was.
+   *
+   * **Awaited, against the repo's convention.** 168 of the 181 `logAudit` call
+   * sites in this package are fire-and-forget `void`, and rightly so: almost
+   * all of them record a change to Infrawrench's own database, which either
+   * committed in the same request or did not happen at all. This one records an
+   * irreversible mutation to somebody else's cloud infrastructure, and the
+   * process ending between the provider accepting it and the insert landing
+   * would leave that mutation with no actor against it. Awaiting costs one
+   * insert on a route that has just made a provider round-trip. (It narrows
+   * rather than closes: a process that dies during the provider call itself is
+   * unattributable no matter what we do here — there is no transaction that
+   * spans us and the provider.)
+   */
+  const auditOutcome = async (outcome: RevertAuditOutcome, fieldKeys: string[]) => {
+    await logAudit({
+      organizationId,
+      userId,
+      action: "resource.change_revert",
+      entityType: "resource",
+      entityId: change.resourceId,
+      metadata: {
+        changeId: change.id,
+        pluginId: change.pluginId,
+        resourceTypeId: change.resourceTypeId,
+        // Keys only, like `resource.update` — a reverted value can be anything
+        // the plugin declared, and the audit table is not the place for it.
+        fieldKeys,
+        changeRecordedAt: change.createdAt.toISOString(),
+        outcome,
+      },
+    });
+  };
+
   const patch = buildRevertPatch(plan);
   if (Object.keys(patch).length === 0) {
+    // Row 4 of the lifecycle table. Nothing to write — but if an earlier
+    // attempt's claim was still lying on this row when we took it over, and
+    // every field is now back at its old value, then that attempt wrote and
+    // never got to say so. Recording it here is what stops the feed disagreeing
+    // with the provider forever. `revertLooksAlreadyApplied` is what keeps this
+    // from also firing on a resource somebody put back by hand.
+    if (revertLooksAlreadyApplied(plan, change.revertClaimedAt !== null)) {
+      const reconciledAt = new Date();
+      let recorded = false;
+      try {
+        recorded = await completeRevert(organizationId, change.id, owner, reconciledAt);
+      } catch (err) {
+        console.error("[change-revert] Failed to record a reconciled revert:", err);
+      }
+      if (recorded) {
+        // No provider call was made by this request, and the audit entry says
+        // so — `reconciled` is not folded into `recorded` precisely so nobody
+        // reads this as "this user resized the machine".
+        await auditOutcome("reconciled", []);
+        return c.json({
+          changeId: change.id,
+          resourceId: change.resourceId,
+          appliedFields: [],
+          plan,
+          revertedAt: reconciledAt.toISOString(),
+          reconciled: true,
+        });
+      }
+    }
     await releaseRevert(organizationId, change.id, owner);
     return c.json(
       {
@@ -356,40 +463,41 @@ app.post("/:changeId/revert", async (c) => {
     return c.json({ error: message }, 400);
   }
 
-  // Only now is the event reverted. Until this commits the row carries a lease,
-  // not a verdict — so a crash anywhere above leaves something retryable.
+  // The write landed. From here every exit audits, because the mutation is now
+  // a fact about somebody's infrastructure regardless of what the database does
+  // next — losing a lease race, or losing the database, is not a reason for the
+  // actor to vanish from the record.
   const revertedAt = new Date();
-  const completed = await completeRevert(organizationId, change.id, owner, revertedAt);
+  let completed: boolean;
+  try {
+    completed = await completeRevert(organizationId, change.id, owner, revertedAt);
+  } catch (err) {
+    // Row 8. The provider moved and we cannot say so. The claim is deliberately
+    // *not* released: it is the only evidence that a write may have gone
+    // unrecorded, and the retry after lease expiry reads it to reconcile (row
+    // 4). Releasing here would trade a five-minute wait for a permanent
+    // disagreement between the feed and the provider.
+    console.error("[change-revert] Provider write landed but could not be recorded:", err);
+    await auditOutcome("unrecorded", plan.revertibleFields);
+    return c.json(
+      {
+        error:
+          "The revert was applied to the provider, but recording it against this change failed. " +
+          "The resource has been put back; the timeline will catch up when the revert is retried.",
+        appliedFields: plan.revertibleFields,
+      },
+      500,
+    );
+  }
 
-  // Audited on the strength of the write having happened, not on the strength
-  // of having kept the claim — and therefore *before* the superseded branch
-  // below returns. Losing a lease race is not a reason for the actor behind a
-  // real mutation to someone's infrastructure to vanish from the record.
-  //
   // One entry per attempt that wrote, never two per attempt: `outcome` is what
   // keeps a superseded pair from reading as two independent reverts. A
   // `superseded` entry means "this actor's write reached the provider, but
   // another attempt owns the event's recorded state" — and the attempt that
   // took over logs its own `recorded` entry only if it, too, wrote something
   // (if this write got there first, its re-read plans `already-reverted` for
-  // every field, so it writes nothing and logs nothing).
-  void logAudit({
-    organizationId,
-    userId,
-    action: "resource.change_revert",
-    entityType: "resource",
-    entityId: change.resourceId,
-    metadata: {
-      changeId: change.id,
-      pluginId: change.pluginId,
-      resourceTypeId: change.resourceTypeId,
-      // Keys only, like `resource.update` — a reverted value can be anything
-      // the plugin declared, and the audit table is not the place for it.
-      fieldKeys: plan.revertibleFields,
-      changeRecordedAt: change.createdAt.toISOString(),
-      outcome: completed ? "recorded" : "superseded",
-    },
-  });
+  // every field, so it writes nothing and reconciles instead).
+  await auditOutcome(completed ? "recorded" : "superseded", plan.revertibleFields);
 
   if (!completed) {
     // This request outlived its lease and another attempt took the event over

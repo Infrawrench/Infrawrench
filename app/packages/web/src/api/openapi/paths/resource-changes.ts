@@ -154,9 +154,20 @@ const RevertPreviewResponse = strict({
 const RevertApplyResponse = strict({
   changeId: Uuid,
   resourceId: ResourceId,
-  appliedFields: z.array(z.string()).openapi({ description: "The fields written, in plan order." }),
+  appliedFields: z.array(z.string()).openapi({
+    description: "The fields written, in plan order. Empty on a reconciliation.",
+  }),
   plan: RevertPlan,
   revertedAt: IsoDateTime,
+  reconciled: z
+    .boolean()
+    .optional()
+    .openapi({
+      description:
+        "True when this request wrote nothing and instead recorded an *earlier* interrupted " +
+        "attempt's write — the resource was already back, and the event is now marked reverted. " +
+        "Nothing was sent to the provider by this request.",
+    }),
 }).openapi("RevertApplyResponse");
 
 export function registerResourceChangePaths(ctx: BuildContext) {
@@ -341,12 +352,20 @@ export function registerResourceChangePaths(ctx: BuildContext) {
       "so the caller can reconcile rather than assume. Two attempts can overlap in that case, but " +
       "they cannot disagree: both invert the same recorded event to the same values, so the second " +
       "one's patch is a subset of the first's.\n\n" +
+      "If a write reaches the provider but recording it fails, the response is `500` with " +
+      "`appliedFields` — the resource moved and the timeline has not caught up. The claim is " +
+      "deliberately held in that case, and the next attempt after the lease expires finds every " +
+      "field already back and records the revert without touching the provider again, answering " +
+      "`200` with `reconciled: true` and an empty `appliedFields`. A resource put back by hand is " +
+      "not mistaken for this: reconciliation only happens on an event whose claim was still " +
+      "outstanding, which is the only state in which an unrecorded write is possible.\n\n" +
       "Blocked with `423` while an org change freeze is in effect. Every attempt whose write " +
       "reached the provider is audit-logged as `resource.change_revert`, including one that lost " +
-      "its claim — the entry's `outcome` is `recorded` or `superseded`, so a superseded pair reads " +
-      "as one mutation with a contested outcome rather than as two reverts. An attempt that wrote " +
-      "nothing logs nothing. The stored resource snapshot is deliberately left untouched, so the " +
-      "next poll observes the reverted state and records it as an ordinary change event.",
+      "its claim or could not record — the entry's `outcome` is `recorded`, `superseded`, " +
+      "`unrecorded` or `reconciled`, so a contested outcome reads as one mutation rather than as " +
+      "several reverts. An attempt that neither wrote nor recorded anything logs nothing. The " +
+      "stored resource snapshot is deliberately left untouched, so the next poll observes the " +
+      "reverted state and records it as an ordinary change event.",
     request: { params: ChangeIdParam },
     responses: {
       200: {
@@ -364,6 +383,13 @@ export function registerResourceChangePaths(ctx: BuildContext) {
         content: { "application/json": { schema: ErrorResponse } },
       },
       423: FreezeLockedResponse,
+      500: {
+        description:
+          "The provider accepted the write but it could not be recorded against the event. The " +
+          "resource *has* been put back; `appliedFields` names what changed. A later retry " +
+          "reconciles the timeline.",
+        content: { "application/json": { schema: ErrorResponse } },
+      },
       502: {
         description: "The provider couldn't be read. Nothing was written.",
         content: { "application/json": { schema: ErrorResponse } },

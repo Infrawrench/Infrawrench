@@ -3,8 +3,11 @@ import {
   buildRevertPatch,
   computeRevertPlan,
   localRevertRefusal,
+  revertLooksAlreadyApplied,
   revertValueAsText,
   type ComputeRevertPlanArgs,
+  type RevertFieldPlan,
+  type RevertPlan,
 } from "../change-revert";
 import type { ResourceFieldChange } from "../resource-changes";
 
@@ -220,6 +223,55 @@ describe("computeRevertPlan — provider-derived outputs", () => {
     expect(plan.fields[0]?.current).toBeUndefined();
     expect(plan.revertibleFields).toEqual(["size"]);
     expect(buildRevertPatch(plan)).toEqual({ size: "small" });
+  });
+});
+
+describe("revertLooksAlreadyApplied", () => {
+  const planOf = (...statuses: Array<RevertFieldPlan["status"]>): RevertPlan => ({
+    fields: statuses.map((status, i) => ({
+      field: `f${i}`,
+      revertTo: "old",
+      changedTo: "new",
+      current: "old",
+      status,
+      reason: "",
+    })),
+    revertibleFields: [],
+    revertible: false,
+    blockedReason: null,
+  });
+
+  it("recognises an interrupted attempt whose write landed", () => {
+    expect(revertLooksAlreadyApplied(planOf("already-reverted"), true)).toBe(true);
+    expect(revertLooksAlreadyApplied(planOf("already-reverted", "provider-derived"), true)).toBe(
+      true,
+    );
+    // Fields a revert would never have written don't spoil the reading.
+    expect(revertLooksAlreadyApplied(planOf("already-reverted", "not-writable"), true)).toBe(true);
+  });
+
+  /**
+   * The distinction that keeps this from attributing somebody's hand-edit to
+   * whoever next opens the dialog. No stale claim means nobody was mid-revert.
+   */
+  it("does not mistake a hand-reverted resource for an interrupted attempt", () => {
+    expect(revertLooksAlreadyApplied(planOf("already-reverted"), false)).toBe(false);
+    expect(revertLooksAlreadyApplied(planOf("already-reverted", "not-writable"), false)).toBe(
+      false,
+    );
+  });
+
+  it("refuses when anything is still writable or ambiguous", () => {
+    // Something left to do — this is an ordinary revert, not a reconciliation.
+    expect(revertLooksAlreadyApplied(planOf("already-reverted", "revertible"), true)).toBe(false);
+    // A field that moved on again is evidence of nothing.
+    expect(revertLooksAlreadyApplied(planOf("already-reverted", "conflict"), true)).toBe(false);
+  });
+
+  it("refuses when nothing actually moved back", () => {
+    expect(revertLooksAlreadyApplied(planOf("not-writable"), true)).toBe(false);
+    expect(revertLooksAlreadyApplied(planOf("provider-derived"), true)).toBe(false);
+    expect(revertLooksAlreadyApplied(planOf(), true)).toBe(false);
   });
 });
 

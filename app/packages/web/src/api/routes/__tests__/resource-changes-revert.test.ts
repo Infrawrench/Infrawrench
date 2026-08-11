@@ -81,12 +81,24 @@ function stubSelect(change = CHANGE) {
  * attempt having taken the event over while the provider call was in flight, so
  * the owner-fenced completion matches nothing.
  */
-function stubUpdate({ claimWins = true, completeWins = true } = {}) {
+function stubUpdate({ claimWins = true, completeWins = true, completeThrows = false } = {}) {
   const writes: Record<string, unknown>[] = [];
   mockUpdate.mockImplementation(() => ({
     set: (values: Record<string, unknown>) => {
       writes.push(values);
       const isCompletion = "revertedAt" in values;
+      if (isCompletion && completeThrows) {
+        return {
+          where: () => ({
+            returning: () => Promise.reject(new Error("deadlock detected")),
+            then: (_fn: unknown, rej?: (e: unknown) => unknown) =>
+              Promise.reject(new Error("deadlock detected")).catch((e: unknown) => {
+                if (rej) return rej(e);
+                throw e;
+              }),
+          }),
+        };
+      }
       const won = isCompletion ? completeWins : claimWins;
       const result = won ? [{ id: "chg-1" }] : [];
       return {
@@ -100,6 +112,10 @@ function stubUpdate({ claimWins = true, completeWins = true } = {}) {
   }));
   return writes;
 }
+
+/** Did any statement release the claim (clear it without recording a revert)? */
+const releasedClaim = (writes: Record<string, unknown>[]) =>
+  writes.some((w) => w.revertClaimedAt === null && !("revertedAt" in w));
 
 interface ClientOpts {
   liveSize?: string;
@@ -336,6 +352,99 @@ describe("POST /:changeId/revert — claim lifecycle", () => {
     const res = await app().request("/chg-1/revert", { method: "POST" });
     expect(res.status).toBe(409);
     expect(mockLogAudit).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Rows 4, 8 and 9 of the lifecycle table on the handler: a write that lands and
+ * is not recorded, and how the next attempt closes the loop. Without this the
+ * feed disagrees with the provider permanently — the retry finds nothing to do
+ * and walks away.
+ */
+describe("POST /:changeId/revert — a write that landed but was never recorded", () => {
+  it("keeps the claim when the completion write fails, and says the resource moved", async () => {
+    stubSelect();
+    const writes = stubUpdate({ completeThrows: true });
+    const { updateResource } = stubClient();
+
+    const res = await app().request("/chg-1/revert", { method: "POST" });
+    expect(updateResource).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { error: string; appliedFields: string[] };
+    expect(body.error).toMatch(/applied to the provider/);
+    expect(body.appliedFields).toEqual(["size"]);
+
+    // The stale claim is the only evidence a write went unrecorded; releasing
+    // it here would destroy exactly what the reconciling retry reads.
+    expect(releasedClaim(writes)).toBe(false);
+
+    // And the mutation is still attributed, database failure or not.
+    expect(mockLogAudit).toHaveBeenCalledTimes(1);
+    expect(mockLogAudit.mock.calls[0]![0]).toMatchObject({
+      userId: "user-1",
+      metadata: { outcome: "unrecorded", fieldKeys: ["size"] },
+    });
+  });
+
+  it("reconciles on the retry: records the revert it finds already applied", async () => {
+    // The retry's view: fields already back, and a claim left behind by the
+    // attempt that wrote them.
+    stubSelect({ ...CHANGE, revertClaimedAt: new Date("2026-08-10T09:05:00.000Z") });
+    stubUpdate();
+    const { updateResource } = stubClient({ liveSize: "s-1vcpu-1gb" });
+
+    const res = await app().request("/chg-1/revert", { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      reconciled: boolean;
+      appliedFields: string[];
+      revertedAt: string;
+    };
+    expect(body.reconciled).toBe(true);
+    expect(body.appliedFields).toEqual([]);
+    expect(body.revertedAt).toEqual(expect.any(String));
+
+    // Recorded without touching the provider a second time.
+    expect(updateResource).not.toHaveBeenCalled();
+    expect(mockLogAudit).toHaveBeenCalledTimes(1);
+    expect(mockLogAudit.mock.calls[0]![0]).toMatchObject({
+      userId: "user-1",
+      metadata: { outcome: "reconciled", fieldKeys: [] },
+    });
+  });
+
+  /**
+   * The other side of the same coin: without a claim left behind there is no
+   * evidence a revert was ever attempted, so a resource somebody put back by
+   * hand must not be recorded as this user's revert.
+   */
+  it("does not record a hand-reverted resource as a revert", async () => {
+    stubSelect({ ...CHANGE, revertClaimedAt: null });
+    const writes = stubUpdate();
+    const { updateResource } = stubClient({ liveSize: "s-1vcpu-1gb" });
+
+    const res = await app().request("/chg-1/revert", { method: "POST" });
+    expect(res.status).toBe(409);
+    expect(updateResource).not.toHaveBeenCalled();
+    expect(mockLogAudit).not.toHaveBeenCalled();
+    // Claim released, event still not marked reverted.
+    expect(releasedClaim(writes)).toBe(true);
+    expect(writes.some((w) => w.revertedAt instanceof Date)).toBe(false);
+  });
+
+  it("still reverts normally when the stale claim's attempt never wrote", async () => {
+    // Claim left behind, but the fields never moved — an attempt that died
+    // before writing. Nothing to reconcile; this is an ordinary revert.
+    stubSelect({ ...CHANGE, revertClaimedAt: new Date("2026-08-10T09:05:00.000Z") });
+    stubUpdate();
+    const { updateResource } = stubClient({ liveSize: "s-4vcpu-8gb" });
+
+    const res = await app().request("/chg-1/revert", { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(updateResource).toHaveBeenCalledTimes(1);
+    expect(mockLogAudit.mock.calls[0]![0]).toMatchObject({
+      metadata: { outcome: "recorded" },
+    });
   });
 
   it("refuses an event that already completed, without touching the provider", async () => {
