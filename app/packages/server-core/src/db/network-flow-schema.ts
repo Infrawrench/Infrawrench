@@ -77,6 +77,21 @@ export const accountNetworkFlowPolls = pgTable(
     /** Due time AND claim lease, the `accounts.next_poll_at` protocol. */
     nextPollAt: timestamp("next_poll_at"),
     /**
+     * Who holds the lease `next_poll_at` is counting down: a fresh identifier
+     * written by every claim, and null when nobody holds it.
+     *
+     * The one thing in this table that is not the account's state — it is the
+     * poller's, and it exists because the lease needs an **identity separate
+     * from the deadline it is renewing**. A renewal that matched on the
+     * deadline was comparing against a value it was itself in the business of
+     * changing, so a write that committed without answering left the holder
+     * unable to say whether the lease had moved under it or been taken from it.
+     * Matching on this instead, every write the holder makes is unambiguous:
+     * the token changes only when somebody else claims the account. See
+     * `network-flow/lease.ts`.
+     */
+    leaseOwner: text("lease_owner"),
+    /**
      * The last UTC day fully collected for this account. Null on an account the
      * pass has never run for, which is what makes the first run take the
      * org's `initialLookbackDays` window instead of a single day.

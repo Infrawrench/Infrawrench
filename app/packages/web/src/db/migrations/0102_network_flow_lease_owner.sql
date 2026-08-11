@@ -1,0 +1,1 @@
+ALTER TABLE "account_network_flow_polls" ADD COLUMN "lease_owner" text;

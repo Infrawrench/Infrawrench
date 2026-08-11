@@ -16,6 +16,8 @@ import {
   normalizeNetworkFlowResult,
   NetworkFlowSetupError,
   type NetworkFlowCapabilityDeclaration,
+  type NetworkFlowFetchResult,
+  type NetworkFlowRecord,
 } from "@infrawrench/plugin-base";
 import { and, eq } from "drizzle-orm";
 
@@ -26,6 +28,7 @@ import { loadAccountClient } from "../sync-resources";
 import { addDays, isoDay } from "../cost/dates";
 
 import { aggregateNetworkFlows, DEFAULT_MAX_PAIRS } from "./aggregate";
+import type { NetworkFlowLeaseGate } from "./lease";
 import { getNetworkFlowSettings } from "./settings";
 
 /**
@@ -53,11 +56,20 @@ export interface NetworkFlowCollectionResult {
 /**
  * Collect flows for one account. Throws on failure — the caller (the poller
  * pass) owns backoff and reschedule, exactly as `collectAccountCosts` does.
+ *
+ * `lease`, when supplied, is the claim that entitles this process to spend the
+ * customer's money. It is consulted immediately before each day's provider
+ * query rather than once at the start, *and* travels into the query itself, so
+ * that a day which outlives the entitlement it began under stops rather than
+ * finishing on somebody else's claim. See `./lease.ts`; the pass always
+ * supplies one, and callers that are not the pass (tests, one-off backfills)
+ * can leave it out and run unguarded because nothing else is competing for the
+ * account.
  */
 export async function collectAccountNetworkFlows(
   accountId: string,
   organizationId: string,
-  options: { now?: Date; maxPairs?: number } = {},
+  options: { now?: Date; maxPairs?: number; lease?: NetworkFlowLeaseGate } = {},
 ): Promise<NetworkFlowCollectionResult> {
   const settings = await getNetworkFlowSettings(organizationId);
   if (!settings.enabled) {
@@ -120,7 +132,64 @@ export async function collectAccountNetworkFlows(
   const maxPairs = Math.min(options.maxPairs ?? DEFAULT_MAX_PAIRS, capability.maxPairsPerDay);
 
   for (const day of days) {
-    const answer = normalizeNetworkFlowResult(await client.fetchNetworkFlows(accountId, { day }));
+    // The gate in front of the money. Every iteration of this loop is at least
+    // one provider query the customer is billed for, and `MAX_DAYS_PER_PASS`
+    // bounds how many of them there are but not how long they take — a day is a
+    // serial walk over every usable flow log on the account, each one a query
+    // with its own multi-minute timeout, so a single day can outlast the lease
+    // it was started under. Asking here means the lease is re-asserted against
+    // the database immediately before each spend, and answered against the last
+    // deadline the database actually acknowledged: a pass that is out of
+    // authorized time — its runtime budget spent, or its lease no longer
+    // confirmed far enough ahead — stops with its watermark intact and the rest
+    // of the backlog waits for the next pass, and a pass that has lost the
+    // lease outright throws rather than scanning days a second replica is
+    // already scanning.
+    if (options.lease && !(await options.lease.checkpoint())) {
+      console.log(
+        `[network-flow] account ${accountId}: out of authorized time after ` +
+          `${result.daysCollected} day(s), ${days.length - result.daysCollected} left for next time`,
+      );
+      break;
+    }
+
+    // And the gate that travels with the money: a day is not a bounded unit, so
+    // the entitlement is handed to the plugin rather than only checked before
+    // it. It is withdrawn if the lease is lost, or if the last deadline this
+    // process could confirm is about to pass — see `./lease.ts`.
+    let fetched: NetworkFlowRecord[] | NetworkFlowFetchResult;
+    try {
+      fetched = await client.fetchNetworkFlows(accountId, {
+        day,
+        ...(options.lease ? { signal: options.lease.signal } : {}),
+      });
+    } catch (e) {
+      // A day we cut short is not a failing account, so it must not be reported
+      // as one: no backoff, no `last_error`, nothing counted against it. The
+      // pass simply ends here.
+      if (!options.lease?.signal.aborted) throw e;
+      console.log(
+        `[network-flow] account ${accountId}: authorization withdrawn during ${day}, ` +
+          `stopping after ${result.daysCollected} complete day(s)`,
+      );
+      break;
+    }
+
+    // A plugin that swallowed the abort and answered anyway has answered from a
+    // partial scan, and a partial day recorded as collected is permanent: the
+    // watermark moves past it and this pass is forward-only, so the missing
+    // bytes are never asked for again. Dropping the answer costs whatever the
+    // interrupted scan cost; keeping it costs a number that is quietly wrong
+    // forever.
+    if (options.lease?.signal.aborted) {
+      console.warn(
+        `[network-flow] account ${accountId}: discarding ${day} — the plugin answered after ` +
+          `authorization was withdrawn, so the day is incomplete`,
+      );
+      break;
+    }
+
+    const answer = normalizeNetworkFlowResult(fetched);
     result.sources = answer.sources;
     if (answer.degraded) result.degraded = true;
     if (answer.queryBytesScanned) result.queryBytesScanned += answer.queryBytesScanned;

@@ -474,6 +474,11 @@ export interface PluginClient {
    * 3. **Never invent an endpoint.** A flow whose peer cannot be tied to a
    *    resource is `attribution: "unattributed"` with a class token for a ref.
    *    Not the nearest resource, not a raw IP, not dropped.
+   * 4. **Stop when `range.signal` aborts.** It is the host's authorization to
+   *    spend the customer's money and it can be withdrawn mid-day, because the
+   *    host's exclusive claim on the account can lapse mid-day. Start nothing
+   *    further, cancel what is running at the provider, and throw rather than
+   *    returning a short day. See {@link NetworkFlowFetchRange.signal}.
    *
    * Throw {@link NetworkFlowSetupError} when the account is missing the setup
    * this needs (no flow logs, an unreadable destination, a missing permission)

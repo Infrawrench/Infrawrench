@@ -266,3 +266,112 @@ describe("fetchAwsNetworkFlows — totals against pairs", () => {
     expect(sumBytes(result.totals!)).toBe(800);
   });
 });
+
+/*
+ * A day here is one or two Logs Insights scans per usable flow log, serially,
+ * and an account can have a hundred flow logs — so the host cannot know up
+ * front whether a day fits inside the claim it holds on the account. It hands
+ * over `signal` instead, and withdraws it when it can no longer prove the claim
+ * is still ours. What that has to buy is the customer's money: no further scan
+ * started, and the one already running stopped *at the provider*, since walking
+ * away from a query leaves it reading the log group and billing for it.
+ */
+describe("fetchAwsNetworkFlows — when the host withdraws authorization", () => {
+  const FORMAT =
+    "${version} ${srcaddr} ${dstaddr} ${bytes} ${packets} ${flow-direction} ${az-id} ${log-status}";
+
+  /** Two flow logs, so "stopped the day" can be told from "finished the day". */
+  function mockTwoGroupsNeverFinishing(onPoll: () => void) {
+    const commands: { name: string; input: Record<string, unknown> }[] = [];
+    getAwsClients.mockReturnValue({
+      ec2: {
+        send: async (command: { constructor: { name: string } }) => {
+          if (command.constructor.name === "DescribeFlowLogsCommand") {
+            return {
+              FlowLogs: ["fl-1", "fl-2"].map((id) => ({
+                FlowLogId: id,
+                ResourceId: `vpc-${id}`,
+                LogDestinationType: "cloud-watch-logs",
+                LogGroupName: `/aws/vpc/${id}`,
+                LogFormat: FORMAT,
+              })),
+            };
+          }
+          return { NetworkInterfaces: INTERFACES };
+        },
+      },
+      cloudWatchLogs: {
+        send: async (command: {
+          constructor: { name: string };
+          input: Record<string, unknown>;
+        }) => {
+          commands.push({ name: command.constructor.name, input: command.input });
+          switch (command.constructor.name) {
+            case "StartQueryCommand":
+              return { queryId: `query-${commands.length}` };
+            case "GetQueryResultsCommand":
+              onPoll();
+              // Still scanning, and still billing, for as long as anyone waits.
+              return { status: "Running" };
+            case "StopQueryCommand":
+              return { success: true };
+            default:
+              throw new Error(`unexpected Logs command ${command.constructor.name}`);
+          }
+        },
+      },
+    });
+    return commands;
+  }
+
+  it("stops the running query at the provider and abandons the rest of the day", async () => {
+    const withdraw = new AbortController();
+    // Withdrawn while the first query is in flight — the position a host in a
+    // database blackout reaches, and the one where the scan is already costing
+    // money.
+    const commands = mockTwoGroupsNeverFinishing(() =>
+      withdraw.abort(new Error("lease unconfirmed")),
+    );
+
+    await expect(fetchAwsNetworkFlows(creds, DAY, 500, withdraw.signal)).rejects.toThrow(
+      /authorization/i,
+    );
+
+    // The scan that was running is cancelled rather than merely dropped.
+    expect(commands.filter((c) => c.name === "StopQueryCommand")).toEqual([
+      { name: "StopQueryCommand", input: { queryId: "query-1" } },
+    ]);
+    // And nothing else was started: not the totals query for this log group,
+    // not either query for the second one.
+    expect(commands.filter((c) => c.name === "StartQueryCommand")).toHaveLength(1);
+  });
+
+  // The per-log-group `catch` exists so one bad flow log does not fail a day.
+  // A withdrawn authorization is not that: every remaining group would fail the
+  // same way at the cost of a round trip each, and — the part that matters —
+  // the day would come back looking whole, to be watermarked and never asked
+  // for again.
+  it("does not degrade the day and carry on to the next log group", async () => {
+    const withdraw = new AbortController();
+    const commands = mockTwoGroupsNeverFinishing(() =>
+      withdraw.abort(new Error("lease unconfirmed")),
+    );
+
+    await expect(fetchAwsNetworkFlows(creds, DAY, 500, withdraw.signal)).rejects.toThrow();
+
+    expect(commands.some((c) => c.input["logGroupName"] === "/aws/vpc/fl-2")).toBe(false);
+  });
+
+  it("spends nothing at all when it is handed a signal that has already fired", async () => {
+    const withdraw = new AbortController();
+    withdraw.abort(new Error("lease lost"));
+    mockTwoGroupsNeverFinishing(() => {});
+
+    await expect(fetchAwsNetworkFlows(creds, DAY, 500, withdraw.signal)).rejects.toThrow(
+      /authorization/i,
+    );
+
+    // Not even the discovery calls: no client was ever asked for.
+    expect(getAwsClients).not.toHaveBeenCalled();
+  });
+});

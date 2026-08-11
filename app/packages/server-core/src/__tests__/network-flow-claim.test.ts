@@ -1,24 +1,58 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const execute = vi.fn();
-vi.mock("../db/client", () => ({ db: { execute: (q: unknown) => execute(q) } }));
+const update = vi.fn();
+vi.mock("../db/client", () => ({
+  db: {
+    execute: (q: unknown) => execute(q),
+    update: (t: unknown) => update(t),
+  },
+}));
 // The pass imports the collector and the plugin registry at module load; the
-// claim needs neither, and loading them here would drag every plugin in.
-vi.mock("../plugin-loader", () => ({ loadPlugins: async () => [] }));
-vi.mock("../network-flow/collect", () => ({ collectAccountNetworkFlows: async () => ({}) }));
+// claim needs neither, and loading the real registry would drag every plugin
+// in. One flow-capable stub is enough for the pass-level tests below.
+vi.mock("../plugin-loader", () => ({
+  loadPlugins: async () => [{ plugin: { manifest: { id: "aws", networkFlows: {} } } }],
+}));
+const collect = vi.fn(async () => ({}));
+vi.mock("../network-flow/collect", () => ({
+  collectAccountNetworkFlows: (...args: unknown[]) =>
+    (collect as unknown as (...a: unknown[]) => unknown)(...args),
+}));
 
 // Capture the sql tag's inputs so tests can assert on — and execute — the raw
-// statement. Everything else in drizzle stays real, since the schema module
-// this pass imports is built out of it.
+// statement. `eq`/`and` become inspectable descriptors for the same reason: the
+// lease renewal is a compare-and-swap issued through the query builder, and the
+// fake below has to be able to read its predicate. Everything else in drizzle
+// stays real, since the schema module this pass imports is built out of it.
 vi.mock("drizzle-orm", async (importOriginal) => ({
   ...(await importOriginal<typeof import("drizzle-orm")>()),
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({
     strings: [...strings],
     values,
   }),
+  eq: (column: { name: string }, value: unknown) => ({
+    op: "eq" as const,
+    column: column.name,
+    value,
+  }),
+  and: (...conditions: unknown[]) => ({ op: "and" as const, conditions }),
 }));
 
-import { claimDueNetworkFlowAccounts, NETWORK_FLOW_LEASE_MS } from "../network-flow/pass";
+import {
+  NETWORK_FLOW_HEARTBEAT_MS,
+  NETWORK_FLOW_LEASE_RESERVE_MS,
+  NETWORK_FLOW_MIN_WORK_WINDOW_MS,
+  NetworkFlowLeaseLostError,
+  startNetworkFlowLease,
+  type NetworkFlowLeaseGate,
+} from "../network-flow/lease";
+import {
+  claimDueNetworkFlowAccounts,
+  NETWORK_FLOW_INTERVAL_MS,
+  NETWORK_FLOW_LEASE_MS,
+  runNetworkFlowPass,
+} from "../network-flow/pass";
 
 interface CapturedQuery {
   strings: string[];
@@ -60,22 +94,46 @@ function conflictPredicate(
   return (nextPollAt, now) => tests.some((t) => t(nextPollAt, now));
 }
 
+/** A mocked `eq`/`and`, as the fake update below reads them back. */
+type FakeCondition =
+  { op: "eq"; column: string; value: unknown } | { op: "and"; conditions: unknown[] };
+
+function conditionMatches(cond: unknown, row: Record<string, unknown>): boolean {
+  if (cond === undefined || cond === null) return true;
+  const c = cond as FakeCondition;
+  if (c.op === "and") return c.conditions.every((inner) => conditionMatches(inner, row));
+  const actual = row[c.column];
+  // Timestamps live in the fake as epoch ms; the query builder compares Dates.
+  if (c.value instanceof Date) return actual !== null && actual === c.value.getTime();
+  return actual === c.value;
+}
+
 /**
- * Just enough Postgres to run this claim, modelling the two behaviours the
- * exclusivity argument rests on:
+ * Just enough Postgres to run this claim and the lease renewal that keeps it
+ * alive, modelling the three behaviours the exclusivity argument rests on:
  *
  * - the `SELECT` half reads a **snapshot**, so every replica in a round sees
  *   the same accounts as due however many of them have already claimed;
  * - `ON CONFLICT DO UPDATE` re-checks its `WHERE` against the **latest**
- *   committed version of the conflicting row, under a lock.
+ *   committed version of the conflicting row, under a lock;
+ * - a renewal is a plain conditional `UPDATE`, so it touches nothing when the
+ *   owner token it names is no longer the one in the row.
  *
- * Nothing else about the statement is interpreted, so this can only ever prove
- * a claim non-exclusive for the reason a real deployment would.
+ * Nothing else about either statement is interpreted, so this can only ever
+ * prove a claim non-exclusive for the reason a real deployment would.
  */
 class FakePostgres {
   now = Date.parse("2026-08-11T12:00:00.000Z");
   /** account_id → next_poll_at (epoch ms), or null. Absent means no poll row. */
   rows = new Map<string, number | null>();
+  /**
+   * account_id → lease_owner. The row's other half, kept beside {@link rows}
+   * rather than folded into it so that the deadline — which is what due-ness
+   * and every reschedule are about — stays directly readable in the assertions.
+   */
+  owners = new Map<string, string | null>();
+  /** Distinct per claim, as `randomUUID` is in the real one. */
+  private claims = 0;
   /** Accounts the SELECT half finds, frozen for the whole round. */
   private snapshot: string[] = [];
 
@@ -91,6 +149,7 @@ class FakePostgres {
   execute = (q: CapturedQuery): Record<string, unknown>[] => {
     const text = q.strings.join("?");
     const predicate = conflictPredicate(text);
+    const owner = `lease-${(this.claims += 1)}`;
     const claimed: Record<string, unknown>[] = [];
     for (const id of this.snapshot) {
       if (this.rows.has(id)) {
@@ -99,15 +158,208 @@ class FakePostgres {
         if (predicate && !predicate(this.rows.get(id)!, this.now)) continue;
       }
       this.rows.set(id, this.now + NETWORK_FLOW_LEASE_MS);
-      claimed.push({ account_id: id, organization_id: "org-1", failure_count: 0 });
+      // Claiming an account replaces whatever identity it was held under, so
+      // the previous holder's renewals stop matching from here on.
+      this.owners.set(id, owner);
+      claimed.push({
+        account_id: id,
+        organization_id: "org-1",
+        failure_count: 0,
+        // The claim hands the winner the token it wrote; that value is what
+        // every later renewal and the terminal write are checked against.
+        lease_owner: owner,
+      });
     }
     return claimed;
+  };
+
+  /** `db.update(...).set(...).where(...)`, optionally `.returning(...)`. */
+  update = () => {
+    let values: Record<string, unknown> = {};
+    const run = (cond: unknown) => {
+      const updated: Record<string, unknown>[] = [];
+      for (const [id, next] of [...this.rows]) {
+        if (
+          !conditionMatches(cond, {
+            account_id: id,
+            organization_id: "org-1",
+            next_poll_at: next,
+            lease_owner: this.owners.get(id) ?? null,
+          })
+        )
+          continue;
+        const raw = values["nextPollAt"];
+        // A `sql` template in the SET is the renewal's server-side
+        // `now() + lease`; a Date is the pass's own reschedule.
+        const written =
+          raw instanceof Date
+            ? raw.getTime()
+            : raw && typeof raw === "object"
+              ? this.now + NETWORK_FLOW_LEASE_MS
+              : next;
+        this.rows.set(id, written);
+        // Only the pass's terminal writes name this column, and they name it to
+        // hand the lease back.
+        if ("leaseOwner" in values) this.owners.set(id, values["leaseOwner"] as string | null);
+        updated.push({ accountId: id });
+      }
+      return updated;
+    };
+    const builder = {
+      set: (v: Record<string, unknown>) => {
+        values = v;
+        return builder;
+      },
+      where: (cond: unknown) => ({
+        returning: () => Promise.resolve(run(cond)),
+        then: (onOk: (v: unknown) => unknown, onErr?: (e: unknown) => unknown) =>
+          Promise.resolve(run(cond)).then(onOk, onErr),
+      }),
+    };
+    return builder;
+  };
+}
+
+/** Point both halves of the mocked `db` at one fake. */
+function wire(pg: FakePostgres) {
+  execute.mockImplementation((q: CapturedQuery) => Promise.resolve(pg.execute(q)));
+  update.mockImplementation(() => pg.update());
+}
+
+/** Knobs for {@link wireWithRenewals}, and what it observed. */
+interface RenewalControl {
+  /**
+   * Writes the *pass* made. Renewals are excluded: they are the lease's own
+   * bookkeeping, whereas these are the reschedule and the failure record, which
+   * is exactly the difference the tests below are about.
+   */
+  passWrites: Record<string, unknown>[];
+  /** Fail this many renewals the way a dropped connection does. */
+  failRenewals: number;
+  /**
+   * Lose the *answer* to this many renewals, after the write has committed.
+   *
+   * The third outcome, and the one the holder cannot tell apart from the
+   * second: the `UPDATE` reached the row and took effect, and the connection
+   * died before the reply came back. The rejection the caller sees is
+   * byte-for-byte the one {@link failRenewals} produces; only the row differs.
+   */
+  dropAnswers: number;
+  /**
+   * Keep each renewal's promise pending for this long on the fake clock *after*
+   * it has already reached the row — which is how a real one behaves, since an
+   * `UPDATE` in flight cannot be recalled by the process that sent it.
+   */
+  renewalDelayMs: number;
+  /**
+   * Fail this many of the *pass's* own writes.
+   *
+   * A database that has stopped answering renewals has also stopped answering
+   * the reschedule, and that combination is the only way the lease genuinely
+   * lapses under a running collection — which is the situation the overlap
+   * question is actually about. Without it a test can only ever show the tidy
+   * ending, where the pass hands the account back before anyone else could have
+   * taken it.
+   */
+  failPassWrites: number;
+}
+
+/**
+ * {@link wire}, plus control over how a renewal fails or how long it takes.
+ *
+ * The renewal is the only write here whose `next_poll_at` is a server-side
+ * `sql` template — everything the pass writes is a JS `Date` — so the two are
+ * told apart the same way the fake itself tells them apart.
+ */
+function wireWithRenewals(pg: FakePostgres, control: Partial<RenewalControl> = {}): RenewalControl {
+  const state: RenewalControl = {
+    passWrites: [],
+    failRenewals: 0,
+    dropAnswers: 0,
+    renewalDelayMs: 0,
+    failPassWrites: 0,
+    ...control,
+  };
+  execute.mockImplementation((q: CapturedQuery) => Promise.resolve(pg.execute(q)));
+  update.mockImplementation(() => {
+    const inner = pg.update();
+    let renewal = false;
+    return {
+      set(values: Record<string, unknown>) {
+        renewal = Boolean(values["nextPollAt"]) && !(values["nextPollAt"] instanceof Date);
+        if (!renewal) state.passWrites.push(values);
+        inner.set(values);
+        return this;
+      },
+      where(cond: unknown) {
+        if (!renewal && state.failPassWrites > 0) {
+          state.failPassWrites -= 1;
+          const fail = () => Promise.reject(new Error("connection terminated unexpectedly"));
+          return {
+            returning: fail,
+            then: (ok: (v: unknown) => unknown, err?: (e: unknown) => unknown) =>
+              fail().then(ok, err),
+          };
+        }
+        if (renewal && state.failRenewals > 0) {
+          state.failRenewals -= 1;
+          // Rejected without reaching the row: the deadline in there is
+          // untouched, and still this holder's.
+          const fail = () => Promise.reject(new Error("connection terminated unexpectedly"));
+          return {
+            returning: fail,
+            then: (ok: (v: unknown) => unknown, err?: (e: unknown) => unknown) =>
+              fail().then(ok, err),
+          };
+        }
+        if (renewal && state.dropAnswers > 0) {
+          state.dropAnswers -= 1;
+          // Committed, and then the connection died. The row has moved; the
+          // holder is told only that its renewal did not come back.
+          const committed = inner.where(cond).returning();
+          const drop = () =>
+            committed.then(() => Promise.reject(new Error("connection terminated unexpectedly")));
+          return {
+            returning: drop,
+            then: (ok: (v: unknown) => unknown, err?: (e: unknown) => unknown) =>
+              drop().then(ok, err),
+          };
+        }
+        const applied = inner.where(cond).returning();
+        const settled =
+          renewal && state.renewalDelayMs > 0
+            ? new Promise<void>((resolve) => setTimeout(resolve, state.renewalDelayMs)).then(
+                () => applied,
+              )
+            : applied;
+        return {
+          returning: () => settled,
+          then: (ok: (v: unknown) => unknown, err?: (e: unknown) => unknown) =>
+            settled.then(ok, err),
+        };
+      },
+    };
+  });
+  return state;
+}
+
+/** A successful collection, as `collectAccountNetworkFlows` reports one. */
+function collected(daysCollected: number) {
+  return {
+    daysCollected,
+    rowsWritten: 0,
+    queryBytesScanned: 0,
+    droppedPairs: 0,
+    degraded: false,
+    sources: [],
   };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   execute.mockResolvedValue([]);
+  update.mockImplementation(() => new FakePostgres().update());
+  collect.mockResolvedValue({});
 });
 
 describe("claimDueNetworkFlowAccounts", () => {
@@ -210,8 +462,679 @@ describe("claimDueNetworkFlowAccounts", () => {
       pg.beginRound(["acct-1"]);
 
       await expect(claimDueNetworkFlowAccounts(2, ["aws"])).resolves.toEqual([
-        { accountId: "acct-1", organizationId: "org-1", failureCount: 0 },
+        {
+          accountId: "acct-1",
+          organizationId: "org-1",
+          failureCount: 0,
+          // A fresh identity, not the one the dead replica held.
+          leaseOwner: "lease-2",
+        },
+      ]);
+      expect(pg.owners.get("acct-1")).toBe("lease-2");
+      expect(pg.rows.get("acct-1")).toBe(pg.now + NETWORK_FLOW_LEASE_MS);
+    });
+  });
+
+  /*
+   * Regression: the claim was exclusive, and then quietly stopped being so.
+   *
+   * `NETWORK_FLOW_LEASE_MS` was a flat thirty minutes and nothing renewed it,
+   * while the work under it was three days per account, each day a serial walk
+   * over every usable flow log with its own multi-minute query timeout — hours,
+   * arithmetically. Half an hour in, the due-ness predicate above did exactly
+   * what it is written to do and handed the account to a second replica, which
+   * started the same Logs Insights scans of the same days. Those scans are
+   * billed to the *customer's* cloud account per gigabyte, so the overlap is a
+   * duplicate charge on somebody else's bill, not wasted CPU on ours.
+   */
+  describe("while a claimed collection is still running", () => {
+    it("returns the owner token it wrote, as the token renewals check", async () => {
+      execute.mockResolvedValue([
+        {
+          account_id: "acct-1",
+          organization_id: "org-1",
+          failure_count: 0,
+          lease_owner: "lease-abc",
+        },
+      ]);
+
+      // Pinned: `startNetworkFlowLease` degrades to a no-op lease without this
+      // column, which would put the overlap back without failing anything. And
+      // it has to be written as well as returned, or every renewal matches a
+      // null token and the lease is nobody's.
+      await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const text = statementText();
+      expect(text).toContain("lease_owner = ");
+      expect(/RETURNING[\s\S]*lease_owner/.test(text)).toBe(true);
+
+      await expect(claimDueNetworkFlowAccounts(2, ["aws"])).resolves.toEqual([
+        {
+          accountId: "acct-1",
+          organizationId: "org-1",
+          failureCount: 0,
+          leaseOwner: "lease-abc",
+        },
       ]);
     });
+
+    it("hands out no second claim for an hour-long collection", async () => {
+      const pg = new FakePostgres();
+      pg.rows.set("acct-1", pg.now - 60_000);
+      pg.beginRound(["acct-1"]);
+      wire(pg);
+
+      // Three days at twenty minutes each — an hour of billable scanning under
+      // a lease that is only ever thirty minutes long. A second replica ticks
+      // after every day, which from the second day on is past the point where
+      // the lease the claim wrote would have lapsed.
+      const secondReplica: unknown[][] = [];
+      collect.mockImplementation((async (
+        _accountId: string,
+        _organizationId: string,
+        options: { lease?: { checkpoint(): Promise<boolean> } },
+      ) => {
+        for (let day = 0; day < 3; day += 1) {
+          await options.lease?.checkpoint();
+          pg.now += 20 * 60 * 1000;
+          pg.beginRound(["acct-1"]);
+          secondReplica.push(await claimDueNetworkFlowAccounts(2, ["aws"]));
+        }
+        return {
+          daysCollected: 3,
+          rowsWritten: 0,
+          queryBytesScanned: 0,
+          droppedPairs: 0,
+          degraded: false,
+          sources: [],
+        };
+      }) as unknown as () => Promise<Record<string, unknown>>);
+
+      await expect(runNetworkFlowPass()).resolves.toEqual({ claimed: 1 });
+      expect(secondReplica).toEqual([[], [], []]);
+    });
+
+    it("renews on the heartbeat, so a single long query does not lose the lease", async () => {
+      vi.useFakeTimers();
+      try {
+        const pg = new FakePostgres();
+        pg.rows.set("acct-1", pg.now - 60_000);
+        pg.beginRound(["acct-1"]);
+        wire(pg);
+
+        const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+        const lease = startNetworkFlowLease("acct-1", "org-1", claimed!.leaseOwner ?? null);
+
+        // No checkpoint at all — this is the one query that runs long, with no
+        // day boundary to hang a renewal off.
+        pg.now += 5 * 60 * 1000;
+        await vi.advanceTimersByTimeAsync(NETWORK_FLOW_HEARTBEAT_MS);
+        expect(pg.rows.get("acct-1")).toBe(pg.now + NETWORK_FLOW_LEASE_MS);
+
+        await lease.stop();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    // The renewal is a compare-and-swap, and this is what the "compare" is for:
+    // a blind `SET next_poll_at = now() + lease` from a replica that had already
+    // lost the account would extend the *new* holder's lease on its behalf —
+    // the same overlap, one layer down, and harder to see.
+    it("refuses to renew for a replica that has already lost the lease", async () => {
+      const pg = new FakePostgres();
+      pg.rows.set("acct-1", pg.now - 60_000);
+      pg.beginRound(["acct-1"]);
+      wire(pg);
+
+      const [first] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const stale = startNetworkFlowLease("acct-1", "org-1", first!.leaseOwner ?? null);
+
+      // The first replica stalls long enough to lose the lease, and a second
+      // one takes the account over.
+      pg.now += NETWORK_FLOW_LEASE_MS + 1;
+      pg.beginRound(["acct-1"]);
+      const [second] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      expect(second?.accountId).toBe("acct-1");
+
+      const heldBySecond = pg.rows.get("acct-1");
+      await expect(stale.checkpoint()).rejects.toBeInstanceOf(NetworkFlowLeaseLostError);
+      expect(pg.rows.get("acct-1")).toBe(heldBySecond);
+      await stale.stop();
+    });
+
+    // The heartbeat and a checkpoint can be renewing at the same moment, and
+    // one write is enough. This used to be load-bearing rather than tidy: two
+    // renewals issued from the same expected *deadline* had the second match
+    // nothing and report a loss that never happened. Against the owner token
+    // both would match, so what is pinned here is only that the two collapse
+    // into one renewal and both callers are told the lease is held.
+    it("coalesces concurrent renewals rather than issuing the same write twice", async () => {
+      const pg = new FakePostgres();
+      pg.rows.set("acct-1", pg.now - 60_000);
+      pg.beginRound(["acct-1"]);
+      wire(pg);
+
+      const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const lease = startNetworkFlowLease("acct-1", "org-1", claimed!.leaseOwner ?? null);
+
+      // Move the clock on, so the renewal actually writes a different deadline
+      // and a second one issued from the stale expected value would miss.
+      pg.now += 60_000;
+      await expect(Promise.all([lease.checkpoint(), lease.checkpoint()])).resolves.toEqual([
+        true,
+        true,
+      ]);
+      expect(pg.rows.get("acct-1")).toBe(pg.now + NETWORK_FLOW_LEASE_MS);
+      await lease.stop();
+    });
+
+    // A lease is a lease, not a lock — renewing it must not turn it into one.
+    it("still frees the account when the holder dies mid-collection", async () => {
+      const pg = new FakePostgres();
+      pg.rows.set("acct-1", pg.now - 60_000);
+      pg.beginRound(["acct-1"]);
+      wire(pg);
+
+      const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      // The holder starts work and the pod is then killed: no checkpoint ever
+      // runs, no heartbeat ever fires, nothing writes the row again.
+      startNetworkFlowLease("acct-1", "org-1", claimed!.leaseOwner ?? null);
+
+      pg.now += NETWORK_FLOW_LEASE_MS + 1;
+      pg.beginRound(["acct-1"]);
+
+      await expect(claimDueNetworkFlowAccounts(2, ["aws"])).resolves.toEqual([
+        {
+          accountId: "acct-1",
+          organizationId: "org-1",
+          failureCount: 0,
+          leaseOwner: "lease-2",
+        },
+      ]);
+      expect(pg.rows.get("acct-1")).toBe(pg.now + NETWORK_FLOW_LEASE_MS);
+    });
+
+    // The other half of the answer to an overrun: work that cannot be made to
+    // fit stops at a day boundary rather than running on under a lease it is
+    // renewing indefinitely.
+    it("stops the collection once the pass has spent its runtime budget", async () => {
+      const pg = new FakePostgres();
+      pg.rows.set("acct-1", pg.now - 60_000);
+      pg.beginRound(["acct-1"]);
+      wire(pg);
+
+      const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const leased = pg.rows.get("acct-1");
+      const lease = startNetworkFlowLease("acct-1", "org-1", claimed!.leaseOwner ?? null, {
+        maxRuntimeMs: 0,
+      });
+
+      await expect(lease.checkpoint()).resolves.toBe(false);
+      // Out of budget means "do not start another billable query", not "push
+      // the lease out further" — the row is untouched.
+      expect(pg.rows.get("acct-1")).toBe(leased);
+      await lease.stop();
+    });
+
+    /*
+     * Regression: the fence that keeps a *lost* holder from writing was also
+     * blocking the legitimate one.
+     *
+     * A collection that finished while a heartbeat renewal was in flight had
+     * `stop()` return without waiting, so the terminal update fenced on the
+     * deadline from before that renewal. The renewal then landed, the fenced
+     * update matched no row, and the reschedule to tomorrow was silently
+     * dropped — leaving the account holding nothing but the renewed lease,
+     * coming due again the moment it lapsed, and re-running the whole
+     * customer-billed scan. Which is the exact failure the lease exists to
+     * prevent, arrived at by way of the fix for it.
+     *
+     * The fence is the owner token now, so the write no longer depends on
+     * having tracked that renewal; the draining is still what keeps the pass
+     * from returning with a write of its own outstanding, and both halves are
+     * pinned here.
+     */
+    it("lands its terminal write when the collection ends with a renewal in flight", async () => {
+      vi.useFakeTimers();
+      try {
+        const pg = new FakePostgres();
+        vi.setSystemTime(pg.now);
+        const started = Date.now();
+        pg.rows.set("acct-1", pg.now - 60_000);
+        pg.beginRound(["acct-1"]);
+        // The renewal reaches the row promptly and then takes a further minute
+        // to answer — comfortably still outstanding when the collection ends.
+        const control = wireWithRenewals(pg, { renewalDelayMs: 60_000 });
+
+        collect.mockImplementation((async () => {
+          // One provider call that outlives a heartbeat, with no day boundary
+          // in it to hang a checkpoint off. Moving the fake's clock first means
+          // the beat's renewal writes a deadline genuinely different from the
+          // one the claim handed out, so a stale fence can be seen to miss.
+          pg.now += 60_000;
+          await new Promise((resolve) => setTimeout(resolve, NETWORK_FLOW_HEARTBEAT_MS + 1_000));
+          return collected(1);
+        }) as unknown as () => Promise<Record<string, unknown>>);
+
+        const pass = runNetworkFlowPass();
+        await vi.advanceTimersByTimeAsync(NETWORK_FLOW_HEARTBEAT_MS + 120_000);
+        await expect(pass).resolves.toEqual({ claimed: 1 });
+
+        // The reschedule landed, and handed the lease back with it.
+        const write = control.passWrites.at(-1);
+        expect(write).toMatchObject({ failureCount: 0, lastError: null, leaseOwner: null });
+        expect(pg.owners.get("acct-1")).toBeNull();
+        expect(pg.rows.get("acct-1")).toBe((write!["nextPollAt"] as Date).getTime());
+        expect(pg.rows.get("acct-1")).toBeGreaterThan(started + NETWORK_FLOW_INTERVAL_MS);
+
+        // And so the account is not claimable again when the renewed lease
+        // would have lapsed, which is what re-ran the scan.
+        pg.now = Date.now() + NETWORK_FLOW_LEASE_MS + 1;
+        pg.beginRound(["acct-1"]);
+        await expect(claimDueNetworkFlowAccounts(2, ["aws"])).resolves.toEqual([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    /*
+     * Regression: a renewal that failed to *execute* was being read as a lost
+     * lease.
+     *
+     * The heartbeat has always drawn the distinction — a connection blip leaves
+     * the deadline in the row, still ours, so it retries on the next beat — and
+     * `checkpoint` did not: the exception escaped into the pass, which could
+     * only take it for an account failure and record one, with backoff, against
+     * an account that had done nothing. The two conditions are told apart in
+     * one place now; these two tests are the two sides of it.
+     */
+    it("rides out a renewal the database never answered, and keeps collecting", async () => {
+      const pg = new FakePostgres();
+      pg.rows.set("acct-1", pg.now - 60_000);
+      pg.beginRound(["acct-1"]);
+      const control = wireWithRenewals(pg, { failRenewals: 1 });
+      const claimDeadline = pg.now + NETWORK_FLOW_LEASE_MS;
+
+      // The deadline in the row as each day's checkpoint left it.
+      const afterCheckpoint: (number | null | undefined)[] = [];
+      collect.mockImplementation((async (
+        _accountId: string,
+        _organizationId: string,
+        options: { lease?: { checkpoint(): Promise<boolean> } },
+      ) => {
+        for (let day = 0; day < 2; day += 1) {
+          // Between the days, so the renewal that does land writes a visibly
+          // different deadline from the one the claim wrote.
+          if (day > 0) pg.now += 60_000;
+          await options.lease?.checkpoint();
+          afterCheckpoint.push(pg.rows.get("acct-1"));
+        }
+        return collected(2);
+      }) as unknown as () => Promise<Record<string, unknown>>);
+
+      await expect(runNetworkFlowPass()).resolves.toEqual({ claimed: 1 });
+
+      // The blip cost nothing. Both days ran, the first under the deadline the
+      // claim had already written — untouched, because the renewal that failed
+      // never reached the row — and the second under a renewal that did land.
+      expect(afterCheckpoint).toEqual([claimDeadline, pg.now + NETWORK_FLOW_LEASE_MS]);
+      // And the pass recorded a success, not a failure with backoff against an
+      // account that had done nothing wrong.
+      expect(control.passWrites).toHaveLength(1);
+      expect(control.passWrites[0]).toMatchObject({ failureCount: 0, lastError: null });
+      expect(pg.rows.get("acct-1")).toBe((control.passWrites[0]!["nextPollAt"] as Date).getTime());
+    });
+
+    it("still stops dead, and writes nothing, when a renewal proves the lease is gone", async () => {
+      const pg = new FakePostgres();
+      pg.rows.set("acct-1", pg.now - 60_000);
+      pg.beginRound(["acct-1"]);
+      const control = wireWithRenewals(pg);
+
+      let days = 0;
+      let heldBySecond: number | null | undefined;
+      let ownedBySecond: string | null | undefined;
+      collect.mockImplementation((async (
+        _accountId: string,
+        _organizationId: string,
+        options: { lease?: { checkpoint(): Promise<boolean> } },
+      ) => {
+        days += 1;
+        // Between the claim and the next day's query this replica stalled long
+        // enough to lose the lease, and a second one took the account over.
+        pg.now += NETWORK_FLOW_LEASE_MS + 1;
+        pg.beginRound(["acct-1"]);
+        await claimDueNetworkFlowAccounts(2, ["aws"]);
+        heldBySecond = pg.rows.get("acct-1");
+        ownedBySecond = pg.owners.get("acct-1");
+        await options.lease?.checkpoint();
+        days += 1;
+        return collected(2);
+      }) as unknown as () => Promise<Record<string, unknown>>);
+
+      await expect(runNetworkFlowPass()).resolves.toEqual({ claimed: 1 });
+
+      // Stopped at the first checkpoint after the loss, and the new holder's
+      // row is untouched: no reschedule, no failure, no lease pushed forward,
+      // and its claim on the account not released on its behalf.
+      expect(days).toBe(1);
+      expect(control.passWrites).toEqual([]);
+      expect(pg.rows.get("acct-1")).toBe(heldBySecond);
+      expect(pg.owners.get("acct-1")).toBe(ownedBySecond);
+    });
+
+    /*
+     * Regression: a renewal that committed and then lost its answer was read as
+     * a lost lease.
+     *
+     * The two outcomes above are the two the holder can prove. This is the
+     * third, and it is the reason the lease cannot be identified by its own
+     * deadline: the write landed, the reply did not, and a holder that keeps
+     * the deadline it had is now holding a value the row has stopped having.
+     * Its next renewal matches nothing and reports a loss that never happened —
+     * so the collection is abandoned with no terminal write, the committed
+     * renewal lapses on schedule, and the account comes back due to re-run
+     * every day it had already paid to collect.
+     */
+    it("carries on through a renewal that committed but never answered", async () => {
+      const pg = new FakePostgres();
+      pg.rows.set("acct-1", pg.now - 60_000);
+      pg.beginRound(["acct-1"]);
+      const control = wireWithRenewals(pg, { dropAnswers: 1 });
+      const claimedAt = pg.now;
+
+      // The deadline in the row as each day's checkpoint left it.
+      const afterCheckpoint: (number | null | undefined)[] = [];
+      collect.mockImplementation((async (
+        _accountId: string,
+        _organizationId: string,
+        options: { lease?: { checkpoint(): Promise<boolean> } },
+      ) => {
+        for (let day = 0; day < 2; day += 1) {
+          // Before each, so every renewal writes a visibly different deadline —
+          // otherwise the dropped answer would be indistinguishable from a
+          // renewal that never reached the row.
+          pg.now += 60_000;
+          await options.lease?.checkpoint();
+          afterCheckpoint.push(pg.rows.get("acct-1"));
+        }
+        return collected(2);
+      }) as unknown as () => Promise<Record<string, unknown>>);
+
+      await expect(runNetworkFlowPass()).resolves.toEqual({ claimed: 1 });
+
+      // Both days ran, and both renewals landed: the first one's *answer* was
+      // lost, not its write, and the second was not thrown off by that.
+      expect(afterCheckpoint).toEqual([
+        claimedAt + 60_000 + NETWORK_FLOW_LEASE_MS,
+        claimedAt + 120_000 + NETWORK_FLOW_LEASE_MS,
+      ]);
+      // And the pass finished: a success recorded, and tomorrow's schedule in
+      // the row rather than a lease that is about to lapse.
+      expect(control.passWrites).toHaveLength(1);
+      expect(control.passWrites[0]).toMatchObject({ failureCount: 0, lastError: null });
+      expect(pg.rows.get("acct-1")).toBe((control.passWrites[0]!["nextPollAt"] as Date).getTime());
+    });
+  });
+});
+
+/**
+ * A billable provider scan, as a plugin that honours the contract runs one: it
+ * takes as long as it takes, and it stops early if the host withdraws the
+ * authorization it was started under.
+ *
+ * Returns when it started and when it stopped, which is the only thing the
+ * overlap question is about.
+ */
+function scan(ms: number, signal: AbortSignal): Promise<{ from: number; to: number }> {
+  const from = Date.now();
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
+      resolve({ from, to: Date.now() });
+    };
+    const timer = setTimeout(finish, ms);
+    signal.addEventListener("abort", finish, { once: true });
+  });
+}
+
+/*
+ * Regression: work was authorized by the clock instead of by the lease.
+ *
+ * `checkpoint()` asked two questions — is the lease lost, and has the pass used
+ * its runtime budget — and let the collector spend the customer's money if the
+ * answer to both was no. The budget is elapsed time since the pass began, and
+ * the safety argument for it went: the budget is strictly shorter than the
+ * lease, so a pass cannot still be issuing queries when the claim's deadline
+ * passes.
+ *
+ * That argument holds only while renewals succeed, because each success is what
+ * pushes the deadline out ahead of the budget. A renewal that is unconfirmed
+ * *and never landed* leaves the deadline where the last confirmed write put it
+ * while the budget carries on being measured from when the pass began, and the
+ * two stop being related: a checkpoint at minute 24 of a 25-minute budget would
+ * authorize a day that ran past minute 30, the lease would lapse underneath it,
+ * and a second replica would claim the account and start the same
+ * customer-billed scans. So authorization is against the last deadline the
+ * database actually acknowledged, and it travels with the work rather than only
+ * gating its start.
+ */
+describe("authorizing billable work against the confirmed lease", () => {
+  it("refuses another day once renewals stop answering, whatever the budget says", async () => {
+    vi.useFakeTimers();
+    try {
+      const pg = new FakePostgres();
+      vi.setSystemTime(pg.now);
+      pg.rows.set("acct-1", pg.now - 60_000);
+      pg.beginRound(["acct-1"]);
+      // The database stops answering from the first renewal onwards. It may or
+      // may not be applying them; from here that is unknowable, which is the
+      // whole point — an unknown write proves no deadline.
+      wireWithRenewals(pg, { failRenewals: 100 });
+
+      const claimedAt = Date.now();
+      const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      // A budget far longer than the lease, so that nothing about elapsed time
+      // can be what stops this. Under the old rule this lease would authorize
+      // work for two hours on the strength of a claim that expires in thirty
+      // minutes.
+      const lease = startNetworkFlowLease("acct-1", "org-1", claimed!.leaseOwner ?? null, {
+        maxRuntimeMs: 4 * NETWORK_FLOW_LEASE_MS,
+      });
+      let withdrawnAt: number | null = null;
+      lease.signal.addEventListener("abort", () => {
+        withdrawnAt = Date.now();
+      });
+
+      // Straight after the claim the confirmed deadline is half an hour out,
+      // and an unanswered renewal does not change that: the claim's own write
+      // is proof enough and it has not expired.
+      await expect(lease.checkpoint()).resolves.toBe(true);
+
+      // Walk to the last moment that deadline still covers a day worth
+      // starting. Every heartbeat in here goes unanswered, so nothing has moved
+      // it — which is exactly what the old reasoning assumed away.
+      const lastAuthorized =
+        claimedAt +
+        NETWORK_FLOW_LEASE_MS -
+        NETWORK_FLOW_LEASE_RESERVE_MS -
+        NETWORK_FLOW_MIN_WORK_WINDOW_MS;
+      await vi.advanceTimersByTimeAsync(lastAuthorized - Date.now());
+      await expect(lease.checkpoint()).resolves.toBe(true);
+
+      // And a second past it, there is no longer room to start one.
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(lease.checkpoint()).resolves.toBe(false);
+      // Not a lost lease and not a failure: the row is still ours, we simply
+      // cannot prove it for long enough to spend against it.
+      expect(lease.signal.aborted).toBe(false);
+
+      // Work already running does not get to finish on its own terms either.
+      // The entitlement runs out a reserve short of the deadline, and the
+      // signal says so to whatever is mid-scan.
+      await vi.advanceTimersByTimeAsync(NETWORK_FLOW_LEASE_RESERVE_MS);
+      expect(lease.signal.aborted).toBe(true);
+      // A reserve short of the deadline, not at it: stopping is not
+      // instantaneous, and the two clocks involved are not the same clock.
+      expect(withdrawnAt).toBe(claimedAt + NETWORK_FLOW_LEASE_MS - NETWORK_FLOW_LEASE_RESERVE_MS);
+
+      await lease.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // The other half: this is not a timeout on the work. A day that legitimately
+  // takes hours under a lease that is genuinely being held must still run to
+  // completion, which is the trade `./lease.ts` has always made deliberately.
+  it("keeps authorizing work for as long as renewals do answer", async () => {
+    vi.useFakeTimers();
+    try {
+      const pg = new FakePostgres();
+      vi.setSystemTime(pg.now);
+      pg.rows.set("acct-1", pg.now - 60_000);
+      pg.beginRound(["acct-1"]);
+      wireWithRenewals(pg);
+
+      const [claimed] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const lease = startNetworkFlowLease("acct-1", "org-1", claimed!.leaseOwner ?? null, {
+        maxRuntimeMs: 8 * NETWORK_FLOW_LEASE_MS,
+      });
+
+      // Four lease periods of one uninterrupted provider call: no checkpoint to
+      // hang a renewal off, only the heartbeat.
+      await vi.advanceTimersByTimeAsync(4 * NETWORK_FLOW_LEASE_MS);
+      expect(lease.signal.aborted).toBe(false);
+      await expect(lease.checkpoint()).resolves.toBe(true);
+
+      await lease.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // A lease proved gone is the one case where waiting for the next day boundary
+  // is indefensible: the account already belongs to somebody else, and every
+  // further second of scanning is on both bills.
+  it("withdraws authorization the moment a renewal proves the lease is gone", async () => {
+    vi.useFakeTimers();
+    try {
+      const pg = new FakePostgres();
+      vi.setSystemTime(pg.now);
+      pg.rows.set("acct-1", pg.now - 60_000);
+      pg.beginRound(["acct-1"]);
+      wireWithRenewals(pg);
+
+      const [first] = await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const lease = startNetworkFlowLease("acct-1", "org-1", first!.leaseOwner ?? null);
+
+      // A second replica takes the account over while this one is mid-query.
+      pg.now += NETWORK_FLOW_LEASE_MS + 1;
+      pg.beginRound(["acct-1"]);
+      await claimDueNetworkFlowAccounts(2, ["aws"]);
+      const heldBySecond = pg.rows.get("acct-1");
+
+      // The next heartbeat finds out — no checkpoint involved, because the day
+      // in progress may be an hour from its next one.
+      await vi.advanceTimersByTimeAsync(NETWORK_FLOW_HEARTBEAT_MS);
+      expect(lease.signal.aborted).toBe(true);
+      // And it still writes nothing on its way out.
+      expect(pg.rows.get("acct-1")).toBe(heldBySecond);
+
+      await lease.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /*
+   * The reviewer's sequence, end to end: claim at T under a lease to T+30, a
+   * checkpoint whose renewal never reaches the database, work that would run
+   * past T+30, the lease lapsing, and a second replica claiming the account.
+   *
+   * The lapse itself is not preventable — a database this replica cannot reach
+   * is one it cannot renew against, and a lease nobody renews is *supposed* to
+   * lapse, or a dead pod would strand the account forever. What must not happen
+   * is the overlap: the first replica still scanning, on the customer's bill,
+   * into the window the second one is scanning in.
+   */
+  it("leaves no scan running into the window the second replica claims in", async () => {
+    vi.useFakeTimers();
+    try {
+      const pg = new FakePostgres();
+      vi.setSystemTime(pg.now);
+      pg.rows.set("acct-1", pg.now - 60_000);
+      pg.beginRound(["acct-1"]);
+      // The database goes quiet for renewals *and* for the pass's own writes,
+      // which is what a database being unreachable actually looks like. It is
+      // also the only way the lease genuinely lapses: a pass that can still
+      // write hands the account back before anyone else could take it.
+      const control = wireWithRenewals(pg, { failRenewals: 100, failPassWrites: 100 });
+
+      const claimedAt = Date.now();
+      const scans: { from: number; to: number }[] = [];
+      collect.mockImplementation((async (
+        _accountId: string,
+        _organizationId: string,
+        options: { lease: NetworkFlowLeaseGate },
+      ) => {
+        let days = 0;
+        while (await options.lease.checkpoint()) {
+          // One day is a serial walk over the account's flow logs — five of
+          // them here, six minutes a scan, which is half an hour and outlives
+          // the lease it started under.
+          let complete = true;
+          for (let group = 0; group < 5; group += 1) {
+            scans.push(await scan(6 * 60_000, options.lease.signal));
+            if (options.lease.signal.aborted) {
+              complete = false;
+              break;
+            }
+          }
+          // A day cut short is not a day. The plugin throws rather than
+          // returning it, and the collector records nothing for it.
+          if (!complete) break;
+          days += 1;
+        }
+        return collected(days);
+      }) as unknown as () => Promise<Record<string, unknown>>);
+
+      const pass = runNetworkFlowPass();
+
+      // A second replica ticking every minute for three quarters of an hour,
+      // which is how it would find the account the moment the lease lapses.
+      const tookOver: number[] = [];
+      for (let minute = 0; minute < 45; minute += 1) {
+        await vi.advanceTimersByTimeAsync(60_000);
+        pg.now = Date.now();
+        pg.beginRound(["acct-1"]);
+        const got = await claimDueNetworkFlowAccounts(2, ["aws"]);
+        if (got.length > 0) tookOver.push(Date.now());
+      }
+      await expect(pass).resolves.toEqual({ claimed: 1 });
+
+      // The lease really did lapse and the account really was taken over —
+      // otherwise this proves nothing about overlap.
+      expect(tookOver).toHaveLength(1);
+      expect(tookOver[0]).toBeGreaterThanOrEqual(claimedAt + NETWORK_FLOW_LEASE_MS);
+
+      // Real work happened, and all of it stopped before the deadline this
+      // replica last had proof of — a reserve ahead of the moment the account
+      // became claimable, and well ahead of the moment it was claimed.
+      expect(scans.length).toBeGreaterThanOrEqual(4);
+      const lastScanEnded = Math.max(...scans.map((s) => s.to));
+      expect(lastScanEnded).toBeLessThanOrEqual(
+        claimedAt + NETWORK_FLOW_LEASE_MS - NETWORK_FLOW_LEASE_RESERVE_MS,
+      );
+      expect(lastScanEnded).toBeLessThan(tookOver[0]!);
+
+      // And the day it was in the middle of was not banked as collected: the
+      // pass tried its terminal write (the database refused it, which is why
+      // the lease lapsed at all) and reported no days.
+      expect(control.passWrites).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
