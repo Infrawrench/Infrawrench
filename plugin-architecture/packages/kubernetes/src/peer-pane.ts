@@ -122,6 +122,42 @@ function buildCostGuidance(costs: CostIndex): Pick<PeerPaneSchema, "guidance"> {
     );
   }
 
+  // Volumes nothing mounts are the storage twin of idle capacity, and the most
+  // common cause is invisible: a StatefulSet's volumeClaimTemplate PVCs default
+  // to Retain on both scale-down and delete, so shrinking one leaves its disks
+  // behind, billing, until someone deletes them by hand.
+  const { storage, loadBalancers } = costs.cluster;
+  if (storage.unattachedCount > 0) {
+    const money = formatDailyCost(storage.dailyUnattachedCost, costs.currency);
+    suggestions.push(
+      `${storage.unattachedCount} persistent volume claim${storage.unattachedCount === 1 ? "" : "s"} (${Math.round(storage.unattachedGib)}Gi${money ? `, ${money}` : ""}) ${storage.unattachedCount === 1 ? "is" : "are"} bound but mounted by no running pod. Scaling a StatefulSet down leaves its volumes behind by default.`,
+    );
+  }
+  if (storage.unboundCount > 0) {
+    suggestions.push(
+      `${storage.unboundCount} claim${storage.unboundCount === 1 ? "" : "s"} never bound to a volume — nothing was provisioned, so nothing is charged, but the pods waiting on them cannot start.`,
+    );
+  }
+  if (storage.gib > 0 && storage.dailyAttributedCost == null) {
+    suggestions.push(
+      `${Math.round(storage.gib)}Gi of persistent volumes are shown without cost — no per-GiB-month price is configured for ${storage.unpricedClasses.join(", ") || "these storage classes"}.`,
+    );
+  }
+  if (loadBalancers.count > 0 && loadBalancers.anyUnpriced) {
+    suggestions.push(
+      `${loadBalancers.provisionedCount} provisioned load balancer${loadBalancers.provisionedCount === 1 ? "" : "s"} ${loadBalancers.provisionedCount === 1 ? "is" : "are"} counted without cost — no per-load-balancer price is configured.`,
+    );
+  }
+  if (costs.cluster.hourlyControlPlaneCost == null) {
+    // Stated only when there are managed-looking signals would be guesswork, so
+    // it is stated whenever the fee is absent: a self-managed cluster's control
+    // plane really is already in the node compute above, and saying so is the
+    // only way a reader can tell that case from a missing price.
+    suggestions.push(
+      "No managed control-plane fee is included. On EKS, GKE or AKS that flat per-cluster charge is on the cloud account; on a self-managed cluster it is already counted, because the control-plane nodes are nodes.",
+    );
+  }
+
   if (suggestions.length === 0) return {};
 
   return {

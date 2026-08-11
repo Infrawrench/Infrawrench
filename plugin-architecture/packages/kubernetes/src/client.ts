@@ -127,7 +127,12 @@ export class KubernetesClient implements PluginClient {
   private async costIndex(): Promise<CostIndex | undefined> {
     try {
       const result = await this.clusterCost();
-      const index = buildCostIndex(result.allocation, result.rateSource, result.utilization.status);
+      const index = buildCostIndex(
+        result.allocation,
+        result.rateSource,
+        result.utilization.status,
+        new Date().toISOString(),
+      );
       this.lastCostIndex = index;
       return index;
     } catch {

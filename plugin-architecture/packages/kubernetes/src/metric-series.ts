@@ -70,12 +70,22 @@ function clusterSeries(
   const money = `${currency}/day`;
   return [
     ...flatSeries("Cluster cost", cluster.dailyTotalCost, money, range),
+    ...flatSeries("Node compute", cluster.dailyNodeCost, money, range),
     ...flatSeries("Allocated to workloads", cluster.dailyAllocatedCost, money, range),
     // Idle is charted as its own line for the same reason it is its own table
     // row: it is the difference between what the cluster costs and what the
-    // workloads asked for, and that gap is the finding.
+    // workloads asked for, and that gap is the finding. The control plane and
+    // the unattached volumes are lines for the same reason — each is money the
+    // cluster spends that no workload can be pointed at.
     ...flatSeries("Idle capacity", cluster.dailyIdleCost, money, range),
     ...flatSeries("System reserved", cluster.dailySystemReservedCost, money, range),
+    ...flatSeries("Control plane", cluster.dailyControlPlaneCost, money, range),
+    ...flatSeries("Persistent volumes", cluster.storage.dailyAttributedCost, money, range),
+    ...flatSeries("Unattached volumes", cluster.storage.dailyUnattachedCost, money, range),
+    ...flatSeries("Load balancers", cluster.loadBalancers.dailyCost, money, range),
+    // The money twin of the efficiency percentages below: what the gap between
+    // requested and used actually costs.
+    ...flatSeries("Over-requested (wasted)", cluster.wastedDailyCost, money, range),
     ...efficiencySeries(cluster.efficiency, range),
   ];
 }
@@ -108,6 +118,10 @@ export function buildCostMetricSeries(
       if (!entry) return [];
       return [
         ...flatSeries("Namespace cost", entry.dailyCost, money, range),
+        ...flatSeries("Compute", entry.computeDailyCost, money, range),
+        ...flatSeries("Persistent volumes", entry.storageDailyCost, money, range),
+        ...flatSeries("Load balancers", entry.loadBalancerDailyCost, money, range),
+        ...flatSeries("Over-requested (wasted)", entry.wastedDailyCost, money, range),
         ...efficiencySeries(entry.efficiency, range),
       ];
     }
@@ -132,6 +146,9 @@ export function buildCostMetricSeries(
       if (!entry) return [];
       return [
         ...flatSeries(`${kind} cost`, entry.dailyCost, money, range),
+        ...flatSeries("Persistent volumes", entry.storageDailyCost, money, range),
+        ...flatSeries("Load balancers", entry.loadBalancerDailyCost, money, range),
+        ...flatSeries("Over-requested (wasted)", entry.wastedDailyCost, money, range),
         ...efficiencySeries(entry.efficiency, range),
       ];
     }

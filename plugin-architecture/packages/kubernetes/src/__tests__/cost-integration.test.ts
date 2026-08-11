@@ -322,7 +322,12 @@ describe("peer-pane surfacing", () => {
 
   it("appends cost and efficiency to a pod pill subtitle", async () => {
     const result = await computeClusterCost(fakeCluster(), RATES);
-    const index = buildCostIndex(result.allocation, result.rateSource, result.utilization.status);
+    const index = buildCostIndex(
+      result.allocation,
+      result.rateSource,
+      result.utilization.status,
+      "2026-08-11T00:00:00.000Z",
+    );
 
     const group = podPeerGroup(
       [ri("k8s-pod", { name: "web-abc-1", namespace: "app", image: "nginx", status: "Running" })],
@@ -340,7 +345,12 @@ describe("peer-pane surfacing", () => {
 
   it("orders the namespace group by cost and says so in the title", async () => {
     const result = await computeClusterCost(fakeCluster(), RATES);
-    const index = buildCostIndex(result.allocation, result.rateSource, result.utilization.status);
+    const index = buildCostIndex(
+      result.allocation,
+      result.rateSource,
+      result.utilization.status,
+      "2026-08-11T00:00:00.000Z",
+    );
     const group = namespacePeerGroup(
       [
         ri("k8s-namespace", { name: "kube-system", phase: "Active" }),
@@ -401,7 +411,12 @@ describe("peer-pane surfacing", () => {
 describe("buildCostMetricSeries", () => {
   it("charts cluster cost with idle as its own line", async () => {
     const result = await computeClusterCost(fakeCluster(), RATES);
-    const index = buildCostIndex(result.allocation, result.rateSource, result.utilization.status);
+    const index = buildCostIndex(
+      result.allocation,
+      result.rateSource,
+      result.utilization.status,
+      "2026-08-11T00:00:00.000Z",
+    );
     const series = buildCostMetricSeries("k8s-cluster", {}, "cluster", index, {
       startMs: 1000,
       endMs: 2000,
@@ -418,20 +433,35 @@ describe("buildCostMetricSeries", () => {
 
   it("charts a namespace's own cost", async () => {
     const result = await computeClusterCost(fakeCluster(), RATES);
-    const index = buildCostIndex(result.allocation, result.rateSource, result.utilization.status);
+    const index = buildCostIndex(
+      result.allocation,
+      result.rateSource,
+      result.utilization.status,
+      "2026-08-11T00:00:00.000Z",
+    );
     const series = buildCostMetricSeries("k8s-namespace", { name: "app" }, "app", index);
     expect(series.map((s) => s.label)).toContain("Namespace cost");
   });
 
   it("returns nothing for a kind with no cost dimension", async () => {
     const result = await computeClusterCost(fakeCluster(), RATES);
-    const index = buildCostIndex(result.allocation, result.rateSource, result.utilization.status);
+    const index = buildCostIndex(
+      result.allocation,
+      result.rateSource,
+      result.utilization.status,
+      "2026-08-11T00:00:00.000Z",
+    );
     expect(buildCostMetricSeries("k8s-secret", {}, "s", index)).toEqual([]);
   });
 
   it("omits money series entirely when there is no rate", async () => {
     const result = await computeClusterCost(fakeCluster(), EMPTY_RATE_TABLE);
-    const index = buildCostIndex(result.allocation, result.rateSource, result.utilization.status);
+    const index = buildCostIndex(
+      result.allocation,
+      result.rateSource,
+      result.utilization.status,
+      "2026-08-11T00:00:00.000Z",
+    );
     const series = buildCostMetricSeries("k8s-cluster", {}, "cluster", index);
     expect(series.map((s) => s.label)).not.toContain("Cluster cost");
     // Efficiency survives — it needs no price.

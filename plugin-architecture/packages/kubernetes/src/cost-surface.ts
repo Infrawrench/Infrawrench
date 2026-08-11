@@ -33,6 +33,16 @@ export interface CostIndex {
   utilizationAvailable: boolean;
   /** Why utilization is missing, when it is. Drives the peer pane's guidance. */
   utilizationStatus: UtilizationStatus;
+  /**
+   * When this snapshot was taken, ISO-8601.
+   *
+   * Stamped once here rather than read from a clock inside the renderers, for
+   * two reasons: `renderDetail` is synchronous and would otherwise date the
+   * report to the moment of *rendering* rather than of measurement, and a
+   * report a user shares has to say when its numbers are from — a cluster
+   * snapshot with no timestamp is indistinguishable from a stale one.
+   */
+  generatedAt: string;
   /** `namespace/name` → pod. */
   pods: Map<string, PodAllocation>;
   /** `namespace/Kind/name` → workload. */
@@ -45,6 +55,7 @@ export function buildCostIndex(
   cluster: ClusterAllocation,
   rateSource: RateSource,
   utilizationStatus: UtilizationStatus,
+  generatedAt: string,
 ): CostIndex {
   const pods = new Map<string, PodAllocation>();
   for (const pod of cluster.pods) pods.set(`${pod.namespace}/${pod.name}`, pod);
@@ -62,6 +73,7 @@ export function buildCostIndex(
     unpriced: cluster.pricedNodeCount === 0,
     utilizationAvailable: utilizationStatus.available,
     utilizationStatus,
+    generatedAt,
     pods,
     workloads,
     namespaces,
@@ -146,3 +158,13 @@ export function podEntry(
  */
 export const IDLE_BUCKET_LABEL = "(idle · unallocated capacity)";
 export const SYSTEM_RESERVED_BUCKET_LABEL = "(system reserved · kubelet)";
+/**
+ * The managed control-plane fee. A bucket rather than a share, and for a
+ * stronger reason than idle: idle capacity *could* be apportioned and we choose
+ * not to, whereas a flat per-cluster fee has no per-workload quantity to
+ * apportion it by at all. It is the same number for a cluster running one pod
+ * as for one running ten thousand.
+ */
+export const CONTROL_PLANE_BUCKET_LABEL = "(control plane · managed cluster fee)";
+/** Bound volumes no running pod mounts — idle capacity, in disk form. */
+export const UNATTACHED_STORAGE_BUCKET_LABEL = "(unattached volumes · mounted by nothing)";

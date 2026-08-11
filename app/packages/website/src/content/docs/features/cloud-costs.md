@@ -426,6 +426,12 @@ Cost graphs answer "what did we spend". For providers that work off a prepaid po
 
 The other question a spend graph can't answer is "are the reservations and savings plans we bought actually paying for themselves". See [Commitments](./commitments.md) — the holdings, how much of the usage bill they cover, their utilization, and a planner that sizes what to buy next — also on the Costs panel.
 
+## Where the egress went
+
+A spend graph can say `AWSDataTransfer` cost $4,100. It cannot say which two services were talking, because every cost dimension describes one side of a transfer and a network charge is about a **pair**. See [Network costs](./network-costs.md) — priced source→destination attribution read from your VPC flow logs, on the same Costs panel.
+
+Those figures are estimates and are kept deliberately apart from collected spend: adding a derived second opinion of data transfer to the numbers on this page would double-count the same bytes.
+
 ## Budgets and cost policy in Terraform
 
 Everything on this page that is configuration rather than data — budgets, saved filters, cost centres and their allocation rules, [reports](./cost-reports.md), [change alerts](./cost-change-alerts.md), [scenario models](./scenario-models.md), [billing rules](./billing-rules.md) and [exports](./cost-exports.md) — can be managed from Terraform instead of the UI, one object at a time, with plans and `terraform import`. See the [Terraform provider](./terraform-provider.md).

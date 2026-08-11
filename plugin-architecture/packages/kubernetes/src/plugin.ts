@@ -44,25 +44,35 @@ const manifest: PluginManifest = {
     },
     {
       key: "nodeHourlyRates",
-      label: "Node hourly rates",
+      label: "Cluster hourly rates",
       description:
-        "Optional. What this cluster's nodes cost per hour, so workload costs can be derived. " +
+        "Optional. What this cluster costs, so workload costs can be derived. " +
         "Clusters opened from their cloud account (DigitalOcean, GCP, AWS, Azure, Scaleway, " +
-        "OVHcloud) get this automatically. Otherwise list instance types: " +
-        "s-2vcpu-4gb=0.0357, m5.large=0.096. Left blank, capacity and efficiency are still " +
-        "shown — only the money is omitted.",
+        "OVHcloud) get their node prices automatically. Otherwise list instance types: " +
+        "s-2vcpu-4gb=0.0357, m5.large=0.096. The same field prices the rest of the cluster — " +
+        "controlPlane=0.10 for a managed cluster's flat fee, loadBalancer=0.0149 per " +
+        "LoadBalancer Service, storage/*=0.10 per provisioned GiB-month (or storage/gp3=0.08 " +
+        "for one class). Left blank, capacity, volume sizes and efficiency are still shown — " +
+        "only the money is omitted.",
       sensitive: false,
       optional: true,
       multiline: true,
-      placeholder: "s-2vcpu-4gb=0.0357, m5.large=0.096",
+      placeholder:
+        "s-2vcpu-4gb=0.0357, m5.large=0.096\ncontrolPlane=0.10, loadBalancer=0.0149, storage/*=0.10",
     },
   ],
   /**
    * Kubernetes has no billing API. What this reports is a DERIVED allocation:
    * node price x each pod's share of the node, rolled up by namespace and
-   * workload, plus explicit idle and system-reserved buckets. The real money
-   * is invoiced to the cloud account that owns the nodes — summing both
-   * accounts double-counts.
+   * workload; plus each PersistentVolumeClaim charged to the workload that
+   * mounts it and each LoadBalancer Service to the workload behind its
+   * selector; plus explicit idle, system-reserved, control-plane and
+   * unattached-volume buckets for the money that belongs to no tenant. The
+   * real money is invoiced to the cloud account that owns the nodes — summing
+   * both accounts double-counts.
+   *
+   * Egress is absent by design: the Kubernetes API exposes no per-workload
+   * byte counters, so a per-namespace network figure could only be invented.
    *
    * `maxHistoryDays: 1` because a cluster cannot be asked what ran last
    * Tuesday: `/api/v1/pods` describes right now and nothing else. Each daily
