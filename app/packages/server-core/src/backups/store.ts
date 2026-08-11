@@ -8,7 +8,7 @@
  * disagree about what a valid policy is.
  */
 import { randomUUID } from "node:crypto";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 import {
   BACKUP_POLICY_LIMITS,
   validateBackupPolicyInput,
@@ -81,35 +81,45 @@ export async function createBackupPolicy(
   const problem = validateBackupPolicyInput(input);
   if (problem) throw new BackupPolicyInputError(problem);
 
-  const [existing] = await db
-    .select({ n: count() })
-    .from(backupPolicies)
-    .where(eq(backupPolicies.organizationId, organizationId));
-  if ((existing?.n ?? 0) >= BACKUP_POLICY_LIMITS.maxPolicies) {
-    throw new BackupPolicyInputError(
-      `An organization can have at most ${BACKUP_POLICY_LIMITS.maxPolicies} backup policies`,
-      409,
-    );
-  }
-
   const tagKey = normalizeTag(input.tagKey);
-  const [row] = await db
-    .insert(backupPolicies)
-    .values({
-      id: randomUUID(),
-      organizationId,
-      name: input.name.trim(),
-      resourceTypeIds: joinTypeIds(input.resourceTypeIds),
-      tagKey,
-      // A value without a key selects nothing; the validator already refuses
-      // that, so this only guards the "" → null collapse above.
-      tagValue: tagKey ? normalizeTag(input.tagValue) : null,
-      maxRpoHours: input.maxRpoHours ?? null,
-      minRetentionDays: input.minRetentionDays ?? null,
-      enabled: input.enabled ?? true,
-      createdBy: userId,
-    })
-    .returning();
+  const values = {
+    id: randomUUID(),
+    organizationId,
+    name: input.name.trim(),
+    resourceTypeIds: joinTypeIds(input.resourceTypeIds),
+    tagKey,
+    // A value without a key selects nothing; the validator already refuses
+    // that, so this only guards the "" → null collapse above.
+    tagValue: tagKey ? normalizeTag(input.tagValue) : null,
+    maxRpoHours: input.maxRpoHours ?? null,
+    minRetentionDays: input.minRetentionDays ?? null,
+    enabled: input.enabled ?? true,
+    createdBy: userId,
+  };
+
+  // The per-org limit check and the insert run under an org-scoped advisory
+  // lock (the `synthetic_probes` / `resource_schedules` stance). Counting and
+  // then inserting in two statements lets two concurrent creates both observe
+  // the last free slot and both take it; under READ COMMITTED even a single
+  // `INSERT … SELECT … WHERE count < limit` would not close that, because each
+  // transaction counts against its own snapshot. Serializing per org is cheap
+  // and is the only version that actually holds.
+  const [row] = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${`backup_policies:${organizationId}`}))`,
+    );
+    const [existing] = await tx
+      .select({ n: count() })
+      .from(backupPolicies)
+      .where(eq(backupPolicies.organizationId, organizationId));
+    if ((existing?.n ?? 0) >= BACKUP_POLICY_LIMITS.maxPolicies) {
+      throw new BackupPolicyInputError(
+        `An organization can have at most ${BACKUP_POLICY_LIMITS.maxPolicies} backup policies`,
+        409,
+      );
+    }
+    return tx.insert(backupPolicies).values(values).returning();
+  });
   if (!row) throw new Error("Failed to create the backup policy");
   return toWireBackupPolicy(row);
 }
