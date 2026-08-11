@@ -58,6 +58,12 @@ vi.mock("../db/schema", () => ({
 let inserted: Array<Record<string, unknown>> = [];
 
 /**
+ * The `set` payload of every upsert conflict, in order — what a re-judged day
+ * actually overwrites. It exists so a test can prove what is *not* in it.
+ */
+let conflictSets: Array<Record<string, unknown>> = [];
+
+/**
  * The org's `org_cost_anomaly_settings` row, or `null` for an org that has
  * never opened the form (which reads as the shipped defaults — SMS off).
  */
@@ -88,9 +94,12 @@ const db = {
     values: (v: Record<string, unknown>) => {
       inserted.push(v);
       return {
-        onConflictDoUpdate: () => ({
-          returning: () => Promise.resolve([{ id: `anom${inserted.length}`, notifiedAt: null }]),
-        }),
+        onConflictDoUpdate: (cfg: { set: Record<string, unknown> }) => {
+          conflictSets.push(cfg.set);
+          return {
+            returning: () => Promise.resolve([{ id: `anom${inserted.length}`, notifiedAt: null }]),
+          };
+        },
       };
     },
   }),
@@ -167,6 +176,7 @@ function providerCosts(groups: unknown[]) {
 beforeEach(async () => {
   vi.clearAllMocks();
   inserted = [];
+  conflictSets = [];
   stampedCount = 0;
   hintWrites = [];
   buildAnomalyHints.mockResolvedValue([]);
@@ -607,5 +617,51 @@ describe("detectCostAnomaliesForOrg — root-cause hints", () => {
 
     expect(routeAlert).toHaveBeenCalledTimes(1);
     expect(stampedCount).toBe(1);
+  });
+});
+
+/**
+ * Explaining a finding is not exempting it.
+ *
+ * Acknowledgement lives on the anomaly row (`acknowledged_at`, `explanation`,
+ * `annotation_id`) and detection never reads it. These two cases pin the
+ * consequences of that, because both are the kind of thing a well-meaning
+ * change would break quietly: a spike nobody hears about again is far worse
+ * than one reported twice.
+ */
+describe("detectCostAnomaliesForOrg — an explained anomaly is not a suppressed one", () => {
+  it("re-judging a day overwrites only the measurements, never the explanation", async () => {
+    getCostCoverage.mockResolvedValue(coverage("2026-01-01"));
+    providerCosts([{ key: "gcp", currency: "USD", points: [{ bucket: YESTERDAY, amount: 5000 }] }]);
+
+    await anomalyEval.detectCostAnomaliesForOrg("org-reupsert", NOW, OPTS, true);
+
+    // A day is re-examined for three passes as its data lands, and each pass
+    // upserts. The conflict payload is the whole blast radius of that.
+    expect(conflictSets).toHaveLength(1);
+    expect(Object.keys(conflictSets[0]!).sort()).toEqual([
+      "actualAmountCents",
+      "baselineAmountCents",
+      "kind",
+      "thresholdAmountCents",
+    ]);
+  });
+
+  it("flags a second spike for the same key on a later day as its own row", async () => {
+    // A key that spiked on 07-12 (say, explained the same afternoon) and spikes
+    // again on 07-14. The unique index is per (org, day, key), so the later day
+    // is a new row and a new finding — there is no state anywhere that could
+    // make an explanation reach forwards in time.
+    getCostCoverage.mockResolvedValue(coverage("2026-01-01"));
+    const points = flatPoints(addDays(YESTERDAY, -40), YESTERDAY, 100);
+    for (const p of points) {
+      if (p.bucket === "2026-07-12" || p.bucket === YESTERDAY) p.amount = 9000;
+    }
+    providerCosts([{ key: "aws", currency: "USD", points }]);
+
+    await anomalyEval.detectCostAnomaliesForOrg("org-repeat", NOW, OPTS, true);
+
+    expect(inserted.map((r) => r["day"])).toEqual(["2026-07-12", YESTERDAY]);
+    for (const row of inserted) expect(row).toMatchObject({ kind: "spike", dimensionKey: "aws" });
   });
 });

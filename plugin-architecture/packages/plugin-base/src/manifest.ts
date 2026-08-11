@@ -167,6 +167,21 @@ export interface PluginManifest {
    */
   credits?: CreditsCapabilityDeclaration;
   /**
+   * If present, this plugin can return *aggregated* network flows — priced
+   * source→destination pairs — for an account via `fetchNetworkFlows`, and the
+   * host schedules a forward-only daily pass for its accounts.
+   *
+   * Independent of `costs`, and deliberately so: this answers "which two things
+   * are talking, across which boundary" and the provider's billing API answers
+   * "how much data transfer cost in total". The rows never meet — see
+   * `network-flow.ts` for why merging them would double-count the bill.
+   *
+   * Absent means the surface shows *nothing* for this plugin's accounts. It
+   * must never show zero: an org whose provider has no flow source and an org
+   * with genuinely no egress are not the same org.
+   */
+  networkFlows?: NetworkFlowCapabilityDeclaration;
+  /**
    * If present, this plugin's provider publishes a public status feed. The
    * host polls `statusFeed.url` (no credentials — the feed is public) on a
    * low-frequency background pass and hands the raw body to the plugin's
@@ -439,6 +454,35 @@ export interface PluginClient {
    * — that is a different situation from a failure and the host says so.
    */
   fetchCreditBalance?(accountId: string): Promise<CreditBalance[]>;
+  /**
+   * Return **aggregated** source→destination flows for one closed UTC day.
+   * Only called when the manifest declares `networkFlows`.
+   *
+   * Three rules, all of which exist because flow logs are the largest data
+   * source this product touches and the naive implementation of every one of
+   * them is unaffordable:
+   *
+   * 1. **Aggregate at the provider, not here.** Do the `GROUP BY` in the
+   *    provider's own query engine (Logs Insights, BigQuery, KQL) and return
+   *    the grouped rows. Never stream raw flow records back — a busy VPC emits
+   *    gigabytes a day and the host has nowhere to put them.
+   * 2. **Bound the pair count.** Return at most
+   *    `networkFlows.maxPairsPerDay` pairs, taking the largest by bytes, and
+   *    report the exact per-scope totals in `totals` so the host can write the
+   *    remainder as an explicit truncation row. A silently short list is an
+   *    undercount that looks like a finding.
+   * 3. **Never invent an endpoint.** A flow whose peer cannot be tied to a
+   *    resource is `attribution: "unattributed"` with a class token for a ref.
+   *    Not the nearest resource, not a raw IP, not dropped.
+   *
+   * Throw {@link NetworkFlowSetupError} when the account is missing the setup
+   * this needs (no flow logs, an unreadable destination, a missing permission)
+   * so the host can stop retrying and show the fix.
+   */
+  fetchNetworkFlows?(
+    accountId: string,
+    range: NetworkFlowFetchRange,
+  ): Promise<NetworkFlowRecord[] | NetworkFlowFetchResult>;
   /** List objects in a storage bucket at a given prefix (delimiter="/") */
   listStorageObjects?(bucket: string, prefix: string): Promise<StorageObject[]>;
   /** Upload a file to the given key within a bucket */
@@ -934,6 +978,12 @@ import type {
   CostRow,
 } from "./cost.js";
 import type { CreditBalance, CreditsCapabilityDeclaration } from "./credits.js";
+import type {
+  NetworkFlowCapabilityDeclaration,
+  NetworkFlowFetchRange,
+  NetworkFlowFetchResult,
+  NetworkFlowRecord,
+} from "./network-flow.js";
 import type { PolicyTemplate, PreflightDeclaration, PreflightResult } from "./preflight.js";
 import type { StatusFeedDeclaration, StatusIncident } from "./status-feed.js";
 import type { ResourceCreateReturn, ResourceInstance } from "./instance.js";

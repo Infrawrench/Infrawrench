@@ -15,6 +15,7 @@ import { runMetricAlertPass } from "@infrawrench/server-core/metric-alerts/pass"
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
 import { pruneAlertDeliveries, runAlertFollowUpPass } from "@infrawrench/server-core/alerts/pass";
 import { runCostExportPass } from "@infrawrench/server-core/cost-exports/pass";
+import { runNetworkFlowPass } from "@infrawrench/server-core/network-flow/pass";
 import { runReportDeliveryPass } from "@infrawrench/server-core/report-delivery/pass";
 import {
   pruneResourceChanges,
@@ -123,6 +124,15 @@ export class PollerLoop extends TickLoop {
     // plans come from management APIs, not billing ones, and a billing
     // outage must not stop us noticing a commitment that expires tomorrow.
     await this.tickCommitments();
+
+    // Network flow attribution (daily cadence per account, opt-in per org).
+    // Its own pass rather than part of the cost pass for two reasons that both
+    // matter: the data comes from the provider's *log* store rather than its
+    // billing API, so a billing outage is unrelated to it; and every query it
+    // runs is billed to the customer's own cloud account, so it must be
+    // separately gated, separately throttled, and separately switchable off
+    // without taking spend collection down with it.
+    await this.tickNetworkFlows();
 
     // Fourth pass: weekly digests. A no-op outside the Monday-morning send
     // window; the conditional-UPDATE claim inside makes it replica- and
@@ -360,6 +370,19 @@ export class PollerLoop extends TickLoop {
       await runProbePass({ limit: 8 });
     } catch (e) {
       console.error("[poller] probe tick failed:", e);
+    }
+  }
+
+  /**
+   * Collect network flows for accounts that have come due. The pass resolves
+   * flow-capable plugins itself and claims nothing for an org that has not
+   * switched collection on.
+   */
+  private async tickNetworkFlows(): Promise<void> {
+    try {
+      await runNetworkFlowPass({ limit: 2 });
+    } catch (e) {
+      console.error("[network-flow] flow tick failed:", e);
     }
   }
 

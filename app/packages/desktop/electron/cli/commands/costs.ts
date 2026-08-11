@@ -491,12 +491,22 @@ export async function cmdCostAnomalies(ctx: CliContext, range: RangeFlags): Prom
       header: "notified",
       value: (a) => (a.notifiedAt ? c.dim(a.notifiedAt.slice(0, 10)) : c.dim("—")),
     },
+    {
+      // What somebody established this was, once they did. Truncated because a
+      // table is not a place to read a paragraph; `--json` carries it whole.
+      header: "explained",
+      value: (a) => {
+        const explanation = a.acknowledgement?.explanation;
+        if (!explanation) return c.dim("—");
+        return c.green(explanation.length > 44 ? `${explanation.slice(0, 43)}…` : explanation);
+      },
+    },
   ]);
 
   println();
   println(
     c.dim(
-      "Baseline is the trailing 28-day mean for that provider or service; a day clears the bar at mean + N standard deviations. Rows marked [new source] had no spend at all across that window and cleared an absolute floor instead. Both thresholds are per-org, tuned from the Costs panel. Un-notified rows were detected while no alert channel was connected, or inside another anomaly's cooldown.",
+      "Baseline is the trailing 28-day mean for that provider or service; a day clears the bar at mean + N standard deviations. Rows marked [new source] had no spend at all across that window and cleared an absolute floor instead. Both thresholds are per-org, tuned from the Costs panel. Un-notified rows were detected while no alert channel was connected, or inside another anomaly's cooldown. An explained row is one somebody has said the cause of; that sentence is also drawn as a note on every cost chart covering the day, and explaining a spike never stops the same key being flagged again.",
     ),
   );
 }

@@ -38,6 +38,9 @@ const annotation = {
   createdByUserId: "user-1",
   createdAt: "2026-07-15T00:00:00.000Z",
   updatedAt: "2026-07-15T00:00:00.000Z",
+  // Null for a note somebody wrote by hand; set when the note was minted by
+  // acknowledging an anomaly, which is the reverse of that link.
+  costAnomalyId: null,
 };
 
 beforeEach(() => {

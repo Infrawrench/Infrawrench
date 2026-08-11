@@ -177,6 +177,71 @@ const STATEMENTS: string[] = [
   // discount a row is attributable to. Empty for everything else.
   `ALTER TABLE cost_daily ADD COLUMN IF NOT EXISTS commitment_id String DEFAULT ''`,
 
+  /* ------------------------------------------------------------------ *
+   * Network flow attribution — priced source→destination pairs.
+   *
+   * This sits beside `cost_daily` because it is the same shape of problem
+   * (a day-keyed analytic aggregate read as "top N by money over a range"),
+   * but it is a *separate table on purpose*: the money in it is derived from
+   * flow logs times a published rate card, and folding it into `cost_daily`
+   * would add a second, estimated opinion of data-transfer spend on top of
+   * the provider's own billed `DataTransfer` line — double-counting every
+   * budget, anomaly, export and invoice that reads that table. Nothing joins
+   * the two; the flow surface is read on its own.
+   *
+   * **It is affordable only because the aggregation already happened.** Raw
+   * flow logs are gigabytes a day per VPC. The plugin groups them inside the
+   * provider's own query engine and returns at most a few hundred pairs, and
+   * `network-flow/aggregate.ts` caps what is stored at 500 pairs plus one
+   * residual row per (scope, direction) per account-day — ≤518 rows, hard,
+   * whatever the network does. What falls outside the cap is not dropped: it
+   * is subtracted into an explicit `attribution = 'truncated'` row.
+   *
+   * `pair_hash` plays the role `tags_hash` plays in `cost_daily` — a stable
+   * FNV-1a of the six endpoint fields the sort key has no room for, so two
+   * different pairs can never collapse into one ReplacingMergeTree version.
+   * The same rule applies: **this ORDER BY is frozen once shipped**, and a new
+   * dimension that must keep rows distinct is folded into the hash rather than
+   * appended to the key.
+   *
+   * TTL is 90 days rather than `cost_daily`'s three years, and that is the
+   * other half of the budget. Flow data explains a bill, it is not a record of
+   * one — nothing reconciles against it, the provider's own flow logs are
+   * commonly retained for 7 or 30 days so older days cannot be recollected
+   * anyway, and retention is the one lever that scales the table linearly.
+   * ------------------------------------------------------------------ */
+  `CREATE TABLE IF NOT EXISTS network_flow_daily (
+    organization_id      String,
+    account_id           String,
+    plugin_id            LowCardinality(String),
+    day                  Date,
+    scope                LowCardinality(String),
+    direction            LowCardinality(String),
+    attribution          LowCardinality(String),
+    pair_hash            UInt64,
+    src_ref              String,
+    src_label            String,
+    src_zone             LowCardinality(String),
+    src_region           LowCardinality(String),
+    src_service          LowCardinality(String),
+    src_resource_type_id LowCardinality(String),
+    dst_ref              String,
+    dst_label            String,
+    dst_zone             LowCardinality(String),
+    dst_region           LowCardinality(String),
+    dst_service          LowCardinality(String),
+    dst_resource_type_id LowCardinality(String),
+    bytes                UInt64,
+    packets              UInt64,
+    currency             LowCardinality(String),
+    rate_per_gb          Float64,
+    estimated_cost       Float64,
+    ingested_at          DateTime DEFAULT now()
+  ) ENGINE = ReplacingMergeTree(ingested_at)
+  PARTITION BY toYYYYMM(day)
+  ORDER BY (organization_id, account_id, day, scope, direction, attribution, pair_hash)
+  TTL day + INTERVAL 90 DAY`,
+
   `CREATE TABLE IF NOT EXISTS poll_outcomes (
     organization_id      String,
     account_id           String,

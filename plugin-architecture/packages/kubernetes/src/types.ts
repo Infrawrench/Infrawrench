@@ -93,6 +93,13 @@ export interface K8sPodSpec {
   volumes?: Array<{
     configMap?: { name?: string };
     secret?: { secretName?: string };
+    /**
+     * The only link from a pod to a PersistentVolumeClaim, and therefore the
+     * only way to attribute a disk to a workload. `claimName` always names a
+     * PVC in the *pod's own namespace* — the API reference is explicit about
+     * that — so no qualification is needed beyond the pod's namespace.
+     */
+    persistentVolumeClaim?: { claimName?: string; readOnly?: boolean };
     projected?: {
       sources?: Array<{ configMap?: { name?: string }; secret?: { name?: string } }>;
     };
@@ -136,9 +143,49 @@ export interface K8sService {
     type: string;
     clusterIP?: string;
     ports?: Array<{ port: number; targetPort: number | string; protocol: string; name?: string }>;
+    /**
+     * Services take **equality-based selectors only** — a plain map, never a
+     * `matchExpressions` block. (The labels concept page: "Label selectors for
+     * both objects are defined in json or yaml files using maps, and only
+     * equality-based requirement selectors are supported".) So matching a
+     * Service to its pods is an exact subset test, not a selector engine.
+     */
     selector?: Record<string, string>;
+    /**
+     * Names a non-default load-balancer implementation. Present means some
+     * controller other than the cloud provider's built-in one provisions it —
+     * which may or may not be a billed cloud LB, so it is reported rather than
+     * used to decide the price.
+     */
+    loadBalancerClass?: string;
   };
   status?: { loadBalancer?: { ingress?: Array<{ ip?: string; hostname?: string }> } };
+}
+
+/**
+ * A PersistentVolumeClaim, which is where cluster storage cost is actually
+ * attributable: the claim is namespaced, is what a pod mounts, and carries the
+ * provisioned size.
+ *
+ * `status.phase` is `Pending` | `Bound` | `Lost`. `status.capacity.storage` is
+ * what the provisioner really made (which can exceed the request — providers
+ * round up to their own minimum), so it is the honest thing to price; the
+ * request is only a fallback for a claim that has not bound yet.
+ */
+export interface K8sPersistentVolumeClaim {
+  metadata: K8sMeta;
+  spec: {
+    storageClassName?: string;
+    volumeName?: string;
+    accessModes?: string[];
+    volumeMode?: string;
+    resources?: { requests?: Record<string, string> };
+  };
+  status?: {
+    phase?: string;
+    capacity?: Record<string, string>;
+    accessModes?: string[];
+  };
 }
 
 export interface K8sStatefulSet {

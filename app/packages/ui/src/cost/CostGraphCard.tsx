@@ -737,6 +737,13 @@ function SpendGraphCard({
                     <p className="text-[11px] text-on-surface-faint">
                       {formatCostAnnotationDates(annotation)} ·{" "}
                       {describeCostAnnotationScope(annotation)}
+                      {/*
+                        Provenance, said where the note is read: this sentence
+                        was written to close a detected anomaly, so a reader who
+                        doubts it can go and check it against the finding rather
+                        than taking it on trust.
+                      */}
+                      {annotation.costAnomalyId ? " · Explains a detected anomaly" : ""}
                     </p>
                   </div>
                   {canWriteAnnotations && (

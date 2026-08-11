@@ -63,6 +63,18 @@ vi.mock("../../services/budgets", () => ({
   softDeleteBudget: (...a: unknown[]) => mockDeleteBudget(...a),
 }));
 
+const mockListAnomalies = vi.fn();
+const mockAcknowledgeAnomaly = vi.fn();
+// Same DATABASE_URL reason as the services above: the anomaly service reaches
+// the db client at import time. The rules acknowledging applies are pure and
+// live in server-core's `anomaly-acknowledge.test.ts`.
+class FakeCostAnomalyAcknowledgeError extends Error {}
+vi.mock("../../services/cost-anomalies", () => ({
+  CostAnomalyAcknowledgeError: FakeCostAnomalyAcknowledgeError,
+  listRecentCostAnomalies: (...a: unknown[]) => mockListAnomalies(...a),
+  acknowledgeCostAnomaly: (...a: unknown[]) => mockAcknowledgeAnomaly(...a),
+}));
+
 const mockLogAudit = vi.fn();
 vi.mock("../../services/audit", () => ({
   logAudit: (...a: unknown[]) => mockLogAudit(...a),
@@ -211,5 +223,96 @@ describe("costTools", () => {
     expect(tool("delete_budget").risk).toBe("destructive");
     expect(tool("create_budget").risk).toBe("write");
     expect(tool("query_costs").risk).toBe("read");
+  });
+});
+
+/**
+ * Explaining an anomaly from a model's side.
+ *
+ * The model is often the thing that worked out the cause — it has the hints,
+ * the change timeline and the conversation — so this is the surface where an
+ * explanation is most likely to be written at all. What it must not do is
+ * write one without the permission, or fabricate the annotation's date.
+ */
+describe("costTools — anomalies", () => {
+  const anomaly = {
+    id: "anom-1",
+    day: "2026-07-30",
+    kind: "spike",
+    dimension: "service",
+    dimensionKey: "Amazon EC2",
+    acknowledgement: {
+      explanation: "Migrated the API fleet to Graviton",
+      acknowledgedAt: "2026-08-01T09:00:00.000Z",
+      acknowledgedByUserId: "u1",
+      annotationId: "ann-1",
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    grant("costs:read", "costs:write");
+    mockListAnomalies.mockResolvedValue([anomaly]);
+    mockAcknowledgeAnomaly.mockResolvedValue(anomaly);
+  });
+
+  it("list_cost_anomalies defaults to the 30-day window", async () => {
+    const r = await tool("list_cost_anomalies").handler({}, auth);
+    expect(mockListAnomalies).toHaveBeenCalledWith("o1", 30);
+    expect(JSON.parse(r.content[0]!.text)[0].id).toBe("anom-1");
+  });
+
+  it("acknowledge_cost_anomaly denies a costs:read-only caller", async () => {
+    grant("costs:read");
+    const r = await tool("acknowledge_cost_anomaly").handler(
+      { anomalyId: "anom-1", explanation: "Migrated the API fleet" },
+      auth,
+    );
+    expect(r.isError).toBe(true);
+    expect(r.content[0]!.text).toContain("costs:write");
+    expect(mockAcknowledgeAnomaly).not.toHaveBeenCalled();
+  });
+
+  it("acknowledge_cost_anomaly explains the finding and audits it", async () => {
+    const r = await tool("acknowledge_cost_anomaly").handler(
+      { anomalyId: "anom-1", explanation: "Migrated the API fleet to Graviton" },
+      auth,
+    );
+    expect(r.isError).toBeFalsy();
+    expect(mockAcknowledgeAnomaly).toHaveBeenCalledWith(
+      "o1",
+      "anom-1",
+      "Migrated the API fleet to Graviton",
+      "u1",
+    );
+    // The annotation it created is in the answer, so the model can say where
+    // the explanation now appears.
+    expect(JSON.parse(r.content[0]!.text).acknowledgement.annotationId).toBe("ann-1");
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "cost_anomaly.acknowledge", entityId: "anom-1" }),
+    );
+  });
+
+  it("acknowledge_cost_anomaly reports an unknown anomaly rather than throwing", async () => {
+    mockAcknowledgeAnomaly.mockResolvedValue(null);
+    const r = await tool("acknowledge_cost_anomaly").handler(
+      { anomalyId: "nope", explanation: "Migrated the API fleet" },
+      auth,
+    );
+    expect(r.isError).toBe(true);
+    expect(r.content[0]!.text).toContain("nope");
+    expect(mockLogAudit).not.toHaveBeenCalled();
+  });
+
+  it("acknowledge_cost_anomaly surfaces a rejected explanation as a tool error", async () => {
+    mockAcknowledgeAnomaly.mockRejectedValue(
+      new FakeCostAnomalyAcknowledgeError("Keep the note under 500 characters."),
+    );
+    const r = await tool("acknowledge_cost_anomaly").handler(
+      { anomalyId: "anom-1", explanation: "x".repeat(600) },
+      auth,
+    );
+    expect(r.isError).toBe(true);
+    expect(r.content[0]!.text).toContain("500 characters");
   });
 });

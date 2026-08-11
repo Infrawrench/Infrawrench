@@ -5,10 +5,13 @@ import {
   COST_ANOMALY_SMS_MODE_LABELS,
   DEFAULT_COST_ANOMALY_SETTINGS,
   costAnomalyDeltaPercent,
+  countUnexplainedCostAnomalies,
+  isCostAnomalyExplained,
 } from "@infrawrench/client-core";
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 
 import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
+import { CostAnomalyExplainModal } from "./CostAnomalyExplainModal.js";
 import { formatMoney } from "./transform.js";
 import type { CostAnomalySettings, CostAnomalySettingsView, CostAnomalySmsMode } from "./config.js";
 import type { CostAnomaly, CostsClient } from "./types.js";
@@ -37,6 +40,18 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
   const [anomalies, setAnomalies] = useState<CostAnomaly[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tuning, setTuning] = useState(false);
+  /** The row whose explanation is being written, or null. */
+  const [explaining, setExplaining] = useState<CostAnomaly | null>(null);
+
+  const acknowledge = client.acknowledgeAnomaly;
+  /**
+   * Patch the one row rather than refetching the window: the answer is the
+   * updated anomaly, and re-running a 30-day query to learn what the response
+   * already said would also lose the scroll position on a long list.
+   */
+  const applyAcknowledgement = useCallback((updated: CostAnomaly) => {
+    setAnomalies((rows) => rows?.map((r) => (r.id === updated.id ? updated : r)) ?? rows);
+  }, []);
 
   useEffect(() => {
     const listAnomalies = client.listAnomalies;
@@ -68,7 +83,22 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-on-surface">Anomalies</h2>
+        <h2 className="text-sm font-semibold text-on-surface">
+          Anomalies
+          {/*
+            The count is of *unexplained* findings, which is what "an
+            acknowledged anomaly stops nagging" means here. Explained rows keep
+            their place in the list — the detection was correct and the record
+            is the point — they simply stop being counted.
+          */}
+          {anomalies !== null && anomalies.length > 0 && (
+            <span className="ml-2 font-normal text-on-surface-faint">
+              {countUnexplainedCostAnomalies(anomalies) === 0
+                ? "all explained"
+                : `${countUnexplainedCostAnomalies(anomalies)} unexplained`}
+            </span>
+          )}
+        </h2>
         {client.getAnomalySettings && (
           <button
             type="button"
@@ -114,7 +144,7 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                 <th className="px-3 py-2 font-medium text-right">Spend</th>
                 <th className="px-3 py-2 font-medium text-right">Baseline / day</th>
                 <th className="px-3 py-2 font-medium text-right">Change</th>
-                <th className="px-3 py-2 font-medium text-right">Issue</th>
+                <th className="px-3 py-2 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
@@ -122,6 +152,7 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                 const delta = costAnomalyDeltaPercent(a);
                 const isNew = a.kind === "new_source";
                 const hints = a.hints ?? [];
+                const explained = isCostAnomalyExplained(a);
                 return (
                   <tr key={a.id} className="text-on-surface-secondary">
                     <td className="whitespace-nowrap px-3 py-2">{formatDay(a.day)}</td>
@@ -134,6 +165,28 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                         <span className="ml-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-500">
                           New source
                         </span>
+                      )}
+                      {explained && (
+                        <span className="ml-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-500">
+                          Explained
+                        </span>
+                      )}
+                      {/*
+                        The answer, next to the question. Shown before the hints
+                        because a hint is a guess detection made and this is what
+                        somebody established.
+                      */}
+                      {a.acknowledgement && (
+                        <p className="mt-1 text-xs text-on-surface">
+                          {a.acknowledgement.explanation}
+                          <span className="text-on-surface-faint">
+                            {" · "}
+                            {a.acknowledgement.annotationId
+                              ? "on every chart for this day"
+                              : /* The note was deleted; the explanation stands. */
+                                "note removed from charts"}
+                          </span>
+                        </p>
                       )}
                       {hints.length > 0 && (
                         <ul className="mt-1 space-y-0.5 text-xs text-on-surface-faint">
@@ -161,35 +214,55 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                       {delta ?? "new"}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">
-                      <FileIssueButton
-                        sourceKind="cost_anomaly"
-                        sourceId={a.id}
-                        draft={{
-                          title: `${a.dimensionKey} spend ${isNew ? "started" : `up ${delta ?? ""}`} on ${a.day}`,
-                          details: [
-                            { label: "Day", value: a.day },
-                            {
-                              label: COST_ANOMALY_DIMENSION_LABELS[a.dimension],
-                              value: a.dimensionKey,
-                            },
-                            {
-                              label: "Spend",
-                              value: formatMoney(a.actualCents / 100, a.currency),
-                            },
-                            {
-                              label: "Baseline / day",
-                              value: isNew
-                                ? "none (new source)"
-                                : formatMoney(a.baselineCents / 100, a.currency),
-                            },
-                            { label: "Change", value: delta },
-                            { label: "Detected", value: a.detectedAt },
-                          ],
-                          ...(hints.length > 0
-                            ? { note: `What changed around this window:\n${hints.join("\n")}` }
-                            : {}),
-                        }}
-                      />
+                      {/*
+                        Two actions on one row, and they answer different
+                        questions: "somebody needs to look at this" (file it) and
+                        "I know what this was" (explain it). They sit together,
+                        in that order, because the second is the one that ends
+                        the row's life and should read as the closing move.
+                      */}
+                      <span className="inline-flex items-center gap-3">
+                        <FileIssueButton
+                          sourceKind="cost_anomaly"
+                          sourceId={a.id}
+                          draft={{
+                            title: `${a.dimensionKey} spend ${isNew ? "started" : `up ${delta ?? ""}`} on ${a.day}`,
+                            details: [
+                              { label: "Day", value: a.day },
+                              {
+                                label: COST_ANOMALY_DIMENSION_LABELS[a.dimension],
+                                value: a.dimensionKey,
+                              },
+                              {
+                                label: "Spend",
+                                value: formatMoney(a.actualCents / 100, a.currency),
+                              },
+                              {
+                                label: "Baseline / day",
+                                value: isNew
+                                  ? "none (new source)"
+                                  : formatMoney(a.baselineCents / 100, a.currency),
+                              },
+                              { label: "Change", value: delta },
+                              { label: "Detected", value: a.detectedAt },
+                            ],
+                            ...(hints.length > 0
+                              ? {
+                                  note: `What changed around this window:\n${hints.join("\n")}`,
+                                }
+                              : {}),
+                          }}
+                        />
+                        {acknowledge && (
+                          <button
+                            type="button"
+                            onClick={() => setExplaining(a)}
+                            className="text-xs text-on-surface-faint underline hover:text-on-surface-secondary"
+                          >
+                            {explained ? "Edit explanation" : "Explain"}
+                          </button>
+                        )}
+                      </span>
                     </td>
                   </tr>
                 );
@@ -197,6 +270,16 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {explaining && acknowledge && (
+        <CostAnomalyExplainModal
+          anomaly={explaining}
+          onSave={async (explanation) => {
+            applyAcknowledgement(await acknowledge(explaining.id, explanation));
+          }}
+          onClose={() => setExplaining(null)}
+        />
       )}
     </section>
   );

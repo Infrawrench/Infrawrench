@@ -94,6 +94,7 @@
  */
 import { restatedDayScope } from "../cost/period-scope";
 import { getClickHouseClient, isClickHouseConfigured } from "./client";
+import { DAY_FROM_SQL, DAY_TO_SQL } from "./cost-readers";
 import type { CostDailyRow } from "./cost-writers";
 
 /** Mirrors `cost/cost-ingest.ts`'s `RESERVED_TAG_PREFIX`; see guard 3 above. */
@@ -245,8 +246,8 @@ export async function getStoredCostRowKeys(
             WHERE organization_id = {orgId:String}
               AND account_id = {accountId:String}
               AND plugin_id = {pluginId:String}
-              AND day >= toDate({from:String})
-              AND day <= toDate({to:String})
+              AND ${DAY_FROM_SQL}
+              AND ${DAY_TO_SQL}
               AND (amount != 0 OR amortized_amount != 0)`,
     query_params: {
       orgId: meta.organizationId,

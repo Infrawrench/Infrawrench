@@ -12,6 +12,7 @@ import type {
   CostScenarioModelInput,
 } from "@infrawrench/ui/cost";
 import {
+  acknowledgeCloudCostAnomaly,
   createCloudCostAnnotation,
   deleteCloudCostAnnotation,
   listCloudCostAnnotations,
@@ -147,6 +148,10 @@ export function createDesktopCostsClient(): CostsClient {
       writeCloudBusinessMetricValues(requireOrgId(), metricId, values),
     listBudgets: () => listCloudBudgets(requireOrgId()),
     listAnomalies: (days?: number) => listCloudCostAnomalies(requireOrgId(), days),
+    // Explaining a finding is org-level cloud state like the tuning below it,
+    // so desktop gets the composer too rather than a list it can only read.
+    acknowledgeAnomaly: (anomalyId: string, explanation: string) =>
+      acknowledgeCloudCostAnomaly(requireOrgId(), anomalyId, explanation),
     // Desktop gets the tuning editor too: the Costs panel is the same
     // component in both hosts, and the settings are org-level cloud state
     // either way — leaving it out would make the desktop panel quietly less

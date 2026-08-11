@@ -5,6 +5,7 @@ import { SavingsSection } from "../savings/SavingsSection.js";
 import { OversizedSection } from "../savings/OversizedSection.js";
 import { CreditBurndownSection } from "./CreditBurndownSection.js";
 import { CommitmentsSection } from "./CommitmentsSection.js";
+import { NetworkFlowSection } from "./NetworkFlowSection.js";
 import type {
   OrphanedResource,
   OrphansClient,
@@ -389,6 +390,13 @@ export function CostsPanel({
             Distinct from the credit burndown above — credits are a prepaid
             pot with a runway, commitments are a purchase with a term. */}
         <CommitmentsSection client={client} />
+
+        {/* Network costs sit here, after commitments and before the
+            resource-shaped findings, because they are the other lever that is
+            invisible in the cost dimensions: the orphan and oversize sections
+            below both act on a *resource*, while an egress bill is a property
+            of a conversation between two of them. */}
+        <NetworkFlowSection client={client} />
 
         {orphans && <SavingsSection client={orphans} onOpenResource={onOpenResource} />}
         {rightsizing && (

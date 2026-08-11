@@ -1,5 +1,20 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+beforeAll(() => {
+  // jsdom doesn't implement <dialog> showModal/close — stub them, the way
+  // issue-filing.test.tsx does. The explain composer renders through Modal.
+  if (!HTMLDialogElement.prototype.showModal) {
+    HTMLDialogElement.prototype.showModal = function () {
+      this.open = true;
+    };
+  }
+  if (!HTMLDialogElement.prototype.close) {
+    HTMLDialogElement.prototype.close = function () {
+      this.open = false;
+    };
+  }
+});
 import { CostAnomaliesSection } from "../cost/CostAnomaliesSection.js";
 import type { CostAnomalySettings, CostAnomalySettingsView } from "../cost/config.js";
 import type { CostAnomaly, CostsClient } from "../cost/types.js";
@@ -222,5 +237,141 @@ describe("CostAnomaliesSection", () => {
 
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(updateAnomalySettings).not.toHaveBeenCalled();
+  });
+});
+
+/** An anomaly somebody has already explained. */
+function explained(overrides: Partial<CostAnomaly> = {}): CostAnomaly {
+  return anomaly({
+    acknowledgement: {
+      explanation: "Migrated the API fleet to Graviton",
+      acknowledgedAt: "2026-08-01T09:00:00.000Z",
+      acknowledgedByUserId: "user-1",
+      annotationId: "ann-1",
+    },
+    ...overrides,
+  });
+}
+
+describe("CostAnomaliesSection — explaining a finding", () => {
+  it("offers nothing when the host can't acknowledge", async () => {
+    render(<CostAnomaliesSection client={makeClient([anomaly()])} />);
+    await screen.findByText("+173%");
+    expect(screen.queryByText("Explain")).toBeNull();
+  });
+
+  it("opens a composer prefilled with what the row already knows", async () => {
+    const client = makeClient([anomaly()], { acknowledgeAnomaly: vi.fn() });
+    render(<CostAnomaliesSection client={client} />);
+
+    fireEvent.click(await screen.findByText("Explain"));
+
+    const box = (await screen.findByLabelText("What happened")) as HTMLTextAreaElement;
+    // A sentence to finish, not a blank page.
+    expect(box.value).toBe("Amazon EC2 spend +173% — ");
+    // …and the facts, so nobody has to hold the row in their head: the row
+    // itself names the service, and so now does the composer.
+    expect(screen.getAllByText("Amazon EC2")).toHaveLength(2);
+    expect(screen.getByText(/against .*\/day/)).toBeTruthy();
+    // No date or scope control: both are derived from the anomaly.
+    expect(screen.queryByText("Every cost chart")).toBeNull();
+  });
+
+  it("fills the cause from a hint in one click", async () => {
+    const client = makeClient([anomaly({ hints: ["12 gce-instance resources appeared"] })], {
+      acknowledgeAnomaly: vi.fn(),
+    });
+    render(<CostAnomaliesSection client={client} />);
+    fireEvent.click(await screen.findByText("Explain"));
+
+    fireEvent.click(await screen.findByRole("button", { name: /12 gce-instance resources/ }));
+    const box = (await screen.findByLabelText("What happened")) as HTMLTextAreaElement;
+    expect(box.value).toBe("Amazon EC2 spend +173% — 12 gce-instance resources appeared");
+  });
+
+  it("sends the sentence and shows it on the row without a refetch", async () => {
+    const listAnomalies = vi.fn(async () => [anomaly()]);
+    const acknowledgeAnomaly = vi.fn(async (_id: string, explanation: string) =>
+      explained({
+        acknowledgement: {
+          explanation,
+          acknowledgedAt: "2026-08-01T09:00:00.000Z",
+          acknowledgedByUserId: "user-1",
+          annotationId: "ann-1",
+        },
+      }),
+    );
+    const client = makeClient([], { listAnomalies, acknowledgeAnomaly });
+
+    render(<CostAnomaliesSection client={client} />);
+    fireEvent.click(await screen.findByText("Explain"));
+    fireEvent.change(await screen.findByLabelText("What happened"), {
+      target: { value: "Migrated the API fleet to Graviton" },
+    });
+    fireEvent.click(screen.getByText("Explain", { selector: "button.bg-blue-600" }));
+
+    await waitFor(() =>
+      expect(acknowledgeAnomaly).toHaveBeenCalledWith("a1", "Migrated the API fleet to Graviton"),
+    );
+    // The answer is the response, not a second listing.
+    expect(await screen.findByText(/Migrated the API fleet to Graviton/)).toBeTruthy();
+    expect(listAnomalies).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks an explained row and counts only the open ones", async () => {
+    const client = makeClient([explained(), anomaly({ id: "a2", dimensionKey: "Amazon S3" })], {
+      acknowledgeAnomaly: vi.fn(),
+    });
+    render(<CostAnomaliesSection client={client} />);
+
+    expect(await screen.findByText("Explained")).toBeTruthy();
+    expect(screen.getByText("1 unexplained")).toBeTruthy();
+    // Marked, never hidden: the detection record is the point.
+    expect(screen.getByText("Amazon EC2")).toBeTruthy();
+    expect(screen.getByText(/Migrated the API fleet/)).toBeTruthy();
+  });
+
+  it("stays explained, and says the marker is gone, after the note is deleted", async () => {
+    const client = makeClient(
+      [
+        explained({
+          acknowledgement: {
+            explanation: "Migrated the API fleet to Graviton",
+            acknowledgedAt: "2026-08-01T09:00:00.000Z",
+            acknowledgedByUserId: "user-1",
+            annotationId: null,
+          },
+        }),
+      ],
+      { acknowledgeAnomaly: vi.fn() },
+    );
+    render(<CostAnomaliesSection client={client} />);
+
+    expect(await screen.findByText("Explained")).toBeTruthy();
+    expect(screen.getByText("all explained")).toBeTruthy();
+    expect(screen.getByText(/note removed from charts/)).toBeTruthy();
+  });
+
+  it("rewords the existing note rather than promising a second one", async () => {
+    const client = makeClient([explained()], { acknowledgeAnomaly: vi.fn() });
+    render(<CostAnomaliesSection client={client} />);
+
+    fireEvent.click(await screen.findByText("Edit explanation"));
+    const box = (await screen.findByLabelText("What happened")) as HTMLTextAreaElement;
+    // Opens on what was said, not on the prefill.
+    expect(box.value).toBe("Migrated the API fleet to Graviton");
+    expect(screen.getByText(/rewords the note already on the charts/)).toBeTruthy();
+  });
+
+  it("refuses an empty explanation locally, the way the API would", async () => {
+    const acknowledgeAnomaly = vi.fn();
+    const client = makeClient([anomaly()], { acknowledgeAnomaly });
+    render(<CostAnomaliesSection client={client} />);
+    fireEvent.click(await screen.findByText("Explain"));
+
+    fireEvent.change(await screen.findByLabelText("What happened"), { target: { value: "   " } });
+    const submit = screen.getByText("Explain", { selector: "button.bg-blue-600" });
+    fireEvent.click(submit);
+    expect(acknowledgeAnomaly).not.toHaveBeenCalled();
   });
 });

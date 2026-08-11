@@ -1122,6 +1122,45 @@ export const costAnomalies = pgTable(
      * for passes where the hint queries failed; capped at three entries.
      */
     hints: jsonb("hints").$type<string[]>(),
+    /**
+     * When somebody explained this finding, and who. Null is "nobody has said
+     * what this was yet", which is the only state the unexplained count in the
+     * anomalies list is derived from.
+     *
+     * Acknowledging never deletes the row and never suppresses detection: the
+     * finding was correct, and the same key spiking again next month is a new
+     * finding with its own row. It only stops the row nagging.
+     *
+     * Re-acknowledging replaces the sentence and restamps this, so the
+     * timestamp is "when the current explanation was recorded" rather than
+     * "when it was first noticed" — a corrected explanation dated to the
+     * original mistake would be a lie about what was known when.
+     */
+    acknowledgedAt: timestamp("acknowledged_at"),
+    acknowledgedByUserId: text("acknowledged_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * What they said, stored here as well as in the annotation it created.
+     *
+     * The duplication is deliberate and is the whole reason deleting the note
+     * cannot un-explain the anomaly: the annotation is a living overlay anyone
+     * may reword or remove, while this is the record of what was said when this
+     * finding was closed. They are written together and can drift afterwards;
+     * re-acknowledging rewrites both.
+     */
+    explanation: text("explanation"),
+    /**
+     * The annotation the acknowledgement created — the artifact, drawn on every
+     * chart covering the anomalous day.
+     *
+     * SET NULL rather than CASCADE: deleting the note removes the marker, not
+     * the acknowledgement. The row stays explained, keeps its sentence, and
+     * simply stops pointing at a chart marker that no longer exists.
+     */
+    annotationId: text("annotation_id").references(() => costAnnotations.id, {
+      onDelete: "set null",
+    }),
   },
   (t) => ({
     onceUnique: uniqueIndex("cost_anomalies_once_unique").on(
@@ -1132,6 +1171,16 @@ export const costAnomalies = pgTable(
       t.currency,
     ),
     orgDayIdx: index("cost_anomalies_org_day_idx").on(t.organizationId, t.day),
+    /**
+     * The reverse of the link: given an annotation, which finding did it
+     * explain. Unique so that answer is one row rather than a list — each
+     * acknowledgement mints its own note, and nothing attaches an existing one.
+     * Partial because every unacknowledged anomaly holds null here and Postgres
+     * would otherwise be storing millions of them in a unique index for nothing.
+     */
+    annotationUnique: uniqueIndex("cost_anomalies_annotation_unique")
+      .on(t.annotationId)
+      .where(sql`annotation_id is not null`),
   }),
 );
 
@@ -4039,3 +4088,4 @@ export * from "./custom-graph-schema.js";
 export * from "./deployment-schema.js";
 export * from "./agent-schema.js";
 export * from "./commitment-schema.js";
+export * from "./network-flow-schema.js";

@@ -310,6 +310,26 @@ const CostAnomaly = strict({
         "ranked by likely relevance and capped at three. Empty when nothing notable " +
         "happened in the window or the anomaly predates hint collection.",
     ),
+  acknowledgement: strict({
+    explanation: z
+      .string()
+      .describe("What somebody established this finding was. Also the annotation's text."),
+    acknowledgedAt: IsoDateTime.describe(
+      "When the current explanation was recorded — restamped by a correction.",
+    ),
+    acknowledgedByUserId: z.string().nullable(),
+    annotationId: Uuid.nullable().describe(
+      "The cost annotation this created, drawn on every chart covering the anomalous day. " +
+        "Null once that note has been deleted — which removes the marker, never the " +
+        "acknowledgement: the finding stays explained.",
+    ),
+  })
+    .nullable()
+    .describe(
+      "Present once somebody has explained this finding, null while it is still an open " +
+        "question. Acknowledging does not suppress detection — the same key spiking again " +
+        "on a later day is a new anomaly and fires as normal.",
+    ),
 }).openapi("CostAnomaly");
 
 const CostAnomalySettings = strict({
@@ -678,6 +698,53 @@ export function registerCostPaths(ctx: BuildContext) {
         },
       },
       400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/costs/anomalies/{anomalyId}/acknowledge",
+    tags: ["Costs"],
+    summary: "Explain a detected cost anomaly",
+    description:
+      "Record what a finding actually was, and publish that sentence as a cost annotation on " +
+      "**every** chart covering the anomalous day — the point being that 'we migrated the " +
+      "fleet' is not a fact about whichever report somebody happened to open. The note's date " +
+      "(the anomalous day) and its org-wide scope are derived from the anomaly and are not the " +
+      "caller's to choose.\n\n" +
+      "The reply is the updated anomaly, carrying `acknowledgement` with the id of the note it " +
+      "created. Sending it again replaces the sentence and rewords that note rather than " +
+      "filing a second one; it will not recreate a note that has since been deleted, since " +
+      "deleting a note is a deliberate act and the finding stays explained without it.\n\n" +
+      "This does not suppress detection. If the same provider or service spikes again on a " +
+      "later day, that is a new anomaly and it is detected and alerted on as normal.",
+    request: {
+      params: OrgIdParam.extend({ anomalyId: z.string() }),
+      body: {
+        content: {
+          "application/json": {
+            schema: strict({
+              explanation: z
+                .string()
+                .min(1)
+                .max(500)
+                .describe(
+                  "One sentence on what caused the spend. Becomes the annotation's text, so " +
+                    "the annotation's 500-character ceiling applies.",
+                ),
+            }),
+          },
+        },
+      },
+    },
+    responses: {
+      200: {
+        description: "The acknowledged anomaly",
+        content: { "application/json": { schema: CostAnomaly } },
+      },
+      400: ErrorResponses[400],
+      403: ErrorResponses[403],
+      404: ErrorResponses[404],
     },
   });
 

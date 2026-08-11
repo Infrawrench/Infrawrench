@@ -13,6 +13,7 @@ import type {
   EfficiencyAlertKind,
   CommitmentsFeed,
   CostDimensionOption,
+  NetworkFlowFeed,
   CreditBurndown,
   ShowbackReport,
   TagComplianceReport,
@@ -50,6 +51,12 @@ export type {
   BudgetPlacement,
   /** A detected spend anomaly, as listed on the Costs panel. */
   CostAnomaly,
+  /** Priced source→destination network flow attribution, one screen's worth. */
+  NetworkFlowFeed,
+  NetworkFlowPairView,
+  NetworkFlowScopeSummary,
+  NetworkFlowAccountStatus,
+  NetworkFlowScope,
   CostAnomalyDimension,
   CostAnomalyKind,
   /** One firing of an efficiency detector, as listed on the Costs panel. */
@@ -153,6 +160,16 @@ export interface CostsClient extends CostApi {
    */
   listAnomalies?(days?: number): Promise<CostAnomaly[]>;
   /**
+   * Explain a finding: record what it was, and put that sentence on every cost
+   * chart covering the day as an annotation. Answers the updated anomaly.
+   *
+   * Optional on the usual rule — a host that hasn't wired it renders the
+   * anomalies list without the "Explain" action, exactly as it looked before
+   * this existed, rather than offering a button that can only fail. The server
+   * still enforces `costs:write`.
+   */
+  acknowledgeAnomaly?(anomalyId: string, explanation: string): Promise<CostAnomaly>;
+  /**
    * The org's detection thresholds, plus the derived `smsConfigured` fact the
    * SMS control needs to tell the truth about what turning it on would do.
    * Optional like `listAnomalies`; a host that hasn't wired it shows the list
@@ -228,6 +245,36 @@ export interface CostsClient extends CostApi {
    * accounts.
    */
   getCommitments?(): Promise<CommitmentsFeed | null>;
+  /**
+   * Priced source→destination network flow attribution — the egress and
+   * cross-zone story the cost dimensions cannot tell, because every cost
+   * dimension is about one side of a transfer and a network charge is about a
+   * pair.
+   *
+   * Optional the way `getCommitments` is: an unwired host doesn't render the
+   * section, and the section renders an explanatory empty state (never zero)
+   * for an org whose providers cannot report flows at all.
+   */
+  getNetworkFlows?(options?: {
+    from?: string;
+    to?: string;
+    scope?: string;
+    limit?: number;
+  }): Promise<NetworkFlowFeed>;
+  /**
+   * Turn flow collection on or off for the org.
+   *
+   * Omitted for a viewer without `org:settings:write`, and the switch then
+   * renders read-only rather than failing on click — the same rule the budget
+   * and anomaly-settings halves of this client follow. The permission is the
+   * org-settings one rather than `costs:write` because enabling collection
+   * authorizes daily queries the *provider bills to the org's own cloud
+   * account*, which is a governance act rather than a cost-object edit.
+   */
+  updateNetworkFlowSettings?(settings: {
+    enabled: boolean;
+    initialLookbackDays?: number;
+  }): Promise<{ enabled: boolean; initialLookbackDays: number }>;
   /**
    * The three efficiency alerts — commitment expiry, idle commitments,
    * unit-cost regression — in one feed, newest first. Optional the way

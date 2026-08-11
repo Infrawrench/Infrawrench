@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { CostGraphCard } from "../cost/CostGraphCard.js";
 import type { CostAnnotation, CostGraphConfig, CostQueryResponse } from "../cost/config.js";
 import type { CostApi } from "../cost/types.js";
@@ -90,6 +90,34 @@ describe("CostGraphCard annotations", () => {
     const markers = await screen.findAllByRole("button", { name: /^Annotation \d/ });
     expect(markers).toHaveLength(1);
     expect(markers[0]!.getAttribute("aria-label")).toMatch(/and 1 more/);
+  });
+
+  it("says when a note came from explaining a detected anomaly", async () => {
+    // Provenance where the note is read: a marker created by acknowledging an
+    // anomaly can be checked against the finding it closed rather than taken
+    // on trust. A hand-written note says nothing extra.
+    render(
+      <CostGraphCard
+        title="Spend"
+        config={CONFIG}
+        api={makeApi([annotation({ id: "a", costAnomalyId: "anom-1" })])}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /^Annotation 1/ }));
+    expect(await screen.findByText(/Explains a detected anomaly/)).toBeTruthy();
+  });
+
+  it("says nothing extra for a note somebody wrote by hand", async () => {
+    render(
+      <CostGraphCard title="Spend" config={CONFIG} api={makeApi([annotation({ id: "a" })])} />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /^Annotation 1/ }));
+    // The popover is open — its scope line is there — and says nothing about
+    // an anomaly, because nothing linked this note to one.
+    expect(await screen.findByText(/Org-wide/)).toBeTruthy();
+    expect(screen.queryByText(/Explains a detected anomaly/)).toBeNull();
   });
 
   it("draws nothing for a note outside the chart's window", async () => {

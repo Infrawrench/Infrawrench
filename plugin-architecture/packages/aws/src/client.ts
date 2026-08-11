@@ -15,6 +15,8 @@ import type {
   CostFetchResult,
   CredentialExport,
   HostServices,
+  NetworkFlowFetchRange,
+  NetworkFlowFetchResult,
   PreflightResult,
   ChatMessage,
   ChatStreamEvent,
@@ -118,6 +120,7 @@ import { estimateAwsCost } from "./cost-estimate.js";
 import { fetchEc2MonthlyPrices, HOURS_PER_MONTH as PRICING_HOURS_PER_MONTH } from "./pricing.js";
 import { fetchAwsCostData } from "./cost-data.js";
 import { fetchAwsCommitments } from "./commitments.js";
+import { fetchAwsNetworkFlows } from "./network-flows.js";
 import { attachResource as attachResourceImpl } from "./attach-handlers.js";
 import { resolveOutput as resolveOutputImpl } from "./resolve-output.js";
 import { deleteResource as deleteResourceImpl } from "./delete-handlers.js";
@@ -514,6 +517,23 @@ export class AWSClient implements PluginClient {
 
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostFetchResult> {
     return fetchAwsCostData(this.creds, range);
+  }
+
+  /**
+   * One closed UTC day of aggregated VPC flow pairs.
+   *
+   * Scoped to the credential's own region rather than fanned out across every
+   * enabled region, unlike `fetchCommitments`. Each region's flow logs are a
+   * separate log group and each query is billed to the customer per GB scanned,
+   * so a silent fan-out would multiply a cost the user did not agree to by the
+   * number of regions they have ever touched. A second account on the same
+   * credentials in another region collects that region.
+   */
+  async fetchNetworkFlows(
+    _accountId: string,
+    range: NetworkFlowFetchRange,
+  ): Promise<NetworkFlowFetchResult> {
+    return fetchAwsNetworkFlows(this.creds, range.day);
   }
 
   async fetchCommitments(_accountId: string): Promise<CommitmentRecord[]> {

@@ -49,6 +49,26 @@ export type { CreditBalance, CreditsCapabilityDeclaration } from "./credits.js";
 export { CreditAccessError } from "./credits.js";
 
 export type {
+  NetworkFlowAttribution,
+  NetworkFlowCapabilityDeclaration,
+  NetworkFlowDirection,
+  NetworkFlowEndpoint,
+  NetworkFlowFetchRange,
+  NetworkFlowFetchResult,
+  NetworkFlowRateCard,
+  NetworkFlowRecord,
+  NetworkFlowScope,
+  NetworkFlowSource,
+  NetworkFlowTotal,
+} from "./network-flow.js";
+export {
+  BYTES_PER_PRICING_GB,
+  NETWORK_FLOW_SCOPES,
+  NetworkFlowSetupError,
+  normalizeNetworkFlowResult,
+} from "./network-flow.js";
+
+export type {
   PolicyTemplate,
   PreflightCapability,
   PreflightCapabilityCheck,

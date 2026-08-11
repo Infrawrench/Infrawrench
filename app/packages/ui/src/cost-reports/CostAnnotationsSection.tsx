@@ -104,6 +104,8 @@ export function CostAnnotationsSection({
                     should discover that after saving.
                   */}
                   {describeCostAnnotationScope(annotation)}
+                  {/* Where this note came from, when it wasn't written by hand. */}
+                  {annotation.costAnomalyId ? " · Explains a detected anomaly" : ""}
                 </p>
               </div>
               {canWrite && (

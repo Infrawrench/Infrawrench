@@ -12,11 +12,17 @@
  *
  *  - There is no namespace dimension, so namespace / workload / workload_kind
  *    ride along as **tags**. The declaration lists `tag` for exactly this.
- *  - `service` is a small stable set (`kubernetes-workload`, `kubernetes-idle`,
- *    `kubernetes-system-reserved`) rather than one value per namespace, so the
- *    service breakdown stays a legible four-way split.
- *  - `resourceId` is the workload identity `namespace/Kind/name`, which the
- *    cost model already guarantees is stable across runs.
+ *  - `service` is a small stable set — `kubernetes-workload`, `kubernetes-idle`,
+ *    `kubernetes-system-reserved`, `kubernetes-control-plane`,
+ *    `kubernetes-storage`, `kubernetes-storage-idle` and
+ *    `kubernetes-load-balancer` — rather than one value per namespace, so the
+ *    service breakdown stays a legible partition of the cluster's bill. The
+ *    labels **partition**: every unit of money appears under exactly one, which
+ *    is why a workload's row carries its compute share only and its disks and
+ *    load balancers get rows of their own.
+ *  - `resourceId` is the object's identity — `namespace/Kind/name` for a
+ *    workload, a claim or a Service — which the cost model already guarantees
+ *    is stable across runs.
  *
  * Re-running a day must reproduce identical dimension keys or the host's
  * ReplacingMergeTree dedupe inserts duplicates instead of replacing. Every key
@@ -35,6 +41,14 @@ import { SYSTEM_NAMESPACES } from "./resource-listers.js";
 export const SERVICE_WORKLOAD = "kubernetes-workload";
 export const SERVICE_IDLE = "kubernetes-idle";
 export const SERVICE_SYSTEM_RESERVED = "kubernetes-system-reserved";
+/** Attributed PersistentVolumeClaims — a workload's or a namespace's disks. */
+export const SERVICE_STORAGE = "kubernetes-storage";
+/** Bound volumes nothing mounts. Idle capacity in disk form, own bucket. */
+export const SERVICE_STORAGE_IDLE = "kubernetes-storage-idle";
+/** `LoadBalancer` Services, one row each. */
+export const SERVICE_LOAD_BALANCER = "kubernetes-load-balancer";
+/** The flat managed-cluster fee. Never divided across tenants. */
+export const SERVICE_CONTROL_PLANE = "kubernetes-control-plane";
 
 /**
  * Which day a snapshot describes.
@@ -79,8 +93,6 @@ export function allocationToCostRows(
   allocation: ClusterAllocation,
   range: CostFetchRange,
 ): CostRow[] {
-  if (allocation.pricedNodeCount === 0) return [];
-
   const date = snapshotDay(range);
   const currency = allocation.currency;
 
@@ -105,18 +117,60 @@ export function allocationToCostRows(
   };
 
   for (const workload of allocation.workloads) {
+    // Deliberately the COMPUTE share, not the workload's total: its volumes and
+    // load balancers get their own service rows below, and adding them here as
+    // well would double-count the same money under two service labels.
     push(
       SERVICE_WORKLOAD,
       workload.key,
       tagsFor(workload.namespace, workload.workload, workload.workloadKind),
-      workload.dailyCost,
+      workload.computeDailyCost,
     );
   }
 
-  // Idle and system-reserved are their own rows, never spread across the
-  // namespaces. A namespace's number has to mean "what this namespace asked
-  // for"; folding the cluster's spare capacity into it overcharges the tenant
-  // and hides the real finding, which is that the cluster is oversized.
+  // Storage, one row per claim. Attributed to the workload that mounts it where
+  // exactly one does, and otherwise to the namespace with an empty workload tag
+  // — a shared ReadWriteMany volume genuinely belongs to no single workload,
+  // and splitting it N ways would be an invented apportionment.
+  for (const volume of allocation.storage.volumes) {
+    if (volume.unbound) continue;
+    const resourceId = `${volume.namespace}/PersistentVolumeClaim/${volume.name}`;
+    if (volume.unattached) {
+      // Its own service, so it never inflates a tenant's namespace total — but
+      // the namespace tag is kept, because whoever has to run `kubectl delete
+      // pvc` needs to know where to run it.
+      push(
+        SERVICE_STORAGE_IDLE,
+        resourceId,
+        tagsFor(volume.namespace, "", "PersistentVolumeClaim"),
+        volume.dailyCost,
+      );
+      continue;
+    }
+    push(
+      SERVICE_STORAGE,
+      resourceId,
+      tagsFor(volume.namespace, volume.workload ?? "", volume.workloadKind ?? ""),
+      volume.dailyCost,
+    );
+  }
+
+  // Load balancers, one row per Service.
+  for (const lb of allocation.loadBalancers.loadBalancers) {
+    push(
+      SERVICE_LOAD_BALANCER,
+      `${lb.namespace}/Service/${lb.name}`,
+      tagsFor(lb.namespace, lb.workload ?? "", lb.workloadKind ?? ""),
+      lb.dailyCost,
+    );
+  }
+
+  // Idle, system-reserved and the control plane are their own rows, never
+  // spread across the namespaces. A namespace's number has to mean "what this
+  // namespace asked for"; folding the cluster's spare capacity into it
+  // overcharges the tenant and hides the real finding, which is that the
+  // cluster is oversized. The control-plane fee goes further: there is no
+  // per-workload quantity to apportion a flat per-cluster charge by at all.
   push(
     SERVICE_IDLE,
     "cluster/idle",
@@ -133,6 +187,17 @@ export function allocationToCostRows(
       system: "true",
     },
     allocation.dailySystemReservedCost,
+  );
+  push(
+    SERVICE_CONTROL_PLANE,
+    "cluster/control-plane",
+    {
+      namespace: "",
+      workload: "control-plane",
+      workload_kind: "ClusterCapacity",
+      system: "true",
+    },
+    allocation.dailyControlPlaneCost,
   );
 
   // Sorted so the emitted order is deterministic too — not required for

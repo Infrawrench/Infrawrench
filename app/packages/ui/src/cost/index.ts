@@ -46,3 +46,4 @@ export {
   EfficiencyAlertsSection,
   type EfficiencyAlertsSectionProps,
 } from "./EfficiencyAlertsSection.js";
+export { NetworkFlowSection, type NetworkFlowSectionProps } from "./NetworkFlowSection.js";

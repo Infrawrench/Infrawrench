@@ -84,6 +84,18 @@ export async function listCloudCostAnomalies(orgId: string, days = 30): Promise<
   return res?.anomalies ?? [];
 }
 
+/**
+ * Explain a detected anomaly — records the sentence on the finding and puts it
+ * on every cost chart covering the day as an annotation (`costs:write`).
+ */
+export async function acknowledgeCloudCostAnomaly(
+  orgId: string,
+  anomalyId: string,
+  explanation: string,
+): Promise<CostAnomaly> {
+  return invoke("cloud_costs_acknowledge_anomaly", { orgId, anomalyId, explanation });
+}
+
 export async function loadCloudAnomalySettings(orgId: string): Promise<CostAnomalySettingsView> {
   return invoke("cloud_costs_anomaly_settings", { orgId });
 }

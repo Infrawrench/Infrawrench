@@ -44,6 +44,12 @@ const CostAnnotation = strict({
   createdByUserId: z.string().nullable(),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
+  costAnomalyId: Uuid.nullable().describe(
+    "The detected cost anomaly this note was written to explain (see POST " +
+      "/costs/anomalies/{anomalyId}/acknowledge), or null for a note written by hand. The " +
+      "reverse of the anomaly's own `acknowledgement.annotationId`, resolved from that same " +
+      "single link rather than stored twice.",
+  ),
 }).openapi("CostAnnotation");
 
 export function registerCostAnnotationPaths(ctx: BuildContext) {

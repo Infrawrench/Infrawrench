@@ -179,7 +179,11 @@ export {
   COST_ANOMALY_SMS_MODES,
   COST_ANOMALY_SMS_MODE_LABELS,
   DEFAULT_COST_ANOMALY_SETTINGS,
+  acknowledgeCostAnomaly,
+  countUnexplainedCostAnomalies,
+  isCostAnomalyExplained,
   type CostAnomaly,
+  type CostAnomalyAcknowledgement,
   type CostAnomalyDimension,
   type CostAnomalyKind,
   type CostAnomalySettings,
@@ -400,6 +404,9 @@ export {
   bucketCostAnnotations,
   formatCostAnnotationDates,
   describeCostAnnotationScope,
+  costAnomalyAnnotationInput,
+  costAnomalyExplanationError,
+  costAnomalyExplanationPrefill,
   listCostAnnotations,
   type CostAnnotation,
   type CostAnnotationInput,
@@ -641,6 +648,7 @@ export * from "./access-requests";
 export * from "./credential-hygiene";
 export * from "./credits";
 export * from "./commitments";
+export * from "./network-flows";
 export * from "./jira";
 export * from "./linear";
 export * from "./cost-exports";

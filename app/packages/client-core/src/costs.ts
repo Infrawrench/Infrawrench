@@ -589,6 +589,38 @@ export type CostAnomalyDimension = "provider" | "service";
 export type CostAnomalyKind = "spike" | "new_source";
 
 /**
+ * Somebody worked out what a finding was, and said so.
+ *
+ * The act is the acknowledgement; the artifact is the annotation it creates at
+ * the anomaly's own day, org-wide, so the explanation lands on **every** chart
+ * covering that day rather than dying in the head of whoever worked it out.
+ * `annotationId` is that note.
+ *
+ * Two properties are worth stating because the rest follows from them:
+ *
+ * - **`explanation` is stored on the anomaly, not read back from the note.**
+ *   The note is a living overlay anyone may reword or delete; this is the
+ *   record of what was said when the finding was closed. Deleting the
+ *   annotation therefore removes the chart marker and nulls `annotationId` —
+ *   it never turns the anomaly back into an open question.
+ * - **Acknowledging does not suppress detection.** An explained spike is
+ *   explained, not exempt: the same key spiking again on a later day is a new
+ *   row, detected and alerted on exactly as it would have been.
+ */
+export interface CostAnomalyAcknowledgement {
+  /** The sentence. Also the text of the annotation this created. */
+  explanation: string;
+  /** When the *current* explanation was recorded — restamped by a correction. */
+  acknowledgedAt: string;
+  acknowledgedByUserId: string | null;
+  /**
+   * The annotation drawn on the charts, or null once that note has been
+   * deleted. Null here never means "unexplained" — see above.
+   */
+  annotationId: string | null;
+}
+
+/**
  * A detected spend anomaly: one UTC day where a provider's or service's spend
  * cleared the trailing-baseline threshold (mean + N·stddev over the prior
  * 28 days, with an absolute floor), or where a key with no prior spend at all
@@ -628,6 +660,13 @@ export interface CostAnomaly {
    * renders the row.
    */
   hints?: string[];
+  /**
+   * The explanation somebody attached to this finding, or null while it is
+   * still an open question. Optional on the wire for the same reason `hints`
+   * is: a client a release ahead of its server renders the row unexplained
+   * rather than crashing on a missing field.
+   */
+  acknowledgement?: CostAnomalyAcknowledgement | null;
 }
 
 export const COST_ANOMALY_DIMENSION_LABELS: Record<CostAnomalyDimension, string> = {
@@ -685,6 +724,55 @@ export async function listCostAnomalies(
     `/costs/anomalies?days=${clamped}`,
   );
   return res?.anomalies ?? [];
+}
+
+/**
+ * Whether this finding has been explained.
+ *
+ * One predicate, shared, because every surface needs the same answer and the
+ * field is optional on the wire: `undefined` (an older server), `null` (an open
+ * question) and an object all have to collapse to one boolean, and three
+ * surfaces spelling that themselves is three chances to get it wrong.
+ */
+export function isCostAnomalyExplained(anomaly: Pick<CostAnomaly, "acknowledgement">): boolean {
+  return Boolean(anomaly.acknowledgement);
+}
+
+/**
+ * How many of these findings nobody has explained yet — the number worth
+ * printing next to the section heading.
+ *
+ * This is what "an acknowledged anomaly stops nagging" means here: explained
+ * rows stay in the list, keep their place in the day order, and simply stop
+ * counting. Hiding them would lose the detection record and invite the next
+ * person to work the same spike out from scratch.
+ */
+export function countUnexplainedCostAnomalies(anomalies: readonly CostAnomaly[]): number {
+  return anomalies.reduce((n, a) => (isCostAnomalyExplained(a) ? n : n + 1), 0);
+}
+
+/**
+ * Explain a finding (`POST /costs/anomalies/:id/acknowledge`, permission
+ * `costs:write`).
+ *
+ * The server creates the annotation — at the anomaly's own day, org-wide — so
+ * no client can put the note on the wrong date, and the model calling this
+ * through MCP gets the same artifact a person clicking "Explain" does. Sending
+ * it again replaces the sentence (and rewords the note it already made) rather
+ * than filing a second one; it will not, however, recreate a note that was
+ * deliberately deleted.
+ */
+export async function acknowledgeCostAnomaly(
+  api: CloudFetch,
+  orgId: string,
+  anomalyId: string,
+  explanation: string,
+): Promise<CostAnomaly | null> {
+  return api.org<CostAnomaly>(
+    orgId,
+    `/costs/anomalies/${encodeURIComponent(anomalyId)}/acknowledge`,
+    { method: "POST", body: JSON.stringify({ explanation }) },
+  );
 }
 
 /* ------------------------------------------------------------------ *

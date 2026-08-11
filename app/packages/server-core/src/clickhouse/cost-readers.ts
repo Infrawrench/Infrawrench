@@ -152,6 +152,33 @@ export function amortizedAmountExpr(): string {
 }
 
 /**
+ * The `[from, to]` day-range predicates every `cost_daily` reader filters on.
+ *
+ * **`cost_daily.day` is qualified deliberately, and removing the qualification
+ * breaks queries that look nothing like this one.** ClickHouse resolves SELECT
+ * aliases inside `WHERE`, unlike standard SQL. Several readers project
+ * `toString(day) AS day` to hand JS a `"YYYY-MM-DD"` string rather than a Date,
+ * and in those an unqualified `day` in the `WHERE` binds to that alias instead
+ * of to the column. The predicate becomes `String >= Date`, which ClickHouse
+ * will not unify, and the whole query dies:
+ *
+ * > There is no supertype for types String, Date because some of them are
+ * > String/FixedString/Enum and some of them are not: while executing function
+ * > greaterOrEquals on arguments toString(__table1.day) String, _CAST(20670_Date, 'Date')
+ *
+ * That is not a degraded panel. In `cost-reconcile.ts` the throw propagates out
+ * of `collectAccountCosts`, so the account's whole cost collection fails and
+ * backs off — the failure the user sees is "cost collection is failing", with
+ * nothing to connect it to a `SELECT` list two lines above the `WHERE`.
+ *
+ * A qualified identifier cannot bind to a projection alias, so this reads the
+ * column whatever the `SELECT` list does. Shared rather than inlined so a
+ * reader that later adds a `toString(day) AS day` cannot reintroduce the trap.
+ */
+export const DAY_FROM_SQL = "cost_daily.day >= toDate({from:String})";
+export const DAY_TO_SQL = "cost_daily.day <= toDate({to:String})";
+
+/**
  * `charge_type IN (...)` when the caller narrowed the charge types, otherwise
  * nothing. Absent means every type, credits and refunds included — that is what
  * makes an unfiltered total the net number the provider would invoice.
@@ -321,11 +348,7 @@ function bucketExpr(binning: CostBinning): string {
  */
 export async function queryCosts(organizationId: string, q: CostQuery): Promise<CostSeriesGroup[]> {
   const params: Record<string, unknown> = { orgId: organizationId, from: q.from, to: q.to };
-  const where = [
-    "organization_id = {orgId:String}",
-    "day >= toDate({from:String})",
-    "day <= toDate({to:String})",
-  ];
+  const where = ["organization_id = {orgId:String}", DAY_FROM_SQL, DAY_TO_SQL];
 
   q.filters.forEach((f, i) => {
     const expr = dimensionExpr(f.dimension, f.tagKey, params, `ftag${i}`);
@@ -442,8 +465,8 @@ export async function getResourceCostTotals(
     `SELECT account_id, resource_id, currency, sum(${amountExpr(costBasis)}) AS amount
      FROM cost_daily FINAL
      WHERE organization_id = {orgId:String}
-       AND day >= toDate({from:String})
-       AND day <= toDate({to:String})
+       AND ${DAY_FROM_SQL}
+       AND ${DAY_TO_SQL}
        AND resource_id != ''
      GROUP BY account_id, resource_id, currency`,
     { orgId: organizationId, from, to },
@@ -466,11 +489,11 @@ export async function getCostDimensionValues(
   const where = ["organization_id = {orgId:String}"];
   if (opts?.from) {
     params.from = opts.from;
-    where.push("day >= toDate({from:String})");
+    where.push(DAY_FROM_SQL);
   }
   if (opts?.to) {
     params.to = opts.to;
-    where.push("day <= toDate({to:String})");
+    where.push(DAY_TO_SQL);
   }
   const expr = dimensionExpr(dimension, opts?.tagKey, params, "tagKey");
   const rows = await query<{ value: string }>(
@@ -546,8 +569,8 @@ export async function getUntaggedSpend(
             ${totalsSelect}
      FROM cost_daily FINAL
      WHERE organization_id = {orgId:String}
-       AND day >= toDate({from:String})
-       AND day <= toDate({to:String})
+       AND ${DAY_FROM_SQL}
+       AND ${DAY_TO_SQL}
      GROUP BY currency
      ORDER BY currency ASC`,
     params,
@@ -574,8 +597,8 @@ export async function getUntaggedSpend(
     `SELECT account_id, service, currency, sum(${money}) AS amount
      FROM cost_daily FINAL
      WHERE organization_id = {orgId:String}
-       AND day >= toDate({from:String})
-       AND day <= toDate({to:String})
+       AND ${DAY_FROM_SQL}
+       AND ${DAY_TO_SQL}
        AND ${missingAny}
      GROUP BY account_id, service, currency
      ORDER BY amount DESC
@@ -674,8 +697,8 @@ export async function getShowbackSpend(
     `SELECT ${centreExpr} AS centre, currency, sum(${moneyExpr}) AS amount${rawSelect}
      FROM cost_daily FINAL
      WHERE organization_id = {orgId:String}
-       AND day >= toDate({from:String})
-       AND day <= toDate({to:String})
+       AND ${DAY_FROM_SQL}
+       AND ${DAY_TO_SQL}
      GROUP BY centre, currency
      ORDER BY amount DESC`,
     params,

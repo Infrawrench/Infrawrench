@@ -37,6 +37,23 @@ ipcMain.handle(
   },
 );
 
+/**
+ * Explain a finding. The server dates the annotation it creates from the
+ * anomaly itself, so there is nothing here to get wrong but the sentence.
+ */
+ipcMain.handle(
+  "cloud_costs_acknowledge_anomaly",
+  async (
+    _e,
+    { orgId, anomalyId, explanation }: { orgId: string; anomalyId: string; explanation: string },
+  ) => {
+    return cloudFetch(orgId, `/costs/anomalies/${encodeURIComponent(anomalyId)}/acknowledge`, {
+      method: "POST",
+      body: JSON.stringify({ explanation }),
+    });
+  },
+);
+
 ipcMain.handle("cloud_costs_anomaly_settings", async (_e, { orgId }: { orgId: string }) => {
   return cloudFetch(orgId, "/costs/anomaly-settings");
 });
