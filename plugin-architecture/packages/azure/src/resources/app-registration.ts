@@ -23,6 +23,11 @@ export const AppRegistrationResourceType = rt({
         "Creates a new client secret via Graph addPassword and emits a ready-to-use env-file with AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_SECRET. Each resolve creates one secret.",
     }),
   ],
+  // Graph's applications list gives us the creation date and nothing about
+  // use: sign-in activity lives behind a separate (licensed) reporting API,
+  // and client secrets are not enumerated by the lister, so neither secret age
+  // nor last authentication is declared here.
+  principalRole: { role: "service-account", createdKey: "createdDateTime" },
   iconKey: "user",
   supportsCreate: true,
   credentialFormats: [

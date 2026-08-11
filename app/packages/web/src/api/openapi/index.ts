@@ -46,6 +46,7 @@ import { registerStatusIncidentPaths } from "./paths/status-incidents";
 import { registerExpiringPaths } from "./paths/expiring";
 import { registerQuotaPaths } from "./paths/quotas";
 import { registerPosturePaths } from "./paths/posture";
+import { registerAccessReviewPaths } from "./paths/access-review";
 import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
@@ -168,6 +169,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerExpiringPaths(ctx);
   registerQuotaPaths(ctx);
   registerPosturePaths(ctx);
+  registerAccessReviewPaths(ctx);
   registerDnsPaths(ctx);
   registerEnvironmentDiffPaths(ctx);
   registerMomentPaths(ctx);
@@ -647,6 +649,15 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "GET /posture": "resources:read",
   "POST /posture/dismissals": "resources:write",
   "DELETE /posture/dismissals": "resources:write",
+  // cross-cloud access review — the posture stance exactly: the review and its
+  // export are reads over the org's resource set, and accepting a finding is a
+  // statement about one resource at the same trust level as changing it. There
+  // is no settings route: the findings ride the posture alert window, so
+  // /posture/settings is the one switch.
+  "GET /access-review": "resources:read",
+  "GET /access-review/export": "resources:read",
+  "POST /access-review/dismissals": "resources:write",
+  "DELETE /access-review/dismissals": "resources:write",
   "GET /dns": "resources:read",
   // Environment diff — pure read over two accounts' already-synced inventories.
   "GET /environment-diff": "resources:read",

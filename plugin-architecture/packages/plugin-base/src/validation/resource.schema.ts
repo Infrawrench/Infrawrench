@@ -313,6 +313,33 @@ const rightsizingSchema = z
     },
   );
 
+const principalRoleSchema = z
+  .object({
+    role: z.enum(["user", "group", "role", "service-account", "key", "binding"]),
+    lastUsedKey: z.string().min(1).optional(),
+    createdKey: z.string().min(1).optional(),
+    adminIndicatorKey: z.string().min(1).optional(),
+    adminValues: z.array(z.string().min(1)).min(1).optional(),
+    parentKey: z.string().min(1).optional(),
+    mfaKey: z.string().min(1).optional(),
+    revokeActionId: z.string().min(1).optional(),
+  })
+  // A value list with no field to read is dead config — the `privateValues` /
+  // `runningValues` / `maxAgeDays` stance: fail the manifest rather than
+  // silently never match.
+  .refine((p) => p.adminIndicatorKey !== undefined || p.adminValues === undefined, {
+    message: "adminValues requires adminIndicatorKey",
+    path: ["adminIndicatorKey"],
+  })
+  // Only a human sign-in identity can enrol a second factor. An `mfaKey` on a
+  // key, a binding or a service account is a field that can never mean what
+  // the author thought, and the "no MFA" finding it produced would be a
+  // permanent false accusation.
+  .refine((p) => p.mfaKey === undefined || p.role === "user", {
+    message: 'mfaKey only applies to `role: "user"` principals',
+    path: ["mfaKey"],
+  });
+
 export const resourceTypeDefinitionSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
@@ -336,4 +363,5 @@ export const resourceTypeDefinitionSchema = z.object({
   dnsServiceHosts: z.array(dnsServiceHostSchema).optional(),
   lifecycle: lifecycleActionsSchema.optional(),
   rightsizing: rightsizingSchema.optional(),
+  principalRole: principalRoleSchema.optional(),
 });

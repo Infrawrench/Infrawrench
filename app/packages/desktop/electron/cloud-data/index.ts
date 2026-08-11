@@ -11,6 +11,7 @@ import "./rightsizing";
 import "./expiring";
 import "./quotas";
 import "./posture";
+import "./access-review";
 import "./dns";
 import "./environment-diff";
 import "./changes";

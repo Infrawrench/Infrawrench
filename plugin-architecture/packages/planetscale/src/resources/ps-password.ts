@@ -34,6 +34,16 @@ export const PsPasswordResourceType = rt({
   expiryFields: [
     { fieldKey: "expiresAt", from: "expiry", kind: "api-token", label: "Password expires" },
   ],
+  // PlanetScale reports a real last-request timestamp, and `role` is a single
+  // slug (`reader`/`writer`/`readwriter`/`admin`) so the whole-value match is
+  // exact.
+  principalRole: {
+    role: "key",
+    lastUsedKey: "lastUsedAt",
+    createdKey: "createdAt",
+    adminIndicatorKey: "role",
+    adminValues: ["admin"],
+  },
   parentTypeId: "ps-branch",
   supportsCreate: true,
   supportsUpdate: true,

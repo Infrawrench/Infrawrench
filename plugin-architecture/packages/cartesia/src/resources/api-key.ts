@@ -20,5 +20,6 @@ export const ApiKeyResourceType = rt({
     f("createdAt", "Created", { required: false }),
   ],
   outputs: [o("keyId", "Key ID")],
+  principalRole: { role: "key", createdKey: "createdAt", parentKey: "creatorEmail" },
   iconKey: "key",
 });

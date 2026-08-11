@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.15.0",
+    "version": "1.16.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -2696,6 +2696,7 @@
               "changes",
               "expiring",
               "posture",
+              "access-review",
               "dns",
               "environment-diff",
               "ssh-fanout",
@@ -15014,6 +15015,522 @@
             "type": "boolean"
           }
         },
+        "additionalProperties": false
+      },
+      "AccessPrincipalOwner": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "userId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Infrawrench user id when the owner is a member.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Member name, or the free-text owner label."
+          },
+          "isLabel": {
+            "type": "boolean",
+            "description": "True when the owner is a label rather than a routable member."
+          },
+          "ticketUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "userId",
+          "displayName",
+          "isLabel",
+          "ticketUrl",
+          "purpose"
+        ],
+        "additionalProperties": false,
+        "description": "Who owns the resource, from the resource-ownership record. Null when nobody is named."
+      },
+      "AccessPrincipal": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id."
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "pluginName": {
+            "type": "string",
+            "example": "AWS"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string",
+            "example": "IAM User"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider-native id, when known."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "group",
+              "role",
+              "service-account",
+              "key",
+              "binding"
+            ],
+            "description": "What kind of identity the principal is, from the resource type's `principalRole` declaration. Grouping and labels only — it is not a permission model."
+          },
+          "lastUsedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the principal was last used, or null when the review has no evidence."
+          },
+          "daysSinceLastUsed": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "activity": {
+            "type": "string",
+            "enum": [
+              "active",
+              "stale",
+              "unknown"
+            ],
+            "description": "What could be established about the principal's last use. `unknown` means the resource type declares no last-used field, or the provider stored nothing parseable — it is a first-class answer and is never reported as `stale`."
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "ageDays": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "admin": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "True when the type's declared admin indicator matched; null when the type declares none."
+          },
+          "mfa": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Multi-factor state, only on types that declare an MFA field. Null everywhere else — \"not synced\" is not \"MFA is off\"."
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The principal this one hangs off — a key's owner, a binding's subject."
+          },
+          "owner": {
+            "$ref": "#/components/schemas/AccessPrincipalOwner"
+          },
+          "revokeActionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The plugin action that revokes this principal, when the type declares one. Dispatch it through POST /resources/invoke-action; null means the provider offers no revocation Infrawrench can invoke."
+          }
+        },
+        "required": [
+          "resourceId",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "accountId",
+          "accountName",
+          "displayName",
+          "externalId",
+          "role",
+          "lastUsedAt",
+          "daysSinceLastUsed",
+          "activity",
+          "createdAt",
+          "ageDays",
+          "admin",
+          "mfa",
+          "parent",
+          "owner",
+          "revokeActionId"
+        ],
+        "additionalProperties": false
+      },
+      "AccessFinding": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id the finding is on."
+          },
+          "ruleId": {
+            "type": "string",
+            "enum": [
+              "access-review:stale-principal",
+              "access-review:admin-principal",
+              "access-review:key-past-rotation",
+              "access-review:no-recorded-owner",
+              "access-review:no-mfa"
+            ],
+            "description": "Which rule was raised. Half of a dismissal's key, alongside the resource id. The `access-review:` prefix is reserved so these can share the posture dismissal store without colliding with plugin-declared posture rule ids."
+          },
+          "title": {
+            "type": "string",
+            "example": "Unused for 90+ days"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "How bad the finding is. `critical` and `high` findings ride the posture alert window; `medium` and `low` are review work surfaced on the access review screen and in the weekly digest only."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this principal is flagged, in a sentence."
+          },
+          "principal": {
+            "$ref": "#/components/schemas/AccessPrincipal"
+          }
+        },
+        "required": [
+          "resourceId",
+          "ruleId",
+          "title",
+          "severity",
+          "reason",
+          "principal"
+        ],
+        "additionalProperties": false
+      },
+      "AccessReviewSeverityCounts": {
+        "type": "object",
+        "properties": {
+          "critical": {
+            "type": "integer"
+          },
+          "high": {
+            "type": "integer"
+          },
+          "medium": {
+            "type": "integer"
+          },
+          "low": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "critical",
+          "high",
+          "medium",
+          "low"
+        ],
+        "additionalProperties": false
+      },
+      "AccessReviewRuleCounts": {
+        "type": "object",
+        "properties": {
+          "access-review:stale-principal": {
+            "type": "integer"
+          },
+          "access-review:admin-principal": {
+            "type": "integer"
+          },
+          "access-review:key-past-rotation": {
+            "type": "integer"
+          },
+          "access-review:no-recorded-owner": {
+            "type": "integer"
+          },
+          "access-review:no-mfa": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "access-review:stale-principal",
+          "access-review:admin-principal",
+          "access-review:key-past-rotation",
+          "access-review:no-recorded-owner",
+          "access-review:no-mfa"
+        ],
+        "additionalProperties": false
+      },
+      "AccessReviewRoleCounts": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "integer"
+          },
+          "group": {
+            "type": "integer"
+          },
+          "role": {
+            "type": "integer"
+          },
+          "service-account": {
+            "type": "integer"
+          },
+          "key": {
+            "type": "integer"
+          },
+          "binding": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user",
+          "group",
+          "role",
+          "service-account",
+          "key",
+          "binding"
+        ],
+        "additionalProperties": false
+      },
+      "AccessReviewDismissal": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": "string"
+          },
+          "dismissedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the finding was accepted."
+          },
+          "dismissedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name or email of whoever accepted it; null when unknown."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The operator's note, when they left one."
+          }
+        },
+        "required": [
+          "resourceId",
+          "ruleId",
+          "dismissedAt",
+          "dismissedBy",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "DismissedAccessFinding": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id the finding is on."
+          },
+          "ruleId": {
+            "type": "string",
+            "enum": [
+              "access-review:stale-principal",
+              "access-review:admin-principal",
+              "access-review:key-past-rotation",
+              "access-review:no-recorded-owner",
+              "access-review:no-mfa"
+            ],
+            "description": "Which rule was raised. Half of a dismissal's key, alongside the resource id. The `access-review:` prefix is reserved so these can share the posture dismissal store without colliding with plugin-declared posture rule ids."
+          },
+          "title": {
+            "type": "string",
+            "example": "Unused for 90+ days"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "How bad the finding is. `critical` and `high` findings ride the posture alert window; `medium` and `low` are review work surfaced on the access review screen and in the weekly digest only."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this principal is flagged, in a sentence."
+          },
+          "principal": {
+            "$ref": "#/components/schemas/AccessPrincipal"
+          },
+          "dismissal": {
+            "$ref": "#/components/schemas/AccessReviewDismissal"
+          }
+        },
+        "required": [
+          "resourceId",
+          "ruleId",
+          "title",
+          "severity",
+          "reason",
+          "principal",
+          "dismissal"
+        ],
+        "additionalProperties": false
+      },
+      "AccessReviewResponse": {
+        "type": "object",
+        "properties": {
+          "principals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessPrincipal"
+            },
+            "description": "Every synced principal, by account then type then name. Never filtered by dismissals — accepting a finding must not remove a principal from the inventory."
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessFinding"
+            },
+            "description": "Live findings, worst severity first. Dismissed findings are not included."
+          },
+          "totalCount": {
+            "type": "integer",
+            "description": "Live finding count; dismissals excluded."
+          },
+          "counts": {
+            "$ref": "#/components/schemas/AccessReviewSeverityCounts"
+          },
+          "byRule": {
+            "$ref": "#/components/schemas/AccessReviewRuleCounts"
+          },
+          "byRole": {
+            "$ref": "#/components/schemas/AccessReviewRoleCounts"
+          },
+          "dismissed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DismissedAccessFinding"
+            },
+            "description": "Findings a dismissal is currently suppressing, most recently dismissed first. Only dismissals whose rule still matches appear."
+          },
+          "dismissedCount": {
+            "type": "integer"
+          },
+          "unknownActivityCount": {
+            "type": "integer",
+            "description": "How many principals the review could establish no last-use evidence for. Surfaces render this so \"we found nothing\" and \"we could not look\" do not read the same."
+          },
+          "staleDays": {
+            "type": "integer",
+            "description": "The staleness window this review was computed against."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "principals",
+          "findings",
+          "totalCount",
+          "counts",
+          "byRule",
+          "byRole",
+          "dismissed",
+          "dismissedCount",
+          "unknownActivityCount",
+          "staleDays",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "AccessReviewDismissalCreate": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string",
+            "description": "Infrawrench resource id the finding is on."
+          },
+          "ruleId": {
+            "type": "string",
+            "enum": [
+              "access-review:stale-principal",
+              "access-review:admin-principal",
+              "access-review:key-past-rotation",
+              "access-review:no-recorded-owner",
+              "access-review:no-mfa"
+            ],
+            "description": "Which rule was raised. Half of a dismissal's key, alongside the resource id. The `access-review:` prefix is reserved so these can share the posture dismissal store without colliding with plugin-declared posture rule ids."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500,
+            "description": "Why this finding is acceptable. Trimmed; an empty note is stored as none."
+          }
+        },
+        "required": [
+          "resourceId",
+          "ruleId"
+        ],
         "additionalProperties": false
       },
       "DnsZone": {
@@ -41748,6 +42265,269 @@
         },
         "operationId": "putOrgOrgIdPostureSettings",
         "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/access-review": {
+      "get": {
+        "tags": [
+          "Access review"
+        ],
+        "summary": "Review the principals inside your connected clouds",
+        "description": "Every IAM user and role, service account, app registration, group, role binding and long-lived API key your connected accounts have synced, with the findings that have evidence against them: unused beyond the staleness window, holding administrative or wildcard permissions, past the rotation budget their plugin declares, carrying no recorded owner, or signing in without a second factor.\n\nThis is about principals in **your** clouds — it is neither your Infrawrench team's roles (`/team`) nor the credentials Infrawrench stores for you (`/credential-hygiene`).\n\nNo provider API calls are made: everything is computed from already-synced fields, so a principal whose provider does not report last use is reported with `activity: \"unknown\"` and is never called stale. Findings the organization has dismissed are reported separately under `dismissed` and are excluded from `findings`, `counts`, `byRule` and the security alerts.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3650,
+              "description": "Staleness window in days. Defaults to 90."
+            },
+            "required": false,
+            "description": "Staleness window in days. Defaults to 90.",
+            "name": "staleDays",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The access review",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessReviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAccessReview",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/access-review/export": {
+      "get": {
+        "tags": [
+          "Access review"
+        ],
+        "summary": "Export the access review as compliance evidence",
+        "description": "The same review as a downloadable file, one row per finding. `format=csv` (the default) returns RFC 4180 CSV with every cell quoted and spreadsheet formulas neutralised; `format=json` returns the full response body pretty-printed.\n\nDismissed findings are included and labelled in both formats, with the note and the person who accepted them: an evidence pack answers what you found *and* what you decided. Exports are recorded in the audit log.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "csv",
+                "json"
+              ],
+              "description": "Defaults to \"csv\"."
+            },
+            "required": false,
+            "description": "Defaults to \"csv\".",
+            "name": "format",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3650,
+              "description": "Staleness window in days. Defaults to 90."
+            },
+            "required": false,
+            "description": "Staleness window in days. Defaults to 90.",
+            "name": "staleDays",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The review as an attachment",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessReviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAccessReviewExport",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/access-review/dismissals": {
+      "post": {
+        "tags": [
+          "Access review"
+        ],
+        "summary": "Dismiss an access review finding",
+        "description": "Accept a finding — that break-glass role really is meant to be admin, that shared key really is rotated out of band. The finding leaves `findings` and stops feeding the security alerts, but the rule keeps being evaluated and the finding is reported back under `dismissed` for as long as it still matches. The principal itself stays in `principals` either way. Idempotent: dismissing an already-dismissed finding rewrites the note and the author.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessReviewDismissalCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The recorded dismissal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessReviewDismissal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAccessReviewDismissals",
+        "x-required-permission": "resources:write"
+      },
+      "delete": {
+        "tags": [
+          "Access review"
+        ],
+        "summary": "Restore a dismissed access review finding",
+        "description": "Undo a dismissal, putting the finding back on the list and back into the security alerts. The finding is identified by query parameters rather than path segments because resource ids are provider-native and routinely contain slashes.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Infrawrench resource id the finding is on."
+            },
+            "required": true,
+            "description": "Infrawrench resource id the finding is on.",
+            "name": "resourceId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "access-review:stale-principal",
+                "access-review:admin-principal",
+                "access-review:key-past-rotation",
+                "access-review:no-recorded-owner",
+                "access-review:no-mfa"
+              ],
+              "description": "Which rule was raised. Half of a dismissal's key, alongside the resource id. The `access-review:` prefix is reserved so these can share the posture dismissal store without colliding with plugin-declared posture rule ids."
+            },
+            "required": true,
+            "name": "ruleId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The dismissal was removed"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdAccessReviewDismissals",
+        "x-required-permission": "resources:write"
       }
     },
     "/api/org/{orgId}/dns": {

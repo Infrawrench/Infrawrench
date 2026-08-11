@@ -23,6 +23,14 @@ export const MemberResourceType = rt({
     }),
   ],
   outputs: [o("memberId", "Member ID"), o("email", "Email")],
+  // Deepgram's members list carries no timestamps at all, so the review lists
+  // the member, flags the privileged roles, and joins ownership. Activity and
+  // age both read as unknown.
+  principalRole: {
+    role: "user",
+    adminIndicatorKey: "scopes",
+    adminValues: ["admin", "owner"],
+  },
   parentTypeId: "project",
   showInSidebar: true,
   supportsUpdate: true,

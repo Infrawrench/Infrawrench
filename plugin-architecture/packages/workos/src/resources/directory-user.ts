@@ -20,6 +20,9 @@ export const DirectoryUserResourceType = rt({
     f("createdAt", "Created", { required: false, editable: false }),
   ],
   outputs: [o("directoryUserId", "Directory User ID")],
+  // A mirror of the IdP's record: creation is all Directory Sync gives us.
+  // Sign-in activity and MFA live in the identity provider, not here.
+  principalRole: { role: "user", createdKey: "createdAt", parentKey: "directoryId" },
   parentTypeId: "directory",
   supportsDelete: false,
   iconKey: "user",

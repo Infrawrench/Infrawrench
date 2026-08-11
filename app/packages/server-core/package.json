@@ -102,6 +102,8 @@
     "./expiry/feed": "./src/expiry/feed.ts",
     "./expiry/settings": "./src/expiry/settings.ts",
     "./expiry/summary": "./src/expiry/summary.ts",
+    "./access-review/feed": "./src/access-review/feed.ts",
+    "./access-review/summary": "./src/access-review/summary.ts",
     "./posture/alerts": "./src/posture/alerts.ts",
     "./posture/dismissals": "./src/posture/dismissals.ts",
     "./posture/feed": "./src/posture/feed.ts",

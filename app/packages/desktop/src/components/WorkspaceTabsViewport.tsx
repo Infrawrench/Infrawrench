@@ -46,6 +46,7 @@ import { LocalDeploymentsPanel } from "@/components/LocalDeploymentsPanel";
 import { DesktopChangesPanel } from "@/components/DesktopChangesPanel";
 import { DesktopExpiryPanel } from "@/components/DesktopExpiryPanel";
 import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
+import { DesktopAccessReviewPanel } from "@/components/DesktopAccessReviewPanel";
 import { DesktopDnsPanel } from "@/components/DesktopDnsPanel";
 import { DesktopEnvironmentDiffPanel } from "@/components/DesktopEnvironmentDiffPanel";
 import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel";
@@ -404,6 +405,26 @@ function renderPanel(
                   finding.resourceId,
                   finding.pluginId,
                   finding.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "access-review":
+      return (
+        <DesktopAccessReviewPanel
+          // Keyed by mode so switching org (or dropping to local) remounts
+          // and refetches rather than showing the previous org's principals.
+          key={activeCloudOrgId ?? "local"}
+          openResource={(principal) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  principal.accountId,
+                  principal.resourceId,
+                  principal.pluginId,
+                  principal.resourceTypeId,
                 ),
               ),
             )

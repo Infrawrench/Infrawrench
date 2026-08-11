@@ -35,6 +35,15 @@ export const OrganizationUserResourceType = rt({
     f("addedAt", "Joined", { required: false, editable: false }),
   ],
   outputs: [o("userId", "User ID"), o("email", "Email")],
+  // The four console-only roles are the privileged ones; `role` is a single
+  // slug so matching the whole value is exact. No last-used: the Admin API
+  // reports no member activity at all.
+  principalRole: {
+    role: "user",
+    createdKey: "addedAt",
+    adminIndicatorKey: "role",
+    adminValues: ["admin", "membership_admin", "owner", "primary_owner"],
+  },
   supportsCreate: false,
   supportsUpdate: true,
   supportsDelete: true,

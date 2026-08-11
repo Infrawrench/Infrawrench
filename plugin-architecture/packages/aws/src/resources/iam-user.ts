@@ -31,6 +31,12 @@ export const IAMUserResourceType = rt({
       filenameTemplate: "{resource}.credentials",
     },
   ],
+  // ListUsers returns both dates, so the access review can age this principal
+  // honestly. `passwordLastUsed` is empty for programmatic-only users, which
+  // the review reports as unknown activity — never as stale. No admin
+  // indicator is declared: attached policies would need
+  // ListAttachedUserPolicies per user, and this contract makes no extra calls.
+  principalRole: { role: "user", lastUsedKey: "passwordLastUsed", createdKey: "createDate" },
   // `passwordLastUsed` is empty for users without console access, and an
   // unparseable value never matches — only genuinely stale passwords flag.
   postureChecks: [

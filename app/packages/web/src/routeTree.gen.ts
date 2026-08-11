@@ -17,6 +17,7 @@ import { Route as OrgOrgIdRouteImport } from './routes/org.$orgId'
 import { Route as ShareTokenRouteImport } from './routes/share.$token'
 import { Route as StatusSlugRouteImport } from './routes/status.$slug'
 import { Route as OrgOrgIdIndexRouteImport } from './routes/org.$orgId.index'
+import { Route as OrgOrgIdAccessReviewRouteImport } from './routes/org.$orgId.access-review'
 import { Route as OrgOrgIdAgentsRouteImport } from './routes/org.$orgId.agents'
 import { Route as OrgOrgIdChangesRouteImport } from './routes/org.$orgId.changes'
 import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
@@ -109,6 +110,11 @@ const StatusSlugRoute = StatusSlugRouteImport.update({
 const OrgOrgIdIndexRoute = OrgOrgIdIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdAccessReviewRoute = OrgOrgIdAccessReviewRouteImport.update({
+  id: '/access-review',
+  path: '/access-review',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdAgentsRoute = OrgOrgIdAgentsRouteImport.update({
@@ -404,6 +410,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
   '/share/$token': typeof ShareTokenRoute
   '/status/$slug': typeof StatusSlugRoute
+  '/org/$orgId/access-review': typeof OrgOrgIdAccessReviewRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
@@ -466,6 +473,7 @@ export interface FileRoutesByTo {
   '/invite/$token': typeof InviteTokenRoute
   '/share/$token': typeof ShareTokenRoute
   '/status/$slug': typeof StatusSlugRoute
+  '/org/$orgId/access-review': typeof OrgOrgIdAccessReviewRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
@@ -528,6 +536,7 @@ export interface FileRoutesById {
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
   '/share/$token': typeof ShareTokenRoute
   '/status/$slug': typeof StatusSlugRoute
+  '/org/$orgId/access-review': typeof OrgOrgIdAccessReviewRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
@@ -593,6 +602,7 @@ export interface FileRouteTypes {
     | '/org/$orgId'
     | '/share/$token'
     | '/status/$slug'
+    | '/org/$orgId/access-review'
     | '/org/$orgId/agents'
     | '/org/$orgId/changes'
     | '/org/$orgId/chat'
@@ -655,6 +665,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/share/$token'
     | '/status/$slug'
+    | '/org/$orgId/access-review'
     | '/org/$orgId/agents'
     | '/org/$orgId/changes'
     | '/org/$orgId/cost-reports'
@@ -716,6 +727,7 @@ export interface FileRouteTypes {
     | '/org/$orgId'
     | '/share/$token'
     | '/status/$slug'
+    | '/org/$orgId/access-review'
     | '/org/$orgId/agents'
     | '/org/$orgId/changes'
     | '/org/$orgId/chat'
@@ -838,6 +850,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/org/$orgId/'
       preLoaderRoute: typeof OrgOrgIdIndexRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/access-review': {
+      id: '/org/$orgId/access-review'
+      path: '/access-review'
+      fullPath: '/org/$orgId/access-review'
+      preLoaderRoute: typeof OrgOrgIdAccessReviewRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/agents': {
@@ -1319,6 +1338,7 @@ const OrgOrgIdSettingsRouteWithChildren =
   OrgOrgIdSettingsRoute._addFileChildren(OrgOrgIdSettingsRouteChildren)
 
 interface OrgOrgIdRouteChildren {
+  OrgOrgIdAccessReviewRoute: typeof OrgOrgIdAccessReviewRoute
   OrgOrgIdAgentsRoute: typeof OrgOrgIdAgentsRoute
   OrgOrgIdChangesRoute: typeof OrgOrgIdChangesRoute
   OrgOrgIdChatRoute: typeof OrgOrgIdChatRouteWithChildren
@@ -1348,6 +1368,7 @@ interface OrgOrgIdRouteChildren {
 }
 
 const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
+  OrgOrgIdAccessReviewRoute: OrgOrgIdAccessReviewRoute,
   OrgOrgIdAgentsRoute: OrgOrgIdAgentsRoute,
   OrgOrgIdChangesRoute: OrgOrgIdChangesRoute,
   OrgOrgIdChatRoute: OrgOrgIdChatRouteWithChildren,

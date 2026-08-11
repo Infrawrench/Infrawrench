@@ -21,6 +21,17 @@ export const OrganizationUserResourceType = rt({
     f("apiKeyLastUsedAt", "API Key Last Used", { required: false }),
   ],
   outputs: [o("userId", "User ID"), o("email", "Email")],
+  // `apiKeyLastUsedAt` is deliberately NOT declared as `lastUsedKey`: it is
+  // when this member's *API key* last made a request, not when the person last
+  // signed in. A console-only member would read as never-used, and a departed
+  // member whose key a cron still exercises would read as active — both the
+  // wrong way round for a review.
+  principalRole: {
+    role: "user",
+    createdKey: "addedAt",
+    adminIndicatorKey: "role",
+    adminValues: ["owner"],
+  },
   iconKey: "user",
   supportsUpdate: true,
   supportsDelete: true,

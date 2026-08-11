@@ -42,6 +42,14 @@ export const DatabaseUserResourceType = rt({
   // The lister records the cluster uuid; a managed-database's externalId is
   // that same uuid.
   dependsOn: [{ fieldKey: "databaseId", targetTypeId: "managed-database", label: "user on" }],
+  // `primary` is DO's bootstrap superuser — the one credential on a cluster
+  // that can do everything. No timestamps exist on the users endpoint.
+  principalRole: {
+    role: "user",
+    adminIndicatorKey: "role",
+    adminValues: ["primary"],
+    parentKey: "databaseId",
+  },
   parentTypeId: "managed-database",
   supportsCreate: true,
   iconKey: "user",

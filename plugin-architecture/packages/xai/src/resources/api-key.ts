@@ -33,6 +33,10 @@ export const ApiKeyResourceType = rt({
   expiryFields: [
     { fieldKey: "expireTime", from: "expiry", kind: "api-token", label: "Key expires" },
   ],
+  // The type's only plugin-action is "rotate", which mints a new secret rather
+  // than withdrawing access, so no `revokeActionId` is declared — the review
+  // must not offer a Revoke button that quietly does something else.
+  principalRole: { role: "key", createdKey: "createTime", parentKey: "userId" },
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "key",

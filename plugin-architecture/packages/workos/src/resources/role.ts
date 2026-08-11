@@ -29,6 +29,17 @@ export const RoleResourceType = rt({
     f("createdAt", "Created", { required: false, editable: false }),
   ],
   outputs: [o("roleSlug", "Role Slug")],
+  // `permissions` is the joined slug list; `adminValues: ["*"]` matches the
+  // whole stored value, so only a role whose sole permission is the wildcard
+  // flags. A substring match would call `widgets:read, *` and `read:*` the
+  // same thing — the `sourceRanges equals "0.0.0.0/0"` stance the posture
+  // rules already take.
+  principalRole: {
+    role: "role",
+    createdKey: "createdAt",
+    adminIndicatorKey: "permissions",
+    adminValues: ["*"],
+  },
   supportsCreate: true,
   supportsUpdate: true,
   supportsDelete: false,

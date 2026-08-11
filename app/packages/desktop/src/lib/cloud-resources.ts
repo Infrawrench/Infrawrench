@@ -1,5 +1,6 @@
 import type { AssociationSource, CostEstimate } from "@infrawrench/plugin-base";
 import type {
+  AccessReviewResponse,
   BlastRadiusReport,
   DependencyGraphData,
   DnsInventoryResponse,
@@ -77,6 +78,47 @@ export async function restoreCloudPostureFinding(
   ruleId: string,
 ): Promise<void> {
   await invoke("cloud_posture_restore", { orgId, resourceId, ruleId });
+}
+
+/**
+ * The org's access review — every principal inside the customer's connected
+ * clouds, computed server-side over synced rows. Cloud-only: two of its five
+ * rules need the ownership records and the dismissal store, which local mode
+ * has neither of.
+ */
+export async function fetchCloudAccessReview(
+  orgId: string,
+  staleDays: number,
+): Promise<AccessReviewResponse> {
+  return invoke("cloud_access_review", { orgId, staleDays });
+}
+
+/** Accept an access-review finding for the org. Recorded server-side. */
+export async function dismissCloudAccessFinding(
+  orgId: string,
+  resourceId: string,
+  ruleId: string,
+  reason: string,
+): Promise<void> {
+  await invoke("cloud_access_review_dismiss", { orgId, resourceId, ruleId, reason });
+}
+
+/** Undo a dismissal, putting the finding back on the list and in the alerts. */
+export async function restoreCloudAccessFinding(
+  orgId: string,
+  resourceId: string,
+  ruleId: string,
+): Promise<void> {
+  await invoke("cloud_access_review_restore", { orgId, resourceId, ruleId });
+}
+
+/** The review as a CSV or JSON evidence document, returned as text to save. */
+export async function exportCloudAccessReview(
+  orgId: string,
+  format: "csv" | "json",
+  staleDays: number,
+): Promise<string> {
+  return invoke("cloud_access_review_export", { orgId, format, staleDays });
 }
 
 export async function fetchCloudDns(orgId: string): Promise<DnsInventoryResponse> {

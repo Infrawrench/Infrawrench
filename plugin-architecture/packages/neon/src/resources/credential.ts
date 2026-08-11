@@ -34,6 +34,10 @@ export const NeonCredentialResourceType = rt({
   expiryFields: [
     { fieldKey: "expiresAt", from: "expiry", kind: "api-token", label: "Credential expires" },
   ],
+  // Neon reports a real last-request timestamp. `scopes` is a joined list and
+  // Neon has no wildcard scope worth singling out, so no admin indicator is
+  // declared rather than one that would flag arbitrarily.
+  principalRole: { role: "key", lastUsedKey: "lastUsedAt", createdKey: "createdAt" },
   parentTypeId: "neon-branch",
   supportsCreate: true,
   supportsDelete: true,

@@ -3,6 +3,13 @@
  * security finding on the org's synced resources, delivered through the
  * existing push / Slack / Teams transports under the `postureAlerts` trigger.
  *
+ * The cross-cloud **access review** rides this same window: its critical/high
+ * findings are computed under the same claim, appended to the same message,
+ * and governed by the same `org_posture_settings.enabled` switch. Both are
+ * recomputed-on-read security findings over synced state sharing one dismissal
+ * store, so two claims and two triggers would mean two messages a day about
+ * one review. See `access-review/summary.ts`.
+ *
  * Invoked from the poller loop (a bounded batch per tick), not from sync — a
  * bucket does not get more public because a sync pass ran, so the cadence is
  * the wall clock's, not the poller's.
@@ -26,10 +33,19 @@
  * fail a tick; every error is logged with the `[posture]` prefix.
  */
 import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
-import { alertablePostureFindings } from "@infrawrench/client-core";
+import { alertableAccessFindings, alertablePostureFindings } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { accounts, orgPostureSettings } from "../db/schema";
 import { routeAlert } from "../alerts/route";
+import { listAccessReview } from "../access-review/feed";
+import {
+  formatAccessReviewPushBody,
+  formatAccessReviewSlackBody,
+  formatAccessReviewTeamsBody,
+  joinSecurityBody,
+  securityAlertTitle,
+  summarizeAccessReview,
+} from "../access-review/summary";
 import { listPosture } from "./feed";
 import { getPostureSettings, type PostureSettingsRecord } from "./settings";
 import {
@@ -50,8 +66,17 @@ export type PostureOrgOutcome =
   | { status: "cooling-down" }
   /** The scan completed and found nothing alertable; the window stays spent. */
   | { status: "quiet" }
-  | { status: "sent"; findings: number; push: number; slack: number; msTeams: number }
-  | { status: "undelivered"; findings: number }
+  | {
+      status: "sent";
+      /** Alertable posture findings named in the message. */
+      findings: number;
+      /** Alertable access-review findings named in the same message. */
+      accessFindings: number;
+      push: number;
+      slack: number;
+      msTeams: number;
+    }
+  | { status: "undelivered"; findings: number; accessFindings: number }
   /**
    * `claimed` is true only after the cooldown claim landed — pre-claim
    * failures (settings read, claim SQL) leave it false so `scanned` stays
@@ -218,9 +243,20 @@ async function deliverWindow(
   now: Date,
   delivery: WindowDelivery,
 ): Promise<PostureOrgOutcome> {
-  const feed = await listPosture(organizationId, { now: now.getTime() });
+  // One security window covering both recomputed-finding surfaces. The access
+  // review answers to this same `postureAlerts` trigger and this same 24h
+  // claim on purpose — see `access-review/summary.ts` for the argument. A
+  // broken access review costs the message one section, never the whole alert.
+  const [feed, review] = await Promise.all([
+    listPosture(organizationId, { now: now.getTime() }),
+    listAccessReview(organizationId, { now: now.getTime() }).catch((err) => {
+      console.error(`[posture] access review for org ${organizationId} failed:`, err);
+      return undefined;
+    }),
+  ]);
   const alertable = alertablePostureFindings(feed);
-  if (alertable.length === 0) {
+  const alertableAccess = review ? alertableAccessFindings(review) : [];
+  if (alertable.length === 0 && alertableAccess.length === 0) {
     // A completed scan consumes the cooldown even when it found nothing —
     // `last_notified_at` means "last alert scan", and a clean org re-scanned
     // every tick would only reconfirm the same silence until a sync changes
@@ -230,7 +266,11 @@ async function deliverWindow(
   }
 
   const summary = summarizePosture(alertable);
-  const title = postureTitle(summary);
+  const accessSummary = summarizeAccessReview(alertableAccess);
+  // `postureTitle` would say "0 high-severity findings" for a window whose
+  // only findings were access findings, so the combined helper owns both
+  // mixed cases and hands back null when there is nothing to add.
+  const title = securityAlertTitle(summary, accessSummary) ?? postureTitle(summary);
   const context = postureContext();
   const url = postureUrl(organizationId);
 
@@ -238,9 +278,18 @@ async function deliverWindow(
     organizationId,
     trigger: "postureAlerts",
     title,
-    body: formatPostureSlackBody(summary),
-    teamsBody: formatPostureTeamsBody(summary),
-    pushBody: formatPosturePushBody(summary),
+    body: joinSecurityBody([
+      alertable.length > 0 ? formatPostureSlackBody(summary) : "",
+      alertableAccess.length > 0 ? formatAccessReviewSlackBody(accessSummary) : "",
+    ]),
+    teamsBody: joinSecurityBody([
+      alertable.length > 0 ? formatPostureTeamsBody(summary) : "",
+      alertableAccess.length > 0 ? formatAccessReviewTeamsBody(accessSummary) : "",
+    ]),
+    pushBody:
+      alertable.length > 0
+        ? formatPosturePushBody(summary)
+        : formatAccessReviewPushBody(accessSummary),
     context,
     url,
     pushData: { type: "posture_alert", orgId: organizationId },
@@ -251,11 +300,18 @@ async function deliverWindow(
   // Nobody is routed here, or every transport failed. Either way this window
   // was not spent — the guard rolls the claim back on the way out so the next
   // tick can retry instead of waiting out a cooldown nobody heard about.
-  if (delivery.succeeded === 0) return { status: "undelivered", findings: alertable.length };
+  if (delivery.succeeded === 0) {
+    return {
+      status: "undelivered",
+      findings: alertable.length,
+      accessFindings: alertableAccess.length,
+    };
+  }
 
   return {
     status: "sent",
     findings: alertable.length,
+    accessFindings: alertableAccess.length,
     push: routed.byTransport.push,
     slack: routed.byTransport.slack,
     msTeams: routed.byTransport.msTeams,

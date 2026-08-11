@@ -42,6 +42,9 @@ export const ApiKeyResourceType = rt({
   expiryFields: [
     { fieldKey: "expiresAt", from: "expiry", kind: "api-token", label: "Key expires" },
   ],
+  // OpenRouter reports usage counters but no last-request timestamp, so
+  // activity reads as unknown; the key's age still comes from `createdAt`.
+  principalRole: { role: "key", createdKey: "createdAt", parentKey: "creatorUserId" },
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "key",

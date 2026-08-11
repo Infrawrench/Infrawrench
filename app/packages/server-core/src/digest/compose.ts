@@ -93,6 +93,14 @@ export interface DigestInput {
    */
   quotasAtRisk: number;
   /**
+   * Open access-review findings on the customer's cloud principals — stale or
+   * admin IAM users, service accounts, bindings and long-lived keys. Distinct
+   * from `postureCritical`/`postureHigh`, which are about resources.
+   */
+  accessFindings: number;
+  /** How many of those are critical or high. */
+  accessFindingsSevere: number;
+  /**
    * Set when the spend figures above were converted into the org's display
    * currency. Every renderer turns this into a caveat line — a converted total
    * that does not say so is worse than the several totals it replaced.
@@ -143,6 +151,10 @@ export interface WeeklyDigest {
   postureHigh: number;
   /** Provider quotas at or heading for their limit. */
   quotasAtRisk: number;
+  /** Open access-review findings on the customer's cloud principals. */
+  accessFindings: number;
+  /** How many of those are critical or high. */
+  accessFindingsSevere: number;
   /** Projected monthly change from the week's churn, when anything priced. */
   projection: DigestProjection | null;
 }
@@ -399,6 +411,8 @@ export function composeWeeklyDigest(input: DigestInput): WeeklyDigest {
     postureCritical: input.postureCritical,
     postureHigh: input.postureHigh,
     quotasAtRisk: input.quotasAtRisk,
+    accessFindings: input.accessFindings,
+    accessFindingsSevere: input.accessFindingsSevere,
     projection: normalizeProjection(input.projection),
     ...(input.conversion ? { conversion: input.conversion } : {}),
   };
@@ -599,6 +613,17 @@ export function digestSegments(digest: WeeklyDigest, narrative?: string | null):
         text: `: ${digest.postureCritical} critical, ${digest.postureHigh} high ${
           digest.postureCritical + digest.postureHigh === 1 ? "finding" : "findings"
         }`,
+        bold: false,
+      },
+    ]);
+  }
+  if (digest.accessFindings > 0) {
+    lines.push([
+      { text: "Access review", bold: true },
+      {
+        text: `: ${digest.accessFindings} open ${
+          digest.accessFindings === 1 ? "finding" : "findings"
+        } on cloud principals (${digest.accessFindingsSevere} critical or high)`,
         bold: false,
       },
     ]);
