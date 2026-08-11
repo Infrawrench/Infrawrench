@@ -20,6 +20,7 @@ import { useEffect, useId, useState } from "react";
 import { COST_DIMENSIONS, costAlertInputSchema, type CostFilter } from "./config.js";
 import { CostFilterRows } from "./CostGraphConfigModal.js";
 import { formatMoney } from "./transform.js";
+import { Modal } from "../components/Modal.js";
 import type { CostsClient } from "./types.js";
 
 const inputClass =
@@ -401,14 +402,8 @@ export function CostChangeAlertConfigModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg rounded-2xl border border-border bg-surface-raised p-5 max-h-[85vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose} ariaLabel="Change alert">
+      <div className="w-[32rem] max-w-[90vw] rounded-2xl border border-border bg-surface-raised p-5 max-h-[85vh] overflow-y-auto">
         <h2 className="text-lg font-semibold text-on-surface mb-1">Change alert</h2>
         <p className="text-xs text-on-surface-faint mb-4">
           Fires when spend on this scope moves past the threshold versus the prior period. Each
@@ -586,6 +581,6 @@ export function CostChangeAlertConfigModal({
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

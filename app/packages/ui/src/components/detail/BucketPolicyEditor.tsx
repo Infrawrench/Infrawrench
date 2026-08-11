@@ -18,6 +18,7 @@ import {
   summarizeStatement,
   templatesForVendor,
 } from "../../bucket-policy.js";
+import { Modal } from "../Modal.js";
 
 interface Props {
   capability: BucketPolicyEditorCapability;
@@ -1001,16 +1002,17 @@ function TemplatePickerModal({
   const fieldIdPrefix = useId();
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="bg-surface border border-border rounded-lg shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden">
+    <Modal onClose={onClose} ariaLabel="Choose a policy template">
+      <div className="bg-surface border border-border rounded-lg shadow-2xl w-[42rem] max-w-[90vw] max-h-[80vh] flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-4 py-2 border-b border-border">
           <h2 className="text-sm font-semibold">Choose a template</h2>
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close"
             className="text-on-surface-faint hover:text-on-surface-secondary text-sm"
           >
-            ✕
+            <span aria-hidden="true">✕</span>
           </button>
         </div>
 
@@ -1092,7 +1094,7 @@ function TemplatePickerModal({
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }
 
