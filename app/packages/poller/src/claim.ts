@@ -135,6 +135,14 @@ export async function claimDueCreditAccounts(
     LIMIT ${limit}
     ON CONFLICT (account_id) DO UPDATE
       SET next_poll_at = now() + ${COST_LEASE_MS}::float8 * interval '1 millisecond'
+      -- This predicate is what makes the upsert a *claim*. The SELECT above
+      -- reads a snapshot, so two replicas ticking together both see the same
+      -- account as due; the conflict clause is re-evaluated against the row as
+      -- it stands now, so the loser matches nothing, updates nothing, and
+      -- RETURNINGs nothing. Unconditional, both callers get the account back
+      -- and both do the work.
+      WHERE account_credit_polls.next_poll_at IS NULL
+         OR account_credit_polls.next_poll_at <= now()
     RETURNING account_id, organization_id, failure_count
   `);
 
@@ -201,6 +209,14 @@ export async function claimDueCommitmentAccounts(
     LIMIT ${limit}
     ON CONFLICT (account_id) DO UPDATE
       SET next_poll_at = now() + ${COST_LEASE_MS}::float8 * interval '1 millisecond'
+      -- This predicate is what makes the upsert a *claim*. The SELECT above
+      -- reads a snapshot, so two replicas ticking together both see the same
+      -- account as due; the conflict clause is re-evaluated against the row as
+      -- it stands now, so the loser matches nothing, updates nothing, and
+      -- RETURNINGs nothing. Unconditional, both callers get the account back
+      -- and both do the work.
+      WHERE account_commitment_polls.next_poll_at IS NULL
+         OR account_commitment_polls.next_poll_at <= now()
     RETURNING account_id, organization_id, failure_count
   `);
 

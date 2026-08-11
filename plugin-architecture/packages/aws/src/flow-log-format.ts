@@ -320,8 +320,17 @@ export function classifyScope(input: FlowClassifierInput): FlowScope {
  * has no addresses in it. Those bytes are reported under `unknown` instead of
  * being split by a guess — so the residual for zone-crossing traffic is
  * honestly labelled unclassified rather than dishonestly labelled cross-zone.
+ *
+ * `internet_ingress` is gated on the same field, for the same reason. AWS does
+ * not populate `traffic-path` for ingress at all, so on an inbound record the
+ * peer's zone is the *only* signal separating a local peer from the internet.
+ * Without it, "no next hop" is standing in for "the peer is not local" — which
+ * is exactly the guess this function exists to refuse. Egress keeps its `true`
+ * because `traffic-path` does carry a verdict there.
+ *
+ * @see https://docs.aws.amazon.com/vpc/latest/userguide/flow-logs-limitations.html
  */
 export function totalsAreExactFor(scope: FlowScope, fields: string[]): boolean {
-  if (scope !== "intra_zone" && scope !== "cross_zone") return true;
+  if (scope !== "intra_zone" && scope !== "cross_zone" && scope !== "internet_ingress") return true;
   return fields.includes("next-hop-az-id");
 }

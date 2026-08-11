@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   COST_ANNOTATION_LIMITS,
@@ -57,6 +57,16 @@ export function CostAnomalyExplainModal({
   const [text, setText] = useState(existing ?? costAnomalyExplanationPrefill(anomaly));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+
+  // Writing the sentence is the only reason this dialog opens, so focus belongs
+  // in the box (intentional focus management). Done in an effect rather than
+  // with the `autofocus` attribute: `Modal` calls `showModal()` from its own
+  // effect, which runs first and moves focus itself, so the attribute's focus
+  // lands before the dialog is open and can then be taken back off it.
+  useEffect(() => {
+    textRef.current?.focus();
+  }, []);
 
   const delta = costAnomalyDeltaPercent(anomaly);
   const isNew = anomaly.kind === "new_source";
@@ -121,10 +131,10 @@ export function CostAnomalyExplainModal({
         <label className="flex flex-col gap-1">
           <span className="text-xs text-on-surface-secondary">What happened</span>
           <textarea
+            ref={textRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={3}
-            autoFocus
             maxLength={COST_ANNOTATION_LIMITS.maxTextLength}
             placeholder="Migrated the API fleet to Graviton"
             className="rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface"

@@ -2,9 +2,10 @@
  * The poller's network-flow pass.
  *
  * Structurally the credits/commitments pass: a side table doubles as the claim
- * lease, N replicas claim disjoint rows with `FOR UPDATE SKIP LOCKED`, and a
- * replica that dies mid-work simply lets the row come due again at lease
- * expiry. Two things differ, both because the work costs the *customer* money:
+ * lease, N replicas claim disjoint rows — here by writing the lease only if the
+ * row is still due, see `claimDueNetworkFlowAccounts` — and a replica that dies
+ * mid-work simply lets the row come due again at lease expiry. Two things
+ * differ, both because the work costs the *customer* money:
  *
  * - **The org's switch is in the claim predicate**, not only in the collector.
  *   An org that has not opted in is never claimed, so a bug in the collector
@@ -47,6 +48,16 @@ export interface ClaimedNetworkFlowAccount {
 /**
  * Claim due accounts. Only accounts whose plugin can report flows *and* whose
  * org has switched collection on are eligible.
+ *
+ * **The claim is exclusive, and that is the whole point of the predicate on the
+ * conflict.** The `SELECT` half reads a snapshot, so two replicas ticking at the
+ * same moment both see the same account as due and both reach the upsert. An
+ * unconditional `DO UPDATE` would then re-lease and *return* the row to both of
+ * them, and each would run the flow-log query — which the provider bills to the
+ * customer's own account, per gigabyte scanned. Postgres re-checks the
+ * `DO UPDATE`'s `WHERE` against the latest committed version of the conflicting
+ * row while holding a lock on it, so the loser of the race sees the winner's
+ * lease, updates nothing, and therefore returns nothing.
  */
 export async function claimDueNetworkFlowAccounts(
   limit: number,
@@ -70,6 +81,11 @@ export async function claimDueNetworkFlowAccounts(
     LIMIT ${limit}
     ON CONFLICT (account_id) DO UPDATE
       SET next_poll_at = now() + ${NETWORK_FLOW_LEASE_MS}::float8 * interval '1 millisecond'
+      -- Re-checked against the row as it stands now, not as the SELECT saw it.
+      -- Without this the update is unconditional and a racing replica gets the
+      -- same account back — see the doc comment.
+      WHERE account_network_flow_polls.next_poll_at IS NULL
+         OR account_network_flow_polls.next_poll_at <= now()
     RETURNING account_id, organization_id, failure_count
   `);
   return Array.from(rows as Iterable<Record<string, unknown>>, (r) => ({

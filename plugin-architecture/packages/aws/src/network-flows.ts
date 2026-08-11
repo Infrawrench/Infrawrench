@@ -346,12 +346,60 @@ function discover(flowLogs: FlowLog[], region: string): DiscoveredSource[] {
 
 interface PairRow {
   scope: FlowScope;
+  /**
+   * The bucket this pair's bytes were counted under by the *totals* query. Equal
+   * to `scope` whenever the addresses told us nothing the totals query could not
+   * work out for itself; see {@link totalsScopeOf} and {@link foldTotals}.
+   */
+  totalsScope: FlowScope;
   direction: "egress" | "ingress";
   source: NetworkFlowEndpoint;
   destination: NetworkFlowEndpoint;
   attribution: "resolved" | "unattributed";
   bytes: number;
   packets: number;
+}
+
+/** `flow-direction` on a grouped row. Both queries carry it — it is required. */
+function directionOf(row: ResultField[]): "egress" | "ingress" {
+  return rowValue(row, insightsAlias("flow-direction")) === "ingress" ? "ingress" : "egress";
+}
+
+/**
+ * The bucket a grouped row's bytes land in **in the totals query**.
+ *
+ * Both queries group by the same non-address fields — the pair query just adds
+ * `srcaddr`/`dstaddr` on top — so this runs unchanged over a row from either
+ * one, and that is the entire point. The totals query exists so the truncated
+ * tail can be an exact subtraction rather than an estimate, and that property
+ * only survives while both queries agree about which bucket a given row's bytes
+ * were counted in. Two classifiers kept in step by hand disagree the first time
+ * a format omits a field: with no `next-hop-az-id` and no `traffic-path`, an
+ * ingress row from an address-resolved peer is `cross_zone` to the pair query
+ * and `internet_ingress` to this one, and the bytes then sit in two buckets at
+ * once. So there is one classifier, called twice — once with the totals query's
+ * strictly poorer view of the row (no addresses, so no resolved peer and none of
+ * the ENI fallbacks), and once with everything.
+ */
+function totalsScopeOf(row: ResultField[], fields: string[]): FlowScope {
+  const direction = directionOf(row);
+  const peerServiceField = direction === "egress" ? "pkt-dst-aws-service" : "pkt-src-aws-service";
+  const nextHopZone = rowValue(row, insightsAlias("next-hop-az-id"));
+  const scope = classifyScope({
+    direction,
+    trafficPath: rowValue(row, insightsAlias("traffic-path")),
+    peerService: rowValue(row, insightsAlias(peerServiceField)),
+    interfaceType: rowValue(row, insightsAlias("interface-type")),
+    localZone: rowValue(row, insightsAlias("az-id")),
+    peerZone: nextHopZone,
+    // The totals query has no addresses in it by design, so it cannot know
+    // whether a peer is local. `next-hop-az-id`, when present, decides the
+    // zone question without one.
+    peerIsLocal: nextHopZone !== undefined,
+  });
+  // Boundaries this format cannot pin down without an address are counted as
+  // `unknown` rather than split by a guess.
+  return totalsAreExactFor(scope, fields) ? scope : "unknown";
 }
 
 /**
@@ -370,8 +418,7 @@ function toPair(
   const bytes = Number(rowValue(row, "flowBytes") ?? 0);
   if (!Number.isFinite(bytes) || bytes <= 0) return null;
   const packets = Number(rowValue(row, "flowPackets") ?? 0);
-  const direction =
-    rowValue(row, insightsAlias("flow-direction")) === "ingress" ? "ingress" : "egress";
+  const direction = directionOf(row);
   const srcAddr = rowValue(row, insightsAlias("srcaddr")) ?? "";
   const dstAddr = rowValue(row, insightsAlias("dstaddr")) ?? "";
 
@@ -415,6 +462,7 @@ function toPair(
 
   return {
     scope,
+    totalsScope: totalsScopeOf(row, fields),
     direction,
     source: direction === "egress" ? localEndpoint : peerEndpoint,
     destination: direction === "egress" ? peerEndpoint : localEndpoint,
@@ -425,13 +473,21 @@ function toPair(
 }
 
 /**
- * Fold the totals query's rows into per-(scope, direction) byte totals.
+ * Fold the totals query's rows into per-(scope, direction) byte totals, then
+ * relabel them with what the pair query learned.
  *
- * Boundaries the totals query cannot determine on its own — `intra_zone` and
- * `cross_zone`, unless the format carries `next-hop-az-id` — are folded into
- * `unknown` instead of being split by a guess. `unknownNetOf` then subtracts
- * the pairs already returned for those boundaries, so the host's residual
- * arithmetic (`total − kept`) does not count them twice.
+ * The host's residual is `total − kept pairs`, per (scope, direction). So a
+ * pair stored under one scope while its bytes sit in a different totals bucket
+ * is counted twice: once as the pair, and once again inside that bucket's
+ * residual row. The addresses the pair query has and this one does not are
+ * precisely what makes the two disagree, so every pair whose two verdicts
+ * differ has its bytes **moved** out of the bucket that counted them and into
+ * the scope it was itemized under. After the move each bucket holds exactly the
+ * bytes whose pairs are stored against it, and the subtraction is exact again.
+ *
+ * Moving, rather than only subtracting: subtracting alone leaves the bucket the
+ * pair *is* stored under short of the pair's own bytes, which turns the tail for
+ * that boundary into a spurious negative and loses it.
  */
 function foldTotals(
   rows: ResultField[][],
@@ -440,44 +496,33 @@ function foldTotals(
   pairs: PairRow[],
 ): NetworkFlowTotal[] {
   const totals = new Map<string, NetworkFlowTotal>();
+  const keyOf = (scope: NetworkFlowScope, direction: "egress" | "ingress") =>
+    `${scope} ${direction}`;
   const add = (scope: NetworkFlowScope, direction: "egress" | "ingress", bytes: number) => {
-    const key = `${scope} ${direction}`;
-    const entry = totals.get(key);
+    const entry = totals.get(keyOf(scope, direction));
     if (entry) entry.bytes += bytes;
-    else totals.set(key, { date: day, scope, direction, bytes });
+    else totals.set(keyOf(scope, direction), { date: day, scope, direction, bytes });
   };
 
   for (const row of rows) {
     const bytes = Number(rowValue(row, "flowBytes") ?? 0);
     if (!Number.isFinite(bytes) || bytes <= 0) continue;
-    const direction =
-      rowValue(row, insightsAlias("flow-direction")) === "ingress" ? "ingress" : "egress";
-    const peerServiceField = direction === "egress" ? "pkt-dst-aws-service" : "pkt-src-aws-service";
-    const localZone = rowValue(row, insightsAlias("az-id"));
-    const nextHopZone = rowValue(row, insightsAlias("next-hop-az-id"));
-    const scope = classifyScope({
-      direction,
-      trafficPath: rowValue(row, insightsAlias("traffic-path")),
-      peerService: rowValue(row, insightsAlias(peerServiceField)),
-      interfaceType: rowValue(row, insightsAlias("interface-type")),
-      localZone,
-      peerZone: nextHopZone,
-      // The totals query has no addresses in it by design, so it cannot know
-      // whether a peer is local. `next-hop-az-id`, when present, decides the
-      // zone question without one.
-      peerIsLocal: nextHopZone !== undefined,
-    });
-    add(totalsAreExactFor(scope, fields) ? scope : "unknown", direction, bytes);
+    add(totalsScopeOf(row, fields), directionOf(row), bytes);
   }
 
-  // Net off the local pairs already itemized, so `total − kept` in the host
-  // does not double them. Only needed for the inexact case: an exact scope's
-  // pairs are subtracted by the host against the matching bucket.
   for (const pair of pairs) {
-    if (totalsAreExactFor(pair.scope, fields)) continue;
-    const key = `unknown ${pair.direction}`;
-    const entry = totals.get(key);
-    if (entry) entry.bytes = Math.max(0, entry.bytes - pair.bytes);
+    // Agreed: the host subtracts this one against the matching bucket itself.
+    if (pair.totalsScope === pair.scope) continue;
+    const from = totals.get(keyOf(pair.totalsScope, pair.direction));
+    if (!from) continue;
+    // Never move more than the bucket actually holds. A provider whose totals
+    // come in under its own pairs leaves the destination short of what was
+    // kept, which the host reports as a negative residual — the right place for
+    // it — rather than being papered over with bytes invented here.
+    const moved = Math.min(pair.bytes, from.bytes);
+    if (moved <= 0) continue;
+    from.bytes -= moved;
+    add(pair.scope, pair.direction, moved);
   }
 
   return [...totals.values()].filter((t) => t.bytes > 0);

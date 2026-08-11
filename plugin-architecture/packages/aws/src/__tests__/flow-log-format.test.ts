@@ -189,6 +189,18 @@ describe("totalsAreExactFor", () => {
     expect(totalsAreExactFor("nat_gateway", fields)).toBe(true);
   });
 
+  it("will not call inbound traffic internet-bound without the peer's zone", () => {
+    // `traffic-path` is never populated for ingress, so on an inbound record
+    // the peer's zone is the only thing separating a local peer from the
+    // internet. Absent it, "no next hop" is a guess, not a verdict — and the
+    // un-itemized tail must not be labelled internet ingress on that basis.
+    const fields = parseLogFormat(CUSTOM);
+    expect(totalsAreExactFor("internet_ingress", fields)).toBe(false);
+    expect(totalsAreExactFor("internet_ingress", [...fields, "next-hop-az-id"])).toBe(true);
+    // Egress is unaffected: `traffic-path` does carry a verdict there.
+    expect(totalsAreExactFor("internet_egress", fields)).toBe(true);
+  });
+
   it("can split them when the format carries next-hop-az-id", () => {
     expect(totalsAreExactFor("cross_zone", [...parseLogFormat(CUSTOM), "next-hop-az-id"])).toBe(
       true,

@@ -235,7 +235,7 @@ function EmptyState({ feed }: { feed: NetworkFlowFeed }) {
   }
 
   const blocked = capable.flatMap((a) =>
-    a.sources.filter((s) => !s.usable).map((s) => ({ account: a.displayName, source: s })),
+    a.sources.flatMap((s) => (s.usable ? [] : [{ account: a.displayName, source: s }])),
   );
   const failing = capable.filter((a) => a.lastError !== null);
 
