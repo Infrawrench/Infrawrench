@@ -54,6 +54,7 @@ import { MAX_RESOURCES_PER_PROJECTION, projectMonthlySpend } from "../cost/estim
 import { listPosture } from "../posture/feed";
 import { getQuotaFeed } from "../quotas/feed";
 import { listAccessReview } from "../access-review/feed";
+import { listBackupCoverage } from "../backups/feed";
 import { routeAlert } from "../alerts/route";
 import { isEmailConfigured, sendEmails, type EmailMessage } from "../email";
 import { generateDigestNarrative } from "./narrative";
@@ -186,6 +187,7 @@ export async function buildWeeklyDigest(
     postureCounts,
     quotasAtRisk,
     accessCounts,
+    backupCounts,
   ] = await Promise.all([
     db
       .select({ count })
@@ -278,6 +280,19 @@ export async function buildWeeklyDigest(
         console.error(`[access-review] digest feed for org ${organizationId} failed:`, err);
         return { total: 0, severe: 0 };
       }),
+    // Current backup gaps. Same point-in-time headcount and the same
+    // defensiveness: `skipCosts` because the digest wants the risk counts,
+    // not a spend quote, and a ClickHouse round trip per org per week to
+    // populate a number nobody reads is not worth the latency.
+    listBackupCoverage(organizationId, { skipCosts: true })
+      .then((feed) => ({
+        unprotected: feed.kindCounts.unprotected,
+        rpoBreached: feed.kindCounts["rpo-breach"],
+      }))
+      .catch((err) => {
+        console.error(`[backups] digest feed for org ${organizationId} failed:`, err);
+        return { unprotected: 0, rpoBreached: 0 };
+      }),
   ]);
 
   return composeWeeklyDigest({
@@ -295,6 +310,8 @@ export async function buildWeeklyDigest(
     quotasAtRisk,
     accessFindings: accessCounts.total,
     accessFindingsSevere: accessCounts.severe,
+    backupsUnprotected: backupCounts.unprotected,
+    backupsRpoBreached: backupCounts.rpoBreached,
     projection: await buildProjection(organizationId, fromDate, toDatePlusOne),
     costMover: await buildCostMover(organizationId, fromDate, toDatePlusOne),
   });
