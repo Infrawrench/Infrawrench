@@ -9,6 +9,14 @@ export {
 
 export { WorkspaceTabsViewport } from "./workspace/WorkspaceTabsViewport.js";
 export { WorkspaceTabProvider, useTabId } from "./workspace/WorkspaceTabContext.js";
+// Shared by GlobalTabBar (aria-controls) and WorkspaceTabsViewport
+// (id / aria-labelledby); exported so a host that renders its own tab strip or
+// panel container keeps the pair in agreement.
+export {
+  workspaceTabDomId,
+  workspaceTabPanelDomId,
+  workspaceTabPanelProps,
+} from "./workspace/tab-dom-ids.js";
 
 export { AgentsPanel } from "./agents/AgentsPanel.js";
 export {
@@ -452,7 +460,13 @@ export { parseNumericInputValue } from "./form-values.js";
 export { useChartTheme } from "./chart-theme.js";
 export { getTerminalTheme } from "./terminal-theme.js";
 export type { TerminalThemeColors } from "./terminal-theme.js";
-export { getXtermTerminalOptions, hideXtermScrollbar } from "./xterm-options.js";
+export {
+  getTerminalAccessibleName,
+  getTerminalContainerProps,
+  getXtermTerminalOptions,
+  hideXtermScrollbar,
+} from "./xterm-options.js";
+export type { TerminalDescription } from "./xterm-options.js";
 export { attachTerminalClipboard, pastedImageFilename } from "./terminal-clipboard.js";
 export {
   createTerminalLinkHandler,

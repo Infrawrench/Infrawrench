@@ -269,6 +269,36 @@ export function navigateToWorkspaceTarget(
   return navigate(getWorkspaceNavigateArgs(target, options?.replace));
 }
 
+/**
+ * True when the Settings router subtree — not `WorkspaceTabsViewport` — is
+ * rendering this tab's panel.
+ *
+ * Settings is the one workspace tab on web whose content is route-rendered:
+ * `/org/$orgId/settings/*` draws the section nav and the section itself into
+ * `__root`'s `<Outlet />`, a sibling of the viewport, so the viewport hides
+ * every panel (`showActive === false`) while the Settings tab still reads as
+ * selected in the strip. Left alone that means an `aria-selected` tab whose
+ * `role="tabpanel"` is empty and `display: none` — present in the DOM but
+ * absent from the accessibility tree, and unrelated to the settings UI the
+ * user is actually looking at.
+ *
+ * So the settings layout route spreads `workspaceTabPanelProps` onto its own
+ * container (making it the panel) and the viewport skips the tab. Both halves
+ * are driven from this one predicate: the moment the URL leaves settings, the
+ * layout route unmounts and the viewport must render the panel element again,
+ * or the tab — still in the strip — controls nothing.
+ *
+ * Desktop needs no equivalent: its `/settings` route is a no-op stub and
+ * `DesktopSettingsPanel` renders inside the viewport's panel like every other
+ * tab kind.
+ */
+export function isRouteHostedTabPanel(
+  routeTarget: WorkspaceTabTarget | null,
+  tab: { target: WorkspaceTabTarget },
+): boolean {
+  return tab.target.kind === "settings" && routeTarget?.kind === "settings";
+}
+
 export function syncWorkspaceRouteFromPath(
   pathname: string,
   hash?: string,

@@ -11,6 +11,7 @@ import {
   CostFilterEditor,
   useCostBasisChoice,
 } from "./CostGraphConfigModal.js";
+import { Modal } from "../components/Modal.js";
 import type { CostApi } from "./types.js";
 
 const inputClass =
@@ -78,14 +79,8 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg rounded-2xl border border-border bg-surface-raised p-5 max-h-[85vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal onClose={onClose} ariaLabel="Budget">
+      <div className="w-[32rem] max-w-[90vw] rounded-2xl border border-border bg-surface-raised p-5 max-h-[85vh] overflow-y-auto">
         <h2 className="text-lg font-semibold text-on-surface mb-1">Budget</h2>
         <p className="text-xs text-on-surface-faint mb-4">
           Monthly spend threshold over a cost scope. Alerts fire once per month per threshold.
@@ -259,7 +254,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

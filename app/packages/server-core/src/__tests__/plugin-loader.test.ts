@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { findUnsafeSvgConstructs } from "@infrawrench/plugin-base";
 
 let loader: typeof import("../plugin-loader");
 
@@ -42,6 +43,52 @@ describe("loadPlugins", () => {
     const loaded = await loader.loadPlugins();
     const ids = loaded.map((l) => l.plugin.manifest.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+/**
+ * Every host surface injects `manifest.logoSvg` with `dangerouslySetInnerHTML`
+ * and there is no script CSP behind those call sites, so the manifest is the
+ * trust boundary for that markup and `pluginManifestSchema` refines it through
+ * `isInertSvg`.
+ *
+ * Assert that against `BUNDLED_PLUGINS`, **not** against `loadPlugins()`.
+ * The loader filters: a manifest that fails validation is logged and skipped,
+ * so the offending plugin is exactly the one absent from the output and a sweep
+ * over `loaded` can only ever find logos that already passed. Sampling the
+ * pre-validation registry is what makes this catch anything.
+ */
+describe("plugin logos", () => {
+  it("are inert SVG on every bundled plugin", () => {
+    const offenders: string[] = [];
+    for (const plugin of loader.BUNDLED_PLUGINS) {
+      for (const problem of findUnsafeSvgConstructs(plugin.manifest.logoSvg)) {
+        offenders.push(`${plugin.manifest.id}: ${problem}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * The other half of the same problem, and worth having whatever the cause:
+ * `loadPlugins()` drops an invalid manifest with nothing but a `console.error`,
+ * so a validation failure removes a provider from the product silently. That is
+ * a shipped regression — the plugin count is hardcoded in the docs plan table,
+ * the onboarding card and the marketing copy, and the docs page count is
+ * expected to equal this registry — but the surrounding tests would not notice:
+ * `length > 0` still passes at 48 of 49, and the well-known-plugins check only
+ * covers aws and postgres.
+ */
+describe("manifest validation", () => {
+  it("drops nothing — every bundled plugin survives loadPlugins()", async () => {
+    const loaded = await loader.loadPlugins();
+    const loadedIds = new Set(loaded.map((l) => l.plugin.manifest.id));
+    const dropped = loader.BUNDLED_PLUGINS.map((p) => p.manifest.id).filter(
+      (id) => !loadedIds.has(id),
+    );
+    expect(dropped, "these plugins failed manifest validation and vanished").toEqual([]);
+    expect(loaded).toHaveLength(loader.BUNDLED_PLUGINS.length);
   });
 });
 

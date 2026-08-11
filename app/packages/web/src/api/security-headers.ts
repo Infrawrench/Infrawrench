@@ -43,6 +43,14 @@
  * exists to stop, so this module states the gap instead of pretending to close
  * it.
  *
+ * The gap is narrower than it was for one class of injection site: the plugin
+ * logos rendered with `dangerouslySetInnerHTML` all read `manifest.logoSvg`,
+ * which `pluginManifestSchema` now refines through `isInertSvg`
+ * (`plugin-base/src/svg-safety.ts`) — a logo carrying a script, an event
+ * handler or an external reference fails to load rather than reaching a
+ * renderer. That closes those call sites at their trust boundary; it says
+ * nothing about the rest of the app, and is not a substitute for the CSP.
+ *
  * COOP/CORP/COEP are also absent, and also deliberately. They would sever
  * `window.opener` and cross-origin resource reads; the browser app needs
  * neither, but the OAuth round trips (WorkOS sign-in, "Add to Slack", the
