@@ -5,6 +5,7 @@ import {
   attachTerminalClipboard,
   buildInitialShellCommand,
   createTerminalLinkHandler,
+  getTerminalContainerProps,
   getXtermTerminalOptions,
   hideXtermScrollbar,
   openTerminalLinkInNewTab,
@@ -292,7 +293,15 @@ export function WebTerminal({
       <div role="status" aria-live="polite" className="sr-only">
         {statusMessage}
       </div>
-      <div ref={containerRef} className="absolute inset-0 p-2" />
+      <div
+        ref={containerRef}
+        className="absolute inset-0 p-2"
+        {...getTerminalContainerProps({
+          kind: "ssh",
+          host: sshHost ?? resourceId ?? accountId,
+          username: sshUsername,
+        })}
+      />
       {dialog}
     </div>
   );

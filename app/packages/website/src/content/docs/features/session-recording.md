@@ -38,6 +38,8 @@ The player has play/pause, a scrubber, and 0.5×/1×/2×/4× speed. Scrubbing is
 
 Sessions are replayed at the geometry they were recorded at. A session recorded in a 200-column window is not reflowed into a narrow panel, because reflowed output is not what the operator saw.
 
+The player is readable by a screen reader: it is named "Session recording playback terminal" and, because a replay takes no input, it stays browsable so you can arrow through the output as text rather than being switched into focus mode. See [screen readers](./ssh-terminal.md) on the SSH terminal page for how this works across the rest of the app.
+
 ### Statuses
 
 - **Complete** — the session ended and the recording closed cleanly.

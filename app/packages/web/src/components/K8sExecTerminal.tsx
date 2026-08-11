@@ -4,6 +4,7 @@ import {
   attachAltBufferScrollHandler,
   attachTerminalClipboard,
   createTerminalLinkHandler,
+  getTerminalContainerProps,
   getXtermTerminalOptions,
   openTerminalLinkInNewTab,
 } from "@infrawrench/ui";
@@ -195,7 +196,11 @@ export function K8sExecTerminal({
 
   return (
     <div className="h-full w-full relative bg-[var(--color-terminal-bg)] overflow-hidden">
-      <div ref={containerRef} className="absolute inset-0 p-2" />
+      <div
+        ref={containerRef}
+        className="absolute inset-0 p-2"
+        {...getTerminalContainerProps({ kind: "k8s-exec", namespace, podName, containerName })}
+      />
     </div>
   );
 }

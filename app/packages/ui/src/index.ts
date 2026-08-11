@@ -451,7 +451,13 @@ export { parseNumericInputValue } from "./form-values.js";
 export { useChartTheme } from "./chart-theme.js";
 export { getTerminalTheme } from "./terminal-theme.js";
 export type { TerminalThemeColors } from "./terminal-theme.js";
-export { getXtermTerminalOptions, hideXtermScrollbar } from "./xterm-options.js";
+export {
+  getTerminalAccessibleName,
+  getTerminalContainerProps,
+  getXtermTerminalOptions,
+  hideXtermScrollbar,
+} from "./xterm-options.js";
+export type { TerminalDescription } from "./xterm-options.js";
 export { attachTerminalClipboard, pastedImageFilename } from "./terminal-clipboard.js";
 export {
   createTerminalLinkHandler,

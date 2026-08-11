@@ -95,6 +95,10 @@ function main() {
     allowTransparency: true,
     convertEol: false,
     scrollback: 10000,
+    // Mirrors `getXtermTerminalOptions` in @infrawrench/ui — this bundle
+    // cannot import it (it is a standalone WebView entry point), but the
+    // terminal has to be readable by TalkBack and VoiceOver just the same.
+    screenReaderMode: true,
   });
   const fit = new FitAddon();
   term.loadAddon(fit);

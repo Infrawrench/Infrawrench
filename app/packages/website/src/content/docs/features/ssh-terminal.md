@@ -35,6 +35,19 @@ Infrawrench auto-derives the username from the key comment if possible (e.g. `as
 
 Only `http` and `https` links open. Terminal output is whatever the remote host chose to print, so a link is untrusted input — other schemes (`javascript:`, `file:`, `data:`) are refused and are not even drawn as links. Links always open in your real browser, never inside Infrawrench.
 
+## Screen readers
+
+Terminals are readable by NVDA, JAWS, VoiceOver and Orca. There is nothing to turn on — screen reader support is enabled on every terminal in the product, in both the desktop and web apps, and there is no preference that can switch it off.
+
+- **Output is announced as it arrives.** xterm.js keeps an accessibility tree beside the drawn screen, so what the remote host prints is read out rather than being trapped in a canvas.
+- **A burst of output is summarised, not read line by line.** When a command floods the screen — a build log, a `tail -f`, a `yes` — you hear the first lines and then "too much output" instead of an unbounded read. Stop the command and page back through the buffer to read it properly.
+- **Keystrokes go to the shell.** Each terminal is an ARIA application region, so NVDA and JAWS leave browse mode when you focus it and pass keys straight through to the remote host — `Ctrl + C`, arrow keys and readline bindings all behave. Press the usual key to return to browse mode (NVDA: `Insert + Space`; JAWS: `Insert + Z`).
+- **Each terminal says which one it is.** Terminals are named by what they are connected to — "SSH terminal, deploy@web-1", "Kubernetes exec terminal, pod api-7f9 in namespace prod, container api", "k9s terminal, namespace prod" — so several open tabs are told apart without looking.
+- **Connection state is spoken.** Connecting, connected, disconnected and host-key prompts are announced through a live region, because those messages are not part of the terminal buffer.
+- **Recorded sessions stay browsable.** The [session recording](./session-recording.md) player is read-only, so it is left in browse mode and you can arrow through the replayed output as ordinary text.
+
+<insert [A terminal focused with a screen reader running, showing the accessible name announced for the session] here>
+
 ## Agent forwarding
 
 The SSH view has a **Forward SSH agent** checkbox above the terminal. When enabled, the same key you used to log in is exposed back to the remote host via the standard OpenSSH agent protocol. That means `git clone git@github.com:...` (or `ssh user@another-host` from the remote) authenticates with your local key — no need to copy private keys onto the server.
