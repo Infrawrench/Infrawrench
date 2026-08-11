@@ -1,34 +1,16 @@
+import type { InferInsertModel } from "drizzle-orm";
 import type { NetworkFlowDailyRow } from "../network-flow/aggregate";
-import { getClickHouseClient, isClickHouseConfigured } from "./client";
+import { getClickHouseDb, isClickHouseConfigured } from "./client";
+import { networkFlowDaily, type Complete } from "./schema";
 
-/** A `network_flow_daily` row, as ClickHouse takes it. */
-export interface NetworkFlowClickHouseRow {
-  organization_id: string;
-  account_id: string;
-  plugin_id: string;
-  day: string;
-  scope: string;
-  direction: string;
-  attribution: string;
-  pair_hash: string;
-  src_ref: string;
-  src_label: string;
-  src_zone: string;
-  src_region: string;
-  src_service: string;
-  src_resource_type_id: string;
-  dst_ref: string;
-  dst_label: string;
-  dst_zone: string;
-  dst_region: string;
-  dst_service: string;
-  dst_resource_type_id: string;
-  bytes: number;
-  packets: number;
-  currency: string;
-  rate_per_gb: number;
-  estimated_cost: number;
-}
+/**
+ * A `network_flow_daily` row, as ClickHouse takes it — derived from the table
+ * so a new column is one every producer has to fill. `ingested_at` is dropped:
+ * the server's `now()` default owns it.
+ */
+export type NetworkFlowClickHouseRow = Complete<
+  Omit<InferInsertModel<typeof networkFlowDaily>, "ingested_at">
+>;
 
 export interface NetworkFlowRowMeta {
   organizationId: string;
@@ -86,9 +68,5 @@ export function toNetworkFlowRows(
  */
 export async function insertNetworkFlowRows(rows: NetworkFlowClickHouseRow[]): Promise<void> {
   if (!isClickHouseConfigured() || rows.length === 0) return;
-  await getClickHouseClient().insert({
-    table: "network_flow_daily",
-    values: rows,
-    format: "JSONEachRow",
-  });
+  await getClickHouseDb().insert(networkFlowDaily).values(rows);
 }

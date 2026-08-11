@@ -35,8 +35,10 @@ describe("migrateMetrics", () => {
     // on every boot, so a statement that is neither would fail the second time
     // (or, worse, succeed and destroy something).
     for (const q of queries) {
+      // The builder renders `create table` in lower case and backticks every
+      // identifier; only the shape is being asserted here.
       expect(q.trimStart()).toMatch(
-        /^(CREATE (TABLE|MATERIALIZED VIEW) IF NOT EXISTS|ALTER TABLE \w+ ADD COLUMN IF NOT EXISTS)\b/,
+        /^(create table if not exists|CREATE MATERIALIZED VIEW IF NOT EXISTS|ALTER TABLE `\w+` ADD COLUMN IF NOT EXISTS)\b/,
       );
     }
   });
@@ -59,13 +61,13 @@ describe("migrateMetrics", () => {
     const added = queries.filter((q) => q.includes("ADD COLUMN IF NOT EXISTS"));
     // charge_type in particular: without DEFAULT 'usage' the whole back
     // catalogue reads as an empty string that matches no charge-type filter.
-    expect(added.some((q) => /charge_type .*DEFAULT 'usage'/.test(q))).toBe(true);
-    expect(added.some((q) => /amortized_amount .*DEFAULT 0/.test(q))).toBe(true);
+    expect(added.some((q) => /charge_type` .*DEFAULT 'usage'/.test(q))).toBe(true);
+    expect(added.some((q) => /amortized_amount` .*DEFAULT 0/.test(q))).toBe(true);
     // amortized_reported defaults to 0 = "not reported", which drops every
     // pre-existing row onto the legacy `amortized_amount != 0` branch and so
     // reproduces exactly what those rows read before the column existed.
-    expect(added.some((q) => /amortized_reported UInt8 DEFAULT 0/.test(q))).toBe(true);
-    expect(added.some((q) => /commitment_id .*DEFAULT ''/.test(q))).toBe(true);
+    expect(added.some((q) => /amortized_reported` UInt8 DEFAULT 0/.test(q))).toBe(true);
+    expect(added.some((q) => /commitment_id` .*DEFAULT ''/.test(q))).toBe(true);
     for (const q of added) expect(q).toMatch(/DEFAULT/);
   });
 

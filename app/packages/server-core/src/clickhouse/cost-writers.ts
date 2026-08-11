@@ -1,33 +1,17 @@
 import type { CostChargeType, CostRow } from "@infrawrench/plugin-base";
-import { getClickHouseClient, isClickHouseConfigured } from "./client";
+import type { InferInsertModel } from "drizzle-orm";
+import { getClickHouseDb, isClickHouseConfigured } from "./client";
+import { costDaily, type Complete } from "./schema";
 
-export interface CostDailyRow {
-  organization_id: string;
-  account_id: string;
-  plugin_id: string;
-  day: string;
-  service: string;
-  region: string;
-  resource_id: string;
-  tags: Record<string, string>;
-  tags_hash: string;
-  currency: string;
-  amount: number;
-  usage_amount: number;
-  usage_unit: string;
-  /** What kind of charge this is; "usage" for everything that doesn't say. */
-  charge_type: string;
-  /** Cash spread over the period it covers. Only meaningful when reported. */
-  amortized_amount: number;
-  /**
-   * 1 when the plugin reported an amortized amount, 0 when it said nothing.
-   * Distinguishes a reported 0 (a purchase row, which amortizes to nothing on
-   * its purchase day) from an absent one (readers fall back to `amount`).
-   */
-  amortized_reported: number;
-  /** Reservation / savings plan / CUD this row belongs to; "" when none. */
-  commitment_id: string;
-}
+/**
+ * A `cost_daily` row as the collectors and the ingest API build one.
+ *
+ * Derived from the table rather than restated, so a column added to `schema.ts`
+ * is a column every producer of this type has to fill. `ingested_at` is dropped
+ * because the server's `now()` default owns it; everything else is required —
+ * see {@link Complete}.
+ */
+export type CostDailyRow = Complete<Omit<InferInsertModel<typeof costDaily>, "ingested_at">>;
 
 /**
  * Tag keys the host owns. Mirrors `RESERVED_TAG_PREFIX` in `cost/cost-ingest.ts`
@@ -111,47 +95,69 @@ export function hashTags(
   return hash.toString(10);
 }
 
+/** Map one plugin CostRow onto a cost_daily row. */
+function toCostDailyRow(
+  meta: { organizationId: string; accountId: string; pluginId: string },
+  r: CostRow,
+): CostDailyRow {
+  const chargeType: CostChargeType = r.chargeType ?? "usage";
+  const commitmentId = r.commitmentId ?? "";
+  return {
+    organization_id: meta.organizationId,
+    account_id: meta.accountId,
+    plugin_id: meta.pluginId,
+    day: r.date,
+    service: r.service ?? "",
+    region: r.region ?? "",
+    resource_id: r.resourceId ?? "",
+    tags: r.tags ?? {},
+    // Charge type and commitment id ride in the hash because the sort key
+    // cannot carry them — without this a credit would replace the usage line
+    // it was credited against. See hashTags.
+    tags_hash: hashTags(r.tags, { chargeType, commitmentId }),
+    currency: r.currency,
+    amount: r.amount,
+    usage_amount: r.usageAmount ?? 0,
+    usage_unit: r.usageUnit ?? "",
+    charge_type: chargeType,
+    // Absent and zero are different answers and must stay different: a
+    // commitment purchase amortizes to *zero* on its purchase day, while a
+    // provider with no amortized data at all has *no* answer and readers fall
+    // back to `amount`. Collapsing the two shows the purchase at full cash
+    // alongside all of its amortized slices.
+    amortized_amount: r.amortizedAmount ?? 0,
+    amortized_reported: r.amortizedAmount === undefined ? 0 : 1,
+    commitment_id: commitmentId,
+  };
+}
+
 /** Map plugin CostRows onto cost_daily rows for one account. */
 export function toCostDailyRows(
   meta: { organizationId: string; accountId: string; pluginId: string },
   rows: CostRow[],
 ): CostDailyRow[] {
-  return rows.map((r) => {
-    const chargeType: CostChargeType = r.chargeType ?? "usage";
-    const commitmentId = r.commitmentId ?? "";
-    return {
-      organization_id: meta.organizationId,
-      account_id: meta.accountId,
-      plugin_id: meta.pluginId,
-      day: r.date,
-      service: r.service ?? "",
-      region: r.region ?? "",
-      resource_id: r.resourceId ?? "",
-      tags: r.tags ?? {},
-      // Charge type and commitment id ride in the hash because the sort key
-      // cannot carry them — without this a credit would replace the usage line
-      // it was credited against. See hashTags.
-      tags_hash: hashTags(r.tags, { chargeType, commitmentId }),
-      currency: r.currency,
-      amount: r.amount,
-      usage_amount: r.usageAmount ?? 0,
-      usage_unit: r.usageUnit ?? "",
-      charge_type: chargeType,
-      // Absent and zero are different answers and must stay different: a
-      // commitment purchase amortizes to *zero* on its purchase day, while a
-      // provider with no amortized data at all has *no* answer and readers fall
-      // back to `amount`. Collapsing the two shows the purchase at full cash
-      // alongside all of its amortized slices.
-      amortized_amount: r.amortizedAmount ?? 0,
-      amortized_reported: r.amortizedAmount === undefined ? 0 : 1,
-      commitment_id: commitmentId,
-    };
-  });
+  return rows.map((r) => toCostDailyRow(meta, r));
 }
 
-export async function insertCostRows(rows: CostDailyRow[]): Promise<void> {
-  if (!isClickHouseConfigured() || rows.length === 0) return;
-  // Unlike the fire-and-forget metric writers, cost collection must know
-  // about failures so the poller can back off and retry — let errors throw.
-  await getClickHouseClient().insert({ table: "cost_daily", values: rows, format: "JSONEachRow" });
+/**
+ * Write a chunk's rows.
+ *
+ * Unlike the fire-and-forget metric writers, cost collection must know about
+ * failures so the poller can back off and retry — errors throw.
+ *
+ * **Accepts an async iterable, and nothing here passes one.** The dialect
+ * streams a body, so a caller producing rows lazily would never hold a month of
+ * a large account's resource-level billing at once — but `cost/collect.ts`
+ * cannot be that caller. Reconciliation subtracts the keys about to be written
+ * from the keys already stored, and appends its tombstones to the same insert,
+ * so the mapped rows have to exist before the write starts. Streaming them
+ * while holding the identical array would be ceremony. The parameter is here so
+ * that a shape which *can* stream does not have to reopen this function.
+ */
+export async function insertCostRows(
+  rows: CostDailyRow[] | AsyncIterable<CostDailyRow>,
+): Promise<void> {
+  if (!isClickHouseConfigured()) return;
+  if (Array.isArray(rows) && rows.length === 0) return;
+  await getClickHouseDb().insert(costDaily).values(rows);
 }

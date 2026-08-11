@@ -6,6 +6,19 @@ overrides:
   yaml: ">=2.8.3"
   "@esbuild-kit/core-utils>esbuild": ">=0.25.0"
 
+# drizzle-orm has no ClickHouse dialect upstream. The patch adds the built
+# `drizzle-orm/clickhouse-core` (dialect, columns, engines, query builders) and
+# `drizzle-orm/clickhouse` (a driver binding for `@clickhouse/client`) from
+# https://github.com/Infrawrench/drizzle-orm/tree/clickhouse-dialect, plus the
+# two type-only branches in `column-builder.d.ts` that teach `BuildColumn` about
+# the new dialect, and the `exports` entries that make them importable.
+#
+# It is additive: no file drizzle already shipped changes behaviour, so a
+# drizzle bump only has to re-run the fork's build (see KNOWLEDGE.md, "The
+# ClickHouse dialect patch"), not re-derive a merge.
+patchedDependencies:
+  drizzle-orm@0.45.2: patches/drizzle-orm@0.45.2.patch
+
 allowBuilds:
   "@google/genai": true
   better-sqlite3: true

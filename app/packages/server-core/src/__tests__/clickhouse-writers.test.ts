@@ -1,17 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MetricSeries } from "@infrawrench/plugin-base";
+import { fakeClickHouse } from "./helpers/fake-clickhouse";
 
-const insert = vi.fn(async (_opts?: unknown) => undefined);
+/**
+ * The writers go through `db.insert(...)`, which sends a `JSONEachRow` body —
+ * so what these assert on is what the driver was handed: a table name and the
+ * decoded rows, after the dialect mapped each value to its row-format form.
+ */
+const ch = fakeClickHouse();
 const isConfigured = vi.fn(() => true);
 vi.mock("../clickhouse/client", () => ({
   isClickHouseConfigured: () => isConfigured(),
-  getClickHouseClient: () => ({ insert }),
+  getClickHouseDb: () => ch.db,
+  getClickHouseClient: () => ch.client,
 }));
 
 let writers: typeof import("../clickhouse/writers");
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  ch.reset();
   isConfigured.mockReturnValue(true);
   writers = await import("../clickhouse/writers");
 });
@@ -78,16 +86,15 @@ describe("insert wrappers", () => {
       [{ label: "x", points: [{ timestamp: 0, value: 1 }] }],
     );
     await writers.insertMetricPoints(rows);
-    expect(insert).toHaveBeenCalledWith({
-      table: "metric_points_raw",
-      values: rows,
-      format: "JSONEachRow",
-    });
+    const [call] = ch.inserts;
+    expect(call!.table).toBe("`metric_points_raw`");
+    expect(call!.format).toBe("JSONEachRow");
+    expect(await ch.insertedRows(0)).toEqual(rows);
   });
 
   it("skips the insert when values are empty", async () => {
     await writers.insertMetricPoints([]);
-    expect(insert).not.toHaveBeenCalled();
+    expect(ch.inserts).toEqual([]);
   });
 
   it("skips the insert when ClickHouse is not configured", async () => {
@@ -105,12 +112,12 @@ describe("insert wrappers", () => {
         value: 1,
       },
     ]);
-    expect(insert).not.toHaveBeenCalled();
+    expect(ch.inserts).toEqual([]);
   });
 
   it("swallows insert errors (logs them)", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    insert.mockRejectedValueOnce(new Error("CH down"));
+    vi.spyOn(ch.client, "insert").mockRejectedValueOnce(new Error("CH down"));
     await expect(
       writers.insertDashboardStats({
         organizationId: "o",
@@ -132,19 +139,16 @@ describe("insert wrappers", () => {
       ts: new Date(0),
       stats,
     });
-    expect(insert).toHaveBeenCalledWith({
-      table: "dashboard_stats",
-      values: [
-        {
-          organization_id: "o",
-          account_id: "a",
-          resource_id: "r",
-          ts: new Date(0).toISOString(),
-          stats_json: JSON.stringify(stats),
-        },
-      ],
-      format: "JSONEachRow",
-    });
+    expect(ch.inserts[0]!.table).toBe("`dashboard_stats`");
+    expect(await ch.insertedRows(0)).toEqual([
+      {
+        organization_id: "o",
+        account_id: "a",
+        resource_id: "r",
+        ts: new Date(0).toISOString(),
+        stats_json: JSON.stringify(stats),
+      },
+    ]);
   });
 
   it("insertAccountResourceCounts serializes counts_json", async () => {
@@ -154,11 +158,9 @@ describe("insert wrappers", () => {
       ts: new Date(0),
       counts: [{ typeLabel: "VMs", count: 3 }],
     });
-    expect(insert).toHaveBeenCalledWith(
-      expect.objectContaining({ table: "account_resource_counts" }),
-    );
-    const arg = insert.mock.calls[0]![0] as { values: { counts_json: string }[] };
-    expect(JSON.parse(arg.values[0]!.counts_json)).toEqual([{ typeLabel: "VMs", count: 3 }]);
+    expect(ch.inserts[0]!.table).toBe("`account_resource_counts`");
+    const [row] = (await ch.insertedRows(0)) as { counts_json: string }[];
+    expect(JSON.parse(row!.counts_json)).toEqual([{ typeLabel: "VMs", count: 3 }]);
   });
 
   it("insertPollOutcome maps fields and defaults first_error to ''", async () => {
@@ -173,9 +175,8 @@ describe("insert wrappers", () => {
       failedTypeCount: 1,
       skippedTypeCount: 0,
     });
-    const arg = insert.mock.calls[0]![0] as { table: string; values: Record<string, unknown>[] };
-    expect(arg.table).toBe("poll_outcomes");
-    expect(arg.values[0]).toMatchObject({
+    expect(ch.inserts[0]!.table).toBe("`poll_outcomes`");
+    expect((await ch.insertedRows(0))[0]).toMatchObject({
       plugin_id: "aws",
       duration_ms: 42,
       resource_count: 7,

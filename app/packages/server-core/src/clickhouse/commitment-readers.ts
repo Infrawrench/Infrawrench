@@ -29,11 +29,6 @@
  * usage the two bases agree anyway (nothing to spread), so this costs nothing
  * where it does not apply — it just removes the chance of them disagreeing.
  *
- * Utilization's obligation (`hourly × 24 × days`, computed in
- * `../commitments/utilization.ts`) is the commitment's own committed rate,
- * which is what an amortized delivered figure is directly comparable to. That
- * pairing is the whole reason delivered is amortized.
- *
  * ─── What counts as covered ───────────────────────────────────────────────
  *
  * Two independent signals, because no provider supplies both universally:
@@ -61,13 +56,14 @@
  * `accountIds` parameters) — for everyone else `usage` is just the default
  * stamp, not a claim.
  */
-import { getClickHouseClient, isClickHouseConfigured } from "./client";
-import { amortizedAmountExpr, DAY_FROM_SQL, DAY_TO_SQL } from "./cost-readers";
+import { and, eq, inArray, ne, sql, type SQL } from "drizzle-orm";
+import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
+import { amortizedAmountExpr, dayRange } from "./cost-readers";
+import { costDaily } from "./schema";
 
-async function query<T>(sql: string, query_params: Record<string, unknown>): Promise<T[]> {
+async function query<T>(build: (db: ClickHouseDb) => Promise<T[]>): Promise<T[]> {
   if (!isClickHouseConfigured()) return [];
-  const rs = await getClickHouseClient().query({ query: sql, query_params, format: "JSONEachRow" });
-  return await rs.json<T>();
+  return await build(getClickHouseDb());
 }
 
 /** The charge type a provider stamps on consumption a commitment covered. */
@@ -80,13 +76,19 @@ const COVERED_CHARGE_TYPE = "commitment_covered_usage";
  */
 export const CONSUMPTION_CHARGE_TYPES: readonly string[] = ["usage", COVERED_CHARGE_TYPE];
 
-export const CONSUMPTION_SQL = `charge_type IN (${CONSUMPTION_CHARGE_TYPES.map((t) => `'${t}'`).join(", ")})`;
+export function consumptionCondition(): SQL {
+  return inArray(costDaily.charge_type, [...CONSUMPTION_CHARGE_TYPES]);
+}
 
 /** Carries either coverage signal. */
-export const COVERED_SQL = `(charge_type = '${COVERED_CHARGE_TYPE}' OR commitment_id != '')`;
+export function coveredCondition(): SQL {
+  return sql`(${eq(costDaily.charge_type, COVERED_CHARGE_TYPE)} OR ${ne(costDaily.commitment_id, "")})`;
+}
 
-/** Carries neither — the exact complement of {@link COVERED_SQL}, so no row is counted twice. */
-export const UNCOVERED_SQL = `(charge_type != '${COVERED_CHARGE_TYPE}' AND commitment_id = '')`;
+/** Carries neither — the exact complement of {@link coveredCondition}, so no row is counted twice. */
+export function uncoveredCondition(): SQL {
+  return sql`(${ne(costDaily.charge_type, COVERED_CHARGE_TYPE)} AND ${eq(costDaily.commitment_id, "")})`;
+}
 
 /** Where one cost row lands in the coverage partition. */
 export type CoverageRowClass = "covered" | "uncovered" | "not_consumption";
@@ -98,9 +100,9 @@ export type CoverageRowClass = "covered" | "uncovered" | "not_consumption";
  * a provider reporting both produces — is counted once, not twice.
  *
  * Kept as real code rather than prose because the partition is the property
- * that makes the ratio a percentage: `COVERED_SQL` and `UNCOVERED_SQL` are its
- * De Morgan pair, and a test that exercises this function is testing the same
- * rule the queries run.
+ * that makes the ratio a percentage: `coveredCondition` and `uncoveredCondition`
+ * are its De Morgan pair, and a test that exercises this function is testing the
+ * same rule the queries run.
  */
 export function classifyCoverageRow(chargeType: string, commitmentId: string): CoverageRowClass {
   if (!CONSUMPTION_CHARGE_TYPES.includes(chargeType)) return "not_consumption";
@@ -130,18 +132,36 @@ export async function getCommitmentCoverageCells(
 ): Promise<CoverageCellRow[]> {
   if (accountIds.length === 0) return [];
   const money = amortizedAmountExpr();
-  const rows = await query<CoverageCellRow>(
-    `SELECT account_id, plugin_id, service, region, currency,
-            sumIf(${money}, ${COVERED_SQL}) AS covered_amount,
-            sumIf(${money}, ${UNCOVERED_SQL}) AS uncovered_amount
-     FROM cost_daily FINAL
-     WHERE organization_id = {orgId:String}
-       AND ${DAY_FROM_SQL}
-       AND ${DAY_TO_SQL}
-       AND ${CONSUMPTION_SQL}
-       AND account_id IN {accountIds:Array(String)}
-     GROUP BY account_id, plugin_id, service, region, currency`,
-    { orgId: organizationId, from, to, accountIds },
+  const rows = await query((db) =>
+    db
+      .select({
+        account_id: costDaily.account_id,
+        plugin_id: costDaily.plugin_id,
+        service: costDaily.service,
+        region: costDaily.region,
+        currency: costDaily.currency,
+        covered_amount: sql<number>`sumIf(${money}, ${coveredCondition()})`.as("covered_amount"),
+        uncovered_amount: sql<number>`sumIf(${money}, ${uncoveredCondition()})`.as(
+          "uncovered_amount",
+        ),
+      })
+      .from(costDaily)
+      .final()
+      .where(
+        and(
+          eq(costDaily.organization_id, organizationId),
+          dayRange(from, to),
+          consumptionCondition(),
+          inArray(costDaily.account_id, accountIds),
+        ),
+      )
+      .groupBy(
+        costDaily.account_id,
+        costDaily.plugin_id,
+        costDaily.service,
+        costDaily.region,
+        costDaily.currency,
+      ),
   );
   return rows.map((r) => ({
     ...r,
@@ -163,14 +183,20 @@ export async function getAccountDataDays(
   accountIds: string[],
 ): Promise<Map<string, Set<string>>> {
   if (accountIds.length === 0) return new Map();
-  const rows = await query<{ account_id: string; day: string }>(
-    `SELECT DISTINCT account_id, toString(day) AS day
-     FROM cost_daily
-     WHERE organization_id = {orgId:String}
-       AND ${DAY_FROM_SQL}
-       AND ${DAY_TO_SQL}
-       AND account_id IN {accountIds:Array(String)}`,
-    { orgId: organizationId, from, to, accountIds },
+  const rows = await query((db) =>
+    db
+      .selectDistinct({
+        account_id: costDaily.account_id,
+        day: sql<string>`toString(${costDaily.day})`.as("day"),
+      })
+      .from(costDaily)
+      .where(
+        and(
+          eq(costDaily.organization_id, organizationId),
+          dayRange(from, to),
+          inArray(costDaily.account_id, accountIds),
+        ),
+      ),
   );
   const result = new Map<string, Set<string>>();
   for (const r of rows) {
@@ -206,17 +232,26 @@ export async function getCommitmentDeliveredTotals(
   accountIds: string[],
 ): Promise<CommitmentDeliveredRow[]> {
   if (accountIds.length === 0) return [];
-  const rows = await query<CommitmentDeliveredRow>(
-    `SELECT account_id, commitment_id, currency, sum(${amortizedAmountExpr()}) AS amount
-     FROM cost_daily FINAL
-     WHERE organization_id = {orgId:String}
-       AND ${DAY_FROM_SQL}
-       AND ${DAY_TO_SQL}
-       AND ${CONSUMPTION_SQL}
-       AND commitment_id != ''
-       AND account_id IN {accountIds:Array(String)}
-     GROUP BY account_id, commitment_id, currency`,
-    { orgId: organizationId, from, to, accountIds },
+  const rows = await query((db) =>
+    db
+      .select({
+        account_id: costDaily.account_id,
+        commitment_id: costDaily.commitment_id,
+        currency: costDaily.currency,
+        amount: sql<number>`sum(${amortizedAmountExpr()})`.as("amount"),
+      })
+      .from(costDaily)
+      .final()
+      .where(
+        and(
+          eq(costDaily.organization_id, organizationId),
+          dayRange(from, to),
+          consumptionCondition(),
+          ne(costDaily.commitment_id, ""),
+          inArray(costDaily.account_id, accountIds),
+        ),
+      )
+      .groupBy(costDaily.account_id, costDaily.commitment_id, costDaily.currency),
   );
   return rows.map((r) => ({ ...r, amount: Number(r.amount) }));
 }
@@ -236,10 +271,11 @@ export interface UncoveredDailyRow {
  * cell spent nothing simply have no row — the pure planner treats absence
  * as zero.
  *
- * `UNCOVERED` here is the same predicate coverage's denominator uses, and the
- * money is amortized for the same reason: the planner's "you could commit to
- * this" sits on the same screen as the coverage range, and two numbers about
- * the same uncovered spend must not be computed on different bases.
+ * `uncoveredCondition` here is the same predicate coverage's denominator uses,
+ * and the money is amortized for the same reason: the planner's "you could
+ * commit to this" sits on the same screen as the coverage range, and two
+ * numbers about the same uncovered spend must not be computed on different
+ * bases.
  */
 export async function getUncoveredDailySpend(
   organizationId: string,
@@ -248,18 +284,34 @@ export async function getUncoveredDailySpend(
   accountIds: string[],
 ): Promise<UncoveredDailyRow[]> {
   if (accountIds.length === 0) return [];
-  const rows = await query<UncoveredDailyRow>(
-    `SELECT plugin_id, service, region, currency, toString(day) AS day,
-            sum(${amortizedAmountExpr()}) AS amount
-     FROM cost_daily FINAL
-     WHERE organization_id = {orgId:String}
-       AND ${DAY_FROM_SQL}
-       AND ${DAY_TO_SQL}
-       AND ${CONSUMPTION_SQL}
-       AND ${UNCOVERED_SQL}
-       AND account_id IN {accountIds:Array(String)}
-     GROUP BY plugin_id, service, region, currency, day`,
-    { orgId: organizationId, from, to, accountIds },
+  const rows = await query((db) =>
+    db
+      .select({
+        plugin_id: costDaily.plugin_id,
+        service: costDaily.service,
+        region: costDaily.region,
+        currency: costDaily.currency,
+        day: sql<string>`toString(${costDaily.day})`.as("day"),
+        amount: sql<number>`sum(${amortizedAmountExpr()})`.as("amount"),
+      })
+      .from(costDaily)
+      .final()
+      .where(
+        and(
+          eq(costDaily.organization_id, organizationId),
+          dayRange(from, to),
+          consumptionCondition(),
+          uncoveredCondition(),
+          inArray(costDaily.account_id, accountIds),
+        ),
+      )
+      .groupBy(
+        costDaily.plugin_id,
+        costDaily.service,
+        costDaily.region,
+        costDaily.currency,
+        sql`day`,
+      ),
   );
   return rows.map((r) => ({ ...r, amount: Number(r.amount) }));
 }

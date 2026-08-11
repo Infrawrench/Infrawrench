@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { hashTags, toCostDailyRows, type CostDailyRow } from "../clickhouse/cost-writers";
 import { supersededTombstones, type StoredCostRowKey } from "../clickhouse/cost-reconcile";
+import { fakeClickHouse } from "./helpers/fake-clickhouse";
 
 const META = { organizationId: "org-1", accountId: "acc-1", pluginId: "azure" };
 
@@ -407,18 +408,23 @@ describe("getStoredCostRowKeys excludes rows that are already zero", () => {
     // not written — and each one re-inserts an identical zero row. Idempotent,
     // but unbounded write amplification against the table whose whole point is
     // retaining years of daily history.
-    const query = vi.fn(async (_args: { query: string }) => ({ json: async () => [] }));
+    const ch = fakeClickHouse();
     vi.doMock("../clickhouse/client", () => ({
       isClickHouseConfigured: () => true,
-      getClickHouseClient: () => ({ query }),
+      getClickHouseDb: () => ch.db,
+      getClickHouseClient: () => ch.client,
     }));
     vi.resetModules();
     const { getStoredCostRowKeys } = await import("../clickhouse/cost-reconcile");
 
     await getStoredCostRowKeys(META, "2026-07-01", "2026-07-31");
 
-    const sql = query.mock.calls[0]![0].query.replace(/\s+/g, " ");
-    expect(sql).toContain("(amount != 0 OR amortized_amount != 0)");
+    expect(ch.lastQuery()).toContain(
+      "(`cost_daily`.`amount` != 0 OR `cost_daily`.`amortized_amount` != 0)",
+    );
+    // …and only through `FINAL`, so an un-merged part cannot yield one
+    // tombstone per stored version of the same key.
+    expect(ch.lastQuery()).toContain("from `cost_daily` final");
     vi.doUnmock("../clickhouse/client");
     vi.resetModules();
   });

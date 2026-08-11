@@ -92,10 +92,12 @@
  *    exists to fix. The coupling is called out at both ends; do not "fix" the
  *    asymmetry in either place alone.
  */
+import { and, eq, sql } from "drizzle-orm";
 import { restatedDayScope } from "../cost/period-scope";
-import { getClickHouseClient, isClickHouseConfigured } from "./client";
-import { DAY_FROM_SQL, DAY_TO_SQL } from "./cost-readers";
+import { getClickHouseDb, isClickHouseConfigured } from "./client";
+import { dayRange } from "./cost-readers";
 import type { CostDailyRow } from "./cost-writers";
+import { costDaily } from "./schema";
 
 /** Mirrors `cost/cost-ingest.ts`'s `RESERVED_TAG_PREFIX`; see guard 3 above. */
 const RESERVED_KEY_PREFIX = "infrawrench:";
@@ -239,26 +241,29 @@ export async function getStoredCostRowKeys(
   to: string,
 ): Promise<StoredCostRowKey[]> {
   if (!isClickHouseConfigured()) return [];
-  const rs = await getClickHouseClient().query({
-    query: `SELECT toString(day) AS day, service, region, resource_id, tags,
-                   toString(tags_hash) AS tags_hash, currency, charge_type, commitment_id
-            FROM cost_daily FINAL
-            WHERE organization_id = {orgId:String}
-              AND account_id = {accountId:String}
-              AND plugin_id = {pluginId:String}
-              AND ${DAY_FROM_SQL}
-              AND ${DAY_TO_SQL}
-              AND (amount != 0 OR amortized_amount != 0)`,
-    query_params: {
-      orgId: meta.organizationId,
-      accountId: meta.accountId,
-      pluginId: meta.pluginId,
-      from,
-      to,
-    },
-    format: "JSONEachRow",
-  });
-  return await rs.json<StoredCostRowKey>();
+  return await getClickHouseDb()
+    .select({
+      day: sql<string>`toString(${costDaily.day})`.as("day"),
+      service: costDaily.service,
+      region: costDaily.region,
+      resource_id: costDaily.resource_id,
+      tags: costDaily.tags,
+      tags_hash: costDaily.tags_hash,
+      currency: costDaily.currency,
+      charge_type: costDaily.charge_type,
+      commitment_id: costDaily.commitment_id,
+    })
+    .from(costDaily)
+    .final()
+    .where(
+      and(
+        eq(costDaily.organization_id, meta.organizationId),
+        eq(costDaily.account_id, meta.accountId),
+        eq(costDaily.plugin_id, meta.pluginId),
+        dayRange(from, to),
+        sql`(${costDaily.amount} != 0 OR ${costDaily.amortized_amount} != 0)`,
+      ),
+    );
 }
 
 /**

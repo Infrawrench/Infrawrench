@@ -11,12 +11,13 @@
  * day writes a newer `ingested_at` for the same key; without `FINAL` a day
  * collected twice reads as double its traffic until the parts happen to merge.
  */
-import { getClickHouseClient, isClickHouseConfigured } from "./client";
+import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
+import { networkFlowDaily as flow } from "./schema";
 
-async function query<T>(sql: string, query_params: Record<string, unknown>): Promise<T[]> {
+async function query<T>(build: (db: ClickHouseDb) => Promise<T[]>): Promise<T[]> {
   if (!isClickHouseConfigured()) return [];
-  const rs = await getClickHouseClient().query({ query: sql, query_params, format: "JSONEachRow" });
-  return await rs.json<T>();
+  return await build(getClickHouseDb());
 }
 
 export interface NetworkFlowRange {
@@ -32,33 +33,16 @@ export interface NetworkFlowFilters {
   direction?: string | undefined;
 }
 
-function whereClause(
-  organizationId: string,
-  range: NetworkFlowRange,
-  filters: NetworkFlowFilters,
-  params: Record<string, unknown>,
-): string {
-  params["org"] = organizationId;
-  params["from"] = range.from;
-  params["to"] = range.to;
-  const parts = ["organization_id = {org:String}", "day >= {from:Date}", "day <= {to:Date}"];
-  if (filters.accountId) {
-    params["accountId"] = filters.accountId;
-    parts.push("account_id = {accountId:String}");
-  }
-  if (filters.pluginId) {
-    params["pluginId"] = filters.pluginId;
-    parts.push("plugin_id = {pluginId:String}");
-  }
-  if (filters.scope) {
-    params["scope"] = filters.scope;
-    parts.push("scope = {scope:String}");
-  }
-  if (filters.direction) {
-    params["direction"] = filters.direction;
-    parts.push("direction = {direction:String}");
-  }
-  return parts.join(" AND ");
+function whereClause(organizationId: string, range: NetworkFlowRange, filters: NetworkFlowFilters) {
+  return and(
+    eq(flow.organization_id, organizationId),
+    gte(flow.day, range.from),
+    lte(flow.day, range.to),
+    filters.accountId ? eq(flow.account_id, filters.accountId) : undefined,
+    filters.pluginId ? eq(flow.plugin_id, filters.pluginId) : undefined,
+    filters.scope ? eq(flow.scope, filters.scope) : undefined,
+    filters.direction ? eq(flow.direction, filters.direction) : undefined,
+  );
 }
 
 export interface NetworkFlowScopeTotal {
@@ -86,22 +70,32 @@ export async function readNetworkFlowScopeTotals(
   range: NetworkFlowRange,
   filters: NetworkFlowFilters = {},
 ): Promise<NetworkFlowScopeTotal[]> {
-  const params: Record<string, unknown> = {};
-  const where = whereClause(organizationId, range, filters, params);
-  return query<NetworkFlowScopeTotal>(
-    `SELECT scope,
-            direction,
-            attribution,
-            sum(bytes)          AS bytes,
-            sum(estimated_cost) AS estimated_cost,
-            any(currency)       AS currency,
-            count()             AS pair_count
-     FROM network_flow_daily FINAL
-     WHERE ${where}
-     GROUP BY scope, direction, attribution
-     ORDER BY estimated_cost DESC, bytes DESC`,
-    params,
+  const rows = await query((db) =>
+    db
+      .select({
+        scope: flow.scope,
+        direction: flow.direction,
+        attribution: flow.attribution,
+        bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
+        estimated_cost: sql<number>`sum(${flow.estimated_cost})`.as("estimated_cost"),
+        currency: sql<string>`any(${flow.currency})`.as("currency"),
+        pair_count: sql<string>`count()`.as("pair_count"),
+      })
+      .from(flow)
+      .final()
+      .where(whereClause(organizationId, range, filters))
+      .groupBy(flow.scope, flow.direction, flow.attribution)
+      .orderBy(desc(sql`estimated_cost`), desc(sql`bytes`)),
   );
+  return rows.map((r) => ({
+    scope: r.scope,
+    direction: r.direction,
+    attribution: r.attribution,
+    bytes: Number(r.bytes),
+    estimated_cost: Number(r.estimated_cost),
+    currency: r.currency,
+    pair_count: Number(r.pair_count),
+  }));
 }
 
 export interface NetworkFlowPair {
@@ -148,39 +142,52 @@ export async function readTopNetworkFlows(
   filters: NetworkFlowFilters = {},
   limit = 50,
 ): Promise<NetworkFlowPair[]> {
-  const params: Record<string, unknown> = {};
-  const where = whereClause(organizationId, range, filters, params);
-  params["limit"] = Math.max(1, Math.min(500, Math.floor(limit)));
-  return query<NetworkFlowPair>(
-    `SELECT any(src_ref)              AS src_ref,
-            any(src_label)            AS src_label,
-            any(src_zone)             AS src_zone,
-            any(src_region)           AS src_region,
-            any(src_service)          AS src_service,
-            any(src_resource_type_id) AS src_resource_type_id,
-            any(dst_ref)              AS dst_ref,
-            any(dst_label)            AS dst_label,
-            any(dst_zone)             AS dst_zone,
-            any(dst_region)           AS dst_region,
-            any(dst_service)          AS dst_service,
-            any(dst_resource_type_id) AS dst_resource_type_id,
-            scope,
-            direction,
-            any(attribution)          AS attribution,
-            sum(bytes)                AS bytes,
-            sum(packets)              AS packets,
-            sum(estimated_cost)       AS estimated_cost,
-            any(currency)             AS currency,
-            any(account_id)           AS account_id,
-            any(plugin_id)            AS plugin_id,
-            uniqExact(day)            AS days
-     FROM network_flow_daily FINAL
-     WHERE ${where} AND attribution != 'truncated'
-     GROUP BY scope, direction, pair_hash
-     ORDER BY estimated_cost DESC, bytes DESC
-     LIMIT {limit:UInt32}`,
-    params,
+  const rows = await query((db) =>
+    db
+      .select({
+        src_ref: sql<string>`any(${flow.src_ref})`.as("src_ref"),
+        src_label: sql<string>`any(${flow.src_label})`.as("src_label"),
+        src_zone: sql<string>`any(${flow.src_zone})`.as("src_zone"),
+        src_region: sql<string>`any(${flow.src_region})`.as("src_region"),
+        src_service: sql<string>`any(${flow.src_service})`.as("src_service"),
+        src_resource_type_id: sql<string>`any(${flow.src_resource_type_id})`.as(
+          "src_resource_type_id",
+        ),
+        dst_ref: sql<string>`any(${flow.dst_ref})`.as("dst_ref"),
+        dst_label: sql<string>`any(${flow.dst_label})`.as("dst_label"),
+        dst_zone: sql<string>`any(${flow.dst_zone})`.as("dst_zone"),
+        dst_region: sql<string>`any(${flow.dst_region})`.as("dst_region"),
+        dst_service: sql<string>`any(${flow.dst_service})`.as("dst_service"),
+        dst_resource_type_id: sql<string>`any(${flow.dst_resource_type_id})`.as(
+          "dst_resource_type_id",
+        ),
+        scope: flow.scope,
+        direction: flow.direction,
+        attribution: sql<string>`any(${flow.attribution})`.as("attribution"),
+        bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
+        packets: sql<string>`sum(${flow.packets})`.as("packets"),
+        estimated_cost: sql<number>`sum(${flow.estimated_cost})`.as("estimated_cost"),
+        currency: sql<string>`any(${flow.currency})`.as("currency"),
+        account_id: sql<string>`any(${flow.account_id})`.as("account_id"),
+        plugin_id: sql<string>`any(${flow.plugin_id})`.as("plugin_id"),
+        days: sql<string>`uniqExact(${flow.day})`.as("days"),
+      })
+      .from(flow)
+      .final()
+      .where(
+        and(whereClause(organizationId, range, filters), sql`${flow.attribution} != 'truncated'`),
+      )
+      .groupBy(flow.scope, flow.direction, flow.pair_hash)
+      .orderBy(desc(sql`estimated_cost`), desc(sql`bytes`))
+      .limit(Math.max(1, Math.min(500, Math.floor(limit)))),
   );
+  return rows.map((r) => ({
+    ...r,
+    bytes: Number(r.bytes),
+    packets: Number(r.packets),
+    estimated_cost: Number(r.estimated_cost),
+    days: Number(r.days),
+  }));
 }
 
 export interface NetworkFlowDayPoint {
@@ -196,17 +203,24 @@ export async function readNetworkFlowDaily(
   range: NetworkFlowRange,
   filters: NetworkFlowFilters = {},
 ): Promise<NetworkFlowDayPoint[]> {
-  const params: Record<string, unknown> = {};
-  const where = whereClause(organizationId, range, filters, params);
-  return query<NetworkFlowDayPoint>(
-    `SELECT toString(day)       AS day,
-            scope,
-            sum(bytes)          AS bytes,
-            sum(estimated_cost) AS estimated_cost
-     FROM network_flow_daily FINAL
-     WHERE ${where}
-     GROUP BY day, scope
-     ORDER BY day ASC, estimated_cost DESC`,
-    params,
+  const rows = await query((db) =>
+    db
+      .select({
+        day: sql<string>`toString(${flow.day})`.as("day"),
+        scope: flow.scope,
+        bytes: sql<string>`sum(${flow.bytes})`.as("bytes"),
+        estimated_cost: sql<number>`sum(${flow.estimated_cost})`.as("estimated_cost"),
+      })
+      .from(flow)
+      .final()
+      .where(whereClause(organizationId, range, filters))
+      .groupBy(sql`day`, flow.scope)
+      .orderBy(asc(sql`day`), desc(sql`estimated_cost`)),
   );
+  return rows.map((r) => ({
+    day: r.day,
+    scope: r.scope,
+    bytes: Number(r.bytes),
+    estimated_cost: Number(r.estimated_cost),
+  }));
 }
