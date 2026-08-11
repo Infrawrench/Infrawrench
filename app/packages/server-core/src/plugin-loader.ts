@@ -52,7 +52,14 @@ import { plugin as xaiPlugin } from "@infrawrench/plugin-xai";
 import { plugin as uploadthingPlugin } from "@infrawrench/plugin-uploadthing";
 import { plugin as workosPlugin } from "@infrawrench/plugin-workos";
 
-const PLUGINS: Plugin[] = [
+/**
+ * The registry, before validation. Exported because `loadPlugins()` *filters* —
+ * a plugin whose manifest fails `pluginManifestSchema` is logged and skipped,
+ * so its output is the wrong set to assert manifest properties against: the
+ * offender is precisely the entry that is missing. Tests that check something
+ * about "every plugin that ships" have to start here.
+ */
+export const BUNDLED_PLUGINS: readonly Plugin[] = [
   awsPlugin,
   cloudflarePlugin,
   digitaloceanPlugin,
@@ -119,7 +126,7 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
 
   const loaded: LoadedPlugin[] = [];
 
-  for (const plugin of PLUGINS) {
+  for (const plugin of BUNDLED_PLUGINS) {
     const result = pluginManifestSchema.safeParse(plugin.manifest);
     if (!result.success) {
       console.error(

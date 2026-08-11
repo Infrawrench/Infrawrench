@@ -7,6 +7,7 @@ import {
   resourceTypeDefinitionSchema,
   detailViewSchema,
 } from "./validation/index.js";
+import { findUnsafeSvgConstructs } from "./svg-safety.js";
 
 const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   assemblyai: { apiKey: "test-assemblyai-key", region: "us" },
@@ -177,6 +178,16 @@ export function runPluginContractTests(plugin: Plugin, credentials?: Record<stri
 
       it("logoSvg starts with <svg", () => {
         expect(plugin.manifest.logoSvg.trimStart()).toMatch(/^<svg/);
+      });
+
+      // Every host injects this string with `dangerouslySetInnerHTML` and
+      // there is no script CSP behind those call sites, so "it looks like a
+      // logo" is not enough — it has to be provably inert. The same predicate
+      // refines `pluginManifestSchema`, so a failure here is a plugin that
+      // would not have loaded; the assertion is repeated at the contract level
+      // because this is where it names the offending construct.
+      it("logoSvg contains nothing that can execute or fetch", () => {
+        expect(findUnsafeSvgConstructs(plugin.manifest.logoSvg)).toEqual([]);
       });
 
       it("id is lowercase kebab-case", () => {
