@@ -694,6 +694,7 @@ app.post("/validate-tabs", async (c) => {
       target.kind === "dns" ||
       target.kind === "iac" ||
       target.kind === "environment-diff" ||
+      target.kind === "environments" ||
       target.kind === "ssh-fanout" ||
       target.kind === "metric-alerts" ||
       target.kind === "probes" ||

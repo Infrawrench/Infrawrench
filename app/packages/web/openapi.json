@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.20.0",
+    "version": "1.21.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -135,6 +135,10 @@
     {
       "name": "Resource leases",
       "description": "Optional TTLs on resources ('a test cluster for 3 days'). Active leases ride the expiry radar; auto-delete leases are announced twice and then deleted at expiry by the poller, deferring during change freezes."
+    },
+    {
+      "name": "Ephemeral environments",
+      "description": "Capture a set of existing resources as a parameterised template built from each plugin's own create-field metadata, stamp copies of it out in dependency order with a mandatory TTL, and tear them down. Expiry runs through the existing resource-lease pass, so every copy deletes itself."
     },
     {
       "name": "Credit burndown",
@@ -2701,6 +2705,7 @@
               "dns",
               "iac",
               "environment-diff",
+              "environments",
               "ssh-fanout",
               "metric-alerts",
               "probes",
@@ -18450,6 +18455,786 @@
         },
         "additionalProperties": false
       },
+      "EnvironmentSettings": {
+        "type": "object",
+        "properties": {
+          "maxTtlHours": {
+            "type": "integer"
+          },
+          "defaultTtlHours": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "maxTtlHours",
+          "defaultTtlHours"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentTemplateFieldValue": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "literal"
+                ]
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "parameter"
+                ]
+              },
+              "parameter": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "parameter"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "output"
+                ]
+              },
+              "member": {
+                "type": "string"
+              },
+              "outputKey": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "member",
+              "outputKey"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "member-id"
+                ]
+              },
+              "member": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "member"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "What a captured create-form field is filled with at instantiation. `literal` is the captured value; `parameter` is a field the user chose to vary; `output` is another member's resolved output (a connection string, an IP — the captured half of an output reference); `member-id` is another member's provider-side id."
+      },
+      "EnvironmentTemplateMember": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Unique within the template; the id references are written against."
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "sourceName": {
+            "type": "string"
+          },
+          "sourceResourceId": {
+            "type": "string"
+          },
+          "nameFieldKey": {
+            "type": "string",
+            "description": "The create-form field carrying the resource's name, detected at capture by matching the captured value against the source's display name. The instance name prefix is applied to this field and no other."
+          },
+          "parentMember": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EnvironmentTemplateFieldValue"
+            }
+          }
+        },
+        "required": [
+          "key",
+          "pluginId",
+          "resourceTypeId",
+          "accountId",
+          "sourceName",
+          "fields"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentCaptureDraftMember": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvironmentTemplateMember"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "fieldMeta": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "label"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "parameterisable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "label",
+                    "kind",
+                    "required",
+                    "parameterisable"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "fieldMeta"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "EnvironmentParameter": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "number",
+              "select"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "defaultValue": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "type",
+          "required"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentCaptureDraft": {
+        "type": "object",
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentCaptureDraftMember"
+            }
+          },
+          "suggestedParameters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentParameter"
+            }
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceId": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "resourceId",
+                "displayName",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "members",
+          "suggestedParameters",
+          "skipped"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentCaptureRequest": {
+        "type": "object",
+        "properties": {
+          "resourceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "tagKey": {
+            "type": "string"
+          },
+          "tagValue": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EnvironmentTemplate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentParameter"
+            }
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentTemplateMember"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "activeInstanceCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "parameters",
+          "members",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentTemplateList": {
+        "type": "object",
+        "properties": {
+          "templates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentTemplate"
+            }
+          }
+        },
+        "required": [
+          "templates"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentTemplateConflict": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentTemplateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentParameter"
+            }
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentTemplateMember"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "parameters",
+          "members"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentCostEstimate": {
+        "type": "object",
+        "properties": {
+          "monthlyAmount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Null means 'could not be priced', which is not the same as zero."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "partial": {
+            "type": "boolean",
+            "description": "True when at least one member is unpriced — read as 'at least'."
+          },
+          "unpricedCount": {
+            "type": "integer"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "memberKey": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "monthlyAmount": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "currency": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "memberKey",
+                "displayName",
+                "monthlyAmount",
+                "currency"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "monthlyAmount",
+          "currency",
+          "partial",
+          "unpricedCount",
+          "members"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentEstimateRequest": {
+        "type": "object",
+        "properties": {
+          "parameters": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "accountOverrides": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "EnvironmentInstanceMember": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "memberKey": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "resourceId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "created",
+              "failed",
+              "deleted"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "leaseId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The lease that auto-deletes this member at the TTL.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "position": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "memberKey",
+          "pluginId",
+          "resourceTypeId",
+          "accountId",
+          "resourceId",
+          "externalId",
+          "displayName",
+          "status",
+          "error",
+          "leaseId",
+          "position"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentInstance": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "templateId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "templateName": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "namePrefix": {
+            "type": "string"
+          },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "creating",
+              "active",
+              "partial",
+              "tearing-down",
+              "deleted",
+              "failed"
+            ],
+            "description": "`partial` means a create failed part-way: the members that were created are recorded and can still be torn down, which is what stops a half-finished run leaving cloud resources with no row pointing at them."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentInstanceMember"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "templateId",
+          "templateName",
+          "name",
+          "namePrefix",
+          "parameters",
+          "status",
+          "expiresAt",
+          "error",
+          "members",
+          "createdAt",
+          "updatedAt",
+          "completedAt"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentInstanceConflict": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentInstantiateRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "ttlHours": {
+            "type": "number",
+            "description": "Required. Capped by the org's `maxTtlHours` setting and by a 720-hour ceiling."
+          },
+          "accountOverrides": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            }
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "name",
+          "ttlHours"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentInstanceList": {
+        "type": "object",
+        "properties": {
+          "instances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentInstance"
+            }
+          }
+        },
+        "required": [
+          "instances"
+        ],
+        "additionalProperties": false
+      },
+      "EnvironmentStillLive": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
       "SessionRecording": {
         "type": "object",
         "properties": {
@@ -26743,8 +27528,6 @@
           "logMatchAlerts",
           "postureAlerts",
           "probeAlerts",
-          "quotaAlerts",
-          "incidentAlerts",
           "weeklyDigest"
         ],
         "description": "A kind of alert that can be routed."
@@ -45812,6 +46595,810 @@
         },
         "operationId": "postOrgOrgIdLeasesLeaseIdCancel",
         "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/environments/settings": {
+      "get": {
+        "tags": [
+          "Ephemeral environments"
+        ],
+        "summary": "Get the organization's environment TTL rails",
+        "description": "The longest TTL an instantiation may ask for and the TTL the form pre-fills. Absent settings normalize into the shipped defaults (168h / 24h).\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The TTL rails",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentSettings"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdEnvironmentsSettings",
+        "x-required-permission": "resources:read"
+      },
+      "put": {
+        "tags": [
+          "Ephemeral environments"
+        ],
+        "summary": "Set the organization's environment TTL rails",
+        "description": "`org:settings:write`, not `resources:write` — this is a governance decision about how long the organization is willing to pay for a throwaway environment. Clamped to a 720-hour ceiling; the default is clamped to the maximum. Audit-logged.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvironmentSettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The stored rails",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentSettings"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdEnvironmentsSettings",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/environments/capture": {
+      "post": {
+        "tags": [
+          "Ephemeral environments"
+        ],
+        "summary": "Preview a template capture",
+        "description": "Turn a selection of live resources into a draft template. **Persists nothing** — the editor shows the draft so the user can choose which fields to vary before saving. The shape of every member comes from the plugin's own `getCreateConfig`: a captured value with no matching create field is dropped, and a resource type the plugin cannot create is reported in `skipped` with a reason rather than silently omitted. Recorded output references whose target is also in the selection are preserved as `output` field values; a value that is exactly another selected resource's external id becomes a `member-id`.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvironmentCaptureRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The draft template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentCaptureDraft"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdEnvironmentsCapture",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/environments/templates": {
+      "get": {
+        "tags": [
+          "Ephemeral environments"
+        ],
+        "summary": "List environment templates",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentTemplateList"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdEnvironmentsTemplates",
+        "x-required-permission": "resources:read",
+        "description": "_Requires permission: `resources:read`._"
+      },
+      "post": {
+        "tags": [
+          "Ephemeral environments"
+        ],
+        "summary": "Create an environment template",
+        "description": "Save a capture draft as a template. Member keys must be unique, every parameter and member reference must resolve, and the members must be orderable — a dependency cycle is rejected here rather than half-way through an apply. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvironmentTemplateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentTemplate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A template with that name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentTemplateConflict"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdEnvironmentsTemplates",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/environments/templates/{templateId}": {
+      "get": {
+        "tags": [
+          "Ephemeral environments"
+        ],
+        "summary": "Get an environment template",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "templateId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentTemplate"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdEnvironmentsTemplatesTemplateId",
+        "x-required-permission": "resources:read",
+        "description": "_Requires permission: `resources:read`._"
+      },
+      "put": {
+        "tags": [
+          "Ephemeral environments"
+        ],
+        "summary": "Replace an environment template",
+        "description": "The whole document is replaced. Live instances are unaffected. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "templateId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvironmentTemplateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentTemplate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdEnvironmentsTemplatesTemplateId",
+        "x-required-permission": "resources:write"
+      },
+      "delete": {
+        "tags": [
+          "Ephemeral environments"
+        ],
+        "summary": "Delete an environment template",
+        "description": "Live instances keep running and keep their TTL — they own real resources, and the template is only where they came from. Their `templateId` becomes null; the denormalized `templateName` is what the surface reads. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "templateId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdEnvironmentsTemplatesTemplateId",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/environments/templates/{templateId}/estimate": {
+      "post": {
+        "tags": [
+          "Ephemeral environments"
+        ],
+        "summary": "Price an instantiation before it runs",
+        "description": "Runs each member's create fields through the plugin's own `estimateCost`. A member the plugin cannot price is counted in `unpricedCount` and makes the total `partial` — `null` is never rounded to zero.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "templateId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvironmentEstimateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The forward-looking estimate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentCostEstimate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdEnvironmentsTemplatesTemplateIdEstimate",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/environments/templates/{templateId}/instantiate": {
+      "post": {
+        "tags": [
+          "Ephemeral environments"
+        ],
+        "summary": "Stamp out an environment",
+        "description": "Creates the template's resources in dependency order through the ordinary `createResource` path, name-prefixed per instance, and attaches an auto-delete lease to each so expiry runs through the existing lease pass. `ttlHours` is **required**. Requires `resources:write` **and** `resources:delete` (the lease is a standing deletion, the same rule `POST /leases` applies), and is blocked by an active change freeze. A create that fails part-way returns a `partial` instance whose created members are recorded and tearable-down, never an error with orphaned resources behind it. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "templateId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvironmentInstantiateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The instance — check `status` for `partial`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentInstance"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The organization is at its live-environment limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentInstanceConflict"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "Blocked by an active change freeze. Retry with the `x-change-freeze-override: true` header if you hold `freezes:override`; both blocks and overrides are audit-logged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeFreezeBlocked"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdEnvironmentsTemplatesTemplateIdInstantiate",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/environments/instances": {
+      "get": {
+        "tags": [
+          "Ephemeral environments"
+        ],
+        "summary": "List environment instances",
+        "description": "Newest first. Reading this also reconciles instances past their deadline against what the lease pass already deleted, so an environment whose resources are all gone stops reporting itself as running.\n\n_Requires permission: `resources:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organization's instances",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentInstanceList"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdEnvironmentsInstances",
+        "x-required-permission": "resources:read"
+      }
+    },
+    "/api/org/{orgId}/environments/instances/{instanceId}": {
+      "get": {
+        "tags": [
+          "Ephemeral environments"
+        ],
+        "summary": "Get an environment instance",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "instanceId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The instance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentInstance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdEnvironmentsInstancesInstanceId",
+        "x-required-permission": "resources:read",
+        "description": "_Requires permission: `resources:read`._"
+      },
+      "delete": {
+        "tags": [
+          "Ephemeral environments"
+        ],
+        "summary": "Forget a torn-down environment",
+        "description": "Removes the record. Refuses while the instance still owns resources — the row is the only thing that knows they exist. Audit-logged.\n\n_Requires permission: `resources:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "instanceId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The environment is still live — tear it down first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentStillLive"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdEnvironmentsInstancesInstanceId",
+        "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/environments/instances/{instanceId}/teardown": {
+      "post": {
+        "tags": [
+          "Ephemeral environments"
+        ],
+        "summary": "Tear an environment down now",
+        "description": "Deletes every created member through the ordinary `deleteResource` path, in reverse creation order. Idempotent: a member already gone, a resource the provider answers 404 for, and an instance already torn down all succeed quietly, so this is safe to retry. Blocked by an active change freeze. Audit-logged.\n\n_Requires permission: `resources:delete`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "instanceId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The instance — `partial` when some member could not be deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentInstance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "Blocked by an active change freeze. Retry with the `x-change-freeze-override: true` header if you hold `freezes:override`; both blocks and overrides are audit-logged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeFreezeBlocked"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdEnvironmentsInstancesInstanceIdTeardown",
+        "x-required-permission": "resources:delete"
       }
     },
     "/api/org/{orgId}/session-recordings": {

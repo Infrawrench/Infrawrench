@@ -57,6 +57,7 @@ import { WebMetricAlertsPanel } from "./WebMetricAlertsPanel";
 import { WebProbesPanel } from "./WebProbesPanel";
 import { WebQuotasPanel } from "./WebQuotasPanel";
 import { WebIncidentsPanel } from "./WebIncidentsPanel";
+import { WebEnvironmentsPanel } from "./WebEnvironmentsPanel";
 import { WebSshFanoutPanel } from "./WebSshFanoutPanel";
 
 interface WebWorkspaceTabsViewportProps {
@@ -499,6 +500,25 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
               { replace: true },
             )
           }
+          openResource={(target) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  target.accountId,
+                  target.resourceId,
+                  target.pluginId,
+                  target.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "environments":
+      return (
+        <WebEnvironmentsPanel
+          key={orgId}
+          orgId={orgId}
           openResource={(target) =>
             void navigate(
               getWorkspaceNavigateArgs(

@@ -17,6 +17,7 @@ import {
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
+  environmentsTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
@@ -197,6 +198,12 @@ export function getWorkspaceNavigateArgs(
         ...(replace ? { replace: true } : {}),
       };
     }
+    case "environments":
+      return {
+        to: "/org/$orgId/environments",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
     case "ssh-fanout":
       return {
         to: "/org/$orgId/ssh-fanout",
@@ -418,6 +425,9 @@ export function syncWorkspaceRouteFromPath(
       search ?? (typeof window === "undefined" ? "" : window.location.search),
     );
     return environmentDiffTabTarget(params.get("a") ?? undefined, params.get("b") ?? undefined);
+  }
+  if (s[0] === "environments") {
+    return environmentsTabTarget();
   }
   if (s[0] === "ssh-fanout") {
     return sshFanoutTabTarget();

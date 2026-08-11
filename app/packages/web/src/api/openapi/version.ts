@@ -59,4 +59,8 @@
 // 1.20.0: IaC reconciliation — the five `/iac/*` routes, the `iac:read` /
 // `iac:write` permissions, and a new `iac` member on the workspace TabTarget
 // kind enum. All additive.
-export const API_VERSION = "1.20.0";
+// 1.21.0: ephemeral environments — capture a set of resources as a
+// parameterised template, stamp copies out with a mandatory TTL, and tear them
+// down (new `/environments` route family, new schemas, and a new
+// `environments` member on the TabTarget kind enum). All additive.
+export const API_VERSION = "1.21.0";

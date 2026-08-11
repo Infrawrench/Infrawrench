@@ -8,6 +8,7 @@ import {
   ChangesIcon,
   IacIcon,
   MetricAlertIcon,
+  EnvironmentsIcon,
   ProbesIcon,
   QuotasIcon,
   IncidentsIcon,
@@ -37,6 +38,7 @@ import {
   costsTabTarget,
   costReportsTabTarget,
   invoicesTabTarget,
+  environmentsTabTarget,
   graphTabTarget,
   logsTabTarget,
   chatTabTarget,
@@ -317,6 +319,18 @@ export function SidebarDashboards() {
             label: "Incidents",
             icon: <IncidentsIcon />,
             onClick: () => void navigate({ to: "/incidents" }),
+          },
+          // Cloud-only: an ephemeral environment is created against org
+          // accounts, recorded in org tables and torn down by the cloud lease
+          // pass. There is no local half to render.
+          {
+            key: "environments",
+            label: "Environments",
+            icon: <EnvironmentsIcon />,
+            onClick: () =>
+              void navigateToWorkspaceTarget(navigate, environmentsTabTarget(), {
+                label: "Environments",
+              }),
           },
         ]
       : []),

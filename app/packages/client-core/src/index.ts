@@ -673,6 +673,7 @@ export * from "./access-review";
 export * from "./backups";
 export * from "./dns";
 export * from "./environment-diff";
+export * from "./environments";
 export * from "./schedules";
 export * from "./probes";
 export * from "./help-links";

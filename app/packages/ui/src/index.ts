@@ -340,6 +340,7 @@ export {
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
+  environmentsTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
@@ -848,6 +849,7 @@ export { FanoutIcon } from "./components/icons/FanoutIcon.js";
 export { MetricAlertIcon } from "./components/icons/MetricAlertIcon.js";
 export { ProbesIcon } from "./components/icons/ProbesIcon.js";
 export { IncidentsIcon } from "./components/icons/IncidentsIcon.js";
+export { EnvironmentsIcon } from "./components/icons/EnvironmentsIcon.js";
 
 /**
  * SSH host-key trust handshake. Shared with mobile through client-core because
@@ -911,6 +913,7 @@ export type { PlaybackTerminal, MountPlaybackTerminal } from "./session-recordin
 export * from "./metric-alerts/index.js";
 export * from "./probes/index.js";
 export * from "./incidents/index.js";
+export * from "./environments/index.js";
 export * from "./savings/index.js";
 // Issue filing (Jira and Linear) — the tracker-aware provider a host mounts
 // once, and the button any findings row drops in. See issue-filing/host.tsx

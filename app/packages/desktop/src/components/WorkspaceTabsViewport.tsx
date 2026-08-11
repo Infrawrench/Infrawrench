@@ -55,6 +55,7 @@ import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel"
 import { DesktopProbesPanel } from "@/components/DesktopProbesPanel";
 import { DesktopQuotasPanel } from "@/components/DesktopQuotasPanel";
 import { DesktopIncidentsPanel } from "@/components/DesktopIncidentsPanel";
+import { DesktopEnvironmentsPanel } from "@/components/DesktopEnvironmentsPanel";
 import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
 import { DesktopSettingsPanel } from "@/components/DesktopSettingsPanel";
 import { DesktopAgentsPanel } from "@/components/DesktopAgentsPanel";
@@ -498,6 +499,23 @@ function renderPanel(
               { replace: true },
             )
           }
+          openResource={(target) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  target.accountId,
+                  target.resourceId,
+                  target.pluginId,
+                  target.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "environments":
+      return (
+        <DesktopEnvironmentsPanel
           openResource={(target) =>
             void navigate(
               getWorkspaceNavigateArgs(

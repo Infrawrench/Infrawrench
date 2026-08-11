@@ -15,6 +15,7 @@ import "./access-review";
 import "./backups";
 import "./dns";
 import "./environment-diff";
+import "./environments";
 import "./changes";
 import "./iac";
 import "./moment";

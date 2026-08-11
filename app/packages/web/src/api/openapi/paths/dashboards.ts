@@ -202,6 +202,7 @@ const TabTarget = strict({
     "dns",
     "iac",
     "environment-diff",
+    "environments",
     "ssh-fanout",
     "metric-alerts",
     "probes",
