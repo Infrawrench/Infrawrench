@@ -41,7 +41,9 @@ This feature hands a person a shell on somebody else's production box, so it is 
 
 **Invites are short-lived and single-use.** A link is good for fifteen minutes by default (up to two hours) and is spent by the first person it admits. Inviting a second guest means minting a second link. You can withdraw an outstanding invite at any time without disturbing anyone already on the console. Somebody already on the console can reload their page or reconnect without needing a new link — that is a session resuming, not a second admission.
 
-**Revocation is immediate, and it is not only yours.** Revoking the share disconnects every guest at once; your own session keeps running. The person sharing can revoke, and so can anyone holding `org:settings:write` — a live session on a production box that only its author can stop is not a control a security team will accept.
+**Revoking, and removing one person, both cut the connection — not just the listing.** Revoking the share disconnects every guest; removing a single participant disconnects that person and stops their terminal feed there and then. Your own session keeps running either way. In both cases it is immediate if you are working against the server holding the session and within about two seconds otherwise, because the server that holds it re-reads who should be on the console on that interval and hangs up on anyone who should not.
+
+**Revocation is not only yours.** The person sharing can revoke, and so can anyone holding `org:settings:write` — a live session on a production box that only its author can stop is not a control a security team will accept.
 
 **Everything is logged.** Every share, join, leave, handover, ejection and revocation is written to the [audit log](../team-and-billing/audit-log.md) with the host, the resource, and both people involved.
 

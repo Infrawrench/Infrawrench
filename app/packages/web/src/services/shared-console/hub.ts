@@ -139,6 +139,12 @@ interface LiveConsole {
   sharedConsoleId: string | null;
   /** Cached share + participants, refreshed by the sweep and on every mutation. */
   share: SharedConsoleRow | null;
+  /**
+   * Only ever assigned through {@link SharedConsoleHub.setParticipants}, which
+   * also hangs up on anyone the new list says has gone. A bare assignment here
+   * would leave an ejected guest's socket in {@link LiveConsole.attached} and
+   * still receiving output — see the note on that method.
+   */
   participants: ParticipantRow[];
   /** The owner's own participant row id, once shared. */
   ownerParticipantId: string | null;
@@ -263,7 +269,7 @@ export class SharedConsoleHub {
     if (!live) return false;
     live.sharedConsoleId = share.id;
     live.share = share;
-    live.participants = [ownerParticipant];
+    this.setParticipants(live, [ownerParticipant]);
     live.ownerParticipantId = ownerParticipant.id;
     live.handle.recorder()?.mark(`share opened by ${ownerParticipant.userName ?? "unknown"}`);
     this.pushAttribution(live);
@@ -372,7 +378,9 @@ export class SharedConsoleHub {
     if (live.sharedConsoleId !== input.share.id) return { ok: false, code: "console_not_shared" };
 
     live.share = input.share;
-    live.participants = input.participants;
+    // Reconciles too: the list this attach was authorised against is the
+    // freshest view anyone has, and it may already know somebody else is gone.
+    this.setParticipants(live, input.participants);
 
     // A second socket for the same person replaces the first: two tabs on one
     // shared console is a duplicated fan-out and an ambiguous driver.
@@ -511,11 +519,52 @@ export class SharedConsoleHub {
     ]);
     if (!share) return;
     live.share = share;
-    live.participants = participants;
+    this.setParticipants(live, participants);
     this.applyDriverGeometry(live);
     this.pushAttribution(live);
     this.broadcastState(live);
     if (share.status !== "active") this.tearDownShare(live, share.status);
+  }
+
+  /**
+   * Adopt a fresh participant list, and hang up on anyone it says is gone.
+   *
+   * **This is the only place `live.participants` is replaced**, and it exists
+   * because replacing it is not the whole job. An ejection is an HTTP call that
+   * can land on either replica: the one holding the pty ejects the socket
+   * directly, and the other one can only write the row. The replica with the
+   * pty then learns about it here — and if it merely swapped the array in, the
+   * ejected guest's socket would stay in `attached` and keep receiving terminal
+   * output until the far slower permission sweep noticed. "Removed" would mean
+   * "removed from the list", not "removed from the session", which is not what
+   * anybody clicking the button is asking for.
+   *
+   * So: any attached socket whose row has gone, or is no longer `joined`, is
+   * detached here. Reconciling against the *list* rather than against a
+   * specific event is deliberate — it catches an ejection, a departure
+   * processed elsewhere, and a row deleted out from under us, without each of
+   * those needing to be a message that could be missed.
+   *
+   * Runs before the state broadcast so the ejected socket does not receive one
+   * last frame on its way out.
+   */
+  private setParticipants(live: LiveConsole, participants: ParticipantRow[]): void {
+    live.participants = participants;
+    const byId = new Map(participants.map((p) => [p.id, p]));
+    for (const socket of [...live.attached.values()]) {
+      const row = byId.get(socket.participantId);
+      if (row && row.status === "joined") continue;
+      const removed = !row || row.status === "removed";
+      live.handle
+        .recorder()
+        ?.mark(`detached: ${row?.userName ?? socket.userId} (${removed ? "removed" : "left"})`);
+      this.detachSocket(
+        live,
+        socket,
+        "removed",
+        removed ? "You were removed from this shared console." : "You left this shared console.",
+      );
+    }
   }
 
   /** Called by the revoke route when the pty happens to be on this replica. */
@@ -712,7 +761,11 @@ export class SharedConsoleHub {
       }
       if (changedRole) {
         try {
-          live.participants = await listParticipants(share.id);
+          // `setParticipants`, not a bare assignment: this is the path on
+          // which the replica holding the pty learns that somebody was
+          // ejected through the *other* replica, and hanging up on them is
+          // the point of learning it.
+          this.setParticipants(live, await listParticipants(share.id));
           this.applyDriverGeometry(live);
           this.pushAttribution(live);
           this.broadcastState(live);
