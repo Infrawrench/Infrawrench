@@ -8,6 +8,9 @@ overrides:
   yaml: '>=2.8.3'
   '@esbuild-kit/core-utils>esbuild': '>=0.25.0'
 
+patchedDependencies:
+  drizzle-orm@0.45.2: af5270b78eaa22944fcb6b36b1dc3574ded989dff17585739f2eab2c623032ba
+
 importers:
 
   .:
@@ -404,7 +407,7 @@ importers:
         version: 5.0.1(supports-color@10.2.2)
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@cloudflare/workers-types@5.20260808.1)(@libsql/client@0.14.0)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.21.0)(@types/sql.js@1.4.11)(better-sqlite3@11.10.0)(gel@2.2.0(supports-color@10.2.2))(mysql2@3.23.2(@types/node@22.20.1))(pg@8.22.0)(postgres@3.4.9)(sql.js@1.14.1)
+        version: 0.45.2(patch_hash=af5270b78eaa22944fcb6b36b1dc3574ded989dff17585739f2eab2c623032ba)(@cloudflare/workers-types@5.20260808.1)(@libsql/client@0.14.0)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.21.0)(@types/sql.js@1.4.11)(better-sqlite3@11.10.0)(gel@2.2.0(supports-color@10.2.2))(mysql2@3.23.2(@types/node@22.20.1))(pg@8.22.0)(postgres@3.4.9)(sql.js@1.14.1)
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
@@ -565,7 +568,7 @@ importers:
         version: 5.0.1(supports-color@10.2.2)
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@cloudflare/workers-types@5.20260808.1)(@libsql/client@0.14.0)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.21.0)(@types/sql.js@1.4.11)(better-sqlite3@11.10.0)(gel@2.2.0(supports-color@10.2.2))(mysql2@3.23.2(@types/node@22.20.1))(pg@8.22.0)(postgres@3.4.9)(sql.js@1.14.1)
+        version: 0.45.2(patch_hash=af5270b78eaa22944fcb6b36b1dc3574ded989dff17585739f2eab2c623032ba)(@cloudflare/workers-types@5.20260808.1)(@libsql/client@0.14.0)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.21.0)(@types/sql.js@1.4.11)(better-sqlite3@11.10.0)(gel@2.2.0(supports-color@10.2.2))(mysql2@3.23.2(@types/node@22.20.1))(pg@8.22.0)(postgres@3.4.9)(sql.js@1.14.1)
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
@@ -764,7 +767,7 @@ importers:
         version: link:../workflow-runtime
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@cloudflare/workers-types@5.20260808.1)(@libsql/client@0.14.0)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.21.0)(@types/sql.js@1.4.11)(better-sqlite3@11.10.0)(gel@2.2.0(supports-color@10.2.2))(mysql2@3.23.2(@types/node@22.20.1))(pg@8.22.0)(postgres@3.4.9)(sql.js@1.14.1)
+        version: 0.45.2(patch_hash=af5270b78eaa22944fcb6b36b1dc3574ded989dff17585739f2eab2c623032ba)(@cloudflare/workers-types@5.20260808.1)(@libsql/client@0.14.0)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.21.0)(@types/sql.js@1.4.11)(better-sqlite3@11.10.0)(gel@2.2.0(supports-color@10.2.2))(mysql2@3.23.2(@types/node@22.20.1))(pg@8.22.0)(postgres@3.4.9)(sql.js@1.14.1)
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
@@ -974,7 +977,7 @@ importers:
         version: 5.0.1(supports-color@10.2.2)
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@cloudflare/workers-types@5.20260808.1)(@libsql/client@0.14.0)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.21.0)(@types/sql.js@1.4.11)(better-sqlite3@11.10.0)(gel@2.2.0(supports-color@10.2.2))(mysql2@3.23.2(@types/node@22.20.1))(pg@8.22.0)(postgres@3.4.9)(sql.js@1.14.1)
+        version: 0.45.2(patch_hash=af5270b78eaa22944fcb6b36b1dc3574ded989dff17585739f2eab2c623032ba)(@cloudflare/workers-types@5.20260808.1)(@libsql/client@0.14.0)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.21.0)(@types/sql.js@1.4.11)(better-sqlite3@11.10.0)(gel@2.2.0(supports-color@10.2.2))(mysql2@3.23.2(@types/node@22.20.1))(pg@8.22.0)(postgres@3.4.9)(sql.js@1.14.1)
       hono:
         specifier: ^4.13.1
         version: 4.13.1
@@ -20317,7 +20320,7 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.23.11
 
-  drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260808.1)(@libsql/client@0.14.0)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.21.0)(@types/sql.js@1.4.11)(better-sqlite3@11.10.0)(gel@2.2.0(supports-color@10.2.2))(mysql2@3.23.2(@types/node@22.20.1))(pg@8.22.0)(postgres@3.4.9)(sql.js@1.14.1):
+  drizzle-orm@0.45.2(patch_hash=af5270b78eaa22944fcb6b36b1dc3574ded989dff17585739f2eab2c623032ba)(@cloudflare/workers-types@5.20260808.1)(@libsql/client@0.14.0)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.21.0)(@types/sql.js@1.4.11)(better-sqlite3@11.10.0)(gel@2.2.0(supports-color@10.2.2))(mysql2@3.23.2(@types/node@22.20.1))(pg@8.22.0)(postgres@3.4.9)(sql.js@1.14.1):
     optionalDependencies:
       '@cloudflare/workers-types': 5.20260808.1
       '@libsql/client': 0.14.0

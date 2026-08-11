@@ -11,13 +11,15 @@
  *    (a purchase, on its purchase day) from no amortized amount at all.
  */
 import { describe, expect, it } from "vitest";
+import type { SQL } from "drizzle-orm";
+import { ClickHouseDialect } from "drizzle-orm/clickhouse-core";
 
 import {
   classifyCoverageRow,
+  consumptionCondition,
   CONSUMPTION_CHARGE_TYPES,
-  CONSUMPTION_SQL,
-  COVERED_SQL,
-  UNCOVERED_SQL,
+  coveredCondition,
+  uncoveredCondition,
 } from "../clickhouse/commitment-readers";
 import { amortizedAmountExpr } from "../clickhouse/cost-readers";
 import { toCostDailyRows } from "../clickhouse/cost-writers";
@@ -32,19 +34,25 @@ interface StoredRow {
   amortized_reported: number;
 }
 
+/** Render a Drizzle fragment to the text ClickHouse would receive. */
+const render = (fragment: SQL) => new ClickHouseDialect().sqlToQuery(fragment).sql;
+
 /**
  * Evaluate the *actual* expression `amortizedAmountExpr()` returns, rather than
  * a restatement of it, so this test fails if the SQL and the intent diverge.
  * Grammar is exactly the one the expression uses:
- * `if(<col> != 0 OR <col> != 0, <col>, <col>)`.
+ * `if(<col> != 0 OR <col> != 0, <col>, <col>)`, where each `<col>` is the
+ * builder's qualified `` `cost_daily`.`name` `` form.
  */
-function evaluateAmortized(expr: string, row: StoredRow): number {
-  const match = /^if\((.+) != 0 OR (.+) != 0, (\w+), (\w+)\)$/.exec(expr);
+function evaluateAmortized(expr: SQL, row: StoredRow): number {
+  const text = render(expr);
+  const match = /^if\((.+?) != 0 OR (.+?) != 0, (.+?), (.+?)\)$/.exec(text);
   if (!match)
-    throw new Error(`amortized expression is no longer the shape this test parses: ${expr}`);
-  const col = (name: string): number => {
+    throw new Error(`amortized expression is no longer the shape this test parses: ${text}`);
+  const col = (ref: string): number => {
+    const name = ref.replace(/^`cost_daily`\./, "").replace(/`/g, "");
     const value = (row as unknown as Record<string, number>)[name];
-    if (value === undefined) throw new Error(`unknown column ${name}`);
+    if (value === undefined) throw new Error(`unknown column ${ref}`);
     return value;
   };
   return col(match[1]!) !== 0 || col(match[2]!) !== 0 ? col(match[3]!) : col(match[4]!);
@@ -56,12 +64,12 @@ describe("commitment coverage is computed on amortized money", () => {
   it("uses the amortized expression on both sides of the ratio, never `amount`", () => {
     // Numerator and denominator must be the same kind of money — a mixed-basis
     // ratio is not a percentage of anything.
-    const expr = amortizedAmountExpr();
+    const expr = render(amortizedAmountExpr());
     expect(expr).toContain("amortized_amount");
     expect(expr).toContain("amortized_reported");
     // Both `sumIf`s in the coverage query wrap this same expression.
-    expect(`sumIf(${expr}, ${COVERED_SQL})`).toContain(expr);
-    expect(`sumIf(${expr}, ${UNCOVERED_SQL})`).toContain(expr);
+    expect(`sumIf(${expr}, ${render(coveredCondition())})`).toContain(expr);
+    expect(`sumIf(${expr}, ${render(uncoveredCondition())})`).toContain(expr);
   });
 
   it("would report 0% forever on cash, which is why the basis is not optional", () => {
@@ -180,13 +188,17 @@ describe("the covered/uncovered split is a partition", () => {
   it("keeps the SQL fragments as the De Morgan pair of that rule", () => {
     // The queries cannot call `classifyCoverageRow`, so this pins the
     // transliteration: numerator OR, denominator the negation of each half.
-    expect(COVERED_SQL).toBe("(charge_type = 'commitment_covered_usage' OR commitment_id != '')");
-    expect(UNCOVERED_SQL).toBe(
-      "(charge_type != 'commitment_covered_usage' AND commitment_id = '')",
+    expect(render(coveredCondition())).toBe(
+      "(`cost_daily`.`charge_type` = 'commitment_covered_usage' OR `cost_daily`.`commitment_id` <> '')",
+    );
+    expect(render(uncoveredCondition())).toBe(
+      "(`cost_daily`.`charge_type` <> 'commitment_covered_usage' AND `cost_daily`.`commitment_id` = '')",
     );
     // Covered usage stays inside the eligible universe: dropping it would
     // shrink the denominator by exactly the spend a commitment touches.
-    expect(CONSUMPTION_SQL).toBe("charge_type IN ('usage', 'commitment_covered_usage')");
+    expect(render(consumptionCondition())).toBe(
+      "`cost_daily`.`charge_type` in ('usage', 'commitment_covered_usage')",
+    );
   });
 });
 

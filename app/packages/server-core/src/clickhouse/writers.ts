@@ -1,18 +1,25 @@
+/**
+ * Row writes into the metrics cluster.
+ *
+ * Every one of these goes through `db.insert(...)`, which sends a `JSONEachRow`
+ * body rather than inlining the rows into the statement — see the dialect's
+ * `values()`. That matters here more than anywhere else in the codebase: a
+ * single poll flattens one resource's series into thousands of points, and
+ * inlined they would be one SQL string built in this process and re-parsed field
+ * by field as expressions on the other side.
+ *
+ * `insertMetricPoints` and friends stay fire-and-forget — a metric point is
+ * worth less than the poll that produced it, so a failed write is logged and the
+ * pass continues. Cost and flow writes are not; they throw. See their modules.
+ */
 import type { DashboardStat, MetricSeries } from "@infrawrench/plugin-base";
-import { getClickHouseClient, isClickHouseConfigured } from "./client";
+import { getTableName, type InferInsertModel } from "drizzle-orm";
+import type { ClickHouseTable } from "drizzle-orm/clickhouse-core";
+import { getClickHouseDb, isClickHouseConfigured } from "./client";
 import type { ResourceCount } from "./readers";
+import { accountResourceCounts, dashboardStats, metricPointsRaw, pollOutcomes } from "./schema";
 
-export interface MetricPointRow {
-  organization_id: string;
-  account_id: string;
-  resource_id: string;
-  plugin_id: string;
-  resource_type_id: string;
-  series_label: string;
-  unit: string;
-  ts: string;
-  value: number;
-}
+export type MetricPointRow = InferInsertModel<typeof metricPointsRaw>;
 
 /** What `readResourceCounts` reads back — writer and reader are one contract. */
 export type ResourceCountRow = ResourceCount;
@@ -49,22 +56,28 @@ export function flattenMetricSeries(
 }
 
 /**
- * Generic over the row type so each caller's row interface is checked against
- * the literal it builds. `@clickhouse/client`'s `insert` is itself generic
- * (`InsertParams<Stream, T>`), so `TRow` flows straight through to the driver
- * instead of being flattened to `object`.
+ * Insert rows, swallowing failures.
+ *
+ * Generic over the table so each caller's rows are checked against that table's
+ * insert model. The name in the log line comes from the table too, so it cannot
+ * drift from the one written to.
  */
-async function insert<TRow>(table: string, values: readonly TRow[]): Promise<void> {
+async function insertRows<TTable extends ClickHouseTable>(
+  table: TTable,
+  values: readonly InferInsertModel<TTable>[],
+): Promise<void> {
   if (!isClickHouseConfigured() || values.length === 0) return;
   try {
-    await getClickHouseClient().insert<TRow>({ table, values, format: "JSONEachRow" });
+    await getClickHouseDb()
+      .insert(table)
+      .values(values as InferInsertModel<TTable>[]);
   } catch (err) {
-    console.error(`[clickhouse] insert into ${table} failed:`, err);
+    console.error(`[clickhouse] insert into ${getTableName(table)} failed:`, err);
   }
 }
 
 export async function insertMetricPoints(rows: MetricPointRow[]): Promise<void> {
-  await insert("metric_points_raw", rows);
+  await insertRows(metricPointsRaw, rows);
 }
 
 export async function insertDashboardStats(row: {
@@ -74,7 +87,7 @@ export async function insertDashboardStats(row: {
   ts: Date;
   stats: DashboardStat[];
 }): Promise<void> {
-  await insert("dashboard_stats", [
+  await insertRows(dashboardStats, [
     {
       organization_id: row.organizationId,
       account_id: row.accountId,
@@ -91,7 +104,7 @@ export async function insertAccountResourceCounts(row: {
   ts: Date;
   counts: ResourceCountRow[];
 }): Promise<void> {
-  await insert("account_resource_counts", [
+  await insertRows(accountResourceCounts, [
     {
       organization_id: row.organizationId,
       account_id: row.accountId,
@@ -113,7 +126,7 @@ export async function insertPollOutcome(row: {
   skippedTypeCount: number;
   firstError?: string;
 }): Promise<void> {
-  await insert("poll_outcomes", [
+  await insertRows(pollOutcomes, [
     {
       organization_id: row.organizationId,
       account_id: row.accountId,

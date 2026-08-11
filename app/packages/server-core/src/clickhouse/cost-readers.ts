@@ -9,7 +9,9 @@ import type {
   CostQueryRequest,
   CostSeriesPoint,
 } from "@infrawrench/client-core";
-import { getClickHouseClient, isClickHouseConfigured } from "./client";
+import { and, asc, desc, eq, gte, inArray, lte, notInArray, sql, type SQL } from "drizzle-orm";
+import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
+import { costDaily } from "./schema";
 
 /**
  * The query vocabulary is the cost contract in `@infrawrench/client-core` —
@@ -31,8 +33,8 @@ export type { CostBasis, CostChargeType, CostFilter };
  * reason, and deliberately: it is compiled to `filters` by the service layer,
  * and this type is where that is enforced. Query *text* has no meaning down
  * here and must never acquire one; the only thing that reaches the SQL below is
- * a `CostFilter[]` whose values are bound as parameters like every other
- * filter's.
+ * a `CostFilter[]` whose values go through the dialect's own escaping like
+ * every other filter's.
  */
 export type CostQuery = Omit<
   CostQueryRequest,
@@ -44,8 +46,9 @@ export type CostQuery = Omit<
    * The wire request's `adjusted: boolean` is resolved to this by the service
    * layer — a boolean has no meaning down here, the same way `query` text has
    * none. Absent means the SQL below is byte-identical to what it has always
-   * been, which is what every unattended reader (budgets, anomalies, exports,
-   * the digest) relies on.
+   * been: no factor, no reallocation, no second aggregate, not even a projected
+   * `raw_amount`. That is what every unattended reader (budgets, anomalies,
+   * exports, the digest) relies on.
    */
   adjustments?: CompiledBillingAdjustments | undefined;
 };
@@ -73,41 +76,39 @@ export interface CostSeriesGroup {
   rawPoints?: CostSeriesPoint[];
 }
 
-async function query<T>(sql: string, query_params: Record<string, unknown>): Promise<T[]> {
+/**
+ * Unconfigured deployments have no cost history, so `[]` is the truth there. A
+ * configured-but-failing ClickHouse throws, so the caller's request fails
+ * loudly rather than rendering an outage as "you have spent nothing".
+ */
+async function query<T>(build: (db: ClickHouseDb) => Promise<T[]>): Promise<T[]> {
   if (!isClickHouseConfigured()) return [];
-  const rs = await getClickHouseClient().query({ query: sql, query_params, format: "JSONEachRow" });
-  return await rs.json<T>();
+  return await build(getClickHouseDb());
 }
 
 /**
- * Column expression for a dimension. Tag dimensions read from the Map column
- * via a bound parameter; everything else is a plain column.
+ * Column expression for a dimension. Tag dimensions read from the Map column;
+ * everything else is a plain column.
  */
-function dimensionExpr(
-  dimension: CostDimension,
-  tagKey: string | undefined,
-  params: Record<string, unknown>,
-  paramName: string,
-): string {
+function dimensionExpr(dimension: CostDimension, tagKey: string | undefined): SQL {
   switch (dimension) {
     case "provider":
-      return "plugin_id";
+      return sql`${costDaily.plugin_id}`;
     case "account":
-      return "account_id";
+      return sql`${costDaily.account_id}`;
     case "service":
-      return "service";
+      return sql`${costDaily.service}`;
     case "region":
-      return "region";
+      return sql`${costDaily.region}`;
     case "resource":
-      return "resource_id";
+      return sql`${costDaily.resource_id}`;
     case "charge_type":
-      return "charge_type";
+      return sql`${costDaily.charge_type}`;
     case "commitment":
-      return "commitment_id";
+      return sql`${costDaily.commitment_id}`;
     case "tag": {
       if (!tagKey) throw new Error("tagKey is required for the tag dimension");
-      params[paramName] = tagKey;
-      return `tags[{${paramName}:String}]`;
+      return sql`${costDaily.tags}[${tagKey}]`;
     }
   }
 }
@@ -134,63 +135,55 @@ function dimensionExpr(
  * existed default it to 0, so a pre-existing row with a non-zero amortized
  * amount still uses it, and one with zero still falls back.
  */
-const AMORTIZED_EXPR =
-  "if(amortized_reported != 0 OR amortized_amount != 0, amortized_amount, amount)";
+export function amortizedAmountExpr(): SQL {
+  return sql`if(${costDaily.amortized_reported} != 0 OR ${costDaily.amortized_amount} != 0, ${costDaily.amortized_amount}, ${costDaily.amount})`;
+}
 
 /** The money expression a query sums, per {@link CostBasis}. */
-function amountExpr(basis: CostBasis | undefined): string {
-  return basis === "amortized" ? AMORTIZED_EXPR : "amount";
+function amountExpr(basis: CostBasis | undefined): SQL {
+  return basis === "amortized" ? amortizedAmountExpr() : sql`${costDaily.amount}`;
 }
 
 /**
- * The amortized expression, for readers that are amortized-only rather than
- * basis-switchable — commitment coverage and utilization, which have no honest
- * cash form (see `commitment-readers.ts`).
+ * The `[from, to]` day-range predicate every `cost_daily` reader filters on.
+ *
+ * Shared so no reader can get the comparison wrong. `day` is a `Date` column and
+ * the bounds are `"YYYY-MM-DD"` strings, which the column's own mapping renders
+ * as `toDate('…')` — comparing a `String` against a `Date` is a hard error in
+ * ClickHouse rather than a coercion, and this is what keeps it from happening.
+ *
+ * The builder also qualifies the column as `cost_daily`.`day`, which matters
+ * more than it looks: ClickHouse resolves SELECT aliases inside `WHERE`, unlike
+ * standard SQL, and several readers below project `toString(day) AS day`. An
+ * unqualified `day` in the predicate would bind to *that alias* and the query
+ * would die with "There is no supertype for types String, Date". A qualified
+ * identifier cannot bind to a projection alias.
  */
-export function amortizedAmountExpr(): string {
-  return AMORTIZED_EXPR;
+export function dayRange(from: string, to: string): SQL {
+  return and(gte(costDaily.day, from), lte(costDaily.day, to))!;
 }
-
-/**
- * The `[from, to]` day-range predicates every `cost_daily` reader filters on.
- *
- * **`cost_daily.day` is qualified deliberately, and removing the qualification
- * breaks queries that look nothing like this one.** ClickHouse resolves SELECT
- * aliases inside `WHERE`, unlike standard SQL. Several readers project
- * `toString(day) AS day` to hand JS a `"YYYY-MM-DD"` string rather than a Date,
- * and in those an unqualified `day` in the `WHERE` binds to that alias instead
- * of to the column. The predicate becomes `String >= Date`, which ClickHouse
- * will not unify, and the whole query dies:
- *
- * > There is no supertype for types String, Date because some of them are
- * > String/FixedString/Enum and some of them are not: while executing function
- * > greaterOrEquals on arguments toString(__table1.day) String, _CAST(20670_Date, 'Date')
- *
- * That is not a degraded panel. In `cost-reconcile.ts` the throw propagates out
- * of `collectAccountCosts`, so the account's whole cost collection fails and
- * backs off — the failure the user sees is "cost collection is failing", with
- * nothing to connect it to a `SELECT` list two lines above the `WHERE`.
- *
- * A qualified identifier cannot bind to a projection alias, so this reads the
- * column whatever the `SELECT` list does. Shared rather than inlined so a
- * reader that later adds a `toString(day) AS day` cannot reintroduce the trap.
- */
-export const DAY_FROM_SQL = "cost_daily.day >= toDate({from:String})";
-export const DAY_TO_SQL = "cost_daily.day <= toDate({to:String})";
 
 /**
  * `charge_type IN (...)` when the caller narrowed the charge types, otherwise
  * nothing. Absent means every type, credits and refunds included — that is what
  * makes an unfiltered total the net number the provider would invoice.
  */
-function chargeTypeClause(
-  chargeTypes: CostChargeType[] | undefined,
-  params: Record<string, unknown>,
-  paramName = "chargeTypes",
-): string | null {
-  if (!chargeTypes || chargeTypes.length === 0) return null;
-  params[paramName] = chargeTypes;
-  return `charge_type IN {${paramName}:Array(String)}`;
+function chargeTypeCondition(chargeTypes: CostChargeType[] | undefined): SQL | undefined {
+  if (!chargeTypes || chargeTypes.length === 0) return undefined;
+  return inArray(costDaily.charge_type, chargeTypes);
+}
+
+/**
+ * `expr IN (values)` / `expr NOT IN (values)`, including for the empty list.
+ *
+ * Drizzle refuses an empty `inArray`, but an empty filter list is reachable from
+ * the wire and used to mean "match nothing" (and, negated, "match everything").
+ * Spelling those out keeps a saved filter that lost its last value behaving the
+ * way it did before, instead of throwing on read.
+ */
+export function membershipCondition(expr: SQL, op: CostFilter["op"], values: string[]): SQL {
+  if (values.length === 0) return op === "in" ? sql`0` : sql`1`;
+  return op === "in" ? inArray(expr, values) : notInArray(expr, values);
 }
 
 /* ------------------------------------------------------------------ *
@@ -207,40 +200,22 @@ function chargeTypeClause(
  * about which rows a tag rule claims. `BillingRuleMatch` is a superset
  * (`chargeType`), so an allocation match passes through structurally.
  *
- * Every value is bound as a query parameter, never interpolated.
+ * Every value goes through the dialect's literal escaping, never interpolation.
  */
-function matchConditions(
-  match: BillingRuleMatch,
-  params: Record<string, unknown>,
-  prefix: string,
-): string {
-  const conds: string[] = [];
+function matchConditions(match: BillingRuleMatch): SQL {
+  const conds: SQL[] = [];
   if (match.tagKey) {
-    params[`${prefix}tk`] = match.tagKey;
-    if (match.tagValue !== undefined) {
-      params[`${prefix}tv`] = match.tagValue;
-      conds.push(`tags[{${prefix}tk:String}] = {${prefix}tv:String}`);
-    } else {
-      conds.push(`mapContains(tags, {${prefix}tk:String})`);
-    }
+    conds.push(
+      match.tagValue !== undefined
+        ? sql`${costDaily.tags}[${match.tagKey}] = ${match.tagValue}`
+        : sql`mapContains(${costDaily.tags}, ${match.tagKey})`,
+    );
   }
-  if (match.accountId) {
-    params[`${prefix}a`] = match.accountId;
-    conds.push(`account_id = {${prefix}a:String}`);
-  }
-  if (match.pluginId) {
-    params[`${prefix}p`] = match.pluginId;
-    conds.push(`plugin_id = {${prefix}p:String}`);
-  }
-  if (match.service) {
-    params[`${prefix}s`] = match.service;
-    conds.push(`service = {${prefix}s:String}`);
-  }
-  if (match.chargeType) {
-    params[`${prefix}ct`] = match.chargeType;
-    conds.push(`charge_type = {${prefix}ct:String}`);
-  }
-  return conds.length > 0 ? conds.join(" AND ") : "1";
+  if (match.accountId) conds.push(eq(costDaily.account_id, match.accountId));
+  if (match.pluginId) conds.push(eq(costDaily.plugin_id, match.pluginId));
+  if (match.service) conds.push(eq(costDaily.service, match.service));
+  if (match.chargeType) conds.push(eq(costDaily.charge_type, match.chargeType));
+  return conds.length > 0 ? sql.join(conds, sql` AND `) : sql`1`;
 }
 
 /**
@@ -254,26 +229,20 @@ function matchConditions(
  * commutes, so the compiled order does not change the arithmetic; it exists so
  * the same rule set always produces the same SQL.
  *
- * Factors are inlined as literals rather than bound: they are numbers this
- * module derived from a validated `percent` (`1 + percent/100`, bounded to
- * [-100, 1000]), never caller text, and ClickHouse will not parameterise inside
- * an arithmetic expression without a cast that costs more than it buys. Every
- * *match* value is still bound.
+ * Factors are rendered as bare numeric literals rather than through the string
+ * escaping every match value gets: they are numbers this module derived from a
+ * validated `percent` (`1 + percent/100`, bounded to [-100, 1000]), never caller
+ * text. The `Number.isFinite` guard is what keeps that true.
  */
-function adjustedAmountExpr(
-  raw: string,
-  factors: CompiledBillingAdjustments["factors"],
-  params: Record<string, unknown>,
-): string {
+function adjustedAmountExpr(raw: SQL, factors: CompiledBillingAdjustments["factors"]): SQL {
   if (factors.length === 0) return raw;
-  const terms = factors.map((f, i) => {
-    const cond = matchConditions(f.match, params, `bf${i}`);
-    // A guard, not a formality: an unbounded literal here would be the one
-    // place a rule's number reaches the SQL text.
+  const terms = factors.map((f) => {
+    // A guard, not a formality: an unbounded value here would be the one place
+    // a rule's number reaches the SQL text.
     const factor = Number.isFinite(f.factor) ? f.factor : 1;
-    return `if(${cond}, ${factor}, 1)`;
+    return sql`if(${matchConditions(f.match)}, ${sql.raw(String(factor))}, 1)`;
   });
-  return `(${raw}) * ${terms.join(" * ")}`;
+  return sql`(${raw}) * ${sql.join(terms, sql` * `)}`;
 }
 
 /**
@@ -296,30 +265,44 @@ function adjustedAmountExpr(
 function reallocationExpr(
   reallocations: CompiledBillingAdjustments["reallocations"],
   kind: "cost_centre" | "account",
-  fallback: string,
-  params: Record<string, unknown>,
-): string {
+  fallback: SQL,
+): SQL {
   if (reallocations.length === 0) return fallback;
-  const branches = reallocations.map((r, i) => {
-    const cond = matchConditions(r.match, params, `br${i}`);
-    if (r.targetKind !== kind) return `${cond}, ${fallback}`;
-    params[`br${i}t`] = r.targetId;
-    return `${cond}, {br${i}t:String}`;
+  const branches = reallocations.map((r) => {
+    const cond = matchConditions(r.match);
+    return r.targetKind !== kind ? sql`${cond}, ${fallback}` : sql`${cond}, ${r.targetId}`;
   });
-  return `multiIf(${branches.join(", ")}, ${fallback})`;
+  return sql`multiIf(${sql.join(branches, sql`, `)}, ${fallback})`;
 }
 
-function bucketExpr(binning: CostBinning): string {
+function bucketExpr(binning: CostBinning): SQL {
   switch (binning) {
     case "weekly":
-      return "toString(toStartOfWeek(day, 1))";
+      return sql`toString(toStartOfWeek(${costDaily.day}, 1))`;
     case "monthly":
-      return "toString(toStartOfMonth(day))";
+      return sql`toString(toStartOfMonth(${costDaily.day}))`;
     // Cumulative is a running sum over daily buckets, applied after the query.
     case "daily":
     case "cumulative":
-      return "toString(day)";
+      return sql`toString(${costDaily.day})`;
   }
+}
+
+/**
+ * One row of {@link queryCosts}'s scan.
+ *
+ * `raw_amount` is optional because the column is only *projected* when billing
+ * rules are in force — not defaulted to zero when they are not. A cost reader
+ * that hands back a plausible `0` for "what we collected" is worse than one that
+ * hands back nothing: `undefined` fails loudly at the first arithmetic, a zero
+ * renders as a number somebody bills against.
+ */
+interface QueryCostsRow {
+  bucket: unknown;
+  grp: unknown;
+  currency: string;
+  amount: number;
+  raw_amount?: number;
 }
 
 /**
@@ -347,55 +330,59 @@ function bucketExpr(binning: CostBinning): string {
  * account-targeted rule would fire on a row showback already considers moved.
  */
 export async function queryCosts(organizationId: string, q: CostQuery): Promise<CostSeriesGroup[]> {
-  const params: Record<string, unknown> = { orgId: organizationId, from: q.from, to: q.to };
-  const where = ["organization_id = {orgId:String}", DAY_FROM_SQL, DAY_TO_SQL];
-
-  q.filters.forEach((f, i) => {
-    const expr = dimensionExpr(f.dimension, f.tagKey, params, `ftag${i}`);
-    params[`fvals${i}`] = f.values;
-    where.push(`${expr} ${f.op === "in" ? "IN" : "NOT IN"} {fvals${i}:Array(String)}`);
-  });
-
-  const chargeTypes = chargeTypeClause(q.chargeTypes, params);
-  if (chargeTypes) where.push(chargeTypes);
-
   const rawExpr = amountExpr(q.costBasis);
   const adjustments = q.adjustments;
-  const moneyExpr = adjustments
-    ? adjustedAmountExpr(rawExpr, adjustments.factors, params)
-    : rawExpr;
+  const moneyExpr = adjustments ? adjustedAmountExpr(rawExpr, adjustments.factors) : rawExpr;
 
-  let groupExpr =
-    q.groupBy === "none" ? "''" : dimensionExpr(q.groupBy, q.groupByTagKey, params, "gtag");
+  let groupExpr = q.groupBy === "none" ? sql`''` : dimensionExpr(q.groupBy, q.groupByTagKey);
   // Only the account dimension can be re-attributed here — it is the only
   // grouping a reallocation names. Grouping by service or region is untouched
   // by a rule that moves an account's spend, which is correct: the money is
   // still that service's, it is just booked to somebody else.
   if (adjustments && q.groupBy === "account") {
-    groupExpr = reallocationExpr(adjustments.reallocations, "account", groupExpr, params);
+    groupExpr = reallocationExpr(adjustments.reallocations, "account", groupExpr);
   }
+
+  const where = and(
+    eq(costDaily.organization_id, organizationId),
+    dayRange(q.from, q.to),
+    ...q.filters.map((f) =>
+      membershipCondition(dimensionExpr(f.dimension, f.tagKey), f.op, f.values),
+    ),
+    chargeTypeCondition(q.chargeTypes),
+  );
+  const selection = {
+    bucket: bucketExpr(q.binning).as("bucket"),
+    grp: groupExpr.as("grp"),
+    currency: costDaily.currency,
+    amount: sql<number>`sum(${moneyExpr})`.as("amount"),
+  };
 
   // The collected figure rides along as a second aggregate over the same scan.
   // It is what makes "an adjusted total is never shown without the raw one" a
-  // property of the query rather than a convention callers have to remember.
-  const rawSelect = adjustments ? `,\n            sum(${rawExpr}) AS raw_amount` : "";
-
-  const rows = await query<{
-    bucket: string;
-    grp: string;
-    currency: string;
-    amount: number;
-    raw_amount?: number;
-  }>(
-    `SELECT ${bucketExpr(q.binning)} AS bucket,
-            ${groupExpr} AS grp,
-            currency,
-            sum(${moneyExpr}) AS amount${rawSelect}
-     FROM cost_daily FINAL
-     WHERE ${where.join(" AND ")}
-     GROUP BY bucket, grp, currency
-     ORDER BY bucket ASC`,
-    params,
+  // property of the query rather than a convention callers have to remember —
+  // and it is projected **only** when there are rules, so an unadjusted read
+  // cannot hand anything a zero that looks like a collected total.
+  //
+  // Two chains rather than one over a computed selection: the builder's types
+  // track which clauses a query has used, and a selection it cannot see the
+  // shape of collapses that bookkeeping into a union with no `.groupBy` on it.
+  const rows: QueryCostsRow[] = await query((db) =>
+    adjustments
+      ? db
+          .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
+          .from(costDaily)
+          .final()
+          .where(where)
+          .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
+          .orderBy(asc(sql`bucket`))
+      : db
+          .select(selection)
+          .from(costDaily)
+          .final()
+          .where(where)
+          .groupBy(sql`bucket`, sql`grp`, costDaily.currency)
+          .orderBy(asc(sql`bucket`)),
   );
 
   const groups = new Map<string, CostSeriesGroup>();
@@ -403,12 +390,15 @@ export async function queryCosts(organizationId: string, q: CostQuery): Promise<
     const mapKey = `${r.grp}\x00${r.currency}`;
     let g = groups.get(mapKey);
     if (!g) {
-      g = { key: r.grp, currency: r.currency, points: [] };
+      g = { key: String(r.grp), currency: r.currency, points: [] };
       if (adjustments) g.rawPoints = [];
       groups.set(mapKey, g);
     }
-    g.points.push({ bucket: r.bucket, amount: Number(r.amount) });
-    g.rawPoints?.push({ bucket: r.bucket, amount: Number(r.raw_amount ?? 0) });
+    g.points.push({ bucket: String(r.bucket), amount: Number(r.amount) });
+    // `rawPoints` exists only when rules were applied, which is exactly when
+    // the projection carried `raw_amount`. The two conditions are the same
+    // `adjustments` check, so this never reads a column that was not selected.
+    if (g.rawPoints) g.rawPoints.push({ bucket: String(r.bucket), amount: Number(r.raw_amount) });
   }
 
   const result = [...groups.values()];
@@ -456,20 +446,24 @@ export async function getResourceCostTotals(
   to: string,
   costBasis?: CostBasis,
 ): Promise<ResourceCostTotal[]> {
-  const rows = await query<{
-    account_id: string;
-    resource_id: string;
-    currency: string;
-    amount: number;
-  }>(
-    `SELECT account_id, resource_id, currency, sum(${amountExpr(costBasis)}) AS amount
-     FROM cost_daily FINAL
-     WHERE organization_id = {orgId:String}
-       AND ${DAY_FROM_SQL}
-       AND ${DAY_TO_SQL}
-       AND resource_id != ''
-     GROUP BY account_id, resource_id, currency`,
-    { orgId: organizationId, from, to },
+  const rows = await query((db) =>
+    db
+      .select({
+        account_id: costDaily.account_id,
+        resource_id: costDaily.resource_id,
+        currency: costDaily.currency,
+        amount: sql<number>`sum(${amountExpr(costBasis)})`.as("amount"),
+      })
+      .from(costDaily)
+      .final()
+      .where(
+        and(
+          eq(costDaily.organization_id, organizationId),
+          dayRange(from, to),
+          sql`${costDaily.resource_id} != ''`,
+        ),
+      )
+      .groupBy(costDaily.account_id, costDaily.resource_id, costDaily.currency),
   );
   return rows.map((r) => ({
     accountId: r.account_id,
@@ -485,37 +479,34 @@ export async function getCostDimensionValues(
   dimension: CostDimension,
   opts?: { tagKey?: string; from?: string; to?: string },
 ): Promise<string[]> {
-  const params: Record<string, unknown> = { orgId: organizationId };
-  const where = ["organization_id = {orgId:String}"];
-  if (opts?.from) {
-    params.from = opts.from;
-    where.push(DAY_FROM_SQL);
-  }
-  if (opts?.to) {
-    params.to = opts.to;
-    where.push(DAY_TO_SQL);
-  }
-  const expr = dimensionExpr(dimension, opts?.tagKey, params, "tagKey");
-  const rows = await query<{ value: string }>(
-    `SELECT DISTINCT ${expr} AS value
-     FROM cost_daily
-     WHERE ${where.join(" AND ")} AND ${expr} != ''
-     ORDER BY value ASC
-     LIMIT 500`,
-    params,
+  const expr = dimensionExpr(dimension, opts?.tagKey);
+  const rows = await query((db) =>
+    db
+      .selectDistinct({ value: expr.as("value") })
+      .from(costDaily)
+      .where(
+        and(
+          eq(costDaily.organization_id, organizationId),
+          opts?.from ? gte(costDaily.day, opts.from) : undefined,
+          opts?.to ? lte(costDaily.day, opts.to) : undefined,
+          sql`${expr} != ''`,
+        ),
+      )
+      .orderBy(asc(sql`value`))
+      .limit(500),
   );
-  return rows.map((r) => r.value);
+  return rows.map((r) => String(r.value));
 }
 
 /** Distinct tag keys present in an org's cost data. */
 export async function getCostTagKeys(organizationId: string): Promise<string[]> {
-  const rows = await query<{ key: string }>(
-    `SELECT DISTINCT arrayJoin(mapKeys(tags)) AS key
-     FROM cost_daily
-     WHERE organization_id = {orgId:String}
-     ORDER BY key ASC
-     LIMIT 200`,
-    { orgId: organizationId },
+  const rows = await query((db) =>
+    db
+      .selectDistinct({ key: sql<string>`arrayJoin(mapKeys(${costDaily.tags}))`.as("key") })
+      .from(costDaily)
+      .where(eq(costDaily.organization_id, organizationId))
+      .orderBy(asc(sql`key`))
+      .limit(200),
   );
   return rows.map((r) => r.key);
 }
@@ -550,30 +541,35 @@ export async function getUntaggedSpend(
 ): Promise<UntaggedSpendRows> {
   if (requiredKeys.length === 0) return { totals: [], byKey: [], topUntagged: [] };
 
-  const params: Record<string, unknown> = { orgId: organizationId, from, to };
-  requiredKeys.forEach((key, i) => {
-    params[`key${i}`] = key;
-  });
-  const hasAll = requiredKeys.map((_, i) => `mapContains(tags, {key${i}:String})`).join(" AND ");
-  const missingAny = `NOT (${hasAll})`;
+  const hasKey = (key: string) => sql`mapContains(${costDaily.tags}, ${key})`;
+  const missingAny = sql`NOT (${sql.join(requiredKeys.map(hasKey), sql` AND `)})`;
   const money = amountExpr(costBasis);
+  const scope = and(eq(costDaily.organization_id, organizationId), dayRange(from, to));
 
-  const totalsSelect = requiredKeys
-    .map((_, i) => `sumIf(${money}, NOT mapContains(tags, {key${i}:String})) AS missing_${i}`)
-    .join(",\n            ");
+  // One `sumIf` per required key, selected alongside the totals so the whole
+  // report is a single scan. The keys are the org's own configuration, but the
+  // aliases they land under are generated here rather than derived from them —
+  // a tag key is arbitrary user text and has no business being an identifier.
+  const perKey = Object.fromEntries(
+    requiredKeys.map((key, i) => [
+      `missing_${i}`,
+      sql<number>`sumIf(${money}, NOT ${hasKey(key)})`.as(`missing_${i}`),
+    ]),
+  ) as Record<string, SQL.Aliased<number>>;
 
-  const totalsRows = await query<Record<string, string | number>>(
-    `SELECT currency,
-            sum(${money}) AS total,
-            sumIf(${money}, ${missingAny}) AS untagged,
-            ${totalsSelect}
-     FROM cost_daily FINAL
-     WHERE organization_id = {orgId:String}
-       AND ${DAY_FROM_SQL}
-       AND ${DAY_TO_SQL}
-     GROUP BY currency
-     ORDER BY currency ASC`,
-    params,
+  const totalsRows = await query((db) =>
+    db
+      .select({
+        currency: costDaily.currency,
+        total: sql<number>`sum(${money})`.as("total"),
+        untagged: sql<number>`sumIf(${money}, ${missingAny})`.as("untagged"),
+        ...perKey,
+      })
+      .from(costDaily)
+      .final()
+      .where(scope)
+      .groupBy(costDaily.currency)
+      .orderBy(asc(costDaily.currency)),
   );
 
   const totals = totalsRows.map((r) => ({
@@ -584,26 +580,28 @@ export async function getUntaggedSpend(
   const byKey: UntaggedSpendRows["byKey"] = [];
   for (const r of totalsRows) {
     requiredKeys.forEach((key, i) => {
-      byKey.push({ key, currency: String(r.currency), untagged: Number(r[`missing_${i}`]) });
+      byKey.push({
+        key,
+        currency: String(r.currency),
+        untagged: Number((r as Record<string, unknown>)[`missing_${i}`]),
+      });
     });
   }
 
-  const topRows = await query<{
-    account_id: string;
-    service: string;
-    currency: string;
-    amount: number;
-  }>(
-    `SELECT account_id, service, currency, sum(${money}) AS amount
-     FROM cost_daily FINAL
-     WHERE organization_id = {orgId:String}
-       AND ${DAY_FROM_SQL}
-       AND ${DAY_TO_SQL}
-       AND ${missingAny}
-     GROUP BY account_id, service, currency
-     ORDER BY amount DESC
-     LIMIT 15`,
-    params,
+  const topRows = await query((db) =>
+    db
+      .select({
+        account_id: costDaily.account_id,
+        service: costDaily.service,
+        currency: costDaily.currency,
+        amount: sql<number>`sum(${money})`.as("amount"),
+      })
+      .from(costDaily)
+      .final()
+      .where(and(scope, missingAny))
+      .groupBy(costDaily.account_id, costDaily.service, costDaily.currency)
+      .orderBy(desc(sql`amount`))
+      .limit(15),
   );
 
   return {
@@ -669,45 +667,52 @@ export async function getShowbackSpend(
   costBasis?: CostBasis,
   adjustments?: CompiledBillingAdjustments,
 ): Promise<Array<{ costCentreId: string; currency: string; amount: number; rawAmount?: number }>> {
-  const params: Record<string, unknown> = { orgId: organizationId, from, to };
-
-  const branches: string[] = [];
-  rules.forEach((rule, i) => {
-    params[`r${i}c`] = rule.costCentreId;
-    branches.push(`${matchConditions(rule.match, params, `r${i}`)}, {r${i}c:String}`);
-  });
-
-  const allocationExpr = branches.length > 0 ? `multiIf(${branches.join(", ")}, '')` : "''";
+  const branches = rules.map((rule) => sql`${matchConditions(rule.match)}, ${rule.costCentreId}`);
+  const allocationExpr =
+    branches.length > 0 ? sql`multiIf(${sql.join(branches, sql`, `)}, '')` : sql`''`;
   const centreExpr = adjustments
-    ? reallocationExpr(adjustments.reallocations, "cost_centre", allocationExpr, params)
+    ? reallocationExpr(adjustments.reallocations, "cost_centre", allocationExpr)
     : allocationExpr;
 
   const rawExpr = amountExpr(costBasis);
-  const moneyExpr = adjustments
-    ? adjustedAmountExpr(rawExpr, adjustments.factors, params)
-    : rawExpr;
-  const rawSelect = adjustments ? `, sum(${rawExpr}) AS raw_amount` : "";
+  const moneyExpr = adjustments ? adjustedAmountExpr(rawExpr, adjustments.factors) : rawExpr;
 
-  const rows = await query<{
-    centre: string;
+  const where = and(eq(costDaily.organization_id, organizationId), dayRange(from, to));
+  const selection = {
+    centre: centreExpr.as("centre"),
+    currency: costDaily.currency,
+    amount: sql<number>`sum(${moneyExpr})`.as("amount"),
+  };
+  // Projected only when rules are in force — see `QueryCostsRow` for why an
+  // unadjusted read must return no collected figure rather than a zero one.
+  const rows: Array<{
+    centre: unknown;
     currency: string;
     amount: number;
     raw_amount?: number;
-  }>(
-    `SELECT ${centreExpr} AS centre, currency, sum(${moneyExpr}) AS amount${rawSelect}
-     FROM cost_daily FINAL
-     WHERE organization_id = {orgId:String}
-       AND ${DAY_FROM_SQL}
-       AND ${DAY_TO_SQL}
-     GROUP BY centre, currency
-     ORDER BY amount DESC`,
-    params,
+  }> = await query((db) =>
+    adjustments
+      ? db
+          .select({ ...selection, raw_amount: sql<number>`sum(${rawExpr})`.as("raw_amount") })
+          .from(costDaily)
+          .final()
+          .where(where)
+          .groupBy(sql`centre`, costDaily.currency)
+          .orderBy(desc(sql`amount`))
+      : db
+          .select(selection)
+          .from(costDaily)
+          .final()
+          .where(where)
+          .groupBy(sql`centre`, costDaily.currency)
+          .orderBy(desc(sql`amount`)),
   );
+
   return rows.map((r) => ({
-    costCentreId: r.centre,
+    costCentreId: String(r.centre),
     currency: r.currency,
     amount: Number(r.amount),
-    ...(adjustments ? { rawAmount: Number(r.raw_amount ?? 0) } : {}),
+    ...(adjustments ? { rawAmount: Number(r.raw_amount) } : {}),
   }));
 }
 
@@ -715,14 +720,16 @@ export async function getShowbackSpend(
 export async function getCostCoverage(
   organizationId: string,
 ): Promise<Map<string, { firstDay: string; lastDay: string }>> {
-  const rows = await query<{ account_id: string; first_day: string; last_day: string }>(
-    `SELECT account_id,
-            toString(min(day)) AS first_day,
-            toString(max(day)) AS last_day
-     FROM cost_daily
-     WHERE organization_id = {orgId:String}
-     GROUP BY account_id`,
-    { orgId: organizationId },
+  const rows = await query((db) =>
+    db
+      .select({
+        account_id: costDaily.account_id,
+        first_day: sql<string>`toString(min(${costDaily.day}))`.as("first_day"),
+        last_day: sql<string>`toString(max(${costDaily.day}))`.as("last_day"),
+      })
+      .from(costDaily)
+      .where(eq(costDaily.organization_id, organizationId))
+      .groupBy(costDaily.account_id),
   );
   const result = new Map<string, { firstDay: string; lastDay: string }>();
   for (const r of rows) result.set(r.account_id, { firstDay: r.first_day, lastDay: r.last_day });

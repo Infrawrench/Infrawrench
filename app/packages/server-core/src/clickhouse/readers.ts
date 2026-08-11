@@ -1,5 +1,13 @@
 import type { DashboardStat, MetricSeries, MetricSeriesPoint } from "@infrawrench/plugin-base";
-import { getClickHouseClient, isClickHouseConfigured } from "./client";
+import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { getClickHouseDb, isClickHouseConfigured, type ClickHouseDb } from "./client";
+import {
+  accountResourceCounts,
+  dashboardStats,
+  metricPoints1h,
+  metricPoints1m,
+  metricPointsRaw,
+} from "./schema";
 
 export interface ResourceCount {
   typeLabel: string;
@@ -12,10 +20,25 @@ export interface ResourceCount {
  * is not: it throws so the caller's request fails loudly instead of rendering
  * an outage as "this resource has no data".
  */
-async function query<T>(query: string, query_params: Record<string, unknown>): Promise<T[]> {
+async function query<T>(build: (db: ClickHouseDb) => Promise<T[]>): Promise<T[]> {
   if (!isClickHouseConfigured()) return [];
-  const rs = await getClickHouseClient().query({ query, query_params, format: "JSONEachRow" });
-  return await rs.json<T>();
+  return await build(getClickHouseDb());
+}
+
+/**
+ * Milliseconds since the epoch, as ClickHouse's own conversion of a timestamp
+ * column. `UInt64` comes back through JSON as a string, so callers pass the
+ * result through `Number`.
+ */
+const tsMillis = (column: unknown) => sql<string>`toUnixTimestamp64Milli(${column})`;
+const secondsToMillis = (column: unknown) => sql<string>`toUnixTimestamp(${column}) * 1000`;
+
+/** `>= from AND <= to` over a second-resolution column, from millisecond bounds. */
+function withinSeconds(column: unknown, fromMs: number, toMs: number) {
+  return and(
+    gte(column as never, sql`toDateTime(${Math.floor(fromMs / 1000)})`),
+    lte(column as never, sql`toDateTime(${Math.floor(toMs / 1000)})`),
+  );
 }
 
 /** Latest DashboardStat[] snapshot for one resource. Null if none. */
@@ -23,13 +46,18 @@ export async function getLatestStats(
   organizationId: string,
   resourceId: string,
 ): Promise<DashboardStat[] | null> {
-  const rows = await query<{ stats_json: string }>(
-    `SELECT stats_json
-     FROM dashboard_stats
-     WHERE organization_id = {orgId:String} AND resource_id = {resourceId:String}
-     ORDER BY ts DESC
-     LIMIT 1`,
-    { orgId: organizationId, resourceId },
+  const rows = await query((db) =>
+    db
+      .select({ stats_json: dashboardStats.stats_json })
+      .from(dashboardStats)
+      .where(
+        and(
+          eq(dashboardStats.organization_id, organizationId),
+          eq(dashboardStats.resource_id, resourceId),
+        ),
+      )
+      .orderBy(desc(dashboardStats.ts))
+      .limit(1),
   );
   if (rows.length === 0) return null;
   try {
@@ -48,22 +76,23 @@ export async function getLatestMetrics(
   organizationId: string,
   resourceId: string,
 ): Promise<MetricSeries[] | null> {
-  const rows = await query<{
-    series_label: string;
-    unit: string;
-    ts_ms: number;
-    value: number;
-  }>(
-    `SELECT series_label,
-            unit,
-            toUnixTimestamp64Milli(ts) AS ts_ms,
-            value
-     FROM metric_points_raw
-     WHERE organization_id = {orgId:String}
-       AND resource_id = {resourceId:String}
-       AND ts > now() - INTERVAL 1 HOUR
-     ORDER BY ts ASC`,
-    { orgId: organizationId, resourceId },
+  const rows = await query((db) =>
+    db
+      .select({
+        series_label: metricPointsRaw.series_label,
+        unit: metricPointsRaw.unit,
+        ts_ms: tsMillis(metricPointsRaw.ts).as("ts_ms"),
+        value: metricPointsRaw.value,
+      })
+      .from(metricPointsRaw)
+      .where(
+        and(
+          eq(metricPointsRaw.organization_id, organizationId),
+          eq(metricPointsRaw.resource_id, resourceId),
+          sql`${metricPointsRaw.ts} > now() - INTERVAL 1 HOUR`,
+        ),
+      )
+      .orderBy(asc(metricPointsRaw.ts)),
   );
   if (rows.length === 0) return null;
   const bySeries = new Map<string, MetricSeries>();
@@ -86,24 +115,24 @@ export async function getLatestMetricsBatch(
 ): Promise<Map<string, MetricSeries[]>> {
   const result = new Map<string, MetricSeries[]>();
   if (resourceIds.length === 0) return result;
-  const rows = await query<{
-    resource_id: string;
-    series_label: string;
-    unit: string;
-    ts_ms: number;
-    value: number;
-  }>(
-    `SELECT resource_id,
-            series_label,
-            unit,
-            toUnixTimestamp64Milli(ts) AS ts_ms,
-            value
-     FROM metric_points_raw
-     WHERE organization_id = {orgId:String}
-       AND resource_id IN {ids:Array(String)}
-       AND ts > now() - INTERVAL 1 HOUR
-     ORDER BY ts ASC`,
-    { orgId: organizationId, ids: resourceIds },
+  const rows = await query((db) =>
+    db
+      .select({
+        resource_id: metricPointsRaw.resource_id,
+        series_label: metricPointsRaw.series_label,
+        unit: metricPointsRaw.unit,
+        ts_ms: tsMillis(metricPointsRaw.ts).as("ts_ms"),
+        value: metricPointsRaw.value,
+      })
+      .from(metricPointsRaw)
+      .where(
+        and(
+          eq(metricPointsRaw.organization_id, organizationId),
+          inArray(metricPointsRaw.resource_id, resourceIds),
+          sql`${metricPointsRaw.ts} > now() - INTERVAL 1 HOUR`,
+        ),
+      )
+      .orderBy(asc(metricPointsRaw.ts)),
   );
   for (const r of rows) {
     let list = result.get(r.resource_id);
@@ -129,13 +158,22 @@ export async function getLatestStatsBatch(
 ): Promise<Map<string, DashboardStat[]>> {
   const result = new Map<string, DashboardStat[]>();
   if (resourceIds.length === 0) return result;
-  const rows = await query<{ resource_id: string; stats_json: string }>(
-    `SELECT resource_id, argMax(stats_json, ts) AS stats_json
-     FROM dashboard_stats
-     WHERE organization_id = {orgId:String}
-       AND resource_id IN {ids:Array(String)}
-     GROUP BY resource_id`,
-    { orgId: organizationId, ids: resourceIds },
+  const rows = await query((db) =>
+    db
+      .select({
+        resource_id: dashboardStats.resource_id,
+        stats_json: sql<string>`argMax(${dashboardStats.stats_json}, ${dashboardStats.ts})`.as(
+          "stats_json",
+        ),
+      })
+      .from(dashboardStats)
+      .where(
+        and(
+          eq(dashboardStats.organization_id, organizationId),
+          inArray(dashboardStats.resource_id, resourceIds),
+        ),
+      )
+      .groupBy(dashboardStats.resource_id),
   );
   for (const r of rows) {
     try {
@@ -152,13 +190,18 @@ export async function getLatestAccountCounts(
   organizationId: string,
   accountId: string,
 ): Promise<ResourceCount[] | null> {
-  const rows = await query<{ counts_json: string }>(
-    `SELECT counts_json
-     FROM account_resource_counts
-     WHERE organization_id = {orgId:String} AND account_id = {accountId:String}
-     ORDER BY ts DESC
-     LIMIT 1`,
-    { orgId: organizationId, accountId },
+  const rows = await query((db) =>
+    db
+      .select({ counts_json: accountResourceCounts.counts_json })
+      .from(accountResourceCounts)
+      .where(
+        and(
+          eq(accountResourceCounts.organization_id, organizationId),
+          eq(accountResourceCounts.account_id, accountId),
+        ),
+      )
+      .orderBy(desc(accountResourceCounts.ts))
+      .limit(1),
   );
   if (rows.length === 0) return null;
   try {
@@ -175,13 +218,23 @@ export async function getLatestAccountCountsBatch(
 ): Promise<Map<string, ResourceCount[]>> {
   const result = new Map<string, ResourceCount[]>();
   if (accountIds.length === 0) return result;
-  const rows = await query<{ account_id: string; counts_json: string }>(
-    `SELECT account_id, argMax(counts_json, ts) AS counts_json
-     FROM account_resource_counts
-     WHERE organization_id = {orgId:String}
-       AND account_id IN {ids:Array(String)}
-     GROUP BY account_id`,
-    { orgId: organizationId, ids: accountIds },
+  const rows = await query((db) =>
+    db
+      .select({
+        account_id: accountResourceCounts.account_id,
+        counts_json:
+          sql<string>`argMax(${accountResourceCounts.counts_json}, ${accountResourceCounts.ts})`.as(
+            "counts_json",
+          ),
+      })
+      .from(accountResourceCounts)
+      .where(
+        and(
+          eq(accountResourceCounts.organization_id, organizationId),
+          inArray(accountResourceCounts.account_id, accountIds),
+        ),
+      )
+      .groupBy(accountResourceCounts.account_id),
   );
   for (const r of rows) {
     try {
@@ -224,43 +277,44 @@ export async function getMetricQuantilesBatch(
 ): Promise<Map<string, MetricSeriesQuantiles[]>> {
   const result = new Map<string, MetricSeriesQuantiles[]>();
   if (resourceIds.length === 0) return result;
-  const rows = await query<{
-    resource_id: string;
-    series_label: string;
-    unit: string;
-    q05: number;
-    q95: number;
-    vmax: number;
-    samples: string | number;
-  }>(
-    `SELECT resource_id,
-            series_label,
-            any(unit)                  AS unit,
-            quantile(0.05)(minute_avg) AS q05,
-            quantile(0.95)(minute_avg) AS q95,
-            max(minute_avg)            AS vmax,
-            count()                    AS samples
-     FROM (
-       SELECT resource_id,
-              series_label,
-              unit,
-              ts_minute,
-              avgMerge(value_avg) AS minute_avg
-       FROM metric_points_1m
-       WHERE organization_id = {orgId:String}
-         AND resource_id IN {ids:Array(String)}
-         AND ts_minute >= toDateTime({fromSec:Int64})
-         AND ts_minute <= toDateTime({toSec:Int64})
-       GROUP BY resource_id, series_label, unit, ts_minute
-     )
-     GROUP BY resource_id, series_label`,
-    {
-      orgId: organizationId,
-      ids: resourceIds,
-      fromSec: Math.floor(fromMs / 1000),
-      toSec: Math.floor(toMs / 1000),
-    },
-  );
+  const rows = await query((db) => {
+    const minutes = db
+      .select({
+        resource_id: metricPoints1m.resource_id,
+        series_label: metricPoints1m.series_label,
+        unit: metricPoints1m.unit,
+        ts_minute: metricPoints1m.ts_minute,
+        minute_avg: sql<number>`avgMerge(${metricPoints1m.value_avg})`.as("minute_avg"),
+      })
+      .from(metricPoints1m)
+      .where(
+        and(
+          eq(metricPoints1m.organization_id, organizationId),
+          inArray(metricPoints1m.resource_id, resourceIds),
+          withinSeconds(metricPoints1m.ts_minute, fromMs, toMs),
+        ),
+      )
+      .groupBy(
+        metricPoints1m.resource_id,
+        metricPoints1m.series_label,
+        metricPoints1m.unit,
+        metricPoints1m.ts_minute,
+      )
+      .as("minutes");
+
+    return db
+      .select({
+        resource_id: minutes.resource_id,
+        series_label: minutes.series_label,
+        unit: sql<string>`any(${minutes.unit})`.as("unit"),
+        q05: sql<number>`quantile(0.05)(${minutes.minute_avg})`.as("q05"),
+        q95: sql<number>`quantile(0.95)(${minutes.minute_avg})`.as("q95"),
+        vmax: sql<number>`max(${minutes.minute_avg})`.as("vmax"),
+        samples: sql<string>`count()`.as("samples"),
+      })
+      .from(minutes)
+      .groupBy(minutes.resource_id, minutes.series_label);
+  });
   for (const r of rows) {
     let list = result.get(r.resource_id);
     if (!list) {
@@ -300,25 +354,26 @@ export async function listMetricSeriesKeys(
   organizationId: string,
   filter: { pluginId?: string | undefined; resourceTypeId?: string | undefined } = {},
 ): Promise<MetricSeriesKey[]> {
-  const conditions = [
-    "organization_id = {orgId:String}",
-    "ts > now() - INTERVAL 7 DAY",
-    ...(filter.pluginId ? ["plugin_id = {pluginId:String}"] : []),
-    ...(filter.resourceTypeId ? ["resource_type_id = {resourceTypeId:String}"] : []),
-  ];
-  const rows = await query<{ series_label: string; unit: string; resource_count: string | number }>(
-    `SELECT series_label,
-            any(unit)                AS unit,
-            uniqExact(resource_id)   AS resource_count
-     FROM metric_points_raw
-     WHERE ${conditions.join(" AND ")}
-     GROUP BY series_label
-     ORDER BY series_label ASC`,
-    {
-      orgId: organizationId,
-      ...(filter.pluginId ? { pluginId: filter.pluginId } : {}),
-      ...(filter.resourceTypeId ? { resourceTypeId: filter.resourceTypeId } : {}),
-    },
+  const rows = await query((db) =>
+    db
+      .select({
+        series_label: metricPointsRaw.series_label,
+        unit: sql<string>`any(${metricPointsRaw.unit})`.as("unit"),
+        resource_count: sql<string>`uniqExact(${metricPointsRaw.resource_id})`.as("resource_count"),
+      })
+      .from(metricPointsRaw)
+      .where(
+        and(
+          eq(metricPointsRaw.organization_id, organizationId),
+          sql`${metricPointsRaw.ts} > now() - INTERVAL 7 DAY`,
+          ...(filter.pluginId ? [eq(metricPointsRaw.plugin_id, filter.pluginId)] : []),
+          ...(filter.resourceTypeId
+            ? [eq(metricPointsRaw.resource_type_id, filter.resourceTypeId)]
+            : []),
+        ),
+      )
+      .groupBy(metricPointsRaw.series_label)
+      .orderBy(asc(metricPointsRaw.series_label)),
   );
   return rows.map((r) => ({
     label: r.series_label,
@@ -348,25 +403,24 @@ export async function getMetricMinuteSeriesBatch(
 ): Promise<Map<string, MetricMinuteSample[]>> {
   const result = new Map<string, MetricMinuteSample[]>();
   if (resourceIds.length === 0) return result;
-  const rows = await query<{ resource_id: string; ts_ms: number; value: number }>(
-    `SELECT resource_id,
-            toUnixTimestamp(ts_minute) * 1000 AS ts_ms,
-            avgMerge(value_avg) AS value
-     FROM metric_points_1m
-     WHERE organization_id = {orgId:String}
-       AND resource_id IN {ids:Array(String)}
-       AND series_label = {seriesLabel:String}
-       AND ts_minute >= toDateTime({fromSec:Int64})
-       AND ts_minute <= toDateTime({toSec:Int64})
-     GROUP BY resource_id, ts_minute
-     ORDER BY ts_minute ASC`,
-    {
-      orgId: organizationId,
-      ids: resourceIds,
-      seriesLabel,
-      fromSec: Math.floor(fromMs / 1000),
-      toSec: Math.floor(toMs / 1000),
-    },
+  const rows = await query((db) =>
+    db
+      .select({
+        resource_id: metricPoints1m.resource_id,
+        ts_ms: secondsToMillis(metricPoints1m.ts_minute).as("ts_ms"),
+        value: sql<number>`avgMerge(${metricPoints1m.value_avg})`.as("value"),
+      })
+      .from(metricPoints1m)
+      .where(
+        and(
+          eq(metricPoints1m.organization_id, organizationId),
+          inArray(metricPoints1m.resource_id, resourceIds),
+          eq(metricPoints1m.series_label, seriesLabel),
+          withinSeconds(metricPoints1m.ts_minute, fromMs, toMs),
+        ),
+      )
+      .groupBy(metricPoints1m.resource_id, metricPoints1m.ts_minute)
+      .orderBy(asc(metricPoints1m.ts_minute)),
   );
   for (const r of rows) {
     let list = result.get(r.resource_id);
@@ -394,27 +448,33 @@ export async function getMetricSeriesAverageBatch(
 ): Promise<Map<string, number>> {
   const result = new Map<string, number>();
   if (resourceIds.length === 0) return result;
-  const rows = await query<{ resource_id: string; value: number }>(
-    `SELECT resource_id, avg(value) AS value
-     FROM (
-       SELECT resource_id, ts_minute, avgMerge(value_avg) AS value
-       FROM metric_points_1m
-       WHERE organization_id = {orgId:String}
-         AND resource_id IN {ids:Array(String)}
-         AND series_label = {seriesLabel:String}
-         AND ts_minute >= toDateTime({fromSec:Int64})
-         AND ts_minute <= toDateTime({toSec:Int64})
-       GROUP BY resource_id, ts_minute
-     )
-     GROUP BY resource_id`,
-    {
-      orgId: organizationId,
-      ids: resourceIds,
-      seriesLabel,
-      fromSec: Math.floor(fromMs / 1000),
-      toSec: Math.floor(toMs / 1000),
-    },
-  );
+  const rows = await query((db) => {
+    const minutes = db
+      .select({
+        resource_id: metricPoints1m.resource_id,
+        ts_minute: metricPoints1m.ts_minute,
+        value: sql<number>`avgMerge(${metricPoints1m.value_avg})`.as("value"),
+      })
+      .from(metricPoints1m)
+      .where(
+        and(
+          eq(metricPoints1m.organization_id, organizationId),
+          inArray(metricPoints1m.resource_id, resourceIds),
+          eq(metricPoints1m.series_label, seriesLabel),
+          withinSeconds(metricPoints1m.ts_minute, fromMs, toMs),
+        ),
+      )
+      .groupBy(metricPoints1m.resource_id, metricPoints1m.ts_minute)
+      .as("minutes");
+
+    return db
+      .select({
+        resource_id: minutes.resource_id,
+        value: sql<number>`avg(${minutes.value})`.as("value"),
+      })
+      .from(minutes)
+      .groupBy(minutes.resource_id);
+  });
   for (const r of rows) result.set(r.resource_id, Number(r.value));
   return result;
 }
@@ -452,31 +512,36 @@ export async function getMetricDailyAverageBatch(
   toMs: number,
 ): Promise<MetricDailyAverage[]> {
   if (resourceIds.length === 0) return [];
-  const rows = await query<{ resource_id: string; day: string; value: number }>(
-    `SELECT resource_id, day, avg(value) AS value
-     FROM (
-       SELECT resource_id,
-              toDate(ts_hour) AS day,
-              ts_hour,
-              avgMerge(value_avg) AS value
-       FROM metric_points_1h
-       WHERE organization_id = {orgId:String}
-         AND resource_id IN {ids:Array(String)}
-         AND series_label = {seriesLabel:String}
-         AND ts_hour >= toDateTime({fromSec:Int64})
-         AND ts_hour <= toDateTime({toSec:Int64})
-       GROUP BY resource_id, day, ts_hour
-     )
-     GROUP BY resource_id, day
-     ORDER BY day`,
-    {
-      orgId: organizationId,
-      ids: resourceIds,
-      seriesLabel,
-      fromSec: Math.floor(fromMs / 1000),
-      toSec: Math.floor(toMs / 1000),
-    },
-  );
+  const rows = await query((db) => {
+    const hours = db
+      .select({
+        resource_id: metricPoints1h.resource_id,
+        day: sql<string>`toDate(${metricPoints1h.ts_hour})`.as("day"),
+        ts_hour: metricPoints1h.ts_hour,
+        value: sql<number>`avgMerge(${metricPoints1h.value_avg})`.as("value"),
+      })
+      .from(metricPoints1h)
+      .where(
+        and(
+          eq(metricPoints1h.organization_id, organizationId),
+          inArray(metricPoints1h.resource_id, resourceIds),
+          eq(metricPoints1h.series_label, seriesLabel),
+          withinSeconds(metricPoints1h.ts_hour, fromMs, toMs),
+        ),
+      )
+      .groupBy(metricPoints1h.resource_id, sql`day`, metricPoints1h.ts_hour)
+      .as("hours");
+
+    return db
+      .select({
+        resource_id: hours.resource_id,
+        day: hours.day,
+        value: sql<number>`avg(${hours.value})`.as("value"),
+      })
+      .from(hours)
+      .groupBy(hours.resource_id, hours.day)
+      .orderBy(asc(hours.day));
+  });
   return rows.map((r) => ({
     resourceId: r.resource_id,
     day: String(r.day).slice(0, 10),
@@ -500,62 +565,68 @@ export async function getMetricRange(
   const HOUR = 60 * 60 * 1000;
   const DAY = 24 * HOUR;
 
-  type Row = { series_label: string; unit: string; ts_ms: number; value: number };
+  type Row = { series_label: string; unit: string; ts_ms: string | number; value: number };
   let rows: Row[];
 
   if (spanMs <= 2 * HOUR) {
-    rows = await query<Row>(
-      `SELECT series_label,
-              unit,
-              toUnixTimestamp64Milli(ts) AS ts_ms,
-              value
-       FROM metric_points_raw
-       WHERE organization_id = {orgId:String}
-         AND resource_id = {resourceId:String}
-         AND ts >= fromUnixTimestamp64Milli({fromMs:Int64})
-         AND ts <= fromUnixTimestamp64Milli({toMs:Int64})
-       ORDER BY ts ASC`,
-      { orgId: organizationId, resourceId, fromMs, toMs },
+    rows = await query<Row>((db) =>
+      db
+        .select({
+          series_label: metricPointsRaw.series_label,
+          unit: metricPointsRaw.unit,
+          ts_ms: tsMillis(metricPointsRaw.ts).as("ts_ms"),
+          value: metricPointsRaw.value,
+        })
+        .from(metricPointsRaw)
+        .where(
+          and(
+            eq(metricPointsRaw.organization_id, organizationId),
+            eq(metricPointsRaw.resource_id, resourceId),
+            gte(metricPointsRaw.ts, sql`fromUnixTimestamp64Milli(${fromMs})`),
+            lte(metricPointsRaw.ts, sql`fromUnixTimestamp64Milli(${toMs})`),
+          ),
+        )
+        .orderBy(asc(metricPointsRaw.ts)),
     );
   } else if (spanMs <= 7 * DAY) {
-    rows = await query<Row>(
-      `SELECT series_label,
-              unit,
-              toUnixTimestamp(ts_minute) * 1000 AS ts_ms,
-              avgMerge(value_avg) AS value
-       FROM metric_points_1m
-       WHERE organization_id = {orgId:String}
-         AND resource_id = {resourceId:String}
-         AND ts_minute >= toDateTime({fromSec:Int64})
-         AND ts_minute <= toDateTime({toSec:Int64})
-       GROUP BY series_label, unit, ts_minute
-       ORDER BY ts_minute ASC`,
-      {
-        orgId: organizationId,
-        resourceId,
-        fromSec: Math.floor(fromMs / 1000),
-        toSec: Math.floor(toMs / 1000),
-      },
+    rows = await query<Row>((db) =>
+      db
+        .select({
+          series_label: metricPoints1m.series_label,
+          unit: metricPoints1m.unit,
+          ts_ms: secondsToMillis(metricPoints1m.ts_minute).as("ts_ms"),
+          value: sql<number>`avgMerge(${metricPoints1m.value_avg})`.as("value"),
+        })
+        .from(metricPoints1m)
+        .where(
+          and(
+            eq(metricPoints1m.organization_id, organizationId),
+            eq(metricPoints1m.resource_id, resourceId),
+            withinSeconds(metricPoints1m.ts_minute, fromMs, toMs),
+          ),
+        )
+        .groupBy(metricPoints1m.series_label, metricPoints1m.unit, metricPoints1m.ts_minute)
+        .orderBy(asc(metricPoints1m.ts_minute)),
     );
   } else {
-    rows = await query<Row>(
-      `SELECT series_label,
-              unit,
-              toUnixTimestamp(ts_hour) * 1000 AS ts_ms,
-              avgMerge(value_avg) AS value
-       FROM metric_points_1h
-       WHERE organization_id = {orgId:String}
-         AND resource_id = {resourceId:String}
-         AND ts_hour >= toDateTime({fromSec:Int64})
-         AND ts_hour <= toDateTime({toSec:Int64})
-       GROUP BY series_label, unit, ts_hour
-       ORDER BY ts_hour ASC`,
-      {
-        orgId: organizationId,
-        resourceId,
-        fromSec: Math.floor(fromMs / 1000),
-        toSec: Math.floor(toMs / 1000),
-      },
+    rows = await query<Row>((db) =>
+      db
+        .select({
+          series_label: metricPoints1h.series_label,
+          unit: metricPoints1h.unit,
+          ts_ms: secondsToMillis(metricPoints1h.ts_hour).as("ts_ms"),
+          value: sql<number>`avgMerge(${metricPoints1h.value_avg})`.as("value"),
+        })
+        .from(metricPoints1h)
+        .where(
+          and(
+            eq(metricPoints1h.organization_id, organizationId),
+            eq(metricPoints1h.resource_id, resourceId),
+            withinSeconds(metricPoints1h.ts_hour, fromMs, toMs),
+          ),
+        )
+        .groupBy(metricPoints1h.series_label, metricPoints1h.unit, metricPoints1h.ts_hour)
+        .orderBy(asc(metricPoints1h.ts_hour)),
     );
   }
 

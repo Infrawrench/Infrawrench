@@ -21,8 +21,11 @@
  * and it is already there.
  */
 import type { CostBasis, CostChargeType, CostFilter } from "@infrawrench/client-core";
+import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { QueryBuilder } from "drizzle-orm/clickhouse-core";
 import { getClickHouseClient, isClickHouseConfigured } from "../clickhouse/client";
-import { amortizedAmountExpr, DAY_FROM_SQL, DAY_TO_SQL } from "../clickhouse/cost-readers";
+import { amortizedAmountExpr, dayRange, membershipCondition } from "../clickhouse/cost-readers";
+import { costDaily } from "../clickhouse/schema";
 
 /** The column set an export emits, in order. Drives both the header and each row. */
 export interface CostExportColumns {
@@ -49,32 +52,33 @@ export interface CostExportRowQuery {
 export type CostExportRow = Record<string, string | number>;
 
 /**
- * SQL expression for a dimension. Mirrors `cost-readers.ts#dimensionExpr` —
+ * The column a dimension reads from. Mirrors `cost-readers.ts#dimensionExpr` —
  * restated rather than exported from there because the export needs the column
  * *name* alongside the expression, and the two vocabularies must stay pinned to
  * the same `CostDimensionId` union either way.
+ *
+ * `tag` returns nothing on purpose: it is not a column, and a tag export names
+ * its keys in `tagKeys`, which become their own columns. Selecting the bare
+ * dimension would ask "which tag?" with no answer, so it is dropped.
  */
-function dimensionExpr(dimension: string): string {
+function dimensionExpr(dimension: string): SQL | undefined {
   switch (dimension) {
     case "provider":
-      return "plugin_id";
+      return sql`${costDaily.plugin_id}`;
     case "account":
-      return "account_id";
+      return sql`${costDaily.account_id}`;
     case "service":
-      return "service";
+      return sql`${costDaily.service}`;
     case "region":
-      return "region";
+      return sql`${costDaily.region}`;
     case "resource":
-      return "resource_id";
+      return sql`${costDaily.resource_id}`;
     case "charge_type":
-      return "charge_type";
+      return sql`${costDaily.charge_type}`;
     case "commitment":
-      return "commitment_id";
-    // `tag` is not a column — a tag export names its keys in `tagKeys`, which
-    // become their own columns. Selecting the bare dimension would ask "which
-    // tag?" with no answer, so it is dropped.
+      return sql`${costDaily.commitment_id}`;
     default:
-      return "";
+      return undefined;
   }
 }
 
@@ -92,8 +96,8 @@ function dimensionColumn(dimension: string): string {
  * cash, so an amortized export double-counted every purchase against its own
  * amortized slices while the graph beside it did not.
  */
-function amountExpr(basis: CostBasis | undefined): string {
-  return basis === "amortized" ? amortizedAmountExpr() : "amount";
+function amountExpr(basis: CostBasis | undefined): SQL {
+  return basis === "amortized" ? amortizedAmountExpr() : sql`${costDaily.amount}`;
 }
 
 /** Sanitise a tag key into a column name a CSV header and a warehouse both accept. */
@@ -103,7 +107,7 @@ export function tagColumnName(key: string): string {
 
 /** Resolve the output column layout for a query, dropping anything unusable. */
 export function resolveColumns(q: { dimensions: string[]; tagKeys: string[] }): CostExportColumns {
-  const dimensions = q.dimensions.filter((d) => dimensionExpr(d) !== "").map(dimensionColumn);
+  const dimensions = q.dimensions.filter((d) => dimensionExpr(d)).map(dimensionColumn);
   return {
     dimensions: [...new Set(dimensions)],
     tagColumns: [...new Set(q.tagKeys.map(tagColumnName))],
@@ -112,60 +116,85 @@ export function resolveColumns(q: { dimensions: string[]; tagKeys: string[] }): 
 
 interface BuiltQuery {
   sql: string;
-  params: Record<string, unknown>;
   columns: CostExportColumns;
 }
 
-/** Assemble the SELECT. Exported for the tests that assert its shape. */
+/** `tags['key']`, the expression a tag column reads from. */
+function tagExpr(key: string): SQL {
+  return sql`${costDaily.tags}[${key}]`;
+}
+
+/**
+ * Assemble the SELECT. Exported for the tests that assert its shape.
+ *
+ * Built with the query builder, then rendered to text: the streaming read below
+ * needs `ResultSet.stream()`, which is on the driver rather than on Drizzle, so
+ * this hands the driver a finished statement. Values are literals the dialect
+ * escaped, not interpolation — the only thing assembled by hand here is the
+ * *column list*, whose names come from `tagColumnName`.
+ */
 export function buildCostExportQuery(q: CostExportRowQuery): BuiltQuery {
-  const params: Record<string, unknown> = { orgId: q.organizationId, from: q.from, to: q.to };
-  const where = ["organization_id = {orgId:String}", DAY_FROM_SQL, DAY_TO_SQL];
-
-  q.filters.forEach((f, i) => {
-    const expr =
-      f.dimension === "tag"
-        ? (() => {
-            params[`ftag${i}`] = f.tagKey ?? "";
-            return `tags[{ftag${i}:String}]`;
-          })()
-        : dimensionExpr(f.dimension);
-    if (!expr) return;
-    params[`fvals${i}`] = f.values;
-    where.push(`${expr} ${f.op === "in" ? "IN" : "NOT IN"} {fvals${i}:Array(String)}`);
-  });
-
-  if (q.chargeTypes && q.chargeTypes.length > 0) {
-    params["chargeTypes"] = q.chargeTypes;
-    where.push("charge_type IN {chargeTypes:Array(String)}");
-  }
-
   const columns = resolveColumns(q);
-  const dimSelect = q.dimensions
-    .filter((d) => dimensionExpr(d) !== "")
-    .map((d) => `${dimensionExpr(d)} AS ${dimensionColumn(d)}`);
-  const tagSelect = q.tagKeys.map((key, i) => {
-    params[`tk${i}`] = key;
-    return `tags[{tk${i}:String}] AS ${tagColumnName(key)}`;
-  });
 
-  const groupKeys = ["day", ...columns.dimensions, ...columns.tagColumns, "currency"];
+  const dimSelect = Object.fromEntries(
+    q.dimensions
+      .flatMap((d) => {
+        const expr = dimensionExpr(d);
+        return expr ? [[dimensionColumn(d), expr.as(dimensionColumn(d))] as const] : [];
+      })
+      // A dimension listed twice is one column, and `Object.fromEntries` would
+      // keep the last of the duplicates rather than erroring — this makes the
+      // projection agree with `resolveColumns`, which de-duplicates too.
+      .filter(([name], i, all) => all.findIndex(([n]) => n === name) === i),
+  );
+  const tagSelect = Object.fromEntries(
+    q.tagKeys.map((key) => [tagColumnName(key), tagExpr(key).as(tagColumnName(key))]),
+  );
 
-  const sql = `SELECT toString(day) AS day,
-            ${[...dimSelect, ...tagSelect].map((s) => `${s},`).join("\n            ")}
-            currency,
-            sum(${amountExpr(q.costBasis)}) AS amount,
-            sum(usage_amount) AS usage_amount,
-            -- Usage units only mean something when the grouped rows agree on
-            -- one. Summing hours and gigabytes into a single number and then
-            -- labelling it "hours" would be a lie a warehouse cannot detect,
-            -- so a mixed group reports its total with no unit at all.
-            if(uniqExact(usage_unit) = 1, any(usage_unit), '') AS usage_unit
-     FROM cost_daily FINAL
-     WHERE ${where.join(" AND ")}
-     GROUP BY ${groupKeys.join(", ")}
-     ORDER BY ${groupKeys.join(", ")}`;
+  // Grouped and ordered by the *output* column names, which for tag columns are
+  // the sanitised `tag_<key>` aliases rather than anything ClickHouse could
+  // resolve back to the map. Quoted, so a dimension named like a keyword cannot
+  // change the statement's meaning.
+  const groupKeys = ["day", ...columns.dimensions, ...columns.tagColumns, "currency"].map(
+    (name) => sql`${sql.identifier(name)}`,
+  );
 
-  return { sql, params, columns };
+  const query = new QueryBuilder()
+    .select({
+      day: sql<string>`toString(${costDaily.day})`.as("day"),
+      ...dimSelect,
+      ...tagSelect,
+      currency: costDaily.currency,
+      amount: sql<number>`sum(${amountExpr(q.costBasis)})`.as("amount"),
+      usage_amount: sql<number>`sum(${costDaily.usage_amount})`.as("usage_amount"),
+      // Usage units only mean something when the grouped rows agree on one.
+      // Summing hours and gigabytes into a single number and then labelling it
+      // "hours" would be a lie a warehouse cannot detect, so a mixed group
+      // reports its total with no unit at all.
+      usage_unit:
+        sql<string>`if(uniqExact(${costDaily.usage_unit}) = 1, any(${costDaily.usage_unit}), '')`.as(
+          "usage_unit",
+        ),
+    })
+    .from(costDaily)
+    .final()
+    .where(
+      and(
+        eq(costDaily.organization_id, q.organizationId),
+        dayRange(q.from, q.to),
+        ...q.filters.flatMap((f) => {
+          const expr = f.dimension === "tag" ? tagExpr(f.tagKey ?? "") : dimensionExpr(f.dimension);
+          return expr ? [membershipCondition(expr, f.op, f.values)] : [];
+        }),
+        q.chargeTypes && q.chargeTypes.length > 0
+          ? inArray(costDaily.charge_type, q.chargeTypes)
+          : undefined,
+      ),
+    )
+    .groupBy(...groupKeys)
+    .orderBy(...groupKeys.map((key) => asc(key)));
+
+  return { sql: query.toSQL().sql, columns };
 }
 
 /**
@@ -183,10 +212,9 @@ export async function* streamCostExportRows(
   q: CostExportRowQuery,
 ): AsyncGenerator<CostExportRow, void, undefined> {
   if (!isClickHouseConfigured()) return;
-  const { sql, params } = buildCostExportQuery(q);
+  const built = buildCostExportQuery(q);
   const rs = await getClickHouseClient().query({
-    query: sql,
-    query_params: params,
+    query: built.sql,
     format: "JSONEachRow",
   });
 

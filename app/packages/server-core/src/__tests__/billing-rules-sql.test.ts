@@ -19,22 +19,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { compileBillingRules, type BillingRule } from "@infrawrench/client-core";
 
-const captured: Array<{ sql: string; params: Record<string, unknown> }> = [];
+import { fakeClickHouse } from "./helpers/fake-clickhouse";
+
+/**
+ * A real Drizzle database over a fake driver, so `captured` holds the exact
+ * statement ClickHouse would receive — literals, escaping, `FINAL` and all.
+ */
+const ch = fakeClickHouse();
+const captured = ch.queries;
 
 vi.mock("../clickhouse/client", () => ({
   isClickHouseConfigured: () => true,
-  getClickHouseClient: () => ({
-    query: async ({
-      query,
-      query_params,
-    }: {
-      query: string;
-      query_params: Record<string, unknown>;
-    }) => {
-      captured.push({ sql: query, params: query_params });
-      return { json: async () => [] };
-    },
-  }),
+  getClickHouseDb: () => ch.db,
+  getClickHouseClient: () => ch.client,
 }));
 
 const { queryCosts, getShowbackSpend } = await import("../clickhouse/cost-readers");
@@ -72,15 +69,19 @@ type Value = string | number | boolean;
 
 /**
  * Evaluate a ClickHouse expression of the subset these readers emit:
- * `if(...)`, `multiIf(...)`, `mapContains(tags, {p:String})`,
- * `tags[{p:String}]`, bound parameters, columns, numeric literals, `''`, `*`,
- * `=`, `!=`, `AND`, `OR`, and a bare `1`.
+ * `if(...)`, `multiIf(...)`, `mapContains(tags, 'key')`, `tags['key']`,
+ * quoted string literals, backticked columns (qualified or not), numeric
+ * literals, `*`, `=`, `!=`/`<>`, `AND`/`and`, `OR`/`or`, and a bare `1`.
  *
  * Deliberately narrow. Anything the compiler starts emitting that is not in
  * this grammar throws rather than being silently skipped, so a new construct
  * cannot slip past these invariants unexamined.
+ *
+ * There are no bound parameters to resolve: ClickHouse has no prepared
+ * statements, so the dialect renders every rule value as an escaped literal.
+ * The escaping is what this evaluator's string parsing has to undo.
  */
-function evaluate(expr: string, r: Row, params: Record<string, unknown>): Value {
+function evaluate(expr: string, r: Row): Value {
   let i = 0;
   const s = expr;
 
@@ -95,27 +96,48 @@ function evaluate(expr: string, r: Row, params: Record<string, unknown>): Value 
     }
     return false;
   };
+  const eatWord = (word: string): boolean => eat(word) || eat(word.toLowerCase());
   const expect_ = (text: string) => {
     if (!eat(text)) throw new Error(`expected "${text}" at ${i} in: ${s}`);
   };
   const truthy = (v: Value): boolean => v === true || v === 1;
 
-  const param = (): Value => {
-    // `{name:String}` — the only way a rule's own values reach the SQL.
-    expect_("{");
-    const end = s.indexOf("}", i);
-    const [name] = s.slice(i, end).split(":");
-    i = end + 1;
-    const value = params[name!.trim()];
-    if (value === undefined) throw new Error(`unbound parameter ${name} in: ${s}`);
-    return value as Value;
+  /** A backticked column, optionally qualified: `` `cost_daily`.`amount` ``. */
+  const columnRef = (): string | null => {
+    ws();
+    const match = /^(?:`cost_daily`\.)?`([a-z_][a-z0-9_]*)`/.exec(s.slice(i));
+    if (!match) return null;
+    i += match[0].length;
+    return match[1]!;
+  };
+
+  /** A single-quoted literal, undoing the dialect's backslash escaping. */
+  const stringLiteral = (): string => {
+    ws();
+    if (s[i] !== "'") throw new Error(`expected a string literal at ${i} in: ${s}`);
+    i++;
+    let out = "";
+    while (i < s.length) {
+      if (s[i] === "\\") {
+        out += s[i + 1];
+        i += 2;
+        continue;
+      }
+      if (s[i] === "'") {
+        i++;
+        return out;
+      }
+      out += s[i];
+      i++;
+    }
+    throw new Error(`unterminated string in: ${s}`);
   };
 
   const orExpr = (): Value => {
     let left = andExpr();
     for (;;) {
       ws();
-      if (!eat("OR ")) return left;
+      if (!eatWord("OR ")) return left;
       const right = andExpr();
       left = truthy(left) || truthy(right);
     }
@@ -124,7 +146,7 @@ function evaluate(expr: string, r: Row, params: Record<string, unknown>): Value 
     let left = cmpExpr();
     for (;;) {
       ws();
-      if (!eat("AND ")) return left;
+      if (!eatWord("AND ")) return left;
       const right = cmpExpr();
       left = truthy(left) && truthy(right);
     }
@@ -132,8 +154,10 @@ function evaluate(expr: string, r: Row, params: Record<string, unknown>): Value 
   const cmpExpr = (): Value => {
     const left = mulExpr();
     ws();
-    if (eat("!=")) return left !== mulExpr();
-    // Guard against consuming the `=` of a `!=` — `!=` is tried first.
+    // `<>` is what Drizzle's `ne()` renders; `!=` is what the hand-written
+    // fragments use. ClickHouse accepts both and they mean the same thing.
+    if (eat("!=") || eat("<>")) return left !== mulExpr();
+    // Guard against consuming the `=` of a `!=` — both are tried first.
     if (eat("=")) return left === mulExpr();
     return left;
   };
@@ -174,30 +198,31 @@ function evaluate(expr: string, r: Row, params: Record<string, unknown>): Value 
       }
       return arms[arms.length - 1]!;
     }
-    if (eat("mapContains(tags,")) {
-      const key = String(param());
+    if (eat("mapContains(")) {
+      const column = columnRef();
+      if (column !== "tags") throw new Error(`mapContains on "${column}" in: ${s}`);
+      expect_(",");
+      const key = stringLiteral();
       expect_(")");
       return Object.prototype.hasOwnProperty.call(r.tags, key);
     }
-    if (eat("tags[")) {
-      const key = String(param());
-      expect_("]");
-      return r.tags[key] ?? "";
-    }
     ws();
-    if (s[i] === "{") return param();
-    if (eat("''")) return "";
+    if (s[i] === "'") return stringLiteral();
     const numberMatch = /^-?\d+(\.\d+)?/.exec(s.slice(i));
     if (numberMatch) {
       i += numberMatch[0].length;
       return Number(numberMatch[0]);
     }
-    const identMatch = /^[a-z_][a-z0-9_]*/.exec(s.slice(i));
-    if (identMatch) {
-      i += identMatch[0].length;
-      const name = identMatch[0];
-      if (!(name in r)) throw new Error(`unknown column "${name}" in: ${s}`);
-      return (r as unknown as Record<string, Value>)[name]!;
+    const column = columnRef();
+    if (column !== null) {
+      if (eat("[")) {
+        if (column !== "tags") throw new Error(`indexed "${column}" in: ${s}`);
+        const key = stringLiteral();
+        expect_("]");
+        return r.tags[key] ?? "";
+      }
+      if (!(column in r)) throw new Error(`unknown column "${column}" in: ${s}`);
+      return (r as unknown as Record<string, Value>)[column]!;
     }
     throw new Error(`cannot parse at ${i} in: ${s}`);
   };
@@ -208,9 +233,9 @@ function evaluate(expr: string, r: Row, params: Record<string, unknown>): Value 
   return value;
 }
 
-/** The expression a `SELECT` column is aliased from, e.g. `AS amount`. */
+/** The expression a `select` column is aliased from, e.g. ``as `amount` ``. */
 function selectExpr(sql: string, alias: string): string {
-  const at = sql.indexOf(` AS ${alias}`);
+  const at = sql.indexOf(` as \`${alias}\``);
   if (at < 0) throw new Error(`no column aliased ${alias} in:\n${sql}`);
   let depth = 0;
   let start = 0;
@@ -224,9 +249,9 @@ function selectExpr(sql: string, alias: string): string {
     }
   }
   // `>=` and not `>`: the first column starts at index 0 with no comma before
-  // it, so `start` is still 0 and the SELECT keyword itself must be stripped.
-  const select = sql.lastIndexOf("SELECT", at);
-  if (select >= start) start = select + "SELECT".length;
+  // it, so `start` is still 0 and the `select` keyword itself must be stripped.
+  const select = sql.lastIndexOf("select", at);
+  if (select >= start) start = select + "select".length;
   return sql.slice(start, at).trim();
 }
 
@@ -274,7 +299,7 @@ const baseQuery = {
 };
 
 beforeEach(() => {
-  captured.length = 0;
+  ch.reset();
   seq = 0;
 });
 
@@ -291,7 +316,7 @@ describe("rules compile into the query, not around it", () => {
     await queryCosts("org", { ...baseQuery, adjustments: compileBillingRules(rules) });
 
     expect(captured).toHaveLength(1);
-    expect(captured[0]!.sql.match(/FROM cost_daily/g)).toHaveLength(1);
+    expect(captured[0]!.match(/from `cost_daily`/g)).toHaveLength(1);
   });
 
   it("keeps the showback report to one scan with rules layered on", async () => {
@@ -304,15 +329,19 @@ describe("rules compile into the query, not around it", () => {
       compileBillingRules([markup(15), move("cost_centre", "cc-shared", { service: "AmazonEKS" })]),
     );
     expect(captured).toHaveLength(1);
-    expect(captured[0]!.sql.match(/FROM cost_daily/g)).toHaveLength(1);
+    expect(captured[0]!.match(/from `cost_daily`/g)).toHaveLength(1);
   });
 
   it("emits the statement it always did when no rules are passed", async () => {
     await queryCosts("org", baseQuery);
-    const withoutRules = captured[0]!.sql;
+    const withoutRules = captured[0]!;
+    // Not projected at all, rather than projected as a zero. A cost reader that
+    // returns a plausible 0 for "what we collected" is worse than one that
+    // returns nothing: `undefined` fails at the first arithmetic, a zero renders
+    // as a number somebody bills against.
     expect(withoutRules).not.toContain("raw_amount");
-    expect(unsum(selectExpr(withoutRules, "amount"))).toBe("amount");
-    expect(selectExpr(withoutRules, "grp")).toBe("account_id");
+    expect(unsum(selectExpr(withoutRules, "amount"))).toBe("`cost_daily`.`amount`");
+    expect(selectExpr(withoutRules, "grp")).toBe("`account_id`");
   });
 });
 
@@ -324,9 +353,9 @@ describe("collected spend is never touched", () => {
       ...baseQuery,
       adjustments: compileBillingRules([markup(50), move("account", "acct-z")]),
     });
-    const { sql } = captured[0]!;
+    const sql = captured[0]!;
     // Not "contains amount" — *is* the column, with nothing applied to it.
-    expect(unsum(selectExpr(sql, "raw_amount"))).toBe("amount");
+    expect(unsum(selectExpr(sql, "raw_amount"))).toBe("`cost_daily`.`amount`");
     expect(captured).toHaveLength(1);
   });
 
@@ -337,8 +366,8 @@ describe("collected spend is never touched", () => {
       reallocations: [],
       fixed: [],
     });
-    for (const { sql } of captured) {
-      expect(sql.trimStart().startsWith("SELECT")).toBe(true);
+    for (const sql of captured) {
+      expect(sql.trimStart().startsWith("select")).toBe(true);
       expect(sql).not.toMatch(/\b(INSERT|ALTER|UPDATE|DELETE)\b/i);
     }
   });
@@ -349,7 +378,7 @@ describe("collected spend is never touched", () => {
       costBasis: "amortized",
       adjustments: compileBillingRules([markup(10)]),
     });
-    const { sql } = captured[0]!;
+    const sql = captured[0]!;
     const raw = unsum(selectExpr(sql, "raw_amount"));
     expect(raw).toContain("amortized_amount");
     expect(unsum(selectExpr(sql, "amount"))).toContain(raw);
@@ -360,10 +389,10 @@ describe("collected spend is never touched", () => {
 
 describe("percentage rules compose", () => {
   async function factorFor(rules: BillingRule[], r: Row): Promise<number> {
-    captured.length = 0;
+    ch.reset();
     await queryCosts("org", { ...baseQuery, adjustments: compileBillingRules(rules) });
-    const { sql, params } = captured[0]!;
-    return Number(evaluate(unsum(selectExpr(sql, "amount")), r, params)) / r.amount;
+    const sql = captured[0]!;
+    return Number(evaluate(unsum(selectExpr(sql, "amount")), r)) / r.amount;
   }
 
   it("multiplies two matching 10% markups to 21%, not 20%", async () => {
@@ -430,8 +459,8 @@ describe("reallocation moves money without creating or destroying it", () => {
         move("cost_centre", "cc-platform"),
       ]),
     });
-    const { sql } = captured[0]!;
-    expect(unsum(selectExpr(sql, "amount"))).toBe("amount");
+    const sql = captured[0]!;
+    expect(unsum(selectExpr(sql, "amount"))).toBe("`cost_daily`.`amount`");
     expect(selectExpr(sql, "grp")).toContain("multiIf");
   });
 
@@ -482,17 +511,17 @@ describe("reallocation moves money without creating or destroying it", () => {
         );
       }
 
-      captured.length = 0;
+      ch.reset();
       await queryCosts("org", { ...baseQuery, adjustments: compileBillingRules(rules) });
-      const { sql, params } = captured[0]!;
+      const sql = captured[0]!;
       const grpExpr = selectExpr(sql, "grp");
       const moneyExpr = unsum(selectExpr(sql, "amount"));
 
       const before = rows.reduce((sum, r) => sum + r.amount, 0);
       const byGroup = new Map<string, number>();
       for (const r of rows) {
-        const key = String(evaluate(grpExpr, r, params));
-        byGroup.set(key, (byGroup.get(key) ?? 0) + Number(evaluate(moneyExpr, r, params)));
+        const key = String(evaluate(grpExpr, r));
+        byGroup.set(key, (byGroup.get(key) ?? 0) + Number(evaluate(moneyExpr, r)));
       }
       const after = [...byGroup.values()].reduce((sum, v) => sum + v, 0);
       expect(after).toBeCloseTo(before, 8);
@@ -509,9 +538,9 @@ describe("reallocation moves money without creating or destroying it", () => {
         move("account", "acct-second", { service: "AmazonEKS" }, 1),
       ]),
     });
-    const { sql, params } = captured[0]!;
+    const sql = captured[0]!;
     const r = row({ service: "AmazonEKS", account_id: "acct-a" });
-    expect(evaluate(selectExpr(sql, "grp"), r, params)).toBe("acct-first");
+    expect(evaluate(selectExpr(sql, "grp"), r)).toBe("acct-first");
   });
 
   it("lets a cost-centre rule consume a row the account expression then leaves alone", async () => {
@@ -526,9 +555,9 @@ describe("reallocation moves money without creating or destroying it", () => {
     await queryCosts("org", { ...baseQuery, adjustments: compileBillingRules(rules) });
     const q = captured[0]!;
     const r = row({ service: "AmazonEKS", account_id: "acct-a" });
-    expect(evaluate(selectExpr(q.sql, "grp"), r, q.params)).toBe("acct-a");
+    expect(evaluate(selectExpr(q, "grp"), r)).toBe("acct-a");
 
-    captured.length = 0;
+    ch.reset();
     await getShowbackSpend(
       "org",
       [{ costCentreId: "cc-original", match: {} }],
@@ -538,7 +567,7 @@ describe("reallocation moves money without creating or destroying it", () => {
       compileBillingRules(rules),
     );
     const s = captured[0]!;
-    expect(evaluate(selectExpr(s.sql, "centre"), r, s.params)).toBe("cc-platform");
+    expect(evaluate(selectExpr(s, "centre"), r)).toBe("cc-platform");
   });
 
   it("falls through to the allocation rules for a row no billing rule claims", async () => {
@@ -550,10 +579,8 @@ describe("reallocation moves money without creating or destroying it", () => {
       undefined,
       compileBillingRules([move("cost_centre", "cc-shared", { service: "AmazonEKS" })]),
     );
-    const { sql, params } = captured[0]!;
-    expect(evaluate(selectExpr(sql, "centre"), row({ service: "AmazonEC2" }), params)).toBe(
-      "cc-original",
-    );
+    const sql = captured[0]!;
+    expect(evaluate(selectExpr(sql, "centre"), row({ service: "AmazonEC2" }))).toBe("cc-original");
   });
 });
 
@@ -568,10 +595,10 @@ describe("a markup and a reallocation on the same row", () => {
         move("account", "acct-platform", { service: "AmazonEKS" }, 1),
       ]),
     });
-    const { sql, params } = captured[0]!;
+    const sql = captured[0]!;
     const r = row({ amount: 500, service: "AmazonEKS", account_id: "acct-a" });
-    expect(evaluate(selectExpr(sql, "grp"), r, params)).toBe("acct-platform");
-    expect(evaluate(unsum(selectExpr(sql, "amount")), r, params)).toBeCloseTo(600, 10);
-    expect(evaluate(unsum(selectExpr(sql, "raw_amount")), r, params)).toBe(500);
+    expect(evaluate(selectExpr(sql, "grp"), r)).toBe("acct-platform");
+    expect(evaluate(unsum(selectExpr(sql, "amount")), r)).toBeCloseTo(600, 10);
+    expect(evaluate(unsum(selectExpr(sql, "raw_amount")), r)).toBe(500);
   });
 });

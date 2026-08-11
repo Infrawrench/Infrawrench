@@ -26,7 +26,12 @@ const db = {
 };
 vi.mock("../db/client", () => ({ db }));
 vi.mock("../db/schema", () => ({ accounts: { id: "id" } }));
-vi.mock("drizzle-orm", () => ({ eq: (a: unknown, b: unknown) => ({ eq: [a, b] }) }));
+// Partial: the ClickHouse schema is built with `sql` at module load, so a
+// wholesale mock of drizzle-orm takes the whole import graph down with it.
+vi.mock("drizzle-orm", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("drizzle-orm")>()),
+  eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
+}));
 
 const insertCostRows = vi.fn(async () => undefined);
 vi.mock("../clickhouse/cost-writers", () => ({

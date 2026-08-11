@@ -38,7 +38,10 @@ vi.mock("@infrawrench/server-core/db/schema", () => ({
   },
 }));
 
-vi.mock("drizzle-orm", () => ({
+// Partial: the ClickHouse schema is built with `sql` at module load, so a
+// wholesale mock of drizzle-orm takes the whole import graph down with it.
+vi.mock("drizzle-orm", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("drizzle-orm")>()),
   eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
 }));
 
