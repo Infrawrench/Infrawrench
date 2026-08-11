@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   changeCostImpactAnnotationText,
+  chunkChangeImpactIds,
   clampChangeImpactWindowDays,
   costBasisLabel,
+  MAX_CHANGE_IMPACT_BATCH,
   formatChangeCostImpact,
   formatSignedPerDay,
   parseCostBasis,
@@ -126,6 +128,42 @@ describe("clampChangeImpactWindowDays", () => {
     expect(clampChangeImpactWindowDays(1)).toBe(2);
     expect(clampChangeImpactWindowDays(400)).toBe(30);
     expect(clampChangeImpactWindowDays(14)).toBe(14);
+  });
+});
+
+describe("chunkChangeImpactIds", () => {
+  const ids = (n: number) => Array.from({ length: n }, (_, i) => `chg-${i}`);
+
+  it("covers every id past the batch cap instead of truncating to one request", () => {
+    // The regression: an infinite-scrolling feed used to send
+    // `ids.slice(0, MAX_CHANGE_IMPACT_BATCH)`, so every row past the cap came
+    // back with no impact — indistinguishable on screen from "this resource has
+    // no cost data". Silently omitting a measurable impact is the one failure
+    // this feature exists to avoid, so the ids are chunked, never cut.
+    const three = ids(MAX_CHANGE_IMPACT_BATCH * 3);
+    const chunks = chunkChangeImpactIds(three);
+    expect(chunks.flat()).toEqual(three);
+    expect(chunks).toHaveLength(3);
+    expect(chunks.every((c) => c.length <= MAX_CHANGE_IMPACT_BATCH)).toBe(true);
+  });
+
+  it("covers a partial final page — three 25-row pages against a 50 cap", () => {
+    const loaded = ids(75);
+    const chunks = chunkChangeImpactIds(loaded);
+    expect(chunks.flat()).toEqual(loaded);
+    expect(chunks.map((c) => c.length)).toEqual([50, 25]);
+  });
+
+  it("leaves earlier chunks byte-identical when a page is appended", () => {
+    // This is what lets a caller key one query per chunk: loading more must
+    // refetch only the new chunk, not re-measure everything already on screen.
+    const first = chunkChangeImpactIds(ids(50));
+    const afterLoadMore = chunkChangeImpactIds(ids(75));
+    expect(afterLoadMore[0]).toEqual(first[0]);
+  });
+
+  it("issues nothing for an empty feed", () => {
+    expect(chunkChangeImpactIds([])).toEqual([]);
   });
 });
 

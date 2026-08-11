@@ -203,6 +203,29 @@ export function clampChangeImpactWindowDays(days: number | undefined): number {
 }
 
 /**
+ * Split ids into request-sized batches, **covering every one of them**.
+ *
+ * The endpoint caps a request at {@link MAX_CHANGE_IMPACT_BATCH}, which is one
+ * page of the web feed — so a paginated caller needs no batching at all. An
+ * infinite-scrolling one does, and the tempting `ids.slice(0, MAX)` is the bug
+ * this function exists to make impossible: past the cap every further row goes
+ * out with no cost line, which is indistinguishable from "this resource has no
+ * cost data". Silently omitting a measurable impact is the exact failure this
+ * whole feature is arranged to avoid, so the ids are chunked rather than cut.
+ *
+ * Chunks are cut from the **start** of the list, so appending a page leaves the
+ * earlier chunks byte-identical and a caller keying a query per chunk refetches
+ * only the new one.
+ */
+export function chunkChangeImpactIds(ids: readonly string[]): string[][] {
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += MAX_CHANGE_IMPACT_BATCH) {
+    chunks.push(ids.slice(i, i + MAX_CHANGE_IMPACT_BATCH));
+  }
+  return chunks;
+}
+
+/**
  * Validate a wire `costBasis`. Absent means `cash`, the documented default;
  * anything else present is `null` so the caller can 400 rather than silently
  * answering a different question than the one asked.

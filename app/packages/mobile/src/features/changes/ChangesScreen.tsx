@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
 import {
+  chunkChangeImpactIds,
   fetchChangeCostImpacts,
   fetchOrgChanges,
   formatChangeCostImpact,
-  MAX_CHANGE_IMPACT_BATCH,
   summarizeChange,
   type Account,
   type ChangeCostImpact,
@@ -127,26 +127,42 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
 
   /**
    * Cost impact for the rows on screen — "what did this change do to the run
-   * rate?". One batched request, capped at the endpoint's own batch size, and
-   * deliberately its own query: a member without `costs:read` still gets the
-   * feed, they just get no cost line.
+   * rate?". Deliberately its own query rather than part of the feed: a member
+   * without `costs:read` still gets the feed, they just get no cost line.
    *
+   * **Every loaded row is covered, not just the first request's worth.** The
+   * endpoint caps a batch at `MAX_CHANGE_IMPACT_BATCH`, and this screen scrolls
+   * infinitely, so the ids are chunked (`chunkChangeImpactIds`) and one query is
+   * keyed per chunk. Truncating instead would leave every row past the cap with
+   * no cost line — which reads as "no cost data for this resource" and is the
+   * silent omission the whole feature exists to avoid.
+   *
+   * Chunks are cut from the start of the list, so loading another page leaves
+   * the earlier chunks' keys unchanged and only the new chunk is fetched.
    * Nothing is cached server-side (the answer is recomputed as provider cost
-   * arrives), so this key is the visible ids and refetches with the page.
+   * arrives), so a refetch is always the current answer.
    */
-  const impactIds = entries.slice(0, MAX_CHANGE_IMPACT_BATCH).map((e) => e.id);
-  const impacts = useQuery({
-    queryKey: ["change-cost-impacts", orgId, impactIds],
-    enabled: impactIds.length > 0,
-    queryFn: async () => {
-      const rows = await fetchChangeCostImpacts(api, orgId, { changeIds: impactIds });
-      const byId: Record<string, ChangeCostImpact> = {};
-      for (const row of rows) byId[row.changeId] = row.impact;
-      return byId;
-    },
-    // A cost failure must cost the feed nothing at all.
-    retry: false,
+  const impactChunks = useMemo(
+    () => chunkChangeImpactIds(entries.map((e) => e.id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `entries` is a
+    // fresh array each render; the ids are what actually change.
+    [entries.map((e) => e.id).join(",")],
+  );
+  const impactQueries = useQueries({
+    queries: impactChunks.map((changeIds) => ({
+      queryKey: ["change-cost-impacts", orgId, changeIds],
+      queryFn: () => fetchChangeCostImpacts(api, orgId, { changeIds }),
+      // A cost failure must cost the feed nothing at all.
+      retry: false,
+    })),
   });
+  const impacts = useMemo(() => {
+    const byId: Record<string, ChangeCostImpact> = {};
+    for (const query of impactQueries) {
+      for (const row of query.data ?? []) byId[row.changeId] = row.impact;
+    }
+    return byId;
+  }, [impactQueries]);
 
   const filters = (
     <View style={{ gap: spacing.sm }}>
@@ -234,7 +250,7 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
             <ChangeEntryRow
               key={entry.id}
               entry={entry}
-              impact={impacts.data?.[entry.id]}
+              impact={impacts[entry.id]}
               expanded={expandedId === entry.id}
               onToggle={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
               onReverted={() => void feed.refetch()}
