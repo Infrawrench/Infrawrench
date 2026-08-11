@@ -119,6 +119,57 @@ jobs:
           go vet ./...
           go test ./... -count=1
 
+      # Dry-run the release the satellite is about to perform.
+      #
+      # This exists because the alternative to catching a packaging mistake here
+      # is catching it at the Registry, after the satellite has been pushed and
+      # tagged — and a released tag is never moved, so the only way out of that
+      # is burning a version number. v0.1.0 was lost exactly that way: the
+      # manifest was attached to the release but absent from _SHA256SUMS, which
+      # nothing before the Registry looks at.
+      #
+      # Snapshot mode, so no tag and no signing; `--skip=sign,publish` keeps it
+      # off the network. It costs about two minutes and runs once per version
+      # bump, which is the right trade against a burnt release.
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          workdir: terraform-provider-infrawrench
+          args: release --snapshot --clean --skip=sign,publish
+
+      - name: Check the release is ingestible
+        working-directory: terraform-provider-infrawrench
+        run: |
+          set -euo pipefail
+          SUMS="$(ls dist/*_SHA256SUMS)"
+
+          # The Registry verifies every asset it ingests against this file and
+          # takes nothing on trust, so an artifact that is published but not
+          # checksummed fails the whole release. The manifest is the one that
+          # gets missed, because it is the only asset GoReleaser does not build
+          # itself — it has to be named under `checksum.extra_files` as well as
+          # `release.extra_files`, and declaring it in only one of the two looks
+          # entirely correct.
+          if ! grep -q "terraform-provider-infrawrench_.*_manifest\.json$" "$SUMS"; then
+            echo "::error::The registry manifest is missing from $SUMS. Add it to checksum.extra_files in .goreleaser.yml — release.extra_files alone attaches it without checksumming it, and the Registry rejects that."
+            cat "$SUMS"
+            exit 1
+          fi
+
+          # ProjectName is pinned in .goreleaser.yml precisely so this holds
+          # wherever the build runs; unpinned it resolves to the monorepo's name
+          # and every artifact is published under something the Registry does
+          # not recognise.
+          if ls dist/*.zip | grep -qv "^dist/terraform-provider-infrawrench_"; then
+            echo "::error::Some archives are not named terraform-provider-infrawrench_*. Check project_name in .goreleaser.yml."
+            ls dist/*.zip
+            exit 1
+          fi
+
+          echo "Release artifacts look ingestible:"
+          cat "$SUMS"
+          rm -rf dist
+
       # OIDC cannot grant write access to a different repository, so a stored
       # credential is unavoidable here. Same GitHub App the SDK satellites use:
       # installation-scoped and expires in an hour. The app's installation must

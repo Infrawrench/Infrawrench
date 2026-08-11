@@ -14,6 +14,20 @@
 # ignores.
 version: 2
 
+# Stated rather than inferred, and that matters more than it looks.
+#
+# GoReleaser defaults ProjectName to the repository name, which in the satellite
+# happens to be right — so every `name_template` below quietly depended on the
+# satellite being called `terraform-provider-infrawrench` and on nobody ever
+# building from anywhere else. Run from the monorepo it resolves to
+# `Infrawrench`, and every artifact comes out under a name the Registry does not
+# recognise.
+#
+# Pinning it makes the naming contract a property of this file instead of a
+# property of the checkout, which is also what lets the monorepo dry-run a
+# release and check the names it will actually publish under.
+project_name: terraform-provider-infrawrench
+
 before:
   hooks:
     - go mod tidy
@@ -53,6 +67,22 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
+  # The manifest has to be listed here *as well as* under `release` below, and
+  # the duplication is the whole point rather than an oversight.
+  #
+  # `release.extra_files` attaches a file to the GitHub release; it does not
+  # feed the checksum step, which by default only sees the archives GoReleaser
+  # built. Declaring the manifest in one place and not the other produces a
+  # release that looks complete — the file is right there — and that the
+  # Registry rejects with "missing SHA256 checksum for
+  # terraform-provider-infrawrench_X_manifest.json", because it verifies every
+  # asset it ingests against _SHA256SUMS and will not take one on trust.
+  #
+  # Keep the glob and name_template identical in both blocks. A mismatch
+  # checksums a name nothing was published under, which fails the same way.
+  extra_files:
+    - glob: terraform-registry-manifest.json
+      name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
   name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
   algorithm: sha256
 
