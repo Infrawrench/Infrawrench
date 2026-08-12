@@ -105,7 +105,6 @@ export class InProcessAgent extends BaseAgent<ParsedKey> {
 
   private handleMessage(type: number, body: Buffer): Buffer {
     if (type === SSH_AGENTC_REQUEST_IDENTITIES) {
-      console.log(`[ssh-agent] REQUEST_IDENTITIES → ${this.keys.length} key(s)`);
       return buildIdentitiesAnswer(this.keys);
     }
     if (type === SSH_AGENTC_SIGN_REQUEST) {
@@ -166,7 +165,6 @@ export class InProcessAgent extends BaseAgent<ParsedKey> {
 
     const blob = Buffer.concat([sshString(Buffer.from(formatId, "utf8")), sshString(sigBytes)]);
     const payload = Buffer.concat([Buffer.from([SSH_AGENT_SIGN_RESPONSE]), sshString(blob)]);
-    console.log(`[ssh-agent] SIGN_REQUEST → ${formatId} (${sigBytes.length} bytes)`);
     this.reportSign({ keyType: key.type, failureReason: null, signatureFormat: formatId });
     return frame(payload);
   }
