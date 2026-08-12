@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { applyChosenParameters, type CaptureDraft } from "@infrawrench/client-core";
 import type { EnvironmentAccount, EnvironmentsClient, EnvironmentTemplate } from "./types.js";
 
@@ -26,19 +26,19 @@ export function CaptureTemplateModal({
   onClose,
   onCreated,
 }: CaptureTemplateModalProps) {
-  const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
+  // Only an explicit choice is state; the effective account falls back to the
+  // first one during render, so accounts arriving after mount need no
+  // catch-up effect (and no frame where the select shows nothing).
+  const [chosenAccountId, setChosenAccountId] = useState<string | null>(null);
+  const accountId = chosenAccountId ?? accounts[0]?.id ?? "";
   const [tagKey, setTagKey] = useState("");
   const [tagValue, setTagValue] = useState("");
   const [draft, setDraft] = useState<CaptureDraft | null>(null);
-  const [chosen, setChosen] = useState<string[]>([]);
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (accountId === "" && accounts[0]) setAccountId(accounts[0].id);
-  }, [accounts, accountId]);
 
   const preview = async () => {
     setBusy(true);
@@ -50,7 +50,7 @@ export function CaptureTemplateModal({
         ...(tagValue.trim() ? { tagValue: tagValue.trim() } : {}),
       });
       setDraft(next);
-      setChosen(next.suggestedParameters.map((p) => p.key));
+      setChosen(new Set(next.suggestedParameters.map((p) => p.key)));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Capture failed");
     } finally {
@@ -63,7 +63,7 @@ export function CaptureTemplateModal({
     setBusy(true);
     setError(null);
     try {
-      const applied = applyChosenParameters(draft, chosen);
+      const applied = applyChosenParameters(draft, [...chosen]);
       const created = await client.createTemplate({
         name: name.trim(),
         description: description.trim() || null,
@@ -102,7 +102,7 @@ export function CaptureTemplateModal({
             Account
             <select
               value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
+              onChange={(e) => setChosenAccountId(e.target.value)}
               className="mt-1 w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface"
             >
               {accounts.map((account) => (
@@ -203,13 +203,14 @@ export function CaptureTemplateModal({
                       <label className="flex items-center gap-2 text-xs text-on-surface">
                         <input
                           type="checkbox"
-                          checked={chosen.includes(parameter.key)}
+                          checked={chosen.has(parameter.key)}
                           onChange={(e) =>
-                            setChosen((prev) =>
-                              e.target.checked
-                                ? [...prev, parameter.key]
-                                : prev.filter((k) => k !== parameter.key),
-                            )
+                            setChosen((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(parameter.key);
+                              else next.delete(parameter.key);
+                              return next;
+                            })
                           }
                         />
                         {parameter.label}

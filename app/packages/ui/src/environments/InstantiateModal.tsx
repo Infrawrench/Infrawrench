@@ -54,7 +54,10 @@ export function InstantiateModal({
   onCreated,
 }: InstantiateModalProps) {
   const [name, setName] = useState("");
-  const [ttlHours, setTtlHours] = useState(settings.defaultTtlHours);
+  // null is "the field is empty". Coercing an empty input with Number() would
+  // store 0, which both renders as a value the user never typed and reads as
+  // "zero hours" rather than "unanswered".
+  const [ttlHours, setTtlHours] = useState<number | null>(settings.defaultTtlHours);
   const [values, setValues] = useState<Record<string, string>>(() =>
     resolveParameterValues(template, {}),
   );
@@ -63,7 +66,8 @@ export function InstantiateModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const ttlProblem = validateTtlHours(ttlHours, settings);
+  const ttlProblem =
+    ttlHours === null ? "A time-to-live is required." : validateTtlHours(ttlHours, settings);
   const parameterProblem = validateParameterValues(template, values);
 
   const presets = useMemo(
@@ -94,7 +98,7 @@ export function InstantiateModal({
   }, [client, template.id, values, parameterProblem]);
 
   const submit = async () => {
-    if (!client.instantiate) return;
+    if (!client.instantiate || ttlHours === null) return;
     setBusy(true);
     setError(null);
     try {
@@ -156,8 +160,11 @@ export function InstantiateModal({
               type="number"
               min={ENVIRONMENT_LIMITS.minTtlHours}
               max={settings.maxTtlHours}
-              value={ttlHours}
-              onChange={(e) => setTtlHours(Number(e.target.value))}
+              value={ttlHours ?? ""}
+              onChange={(e) => {
+                const parsed = Number(e.target.value);
+                setTtlHours(e.target.value === "" || Number.isNaN(parsed) ? null : parsed);
+              }}
               className="w-20 rounded-lg border border-border bg-surface px-2 py-1 text-xs text-on-surface"
               aria-label="Time to live in hours"
             />
@@ -238,7 +245,7 @@ export function InstantiateModal({
               )}
             </p>
           )}
-          {estimate && estimate.monthlyAmount !== null && (
+          {estimate && estimate.monthlyAmount !== null && ttlHours !== null && (
             <p className="text-xs text-on-surface-faint">
               Charged only while it lives — {ttlHours}h is about{" "}
               {((estimate.monthlyAmount * ttlHours) / 730).toFixed(2)} {estimate.currency}.
