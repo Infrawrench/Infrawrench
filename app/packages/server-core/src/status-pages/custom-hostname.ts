@@ -253,7 +253,9 @@ async function persistHostnameFields(
 }
 
 /** Keep Workers KV in sync when the slug changes (hostname unchanged). */
-export async function syncCustomHostnameKvForPage(page: StatusPage): Promise<void> {
+export async function syncCustomHostnameKvForPage(
+  page: Pick<StatusPage, "customHostname" | "slug">,
+): Promise<void> {
   if (!page.customHostname) return;
   // Hostname exists → CF was configured when it was attached. Missing config
   // must fail the rotation so we never leave a live KV mapping on the old slug.
