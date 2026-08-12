@@ -7,8 +7,8 @@
  *
  * - `GET /api/status` (and `/api/status/*`) → `ORIGIN/api/status/{slug}`
  * - static assets → `ORIGIN` unchanged
- * - everything else → SPA shell from `ORIGIN/` so the client can detect a
- *   non-app host and render only the public status view
+ * - document requests → SPA shell from `ORIGIN/`, with a marker meta tag so
+ *   the client knows this is a vanity host (not a staging/self-hosted app URL)
  *
  * Hostname→slug lives in KV on purpose: the app must never trust a raw Host
  * header for public lookup (spoofing on app.infrawrench.com).
@@ -19,6 +19,10 @@ export interface Env {
   /** App origin that serves the SPA + `/api/status/:slug`, no trailing slash. */
   ORIGIN: string;
 }
+
+/** Injected into HTML so the SPA enters public custom-host mode. */
+export const STATUS_HOST_META =
+  '<meta name="iw-status-host" content="1" data-iw-status-host="1" />';
 
 function normalizeHost(hostHeader: string | null): string | null {
   if (!hostHeader) return null;
@@ -49,8 +53,29 @@ async function proxy(origin: string, pathAndQuery: string, request: Request): Pr
     method: request.method,
     headers,
     redirect: "manual",
-    // Document and API reads are GET/HEAD only in practice; reject bodies
-    // rather than stream them through.
+  });
+}
+
+/**
+ * Mark HTML responses so the SPA does not rely on a hard-coded app-host list.
+ * Staging / self-hosted deployments keep the authenticated shell; only pages
+ * served through this Worker enter custom-host mode.
+ */
+export async function markStatusHostHtml(response: Response): Promise<Response> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("text/html")) return response;
+
+  const html = await response.text();
+  const marked = html.includes("iw-status-host")
+    ? html
+    : html.replace(/<head([^>]*)>/i, `<head$1>${STATUS_HOST_META}`);
+
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  return new Response(marked, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
   });
 }
 
@@ -73,10 +98,10 @@ export default {
       return proxy(env.ORIGIN, `${pathname}${search}`, request);
     }
 
-    // Document requests: serve the SPA shell. The client sees this host as a
-    // custom status domain and fetches `/api/status` (handled above).
     if (request.method === "GET" || request.method === "HEAD") {
-      return proxy(env.ORIGIN, `/${search}`, request);
+      const upstream = await proxy(env.ORIGIN, `/${search}`, request);
+      if (request.method === "HEAD") return upstream;
+      return markStatusHostHtml(upstream);
     }
 
     return new Response("Method not allowed", { status: 405 });

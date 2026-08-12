@@ -330,15 +330,27 @@ export async function rotateStatusPageSlugRecord(
 ): Promise<StatusPage> {
   const existing = await getStatusPageWire(organizationId, pageId);
   if (!existing) throw new StatusPageInputError("Status page not found", 404);
+  const previousSlug = existing.slug;
+  const nextSlug = generateStatusPageSlug();
   await db
     .update(statusPages)
-    .set({ slug: generateStatusPageSlug(), updatedAt: new Date() })
+    .set({ slug: nextSlug, updatedAt: new Date() })
     .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)));
   const updated = (await getStatusPageWire(organizationId, pageId))!;
   // Vanity hosts resolve Host → slug via Workers KV; keep the mapping current.
+  // If KV rejects the write, roll the slug back so we never report success with
+  // a vanity host still pointing at the revoked URL.
   if (updated.customHostname) {
-    const { syncCustomHostnameKvForPage } = await import("./custom-hostname");
-    await syncCustomHostnameKvForPage(updated);
+    try {
+      const { syncCustomHostnameKvForPage } = await import("./custom-hostname");
+      await syncCustomHostnameKvForPage(updated);
+    } catch (err) {
+      await db
+        .update(statusPages)
+        .set({ slug: previousSlug, updatedAt: new Date() })
+        .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)));
+      throw err;
+    }
   }
   return updated;
 }

@@ -256,35 +256,27 @@ async function persistHostnameFields(
 export async function syncCustomHostnameKvForPage(page: StatusPage): Promise<void> {
   if (!page.customHostname) return;
   const cfg = readConfig();
+  // No CF config: nothing to sync (local/dev). Vanity hosts are not live there.
   if (!cfg) return;
-  try {
-    await kvPut(cfg, page.customHostname, page.slug);
-  } catch (err) {
-    console.error("[status-pages] KV sync after slug rotate failed:", err);
-  }
+  await kvPut(cfg, page.customHostname, page.slug);
 }
 
-/** Best-effort teardown of CF + KV for a page that still has hostname columns. */
+/**
+ * Remove the Cloudflare Custom Hostname and KV mapping.
+ *
+ * Failures propagate: callers must not clear the local hostname columns (or
+ * delete the page) until this succeeds, or the external resources become
+ * unrecoverable orphans that still answer on the vanity host.
+ */
 export async function removeCustomHostnameInfra(
   hostname: string | null,
   cfId: string | null,
 ): Promise<void> {
   const cfg = readConfig();
   if (!cfg) return;
-  if (hostname) {
-    try {
-      await kvDelete(cfg, hostname);
-    } catch (err) {
-      console.error("[status-pages] KV delete failed:", err);
-    }
-  }
-  if (cfId) {
-    try {
-      await deleteCfHostname(cfg, cfId);
-    } catch (err) {
-      console.error("[status-pages] CF custom hostname delete failed:", err);
-    }
-  }
+  // KV first so a CF delete that succeeds cannot leave a live mapping.
+  if (hostname) await kvDelete(cfg, hostname);
+  if (cfId) await deleteCfHostname(cfg, cfId);
 }
 
 async function readCfId(pageId: string): Promise<{

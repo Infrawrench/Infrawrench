@@ -170,13 +170,25 @@ func (r *statusPageResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
+	// Persist the page id before the hostname attach: if attach fails, the next
+	// apply must update this page rather than create another unmanaged one.
+	state, diags := statusPageStateFrom(ctx, created)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	created, err = r.syncCustomHostname(ctx, created, plan.CustomHostname)
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to attach custom hostname", err.Error())
 		return
 	}
 
-	state, diags := statusPageStateFrom(ctx, created)
+	state, diags = statusPageStateFrom(ctx, created)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return

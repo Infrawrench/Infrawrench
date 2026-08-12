@@ -66,16 +66,33 @@ describe("worker", () => {
   });
 
   it("proxies document requests to the SPA shell", async () => {
-    const stub = vi.fn().mockResolvedValue(new Response("<html></html>", { status: 200 }));
+    const stub = vi.fn().mockResolvedValue(
+      new Response("<html><head></head><body></body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      }),
+    );
     globalThis.fetch = stub as unknown as typeof fetch;
 
-    await worker.fetch(
+    const res = await worker.fetch(
       new Request("https://status.acme.com/", { headers: { host: "status.acme.com" } }),
       env,
       {} as ExecutionContext,
     );
     const called = stub.mock.calls[0]![0] as string;
     expect(called).toBe("https://app.infrawrench.com/");
+    const html = await res.text();
+    expect(html).toContain('name="iw-status-host"');
+  });
+
+  it("leaves non-HTML responses unmarked", async () => {
+    const { markStatusHostHtml } = await import("./index.js");
+    const upstream = new Response("ok", {
+      status: 200,
+      headers: { "content-type": "application/javascript" },
+    });
+    const out = await markStatusHostHtml(upstream);
+    expect(await out.text()).toBe("ok");
   });
 
   it("proxies assets unchanged", async () => {

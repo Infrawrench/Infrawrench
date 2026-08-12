@@ -60,14 +60,14 @@ interface TunnelAttachState {
  * sign-in, which is precisely what a public status page cannot do — the page
  * exists for people who have no relationship with the org beyond the link.
  *
- * Custom domains (served by status-page-edge) load the same SPA shell at `/`
- * on a non-app hostname; those hosts are also public and must skip auth.
+ * Custom domains are served by status-page-edge, which injects
+ * `<meta name="iw-status-host">` into the SPA shell. Detecting that marker —
+ * not a hard-coded hostname list — keeps staging and self-hosted app URLs on
+ * the authenticated shell.
  */
-const APP_HOSTS = new Set(["localhost", "127.0.0.1", "app.infrawrench.com"]);
-
 function isCustomStatusHost(): boolean {
-  if (typeof window === "undefined") return false;
-  return !APP_HOSTS.has(window.location.hostname);
+  if (typeof document === "undefined") return false;
+  return document.querySelector('meta[name="iw-status-host"]') !== null;
 }
 
 function isPublicRoute(pathname: string): boolean {
