@@ -335,7 +335,11 @@ export async function rotateStatusPageSlugRecord(
   organizationId: string,
   pageId: string,
 ): Promise<StatusPage> {
-  let kvRestore: { hostname: string; previousSlug: string } | null = null;
+  // Boxed so the assignment inside the transaction callback stays visible to
+  // the catch clause under control-flow analysis.
+  const kvRestore: { current: { hostname: string; previousSlug: string } | null } = {
+    current: null,
+  };
   try {
     await db.transaction(async (tx) => {
       const [existing] = await tx
@@ -358,7 +362,7 @@ export async function rotateStatusPageSlugRecord(
       if (existing.customHostname) {
         // Remember restore target before the put so a lost success response or
         // a commit abort can still rewind KV to the slug PostgreSQL kept.
-        kvRestore = {
+        kvRestore.current = {
           hostname: existing.customHostname,
           previousSlug: existing.slug,
         };
@@ -370,12 +374,23 @@ export async function rotateStatusPageSlugRecord(
       }
     });
   } catch (err) {
-    if (kvRestore) {
-      const { syncCustomHostnameKvForPage } = await import("./custom-hostname");
-      await syncCustomHostnameKvForPage({
-        customHostname: kvRestore.hostname,
-        slug: kvRestore.previousSlug,
-      }).catch(() => undefined);
+    const restore = kvRestore.current;
+    if (restore) {
+      // The row lock is already released; a concurrent rotation may have
+      // committed. Only rewind KV when the DB still holds the slug we would
+      // restore to — otherwise we would clobber the newer mapping.
+      const [row] = await db
+        .select({ slug: statusPages.slug })
+        .from(statusPages)
+        .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)))
+        .limit(1);
+      if (row?.slug === restore.previousSlug) {
+        const { syncCustomHostnameKvForPage } = await import("./custom-hostname");
+        await syncCustomHostnameKvForPage({
+          customHostname: restore.hostname,
+          slug: restore.previousSlug,
+        }).catch(() => undefined);
+      }
     }
     throw err;
   }
