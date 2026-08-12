@@ -28,13 +28,9 @@ import {
   ACCESS_REVIEW_STALE_DAYS_MIN,
 } from "@infrawrench/client-core";
 import { listAccessReview } from "@infrawrench/server-core/access-review/feed";
-import {
-  dismissPostureFinding,
-  restorePostureFinding,
-  MAX_DISMISSAL_REASON_LENGTH,
-} from "@infrawrench/server-core/posture/dismissals";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
+import { registerFindingDismissalRoutes } from "./finding-dismissals";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -130,107 +126,13 @@ app.get("/export", async (c) => {
   return c.body(accessReviewToCsv(review));
 });
 
-/**
- * POST /api/org/:orgId/access-review/dismissals — accept a finding, so it
- * leaves the list and stops feeding the security alerts.
- *
- * Idempotent: re-dismissing rewrites the note and the author. The finding is
- * still evaluated on every scan — this suppresses it, it does not delete it —
- * and `GET /access-review` reports it back under `dismissed`.
- *
- * The store is `posture_dismissals`, shared with the posture screen. The
- * mechanism is identical down to the key `(organizationId, resourceId,
- * ruleId)`, the rule-id namespaces are disjoint (`access-review:` is reserved,
- * enforced by the plugin registry test), and a dismissal for one surface is
- * simply inert on the other.
- */
-app.post("/dismissals", async (c) => {
-  requirePermission(c, "resources:write");
-  let body: Record<string, unknown>;
-  try {
-    const parsed = await c.req.json();
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return c.json({ error: "Request body must be an object" }, 400);
-    }
-    body = parsed as Record<string, unknown>;
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  const resourceId = body["resourceId"];
-  const ruleId = body["ruleId"];
-  if (typeof resourceId !== "string" || resourceId.trim() === "") {
-    return c.json({ error: "resourceId is required" }, 400);
-  }
-  if (typeof ruleId !== "string" || ruleId.trim() === "") {
-    return c.json({ error: "ruleId is required" }, 400);
-  }
-  const reason = body["reason"];
-  if (reason !== undefined && reason !== null && typeof reason !== "string") {
-    return c.json({ error: "reason must be a string" }, 400);
-  }
-  if (typeof reason === "string" && reason.length > MAX_DISMISSAL_REASON_LENGTH) {
-    return c.json(
-      { error: `reason must be at most ${MAX_DISMISSAL_REASON_LENGTH} characters` },
-      400,
-    );
-  }
-
-  const organizationId = c.get("organizationId");
-  const userId = c.get("session").userId;
-  const dismissal = await dismissPostureFinding(organizationId, {
-    resourceId,
-    ruleId,
-    reason: reason ?? null,
-    userId: userId ?? null,
-  });
-  void logAudit({
-    organizationId,
-    userId,
-    action: "access_review.finding.dismissed",
-    entityType: "resource",
-    entityId: dismissal.resourceId,
-    metadata: { ruleId: dismissal.ruleId, reason: dismissal.reason },
-  });
-  // Projected, not returned verbatim: the record carries the row's `id` and
-  // `organizationId`, which the documented body forbids and no client uses.
-  return c.json({
-    resourceId: dismissal.resourceId,
-    ruleId: dismissal.ruleId,
-    dismissedAt: dismissal.dismissedAt,
-    dismissedBy: dismissal.dismissedBy,
-    reason: dismissal.reason,
-  });
-});
-
-/**
- * DELETE /api/org/:orgId/access-review/dismissals?resourceId=…&ruleId=… — undo
- * a dismissal.
- *
- * The key is in the query string, not the path: resource ids are
- * provider-native and routinely contain slashes, which path encoding does not
- * reliably survive.
- */
-app.delete("/dismissals", async (c) => {
-  requirePermission(c, "resources:write");
-  const resourceId = c.req.query("resourceId");
-  const ruleId = c.req.query("ruleId");
-  if (!resourceId) return c.json({ error: "resourceId is required" }, 400);
-  if (!ruleId) return c.json({ error: "ruleId is required" }, 400);
-
-  const organizationId = c.get("organizationId");
-  const removed = await restorePostureFinding(organizationId, resourceId, ruleId);
-  if (!removed) return c.json({ error: "That finding is not dismissed" }, 404);
-
-  void logAudit({
-    organizationId,
-    userId: c.get("session").userId,
-    action: "access_review.finding.restored",
-    entityType: "resource",
-    entityId: resourceId,
-    metadata: { ruleId },
-  });
-  return c.body(null, 204);
-});
+// POST /api/org/:orgId/access-review/dismissals and its DELETE — the shared
+// implementation over the dismissal store both security surfaces use. The
+// store is `posture_dismissals`, shared with the posture screen: the key is
+// `(organizationId, resourceId, ruleId)`, the rule-id namespaces are disjoint
+// (`access-review:` is reserved, enforced by the plugin registry test), and a
+// dismissal for one surface is simply inert on the other. See
+// `finding-dismissals.ts` for the contract and the permission argument.
+registerFindingDismissalRoutes(app, "access_review");
 
 export { app as accessReviewRoutes };

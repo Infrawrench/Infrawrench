@@ -19,18 +19,13 @@
 import { Hono } from "hono";
 import { listPosture } from "@infrawrench/server-core/posture/feed";
 import {
-  dismissPostureFinding,
-  restorePostureFinding,
-  MAX_DISMISSAL_REASON_LENGTH,
-} from "@infrawrench/server-core/posture/dismissals";
-import {
   getPostureSettings,
   updatePostureSettings,
   type PostureSettingsPatch,
   type PostureSettingsRecord,
 } from "@infrawrench/server-core/posture/settings";
 import { requirePermission } from "../../auth/permissions";
-import { logAudit } from "../../services/audit";
+import { registerFindingDismissalRoutes } from "./finding-dismissals";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -51,106 +46,10 @@ app.get("/", async (c) => {
   return c.json(await listPosture(c.get("organizationId")));
 });
 
-/**
- * POST /api/org/:orgId/posture/dismissals — accept a finding, so it leaves
- * the list and stops feeding the alerts.
- *
- * Idempotent: re-dismissing rewrites the note and the author. The finding
- * itself is still evaluated on every scan — this suppresses it, it does not
- * delete it — and `GET /posture` reports it back under `dismissed`.
- */
-app.post("/dismissals", async (c) => {
-  requirePermission(c, "resources:write");
-  let body: Record<string, unknown>;
-  try {
-    const parsed = await c.req.json();
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return c.json({ error: "Request body must be an object" }, 400);
-    }
-    body = parsed as Record<string, unknown>;
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  const resourceId = body["resourceId"];
-  const ruleId = body["ruleId"];
-  if (typeof resourceId !== "string" || resourceId.trim() === "") {
-    return c.json({ error: "resourceId is required" }, 400);
-  }
-  if (typeof ruleId !== "string" || ruleId.trim() === "") {
-    return c.json({ error: "ruleId is required" }, 400);
-  }
-  const reason = body["reason"];
-  if (reason !== undefined && reason !== null && typeof reason !== "string") {
-    return c.json({ error: "reason must be a string" }, 400);
-  }
-  if (typeof reason === "string" && reason.length > MAX_DISMISSAL_REASON_LENGTH) {
-    return c.json(
-      { error: `reason must be at most ${MAX_DISMISSAL_REASON_LENGTH} characters` },
-      400,
-    );
-  }
-
-  const organizationId = c.get("organizationId");
-  const userId = c.get("session").userId;
-  const dismissal = await dismissPostureFinding(organizationId, {
-    resourceId,
-    ruleId,
-    reason: reason ?? null,
-    userId: userId ?? null,
-  });
-  // Silencing a security finding is exactly the kind of decision an audit
-  // reader goes looking for later.
-  void logAudit({
-    organizationId,
-    userId,
-    action: "posture.finding.dismissed",
-    entityType: "resource",
-    entityId: dismissal.resourceId,
-    metadata: { ruleId: dismissal.ruleId, reason: dismissal.reason },
-  });
-  // Projected, not returned verbatim: the record carries the row's `id` and
-  // `organizationId`, which the documented `PostureDismissal` body forbids and
-  // no client has any use for.
-  return c.json({
-    resourceId: dismissal.resourceId,
-    ruleId: dismissal.ruleId,
-    dismissedAt: dismissal.dismissedAt,
-    dismissedBy: dismissal.dismissedBy,
-    reason: dismissal.reason,
-  });
-});
-
-/**
- * DELETE /api/org/:orgId/posture/dismissals?resourceId=…&ruleId=… — undo a
- * dismissal.
- *
- * The key is in the query string, not the path: resource ids are
- * provider-native and routinely contain slashes (GCP's
- * `projects/p/zones/z/instances/i`), which path encoding does not reliably
- * survive.
- */
-app.delete("/dismissals", async (c) => {
-  requirePermission(c, "resources:write");
-  const resourceId = c.req.query("resourceId");
-  const ruleId = c.req.query("ruleId");
-  if (!resourceId) return c.json({ error: "resourceId is required" }, 400);
-  if (!ruleId) return c.json({ error: "ruleId is required" }, 400);
-
-  const organizationId = c.get("organizationId");
-  const removed = await restorePostureFinding(organizationId, resourceId, ruleId);
-  if (!removed) return c.json({ error: "That finding is not dismissed" }, 404);
-
-  void logAudit({
-    organizationId,
-    userId: c.get("session").userId,
-    action: "posture.finding.restored",
-    entityType: "resource",
-    entityId: resourceId,
-    metadata: { ruleId },
-  });
-  return c.body(null, 204);
-});
+// POST /api/org/:orgId/posture/dismissals and its DELETE — the shared
+// implementation over the dismissal store both security surfaces use. See
+// `finding-dismissals.ts` for the contract and the permission argument.
+registerFindingDismissalRoutes(app, "posture");
 
 function toWire(s: PostureSettingsRecord) {
   return {
