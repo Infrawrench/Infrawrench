@@ -656,6 +656,7 @@ export * from "./schedules";
 export * from "./probes";
 export * from "./help-links";
 export * from "./quotas";
+export * from "./incidents";
 export * from "./status-pages";
 export * from "./ownership";
 export * from "./log-workspaces";

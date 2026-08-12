@@ -77,6 +77,8 @@ The web app surfaces this as a friendly message naming the freeze and its end ti
 
 Like every permission, these can be granted to [custom roles](./roles-and-permissions.md) and used as [API key](./api-keys.md) scopes.
 
+[Incident mode](../features/incident-mode.md) can open a freeze for you when an incident is declared, and lifts that same freeze — the one it opened, not whichever freeze happens to be in effect — when the incident resolves. It still needs `freezes:write`: a declaration by someone without it records the freeze as a failed artefact naming the permission rather than escalating, and the incident stands either way.
+
 ## API
 
 Freeze windows are managed at `/api/org/{orgId}/change-freezes` (list, create, update, end, delete), and `GET /api/org/{orgId}/change-freezes/status` returns the freeze currently in effect — that's the endpoint the app banner polls. See the [API reference](./openapi.md) for schemas.

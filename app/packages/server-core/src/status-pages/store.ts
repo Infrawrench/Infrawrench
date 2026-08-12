@@ -36,6 +36,7 @@ import { db } from "../db/client";
 import { statusPageComponents, statusPages, syntheticProbes } from "../db/schema";
 import { getMetricDailyAverageBatch, getMetricSeriesAverageBatch } from "../clickhouse/readers";
 import { probeMetricResourceId } from "../probes/metric-ids";
+import { getPublicStatusNotices } from "./notices";
 
 /** Thrown for caller mistakes the API maps to 400/404. */
 export class StatusPageInputError extends Error {
@@ -426,12 +427,17 @@ export async function getPublicStatusPage(slug: string): Promise<PublicStatusPag
   });
 
   const state = rollUpStatusPageState(publicComponents);
+  // Best-effort, exactly like the ClickHouse reads above: a notice query that
+  // fails costs the sentence, never the page. During an incident this endpoint
+  // is the one thing that must stay up.
+  const notices = await getPublicStatusNotices(page.id, new Date(now)).catch(() => []);
   return {
     title: page.title,
     description: page.description,
     state,
     summary: statusPageSummary(state),
     components: publicComponents,
+    notices,
     supportUrl: page.supportUrl,
     showHistory: page.showHistory,
     showUptime: page.showUptime,

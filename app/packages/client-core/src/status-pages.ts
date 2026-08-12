@@ -154,6 +154,30 @@ export interface PublicStatusComponent {
   history: StatusHistoryDay[];
 }
 
+/**
+ * A written update on the page — the one thing on a status page that a human
+ * typed. Usually written by incident mode when an incident is declared, and
+ * closed when it resolves; the org can also post one by hand.
+ *
+ * The four states are the vocabulary status pages have used for a decade, and
+ * the same words `provider_status_incidents.state` already carries.
+ *
+ * What is deliberately *not* here: the id of the declared incident that wrote
+ * it, who wrote it, and anything about the org. A visitor learns that something
+ * is wrong and what is being done, never our internal handle for it.
+ */
+export interface PublicStatusNotice {
+  id: string;
+  title: string;
+  body: string | null;
+  state: "investigating" | "identified" | "monitoring" | "resolved";
+  /** Ids of components on this page the notice is about; empty = the whole page. */
+  affectedComponentIds: string[];
+  startedAt: string;
+  resolvedAt: string | null;
+  updatedAt: string;
+}
+
 export interface PublicStatusPage {
   title: string;
   description: string | null;
@@ -162,6 +186,12 @@ export interface PublicStatusPage {
   /** One sentence describing `state`, so every renderer says the same thing. */
   summary: string;
   components: PublicStatusComponent[];
+  /**
+   * Unresolved notices, plus recently resolved ones, newest first. Empty when
+   * nothing is being reported — and empty rather than absent, so a renderer
+   * never has to distinguish "no notices" from "an older server".
+   */
+  notices: PublicStatusNotice[];
   supportUrl: string | null;
   showHistory: boolean;
   showUptime: boolean;

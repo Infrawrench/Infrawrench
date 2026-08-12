@@ -32,16 +32,16 @@ A rule can also be a **tee** rather than a branch: untick _Stop here_ and evalua
 
 ## Conditions
 
-| Condition         | Matches on                                                                                         |
-| ----------------- | -------------------------------------------------------------------------------------------------- |
-| **Trigger**       | Which kind of alert it is — sync failures, budgets, anomalies, drift, pages, probes, and so on     |
-| **Severity**      | `info`, `warning` or `critical`, ordered, so "at least warning" is a floor rather than an equality |
-| **Account**       | The account the alert is about                                                                     |
-| **Provider**      | The plugin — route AWS incidents to the team that runs on AWS                                      |
-| **Resource type** | The kind of thing, for alerts scoped to one                                                        |
-| **Amount**        | Money at stake, for budgets and cost anomalies                                                     |
-| **Name**          | The alert's natural key — an anomaly's service, a probe's name, a metric rule's name               |
-| **Message text**  | A substring of the alert's title or body, for anything the fields above do not cover               |
+| Condition         | Matches on                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Trigger**       | Which kind of alert it is — sync failures, budgets, anomalies, drift, pages, probes, declared incidents, and so on |
+| **Severity**      | `info`, `warning` or `critical`, ordered, so "at least warning" is a floor rather than an equality                 |
+| **Account**       | The account the alert is about                                                                                     |
+| **Provider**      | The plugin — route AWS incidents to the team that runs on AWS                                                      |
+| **Resource type** | The kind of thing, for alerts scoped to one                                                                        |
+| **Amount**        | Money at stake, for budgets and cost anomalies                                                                     |
+| **Name**          | The alert's natural key — an anomaly's service, a probe's name, a metric rule's name                               |
+| **Message text**  | A substring of the alert's title or body, for anything the fields above do not cover                               |
 
 One rule worth knowing: **a condition about a fact the alert does not carry never matches**, in either direction. An account condition does not match an alert that is not about an account — not with `is one of`, and not with `is not one of` either. A provider status incident spans your whole organization, so it will not be caught by a rule that is plainly about one account. Rules that want the organization-wide alerts simply leave the account condition off.
 

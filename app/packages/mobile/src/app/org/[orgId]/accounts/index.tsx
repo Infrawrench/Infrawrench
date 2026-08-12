@@ -56,6 +56,11 @@ export default function AccountsScreen() {
           onPress={() => router.push(`/org/${orgId}/dns`)}
         />
         <Row
+          title="Incidents"
+          subtitle="Declare, read the timeline, add a note"
+          onPress={() => router.push(`/org/${orgId}/incidents`)}
+        />
+        <Row
           title="Probes"
           subtitle="Uptime and latency checks from outside your infra"
           onPress={() => router.push(`/org/${orgId}/probes`)}

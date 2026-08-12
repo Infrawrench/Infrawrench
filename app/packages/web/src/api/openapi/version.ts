@@ -40,4 +40,8 @@
 // new routes under `/shared-consoles`, a `Shared consoles` tag, and two
 // additive fields on SessionRecording (`sharedConsoleId`, `participants`) that
 // attribute a shared session to everyone who was on it. All additive.
-export const API_VERSION = "1.14.0";
+// 1.15.0: incident mode — declared operational incidents (`/incidents` CRUD,
+// notes, the joined timeline and the postmortem export), the `incidents` tab
+// kind on TabTarget, the `incidentAlerts` routing trigger, and `notices` on the
+// public status-page payload. All additive.
+export const API_VERSION = "1.15.0";

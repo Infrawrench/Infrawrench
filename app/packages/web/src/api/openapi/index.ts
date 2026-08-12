@@ -58,6 +58,7 @@ import { registerCreditPaths } from "./paths/credits";
 import { registerCommitmentPaths } from "./paths/commitments";
 import { registerNetworkFlowPaths } from "./paths/network-flows";
 import { registerProbePaths } from "./paths/probes";
+import { registerIncidentPaths } from "./paths/incidents";
 import { registerStatusPagePaths } from "./paths/status-pages";
 import { registerOwnershipPaths } from "./paths/ownership";
 import { registerLogWorkspacePaths } from "./paths/log-workspaces";
@@ -180,6 +181,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCommitmentPaths(ctx);
   registerNetworkFlowPaths(ctx);
   registerProbePaths(ctx);
+  registerIncidentPaths(ctx);
   registerStatusPagePaths(ctx);
   registerOwnershipPaths(ctx);
   registerLogWorkspacePaths(ctx);
@@ -419,6 +421,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Quota radar",
         description:
           "How close each account is to the limits its provider enforces, with the trend fitted over recent readings. Both halves of every row come from the provider — nothing is filled in from published defaults, because an account with an approved increase would otherwise read as exhausted while it has headroom. A provider with no quota API contributes nothing rather than zero.",
+      },
+      {
+        name: "Incidents",
+        description:
+          "Incidents the organization declares itself \u2014 not to be confused with the provider status incidents under Resources, which are somebody else's outage. Declaring records the incident and, optionally, opens a change freeze, pins the moment, announces through the org's alert routing rules and posts a public status-page update; each side effect is recorded as an artefact whose failure is stored rather than thrown, so nothing an integration does can lose the declaration. The timeline is assembled on read by joining feeds that already exist, and the postmortem export pre-fills everything except the judgement.",
       },
       {
         name: "Status pages",
@@ -738,6 +745,20 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /probes": "resources:write",
   "PUT /probes/{probeId}": "resources:write",
   "DELETE /probes/{probeId}": "resources:write",
+  // incident mode — the declared kind. `incidents:write` is held by members
+  // as well as admins on purpose (see the permission catalog); what a
+  // declaration may *do* keeps its own gates, so requesting a change freeze
+  // still needs freezes:write.
+  "GET /incidents": "incidents:read",
+  "GET /incidents/{incidentId}": "incidents:read",
+  "GET /incidents/{incidentId}/timeline": "incidents:read",
+  "GET /incidents/{incidentId}/postmortem": "incidents:read",
+  "POST /incidents": "incidents:write",
+  "PATCH /incidents/{incidentId}": "incidents:write",
+  "DELETE /incidents/{incidentId}": "incidents:write",
+  "POST /incidents/{incidentId}/retry-artifacts": "incidents:write",
+  "POST /incidents/{incidentId}/notes": "incidents:write",
+  "DELETE /incidents/{incidentId}/notes/{noteId}": "incidents:write",
   // status pages — a page is a view over probes, so it rides the probe stance:
   // whoever may create the monitoring may decide what of it is public.
   // GET /api/status/{slug} is deliberately absent: it is mounted outside the

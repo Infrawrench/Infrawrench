@@ -119,6 +119,8 @@
     "./probes/pass": "./src/probes/pass.ts",
     "./probes/metric-ids": "./src/probes/metric-ids.ts",
     "./status-pages/store": "./src/status-pages/store.ts",
+    "./status-pages/notices": "./src/status-pages/notices.ts",
+    "./incidents/store": "./src/incidents/store.ts",
     "./ownership/store": "./src/ownership/store.ts",
     "./ownership/notify": "./src/ownership/notify.ts",
     "./log-workspaces/store": "./src/log-workspaces/store.ts",

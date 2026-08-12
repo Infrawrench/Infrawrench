@@ -113,6 +113,27 @@ function ComponentRow({
   );
 }
 
+/** Notice states in the words a visitor expects, not the enum's. */
+const NOTICE_STATE_LABELS: Record<string, string> = {
+  investigating: "Investigating",
+  identified: "Identified",
+  monitoring: "Monitoring",
+  resolved: "Resolved",
+};
+
+function formatNoticeTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 /**
  * The public status page, as visitors see it.
  *
@@ -141,6 +162,43 @@ export function PublicStatusPageView({ page }: PublicStatusPageViewProps) {
         <span aria-hidden="true" className={`h-3 w-3 rounded-full ${accent.bar}`} />
         <span className={`text-sm font-medium ${accent.text}`}>{page.summary}</span>
       </div>
+
+      {/*
+        Notices sit above the components, because a sentence from a human is
+        what a visitor came for and the coloured dots are what they will read
+        second. Everything about a notice that could identify the org — the
+        declared incident's id, who wrote it — is absent from the payload, so
+        there is nothing here to accidentally render.
+      */}
+      {(page.notices ?? []).length > 0 && (
+        <section className="flex flex-col gap-2" aria-label="Updates">
+          {(page.notices ?? []).map((notice) => (
+            <article
+              key={notice.id}
+              className={`rounded-xl border px-4 py-3 ${
+                notice.state === "resolved"
+                  ? "border-border bg-surface-raised"
+                  : "border-amber-500/40 bg-amber-500/5"
+              }`}
+            >
+              <div className="flex flex-wrap items-baseline gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-tertiary">
+                  {NOTICE_STATE_LABELS[notice.state] ?? notice.state}
+                </span>
+                <span className="text-xs text-on-surface-faint">
+                  {formatNoticeTime(notice.resolvedAt ?? notice.startedAt)}
+                </span>
+              </div>
+              <h2 className="text-sm font-medium text-on-surface">{notice.title}</h2>
+              {notice.body && (
+                <p className="text-sm text-on-surface-secondary whitespace-pre-line">
+                  {notice.body}
+                </p>
+              )}
+            </article>
+          ))}
+        </section>
+      )}
 
       {page.components.length === 0 ? (
         <p className="text-sm text-on-surface-faint">

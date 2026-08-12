@@ -18,6 +18,7 @@ import {
   metricAlertsTabTarget,
   probesTabTarget,
   quotasTabTarget,
+  incidentsTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   deploymentsTabTarget,
@@ -34,6 +35,7 @@ export {
   dashboardTabTarget,
   accountTabTarget,
   chatTabTarget,
+  incidentsTabTarget,
   costReportsTabTarget,
   invoicesTabTarget,
   resourceTabTarget,
@@ -198,6 +200,20 @@ export function getWorkspaceNavigateArgs(
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
+    case "incidents":
+      // The incident id is a path segment rather than a search param, so an
+      // incident link reads as a place: /org/{org}/incidents/{id}.
+      return target.incidentId
+        ? {
+            to: "/org/$orgId/incidents/$incidentId",
+            params: { orgId, incidentId: target.incidentId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/incidents",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
     // The section is a static child route, not a path param, so the path is
     // built concretely rather than through `params`.
     case "settings":
@@ -384,6 +400,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "quotas") {
     return quotasTabTarget();
+  }
+  if (s[0] === "incidents") {
+    return incidentsTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "settings") {
     return settingsTabTarget(s.slice(1).join("/") || undefined);

@@ -9,6 +9,7 @@ import {
   MetricAlertIcon,
   ProbesIcon,
   QuotasIcon,
+  IncidentsIcon,
   DeployIcon,
   ExpiryIcon,
   PostureIcon,
@@ -278,6 +279,14 @@ export function SidebarDashboards() {
             label: "Quotas",
             icon: <QuotasIcon />,
             onClick: () => void navigate({ to: "/quotas" }),
+          },
+          // Cloud-only for the same reason as Probes: an incident is
+          // org-scoped and declaring one composes cloud features.
+          {
+            key: "incidents",
+            label: "Incidents",
+            icon: <IncidentsIcon />,
+            onClick: () => void navigate({ to: "/incidents" }),
           },
         ]
       : []),

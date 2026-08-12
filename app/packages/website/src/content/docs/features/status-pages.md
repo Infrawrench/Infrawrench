@@ -52,6 +52,9 @@ It contains:
 - 24-hour uptime, if you enabled it
 - 90 days of daily uptime bars, if you enabled them
 - your support link, if you set one
+- any **notices** posted on the page — a written update's title, body, state
+  (_investigating / identified / monitoring / resolved_), its timestamps, and which components on
+  that page it names
 
 It does **not** contain the probe's URL, HTTP method, interval, failure threshold, last status
 code or error text, nor any resource id, account name, plugin name, or your organization id. Even
@@ -60,6 +63,23 @@ your monitoring setup.
 
 An unpublished page and a slug that never existed return the same 404, so the link cannot be used
 to work out which slugs are real.
+
+A notice posted by [incident mode](./incident-mode.md) is subject to exactly the same rule: the
+declared incident's id, who declared it, and everything else about your organization stay out of
+the public payload. A visitor learns that something is wrong and what is being done about it.
+
+## Notices: the one sentence a human writes
+
+Everything above is derived — it comes from probe state and uptime rollups, and no person types
+it. A **notice** is the exception, and it is what visitors actually turn up for: "we know, we're
+on it."
+
+Notices render above the component list, newest first, in the usual _investigating → identified →
+monitoring → resolved_ vocabulary. Unresolved notices always show; resolved ones stay for a
+fortnight so somebody arriving the morning after still sees what happened.
+
+Usually you do not write one by hand: declaring an incident with **Tell the public** ticked posts
+it, and resolving the incident closes it. See [Incident mode](./incident-mode.md).
 
 ## Give components public names
 
@@ -128,3 +148,4 @@ a page became readable by anyone with the link.
 - [Metric alerts](./metric-alerts.md) — the private half: alerting your team rather than telling
   your customers
 - [CLI](./cli.md) — `infrawrench status-pages` for "what of our monitoring is public right now?"
+- [Incident mode](./incident-mode.md) — what usually writes a notice, and what closes it

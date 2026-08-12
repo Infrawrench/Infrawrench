@@ -29,6 +29,7 @@ import {
   MetricAlertIcon,
   ProbesIcon,
   QuotasIcon,
+  IncidentsIcon,
 } from "@infrawrench/ui";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
@@ -562,6 +563,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <QuotasIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/quotas", params: { orgId: orgId! } }),
+              },
+              {
+                key: "incidents",
+                label: "Incidents",
+                icon: <IncidentsIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/incidents", params: { orgId: orgId! } }),
               },
               {
                 key: "ssh-fanout",

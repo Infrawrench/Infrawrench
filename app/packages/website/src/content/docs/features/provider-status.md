@@ -54,4 +54,8 @@ Incidents that match nothing you hold are still cached but stay quiet — an edg
 - "N changes during this incident" is a correlation hint, not a causal claim — the count covers all changes on that provider during the incident window.
 - The feature is cloud-only: the poller fills the incident cache, so the desktop app in local-only mode has nothing to correlate.
 
-See also: [Change timeline](./change-timeline.md), [Slack alerts](./slack-alerts.md), [Teams alerts](./teams-alerts.md), [Mobile push notifications](./mobile-push-notifications.md), [Weekly digest](./weekly-digest.md).
+Not to be confused with [incident mode](./incident-mode.md), which is about incidents **your
+organization declares**. This page is about somebody else's outage. The two meet on a declared
+incident's timeline, where an overlapping provider incident appears as evidence.
+
+See also: [Incident mode](./incident-mode.md), [Change timeline](./change-timeline.md), [Slack alerts](./slack-alerts.md), [Teams alerts](./teams-alerts.md), [Mobile push notifications](./mobile-push-notifications.md), [Weekly digest](./weekly-digest.md).

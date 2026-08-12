@@ -283,6 +283,20 @@ export type PushNotificationData =
       type: "quota_alert";
       orgId: string;
     }
+  | {
+      /**
+       * Somebody declared, mitigated or resolved an incident — the declared
+       * kind, not a provider status incident (that one is `provider_incident`).
+       *
+       * Target route: the incident's own screen, `/org/{orgId}/incidents/{id}`.
+       */
+      type: "incident";
+      orgId: string;
+      /** `incidents.id`. */
+      incidentId: string;
+      /** Which transition this notification announces. */
+      status: "open" | "mitigated" | "resolved";
+    }
   | { type: "test"; orgId: string };
 
 export async function registerPushToken(

@@ -8,6 +8,22 @@ import type { ProbesClient } from "./types.js";
 
 export interface ProbesPanelProps {
   client: ProbesClient;
+  /**
+   * Declare an incident from a probe, seeded with the probe's name, its last
+   * error and the moment it went down. Optional: a host with no incidents
+   * surface (or a caller without `incidents:write`) omits it and the button
+   * disappears.
+   *
+   * A down probe is one of the two places an incident actually starts — the
+   * button only renders on probes that are currently down, because offering it
+   * on a green one is noise.
+   */
+  onDeclareIncident?: (seed: {
+    title: string;
+    summary?: string;
+    resourceIds?: string[];
+    startedAt?: string;
+  }) => void;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -56,7 +72,7 @@ function formatWhen(iso: string): string {
  * `MetricAlertsPanel` convention). A row expands into the recorded latency
  * chart, read from the same metric store the plugin charts use.
  */
-export function ProbesPanel({ client }: ProbesPanelProps) {
+export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
   // null = loading, [] = loaded-empty.
   const [probes, setProbes] = useState<SyntheticProbe[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -201,6 +217,24 @@ export function ProbesPanel({ client }: ProbesPanelProps) {
                     </button>
                     {latency !== undefined && !expanded && (
                       <SparklineChart points={latency.points} label={`${probe.name} latency`} />
+                    )}
+                    {onDeclareIncident && probe.status === "down" && probe.enabled && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onDeclareIncident({
+                            title: `${probe.name} is down`,
+                            ...(probe.lastError ? { summary: probe.lastError } : {}),
+                            ...(probe.resourceId ? { resourceIds: [probe.resourceId] } : {}),
+                            ...(probe.lastStateChangeAt
+                              ? { startedAt: probe.lastStateChangeAt }
+                              : {}),
+                          })
+                        }
+                        className="shrink-0 px-2 py-1 rounded-lg text-xs text-danger hover:bg-surface-sunken transition-colors"
+                      >
+                        Declare incident
+                      </button>
                     )}
                     {canWrite && (
                       <div className="flex items-center gap-1.5 shrink-0">

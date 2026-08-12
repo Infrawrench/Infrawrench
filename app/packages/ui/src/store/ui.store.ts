@@ -19,6 +19,12 @@ export type WorkspaceTabTarget =
   | { kind: "metric-alerts" }
   | { kind: "probes" }
   | { kind: "quotas" }
+  /**
+   * Declared incidents (incident mode). Single-instance like Probes; the
+   * detail view is addressed inside the panel rather than by tab, so an
+   * operator flipping between two incidents keeps one tab.
+   */
+  | { kind: "incidents"; incidentId?: string }
   | { kind: "workflows"; workflowId?: string }
   | { kind: "deployments"; repo?: string }
   | { kind: "settings"; section?: string }
@@ -97,6 +103,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "probes";
     case "quotas":
       return "quotas";
+    case "incidents":
+      return "incidents";
     case "workflows":
       return target.workflowId ? `workflows:${target.workflowId}` : "workflows";
     case "deployments":
@@ -156,6 +164,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Probes";
     case "quotas":
       return "Quotas";
+    case "incidents":
+      return "Incidents";
     case "workflows":
       return "Workflows";
     case "deployments":
@@ -193,6 +203,11 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "probes":
     case "quotas":
       return true;
+    case "incidents":
+      // The deployments/settings trick: one tab by id, but comparing the
+      // incident is what makes the route sync record which one the tab is on,
+      // so reactivating it lands back on that incident rather than the list.
+      return a.incidentId === (b as { incidentId?: string }).incidentId;
     case "cost-reports":
       // The deployments/settings trick: one tab by id, but comparing the report
       // is what makes the route sync record which report the tab is on, so
