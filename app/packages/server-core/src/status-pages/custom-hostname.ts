@@ -334,9 +334,21 @@ async function readCfId(pageId: string): Promise<{
 
 /** Tear down CF + KV before a page row is deleted. */
 export async function teardownCustomHostnameForPage(pageId: string): Promise<void> {
-  const meta = await readCfId(pageId);
-  if (!meta) return;
-  await removeCustomHostnameInfra(meta.hostname, meta.cfId);
+  // Lock the row through teardown so a concurrent refresh cannot KV-put the
+  // mapping back after we delete it.
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({
+        hostname: statusPages.customHostname,
+        cfId: statusPages.cloudflareCustomHostnameId,
+      })
+      .from(statusPages)
+      .where(eq(statusPages.id, pageId))
+      .limit(1)
+      .for("update");
+    if (!row) return;
+    await removeCustomHostnameInfra(row.hostname, row.cfId);
+  });
 }
 
 export async function attachCustomHostname(
@@ -527,21 +539,37 @@ export async function detachCustomHostname(
   organizationId: string,
   pageId: string,
 ): Promise<StatusPage> {
-  const existing = await getStatusPageWire(organizationId, pageId);
-  if (!existing) throw new StatusPageInputError("Status page not found", 404);
-  if (!existing.customHostname && existing.customHostnameStatus === "none") {
-    throw new StatusPageInputError("This page has no custom domain", 404);
-  }
+  // Hold FOR UPDATE across Cloudflare/KV teardown and the local clear so a
+  // concurrent refresh cannot republish the mapping after we delete it.
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({
+        customHostname: statusPages.customHostname,
+        customHostnameStatus: statusPages.customHostnameStatus,
+        cloudflareCustomHostnameId: statusPages.cloudflareCustomHostnameId,
+      })
+      .from(statusPages)
+      .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)))
+      .limit(1)
+      .for("update");
+    if (!row) throw new StatusPageInputError("Status page not found", 404);
+    if (!row.customHostname && row.customHostnameStatus === "none") {
+      throw new StatusPageInputError("This page has no custom domain", 404);
+    }
 
-  const meta = await readCfId(pageId);
-  await removeCustomHostnameInfra(meta?.hostname ?? existing.customHostname, meta?.cfId ?? null);
+    await removeCustomHostnameInfra(row.customHostname, row.cloudflareCustomHostnameId);
 
-  await persistHostnameFields(pageId, {
-    customHostname: null,
-    customHostnameStatus: "none",
-    cloudflareCustomHostnameId: null,
-    customHostnameError: null,
-    customHostnameVerification: null,
+    await tx
+      .update(statusPages)
+      .set({
+        customHostname: null,
+        customHostnameStatus: "none",
+        cloudflareCustomHostnameId: null,
+        customHostnameError: null,
+        customHostnameVerification: null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)));
   });
 
   return (await getStatusPageWire(organizationId, pageId))!;
