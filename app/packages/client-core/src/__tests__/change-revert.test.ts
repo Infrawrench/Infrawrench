@@ -241,7 +241,7 @@ describe("revertLooksAlreadyApplied", () => {
     blockedReason: null,
   });
 
-  it("recognises an interrupted attempt whose write landed", () => {
+  it("recognises an interrupted attempt whose write was journalled", () => {
     expect(revertLooksAlreadyApplied(planOf("already-reverted"), true)).toBe(true);
     expect(revertLooksAlreadyApplied(planOf("already-reverted", "provider-derived"), true)).toBe(
       true,
@@ -252,7 +252,9 @@ describe("revertLooksAlreadyApplied", () => {
 
   /**
    * The distinction that keeps this from attributing somebody's hand-edit to
-   * whoever next opens the dialog. No stale claim means nobody was mid-revert.
+   * whoever next opens the dialog. No journal entry means no write was ever
+   * issued for this event — which is a recorded fact, not an inference from a
+   * lock that an attempt dying before its write would also have left behind.
    */
   it("does not mistake a hand-reverted resource for an interrupted attempt", () => {
     expect(revertLooksAlreadyApplied(planOf("already-reverted"), false)).toBe(false);

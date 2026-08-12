@@ -70,6 +70,7 @@ export interface ChangeRow {
   revertedAt: Date | null;
   revertClaimedAt: Date | null;
   revertClaimOwner: string | null;
+  revertWriteAttemptedAt: Date | null;
 }
 
 /** Failure modes the routes turn into status codes. */
@@ -113,6 +114,7 @@ export async function loadChange(
       revertedAt: resourceChanges.revertedAt,
       revertClaimedAt: resourceChanges.revertClaimedAt,
       revertClaimOwner: resourceChanges.revertClaimOwner,
+      revertWriteAttemptedAt: resourceChanges.revertWriteAttemptedAt,
     })
     .from(resourceChanges)
     .where(
@@ -307,6 +309,40 @@ export async function claimRevert(
 }
 
 /**
+ * Journal that a provider write is about to be issued for this event.
+ *
+ * Written immediately before the `updateResource` call and fenced on the claim
+ * token. This is the piece of state that lets the claim go back to being a pure
+ * lock: **its absence proves no write was issued**, so releasing a claim is
+ * always safe, and its presence is the only thing that licenses a later attempt
+ * to reconcile.
+ *
+ * The distinction is the same one `managed_invoices` draws between
+ * `delivery_attempted_at` and `delivered_at`. It cost three rounds of review to
+ * arrive at, because inferring it from `revert_claimed_at` instead is *almost*
+ * right: a claim outlives an attempt that died before writing just as readily as
+ * one that died after, so the inference wedged events behind a lease that
+ * renewed itself forever on one path and mis-attributed an unrelated hand-edit
+ * as somebody's revert on another.
+ *
+ * The write costs one primary-key UPDATE on the connection the request already
+ * holds, immediately before a cross-internet provider call. It does sit inside
+ * the lost-update window documented on {@link buildRevertPlan}, and is a
+ * rounding error against the round-trip it precedes.
+ */
+export async function markRevertWriteAttempted(
+  organizationId: string,
+  changeId: string,
+  owner: string,
+  at: Date,
+): Promise<void> {
+  await db
+    .update(resourceChanges)
+    .set({ revertWriteAttemptedAt: at })
+    .where(fencedWhere(organizationId, changeId, owner));
+}
+
+/**
  * Record that the provider accepted the write. Only this makes an event read as
  * reverted — to the feed, to the UI badge, and to a later revert attempt.
  *
@@ -324,7 +360,13 @@ export async function completeRevert(
 ): Promise<boolean> {
   const completed = await db
     .update(resourceChanges)
-    .set({ revertedAt: at, revertClaimedAt: null, revertClaimOwner: null })
+    .set({
+      revertedAt: at,
+      revertClaimedAt: null,
+      revertClaimOwner: null,
+      // The journal is spent: `reverted_at` now carries the fact it pointed at.
+      revertWriteAttemptedAt: null,
+    })
     .where(fencedWhere(organizationId, changeId, owner))
     .returning({ id: resourceChanges.id });
   return completed.length > 0;
@@ -333,6 +375,15 @@ export async function completeRevert(
 /**
  * Hand the event back, so a failed attempt is retryable immediately rather than
  * at lease expiry.
+ *
+ * **Always safe to call, on every non-completing exit.** That is the point of
+ * {@link markRevertWriteAttempted} existing separately: the claim carries no
+ * information about whether a write happened, so letting go of it destroys
+ * nothing. Making the release conditional — to protect an inference drawn from
+ * the claim — is what wedged events behind a self-renewing lease.
+ *
+ * Deliberately leaves `revert_write_attempted_at` alone: an attempt whose write
+ * threw may still have applied, so the journal outlives the lock.
  *
  * Fenced on the claim token: an attempt that was already superseded releases
  * nothing, because the claim it would be clearing is not its own. Also scoped

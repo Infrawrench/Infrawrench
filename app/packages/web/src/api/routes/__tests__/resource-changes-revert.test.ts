@@ -63,6 +63,14 @@ const CHANGE = {
   createdAt: new Date("2026-08-10T09:00:00.000Z"),
   revertedAt: null as Date | null,
   revertClaimedAt: null as Date | null,
+  revertWriteAttemptedAt: null as Date | null,
+};
+
+/** A row left behind by an attempt that journalled a write before dying. */
+const WROTE_BEFORE = {
+  ...CHANGE,
+  revertClaimedAt: new Date("2026-08-10T09:05:00.000Z"),
+  revertWriteAttemptedAt: new Date("2026-08-10T09:05:01.000Z"),
 };
 
 /** `db.select()...limit(1)` returning the one change row. */
@@ -364,10 +372,10 @@ describe("POST /:changeId/revert — claim lifecycle", () => {
  * and walks away.
  */
 describe("POST /:changeId/revert — a write that landed but was never recorded", () => {
-  it("keeps the claim when the completion write fails, and says the resource moved", async () => {
+  it("journals the write before issuing it, and releases the claim if recording fails", async () => {
     stubSelect();
     const writes = stubUpdate({ completeThrows: true });
-    const { updateResource } = stubClient();
+    const { updateResource, calls } = stubClient();
 
     const res = await app().request("/chg-1/revert", { method: "POST" });
     expect(updateResource).toHaveBeenCalledTimes(1);
@@ -376,9 +384,14 @@ describe("POST /:changeId/revert — a write that landed but was never recorded"
     expect(body.error).toMatch(/applied to the provider/);
     expect(body.appliedFields).toEqual(["size"]);
 
-    // The stale claim is the only evidence a write went unrecorded; releasing
-    // it here would destroy exactly what the reconciling retry reads.
-    expect(releasedClaim(writes)).toBe(false);
+    // The journal is written before the provider call, not after it.
+    const journalIndex = writes.findIndex((w) => "revertWriteAttemptedAt" in w);
+    expect(journalIndex).toBeGreaterThanOrEqual(0);
+    expect(calls).toEqual(["buildClient", "getResource", "updateResource"]);
+
+    // The claim is just a lock now, so it goes back like any other failure —
+    // the journal is what brings the next attempt down the reconcile path.
+    expect(releasedClaim(writes)).toBe(true);
 
     // And the mutation is still attributed, database failure or not.
     expect(mockLogAudit).toHaveBeenCalledTimes(1);
@@ -389,9 +402,9 @@ describe("POST /:changeId/revert — a write that landed but was never recorded"
   });
 
   it("reconciles on the retry: records the revert it finds already applied", async () => {
-    // The retry's view: fields already back, and a claim left behind by the
+    // The retry's view: fields already back, and a journal entry from the
     // attempt that wrote them.
-    stubSelect({ ...CHANGE, revertClaimedAt: new Date("2026-08-10T09:05:00.000Z") });
+    stubSelect(WROTE_BEFORE);
     stubUpdate();
     const { updateResource } = stubClient({ liveSize: "s-1vcpu-1gb" });
 
@@ -416,12 +429,12 @@ describe("POST /:changeId/revert — a write that landed but was never recorded"
   });
 
   /**
-   * The other side of the same coin: without a claim left behind there is no
-   * evidence a revert was ever attempted, so a resource somebody put back by
-   * hand must not be recorded as this user's revert.
+   * The other side of the same coin: with no journal entry there is no evidence
+   * a write was ever issued, so a resource somebody put back by hand must not
+   * be recorded as this user's revert.
    */
   it("does not record a hand-reverted resource as a revert", async () => {
-    stubSelect({ ...CHANGE, revertClaimedAt: null });
+    stubSelect({ ...CHANGE, revertWriteAttemptedAt: null });
     const writes = stubUpdate();
     const { updateResource } = stubClient({ liveSize: "s-1vcpu-1gb" });
 
@@ -435,14 +448,59 @@ describe("POST /:changeId/revert — a write that landed but was never recorded"
   });
 
   /**
+   * The regression that made a lock double as a journal visible: an attempt
+   * that died *before* writing leaves a claim behind exactly like one that died
+   * after. Inferring "a write happened" from that claim recorded an unrelated
+   * hand-edit as somebody's revert.
+   */
+  it("does not reconcile from a claim left by an attempt that never wrote", async () => {
+    // Claim outstanding, but no journal entry — nothing was ever issued.
+    stubSelect({
+      ...CHANGE,
+      revertClaimedAt: new Date("2026-08-10T09:05:00.000Z"),
+      revertWriteAttemptedAt: null,
+    });
+    const writes = stubUpdate();
+    const { updateResource } = stubClient({ liveSize: "s-1vcpu-1gb" });
+
+    const res = await app().request("/chg-1/revert", { method: "POST" });
+    expect(res.status).toBe(409);
+    expect(updateResource).not.toHaveBeenCalled();
+    expect(mockLogAudit).not.toHaveBeenCalled();
+    expect(writes.some((w) => w.revertedAt instanceof Date)).toBe(false);
+  });
+
+  /**
+   * The other half of the same regression. An inherited claim used to be held
+   * rather than released on exits that could not resolve it, so an event whose
+   * fields had moved on again renewed its own lease on every retry and answered
+   * 409 forever.
+   */
+  it("does not wedge an event behind a self-renewing lease on the conflict exit", async () => {
+    stubSelect({
+      ...CHANGE,
+      revertClaimedAt: new Date("2026-08-10T09:05:00.000Z"),
+      revertWriteAttemptedAt: new Date("2026-08-10T09:05:01.000Z"),
+    });
+    const writes = stubUpdate();
+    // The field moved on again — a conflict, which can never be reconciled.
+    stubClient({ liveSize: "s-8vcpu-16gb" });
+
+    const res = await app().request("/chg-1/revert", { method: "POST" });
+    expect(res.status).toBe(409);
+    // The claim must come back, or every later retry just renews the lease.
+    expect(releasedClaim(writes)).toBe(true);
+  });
+
+  /**
    * The reconciliation path's own failure mode, and the sharpest case of the
    * rule row 8 follows: the claim this attempt holds *is* the evidence that
    * brought it down this path. Releasing it here means no later attempt ever
    * recognises the interrupted write, and the event stays un-reverted forever
    * while the provider stays reverted.
    */
-  it("keeps the claim when the reconciliation write itself fails", async () => {
-    stubSelect({ ...CHANGE, revertClaimedAt: new Date("2026-08-10T09:05:00.000Z") });
+  it("releases the claim when the reconciliation write itself fails", async () => {
+    stubSelect(WROTE_BEFORE);
     const writes = stubUpdate({ completeThrows: true });
     const { updateResource } = stubClient({ liveSize: "s-1vcpu-1gb" });
 
@@ -450,40 +508,25 @@ describe("POST /:changeId/revert — a write that landed but was never recorded"
     expect(res.status).toBe(500);
     expect((await res.json()).error).toMatch(/already applied to the provider/);
     expect(updateResource).not.toHaveBeenCalled();
-    // The evidence survives, so the next attempt can still reconcile.
-    expect(releasedClaim(writes)).toBe(false);
-  });
-
-  /**
-   * The same rule generalised: an attempt that inherited an unresolved claim
-   * must not clear it on *any* exit, or it destroys the reconciliation signal
-   * for everyone after it.
-   */
-  it("does not release an inherited claim when planning fails", async () => {
-    stubSelect({ ...CHANGE, revertClaimedAt: new Date("2026-08-10T09:05:00.000Z") });
-    const writes = stubUpdate();
-    stubClient({ getResourceThrows: true });
-
-    const res = await app().request("/chg-1/revert", { method: "POST" });
-    expect(res.status).toBe(502);
-    expect(releasedClaim(writes)).toBe(false);
-  });
-
-  it("does release its own claim when planning fails and nothing was inherited", async () => {
-    stubSelect({ ...CHANGE, revertClaimedAt: null });
-    const writes = stubUpdate();
-    stubClient({ getResourceThrows: true });
-
-    const res = await app().request("/chg-1/revert", { method: "POST" });
-    expect(res.status).toBe(502);
-    // Nothing to protect, so the ordinary "retryable at once" behaviour holds.
+    // Safe to release: the journal, not the claim, brings the next attempt back
+    // down this path — and holding it would wedge the event.
     expect(releasedClaim(writes)).toBe(true);
   });
 
-  it("still reverts normally when the stale claim's attempt never wrote", async () => {
-    // Claim left behind, but the fields never moved — an attempt that died
-    // before writing. Nothing to reconcile; this is an ordinary revert.
-    stubSelect({ ...CHANGE, revertClaimedAt: new Date("2026-08-10T09:05:00.000Z") });
+  it("releases the claim on a planning failure, journal or not", async () => {
+    stubSelect(WROTE_BEFORE);
+    const writes = stubUpdate();
+    stubClient({ getResourceThrows: true });
+
+    const res = await app().request("/chg-1/revert", { method: "POST" });
+    expect(res.status).toBe(502);
+    expect(releasedClaim(writes)).toBe(true);
+  });
+
+  it("still reverts normally when the journalled attempt's write never landed", async () => {
+    // Journal present, but the fields never moved — the write was issued and
+    // did not apply. Nothing to reconcile; this is an ordinary revert.
+    stubSelect(WROTE_BEFORE);
     stubUpdate();
     const { updateResource } = stubClient({ liveSize: "s-4vcpu-8gb" });
 

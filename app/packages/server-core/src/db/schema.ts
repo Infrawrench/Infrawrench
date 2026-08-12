@@ -210,6 +210,25 @@ export const resourceChanges = pgTable(
      * `account_network_flow_polls.lease_owner`.
      */
     revertClaimOwner: text("revert_claim_owner"),
+    /**
+     * When a revert last *issued* a provider write for this event — written
+     * immediately before the call, and deliberately not the same claim as
+     * `reverted_at`. "We asked the provider to put this back" and "the provider
+     * put this back" are different claims, exactly as `delivery_attempted_at`
+     * and `delivered_at` are on `managed_invoices`.
+     *
+     * This is the journal, and `revert_claimed_at` is the lock. Conflating them
+     * was a real bug: a claim also outlives an attempt that died *before*
+     * writing, so using the claim as proof of a write both wedged events behind
+     * a self-renewing lease and let an unrelated hand-edit be recorded as
+     * somebody's revert. Its absence proves no write was issued, which is what
+     * makes releasing the claim always safe.
+     *
+     * Survives a release (an attempt whose write threw may still have applied),
+     * and is cleared only by `completeRevert`, at which point `reverted_at`
+     * carries the fact instead.
+     */
+    revertWriteAttemptedAt: timestamp("revert_write_attempted_at"),
   },
   (t) => ({
     orgCreatedIdx: index("resource_changes_org_created_idx").on(t.organizationId, t.createdAt),

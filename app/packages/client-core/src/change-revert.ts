@@ -262,25 +262,26 @@ export function buildRevertPatch(plan: RevertPlan): Record<string, string> {
  * Whether the most likely explanation for this plan is "an earlier attempt of
  * *this* revert wrote, and never got to record it".
  *
- * This is the reconciliation half of the claim lifecycle. A revert that reaches
+ * This is the reconciliation half of the revert lifecycle. A revert that reaches
  * the provider and then fails to write `reverted_at` — the database blinked,
  * the process died — leaves the resource reverted and the event marked
  * un-reverted. The retry sees every field already back at its old value, has
- * nothing to write, and would otherwise release the claim and walk away,
- * leaving the feed permanently disagreeing with the world.
+ * nothing to write, and would otherwise walk away, leaving the feed permanently
+ * disagreeing with the world.
  *
  * The hard part is that "already back at its old value" has an innocent
  * explanation too: somebody put it back by hand, or with Terraform, and never
  * asked Infrawrench to revert anything. Recording *that* as a revert would
  * attribute a change to a person who did not make it.
  *
- * The two are told apart by `hadInterruptedAttempt` — whether the change row
- * still carried a claim when this attempt took it over. A claim outlives only
- * one thing: a holder that never reached either of its exits (both
- * `completeRevert` and `releaseRevert` clear it). So a stale claim means "an
- * attempt was in flight and never recorded an outcome", which is exactly and
- * only the state in which an unrecorded write is possible. No stale claim means
- * nobody was mid-revert, and fields that moved back moved back by other means.
+ * `writeWasAttempted` is what separates them, and it has to be a **recorded
+ * fact rather than an inference**: `revert_write_attempted_at`, journalled
+ * immediately before the provider call. An earlier design inferred it from the
+ * revert's claim still being outstanding, which is subtly unsound — a claim
+ * outlives an attempt that died *before* writing exactly as readily as one that
+ * died after — and that unsoundness showed up twice, once as events wedged
+ * behind a self-renewing lease and once as a hand-edit recorded as somebody's
+ * revert. A lock cannot double as a journal.
  *
  * The rest of the predicate is deliberately conservative: nothing left to write
  * (no `revertible`), nothing ambiguous (no `conflict` — a field that moved on
@@ -288,11 +289,8 @@ export function buildRevertPatch(plan: RevertPlan): Record<string, string> {
  * move back. `not-writable` and `provider-derived` entries are ignored because
  * a revert would never have written them in the first place.
  */
-export function revertLooksAlreadyApplied(
-  plan: RevertPlan,
-  hadInterruptedAttempt: boolean,
-): boolean {
-  if (!hadInterruptedAttempt) return false;
+export function revertLooksAlreadyApplied(plan: RevertPlan, writeWasAttempted: boolean): boolean {
+  if (!writeWasAttempted) return false;
   if (plan.fields.length === 0) return false;
   if (plan.fields.some((f) => f.status === "revertible" || f.status === "conflict")) return false;
   return plan.fields.some((f) => f.status === "already-reverted");

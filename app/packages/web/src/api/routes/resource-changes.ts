@@ -23,6 +23,7 @@ import {
   claimRevert,
   completeRevert,
   loadChange,
+  markRevertWriteAttempted,
   releaseRevert,
 } from "../../services/change-revert";
 import type { AuthSession } from "../auth-middleware";
@@ -281,50 +282,59 @@ app.get("/:changeId/revert", async (c) => {
  * 5. record completion, releasing the claim on any failure so the attempt is
  *    retryable at once rather than at lease expiry.
  *
- * ## Every way an attempt can end
+ * ## Three pieces of state, each with one job
  *
- * The claim, the provider write and the completion each have their own failure
- * mode, so the terminal states are worth writing down rather than reasoning
- * about one at a time. `claim` below is the row's `revert_claimed_at` /
- * `revert_claim_owner` pair.
+ * - `revert_claimed_at` + `revert_claim_owner` — a **lock**, leased so a dead
+ *   holder cannot hold it forever, fenced so a superseded holder cannot release
+ *   somebody else's. It says who may act. It says nothing about what happened.
+ * - `revert_write_attempted_at` — a **journal**, written immediately before the
+ *   provider call. It says a write was issued and its outcome is unknown.
+ * - `reverted_at` — the **fact**, written only once the provider accepted.
+ *
+ * Keeping these three apart is the whole design, and it was arrived at the hard
+ * way: two earlier versions used the claim as its own journal, inferring "an
+ * earlier attempt may have written" from "a claim is still outstanding". That
+ * inference is unsound — a claim outlives an attempt that died *before* writing
+ * exactly as readily as one that died after — and it failed in both directions
+ * at once, wedging events behind a lease each retry renewed while also letting
+ * an unrelated hand-edit be recorded as somebody's revert. A lock cannot double
+ * as a journal. With the journal explicit, **every exit releases the claim
+ * unconditionally** and nothing is lost by doing so.
+ *
+ * ## Every way an attempt can end
  *
  * | # | Provider write | Recorded | Response | Row afterwards | Recovers by |
  * |---|---|---|---|---|---|
  * | 1 | not reached (404/409/423, claim lost) | — | 404/409/423 | untouched | n/a |
  * | 2 | not reached (plan failed, no client) | — | 502/404 | claim released | retry |
- * | 3 | not reached (nothing writable) | — | 409 | claim released | n/a — correct |
- * | 4 | not reached (already applied earlier) | yes, as `reconciled` | 200 | reverted | n/a |
- * | 4b | not reached (as row 4) | no — DB threw | 500 | **claim kept** | lease expiry → row 4 |
- * | 5 | threw | — | 400 | claim released* | retry |
+ * | 3 | not reached (nothing writable / conflict) | — | 409 | claim released | n/a — correct |
+ * | 4 | not reached (journal says an earlier one wrote) | yes, as `reconciled` | 200 | reverted | n/a |
+ * | 4b | not reached (as row 4) | no — DB threw | 500 | claim released, journal kept | retry → row 4 |
+ * | 5 | threw | — | 400 | claim released, **journal kept** | retry → row 4 or a normal revert |
  * | 6 | ok | yes | 200 | reverted | n/a |
  * | 7 | ok | no — superseded | 409 | replacement's claim | the replacement |
- * | 8 | ok | no — DB threw | 500 | **claim kept** | lease expiry → row 4 |
- * | 9 | ok | never attempted (process died) | — | claim expires | lease expiry → row 4 |
+ * | 8 | ok | no — DB threw | 500 | claim released, journal kept | retry → row 4 |
+ * | 9 | ok | never attempted (process died) | — | claim expires, journal kept | lease expiry → row 4 |
  *
- * Rows 4, 8 and 9 are one loop and the reason this handler is not simply
- * "write, then record". A write that lands and is not recorded leaves the feed
- * disagreeing with the provider *permanently* — the retry finds nothing to do
- * and, before this, released the claim and walked away. So a retry that finds
- * every field already back, on an event whose claim was still lying around,
- * completes it instead: `revertLooksAlreadyApplied` in client-core carries that
- * judgement and explains how it avoids mistaking a hand-edit for a revert.
+ * Rows 4, 5, 8 and 9 are one loop and the reason this handler is not simply
+ * "write, then record". A write that lands and is not recorded would otherwise
+ * leave the feed disagreeing with the provider *permanently*: the retry finds
+ * nothing to do and walks away. Instead a retry that finds every field already
+ * back, on an event whose **journal** says a write was issued, completes it —
+ * `revertLooksAlreadyApplied` in client-core carries that judgement.
  *
- * **The general rule the starred exits follow**: `revert_claimed_at` is the
- * only evidence that an earlier attempt may have written without recording, so
- * no exit may clear a claim it inherited and did not resolve. That is why rows
- * 4b and 8 hold it, and why every other release goes through
- * {@link releaseIfSafe} rather than releasing unconditionally — row 2 and row 5
- * would otherwise destroy an inherited claim on their way past. The cost is
- * five minutes of not being retryable, against a permanent disagreement.
+ * Row 5 is now inside that loop rather than a named residual: a provider that
+ * errors *after* applying is indistinguishable from one that errors instead of
+ * applying, so the journal survives the throw and the next attempt can notice.
  *
- * *Row 5's residual, named rather than hidden: a provider that errors *after*
- * applying is treated as not having applied, because that is what throwing
- * means in the plugin contract. On a first attempt (nothing inherited) the
- * claim is released, so a later retry sees the fields already back with no
- * claim to reconcile from and reports "already back at its previous value" —
- * accurate about the resource, but the event keeps no revert badge. Holding the
- * claim on every failed revert would close that at the price of a five-minute
- * lockout after every bad input, which is the common case and this is not.
+ * The residual that remains, named rather than hidden: a process dying between
+ * the journal write and the provider call leaves a journal entry for a write
+ * that was never issued. If somebody then returns the field to its old value by
+ * hand, the next revert attempt reconciles and records it. The window is two
+ * statements wide, it requires a hand-edit that exactly matches a pending
+ * revert, and the audit entry says `reconciled` — "recorded an earlier
+ * attempt's write" — rather than claiming this user made the change. Closing it
+ * needs a confirmation the provider cannot give us.
  *
  * Every row that reached the provider is audit-logged whatever happened next —
  * see {@link auditOutcome}, including why attribution is best-effort.
@@ -375,36 +385,16 @@ app.post("/:changeId/revert", async (c) => {
   }
 
   /**
-   * Did this attempt inherit an unresolved earlier one?
-   *
-   * A claim outlives its holder only when that holder reached neither of its
-   * exits, so a claim still lying on the row at load time means "somebody was
-   * mid-revert and never recorded an outcome" — and until we know otherwise,
-   * that outcome might have been a provider write. `revert_claimed_at` is the
-   * only trace of it, so while it is unresolved this attempt must not clear it.
+   * Did an earlier attempt at *this* event get as far as issuing a provider
+   * write? A recorded fact (`revert_write_attempted_at`), never inferred from
+   * the claim — see {@link markRevertWriteAttempted} for why that distinction
+   * is load-bearing.
    */
-  const inheritedUnresolvedAttempt = change.revertClaimedAt !== null;
-
-  /**
-   * Release the claim, unless releasing would destroy the evidence some later
-   * attempt needs to reconcile.
-   *
-   * Releasing normally is what makes an ordinary failure retryable at once
-   * rather than at lease expiry, and that is worth having. But every
-   * reconciliation depends on `revert_claimed_at` still being set (see
-   * `revertLooksAlreadyApplied`), so an attempt that inherited an unresolved
-   * claim and did not resolve it hands the claim back by *lease expiry* instead
-   * — five minutes of not being retryable, against a permanent disagreement
-   * between the feed and the provider. The same trade row 8 makes.
-   */
-  const releaseIfSafe = async () => {
-    if (inheritedUnresolvedAttempt) return;
-    await releaseRevert(organizationId, change.id, owner);
-  };
+  const earlierWriteAttempted = change.revertWriteAttemptedAt !== null;
 
   const result = await buildRevertPlan(organizationId, change);
   if (!result.ok) {
-    await releaseIfSafe();
+    await releaseRevert(organizationId, change.id, owner);
     return revertFailureResponse(c, result.failure);
   }
   const { plan, client } = result.result;
@@ -485,24 +475,22 @@ app.post("/:changeId/revert", async (c) => {
   const patch = buildRevertPatch(plan);
   if (Object.keys(patch).length === 0) {
     // Row 4 of the lifecycle table. Nothing to write — but if an earlier
-    // attempt's claim was still lying on this row when we took it over, and
-    // every field is now back at its old value, then that attempt wrote and
-    // never got to say so. Recording it here is what stops the feed disagreeing
-    // with the provider forever. `revertLooksAlreadyApplied` is what keeps this
-    // from also firing on a resource somebody put back by hand.
-    if (revertLooksAlreadyApplied(plan, inheritedUnresolvedAttempt)) {
+    // attempt journalled a provider write for this event and every field is now
+    // back at its old value, that attempt wrote and never got to say so.
+    // Recording it here is what stops the feed disagreeing with the provider
+    // forever, and the journal is what keeps it from also firing on a resource
+    // somebody put back by hand.
+    if (revertLooksAlreadyApplied(plan, earlierWriteAttempted)) {
       const reconciledAt = new Date();
       let recorded: boolean;
       try {
         recorded = await completeRevert(organizationId, change.id, owner, reconciledAt);
       } catch (err) {
-        // Row 8's rule, one branch over — and the branch where it bites
-        // hardest. The claim this attempt is holding *is* the evidence that
-        // brought it down this path; releasing it here would mean no later
-        // attempt ever recognises the interrupted write, and the event stays
-        // un-reverted forever while the provider stays reverted. So: no
-        // release, and the lease expiry hands it to the next attempt intact.
+        // Recording failed. The claim goes back like any other failed exit —
+        // the journal, not the claim, is what brings the next attempt back down
+        // this path, so there is nothing here that letting go destroys.
         console.error("[change-revert] Failed to record a reconciled revert:", err);
+        await releaseRevert(organizationId, change.id, owner);
         return c.json(
           {
             error:
@@ -529,10 +517,13 @@ app.post("/:changeId/revert", async (c) => {
         });
       }
       // `recorded === false` means another attempt took the event over while we
-      // were planning. It holds the claim and will reconcile; `releaseIfSafe`
-      // below is a no-op for us anyway, since release is owner-fenced.
+      // were planning. It holds the claim and will reconcile; the release below
+      // is a no-op for us anyway, since release is owner-fenced.
     }
-    await releaseIfSafe();
+    // Always released, including on the conflict exit. The claim is a lock and
+    // nothing more, so an event can never be left wedged behind a lease that
+    // each retry renews.
+    await releaseRevert(organizationId, change.id, owner);
     return c.json(
       {
         error: plan.blockedReason ?? "Nothing about this change can be reverted.",
@@ -547,21 +538,25 @@ app.post("/:changeId/revert", async (c) => {
   // credential rewriters *between* the read and the write, widening the window
   // for exactly the lost update the re-read is trying to catch.
   if (!client?.updateResource) {
-    await releaseIfSafe();
+    await releaseRevert(organizationId, change.id, owner);
     return c.json({ error: "The account this change belongs to no longer exists" }, 404);
   }
+
+  // Journal the intent before the call, so that whatever happens next — a
+  // throw, a timeout, this process disappearing — the fact that a write was
+  // *issued* for this event survives. This is the state that makes the claim a
+  // pure lock and lets every failure path release it.
+  await markRevertWriteAttempted(organizationId, change.id, owner, new Date());
 
   try {
     await client.updateResource(change.resourceTypeId, change.resourceId, change.accountId, patch);
   } catch (err) {
-    // Row 5. A throw is taken to mean the write did not apply, which is what
-    // throwing means in the plugin contract, so the claim goes back and the
-    // caller can retry at once. The residual is named in the table above: a
-    // provider that errors *after* applying leaves the event un-reverted with
-    // nothing to reconcile from. Holding the claim on every failed revert would
-    // close it, at the price of a five-minute lockout after every bad input —
-    // which is the common case, and this is not.
-    await releaseIfSafe();
+    // Row 5. The claim goes back and the caller can retry at once. The journal
+    // deliberately stays: a provider that errors *after* applying is
+    // indistinguishable from one that errors instead of applying, so the next
+    // attempt is left able to notice the fields already back and reconcile,
+    // rather than the event being stranded un-reverted forever.
+    await releaseRevert(organizationId, change.id, owner);
     const message = err instanceof Error ? err.message : "The revert failed";
     return c.json({ error: message }, 400);
   }
@@ -575,12 +570,13 @@ app.post("/:changeId/revert", async (c) => {
   try {
     completed = await completeRevert(organizationId, change.id, owner, revertedAt);
   } catch (err) {
-    // Row 8. The provider moved and we cannot say so. The claim is deliberately
-    // *not* released: it is the only evidence that a write may have gone
-    // unrecorded, and the retry after lease expiry reads it to reconcile (row
-    // 4). Releasing here would trade a five-minute wait for a permanent
-    // disagreement between the feed and the provider.
+    // Row 8. The provider moved and we cannot say so. The claim goes back like
+    // any other failure — what carries this forward is the journal written
+    // before the call, which is still set, so the next attempt sees the fields
+    // already back and reconciles (row 4). The event is retryable at once
+    // rather than after the lease expires.
     console.error("[change-revert] Provider write landed but could not be recorded:", err);
+    await releaseRevert(organizationId, change.id, owner);
     const audited = await auditOutcome("unrecorded", plan.revertibleFields);
     return c.json(
       {

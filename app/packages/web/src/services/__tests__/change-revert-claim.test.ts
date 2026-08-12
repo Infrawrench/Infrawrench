@@ -32,6 +32,8 @@ interface Row {
   revert_claimed_at: number | null;
   /** Identity of the lease holder. What makes the lease an exclusion, not a timer. */
   revert_claim_owner: string | null;
+  /** Epoch ms, or null. The journal: a provider write was issued for this event. */
+  revert_write_attempted_at: number | null;
   reverted_by_user_id: string | null;
 }
 
@@ -124,6 +126,7 @@ const update = vi.fn((_table: unknown) => ({
 const COLUMN_OF: Record<string, string> = {
   revertClaimedAt: "revert_claimed_at",
   revertClaimOwner: "revert_claim_owner",
+  revertWriteAttemptedAt: "revert_write_attempted_at",
   revertedAt: "reverted_at",
   revertedByUserId: "reverted_by_user_id",
 };
@@ -133,8 +136,13 @@ vi.mock("@/db/client", () => dbMock);
 vi.mock("@infrawrench/server-core/db/client", () => dbMock);
 vi.mock("@/services/plugin-clients", () => ({ getClientForAccount: vi.fn() }));
 
-const { claimRevert, completeRevert, releaseRevert, REVERT_CLAIM_LEASE_MS } =
-  await import("@/services/change-revert");
+const {
+  claimRevert,
+  completeRevert,
+  markRevertWriteAttempted,
+  releaseRevert,
+  REVERT_CLAIM_LEASE_MS,
+} = await import("@/services/change-revert");
 
 const T0 = new Date("2026-08-11T12:00:00.000Z");
 const at = (ms: number) => new Date(T0.getTime() + ms);
@@ -146,6 +154,7 @@ beforeEach(() => {
     reverted_at: null,
     revert_claimed_at: null,
     revert_claim_owner: null,
+    revert_write_attempted_at: null,
     reverted_by_user_id: null,
   };
   update.mockClear();
@@ -320,5 +329,51 @@ describe("claim vs completion are different columns", () => {
     expect(row.reverted_at).toBeNull();
     // Retryable at once, not at lease expiry.
     expect(await claimRevert("org-1", "chg-1", "user-a", at(10))).toEqual(expect.any(String));
+  });
+});
+
+/**
+ * The journal is a separate fact from the lock, and the two have deliberately
+ * different lifetimes. A claim says who may act; only this says a write was
+ * issued. Inferring the second from the first is what produced two rounds of
+ * P1s — a claim outlives an attempt that died *before* writing just as readily
+ * as one that died after.
+ */
+describe("the write journal outlives the lock", () => {
+  it("survives a release, because a throw does not prove the write missed", async () => {
+    const owner = await claimRevert("org-1", "chg-1", "user-a", T0);
+    await markRevertWriteAttempted("org-1", "chg-1", owner!, at(100));
+    // The provider call threw; the attempt lets go of the lock.
+    await releaseRevert("org-1", "chg-1", owner!);
+
+    expect(row.revert_claimed_at).toBeNull();
+    expect(row.revert_write_attempted_at).toBe(at(100).getTime());
+  });
+
+  it("is cleared only by completion, when `reverted_at` carries the fact instead", async () => {
+    const owner = await claimRevert("org-1", "chg-1", "user-a", T0);
+    await markRevertWriteAttempted("org-1", "chg-1", owner!, at(100));
+    await completeRevert("org-1", "chg-1", owner!, at(200));
+
+    expect(row.reverted_at).toBe(at(200).getTime());
+    expect(row.revert_write_attempted_at).toBeNull();
+  });
+
+  it("is not written by a superseded attempt", async () => {
+    const a = await claimRevert("org-1", "chg-1", "user-a", T0);
+    await claimRevert("org-1", "chg-1", "user-b", at(REVERT_CLAIM_LEASE_MS + 1_000));
+    // A is past its lease; its journal write is fenced out like everything else.
+    await markRevertWriteAttempted("org-1", "chg-1", a!, at(REVERT_CLAIM_LEASE_MS + 2_000));
+    expect(row.revert_write_attempted_at).toBeNull();
+  });
+
+  it("is untouched by a fresh claim, so it survives across attempts", async () => {
+    const a = await claimRevert("org-1", "chg-1", "user-a", T0);
+    await markRevertWriteAttempted("org-1", "chg-1", a!, at(100));
+    await releaseRevert("org-1", "chg-1", a!);
+
+    await claimRevert("org-1", "chg-1", "user-b", at(1_000));
+    // The next attempt must still be able to see that a write was issued.
+    expect(row.revert_write_attempted_at).toBe(at(100).getTime());
   });
 });
