@@ -51,6 +51,7 @@ import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
 import { registerLeasePaths } from "./paths/leases";
 import { registerSessionRecordingPaths } from "./paths/session-recordings";
+import { registerSharedConsolePaths } from "./paths/shared-consoles";
 import { registerAccessRequestPaths } from "./paths/access-requests";
 import { registerCredentialHygienePaths } from "./paths/credential-hygiene";
 import { registerCreditPaths } from "./paths/credits";
@@ -172,6 +173,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerSchedulePaths(ctx);
   registerLeasePaths(ctx);
   registerSessionRecordingPaths(ctx);
+  registerSharedConsolePaths(ctx);
   registerAccessRequestPaths(ctx);
   registerCredentialHygienePaths(ctx);
   registerCreditPaths(ctx);
@@ -402,6 +404,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Session recordings",
         description:
           "Replayable asciicasts of SSH sessions opened through the cloud. Cloud SSH is already proxied server-side, so recording tees a stream the server holds rather than needing an agent on the host; casts download in asciinema's own format. Opt-in per organization, retained on a per-organization window.",
+      },
+      {
+        name: "Shared consoles",
+        description:
+          "Pair-on-prod: fan a live cloud SSH session out to invited colleagues, with exactly one of them holding the keyboard. The invite link is a locator, never a capability — joining needs live org membership and the same `resources:execute` a direct terminal to that resource needs, re-derived on join, on attach and on a sweep while attached. Every join, leave, role change, handover and revocation is audit-logged, and participants are attributed in the session recording's metadata and on its timeline.",
       },
       {
         name: "Synthetic probes",
@@ -692,6 +699,31 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /access-requests/{requestId}/deny": "access:approve",
   "POST /access-requests/{requestId}/withdraw": "access:request",
   "GET /session-recordings": "session-recordings:read",
+  // shared consoles — deliberately no permission family of their own. A share
+  // hands over no capability the guest did not already hold: joining requires
+  // the same `resources:execute` a direct terminal to that resource requires,
+  // so the invite link is a locator and never an authorisation. Inventing a
+  // `shared-consoles:*` family would imply a share is a lesser thing than a
+  // shell, and it is not — a guest can be handed the keyboard.
+  "GET /shared-consoles": "resources:execute",
+  "POST /shared-consoles": "resources:execute",
+  "GET /shared-consoles/invites/{token}": "resources:execute",
+  "GET /shared-consoles/{consoleId}": "resources:execute",
+  "POST /shared-consoles/{consoleId}/join": "resources:execute",
+  "POST /shared-consoles/{consoleId}/handover": "resources:execute",
+  "POST /shared-consoles/{consoleId}/request-driver": "resources:execute",
+  // The routes that *take access away* — leave, revoke, eject, withdraw an
+  // invite — carry no permission on purpose. Gating them on still holding
+  // `resources:execute` would lock an owner whose role was narrowed
+  // mid-incident out of closing the session they opened. They are gated in the
+  // handler instead, on being the sharer or holding `org:settings:write`,
+  // which the one-permission-per-route map cannot express (the `leases`
+  // autoDelete precedent).
+  "POST /shared-consoles/{consoleId}/leave": null,
+  "DELETE /shared-consoles/{consoleId}": null,
+  "POST /shared-consoles/{consoleId}/invites": null,
+  "DELETE /shared-consoles/{consoleId}/invites": null,
+  "DELETE /shared-consoles/{consoleId}/participants/{participantId}": null,
   "GET /session-recordings/settings": "session-recordings:read",
   "PUT /session-recordings/settings": "session-recordings:write",
   "GET /session-recordings/{recordingId}": "session-recordings:read",

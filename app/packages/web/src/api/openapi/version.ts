@@ -36,4 +36,8 @@
 // 1.13.0: the blast-radius impact report — one new read route answering "what
 // breaks if I delete this?" from the dependency graph, network flow
 // attribution and the org objects that name a resource. Additive.
-export const API_VERSION = "1.13.0";
+// 1.14.0: shared consoles — pair-on-prod for a live cloud SSH session. Eleven
+// new routes under `/shared-consoles`, a `Shared consoles` tag, and two
+// additive fields on SessionRecording (`sharedConsoleId`, `participants`) that
+// attribute a shared session to everyone who was on it. All additive.
+export const API_VERSION = "1.14.0";

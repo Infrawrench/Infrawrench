@@ -2,6 +2,8 @@
  * Server-side SSH terminal proxy.
  * Connects to user infrastructure via ssh2, streams I/O over WebSocket.
  */
+import { randomUUID } from "node:crypto";
+
 import ssh2 from "ssh2";
 import type { WebSocket } from "ws";
 
@@ -24,6 +26,7 @@ import {
   type SessionRecorder,
 } from "@infrawrench/server-core/ssh-recording/recorder";
 import { forwardOutHop, resolveSshChain, type SshHop } from "@infrawrench/plugin-ssh";
+import { sharedConsoleHub } from "@/services/shared-console/hub";
 
 interface DirectSshParams {
   sshKeyId: string;
@@ -87,6 +90,12 @@ export async function handleSshSession(
   rows?: number,
   agentForward?: boolean,
   userId?: string,
+  /**
+   * Opaque affinity hint the browser minted and put in its own `?sid=`.
+   * Recorded on the share so a joiner can ask the ingress for the same
+   * backend; see `services/shared-console/hub.ts`. Never used as authority.
+   */
+  routingKey?: string,
 ): Promise<void> {
   // Hoisted so the outer catch can tear down anything opened before a throw.
   let cleanup: () => void = () => {};
@@ -207,11 +216,27 @@ export async function handleSshSession(
      * on the terminal's path awaits it.
      */
     let recorder: SessionRecorder | null = null;
+    /**
+     * This session's key in the process-local console registry.
+     *
+     * Minted here, for every session, whether or not it is ever shared:
+     * registering unconditionally is what lets somebody share a session that
+     * is already twenty minutes old without the pty having to know in advance
+     * that it might be.
+     */
+    const liveConsoleId = randomUUID();
+    let registered = false;
 
     /** Idempotent teardown of everything opened so far (shell, hops, final conn). */
     cleanup = () => {
       if (torndown) return;
       torndown = true;
+      if (registered) {
+        registered = false;
+        // Detaches every guest and settles the share as `ended`. Before the
+        // recorder is finished, so the closing marker lands on the tape.
+        sharedConsoleHub.unregister(liveConsoleId);
+      }
       // Fire-and-forget: `finish` flushes the tail and settles the row, and the
       // terminal's teardown must not wait on a database write. A recording
       // whose closing write is lost is settled by the retention pass instead.
@@ -320,19 +345,59 @@ export async function handleSshSession(
           },
         });
 
-        sendJson({ type: "ssh:connected" });
+        // Registered before the first byte, and unconditionally: the console
+        // is now shareable, and a session that could only be shared if the
+        // sharer had decided so at connect time would be useless — the moment
+        // you want a second pair of eyes is never the moment you opened the
+        // shell.
+        sharedConsoleHub.register(
+          liveConsoleId,
+          {
+            organizationId,
+            ownerUserId: userId,
+            // Read by the create-share route rather than taken from the
+            // request body: what box this session is on is a fact the proxy
+            // knows and the browser only believes.
+            accountId,
+            resourceId,
+            host: finalConfig.host,
+            port: finalConfig.port ?? 22,
+            username: finalConfig.username,
+            write: (data) => stream.write(data),
+            resize: (c, r) => stream.setWindow(r, c, 0, 0),
+            recorder: () => recorder,
+            close: cleanup,
+            sendToOwner: (frame) => sendJson(frame),
+          },
+          cols ?? 80,
+          rows ?? 24,
+        );
+        registered = true;
+
+        // `liveConsoleId` is what `POST /shared-consoles` names to bind a share
+        // to this pty, and `routingKey` is what a joiner puts in their own
+        // `?sid=` so the ingress hashes them onto this replica.
+        sendJson({
+          type: "ssh:connected",
+          liveConsoleId,
+          ...(routingKey ? { routingKey } : {}),
+        });
 
         // The tee is second in each handler on purpose: the operator's byte
-        // reaches the browser before we spend anything recording it.
+        // reaches the browser before we spend anything recording it. The
+        // fan-out to any guests is third, for the same reason: the person
+        // typing is served before the people watching.
         stream.on("data", (data: Buffer) => {
           sendJson({ type: "ssh:data", data: data.toString("base64") });
           recorder?.onOutput(data);
+          sharedConsoleHub.broadcastOutput(liveConsoleId, data);
           backpressure?.check();
         });
 
         stream.stderr.on("data", (data: Buffer) => {
           sendJson({ type: "ssh:data", data: data.toString("base64") });
           recorder?.onOutput(data);
+          sharedConsoleHub.broadcastOutput(liveConsoleId, data);
           backpressure?.check();
         });
 
@@ -351,14 +416,32 @@ export async function handleSshSession(
             };
 
             if (msg.type === "ssh:data" && msg.data) {
+              // Unshared: always true, and this is the pre-existing path. Once
+              // shared, the owner types only while they are the driver — the
+              // same server-side gate their guests go through, because "the
+              // person who opened the session" is not a role that exempts
+              // anyone from the one-driver rule they agreed to.
+              if (!sharedConsoleHub.ownerMayWrite(liveConsoleId)) return;
               const input = Buffer.from(msg.data, "base64");
               stream.write(input);
               // No-op unless the org opted into input capture specifically —
               // see the note on `capture_input` in the schema.
               recorder?.onInput(input);
             } else if (msg.type === "ssh:resize" && msg.cols && msg.rows) {
+              // A pty has one size and it is the driver's. An owner who has
+              // handed the keyboard over letterboxes like everybody else
+              // rather than resizing the window out from under the driver —
+              // but their window size is still recorded, so taking the
+              // keyboard back resizes to what they can actually read.
+              sharedConsoleHub.noteOwnerViewport(liveConsoleId, msg.cols, msg.rows);
+              if (!sharedConsoleHub.ownerMayResize(liveConsoleId)) return;
               stream.setWindow(msg.rows, msg.cols, 0, 0);
               recorder?.onResize(msg.cols, msg.rows);
+              sharedConsoleHub.notePtySize(liveConsoleId, msg.cols, msg.rows);
+            } else if (msg.type === "console:viewport" && msg.cols && msg.rows) {
+              // The letterboxed owner reporting the size their window *would*
+              // fit, without asking for it.
+              sharedConsoleHub.noteOwnerViewport(liveConsoleId, msg.cols, msg.rows);
             }
           } catch {
             /* ignore malformed messages */

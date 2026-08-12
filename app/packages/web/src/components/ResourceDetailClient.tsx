@@ -84,6 +84,8 @@ import { createWebOwnershipClient } from "@/lib/ownership-client";
 import { createWebBlastRadiusClient } from "@/lib/blast-radius-client";
 import { SftpBrowser } from "@/components/SftpBrowser";
 import { WebTerminal } from "@/components/WebTerminal";
+import type { WebTerminalSession } from "@/components/WebTerminal";
+import { SharedConsolePanel } from "@/components/SharedConsolePanel";
 import { SshQuickConnectPanel } from "@/components/SshQuickConnectPanel";
 import { SpotlightSearch } from "./SpotlightSearch";
 import { ConnectResourceModal } from "./ConnectResourceModal";
@@ -227,6 +229,18 @@ export function ResourceDetailClient({
   const leasesClient = useMemo(() => createWebLeasesClient(orgId), [orgId]);
   const ownershipClient = useMemo(() => createWebOwnershipClient(orgId), [orgId]);
   const blastRadiusClient = useMemo(() => createWebBlastRadiusClient(orgId), [orgId]);
+  /**
+   * Shared-console state for the SSH view.
+   *
+   * Owned here rather than inside `WebTerminal` because the Share panel is a
+   * sibling of the terminal, not a thing inside it: the terminal holds the
+   * socket the state arrives on, and hands it up.
+   */
+  const [terminalSession, setTerminalSession] = useState<WebTerminalSession | null>(null);
+  const [shareState, setShareState] =
+    useState<Parameters<NonNullable<React.ComponentProps<typeof WebTerminal>["onShareState"]>>[0]>(
+      null,
+    );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
@@ -1061,6 +1075,32 @@ export function ResourceDetailClient({
       {/* SSH view — full screen */}
       {isSshView && (
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          {/* Sharing rides on the cloud SSH proxy, so it is offered exactly
+              where that proxy is in play. The bar also carries the live status
+              once a share exists, because the one thing an operator must never
+              have to go looking for is "am I being watched right now". */}
+          {terminalSession && (
+            <div className="shrink-0 flex items-center gap-3 px-3 py-1.5 border-b border-border/60 bg-surface/40">
+              <SharedConsolePanel
+                orgId={orgId}
+                session={terminalSession}
+                share={shareState?.share ?? null}
+                participants={shareState?.participants ?? []}
+                youParticipantId={shareState?.youParticipantId ?? null}
+              />
+              {shareState && (
+                <span className="text-[11px] text-on-surface-muted">
+                  Live with{" "}
+                  {shareState.participants
+                    .filter((p) => p.status === "joined")
+                    .map(
+                      (p) => `${p.userName ?? p.userId}${p.role === "driver" ? " (driving)" : ""}`,
+                    )
+                    .join(", ")}
+                </span>
+              )}
+            </div>
+          )}
           {sshHost && !sshQuickConnect && !autoConnectPending && agentLaunch.autoConnectReady && (
             <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border/60 bg-surface/40">
               <label className="flex items-center gap-2 text-xs text-on-surface-muted cursor-pointer select-none">
@@ -1130,6 +1170,8 @@ export function ResourceDetailClient({
                 initialCommand={agentLaunch.initialCommand}
                 initialCwd={agentLaunch.initialCwd}
                 agentTerminal={Boolean(agentSessionId)}
+                onSession={setTerminalSession}
+                onShareState={setShareState}
               />
             ) : wsToken ? (
               <WebTerminal
@@ -1141,6 +1183,8 @@ export function ResourceDetailClient({
                 initialCommand={agentLaunch.initialCommand}
                 initialCwd={agentLaunch.initialCwd}
                 agentTerminal={Boolean(agentSessionId)}
+                onSession={setTerminalSession}
+                onShareState={setShareState}
               />
             ) : !sshHost ? (
               <div className="flex items-center justify-center h-full">

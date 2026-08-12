@@ -18,8 +18,18 @@
  * *when* an event happened; this module only decides how it is written down.
  */
 
-/** Event kinds we emit. `"o"` output, `"i"` input, `"r"` resize. */
-export type CastEventCode = "o" | "i" | "r";
+/**
+ * Event kinds we emit. `"o"` output, `"i"` input, `"r"` resize, `"m"` marker.
+ *
+ * Markers are asciinema's own annotation event — a labelled point on the
+ * timeline that its player renders as a chapter and that `asciinema play`
+ * ignores harmlessly. We emit one whenever the cast needs to say something the
+ * byte stream does not: somebody joined the shared session, somebody took the
+ * keyboard, the share was revoked. Putting that in-band means the tape answers
+ * "whose hands were on this at 04:12" on its own, in a format a third-party
+ * viewer already understands, rather than only in a column beside it.
+ */
+export type CastEventCode = "o" | "i" | "r" | "m";
 
 export interface CastHeader {
   width: number;
@@ -120,7 +130,7 @@ export function parseCast(text: string): ParsedCast {
       if (!Array.isArray(parsed) || parsed.length < 3) continue;
       const [time, code, data] = parsed as [unknown, unknown, unknown];
       if (typeof time !== "number" || typeof data !== "string") continue;
-      if (code !== "o" && code !== "i" && code !== "r") continue;
+      if (code !== "o" && code !== "i" && code !== "r" && code !== "m") continue;
       events.push({ time, code, data });
     } catch {
       // Truncated or otherwise unreadable line — see the note above.

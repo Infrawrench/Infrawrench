@@ -26,9 +26,16 @@ import { gzipSync } from "node:zlib";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../db/client";
-import { sshSessionRecordingChunks, sshSessionRecordings, users } from "../db/schema";
+import {
+  sshSessionRecordingChunks,
+  sshSessionRecordings,
+  users,
+  type RecordingParticipant,
+} from "../db/schema";
 
-import { encodeCastEvent, encodeCastHeader, encodeResizeData } from "./cast";
+export type { RecordingParticipant };
+
+import { encodeCastEvent, encodeCastHeader, encodeResizeData, type CastEventCode } from "./cast";
 import { getCachedSessionRecordingSettings } from "./settings";
 
 /**
@@ -104,6 +111,24 @@ export interface SessionRecorder {
   /** Keystrokes headed for the host. No-op unless the org opted into input capture. */
   onInput(data: Buffer | string): void;
   onResize(cols: number, rows: number): void;
+  /**
+   * Annotate the timeline with an asciicast `"m"` marker.
+   *
+   * Used by shared consoles to write who joined, who took the keyboard and
+   * when the share was revoked into the tape itself. Markers cost a line and
+   * are ignored by every player that does not understand them, so a cast with
+   * them still plays anywhere a cast without them does.
+   */
+  mark(label: string): void;
+  /**
+   * Record that this session is shared, and by whom.
+   *
+   * Called on every membership or role change. Writes to the recording's own
+   * row, not the cast, so a list view can say "three people" without reading
+   * the tape — and so the attribution survives the share rows being cleaned
+   * up. Fire-and-forget like everything else here.
+   */
+  setParticipants(sharedConsoleId: string, participants: RecordingParticipant[]): void;
   /** Flush the tail and settle the row. Safe to call more than once. */
   finish(): Promise<void>;
 }
@@ -257,6 +282,34 @@ class ChunkedRecorder implements SessionRecorder {
     this.append("r", encodeResizeData(cols, rows), false);
   }
 
+  mark(label: string): void {
+    // Bounded: a marker is a caption, and a caption assembled from user-
+    // supplied display names should not be able to grow a chunk on its own.
+    this.append("m", label.slice(0, 200), false);
+  }
+
+  setParticipants(sharedConsoleId: string, participants: RecordingParticipant[]): void {
+    if (this.disabled || this.finished) return;
+    this.writeChain = this.writeChain
+      .then(() =>
+        db
+          .update(sshSessionRecordings)
+          .set({ sharedConsoleId, participants })
+          .where(
+            and(
+              eq(sshSessionRecordings.id, this.recordingId),
+              eq(sshSessionRecordings.organizationId, this.organizationId),
+            ),
+          )
+          .then(() => undefined),
+      )
+      .catch((err) => {
+        // The tape is still good; only the attribution column is stale. Not
+        // worth stopping capture over, so this does not go through `fail`.
+        console.error(`[ssh-recording] ${this.recordingId}: participant write failed:`, err);
+      });
+  }
+
   /**
    * Buffer one event.
    *
@@ -265,7 +318,7 @@ class ChunkedRecorder implements SessionRecorder {
    * input events because its *output* filled the budget would make the
    * remaining tape misleading about who did what.
    */
-  private append(code: "o" | "i" | "r", data: Buffer | string, countsTowardCeiling: boolean): void {
+  private append(code: CastEventCode, data: Buffer | string, countsTowardCeiling: boolean): void {
     if (this.disabled || this.finished) return;
     try {
       const text = typeof data === "string" ? data : data.toString("utf8");

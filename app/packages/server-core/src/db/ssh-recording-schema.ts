@@ -23,6 +23,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -30,6 +31,25 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { organizations, users } from "./core-schema.js";
+
+/**
+ * One person who was attached to a shared session, as written into the
+ * recording's own metadata.
+ *
+ * Snapshotted rather than joined at read time, for exactly the reason
+ * `userName` is snapshotted on the parent row: a tape is evidence about who
+ * was in the room, and it has to keep saying so after they leave the org. The
+ * live participant rows in `shared_console_participants` are operational state
+ * and are deleted with the share; this is the durable record.
+ */
+export interface RecordingParticipant {
+  userId: string | null;
+  userName: string | null;
+  /** Highest role this person held during the session. */
+  role: "observer" | "driver";
+  joinedAt: string;
+  leftAt: string | null;
+}
 
 /**
  * Per-org recording policy. Absent row means "not recording" — recording is
@@ -103,6 +123,22 @@ export const sshSessionRecordings = pgTable(
     rows: integer("rows").notNull().default(24),
     /** True when this cast also contains `"i"` (input) events. */
     hasInput: boolean("has_input").notNull().default(false),
+    /**
+     * The `shared_consoles` row, when this session was shared while it ran.
+     * Null for an ordinary solo session. No FK — a share row is operational
+     * state that can be cleaned up, and a recording outlives it.
+     */
+    sharedConsoleId: text("shared_console_id"),
+    /**
+     * Everyone who was attached, and in what role. Empty for a solo session.
+     *
+     * This is the answer to "whose hands were on this box" — which, once a
+     * session can be shared, `user_id` alone no longer is. The cast carries
+     * the same facts in-band as asciicast `"m"` marker events so a person
+     * watching the tape sees *when* the keyboard moved; this column is what a
+     * list view and an export can read without parsing the tape.
+     */
+    participants: jsonb("participants").$type<RecordingParticipant[]>(),
     /** "recording" | "complete" | "truncated" | "abandoned" */
     status: text("status").notNull().default("recording"),
     /** Terminal bytes captured. The size budget is enforced against this. */

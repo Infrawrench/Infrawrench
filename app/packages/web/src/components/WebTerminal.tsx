@@ -11,9 +11,29 @@ import {
   openTerminalLinkInNewTab,
   pastedImageFilename,
 } from "@infrawrench/ui";
+import {
+  letterboxScale,
+  mintRoutingKey,
+  type SharedConsoleParticipant,
+  type SharedConsoleSummary,
+} from "@infrawrench/client-core";
 import { apiPost } from "@/lib/api";
 import { trustPayloadFromFrame, type HostKeyTrustPayload } from "@/lib/host-key-trust";
 import { useHostKeyTrust } from "@/lib/useHostKeyTrust";
+
+/**
+ * What the terminal tells its parent about the session, so a Share panel can
+ * be built beside it without the panel owning the socket.
+ *
+ * `liveConsoleId` is the pty's key in the holding replica's registry and is
+ * what `POST /shared-consoles` names; `routingKey` is the affinity hint this
+ * component minted before connecting. Both arrive only once the shell is open,
+ * because until then there is nothing to share.
+ */
+export interface WebTerminalSession {
+  liveConsoleId: string;
+  routingKey: string;
+}
 
 interface WebTerminalProps {
   accountId: string;
@@ -32,6 +52,25 @@ interface WebTerminalProps {
    * in-app: disable xterm scrollback and hide the scrollbar.
    */
   agentTerminal?: boolean | undefined;
+  /** Fires once the shell is open, with what a Share panel needs. */
+  onSession?: ((session: WebTerminalSession | null) => void) | undefined;
+  /**
+   * Live share state, pushed by the server over this same socket.
+   *
+   * The terminal receives it because the socket is here; it renders none of
+   * it. Passing it up rather than up-and-back is what keeps the Share panel a
+   * sibling of the terminal instead of a thing inside it.
+   */
+  onShareState?:
+    | ((
+        state: {
+          share: SharedConsoleSummary;
+          participants: SharedConsoleParticipant[];
+          /** Which participant row is this browser's, so "you" can be marked. */
+          youParticipantId: string | null;
+        } | null,
+      ) => void)
+    | undefined;
 }
 
 export function WebTerminal({
@@ -46,9 +85,17 @@ export function WebTerminal({
   initialCommand,
   initialCwd,
   agentTerminal,
+  onSession,
+  onShareState,
 }: WebTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  // Held in refs so a parent that passes a fresh closure each render does not
+  // tear the socket down and reconnect the shell.
+  const onSessionRef = useRef(onSession);
+  const onShareStateRef = useRef(onShareState);
+  onSessionRef.current = onSession;
+  onShareStateRef.current = onShareState;
   // Connection state mirrored into a visually hidden live region so screen
   // readers announce it — the xterm buffer writes are not reliably read.
   const [statusMessage, setStatusMessage] = useState("");
@@ -58,6 +105,19 @@ export function WebTerminal({
     let term: import("@xterm/xterm").Terminal | null = null;
     let disposed = false;
     let connected = false;
+    /** True once this session has been shared, so the letterbox rules apply. */
+    let shared = false;
+    /**
+     * The geometry the server says the pty has, when it is not ours to choose.
+     *
+     * Null while this terminal is the driver (or unshared), in which case the
+     * fit addon owns the size as it always did. Non-null after a handover:
+     * one pty has one size, it is the driver's, and this window renders that
+     * size scaled to fit rather than resizing the pty out from under them.
+     */
+    let driverSize: { cols: number; rows: number } | null = null;
+    /** Minted before the socket opens — it has to be in the upgrade URL. */
+    const routingKey = mintRoutingKey();
 
     async function init() {
       const { Terminal } = await import("@xterm/xterm");
@@ -128,6 +188,38 @@ export function WebTerminal({
       const onData = term.onData(sendToShell);
       const altScroll = attachAltBufferScrollHandler(term, sendToShell);
 
+      /**
+       * Render the driver's geometry, scaled to fit this window.
+       *
+       * `term.resize` to the announced size, then a CSS transform so the whole
+       * grid fits — never a reflow. Reflowing would show a screen the driver
+       * is not looking at, which for a full-screen editor is not a cosmetic
+       * difference, and resizing the pty instead would let a spectator shrink
+       * the terminal of the person actually fixing production.
+       */
+      const applyDriverSize = () => {
+        const size = driverSize;
+        const element = term?.element;
+        const container = containerRef.current;
+        if (!term || !size || !element || !container) return;
+        if (term.cols !== size.cols || term.rows !== size.rows) {
+          term.resize(size.cols, size.rows);
+        }
+        element.style.transformOrigin = "top left";
+        // Measured after the resize so the numbers describe the new grid.
+        const scale = letterboxScale(
+          { width: element.offsetWidth, height: element.offsetHeight },
+          { width: container.clientWidth, height: container.clientHeight },
+        );
+        element.style.transform = scale < 1 ? `scale(${scale})` : "";
+      };
+
+      /** Undo the letterbox and go back to owning our own size. */
+      const releaseDriverSize = () => {
+        driverSize = null;
+        if (term?.element) term.element.style.transform = "";
+      };
+
       // The proxy reports an untrusted/changed host key as a structured
       // ssh:error frame. Show the same trust dialog the HTTP SSH surfaces use
       // and, once the pin is recorded, reconnect on a fresh socket + token
@@ -157,8 +249,13 @@ export function WebTerminal({
 
       const openSocket = (wsToken: string) => {
         const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        // `sid` is the shared-console affinity hint. It is on every terminal's
+        // URL, not only shared ones, because the decision to share comes later
+        // than the connection and the hash has to have been stable all along.
+        // For an unshared session nothing else ever asks for it.
         const ws = new WebSocket(
-          `${wsProtocol}//${window.location.host}/api/ws?token=${encodeURIComponent(wsToken)}`,
+          `${wsProtocol}//${window.location.host}/api/ws?token=${encodeURIComponent(wsToken)}` +
+            `&sid=${encodeURIComponent(routingKey)}`,
         );
         wsRef.current = ws;
 
@@ -171,6 +268,7 @@ export function WebTerminal({
               sshKeyId,
               sshHost,
               sshUsername,
+              routingKey,
               cols: term!.cols,
               rows: term!.rows,
               ...(agentForward ? { agentForward: true } : {}),
@@ -189,12 +287,22 @@ export function WebTerminal({
             port?: number;
             presentedFingerprint?: string;
             storedFingerprint?: string | null;
+            liveConsoleId?: string;
+            cols?: number;
+            rows?: number;
+            share?: SharedConsoleSummary;
+            participants?: SharedConsoleParticipant[];
+            youParticipantId?: string | null;
+            youAreDriver?: boolean;
           };
 
           switch (msg.type) {
             case "ssh:connected":
               connected = true;
               setStatusMessage("Connected");
+              if (msg.liveConsoleId) {
+                onSessionRef.current?.({ liveConsoleId: msg.liveConsoleId, routingKey });
+              }
               {
                 const launchCommand = buildInitialShellCommand(initialCommand, initialCwd);
                 if (launchCommand && wsRef.current?.readyState === WebSocket.OPEN) {
@@ -226,6 +334,39 @@ export function WebTerminal({
               connected = false;
               term?.write("\r\n\x1b[90m[Connection closed]\x1b[0m\r\n");
               setStatusMessage("Connection closed");
+              onSessionRef.current?.(null);
+              onShareStateRef.current?.(null);
+              break;
+            // Pushed by the server on every membership or role change, so the
+            // Share panel never polls and everyone sees the same participant
+            // list at the same moment.
+            case "console:state":
+              if (msg.share && msg.participants) {
+                shared = true;
+                onShareStateRef.current?.({
+                  share: msg.share,
+                  participants: msg.participants,
+                  youParticipantId: msg.youParticipantId ?? null,
+                });
+              }
+              break;
+            case "console:ended":
+              shared = false;
+              releaseDriverSize();
+              fitAddon.fit();
+              onShareStateRef.current?.(null);
+              break;
+            // The pty is the driver's size. When somebody else is driving this
+            // terminal renders that geometry scaled to fit; when it is ours,
+            // the fit addon goes back to owning it.
+            case "console:pty-size":
+              if (msg.youAreDriver) {
+                releaseDriverSize();
+                fitAddon.fit();
+              } else if (msg.cols && msg.rows && term) {
+                driverSize = { cols: msg.cols, rows: msg.rows };
+                applyDriverSize();
+              }
               break;
           }
         };
@@ -249,6 +390,24 @@ export function WebTerminal({
 
       const ro = new ResizeObserver(() => {
         if (disposed || !term) return;
+        // Somebody else is driving: our window changed, the pty's did not.
+        // Re-letterbox and say nothing — a resize frame from here would be
+        // dropped server-side anyway, and sending one would be this client
+        // asking for something it has been told it cannot have.
+        if (driverSize) {
+          applyDriverSize();
+          const proposed = fitAddon.proposeDimensions();
+          if (proposed && connected && wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(
+              JSON.stringify({
+                type: "console:viewport",
+                cols: proposed.cols,
+                rows: proposed.rows,
+              }),
+            );
+          }
+          return;
+        }
         fitAddon.fit();
         if (connected && wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(

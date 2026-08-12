@@ -1,0 +1,66 @@
+# A second Ingress for the WebSocket gateway alone, so that /api/ws gets one
+# annotation the rest of the app must not have: consistent hashing on `?sid=`.
+#
+# Why this exists
+# ---------------
+# Shared consoles fan one pty out to several browsers. The pty lives in the
+# memory of the single web replica that holds the ssh2 connection — the same
+# constraint the bastion agent registry has — so a guest's WebSocket has to
+# reach *that* pod, and there are two.
+#
+# The sharer's browser mints a random `sid` and puts it in its own
+# `/api/ws?sid=…`. A guest is handed the same `sid` by the join API and uses it
+# on their own upgrade. `upstream-hash-by` makes nginx pick a backend by
+# hashing that argument, so both land on the same pod. Nothing about the value
+# is secret and nothing authorises on it: it is a routing hint, and a guest who
+# reaches the right pod is still admitted only by their participant row and
+# their live permissions.
+#
+# Why a separate Ingress object
+# -----------------------------
+# nginx-ingress applies annotations per Ingress, and merges Ingresses sharing a
+# host into one server block with a location per path. Putting
+# `upstream-hash-by` on the main ingress would hash *every* request in the app
+# on an argument almost none of them carry, collapsing the whole app onto one
+# pod. This object therefore covers exactly `/api/ws` and nothing else; the
+# main `web-ingress.yaml` keeps the default round-robin for everything.
+#
+# Failure mode, stated rather than assumed
+# ----------------------------------------
+# Consistent hashing is a hint, not a guarantee: a rolling deploy moves pods
+# and rehashes. When a guest lands on a replica that does not hold the pty the
+# server answers `console:error` with `code: "console_not_here"` and the client
+# reconnects on a fresh token, which usually rehashes onto the right pod within
+# a couple of tries. That is a real limitation and the durable fix is a
+# cross-replica relay — the same follow-up the bastion registry is waiting on.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-ws
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Terminals hold sockets open for hours; same values as the main ingress.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # The shared-console affinity hint. `$arg_sid` is empty for every socket
+    # that is not participating in a share, and nginx falls back to round-robin
+    # for an empty key — so ordinary terminals, SQL sessions and k9s are
+    # balanced exactly as before.
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$arg_sid"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - app.infrawrench.com
+      secretName: web-tls
+  rules:
+    - host: app.infrawrench.com
+      http:
+        paths:
+          - path: /api/ws
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  name: http

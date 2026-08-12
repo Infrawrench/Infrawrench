@@ -8,7 +8,13 @@ import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import { gunzipSync } from "node:zlib";
 
 import { db } from "../db/client";
-import { sshSessionRecordingChunks, sshSessionRecordings } from "../db/schema";
+import {
+  sshSessionRecordingChunks,
+  sshSessionRecordings,
+  type RecordingParticipant,
+} from "../db/schema";
+
+export type { RecordingParticipant };
 
 /**
  * How long a row may sit at `"recording"` past `last_activity_at` before the
@@ -44,6 +50,17 @@ export interface SessionRecordingSummary {
   startedAt: string;
   endedAt: string | null;
   durationMs: number | null;
+  /** Set when this session was shared with colleagues while it ran. */
+  sharedConsoleId: string | null;
+  /**
+   * Everyone who was attached, and the highest role each held.
+   *
+   * Null or empty for an ordinary solo session. Once a session can be shared,
+   * `userId` alone stops answering "whose hands were on this box" — this is
+   * what does, and it is a snapshot rather than a join so it still names
+   * people who have since left the organization.
+   */
+  participants: RecordingParticipant[] | null;
 }
 
 export interface ListSessionRecordingsOptions {
@@ -94,6 +111,8 @@ function toSummary(
     startedAt: row.startedAt.toISOString(),
     endedAt: row.endedAt ? row.endedAt.toISOString() : null,
     durationMs: row.durationMs,
+    sharedConsoleId: row.sharedConsoleId,
+    participants: row.participants ?? null,
   };
 }
 

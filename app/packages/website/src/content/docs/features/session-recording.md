@@ -14,6 +14,12 @@ This is the artifact an auditor asks for and almost nobody has.
 
 **Not recorded:** sessions the desktop app opens directly against a host in local-only mode. Those never touch our servers, so there is nothing for us to tee. The Session Recordings page says so rather than letting you assume coverage you do not have.
 
+## Shared sessions
+
+A session that was [shared with colleagues](./shared-consoles.md) records exactly as a solo one does, and the recording knows who was on it. Every participant is named in the recording's metadata with the highest role they held, and the cast itself carries asciinema marker events on the timeline — who joined, when the keyboard moved and to whom, when the share was revoked. Markers are part of the asciicast format, so the file still plays anywhere a plain cast does.
+
+Once a session can be shared, `userId` alone stops answering "whose hands were on this box". This is what answers it.
+
 ## Turning it on
 
 **Settings → Session Recordings**, on both web and desktop. Recording is off until you turn it on — a terminal capture is a wiretap on your own staff, and that is a decision an organization makes deliberately rather than one we make for you.

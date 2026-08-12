@@ -110,6 +110,29 @@ vi.mock("@/services/host-validation", () => ({
   resolveSafeHost: (...a: unknown[]) => mockResolveSafeHost(...a),
 }));
 
+/**
+ * The shared-console hub is real in these tests — the proxy's input and resize
+ * gates go through it, and stubbing it would stub out the thing being checked.
+ * Its *store* is not: it reaches server-core's own `db/client`, which is a
+ * different module specifier from the `@/db/client` mocked above and would
+ * demand a DATABASE_URL. An unshared session never calls any of these, so
+ * every stub below is a no-op the suite should never reach.
+ */
+vi.mock("@infrawrench/server-core/shared-console/store", () => ({
+  closeSharedConsole: vi.fn().mockResolvedValue(null),
+  getSharedConsoleByLiveId: vi.fn().mockResolvedValue(null),
+  listParticipants: vi.fn().mockResolvedValue([]),
+  readShareStates: vi.fn().mockResolvedValue(new Map()),
+  recordViewport: vi.fn().mockResolvedValue(undefined),
+  setPtySize: vi.fn().mockResolvedValue(undefined),
+  touchParticipant: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@infrawrench/server-core/permissions", () => ({
+  resolveEffectivePermissions: vi
+    .fn()
+    .mockResolvedValue({ permissions: [], role: null, elevations: [] }),
+}));
+
 const mockResolveSshChain = vi.fn();
 const mockForwardOutHop = vi.fn();
 vi.mock("@infrawrench/plugin-ssh", () => ({
@@ -327,7 +350,7 @@ describe("handleSshSession", () => {
     const stream = new FakeShellStream();
     conn.shellCb!(undefined, stream);
     expect(stream.ended).toBe(true);
-    expect(ws.sent).not.toContainEqual({ type: "ssh:connected" });
+    expect(ws.sent.map((f) => (f as { type: string }).type)).not.toContain("ssh:connected");
   });
 
   it("ends the connection when shell open fails", async () => {
@@ -354,7 +377,9 @@ describe("handleSshSession", () => {
     const stream = new FakeShellStream();
     conn.shellCb!(undefined, stream);
 
-    expect(ws.sent).toContainEqual({ type: "ssh:connected" });
+    // The frame also carries `liveConsoleId` (and `routingKey` when the
+    // client sent one), so match on the type rather than the whole object.
+    expect(ws.sent.map((f) => (f as { type: string }).type)).toContain("ssh:connected");
     stream.emit("data", Buffer.from("hello"));
     expect(ws.sent).toContainEqual({
       type: "ssh:data",
@@ -436,7 +461,9 @@ describe("handleSshSession", () => {
     const stream = new FakeShellStream();
     conn.shellCb!(undefined, stream);
 
-    expect(ws.sent).toContainEqual({ type: "ssh:connected" });
+    // The frame also carries `liveConsoleId` (and `routingKey` when the
+    // client sent one), so match on the type rather than the whole object.
+    expect(ws.sent.map((f) => (f as { type: string }).type)).toContain("ssh:connected");
     stream.emit("data", Buffer.from("hello"));
     expect(ws.sent).toContainEqual({
       type: "ssh:data",

@@ -665,6 +665,7 @@ export * from "./metric-alerts";
 export * from "./org-config";
 export * from "./rightsizing";
 export * from "./session-recordings";
+export * from "./shared-console";
 export * from "./access-requests";
 export * from "./credential-hygiene";
 export * from "./credits";

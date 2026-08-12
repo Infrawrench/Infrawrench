@@ -38,6 +38,28 @@ export function registerSessionRecordingPaths(ctx: BuildContext) {
     hasInput: z
       .boolean()
       .describe("True when the cast also contains keystrokes (the org opted into input capture)."),
+    sharedConsoleId: Uuid.nullable()
+      .optional()
+      .describe("Set when this session was shared with colleagues while it ran."),
+    participants: z
+      .array(
+        strict({
+          userId: z.string().nullable(),
+          userName: z.string().nullable(),
+          role: z.enum(["observer", "driver"]),
+          joinedAt: IsoDateTime,
+          leftAt: IsoDateTime.nullable(),
+        }),
+      )
+      .nullable()
+      .optional()
+      .describe(
+        "Everyone who was attached to this session and in what role — the **highest** role " +
+          "they held, not their role at the end. Null or empty for an ordinary solo session. " +
+          "Once a session can be shared, `userId` alone stops answering 'whose hands were on " +
+          'this box\'; this does. The cast carries the same facts in-band as asciicast `"m"` ' +
+          "marker events, so a viewer sees *when* the keyboard moved.",
+      ),
     status: SessionRecordingStatus,
     outputBytes: z.number().int().describe("Terminal bytes captured, before compression."),
     eventCount: z.number().int(),

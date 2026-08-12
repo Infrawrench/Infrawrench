@@ -9,6 +9,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { api } from "./src/api/index";
 import { applySecurityHeaders, securityHeaders } from "./src/api/security-headers";
 import { handleSshSession } from "./src/services/ssh-proxy";
+import { handleConsoleAttach } from "./src/services/shared-console/attach";
 import { handleSqlSession } from "./src/services/sql-proxy";
 import { handleK8sExecSession } from "./src/services/k8s-exec-proxy";
 import { handleK9sSession } from "./src/services/k9s-proxy";
@@ -227,6 +228,9 @@ async function start() {
             resourceName?: string;
             remotePort?: number;
             workflowId?: string;
+            /** Load-balancer affinity hint; see services/shared-console/hub.ts. */
+            routingKey?: string;
+            sharedConsoleId?: string;
             repo?: string;
             branch?: string;
             env?: string;
@@ -256,12 +260,33 @@ async function start() {
                   msg.rows,
                   msg.agentForward === true,
                   auth.userId,
+                  msg.routingKey,
                 );
               }
               break;
             case "ssh:data":
               break;
             case "ssh:resize":
+              break;
+            // A guest attaching to somebody else's live session. Everything
+            // after the handshake is handled by the listener the attach
+            // registers, exactly like the workflow debugger's frames.
+            case "console:attach":
+              if (msg.sharedConsoleId) {
+                void handleConsoleAttach(ws, auth, msg.sharedConsoleId).catch((e) => {
+                  console.error("[shared-console] attach failed:", e);
+                  ws.send(
+                    JSON.stringify({
+                      type: "console:error",
+                      code: "attach_failed",
+                      error: "Could not join that session.",
+                    }),
+                  );
+                });
+              }
+              break;
+            case "console:input":
+            case "console:viewport":
               break;
             case "sql:query":
               if (msg.accountId && msg.sql) {

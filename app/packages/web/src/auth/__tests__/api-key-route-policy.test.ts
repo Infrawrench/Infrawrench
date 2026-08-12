@@ -53,6 +53,23 @@ describe("apiKeyRouteDenial", () => {
 
     expect(apiKeyRouteDenial("GET", `${ORG}/access-requests`)).toBeNull();
     expect(apiKeyRouteDenial("POST", `${ORG}/access-requests/r1/approve`)).toMatch(/break-glass/);
+
+    // Shared consoles, by the same argument as break-glass: sharing a live
+    // shell and accepting a place on one are both acts a person performs, and
+    // an unattended key redeeming an invite would turn a link pasted into a
+    // chat window into a durable foothold. Listing stays open — that is the
+    // visibility half of the control.
+    expect(apiKeyRouteDenial("GET", `${ORG}/shared-consoles`)).toBeNull();
+    expect(apiKeyRouteDenial("POST", `${ORG}/shared-consoles`)).toMatch(/share or join a console/);
+    expect(apiKeyRouteDenial("POST", `${ORG}/shared-consoles/c1/join`)).toMatch(
+      /share or join a console/,
+    );
+    expect(apiKeyRouteDenial("POST", `${ORG}/shared-consoles/c1/handover`)).toMatch(
+      /share or join a console/,
+    );
+    expect(apiKeyRouteDenial("DELETE", `${ORG}/shared-consoles/c1`)).toMatch(
+      /share or join a console/,
+    );
   });
 
   /**
@@ -63,6 +80,7 @@ describe("apiKeyRouteDenial", () => {
     expect(apiKeyRouteDenial("POST", `${ORG}/teams-of-things`)).toBeNull();
     expect(apiKeyRouteDenial("POST", `${ORG}/api-keys-report`)).toBeNull();
     expect(apiKeyRouteDenial("POST", `${ORG}/billing-rules`)).toBeNull();
+    expect(apiKeyRouteDenial("POST", `${ORG}/shared-consoles-report`)).toBeNull();
   });
 
   it("leaves the automation surface open", () => {
