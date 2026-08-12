@@ -1,4 +1,5 @@
 /** Shared UI-side shapes for deployments. Kept decoupled from server types. */
+import type { DeploymentCostImpact } from "@infrawrench/client-core";
 import type { WorkflowRunLog } from "../workflows/types.js";
 
 export type DeployStage = "plan" | "dockerfile" | "build" | "deploy" | "destroy";
@@ -117,6 +118,16 @@ export interface DeploymentClient {
    * for why a rollback replays rather than reconstructs.
    */
   rollback(runId: string): Promise<{ runId: string; result: DeployRunResult }>;
+  /**
+   * What this deploy did to the run rate, per resource it provisioned.
+   *
+   * **Optional**: a host that has not wired it renders the history with no
+   * cost column rather than failing, the same rule the change feed's own
+   * cost impacts follow. Null when the run is not the org's.
+   */
+  costImpact?(runId: string): Promise<DeploymentCostImpact | null>;
+  /** Pin the finding onto the cost charts. Optional, and `costs:write`. */
+  annotateCostImpact?(runId: string): Promise<void>;
   listTriggers(): Promise<DeployTrigger[]>;
   createTrigger(input: DeployTriggerInput): Promise<DeployTrigger>;
   /** Only `enabled` is editable — the rest is identity, so recreate instead. */

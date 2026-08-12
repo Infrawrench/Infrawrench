@@ -1,11 +1,16 @@
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
 import {
+  chunkChangeImpactIds,
+  collectChangeImpactResults,
+  fetchChangeCostImpacts,
   fetchOrgChanges,
+  formatChangeCostImpact,
   summarizeChange,
   type Account,
+  type ChangeCostImpact,
   type ResourceChangeEntry,
   type ResourceChangeKind,
 } from "@infrawrench/client-core";
@@ -121,6 +126,59 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
   const entries = feed.data?.pages.flatMap((page) => page.entries) ?? [];
   const total = feed.data?.pages[0]?.total ?? 0;
 
+  /**
+   * Cost impact for the rows on screen — "what did this change do to the run
+   * rate?". Deliberately its own query rather than part of the feed: a member
+   * without `costs:read` still gets the feed, they just get no cost line.
+   *
+   * **Every loaded row is covered, not just the first request's worth.** The
+   * endpoint caps a batch at `MAX_CHANGE_IMPACT_BATCH`, and this screen scrolls
+   * infinitely, so the ids are chunked (`chunkChangeImpactIds`) and one query is
+   * keyed per chunk. Truncating instead would leave every row past the cap with
+   * no cost line — which reads as "no cost data for this resource" and is the
+   * silent omission the whole feature exists to avoid.
+   *
+   * Chunks are cut from the start of the list, so loading another page leaves
+   * the earlier chunks' keys unchanged and only the new chunk is fetched.
+   * Nothing is cached server-side (the answer is recomputed as provider cost
+   * arrives), so a refetch is always the current answer.
+   *
+   * **A failed chunk is unresolved, not blank.** The stable keys that make
+   * appending cheap are also what would make a failure stick, and blank already
+   * means "no measurable impact" here — so a transient error would quietly
+   * become a confident, wrong claim about the bill. Three things prevent that:
+   * these queries take the app-wide `retry` from `_layout.tsx` rather than
+   * opting out of it, pull-to-refresh refetches them alongside the feed, and
+   * whatever is still unanswered renders as unavailable
+   * (`collectChangeImpactResults`).
+   */
+  const impactChunks = useMemo(
+    () => chunkChangeImpactIds(entries.map((e) => e.id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `entries` is a
+    // fresh array each render; the ids are what actually change.
+    [entries.map((e) => e.id).join(",")],
+  );
+  const impactQueries = useQueries({
+    queries: impactChunks.map((changeIds) => ({
+      queryKey: ["change-cost-impacts", orgId, changeIds],
+      queryFn: () => fetchChangeCostImpacts(api, orgId, { changeIds }),
+      // No `retry: false` here on purpose. The cards that do opt out are whole
+      // optional sections, and a section that quietly does not appear costs the
+      // reader nothing; a blank *inside* a row that is on screen is a claim.
+    })),
+  });
+  const { impacts, unresolved: unresolvedImpacts } = useMemo(
+    () => collectChangeImpactResults(impactChunks, impactQueries),
+    [impactChunks, impactQueries],
+  );
+
+  const refresh = async () => {
+    // The impact queries have their own stable keys, so refetching the feed
+    // alone would leave a failed chunk failed forever. This is the user's
+    // recovery path and it has to cover both.
+    await Promise.all([feed.refetch(), ...impactQueries.map((q) => q.refetch())]);
+  };
+
   const filters = (
     <View style={{ gap: spacing.sm }}>
       <ChipRow>
@@ -182,7 +240,7 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
   }
 
   return (
-    <Screen onRefresh={() => void feed.refetch()} refreshing={feed.isRefetching}>
+    <Screen onRefresh={() => void refresh()} refreshing={feed.isRefetching}>
       <ProviderIncidentNotice showResolvedCorrelation />
 
       <Button
@@ -207,6 +265,8 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
             <ChangeEntryRow
               key={entry.id}
               entry={entry}
+              impact={impacts[entry.id]}
+              impactUnavailable={unresolvedImpacts.has(entry.id)}
               expanded={expandedId === entry.id}
               onToggle={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
               onReverted={() => void feed.refetch()}
@@ -240,12 +300,21 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
  */
 function ChangeEntryRow({
   entry,
+  impact,
+  impactUnavailable,
   expanded,
   onToggle,
   onOpenResource,
   onReverted,
 }: {
   entry: ResourceChangeEntry;
+  impact?: ChangeCostImpact | undefined;
+  /**
+   * The cost lookup for this row **failed**. Distinct from having no impact:
+   * blank means "we looked and there is nothing measurable to say", so a failed
+   * lookup has to say something else or it becomes a claim we never made.
+   */
+  impactUnavailable?: boolean | undefined;
   expanded: boolean;
   onToggle: () => void;
   onOpenResource: () => void;
@@ -272,12 +341,35 @@ function ChangeEntryRow({
           <Text style={styles.summary} numberOfLines={1}>
             {new Date(entry.createdAt).toLocaleString()} · {summarizeChange(entry)}
           </Text>
+          {/* Null when there is nothing measured to say — never a "$0" line
+              beside a resource that was never billable in the first place. */}
+          {impact && formatChangeCostImpact(impact) && (
+            <Text style={styles.costImpact} numberOfLines={1}>
+              {formatChangeCostImpact(impact)}
+            </Text>
+          )}
+          {/* Said out loud rather than left blank: blank is already an answer
+              here, and a network blip must not borrow it. Pull to refresh. */}
+          {!impact && impactUnavailable && (
+            <Text style={styles.costUnavailable} numberOfLines={1}>
+              Cost impact unavailable — pull to refresh
+            </Text>
+          )}
         </View>
         <ChangeKindBadge kind={entry.changeKind} />
       </Pressable>
       {expanded && (
         <View style={styles.detail}>
           <ChangeDiffList entry={entry} />
+          {impact && (
+            <Text style={styles.hint}>{formatChangeCostImpact(impact, { verbose: true })}</Text>
+          )}
+          {!impact && impactUnavailable && (
+            <Text style={styles.hint}>
+              The cost impact for this change could not be loaded. Pull down to try again — this is
+              a failed lookup, not a finding that it cost nothing.
+            </Text>
+          )}
           {entry.origin === "schedule" && (
             <Text style={styles.hint}>Executed by a sleep/wake schedule.</Text>
           )}
@@ -314,6 +406,8 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 15, fontWeight: "500" },
   subtitle: { color: colors.textMuted, fontSize: 12 },
   summary: { color: colors.textFaint, fontSize: 11 },
+  costImpact: { color: colors.textMuted, fontSize: 11 },
+  costUnavailable: { color: colors.textFaint, fontSize: 11, fontStyle: "italic" },
   detail: { gap: spacing.sm, paddingBottom: spacing.md },
   hint: { color: colors.textFaint, fontSize: 12 },
   resourceId: { color: colors.textFaint, fontSize: 11, fontFamily: "monospace" },

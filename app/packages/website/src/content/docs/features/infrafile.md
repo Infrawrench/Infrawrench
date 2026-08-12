@@ -557,6 +557,19 @@ reads (see above).
 The web app streams a run's logs live and shows the plan and rendered Dockerfile
 before anything is built.
 
+## What a deploy cost
+
+Every successful run carries a **Cost impact** button in the history: what the
+deploy did to your run rate, broken down over the resources it provisioned, from
+the provider's own collected billing either side of it. The created-resource
+ledger above is what makes that attribution possible — a run that only re-shipped
+an image links to no resources and says so, rather than blaming whatever else
+drifted in the same hour.
+
+See [Cost per change & cost per deploy](./cost-per-change.md) for how the
+comparison works, what "unknown" means (it is never "$0"), and why the figure
+keeps moving as provider billing arrives.
+
 ## Asking an AI client about a deploy
 
 The [AI chat](./ai-chat.md) and the [MCP server](./mcp.md) share a small set of
@@ -588,3 +601,4 @@ front as `answers`, keyed by the same key the Infrafile used.
 - [Workflows](./workflows.md) — the same `infra` surface, on a trigger
 - [CLI](./cli.md) — the rest of the terminal tool
 - [AI chat](./ai-chat.md) — asking about deploys, and rolling one back
+- [Cost per change & cost per deploy](./cost-per-change.md) — what a run did to the bill

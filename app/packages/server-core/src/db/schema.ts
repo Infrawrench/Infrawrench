@@ -698,6 +698,54 @@ export const costAnnotations = pgTable(
 );
 
 /**
+ * Which cost annotation records a given change's or deployment's cost impact.
+ *
+ * The impact itself is **never stored** — it is recomputed on every read so
+ * late-arriving and restated provider cost keeps moving the number (see
+ * `cost/change-impact-load.ts`). What is stored is only the fact that someone
+ * pinned a finding onto the cost graphs, so that pinning it again *rewords the
+ * same note* rather than minting a second one on the same day. That is the
+ * anomaly-acknowledgement arrangement, with the link in its own table because
+ * the two subject kinds live in two different tables and one fact must not
+ * become two columns in two places.
+ *
+ * `subject_id` is deliberately not a FK: it addresses either a
+ * `resource_changes` row (append-only history that the 90-day prune will
+ * eventually drop) or a `deployment_runs` row. A dangling link is harmless —
+ * the note it points at is still a note — and the org cascade cleans up.
+ */
+export const changeCostImpactAnnotations = pgTable(
+  "change_cost_impact_annotations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** `"change"` (a `resource_changes` row) or `"deployment"` (a run). */
+    subjectKind: text("subject_kind").$type<"change" | "deployment">().notNull(),
+    subjectId: text("subject_id").notNull(),
+    /**
+     * SET NULL rather than cascade: deleting the note is not a retraction of
+     * the finding, exactly as with an acknowledged anomaly. The row is then
+     * free to be re-annotated.
+     */
+    costAnnotationId: text("cost_annotation_id").references(() => costAnnotations.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    /** One note per subject — the whole point of the table. */
+    subjectUnique: uniqueIndex("change_cost_impact_annotations_subject_idx").on(
+      t.organizationId,
+      t.subjectKind,
+      t.subjectId,
+    ),
+  }),
+);
+
+/**
  * Fired budget-threshold crossings. The unique index makes each threshold
  * fire at most once per calendar month — evaluation inserts with
  * onConflictDoNothing and only notifies on a fresh insert.

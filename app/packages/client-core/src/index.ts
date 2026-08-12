@@ -695,6 +695,7 @@ export * from "./network-flows";
 export * from "./jira";
 export * from "./linear";
 export * from "./cost-exports";
+export * from "./change-cost-impact";
 export * from "./report-notifications";
 export * from "./chat/types";
 export { createBearerChatClient } from "./chat/bearer-client";

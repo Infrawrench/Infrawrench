@@ -1,3 +1,4 @@
+import type { ChangeCostImpactEntry } from "@infrawrench/client-core";
 import type {
   ChangeFeedAccount,
   ChangeFeedPage,
@@ -35,6 +36,21 @@ export function createWebChangesClient(orgId: string): ChangesClient {
       return apiGet<ChangeFeedPage>(`/api/org/${orgId}/changes?${params}`);
     },
     listAccounts: () => apiGet<ChangeFeedAccount[]>(`/api/org/${orgId}/accounts`),
+    // Batched per page rather than per row, and POSTed because the body is a
+    // list of ids — it stores nothing.
+    costImpacts: async (changeIds) => {
+      const { impacts } = await apiPost<{ impacts: ChangeCostImpactEntry[] }>(
+        `/api/org/${orgId}/changes/cost-impacts`,
+        { changeIds },
+      );
+      return impacts;
+    },
+    annotateCostImpact: async (changeId) => {
+      await apiPost(`/api/org/${orgId}/cost-annotations/change-impact`, {
+        subjectKind: "change",
+        subjectId: changeId,
+      });
+    },
     revert: createWebChangeRevertClient(orgId),
   };
 }

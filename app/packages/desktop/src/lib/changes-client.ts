@@ -1,3 +1,4 @@
+import type { ChangeCostImpactEntry } from "@infrawrench/client-core";
 import {
   useUIStore,
   type ChangeFeedAccount,
@@ -39,6 +40,20 @@ export function createDesktopChangesClient(): ChangesClient {
     listAccounts: async (): Promise<ChangeFeedAccount[]> => {
       const rows = await listCloudAccounts(requireOrg());
       return rows.map((a) => ({ id: a.id, displayName: a.displayName }));
+    },
+    costImpacts: async (changeIds) => {
+      const result = await invoke<{ impacts: ChangeCostImpactEntry[] }>(
+        "cloud_changes_cost_impacts",
+        { orgId: requireOrg(), changeIds },
+      );
+      return result?.impacts ?? [];
+    },
+    annotateCostImpact: async (changeId) => {
+      await invoke("cloud_cost_impact_annotate", {
+        orgId: requireOrg(),
+        subjectKind: "change",
+        subjectId: changeId,
+      });
     },
     revert: createDesktopChangeRevertClient(requireOrg),
   };

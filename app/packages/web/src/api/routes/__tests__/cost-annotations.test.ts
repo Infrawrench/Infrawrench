@@ -18,6 +18,15 @@ vi.mock("../../../services/cost-annotations", () => ({
   deleteCostAnnotation: (...args: unknown[]) => mockDelete(...args),
 }));
 
+// Same reason: this one reaches server-core's loaders, which reach the Drizzle
+// client and ClickHouse. The transport contract is what these tests own.
+const mockWriteImpactAnnotation = vi.fn();
+class FakeChangeImpactAnnotationError extends Error {}
+vi.mock("../../../services/change-cost-impact-annotations", () => ({
+  ChangeImpactAnnotationError: FakeChangeImpactAnnotationError,
+  writeChangeImpactAnnotation: (...args: unknown[]) => mockWriteImpactAnnotation(...args),
+}));
+
 const mockLogAudit = vi.fn();
 vi.mock("../../../services/audit", () => ({
   logAudit: (...args: unknown[]) => mockLogAudit(...args),
@@ -175,5 +184,93 @@ describe("DELETE /:id", () => {
     expect(mockLogAudit).toHaveBeenCalledWith(
       expect.objectContaining({ action: "cost_annotation.delete", entityId: "ann-1" }),
     );
+  });
+});
+
+describe("POST /change-impact", () => {
+  const impact = {
+    status: "measured",
+    costBasis: "cash",
+    windowDays: 7,
+    effectiveWindowDays: 7,
+    eventDay: "2026-06-15",
+    before: { from: "2026-06-08", to: "2026-06-14" },
+    after: { from: "2026-06-16", to: "2026-06-22" },
+    series: [],
+    confidence: "high",
+    reasons: [],
+    overlappingChanges: 0,
+  };
+
+  const post = (body: unknown, permissions?: string[]) =>
+    (permissions ? buildAppWithPermissions(permissions) : buildApp()).request("/change-impact", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  beforeEach(() => {
+    mockWriteImpactAnnotation.mockResolvedValue({
+      annotationId: "ann-9",
+      impact,
+      text: "Change: api-prod updated — +$12/day",
+    });
+  });
+
+  it("rejects a costs:read-only caller — writing a note is costs:write", async () => {
+    const res = await post({ subjectKind: "change", subjectId: "chg-1" }, ["costs:read"]);
+    expect(res.status).toBe(403);
+    expect(mockWriteImpactAnnotation).not.toHaveBeenCalled();
+  });
+
+  it("400s on an unknown subject kind rather than guessing one", async () => {
+    const res = await post({ subjectKind: "workflow", subjectId: "wf-1" });
+    expect(res.status).toBe(400);
+    expect(mockWriteImpactAnnotation).not.toHaveBeenCalled();
+  });
+
+  it("400s on a cost basis it does not have, instead of silently using cash", async () => {
+    const res = await post({ subjectKind: "change", subjectId: "chg-1", costBasis: "blended" });
+    expect(res.status).toBe(400);
+    expect(mockWriteImpactAnnotation).not.toHaveBeenCalled();
+  });
+
+  it("writes the note and audits it, naming where it came from", async () => {
+    const res = await post({ subjectKind: "deployment", subjectId: "run-3" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ annotationId: "ann-9" });
+    expect(mockWriteImpactAnnotation).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        subjectKind: "deployment",
+        subjectId: "run-3",
+        costBasis: "cash",
+      }),
+      expect.anything(),
+    );
+    expect(mockLogAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "cost_annotation.create",
+        entityId: "ann-9",
+        metadata: expect.objectContaining({ source: "change-impact" }),
+      }),
+    );
+  });
+
+  it("404s for a subject that is not this org's", async () => {
+    mockWriteImpactAnnotation.mockResolvedValue(null);
+    expect((await post({ subjectKind: "change", subjectId: "chg-x" })).status).toBe(404);
+  });
+
+  it("400s rather than writing a note that would read as $0", async () => {
+    // "We cannot say" must never be written down as "nothing".
+    mockWriteImpactAnnotation.mockRejectedValue(
+      new FakeChangeImpactAnnotationError("There is no measured cost impact to annotate yet"),
+    );
+    const res = await post({ subjectKind: "change", subjectId: "chg-1" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      error: "There is no measured cost impact to annotate yet",
+    });
   });
 });

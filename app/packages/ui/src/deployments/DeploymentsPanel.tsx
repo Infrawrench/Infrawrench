@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useId, useState } from "react";
 
 import {
+  CHANGE_IMPACT_CONFIDENCE_LABELS,
+  costBasisLabel,
+  formatSignedPerDay,
+  type DeploymentCostImpact,
+} from "@infrawrench/client-core";
+import { ChangeCostImpactFootnote, ChangeCostImpactLine } from "../cost/ChangeCostImpactLine.js";
+import {
   DEPLOY_STAGES,
   type DeployEnvs,
   type DeployRepo,
@@ -350,6 +357,7 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
         {!result && busy === null && (
           <RunHistory
             runs={runs}
+            client={client}
             onRollback={async (runId) => {
               setBusy("deploy");
               setError(null);
@@ -647,11 +655,41 @@ function TriggersSection({
 
 function RunHistory({
   runs,
+  client,
   onRollback,
 }: {
   runs: DeploymentRunRow[];
+  client: DeploymentClient;
   onRollback: (runId: string) => void | Promise<void>;
 }) {
+  // One run's breakdown at a time, fetched on demand: computing an impact is
+  // two ClickHouse reads per run and a history page has fifty of them.
+  const [openRunId, setOpenRunId] = useState<string | null>(null);
+  const [impact, setImpact] = useState<DeploymentCostImpact | null>(null);
+  const [impactState, setImpactState] = useState<"idle" | "loading" | "error">("idle");
+  const showCosts = Boolean(client.costImpact);
+
+  const toggleImpact = useCallback(
+    async (runId: string) => {
+      const fetchImpact = client.costImpact;
+      if (!fetchImpact) return;
+      if (openRunId === runId) {
+        setOpenRunId(null);
+        return;
+      }
+      setOpenRunId(runId);
+      setImpact(null);
+      setImpactState("loading");
+      try {
+        setImpact(await fetchImpact.call(client, runId));
+        setImpactState("idle");
+      } catch {
+        setImpactState("error");
+      }
+    },
+    [client, openRunId],
+  );
+
   if (runs.length === 0) {
     return (
       <p className="p-4 text-xs text-on-surface-faint">
@@ -675,7 +713,7 @@ function RunHistory({
         </tr>
       </thead>
       <tbody>
-        {runs.map((r) => (
+        {runs.flatMap((r) => [
           <tr key={r.id} className="border-b border-white/5">
             <Td>{new Date(r.startedAt).toLocaleString()}</Td>
             <Td>{r.env || "—"}</Td>
@@ -697,17 +735,137 @@ function RunHistory({
             </Td>
             <Td>{r.origin}</Td>
             <Td>
-              {/* Only a successful run has an artifact worth shipping again. */}
-              {r.status === "success" && r.image && r.repo && r.gitSha && (
-                <button type="button" onClick={() => void onRollback(r.id)} className={ghostButton}>
-                  Roll back
-                </button>
-              )}
+              <span className="flex gap-2">
+                {showCosts && r.status === "success" && (
+                  <button
+                    type="button"
+                    onClick={() => void toggleImpact(r.id)}
+                    aria-expanded={openRunId === r.id}
+                    className={ghostButton}
+                    title="What this deploy did to the run rate"
+                  >
+                    {openRunId === r.id ? "Hide cost" : "Cost impact"}
+                  </button>
+                )}
+                {/* Only a successful run has an artifact worth shipping again. */}
+                {r.status === "success" && r.image && r.repo && r.gitSha && (
+                  <button
+                    type="button"
+                    onClick={() => void onRollback(r.id)}
+                    className={ghostButton}
+                  >
+                    Roll back
+                  </button>
+                )}
+              </span>
             </Td>
-          </tr>
-        ))}
+          </tr>,
+          openRunId === r.id ? (
+            <tr key={`${r.id}-cost`} className="border-b border-white/5">
+              <td colSpan={8} className="px-3 py-3 bg-surface-raised/40">
+                <DeploymentCostImpactPanel
+                  state={impactState}
+                  impact={impact}
+                  onAnnotate={
+                    client.annotateCostImpact
+                      ? () => client.annotateCostImpact!.call(client, r.id)
+                      : undefined
+                  }
+                />
+              </td>
+            </tr>
+          ) : null,
+        ])}
       </tbody>
     </table>
+  );
+}
+
+/**
+ * A deploy's per-resource cost breakdown.
+ *
+ * The breakdown sums to the total by construction — unmeasurable resources are
+ * counted separately rather than folded in as zero — and that is stated on
+ * screen, because a total that silently omits rows is worse than no total.
+ */
+function DeploymentCostImpactPanel({
+  state,
+  impact,
+  onAnnotate,
+}: {
+  state: "idle" | "loading" | "error";
+  impact: DeploymentCostImpact | null;
+  onAnnotate?: (() => Promise<void>) | undefined;
+}) {
+  const [annotating, setAnnotating] = useState(false);
+  const [annotated, setAnnotated] = useState(false);
+  const [annotateError, setAnnotateError] = useState<string | null>(null);
+
+  if (state === "loading") return <p className="text-xs text-on-surface-faint">Measuring…</p>;
+  if (state === "error") {
+    return <p className="text-xs text-danger">Could not read cost for this run.</p>;
+  }
+  if (!impact) return <p className="text-xs text-on-surface-faint">No cost data for this run.</p>;
+  if (impact.resources.length === 0) {
+    return (
+      <p className="text-xs text-on-surface-faint">
+        This deploy provisioned no resources, so there is nothing to attribute to it. Resources it
+        merely updated are not linked to a run.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="text-xs text-on-surface-secondary font-medium">
+          {impact.total.length === 0
+            ? "No measurable cost impact"
+            : impact.total.map((t) => formatSignedPerDay(t.deltaPerDay, t.currency)).join(", ")}
+        </span>
+        <span className="text-xs text-on-surface-faint">
+          {costBasisLabel(impact.costBasis)}, {impact.windowDays}d before/after ·{" "}
+          {CHANGE_IMPACT_CONFIDENCE_LABELS[impact.confidence].toLowerCase()}
+          {impact.unknownResources > 0
+            ? ` · ${impact.unknownResources} resource${
+                impact.unknownResources === 1 ? "" : "s"
+              } could not be measured and are not in the total`
+            : ""}
+        </span>
+        {onAnnotate && impact.total.length > 0 && (
+          <button
+            type="button"
+            className={ghostButton}
+            disabled={annotating}
+            onClick={() => {
+              setAnnotating(true);
+              setAnnotateError(null);
+              void onAnnotate()
+                .then(() => setAnnotated(true))
+                .catch((e: unknown) => setAnnotateError(e instanceof Error ? e.message : String(e)))
+                .finally(() => setAnnotating(false));
+            }}
+          >
+            {annotated ? "Annotated" : annotating ? "Annotating…" : "Annotate cost graph"}
+          </button>
+        )}
+      </div>
+      {annotateError && <p className="text-xs text-danger">{annotateError}</p>}
+      <ul className="space-y-1">
+        {impact.resources.map((r) => (
+          <li key={r.resourceId} className="flex flex-wrap items-baseline gap-x-3">
+            <span className="text-xs text-on-surface-secondary truncate max-w-[16rem]">
+              {r.displayName}
+            </span>
+            <span className="text-[11px] text-on-surface-faint font-mono">
+              {r.pluginId}/{r.resourceTypeId}
+            </span>
+            <ChangeCostImpactLine impact={r.impact} />
+          </li>
+        ))}
+      </ul>
+      <ChangeCostImpactFootnote />
+    </div>
   );
 }
 

@@ -1,4 +1,5 @@
 import type {
+  ChangeCostImpactEntry,
   ResourceChangeEntry,
   RevertApplyResponse,
   RevertPreviewResponse,
@@ -51,6 +52,21 @@ export interface ChangesClient {
   listChanges(query: ChangeFeedQuery): Promise<ChangeFeedPage>;
   /** Populates the account filter. A failure leaves the filter empty, never blocks the feed. */
   listAccounts(): Promise<ChangeFeedAccount[]>;
+  /**
+   * Cost impact for the rows currently on screen — "what did this change do to
+   * the run rate?". **Optional**: a host that has not wired it (or a build a
+   * release ahead of its server) renders the feed with no cost column rather
+   * than failing, the same rule the anomaly-settings editor follows.
+   *
+   * Batched deliberately: one request per page, not one per row.
+   */
+  costImpacts?(changeIds: string[]): Promise<ChangeCostImpactEntry[]>;
+  /**
+   * Pin one change's cost impact onto the cost charts as an annotation.
+   * Optional for the same reason, and separately from `costImpacts` because
+   * reading spend is `costs:read` and writing a note is `costs:write`.
+   */
+  annotateCostImpact?(changeId: string): Promise<void>;
   /**
    * Time-travel undo. Optional the same way `MetricAlertsPanel`'s write methods
    * are: a host that hasn't wired the revert endpoints simply renders no Revert

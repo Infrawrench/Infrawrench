@@ -21,6 +21,11 @@ Click **Changes** in the sidebar (next to Costs) to open the feed for the whole 
 
 Filter the feed by change kind or by account; results are paginated.
 
+Rows also carry a **cost impact** — what the change did to that resource's per-day spend, measured
+from collected provider billing either side of it. See
+[Cost per change & cost per deploy](./cost-per-change.md) for how it is measured, when it says
+"unknown" rather than "$0", and why it is a correlation rather than a verdict.
+
 ## On your phone
 
 The [mobile app](./mobile-app.md) has the same feed: open **Changes** at the top of the Resources tab. Filters are chips rather than dropdowns — change kind, account, and a time window (**Any time**, **24h**, **7d**, **30d**) — and **Load more** pages through the rest.

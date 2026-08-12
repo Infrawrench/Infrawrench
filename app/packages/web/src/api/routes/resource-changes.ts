@@ -7,8 +7,11 @@ import {
   type DriftAlertSettings,
   type DriftAlertSettingsPatch,
 } from "@infrawrench/server-core/drift/settings";
+import { loadChangeCostImpacts } from "@infrawrench/server-core/cost/change-impact-load";
 import {
   buildRevertPatch,
+  MAX_CHANGE_IMPACT_BATCH,
+  parseCostBasis,
   revertLooksAlreadyApplied,
   REVERT_CONFLICT_CODE,
   type RevertAuditOutcome,
@@ -166,6 +169,44 @@ app.put("/alert-settings", async (c) => {
     const message = err instanceof Error ? err.message : "Failed to save drift alert settings";
     return c.json({ error: message }, 400);
   }
+});
+
+/**
+ * POST /api/org/:orgId/changes/cost-impacts — what a page of changes did to
+ * the run rate.
+ *
+ * A POST because it takes a list of ids: a feed page carries up to 50 and a
+ * query string of composite resource-change ids is neither readable nor safely
+ * within URL length limits. It reads nothing and writes nothing, and is
+ * recomputed on every call so that late-arriving and restated provider cost
+ * keeps moving the answer — see `cost/change-impact-load.ts`.
+ *
+ * `costs:read` **and** `resources:read`: the response is money, but it is money
+ * keyed to specific resources and their change history.
+ */
+app.post("/cost-impacts", async (c) => {
+  requirePermission(c, "costs:read");
+  requirePermission(c, "resources:read");
+  const organizationId = c.get("organizationId");
+
+  const body: Record<string, unknown> = await c.req
+    .json<Record<string, unknown>>()
+    .catch(() => ({}));
+  const rawIds = body["changeIds"];
+  if (!Array.isArray(rawIds) || rawIds.some((v) => typeof v !== "string")) {
+    return c.json({ error: "changeIds must be an array of change ids" }, 400);
+  }
+  if (rawIds.length > MAX_CHANGE_IMPACT_BATCH) {
+    return c.json({ error: `At most ${MAX_CHANGE_IMPACT_BATCH} changeIds per request` }, 400);
+  }
+  const basis = parseCostBasis(body["costBasis"]);
+  if (basis === null) return c.json({ error: "costBasis must be cash or amortized" }, 400);
+
+  const impacts = await loadChangeCostImpacts(organizationId, rawIds as string[], {
+    ...(typeof body["windowDays"] === "number" ? { windowDays: body["windowDays"] } : {}),
+    costBasis: basis,
+  });
+  return c.json({ impacts });
 });
 
 /**

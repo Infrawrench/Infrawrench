@@ -61,6 +61,8 @@
     "./cost/scenario-forecast": "./src/cost/scenario-forecast.ts",
     "./cost/change-detect": "./src/cost/change-detect.ts",
     "./cost/change-eval": "./src/cost/change-eval.ts",
+    "./cost/change-impact": "./src/cost/change-impact.ts",
+    "./cost/change-impact-load": "./src/cost/change-impact-load.ts",
     "./cost/anomaly-acknowledge": "./src/cost/anomaly-acknowledge.ts",
     "./cost/anomaly-detect": "./src/cost/anomaly-detect.ts",
     "./cost/anomaly-eval": "./src/cost/anomaly-eval.ts",

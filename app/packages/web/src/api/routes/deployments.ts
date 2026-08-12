@@ -28,6 +28,8 @@ import {
 } from "../../services/deployments";
 import { PlanRequiredError } from "../../services/entitlements";
 import { checkChangeFreeze } from "../../services/change-freezes";
+import { loadDeploymentCostImpact } from "@infrawrench/server-core/cost/change-impact-load";
+import { parseCostBasis } from "@infrawrench/client-core";
 
 const app = new Hono();
 
@@ -129,6 +131,30 @@ app.get("/runs/:id", async (c) => {
   } catch (e) {
     return fail(c, e);
   }
+});
+
+/**
+ * GET /runs/:id/cost-impact — what this deploy did to the run rate, broken
+ * down over the resources it provisioned.
+ *
+ * Recomputed on every read rather than stored, because provider cost arrives
+ * late and is then restated; a frozen answer would be a wrong answer that
+ * never corrects itself. `costs:read` on top of `deployments:read` — the
+ * response is spend.
+ */
+app.get("/runs/:id/cost-impact", async (c) => {
+  requirePermission(c, "deployments:read");
+  requirePermission(c, "costs:read");
+  const basis = parseCostBasis(c.req.query("costBasis"));
+  if (basis === null) return c.json({ error: "costBasis must be cash or amortized" }, 400);
+  const windowDays = Number.parseInt(c.req.query("windowDays") ?? "", 10);
+
+  const impact = await loadDeploymentCostImpact(orgId(c), c.req.param("id"), {
+    ...(Number.isFinite(windowDays) ? { windowDays } : {}),
+    costBasis: basis,
+  });
+  if (!impact) return c.json({ error: "Deployment run not found" }, 404);
+  return c.json(impact);
 });
 
 /**

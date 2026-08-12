@@ -13,6 +13,7 @@
  * identical `deploy:*` frames.
  */
 import { useUIStore } from "@infrawrench/ui";
+import type { DeploymentCostImpact } from "@infrawrench/client-core";
 import type {
   DeployEnvs,
   DeployRepo,
@@ -138,6 +139,18 @@ export function createDesktopDeploymentClient(): DeploymentClient {
         orgId: requireOrgId(),
         ...(env ? { env } : {}),
       }),
+    costImpact: (runId) =>
+      invoke<DeploymentCostImpact | null>("cloud_deploy_cost_impact", {
+        orgId: requireOrgId(),
+        runId,
+      }),
+    annotateCostImpact: async (runId) => {
+      await invoke("cloud_cost_impact_annotate", {
+        orgId: requireOrgId(),
+        subjectKind: "deployment",
+        subjectId: runId,
+      });
+    },
     rollback: (runId) =>
       invoke<{ runId: string; result: DeployRunResult }>("cloud_deploy_rollback", {
         orgId: requireOrgId(),

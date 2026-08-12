@@ -436,6 +436,52 @@ describe("formatting", () => {
     expect(body).toContain("at least; 3 resources could not be priced");
   });
 
+  it("names the week's biggest measured cost move, with its basis and window", () => {
+    const body = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({
+          costMover: {
+            displayName: "api-prod",
+            changeKind: "updated",
+            currency: "USD",
+            deltaPerDay: 42.5,
+            costBasis: "cash basis",
+            windowDays: 7,
+            contested: false,
+          },
+        }),
+      ),
+    );
+    expect(body).toContain(
+      "*Biggest cost move*: api-prod (updated) — +$42.50/day (cash basis, 7d before/after)",
+    );
+  });
+
+  it("says so when other changes overlapped, rather than blaming the one it names", () => {
+    const body = formatDigestSlackBody(
+      composeWeeklyDigest(
+        input({
+          costMover: {
+            displayName: "worker-pool",
+            changeKind: "created",
+            currency: "USD",
+            deltaPerDay: 9,
+            costBasis: "amortized basis",
+            windowDays: 3,
+            contested: true,
+          },
+        }),
+      ),
+    );
+    expect(body).toContain("(amortized basis, 3d before/after; other changes overlapped)");
+  });
+
+  it("omits the cost-move line entirely when nothing could be measured", () => {
+    // Not "no cost-moving changes" — that would claim we looked and found
+    // nothing, when in fact the provider's data had not arrived.
+    expect(formatDigestSlackBody(composeWeeklyDigest(input()))).not.toContain("Biggest cost move");
+  });
+
   it("omits the projection line rather than claiming a week changed nothing", () => {
     // Every changed resource was unpriceable, so both sides are zero. Saying
     // "no change" there would assert knowledge the estimates do not have.

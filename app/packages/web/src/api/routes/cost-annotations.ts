@@ -19,6 +19,11 @@ import {
   listCostAnnotations,
   updateCostAnnotation,
 } from "../../services/cost-annotations";
+import {
+  ChangeImpactAnnotationError,
+  writeChangeImpactAnnotation,
+} from "../../services/change-cost-impact-annotations";
+import { parseCostBasis } from "@infrawrench/client-core";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
 import { requirePermission } from "../../auth/permissions";
@@ -75,6 +80,68 @@ app.post("/", async (c) => {
   } catch (e) {
     // A backwards span, an over-long note, or a report id from another org.
     if (e instanceof CostAnnotationError) return c.json({ error: e.message }, 400);
+    throw e;
+  }
+});
+
+/**
+ * POST /api/org/:orgId/cost-annotations/change-impact — pin a change's or a
+ * deploy's measured cost impact onto the charts.
+ *
+ * One route for both subject kinds, discriminated in the body, because they
+ * write the same kind of note through the same link table. Re-posting the same
+ * subject **rewords** its existing note rather than adding another, so pinning
+ * a finding again once the provider has finished restating leaves one marker.
+ *
+ * A subject with no measurable impact is a 400 rather than a note reading
+ * "$0.00/day": "we cannot say" must never be written down as "nothing".
+ */
+app.post("/change-impact", async (c) => {
+  requirePermission(c, "costs:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+
+  const body: Record<string, unknown> = await c.req
+    .json<Record<string, unknown>>()
+    .catch(() => ({}));
+  const subjectKind = body["subjectKind"];
+  if (subjectKind !== "change" && subjectKind !== "deployment") {
+    return c.json({ error: "subjectKind must be change or deployment" }, 400);
+  }
+  const subjectId = body["subjectId"];
+  if (typeof subjectId !== "string" || subjectId.length === 0) {
+    return c.json({ error: "subjectId is required" }, 400);
+  }
+  const basis = parseCostBasis(body["costBasis"]);
+  if (basis === null) return c.json({ error: "costBasis must be cash or amortized" }, 400);
+
+  try {
+    const written = await writeChangeImpactAnnotation(
+      organizationId,
+      {
+        subjectKind,
+        subjectId,
+        ...(typeof body["windowDays"] === "number" ? { windowDays: body["windowDays"] } : {}),
+        costBasis: basis,
+      },
+      session.userId ?? null,
+    );
+    if (!written) return c.json({ error: "Not found" }, 404);
+    void logAudit({
+      organizationId,
+      userId: session.userId,
+      action: "cost_annotation.create",
+      entityType: "cost_annotation",
+      entityId: written.annotationId,
+      metadata: { subjectKind, subjectId, source: "change-impact" },
+    });
+    return c.json({
+      annotationId: written.annotationId,
+      text: written.text,
+      impact: written.impact,
+    });
+  } catch (e) {
+    if (e instanceof ChangeImpactAnnotationError) return c.json({ error: e.message }, 400);
     throw e;
   }
 });
