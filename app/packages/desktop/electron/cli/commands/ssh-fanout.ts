@@ -14,6 +14,7 @@ import type { FanoutHostResult } from "@infrawrench/client-core" with {
   "resolution-mode": "import",
 };
 import { orgFetch, resolveOrg, CliError, type CliContext } from "../context";
+import type { FanoutFlags } from "../args";
 import { confirm } from "../prompt";
 import { c, printJson, println, printTable, type Column } from "../output";
 
@@ -42,27 +43,6 @@ interface SnippetRow {
   name: string;
   command: string;
   description: string | null;
-}
-
-/** Flags specific to `ssh-fanout`. */
-export interface FanoutFlags {
-  /** Only list the selectable hosts. */
-  list: boolean;
-  /** Substring match on host label / host / tag. */
-  hosts?: string | undefined;
-  /** Restrict to one plugin. */
-  plugin?: string | undefined;
-  /** Restrict to hosts carrying this `key:value` tag. */
-  tag?: string | undefined;
-  /** Org SSH key (id or name) for VM targets. */
-  key?: string | undefined;
-  /** Username override for VM targets. */
-  user?: string | undefined;
-  /** Run a saved snippet by name instead of a literal command. */
-  snippet?: string | undefined;
-  /** Skip the "Run on N hosts?" confirmation. */
-  yes: boolean;
-  concurrency?: number | undefined;
 }
 
 export async function cmdSshFanout(

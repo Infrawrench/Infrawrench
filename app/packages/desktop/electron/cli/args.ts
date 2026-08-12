@@ -2,9 +2,6 @@
 // subcommand routing happens in main.ts over the returned positionals.
 import { parseArgs } from "node:util";
 import { CliError, type CliFlags } from "./context";
-import type { FanoutFlags } from "./commands/ssh-fanout";
-import type { DiffFlags } from "./commands/diff";
-import type { ConfigFlags } from "./commands/config";
 
 export interface RangeFlags {
   last?: string | undefined;
@@ -117,6 +114,55 @@ export interface DeployFlags {
 export interface ExportFlags {
   /** Export format. Only "terraform" today; validated in the command. */
   format?: string | undefined;
+}
+
+// The per-command flag interfaces below live here, with the parser that fills
+// them, rather than in their command modules: `args.ts` describing `ParsedCli`
+// must not import from `commands/*`, because commands import the shared range
+// helpers from here and the reverse edge closes an import cycle (diff.ts once
+// did exactly that).
+
+/** Flags specific to `ssh-fanout`. */
+export interface FanoutFlags {
+  /** Only list the selectable hosts. */
+  list: boolean;
+  /** Substring match on host label / host / tag. */
+  hosts?: string | undefined;
+  /** Restrict to one plugin. */
+  plugin?: string | undefined;
+  /** Restrict to hosts carrying this `key:value` tag. */
+  tag?: string | undefined;
+  /** Org SSH key (id or name) for VM targets. */
+  key?: string | undefined;
+  /** Username override for VM targets. */
+  user?: string | undefined;
+  /** Run a saved snippet by name instead of a literal command. */
+  snippet?: string | undefined;
+  /** Skip the "Run on N hosts?" confirmation. */
+  yes: boolean;
+  concurrency?: number | undefined;
+}
+
+/** How `diff`'s two accounts were named on the command line. */
+export interface DiffFlags {
+  /** `-b` / `--against`: the compared account. `-a` supplies the baseline. */
+  against?: string | undefined;
+  /** `--all`: compare identity/timestamp fields too, instead of hiding them. */
+  all: boolean;
+}
+
+/** Flags `config` reads off the command line. */
+export interface ConfigFlags {
+  /** `--file <path>`; stdin when omitted (apply/plan), stdout (export). */
+  file?: string | undefined;
+  /** `--out <path>` for export — `--file` also works, this is the readable name. */
+  out?: string | undefined;
+  /** `--sections a,b` — narrow the export, or the document sent to plan/apply. */
+  sections?: string | undefined;
+  /** `--prune`: delete what the document doesn't name (mode `replace`). */
+  prune: boolean;
+  /** `-y/--yes`: skip the confirmation an apply otherwise asks for. */
+  yes: boolean;
 }
 
 export interface ParsedCli {

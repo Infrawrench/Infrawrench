@@ -17,6 +17,7 @@
 // the CLI still ships zero new runtime dependencies.
 import { readFileSync, writeFileSync } from "node:fs";
 import { CliError, orgFetch, resolveOrg, type CliContext } from "../context";
+import type { ConfigFlags } from "../args";
 import type {
   OrgConfigApplyMode,
   OrgConfigApplyResult,
@@ -27,20 +28,6 @@ import type {
 } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import { c, printJson, println } from "../output";
 import { confirm } from "../prompt";
-
-/** Flags `config` reads off the command line. */
-export interface ConfigFlags {
-  /** `--file <path>`; stdin when omitted (apply/plan), stdout (export). */
-  file?: string | undefined;
-  /** `--out <path>` for export — `--file` also works, this is the readable name. */
-  out?: string | undefined;
-  /** `--sections a,b` — narrow the export, or the document sent to plan/apply. */
-  sections?: string | undefined;
-  /** `--prune`: delete what the document doesn't name (mode `replace`). */
-  prune: boolean;
-  /** `-y/--yes`: skip the confirmation an apply otherwise asks for. */
-  yes: boolean;
-}
 
 /** Order the plan renders sections in — the order they are applied. */
 const SECTION_LABELS: Record<string, string> = {

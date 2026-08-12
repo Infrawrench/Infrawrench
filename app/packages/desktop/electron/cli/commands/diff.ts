@@ -33,15 +33,7 @@ import type { EnvironmentDiffEntry, EnvironmentDiffResponse } from "@infrawrench
   "resolution-mode": "import",
 };
 import { c, printJson, println, printTable, type Column } from "../output";
-import type { RangeFlags } from "../args";
-
-/** How the two accounts were named on the command line. */
-export interface DiffFlags {
-  /** `-b` / `--against`: the compared account. `-a` supplies the baseline. */
-  against?: string | undefined;
-  /** `--all`: compare identity/timestamp fields too, instead of hiding them. */
-  all: boolean;
-}
+import type { DiffFlags, RangeFlags } from "../args";
 
 const STATUS_LABELS = {
   "only-in-a": "only in A",
