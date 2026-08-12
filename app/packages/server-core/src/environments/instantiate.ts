@@ -23,12 +23,16 @@
  * retries: an id that lands in no row is invisible to every pass that keys off
  * `resource_id`, so the resource is deleted rather than left running
  * unrecorded — identity is certain, the provider returned the id moments
- * earlier — and if even that fails, the id is carried into the instance-level
- * error (a retried write with its own chance of landing) and printed to the
- * process log as `UNRECORDED RESOURCE` the moment the state exists. The log
- * line is the terminus: when every database write is failing, it is the one
- * channel that cannot also fail, and the chain has to end at a channel with
- * that property rather than at another write.
+ * earlier — and if even that fails, three things happen at once: the id is
+ * carried into the instance-level error (a retried write with its own chance
+ * of landing), printed to the process log as `UNRECORDED RESOURCE` the moment
+ * the state exists, and retried into the member row on a slow clock for as
+ * long as the process lives (`persistFailureRecordInBackground`). The
+ * synchronous retries cover a blip; the background ones cover the outage that
+ * is the only way to get here, so it ends with the repair pass owning the
+ * member. The log line is the terminus only if the process dies first — and a
+ * dead process leaves the member `pending` at its position, which is state 2
+ * below: surfaced by `failStalledInstantiations`, verified by teardown.
  *
  * **No member runs without an expiry**, and the way to check that claim is to
  * enumerate the states a member row can end a run in. `status` × `resource_id`
@@ -116,6 +120,7 @@ import {
   attemptedPositionCeiling,
   buildInstantiationPlan,
   buildMemberFailureRecord,
+  type MemberFailureRecord,
   classifyRecoveryCandidates,
   classifyTeardownMember,
   expectedMemberDisplayName,
@@ -184,6 +189,53 @@ export interface InstantiateContext {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Keep trying to land the one write that records a created resource's id,
+ * detached from the request, until it lands or the process dies.
+ *
+ * The synchronous retries in the catch below span a few hundred milliseconds,
+ * which covers a blip but not an outage — and an outage is exactly when every
+ * fallback write fails together while this process still holds the id in
+ * memory. So the id is not surrendered to the log alone: as long as the
+ * process lives, the write is retried on a slow clock, and the moment it lands
+ * the ordinary repair pass owns the member again (`resource_id` set, no lease
+ * → claimed, leased or rolled back, with certain identity).
+ *
+ * If the process dies first, nothing is made worse: the member is still
+ * `pending` at its position, which `failStalledInstantiations` surfaces and
+ * teardown treats as "attempted — verify against the provider" rather than as
+ * settled. The timer is unref'd so a shutdown is never held open for it.
+ */
+function persistFailureRecordInBackground(
+  instanceId: string,
+  memberKey: string,
+  record: MemberFailureRecord,
+  identity: string,
+): void {
+  const intervalMs = 30_000;
+  const maxAttempts = 120; // ~an hour, then the log line is all that remains
+  let attempt = 0;
+  const tick = async (): Promise<void> => {
+    attempt += 1;
+    try {
+      await markMemberFailed(instanceId, memberKey, record);
+      console.error(
+        `[environments] recorded ${identity} after ${attempt} background ` +
+          `attempt${attempt === 1 ? "" : "s"}; the repair pass owns it from here`,
+      );
+    } catch {
+      if (attempt >= maxAttempts) {
+        console.error(
+          `[environments] giving up on recording ${identity} after ${attempt} background attempts`,
+        );
+        return;
+      }
+      setTimeout(() => void tick(), intervalMs).unref();
+    }
+  };
+  setTimeout(() => void tick(), intervalMs).unref();
 }
 
 /** Retry a bookkeeping write a couple of times before treating it as fatal. */
@@ -574,6 +626,18 @@ export async function instantiateEnvironment(
                 `${instance.id} member ${member.key} holds resource ${createdRecord.resourceId} ` +
                 `(external ${createdRecord.externalId ?? "-"}, "${createdRecord.displayName}") ` +
                 `in account ${accountId} with no lease and no durable record`,
+            );
+            // And not surrendered to the log alone: the id is retried into the
+            // member row on a slow clock for as long as this process lives, so
+            // a database outage — the one way to get here — ends with the
+            // repair pass owning the member rather than with an operator
+            // grepping. See `persistFailureRecordInBackground`.
+            persistFailureRecordInBackground(
+              instance.id,
+              member.key,
+              buildMemberFailureRecord(errorMessage(error), createdRecord),
+              `unrecorded resource ${createdRecord.resourceId} of instance ${instance.id} ` +
+                `member ${member.key}`,
             );
           }
         }
