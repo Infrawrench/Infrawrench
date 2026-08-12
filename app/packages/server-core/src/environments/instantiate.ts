@@ -19,6 +19,14 @@
  * rather than as already handled. A missing id never means "nothing was
  * created".
  *
+ * And a third, for when the failure record itself cannot be written after
+ * retries: an id that lands in no row is invisible to every pass that keys off
+ * `resource_id`, so the resource is deleted rather than left running
+ * unrecorded — identity is certain, the provider returned the id moments
+ * earlier — and if even that fails, the id is carried into the instance-level
+ * error, a separate write with its own chance of landing and the last durable
+ * place a human can recover it from.
+ *
  * **No member runs without an expiry**, and the way to check that claim is to
  * enumerate the states a member row can end a run in. `status` × `resource_id`
  * × `lease_id`, against whether a provider resource actually exists:
@@ -432,13 +440,15 @@ export async function instantiateEnvironment(
       // Recorded first, and before anything else can throw: from here on the
       // resource can always be found and torn down. `createdRecord` is set
       // *before* the write, so even a failure of this very write carries the id
-      // into the failure record rather than losing a running resource.
+      // into the failure record rather than losing a running resource. Retried,
+      // because the alternative to a landed write is the whole rollback path —
+      // a transient blip should not cost a freshly created resource.
       createdRecord = {
         resourceId: resource.id,
         externalId: resource.externalId ?? null,
         displayName: resource.displayName,
       };
-      await markMemberCreated(instance.id, member.key, createdRecord);
+      await withRetry(() => markMemberCreated(instance.id, member.key, createdRecord!));
 
       // The resource row has to exist before a lease can point at it
       // (`createLeaseRecord` validates it), so this is retried rather than
@@ -518,16 +528,43 @@ export async function instantiateEnvironment(
       // "record the failure" write that dropped the id is how a successful
       // create became an untracked, billing resource: teardown saw a member
       // with no id and had nothing to delete.
-      await markMemberFailed(
-        instance.id,
-        member.key,
-        buildMemberFailureRecord(errorMessage(error), createdRecord),
-      ).catch((writeError: unknown) => {
-        // Even this can fail. The member row still exists at its position, and
-        // teardown verifies any attempted member that carries no id against
-        // the provider, so the resource is still reachable.
+      try {
+        await withRetry(() =>
+          markMemberFailed(
+            instance.id,
+            member.key,
+            buildMemberFailureRecord(errorMessage(error), createdRecord),
+          ),
+        );
+      } catch (writeError) {
         console.error("[environments] failed to record member failure:", writeError);
-      });
+        // The retried write is gone, and if `createdRecord` is still set the id
+        // it carries now exists nowhere durable — the one state every repair
+        // pass keys off `resource_id` and cannot see. Identity is still certain
+        // (the provider handed this id back moments ago), so the safe order is:
+        // delete the resource rather than let it run unrecorded, and if even
+        // that fails, carry the id into the instance-level error — a separate
+        // write with its own chance of landing, and the last durable place a
+        // human can recover it from.
+        if (createdRecord && !(await memberHasLease(organizationId, createdRecord.resourceId))) {
+          const rolledBack = await rollbackCreatedMember(organizationId, {
+            accountId,
+            pluginId: member.pluginId,
+            resourceTypeId: member.resourceTypeId,
+            resourceId: createdRecord.resourceId,
+          });
+          if (rolledBack) {
+            failure = `${member.sourceName}: ${errorMessage(error)} (the resource was rolled back)`;
+            createdRecord = null;
+          } else {
+            failure =
+              `${member.sourceName}: ${errorMessage(error)} — its resource ` +
+              `${createdRecord.externalId ?? createdRecord.resourceId} ` +
+              `("${createdRecord.displayName}") could not be recorded or rolled back. It has ` +
+              `no expiry: delete it in the provider, then tear this environment down`;
+          }
+        }
+      }
       break;
     }
   }
