@@ -366,28 +366,32 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                 )}
               </div>
               {!hasDomain ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <label className="sr-only" htmlFor={`status-domain-${page.id}`}>
-                    Custom domain hostname
-                  </label>
-                  <input
-                    id={`status-domain-${page.id}`}
-                    type="text"
-                    value={domainDraft[page.id] ?? ""}
-                    onChange={(e) => setDomainDraft((d) => ({ ...d, [page.id]: e.target.value }))}
-                    placeholder="status.example.com"
-                    aria-label="Custom domain hostname"
-                    disabled={busy}
-                    className="min-w-[12rem] flex-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface placeholder:text-on-surface-faint"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void attachDomain(page)}
-                    disabled={busy}
-                    className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
+                <div className="flex flex-col gap-1.5">
+                  <label
+                    htmlFor={`status-domain-${page.id}`}
+                    className="text-xs text-on-surface-tertiary"
                   >
-                    Attach
-                  </button>
+                    Hostname
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      id={`status-domain-${page.id}`}
+                      type="text"
+                      value={domainDraft[page.id] ?? ""}
+                      onChange={(e) => setDomainDraft((d) => ({ ...d, [page.id]: e.target.value }))}
+                      placeholder="status.example.com"
+                      disabled={busy}
+                      className="min-w-[12rem] flex-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface placeholder:text-on-surface-faint"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void attachDomain(page)}
+                      disabled={busy}
+                      className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
+                    >
+                      Attach
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <>

@@ -255,9 +255,9 @@ async function persistHostnameFields(
 /** Keep Workers KV in sync when the slug changes (hostname unchanged). */
 export async function syncCustomHostnameKvForPage(page: StatusPage): Promise<void> {
   if (!page.customHostname) return;
-  const cfg = readConfig();
-  // No CF config: nothing to sync (local/dev). Vanity hosts are not live there.
-  if (!cfg) return;
+  // Hostname exists → CF was configured when it was attached. Missing config
+  // must fail the rotation so we never leave a live KV mapping on the old slug.
+  const cfg = requireConfig();
   await kvPut(cfg, page.customHostname, page.slug);
 }
 
@@ -272,8 +272,10 @@ export async function removeCustomHostnameInfra(
   hostname: string | null,
   cfId: string | null,
 ): Promise<void> {
-  const cfg = readConfig();
-  if (!cfg) return;
+  if (!hostname && !cfId) return;
+  // Hostname/CF id present means attach succeeded earlier — missing config
+  // must fail so callers keep local identifiers and can retry revocation.
+  const cfg = requireConfig();
   // KV first so a CF delete that succeeds cannot leave a live mapping.
   if (hostname) await kvDelete(cfg, hostname);
   if (cfId) await deleteCfHostname(cfg, cfId);
