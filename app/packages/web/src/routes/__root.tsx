@@ -4,7 +4,6 @@ import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/
 import {
   DndShell,
   GlobalTabBar,
-  PublicStatusPageView,
   TunnelSshAttachModal,
   useUIStore,
   useWorkspaceTabDocumentTitle,
@@ -24,6 +23,7 @@ import { ProviderIncidentShellBanner } from "@/components/ProviderIncidentShellB
 import { SpotlightSearch } from "@/components/SpotlightSearch";
 import { WebWorkspaceTabsViewport } from "@/components/WorkspaceTabsViewport";
 import { OrgProviders } from "@/components/OrgProviders";
+import { PublicStatusPageOnCustomHost } from "@/components/PublicStatusPageOnCustomHost";
 import { apiGet, apiPost } from "@/lib/api";
 import {
   dashboardTabTarget,
@@ -72,74 +72,6 @@ function isCustomStatusHost(): boolean {
 
 function isPublicRoute(pathname: string): boolean {
   return pathname.startsWith("/status/") || isCustomStatusHost();
-}
-
-function PublicStatusPageOnCustomHost() {
-  const [page, setPage] = useState<import("@infrawrench/client-core").PublicStatusPage | null>(
-    null,
-  );
-  const [state, setState] = useState<"loading" | "ready" | "missing" | "error">("loading");
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch("/api/status", {
-          headers: { Accept: "application/json" },
-          credentials: "omit",
-        });
-        if (cancelled) return;
-        if (res.status === 404) {
-          setState("missing");
-          return;
-        }
-        if (!res.ok) {
-          setState("error");
-          return;
-        }
-        setPage((await res.json()) as import("@infrawrench/client-core").PublicStatusPage);
-        setState("ready");
-      } catch {
-        if (!cancelled) setState("error");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (page) document.title = page.title;
-  }, [page]);
-
-  if (state === "loading") {
-    return (
-      <div className="flex h-screen items-center justify-center bg-surface text-on-surface-tertiary">
-        <div className="animate-pulse text-sm">Loading…</div>
-      </div>
-    );
-  }
-
-  if (state === "missing" || state === "error") {
-    return (
-      <div className="flex h-screen items-center justify-center bg-surface px-4 text-center">
-        <div>
-          <h1 className="text-lg font-semibold text-on-surface">
-            {state === "missing" ? "Status page not found" : "Status page unavailable"}
-          </h1>
-          <p className="mt-2 text-sm text-on-surface-secondary">
-            {state === "missing"
-              ? "This domain is not linked to a published status page."
-              : "Something went wrong loading this page. Try again in a moment."}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-surface">{page && <PublicStatusPageView page={page} />}</div>
-  );
 }
 
 /**

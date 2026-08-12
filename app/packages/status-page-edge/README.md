@@ -11,11 +11,11 @@ this Worker reads.
 
 ## Request handling
 
-| Incoming | Proxied to |
-| -------- | ---------- |
-| `GET /api/status` (any path under it) | `ORIGIN/api/status/{slug}` |
-| `/assets/…`, files with extensions | `ORIGIN` unchanged |
-| `/` (document) | `ORIGIN/` SPA shell, with `iw-status-host` meta so the client enters vanity mode |
+| Incoming                              | Proxied to                                                                       |
+| ------------------------------------- | -------------------------------------------------------------------------------- |
+| `GET /api/status` (any path under it) | `ORIGIN/api/status/{slug}`                                                       |
+| `/assets/…`, files with extensions    | `ORIGIN` unchanged                                                               |
+| `/` (document)                        | `ORIGIN/` SPA shell, with `iw-status-host` meta so the client enters vanity mode |
 
 Unknown hostnames 404. Unpublished pages still 404 at the origin API — the
 Worker does not second-guess publish state.

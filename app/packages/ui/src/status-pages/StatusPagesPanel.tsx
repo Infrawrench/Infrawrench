@@ -367,11 +367,16 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
               </div>
               {!hasDomain ? (
                 <div className="flex flex-wrap items-center gap-2">
+                  <label className="sr-only" htmlFor={`status-domain-${page.id}`}>
+                    Custom domain hostname
+                  </label>
                   <input
+                    id={`status-domain-${page.id}`}
                     type="text"
                     value={domainDraft[page.id] ?? ""}
                     onChange={(e) => setDomainDraft((d) => ({ ...d, [page.id]: e.target.value }))}
                     placeholder="status.example.com"
+                    aria-label="Custom domain hostname"
                     disabled={busy}
                     className="min-w-[12rem] flex-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface placeholder:text-on-surface-faint"
                   />

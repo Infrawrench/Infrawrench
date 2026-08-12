@@ -40,11 +40,10 @@ describe("isAssetPath", () => {
 
 describe("worker", () => {
   it("404s when the hostname is unknown", async () => {
-    const res = await worker.fetch(
-      new Request("https://unknown.example/"),
-      { ...env, STATUS_HOSTS: kv({}) },
-      {} as ExecutionContext,
-    );
+    const res = await worker.fetch(new Request("https://unknown.example/"), {
+      ...env,
+      STATUS_HOSTS: kv({}),
+    });
     expect(res.status).toBe(404);
   });
 
@@ -57,7 +56,6 @@ describe("worker", () => {
         headers: { host: "status.acme.com", accept: "application/json" },
       }),
       env,
-      {} as ExecutionContext,
     );
     expect(res.status).toBe(200);
     expect(stub).toHaveBeenCalledOnce();
@@ -77,7 +75,6 @@ describe("worker", () => {
     const res = await worker.fetch(
       new Request("https://status.acme.com/", { headers: { host: "status.acme.com" } }),
       env,
-      {} as ExecutionContext,
     );
     const called = stub.mock.calls[0]![0] as string;
     expect(called).toBe("https://app.infrawrench.com/");
@@ -104,7 +101,6 @@ describe("worker", () => {
         headers: { host: "status.acme.com" },
       }),
       env,
-      {} as ExecutionContext,
     );
     const called = stub.mock.calls[0]![0] as string;
     expect(called).toBe("https://app.infrawrench.com/assets/app.js");
