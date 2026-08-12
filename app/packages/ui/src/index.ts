@@ -172,8 +172,8 @@ export { DashboardGrid } from "./components/dashboard/DashboardGrid.js";
 
 export { SidebarItem } from "./components/sidebar/SidebarItem.js";
 export { SidebarSection } from "./components/sidebar/SidebarSection.js";
-export { SidebarNavGrid, SidebarNavTile } from "./components/sidebar/SidebarNavGrid.js";
-export type { SidebarNavTileDef } from "./components/sidebar/SidebarNavGrid.js";
+export { SidebarToolsButton, SidebarToolsLauncher } from "./components/sidebar/SidebarTools.js";
+export type { SidebarToolDef } from "./components/sidebar/SidebarTools.js";
 
 export { OrgSwitcher } from "./components/OrgSwitcher.js";
 export type { OrgSwitcherProps, OrgEntry } from "./components/OrgSwitcher.js";
@@ -850,6 +850,7 @@ export { MetricAlertIcon } from "./components/icons/MetricAlertIcon.js";
 export { ProbesIcon } from "./components/icons/ProbesIcon.js";
 export { IncidentsIcon } from "./components/icons/IncidentsIcon.js";
 export { EnvironmentsIcon } from "./components/icons/EnvironmentsIcon.js";
+export { ToolsIcon } from "./components/icons/ToolsIcon.js";
 
 /**
  * SSH host-key trust handshake. Shared with mobile through client-core because

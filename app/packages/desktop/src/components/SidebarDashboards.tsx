@@ -24,10 +24,10 @@ import {
   LogsIcon,
   DroppableDashboardItem,
   emitChatConversationsChanged,
-  SidebarNavGrid,
+  SidebarToolsButton,
   useUIStore,
   type ConversationSummary,
-  type SidebarNavTileDef,
+  type SidebarToolDef,
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
@@ -195,10 +195,10 @@ export function SidebarDashboards() {
   // Deploy is here in both modes: with an org it is the full deploy screen,
   // and without one it is the history of what `infrawrench deploy` did on this
   // machine. Costs and Changes have no local half — spend is collected
-  // server-side, change events are recorded by the cloud poller — so the tile
-  // count differs between local and org mode; SidebarNavGrid balances its
-  // icon rows for whatever count it gets.
-  const navTiles: SidebarNavTileDef[] = [
+  // server-side, change events are recorded by the cloud poller — so the tool
+  // count differs between local and org mode; the Tools launcher lists
+  // whatever it gets.
+  const navTools: SidebarToolDef[] = [
     {
       key: "agents",
       label: "Agents",
@@ -412,7 +412,7 @@ export function SidebarDashboards() {
 
   return (
     <div className="mb-2">
-      <SidebarNavGrid tiles={navTiles} />
+      <SidebarToolsButton tools={navTools} />
 
       {/* Section header */}
       <div className="flex items-center justify-between px-3 py-1">

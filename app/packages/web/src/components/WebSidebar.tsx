@@ -6,7 +6,7 @@ import {
   DraggableSidebarResource,
   RESOURCES_CHANGED_EVENT,
   OrgSwitcher,
-  SidebarNavGrid,
+  SidebarToolsButton,
   toast,
   type Account,
   type Dashboard,
@@ -459,8 +459,8 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto py-2">
-          <SidebarNavGrid
-            tiles={[
+          <SidebarToolsButton
+            tools={[
               {
                 key: "agents",
                 label: "Agents",
