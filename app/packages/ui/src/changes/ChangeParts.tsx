@@ -1,5 +1,5 @@
 import { CHANGE_KIND_LABELS, formatChangeValue } from "@infrawrench/client-core";
-import type { ResourceChangeEntry, ResourceChangeKind } from "./types.js";
+import type { ResourceChangeEntry, ResourceChangeKind, ResourceFieldChange } from "./types.js";
 
 const KIND_BADGE_CLASSES: Record<ResourceChangeKind, string> = {
   created: "bg-green-500/10 text-success",
@@ -22,12 +22,19 @@ export function ChangeKindBadge({ kind }: { kind: ResourceChangeKind }) {
   );
 }
 
-/** Per-field before → after rows for an "updated" event. */
-export function ChangeDiffList({ entry }: { entry: ResourceChangeEntry }) {
-  if (entry.changeKind !== "updated" || entry.diff.length === 0) return null;
+/**
+ * Per-field before → after rows.
+ *
+ * The renderer half of the drift feed, taking a bare `ResourceFieldChange[]`
+ * so it is not tied to a change event: **IaC reconciliation** renders its
+ * Terraform-state-vs-live diffs through this exact component, which is why it
+ * exists apart from {@link ChangeDiffList}. One field diff, rendered one way.
+ */
+export function ResourceFieldDiffList({ diff }: { diff: readonly ResourceFieldChange[] }) {
+  if (diff.length === 0) return null;
   return (
     <div className="mt-1.5 space-y-1">
-      {entry.diff.map((d) => (
+      {diff.map((d) => (
         <div key={d.field} className="flex flex-wrap items-baseline gap-x-2 text-xs">
           <span className="font-mono text-on-surface-secondary">{d.field}</span>
           <span className="font-mono text-on-surface-faint line-through break-all">
@@ -43,4 +50,10 @@ export function ChangeDiffList({ entry }: { entry: ResourceChangeEntry }) {
       ))}
     </div>
   );
+}
+
+/** Per-field before → after rows for an "updated" change event. */
+export function ChangeDiffList({ entry }: { entry: ResourceChangeEntry }) {
+  if (entry.changeKind !== "updated") return null;
+  return <ResourceFieldDiffList diff={entry.diff} />;
 }

@@ -72,6 +72,11 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       // a declaration can request are still gated separately.
       "incidents:read",
       "incidents:write",
+      // Members read the IaC reconciliation for the same reason they read the
+      // change timeline: "is this thing managed?" is a question you have to be
+      // able to answer before you touch anything. Uploading a state document is
+      // withheld — that is the org declaring what its estate looks like.
+      "iac:read",
       "team:read",
       "audit:read",
       // Members are exactly who break-glass is for: ask for what you need,

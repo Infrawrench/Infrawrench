@@ -189,6 +189,14 @@ const INVOKE_CHANNELS = [
   "cloud_changes_cost_impacts",
   "cloud_cost_impact_annotate",
   "cloud_status_incidents",
+  // IaC reconciliation — uploaded Terraform state and the managed/unmanaged
+  // classification it produces.
+  "cloud_iac_states",
+  "cloud_iac_upload_state",
+  "cloud_iac_delete_state",
+  "cloud_iac_reconcile",
+  "cloud_iac_import_plan",
+  "cloud_iac_resource_status",
   // Agents mode against an org — the local pipeline has its own (non-cloud)
   // channels; these drive the org's sessions through the web API instead.
   "cloud_agents_accounts",

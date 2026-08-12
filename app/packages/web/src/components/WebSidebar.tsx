@@ -19,6 +19,7 @@ import { InvoicesIcon } from "@infrawrench/ui/invoices";
 import {
   DeployIcon,
   ChangesIcon,
+  IacIcon,
   GraphIcon,
   ExpiryIcon,
   PostureIcon,
@@ -514,6 +515,12 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <ChangesIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/changes", params: { orgId: orgId! } }),
+              },
+              {
+                key: "iac",
+                label: "IaC",
+                icon: <IacIcon />,
+                onClick: () => void navigate({ to: "/org/$orgId/iac", params: { orgId: orgId! } }),
               },
               {
                 key: "graph",

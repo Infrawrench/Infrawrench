@@ -375,12 +375,16 @@ export type {
 } from "./terraform-hcl.js";
 export {
   exportResourcesToTerraform,
+  exportResourcesForAdoption,
+  renderTerraformImportBlocks,
+  NO_IMPORT_ID_REASON,
   fieldString,
   fieldNumber,
   fieldBool,
 } from "./terraform-export.js";
 export type {
   TerraformExportOutcome,
+  TerraformAdoptionOutcome,
   TerraformExportedResource,
   TerraformUnsupportedResource,
 } from "./terraform-export.js";

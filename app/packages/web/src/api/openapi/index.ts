@@ -64,6 +64,7 @@ import { registerProbePaths } from "./paths/probes";
 import { registerIncidentPaths } from "./paths/incidents";
 import { registerStatusPagePaths } from "./paths/status-pages";
 import { registerOwnershipPaths } from "./paths/ownership";
+import { registerIacPaths } from "./paths/iac";
 import { registerLogWorkspacePaths } from "./paths/log-workspaces";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
 import { registerAssociationPaths } from "./paths/associations";
@@ -190,6 +191,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerIncidentPaths(ctx);
   registerStatusPagePaths(ctx);
   registerOwnershipPaths(ctx);
+  registerIacPaths(ctx);
   registerLogWorkspacePaths(ctx);
   registerConnectionFeaturePaths(ctx);
   registerAssociationPaths(ctx);

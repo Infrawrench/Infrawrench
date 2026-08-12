@@ -63,6 +63,11 @@ export function dnsTabTarget(): WorkspaceTabTarget {
   return { kind: "dns" };
 }
 
+/** Infrastructure as Code — the IaC reconciliation page (the ClickOps detector). */
+export function iacTabTarget(): WorkspaceTabTarget {
+  return { kind: "iac" };
+}
+
 /**
  * Environment diff. The two account ids are optional: opened from the sidebar
  * the panel asks which environments to compare, and opening it again with a

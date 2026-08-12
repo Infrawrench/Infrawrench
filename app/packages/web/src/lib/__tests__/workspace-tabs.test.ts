@@ -228,6 +228,13 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns iac route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "iac" })).toEqual({
+      to: "/org/$orgId/iac",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("carries the environment diff pair as query parameters", () => {
     expect(getWorkspaceNavigateArgs({ kind: "environment-diff" })).toEqual({
       to: "/org/$orgId/environment-diff",
@@ -281,6 +288,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the org-scoped dns path", () => {
     expect(syncWorkspaceRouteFromPath("/org/test-org/dns")).toEqual({ kind: "dns" });
+  });
+
+  it("parses the org-scoped iac path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/iac")).toEqual({ kind: "iac" });
   });
 
   it("parses the environment diff path, with and without a pair", () => {

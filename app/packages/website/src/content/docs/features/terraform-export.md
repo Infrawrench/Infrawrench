@@ -61,3 +61,7 @@ Coverage is per resource type: types that need nested blocks or credentials Infr
 - The export reflects Infrawrench's **stored state**. Sync the account first if you've changed things on the provider side recently.
 - Volume attachments are noted as comments rather than emitted as attachment resources — model them explicitly (`hcloud_volume_attachment`, `digitalocean_volume_attachment`) before applying.
 - Server `image` attributes describe what the machine was created from; changing them in Terraform forces a rebuild/replacement, not an in-place change.
+
+## The other direction
+
+Exporting is one-way: inventory out as HCL. To go the other way — upload the Terraform state you already have and find out which resources it _doesn't_ cover — see [IaC reconciliation](./iac-reconciliation.md). It reuses the same mappers as this page, so it generates `import` blocks for unmanaged resources instead of leaving you to run `terraform import` by hand.

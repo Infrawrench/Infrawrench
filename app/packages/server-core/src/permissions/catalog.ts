@@ -66,6 +66,15 @@ export const ALL_PERMISSIONS = [
   // `workflows:write` cannot reach workflows through a config document.
   "config:read",
   "config:write",
+  // IaC reconciliation: uploading the Terraform state an org already has, and
+  // reading the managed / drifted / unmanaged classification it produces. Its
+  // own family rather than `resources:*` because the two verbs are different
+  // in kind — reading the classification is a reporting act over inventory
+  // somebody already has `resources:read` for, while uploading a state
+  // document hands the org a picture of its whole Terraform estate and is not
+  // a mutation of any cloud resource, so neither half fits `resources:write`.
+  "iac:read",
+  "iac:write",
   "audit:read",
   // Break-glass access. Its own family because the three verbs are held by
   // genuinely different people: everyone can ask, everyone can see the queue

@@ -338,6 +338,7 @@ export {
   accessReviewTabTarget,
   backupsTabTarget,
   dnsTabTarget,
+  iacTabTarget,
   environmentDiffTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
@@ -581,6 +582,7 @@ export {
   type ResourceChangeEntry,
 } from "@infrawrench/client-core";
 export { ChangesIcon } from "./components/icons/ChangesIcon.js";
+export { IacIcon } from "./components/icons/IacIcon.js";
 export { LogsIcon } from "./components/icons/LogsIcon.js";
 
 /**
@@ -1017,6 +1019,7 @@ export {
   RevertChangeButton,
   RevertChangeDialog,
   localRevertRefusal,
+  ResourceFieldDiffList,
   type ChangesPanelProps,
   type ChangesClient,
   type ChangeRevertClient,
@@ -1031,6 +1034,19 @@ export {
   type RevertPreviewResponse,
   type RevertApplyResponse,
 } from "./changes/index.js";
+
+// IaC reconciliation — panel + host contract. Named for the same reason as the
+// change timeline: the wire types come straight from client-core above, and a
+// star export would redeclare them.
+export {
+  IacPanel,
+  IacImportPlanModal,
+  type IacPanelProps,
+  type IacImportPlanModalProps,
+  type IacClient,
+  type IacAccountOption,
+  type IacStateUpload,
+} from "./iac/index.js";
 
 // Moment view ("what changed around 03:14?") — panel + host contract. The
 // wire types and pure timeline logic come straight from client-core, named

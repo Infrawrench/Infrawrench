@@ -15,6 +15,7 @@ import {
   accessReviewTabTarget,
   backupsTabTarget,
   dnsTabTarget,
+  iacTabTarget,
   environmentDiffTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
@@ -48,6 +49,7 @@ export {
   accessReviewTabTarget,
   backupsTabTarget,
   dnsTabTarget,
+  iacTabTarget,
   environmentDiffTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
@@ -131,6 +133,8 @@ export function getWorkspaceNavigateArgs(
       return { to: "/backups", ...(replace ? { replace: true } : {}) };
     case "dns":
       return { to: "/dns", ...(replace ? { replace: true } : {}) };
+    case "iac":
+      return { to: "/iac", ...(replace ? { replace: true } : {}) };
     // The two accounts ride as query parameters rather than path segments:
     // they are a pair of optional ids, not a hierarchy, and the panel is
     // reachable with neither of them chosen.
@@ -282,6 +286,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "dns") {
     return dnsTabTarget();
+  }
+  if (segments[0] === "iac") {
+    return iacTabTarget();
   }
   if (segments[0] === "environment-diff") {
     const params = new URLSearchParams(search ?? "");

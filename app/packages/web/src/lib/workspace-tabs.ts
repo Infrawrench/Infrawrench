@@ -15,6 +15,7 @@ import {
   accessReviewTabTarget,
   backupsTabTarget,
   dnsTabTarget,
+  iacTabTarget,
   environmentDiffTabTarget,
   sshFanoutTabTarget,
   metricAlertsTabTarget,
@@ -173,6 +174,12 @@ export function getWorkspaceNavigateArgs(
     case "dns":
       return {
         to: "/org/$orgId/dns",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "iac":
+      return {
+        to: "/org/$orgId/iac",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -402,6 +409,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "dns") {
     return dnsTabTarget();
+  }
+  if (s[0] === "iac") {
+    return iacTabTarget();
   }
   if (s[0] === "environment-diff") {
     const params = new URLSearchParams(
