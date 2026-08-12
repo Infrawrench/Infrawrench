@@ -329,17 +329,28 @@ export async function claimRevert(
  * holds, immediately before a cross-internet provider call. It does sit inside
  * the lost-update window documented on {@link buildRevertPlan}, and is a
  * rounding error against the round-trip it precedes.
+ *
+ * **Returns false when this attempt no longer holds the claim, and the caller
+ * must not go on to write.** The fence and the return value are one mechanism:
+ * journalling and writing have to succeed or fail together, or the attempt
+ * produces exactly the unjournalled provider write this column exists to
+ * prevent. A caller that ignored this would be issuing a second concurrent
+ * write while holding positive evidence that it had lost the lock — which is a
+ * different thing from the unavoidable case where the lease lapses *during* the
+ * provider call and nobody can know.
  */
 export async function markRevertWriteAttempted(
   organizationId: string,
   changeId: string,
   owner: string,
   at: Date,
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  const marked = await db
     .update(resourceChanges)
     .set({ revertWriteAttemptedAt: at })
-    .where(fencedWhere(organizationId, changeId, owner));
+    .where(fencedWhere(organizationId, changeId, owner))
+    .returning({ id: resourceChanges.id });
+  return marked.length > 0;
 }
 
 /**
@@ -389,6 +400,14 @@ export async function completeRevert(
  * nothing, because the claim it would be clearing is not its own. Also scoped
  * to rows that have not completed, so it can never un-revert an event whose
  * write did land.
+ *
+ * **Returns nothing, and that is deliberate rather than an oversight** — the
+ * one fenced write here whose row count carries no decision. Zero rows means
+ * either "another attempt owns this claim" or "the event already completed",
+ * and in both cases the correct action is precisely the nothing that already
+ * happened; there is no recovery to attempt and no invariant left broken.
+ * Contrast {@link markRevertWriteAttempted}, where zero rows means a provider
+ * write is about to be issued without a journal, which is a decision point.
  *
  * Never throws: this runs on the error path, and a failed rollback must not
  * mask the error that caused it (the same rule the drift-alert cooldown claim

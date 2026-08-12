@@ -89,12 +89,29 @@ function stubSelect(change = CHANGE) {
  * attempt having taken the event over while the provider call was in flight, so
  * the owner-fenced completion matches nothing.
  */
-function stubUpdate({ claimWins = true, completeWins = true, completeThrows = false } = {}) {
+function stubUpdate({
+  claimWins = true,
+  completeWins = true,
+  completeThrows = false,
+  journalWins = true,
+} = {}) {
   const writes: Record<string, unknown>[] = [];
   mockUpdate.mockImplementation(() => ({
     set: (values: Record<string, unknown>) => {
       writes.push(values);
       const isCompletion = "revertedAt" in values;
+      // The journal write sets only `revertWriteAttemptedAt`; completion also
+      // clears it, hence the `revertedAt` check taking precedence.
+      const isJournal = !isCompletion && "revertWriteAttemptedAt" in values;
+      if (isJournal && !journalWins) {
+        return {
+          where: () => ({
+            returning: () => Promise.resolve([]),
+            then: (fn: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
+              Promise.resolve([]).then(fn, rej),
+          }),
+        };
+      }
       if (isCompletion && completeThrows) {
         return {
           where: () => ({
@@ -261,6 +278,29 @@ describe("POST /:changeId/revert — claim lifecycle", () => {
     expect(res.status).toBe(400);
     expect(writes.some((w) => w.revertedAt instanceof Date)).toBe(false);
     expect(writes.at(-1)).toMatchObject({ revertClaimedAt: null, revertedByUserId: null });
+  });
+
+  /**
+   * The seam the journal left. Planning outlives the five-minute lease, another
+   * request claims the event, and the owner-fenced journal write matches zero
+   * rows — at which point issuing the provider call anyway would produce
+   * exactly the unjournalled mutation the journal exists to prevent, and a
+   * second concurrent write besides. Journalling and writing succeed or fail
+   * together.
+   */
+  it("cannot reach the provider once its claim is gone, journal or write", async () => {
+    stubSelect();
+    stubUpdate({ journalWins: false });
+    const { updateResource } = stubClient();
+
+    const res = await app().request("/chg-1/revert", { method: "POST" });
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe("change_revert_conflict");
+
+    // The whole point: no provider mutation without a journal entry for it.
+    expect(updateResource).not.toHaveBeenCalled();
+    // Nothing was written, so there is nothing to attribute.
+    expect(mockLogAudit).not.toHaveBeenCalled();
   });
 
   it("refuses when the claim is already held", async () => {

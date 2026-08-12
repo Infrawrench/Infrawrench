@@ -306,6 +306,7 @@ app.get("/:changeId/revert", async (c) => {
  * | # | Provider write | Recorded | Response | Row afterwards | Recovers by |
  * |---|---|---|---|---|---|
  * | 1 | not reached (404/409/423, claim lost) | — | 404/409/423 | untouched | n/a |
+ * | 1b | not reached (claim lost while planning) | — | 409 | replacement's claim | the replacement |
  * | 2 | not reached (plan failed, no client) | — | 502/404 | claim released | retry |
  * | 3 | not reached (nothing writable / conflict) | — | 409 | claim released | n/a — correct |
  * | 4 | not reached (journal says an earlier one wrote) | yes, as `reconciled` | 200 | reverted | n/a |
@@ -326,6 +327,16 @@ app.get("/:changeId/revert", async (c) => {
  * Row 5 is now inside that loop rather than a named residual: a provider that
  * errors *after* applying is indistinguishable from one that errors instead of
  * applying, so the journal survives the throw and the next attempt can notice.
+ *
+ * **The invariant that binds the whole table: no provider write without a
+ * journal entry that survives it.** Which makes the journal's row count a
+ * decision, not a formality — row 1b is that decision. Journalling and writing
+ * are fenced on the same claim and succeed or fail together, so an attempt
+ * whose planning outlived the lease stops rather than issuing a write nothing
+ * would ever be able to reconcile. Of the fenced writes here, only
+ * `releaseRevert` discards its row count, and only because zero rows there
+ * ("someone else owns it" / "it already completed") has no recovery action;
+ * that is argued at its definition rather than assumed.
  *
  * The residual that remains, named rather than hidden: a process dying between
  * the journal write and the provider call leaves a journal entry for a write
@@ -546,7 +557,28 @@ app.post("/:changeId/revert", async (c) => {
   // throw, a timeout, this process disappearing — the fact that a write was
   // *issued* for this event survives. This is the state that makes the claim a
   // pure lock and lets every failure path release it.
-  await markRevertWriteAttempted(organizationId, change.id, owner, new Date());
+  //
+  // Journalling and writing succeed or fail together. The journal is fenced on
+  // the claim, so a zero-row result means planning outlived the lease and
+  // another attempt owns the event; going on to write anyway would produce
+  // precisely the unjournalled provider mutation this column exists to prevent,
+  // *and* a second concurrent write while holding positive evidence the lock
+  // was lost. The replacement holds the claim and will plan and write itself,
+  // so nothing is dropped by stopping here — only duplicated by not.
+  const journalled = await markRevertWriteAttempted(organizationId, change.id, owner, new Date());
+  if (!journalled) {
+    // Nothing written, so nothing to audit and nothing to release (release is
+    // owner-fenced and this attempt is no longer the owner).
+    return c.json(
+      {
+        error:
+          "Another revert of this change took over while this one was being planned, so it was " +
+          "not applied. Re-check the resource before retrying.",
+        code: REVERT_CONFLICT_CODE,
+      },
+      409,
+    );
+  }
 
   try {
     await client.updateResource(change.resourceTypeId, change.resourceId, change.accountId, patch);
