@@ -144,6 +144,17 @@ export const environmentInstanceMembers = pgTable(
     error: text("error"),
     /** The `resource_leases` row that auto-deletes this member at the TTL. */
     leaseId: text("lease_id"),
+    /**
+     * Due time **and** claim lease for the background repair pass, following
+     * the `resource_leases.next_check_at` protocol: null = due, and claiming
+     * writes `now() + lease` so N poller replicas never repair one member
+     * twice. Repair is not idempotent — it creates leases and can delete a
+     * resource — so it has to be claimed rather than merely bounded.
+     */
+    nextRepairAt: timestamp("next_repair_at"),
+    repairAttempts: integer("repair_attempts").notNull().default(0),
+    /** Why the last repair attempt failed. Never logged-and-forgotten. */
+    repairError: text("repair_error"),
     /** Creation order — the topological order the plan ran in. */
     position: integer("position").notNull().default(0),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -153,6 +164,7 @@ export const environmentInstanceMembers = pgTable(
     instanceIdx: index("environment_instance_members_instance_idx").on(t.instanceId),
     orgIdx: index("environment_instance_members_org_idx").on(t.organizationId),
     resourceIdx: index("environment_instance_members_resource_idx").on(t.resourceId),
+    repairDueIdx: index("environment_instance_members_repair_due_idx").on(t.nextRepairAt),
   }),
 );
 

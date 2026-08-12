@@ -15,6 +15,7 @@ import {
   mayConcludeMemberDeleted,
   leaseDeadlineFor,
   leaseShouldBeCancelled,
+  repairBackoffMs,
   memberNeedsLeaseRepair,
   formatTimeRemaining,
   memberDependencies,
@@ -770,6 +771,35 @@ describe("memberNeedsLeaseRepair", () => {
   // defect the rollback fix was supposed to close, one layer out.
   it("repairs a failed member whose resource survived the rollback", () => {
     expect(memberNeedsLeaseRepair({ status: "failed", resourceId: "r", leaseId: null })).toBe(true);
+  });
+});
+
+describe("repairBackoffMs", () => {
+  it("starts soon after the first failure", () => {
+    expect(repairBackoffMs(0)).toBe(60_000);
+  });
+
+  it("backs off exponentially while that is still cheap", () => {
+    expect(repairBackoffMs(1)).toBe(120_000);
+    expect(repairBackoffMs(3)).toBe(480_000);
+  });
+
+  // Repair is what stops a member running without the TTL its instantiation
+  // promised, so there is no give-up: the curve caps and stays there, with
+  // `repair_error` on the row throughout. Retrying slowly beats going quiet
+  // about something still billing.
+  it("caps at an hour rather than ever giving up", () => {
+    for (const attempts of [10, 50, 1000]) {
+      expect(repairBackoffMs(attempts)).toBe(60 * 60_000);
+    }
+  });
+
+  it("never decreases, and is always a positive finite delay", () => {
+    for (let attempts = 1; attempts < 40; attempts += 1) {
+      const delay = repairBackoffMs(attempts);
+      expect(Number.isFinite(delay)).toBe(true);
+      expect(delay).toBeGreaterThanOrEqual(repairBackoffMs(attempts - 1));
+    }
   });
 });
 

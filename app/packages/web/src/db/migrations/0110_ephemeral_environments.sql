@@ -12,6 +12,9 @@ CREATE TABLE "environment_instance_members" (
 	"status" text DEFAULT 'pending' NOT NULL,
 	"error" text,
 	"lease_id" text,
+	"next_repair_at" timestamp,
+	"repair_attempts" integer DEFAULT 0 NOT NULL,
+	"repair_error" text,
 	"position" integer DEFAULT 0 NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
@@ -68,6 +71,7 @@ ALTER TABLE "environment_templates" ADD CONSTRAINT "environment_templates_create
 CREATE INDEX "environment_instance_members_instance_idx" ON "environment_instance_members" USING btree ("instance_id");--> statement-breakpoint
 CREATE INDEX "environment_instance_members_org_idx" ON "environment_instance_members" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "environment_instance_members_resource_idx" ON "environment_instance_members" USING btree ("resource_id");--> statement-breakpoint
+CREATE INDEX "environment_instance_members_repair_due_idx" ON "environment_instance_members" USING btree ("next_repair_at");--> statement-breakpoint
 CREATE INDEX "environment_instances_org_idx" ON "environment_instances" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "environment_instances_template_idx" ON "environment_instances" USING btree ("template_id");--> statement-breakpoint
 CREATE INDEX "environment_instances_expires_idx" ON "environment_instances" USING btree ("expires_at");--> statement-breakpoint

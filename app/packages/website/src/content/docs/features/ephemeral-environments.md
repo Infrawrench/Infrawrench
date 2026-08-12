@@ -53,6 +53,10 @@ Each resource an environment creates gets a [lease](./resource-leases.md) set to
 - Deletion **defers during a [change freeze](../team-and-billing/change-freeze.md)** rather than being skipped — the environment is still going away, just not during the freeze.
 - A failed delete is **retried and then reported**, never dropped silently.
 
+**What actually enforces the deadline.** Every resource an environment creates gets its own lease, and those leases are executed by Infrawrench's background poller — not by anything on this page. A background pass also checks, on every tick, for any resource that ended up without a lease (a rare consequence of a failure part-way through creation) and gives it one. Nothing here depends on you having the Environments page open, and closing your laptop does not extend an environment's life.
+
+If that repair itself keeps failing, it retries indefinitely — backing off to about once an hour — and the reason is recorded against the affected resource rather than only written to a log. In the one case Infrawrench cannot resolve on its own (a resource whose identity was lost mid-creation), it tells you which resource to look at instead of guessing; see below.
+
 You can also tear an environment down at any time with **Tear down**. Resources are deleted newest-first, and the operation is safe to repeat: a resource that is already gone, or one the provider answers "not found" for, counts as done. Once an environment is torn down you can **Forget** it to remove the record; Infrawrench refuses to forget one that still owns resources.
 
 ### When Infrawrench won't delete for you

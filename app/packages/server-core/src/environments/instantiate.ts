@@ -780,7 +780,6 @@ export async function forgetEnvironmentInstance(
  */
 export async function reconcileEnvironmentInstances(organizationId: string): Promise<void> {
   await failStalledInstantiations(organizationId);
-  await repairMissingMemberLeases(organizationId);
 
   const rows = (await db
     .select({ id: environmentInstances.id, status: environmentInstances.status })
@@ -866,117 +865,83 @@ export async function reconcileEnvironmentInstances(organizationId: string): Pro
 }
 
 /**
- * Give a live member back its TTL if it somehow lost one.
+ * Give one stranded member back its TTL. Called by the repair pass **after it
+ * has claimed the row**, so this does no claiming of its own.
  *
- * The third layer under "no member runs without an expiry": instantiation
- * retries the attachment and rolls the resource back if it cannot manage it,
- * and this catches whatever still slips through — most realistically a lease
- * that was created while the write recording its id failed, which leaves the
- * TTL working but the row claiming otherwise. Adopting the existing lease is
- * why this looks it up before creating one.
+ * Throwing is the contract for anything the caller should retry and record:
+ * the pass writes the message to `repair_error` and backs the member off,
+ * rather than logging it where nobody will look. Returning normally means the
+ * member no longer needs repair — either it has a lease now, or its resource
+ * was confirmed gone.
  */
-async function repairMissingMemberLeases(organizationId: string): Promise<void> {
-  const orphans = await db
-    .select({
-      instanceId: environmentInstanceMembers.instanceId,
-      memberKey: environmentInstanceMembers.memberKey,
-      resourceId: environmentInstanceMembers.resourceId,
-      accountId: environmentInstanceMembers.accountId,
-      pluginId: environmentInstanceMembers.pluginId,
-      resourceTypeId: environmentInstanceMembers.resourceTypeId,
-      status: environmentInstanceMembers.status,
-      leaseId: environmentInstanceMembers.leaseId,
-      expiresAt: environmentInstances.expiresAt,
-      name: environmentInstances.name,
-    })
-    .from(environmentInstanceMembers)
-    .innerJoin(
-      environmentInstances,
-      eq(environmentInstanceMembers.instanceId, environmentInstances.id),
-    )
-    .where(
-      and(
-        eq(environmentInstanceMembers.organizationId, organizationId),
-        // Deliberately **not** `status = "created"`. A member whose rollback
-        // failed is `failed` while its resource is very much alive, and
-        // filtering on `created` is what let that state run past its TTL with
-        // nothing watching it. The question this pass asks is "does a resource
-        // exist with no clock on it", and `resource_id` is what answers it.
-        inArray(environmentInstanceMembers.status, ["created", "failed"]),
-        isNotNull(environmentInstanceMembers.resourceId),
-        isNull(environmentInstanceMembers.leaseId),
-        // No instance-status filter at all. The member predicate is the whole
-        // question — "does a resource exist with no clock on it" — and the
-        // instance's status only summarises how its run went. Enumerating
-        // statuses here is what excluded `failed` (a member that survived a
-        // failed rollback) and `tearing-down` (a teardown whose process died).
-      ),
-    )
-    .limit(50);
+export async function repairClaimedMember(member: {
+  organizationId: string;
+  instanceId: string;
+  memberKey: string;
+  resourceId: string;
+  accountId: string;
+  pluginId: string;
+  resourceTypeId: string;
+  expiresAt: Date;
+  instanceName: string;
+}): Promise<void> {
+  try {
+    await attachMemberLease({
+      organizationId: member.organizationId,
+      instanceId: member.instanceId,
+      memberKey: member.memberKey,
+      resourceId: member.resourceId,
+      accountId: member.accountId,
+      // A member found after its instance already expired cannot be given a
+      // deadline in the past — `validateLeaseInput` rejects it — so it gets a
+      // short one instead. The lease pass still announces before it deletes.
+      expiresAt: leaseDeadlineFor(member.expiresAt),
+      environmentName: member.instanceName,
+    });
+    return;
+  } catch (error) {
+    // Branch on the *fact*, not on the failure. A throw here could be a
+    // transient database error or the org's lease cap, and answering either of
+    // those by deleting a live resource is a far worse mistake than retrying.
+    const [stored] = await db
+      .select({ deletedAt: resources.deletedAt })
+      .from(resources)
+      .where(
+        and(
+          eq(resources.organizationId, member.organizationId),
+          eq(resources.id, member.resourceId),
+        ),
+      )
+      .limit(1);
+    const disposition = inventoryDisposition(stored);
 
-  for (const orphan of orphans) {
-    // The SQL above is a cheap pre-filter; `memberNeedsLeaseRepair` is the
-    // authority, so the rule lives in one tested place rather than being
-    // restated in a WHERE clause that can drift away from it.
-    if (!memberNeedsLeaseRepair(orphan) || !orphan.resourceId) continue;
-    try {
-      await attachMemberLease({
-        organizationId,
-        instanceId: orphan.instanceId,
-        memberKey: orphan.memberKey,
-        resourceId: orphan.resourceId,
-        accountId: orphan.accountId,
-        // A member discovered after its instance already expired cannot be
-        // given a deadline in the past — `validateLeaseInput` rejects it — so
-        // it gets a short one instead. The lease pass still announces before
-        // it deletes; it just does so on a compressed schedule.
-        expiresAt: leaseDeadlineFor(orphan.expiresAt),
-        environmentName: orphan.name,
-      });
-    } catch (error) {
-      console.error("[environments] could not attach a repair lease:", error);
-      // Branch on the *fact*, not on the failure. A throw here could be a
-      // transient database error or the org's lease cap, and answering either
-      // of those by deleting a live resource is a far worse mistake than
-      // waiting for the next pass.
-      const [stored] = await db
-        .select({ deletedAt: resources.deletedAt })
-        .from(resources)
-        .where(
-          and(eq(resources.organizationId, organizationId), eq(resources.id, orphan.resourceId)),
-        )
-        .limit(1);
-      const disposition = inventoryDisposition(stored);
-
-      if (mayConcludeMemberDeleted(disposition)) {
-        // Already reaped, and we hold the record of doing it.
-        await markMemberStatus(orphan.instanceId, orphan.memberKey, "deleted", null).catch(
-          () => undefined,
-        );
-        continue;
-      }
-      if (disposition === "present") {
-        // A lease *can* point at this row, so the failure was incidental.
-        // Leave it for the next pass rather than destroying the resource.
-        continue;
-      }
-
-      // `unknown`: no row for a lease to reference, so this resource can never
-      // be given a TTL. It was already marked for rollback once, so retry
-      // that — identity is certain, the id came back from the provider during
-      // the run.
-      const rolledBack = await rollbackCreatedMember(organizationId, {
-        accountId: orphan.accountId,
-        pluginId: orphan.pluginId,
-        resourceTypeId: orphan.resourceTypeId,
-        resourceId: orphan.resourceId,
-      });
-      if (rolledBack) {
-        await markMemberStatus(orphan.instanceId, orphan.memberKey, "deleted", null).catch(
-          () => undefined,
-        );
-      }
+    if (mayConcludeMemberDeleted(disposition)) {
+      // Already reaped, and we hold the record of doing it.
+      await markMemberStatus(member.instanceId, member.memberKey, "deleted", null);
+      return;
     }
+    if (disposition === "present") {
+      // A lease *can* point at this row, so the failure was incidental. Hand
+      // it back to the pass to record and retry rather than destroying the
+      // resource over a transient error.
+      throw error;
+    }
+
+    // `unknown`: no row for a lease to reference, so this resource can never be
+    // given a TTL. It was already marked for rollback once, so retry that —
+    // identity is certain, the id came back from the provider during the run.
+    const rolledBack = await rollbackCreatedMember(member.organizationId, {
+      accountId: member.accountId,
+      pluginId: member.pluginId,
+      resourceTypeId: member.resourceTypeId,
+      resourceId: member.resourceId,
+    });
+    if (!rolledBack) {
+      throw new Error(
+        `no inventory row to attach a lease to, and the resource could not be rolled back: ${errorMessage(error)}`,
+      );
+    }
+    await markMemberStatus(member.instanceId, member.memberKey, "deleted", null);
   }
 }
 

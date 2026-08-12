@@ -19,6 +19,7 @@ import {
   reconcileEnvironmentInstances,
   tearDownEnvironment,
 } from "@infrawrench/server-core/environments/instantiate";
+import { runEnvironmentRepairPass } from "@infrawrench/server-core/environments/pass";
 import type { EnvironmentTemplateInput } from "@infrawrench/client-core";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
@@ -337,10 +338,14 @@ app.post("/templates/:id/instantiate", async (c) => {
 app.get("/instances", async (c) => {
   requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
-  // Expiry is executed per member by the lease pass, which knows nothing about
-  // environments. Catching up here — bounded to instances past their own
-  // deadline — is what keeps the page from claiming an environment is still
-  // running after its last resource was auto-deleted.
+  // A **fast path**, not the guarantee. The poller runs both of these on every
+  // tick (`server-core/src/environments/pass.ts`); doing them here as well
+  // makes the page self-healing and gives an operator who is looking at a
+  // broken environment an immediate repair. Repair goes through the same claim
+  // the poller uses, so the two cannot race.
+  await runEnvironmentRepairPass({ organizationId, limit: 4 }).catch((err: unknown) => {
+    console.error("[environments] repair failed:", err);
+  });
   await reconcileEnvironmentInstances(organizationId).catch((err: unknown) => {
     console.error("[environments] reconcile failed:", err);
   });

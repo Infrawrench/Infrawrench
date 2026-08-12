@@ -1,5 +1,5 @@
 {
-  "id": "01e6b16a-fe35-4375-bc94-43bcf0315aab",
+  "id": "3fb00642-4401-452d-8f27-656d99a9b09e",
   "prevId": "7da18360-3962-4b7c-97ef-31d3c624f8b6",
   "version": "7",
   "dialect": "postgresql",
@@ -17276,6 +17276,25 @@
           "primaryKey": false,
           "notNull": false
         },
+        "next_repair_at": {
+          "name": "next_repair_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "repair_attempts": {
+          "name": "repair_attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "repair_error": {
+          "name": "repair_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "position": {
           "name": "position",
           "type": "integer",
@@ -17334,6 +17353,21 @@
           "columns": [
             {
               "expression": "resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "environment_instance_members_repair_due_idx": {
+          "name": "environment_instance_members_repair_due_idx",
+          "columns": [
+            {
+              "expression": "next_repair_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

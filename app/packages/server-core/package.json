@@ -121,6 +121,7 @@
     "./environments/store": "./src/environments/store.ts",
     "./environments/capture": "./src/environments/capture.ts",
     "./environments/instantiate": "./src/environments/instantiate.ts",
+    "./environments/pass": "./src/environments/pass.ts",
     "./leases/store": "./src/leases/store.ts",
     "./leases/timing": "./src/leases/timing.ts",
     "./leases/pass": "./src/leases/pass.ts",

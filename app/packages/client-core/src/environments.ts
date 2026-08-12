@@ -853,6 +853,20 @@ export function memberNeedsLeaseRepair(member: {
 }
 
 /**
+ * How long to wait before retrying a failed lease repair.
+ *
+ * Load-bearing in a way most backoffs are not: repair is what stops a member
+ * running without the TTL its instantiation promised, so **there is no
+ * give-up**. The curve caps at an hour and stays there forever, with
+ * `repair_error` on the row the whole time — retrying slowly beats going quiet
+ * about something that is still billing.
+ */
+export function repairBackoffMs(attempts: number): number {
+  const base = 60_000 * 2 ** Math.min(Math.max(attempts, 0), 6);
+  return Math.min(base, 60 * 60_000);
+}
+
+/**
  * A deadline a lease will accept.
  *
  * Leases must expire in the future (`validateLeaseInput`), so a member found
