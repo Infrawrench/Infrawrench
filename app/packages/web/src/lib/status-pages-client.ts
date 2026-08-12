@@ -3,6 +3,7 @@ import type {
   ProbeListResponse,
   StatusPage,
   StatusPageCreate,
+  StatusPageCustomHostnameAttach,
   StatusPageListResponse,
   StatusPagePatch,
 } from "@infrawrench/client-core";
@@ -30,6 +31,12 @@ export function createWebStatusPagesClient(orgId: string): StatusPagesClient {
     },
     rotateSlug: (pageId: string) =>
       apiPost<StatusPage>(`${base}/${encodeURIComponent(pageId)}/rotate-slug`, {}),
+    attachCustomHostname: (pageId: string, body: StatusPageCustomHostnameAttach) =>
+      apiPost<StatusPage>(`${base}/${encodeURIComponent(pageId)}/custom-hostname`, body),
+    refreshCustomHostname: (pageId: string) =>
+      apiPost<StatusPage>(`${base}/${encodeURIComponent(pageId)}/custom-hostname/refresh`, {}),
+    detachCustomHostname: (pageId: string) =>
+      apiDelete<StatusPage>(`${base}/${encodeURIComponent(pageId)}/custom-hostname`),
     listProbes: async () => {
       const res = await apiGet<ProbeListResponse>(`/api/org/${encodeURIComponent(orgId)}/probes`);
       return res.probes.map((p) => ({ id: p.id, name: p.name }));

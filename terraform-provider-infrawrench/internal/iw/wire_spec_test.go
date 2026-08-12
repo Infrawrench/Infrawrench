@@ -135,6 +135,8 @@ func specChecks() []specCheck {
 		{schema: "StatusPagePatch", value: StatusPageInput{}},
 		{schema: "StatusPageComponent", value: StatusPageComponent{}},
 		{schema: "StatusPageComponentInput", value: StatusPageComponentInput{}},
+		{schema: "StatusPageHostnameVerification", value: StatusPageHostnameVerification{}},
+		{schema: "StatusPageCustomHostnameAttach", value: StatusPageCustomHostnameAttach{}},
 
 		{schema: "SleepSchedule", value: SleepSchedule{}},
 		{schema: "SleepScheduleCreate", value: SleepScheduleCreate{}},

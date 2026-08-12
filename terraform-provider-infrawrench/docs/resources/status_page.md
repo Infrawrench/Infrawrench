@@ -53,11 +53,14 @@ resource "infrawrench_status_page" "public" {
 - `show_history` (Boolean) Show the day-by-day incident history strip.
 - `show_uptime` (Boolean) Show the uptime percentage per component.
 - `support_url` (String) Link shown for people who need to reach you.
+- `custom_hostname` (String) Vanity subdomain for the public page, e.g. `status.example.com`. Subdomains only — apex domains are rejected. Requires a paid plan. Infrawrench creates a Cloudflare Custom Hostname; you still CNAME the subdomain at the target shown in the app. The secret `/status/<slug>` URL keeps working.
 
 ### Read-Only
 
 - `id` (String) Server-assigned page id. Use it with `terraform import`.
 - `slug` (String) The public URL segment, at `/status/<slug>`. Generated with real entropy rather than derived from the title, so it cannot be guessed from the organization's name.
+- `custom_hostname_status` (String) Provisioning state: `none`, `pending_dns`, `pending_ssl`, `active`, or `error`.
+- `custom_hostname_error` (String) Last Cloudflare verification or certificate error, when status is `error`.
 
 <a id="nestedblock--component"></a>
 ### Nested Schema for `component`

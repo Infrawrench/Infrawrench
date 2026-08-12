@@ -4,6 +4,7 @@ import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/
 import {
   DndShell,
   GlobalTabBar,
+  PublicStatusPageView,
   TunnelSshAttachModal,
   useUIStore,
   useWorkspaceTabDocumentTitle,
@@ -58,9 +59,87 @@ interface TunnelAttachState {
  * Hitting an authenticated endpoint would redirect an anonymous visitor to
  * sign-in, which is precisely what a public status page cannot do — the page
  * exists for people who have no relationship with the org beyond the link.
+ *
+ * Custom domains (served by status-page-edge) load the same SPA shell at `/`
+ * on a non-app hostname; those hosts are also public and must skip auth.
  */
+const APP_HOSTS = new Set(["localhost", "127.0.0.1", "app.infrawrench.com"]);
+
+function isCustomStatusHost(): boolean {
+  if (typeof window === "undefined") return false;
+  return !APP_HOSTS.has(window.location.hostname);
+}
+
 function isPublicRoute(pathname: string): boolean {
-  return pathname.startsWith("/status/");
+  return pathname.startsWith("/status/") || isCustomStatusHost();
+}
+
+function PublicStatusPageOnCustomHost() {
+  const [page, setPage] = useState<import("@infrawrench/client-core").PublicStatusPage | null>(
+    null,
+  );
+  const [state, setState] = useState<"loading" | "ready" | "missing" | "error">("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/status", {
+          headers: { Accept: "application/json" },
+          credentials: "omit",
+        });
+        if (cancelled) return;
+        if (res.status === 404) {
+          setState("missing");
+          return;
+        }
+        if (!res.ok) {
+          setState("error");
+          return;
+        }
+        setPage((await res.json()) as import("@infrawrench/client-core").PublicStatusPage);
+        setState("ready");
+      } catch {
+        if (!cancelled) setState("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (page) document.title = page.title;
+  }, [page]);
+
+  if (state === "loading") {
+    return (
+      <div className="flex h-screen items-center justify-center bg-surface text-on-surface-tertiary">
+        <div className="animate-pulse text-sm">Loading…</div>
+      </div>
+    );
+  }
+
+  if (state === "missing" || state === "error") {
+    return (
+      <div className="flex h-screen items-center justify-center bg-surface px-4 text-center">
+        <div>
+          <h1 className="text-lg font-semibold text-on-surface">
+            {state === "missing" ? "Status page not found" : "Status page unavailable"}
+          </h1>
+          <p className="mt-2 text-sm text-on-surface-secondary">
+            {state === "missing"
+              ? "This domain is not linked to a published status page."
+              : "Something went wrong loading this page. Try again in a moment."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-surface">{page && <PublicStatusPageView page={page} />}</div>
+  );
 }
 
 /**
@@ -132,6 +211,9 @@ function RootLayout() {
         /* apiFetch redirects on 401 */
       });
   }, [navigate, pathname]);
+
+  // Vanity hosts never run the authenticated shell.
+  if (isCustomStatusHost()) return <PublicStatusPageOnCustomHost />;
 
   // Rendered before any auth state is consulted — see isPublicRoute.
   if (isPublicRoute(pathname)) return <Outlet />;

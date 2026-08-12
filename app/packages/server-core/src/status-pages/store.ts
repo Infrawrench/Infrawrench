@@ -130,6 +130,10 @@ function toWire(row: PageRow, components: ComponentRow[]): StatusPage {
     showHistory: row.showHistory,
     showUptime: row.showUptime,
     supportUrl: row.supportUrl,
+    customHostname: row.customHostname,
+    customHostnameStatus: row.customHostnameStatus,
+    customHostnameError: row.customHostnameError,
+    customHostnameVerification: row.customHostnameVerification ?? null,
     components: components.map((c) => ({
       id: c.id,
       probeId: c.probeId,
@@ -302,6 +306,10 @@ export async function deleteStatusPageRecord(
 ): Promise<StatusPage> {
   const existing = await getStatusPageWire(organizationId, pageId);
   if (!existing) throw new StatusPageInputError("Status page not found", 404);
+  // Tear down Cloudflare + KV before the row goes — cascade would leave orphans
+  // on the SaaS zone and a stale hostname→slug mapping.
+  const { teardownCustomHostnameForPage } = await import("./custom-hostname");
+  await teardownCustomHostnameForPage(pageId);
   await db
     .delete(statusPages)
     .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)));
@@ -326,7 +334,13 @@ export async function rotateStatusPageSlugRecord(
     .update(statusPages)
     .set({ slug: generateStatusPageSlug(), updatedAt: new Date() })
     .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)));
-  return (await getStatusPageWire(organizationId, pageId))!;
+  const updated = (await getStatusPageWire(organizationId, pageId))!;
+  // Vanity hosts resolve Host → slug via Workers KV; keep the mapping current.
+  if (updated.customHostname) {
+    const { syncCustomHostnameKvForPage } = await import("./custom-hostname");
+    await syncCustomHostnameKvForPage(updated);
+  }
+  return updated;
 }
 
 // ---------------------------------------------------------------------------
