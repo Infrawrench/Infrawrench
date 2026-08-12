@@ -31,12 +31,22 @@ vi.mock("@/api/auth-middleware", () => ({
 
 const { wellKnownRoutes } = await import("@/mcp/well-known");
 const { authenticateMcpRequest } = await import("@/mcp/auth");
+const { probeClientRegistrationSupport, resetRegistrationProbeForTests } =
+  await import("@/mcp/registration-probe");
 const apiAuth = await import("@/auth/api-auth");
 const middleware = await import("@/api/auth-middleware");
+
+/** Stubs the probe's fetch so route tests never reach the network. */
+function stubProbeAsDocument(doc: Record<string, unknown>) {
+  const fetchStub = vi.fn(async () => Response.json(doc));
+  resetRegistrationProbeForTests(fetchStub as unknown as typeof fetch);
+  return fetchStub;
+}
 
 describe("MCP well-known routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    stubProbeAsDocument({ client_id_metadata_document_supported: true });
     delete process.env["WORKOS_AUTHKIT_DOMAIN"];
     delete process.env["WORKOS_ISSUER"];
     delete process.env["PUBLIC_BASE_URL"];
@@ -230,5 +240,69 @@ describe("authenticateMcpRequest", () => {
 
     const result = await authenticateMcpRequest("Bearer jwt-no-membership");
     expect(result).toBeNull();
+  });
+});
+
+/*
+ * The 2026-07-28 spec deprecates Dynamic Client Registration in favour of
+ * Client ID Metadata Documents. Both are WorkOS Dashboard toggles, not code —
+ * the probe's job is to tell the operator, from our logs, which of them the
+ * configured authorization server actually advertises.
+ */
+describe("client registration probe", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("warns when the AS advertises neither CIMD nor DCR", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stubProbeAsDocument({ issuer: "https://auth.example.com" });
+    await probeClientRegistrationSupport("https://auth.example.com");
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "neither Client ID Metadata Documents nor Dynamic Client Registration",
+      ),
+    );
+  });
+
+  it("reports CIMD support without warning", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    stubProbeAsDocument({ client_id_metadata_document_supported: true });
+    await probeClientRegistrationSupport("https://auth.example.com");
+    expect(warn).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("Client ID Metadata Documents yes"));
+  });
+
+  it("still recognises DCR-only servers — the old way keeps working", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    stubProbeAsDocument({
+      registration_endpoint: "https://auth.example.com/oauth2/register",
+    });
+    await probeClientRegistrationSupport("https://auth.example.com");
+    expect(warn).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("Dynamic Client Registration yes"));
+  });
+
+  it("probes once per TTL window", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const fetchStub = stubProbeAsDocument({ client_id_metadata_document_supported: true });
+    await probeClientRegistrationSupport("https://auth.example.com");
+    await probeClientRegistrationSupport("https://auth.example.com");
+    expect(fetchStub).toHaveBeenCalledTimes(1);
+  });
+
+  it("never throws (or warns) when the AS is unreachable", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    resetRegistrationProbeForTests(
+      vi.fn(async () => {
+        throw new Error("getaddrinfo ENOTFOUND");
+      }) as unknown as typeof fetch,
+    );
+    await probeClientRegistrationSupport("https://auth.example.com");
+    expect(warn).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("could not probe"));
   });
 });

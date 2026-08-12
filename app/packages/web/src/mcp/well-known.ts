@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { probeClientRegistrationSupport } from "./registration-probe";
 
 /**
  * The AuthKit authorization server URL used for OAuth discovery. This must be
@@ -59,6 +60,10 @@ function protectedResourceMetadata(c: Context) {
       500,
     );
   }
+  // A client fetching this document is about to register with the AS; make
+  // sure the AS actually offers a registration mechanism (CIMD or the
+  // deprecated-but-supported DCR) and say so in the logs if it doesn't.
+  void probeClientRegistrationSupport(authServer);
   return c.json({
     resource: `${baseUrl}/api/mcp`,
     authorization_servers: [authServer],
@@ -91,6 +96,7 @@ app.get("/oauth-authorization-server", (c) => {
       500,
     );
   }
+  void probeClientRegistrationSupport(authServer);
   return c.redirect(`${authServer}/.well-known/oauth-authorization-server`, 302);
 });
 

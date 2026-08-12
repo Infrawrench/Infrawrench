@@ -12,18 +12,29 @@ Infrawrench exposes a hosted [Model Context Protocol](https://modelcontextprotoc
 POST https://app.infrawrench.com/api/mcp
 ```
 
-The transport is **Streamable HTTP** with JSON responses (`enableJsonResponse: true`) — no WebSocket or stdio bridge required.
+The transport is **Streamable HTTP** — no WebSocket or stdio bridge required. The server speaks both current protocol generations and answers each request in whichever one the client uses:
+
+- **2026-07-28** (the current revision) — stateless per-request negotiation, `server/discover`, and the per-request `_meta` envelope. New clients need no handshake at all.
+- **2025-11-25 and earlier** — the classic `initialize` handshake, served statelessly with plain JSON response bodies (`enableJsonResponse: true`), exactly as before. Existing clients keep working unchanged.
 
 ## Authentication
 
-Authentication is OAuth via WorkOS AuthKit. The flow is standards-compliant ([RFC 9728 Protected Resource Metadata](https://datatracker.ietf.org/doc/html/rfc9728)) so any MCP client that supports OAuth dynamic client registration just works:
+Authentication is OAuth via WorkOS AuthKit. The flow is standards-compliant ([RFC 9728 Protected Resource Metadata](https://datatracker.ietf.org/doc/html/rfc9728)) so any OAuth-capable MCP client just works:
 
 1. Client makes an unauthenticated request to `/api/mcp`.
 2. Server replies `401 Unauthorized` with `WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource"`.
-3. Client fetches the metadata, discovers the WorkOS authorization server, runs Dynamic Client Registration, and prompts the user to sign in.
+3. Client fetches the metadata, discovers the WorkOS authorization server, identifies itself (see below), and prompts the user to sign in.
 4. Client retries with `Authorization: Bearer <token>`.
 
 The bearer token is verified against WorkOS JWKS on every request, then mapped to a user + organization — so each MCP connection only ever sees orgs the signed-in user is a member of.
+
+### How clients identify themselves
+
+The 2026-07-28 spec deprecates OAuth Dynamic Client Registration in favour of **Client ID Metadata Documents**. All three registration mechanisms work against this server — clients pick whichever the authorization server advertises, preferring CIMD:
+
+- **Client ID Metadata Documents** (the current standard) — the client's `client_id` is an HTTPS URL hosting its own metadata document; the authorization server fetches and validates it. No registration round-trip, and the same `client_id` is portable across servers.
+- **Dynamic Client Registration** (deprecated by the spec, still fully supported) — the client registers itself at the authorization server's `registration_endpoint` before the first sign-in. Pre-2026 clients keep working unchanged.
+- **Manual pre-registration** — register an OAuth client in the WorkOS Dashboard yourself and paste its client ID into the MCP client's connector settings.
 
 ### Choosing an organization
 
@@ -106,6 +117,6 @@ Restart Claude Desktop. The first request will trigger the OAuth browser flow.
 
 ## Tips & limits
 
-- Each request is stateless — a fresh `McpServer` and `StreamableHTTPServerTransport` per call. Long-running tools should return quickly and stream progress via subsequent calls rather than holding a request open.
+- Each request is stateless — a fresh `McpServer` per call, whichever protocol revision the client speaks. There are no protocol-level sessions (the 2026-07-28 model), so long-running tools should return quickly and stream progress via subsequent calls rather than holding a request open.
 - Self-hosted infrawrench: set `PUBLIC_BASE_URL` to your public origin so the OAuth resource metadata advertises the correct URL (it falls back to `APP_URL`), and `WORKOS_AUTHKIT_DOMAIN` (or `WORKOS_ISSUER`) so clients discover the right authorization server. `WORKOS_AUTHKIT_DOMAIN` must be your AuthKit domain — `https://api.workos.com/user_management` does **not** serve OAuth authorization-server metadata, so discovery fails against it.
-- Self-hosted infrawrench: enable **Dynamic Client Registration** in the WorkOS Dashboard under **Connect → Configuration**. Without it, AuthKit's `/oauth2/register` returns `dynamic_client_registration_disabled` and clients report that they couldn't register with the sign-in service. As an alternative, register an OAuth client in WorkOS manually and paste its client ID into the MCP client's connector settings.
+- Self-hosted infrawrench: under **Connect → Configuration** in the WorkOS Dashboard, enable **Client ID Metadata Document** (the current MCP standard for client registration) and — for clients that haven't adopted it yet — **Dynamic Client Registration** (deprecated by the 2026-07-28 spec, still fully supported). With neither enabled, clients without pre-registered credentials cannot connect: CIMD-capable clients find no `client_id_metadata_document_supported` flag in the authorization server metadata, and DCR clients get `dynamic_client_registration_disabled` from `/oauth2/register`. The server probes the authorization server's metadata whenever OAuth discovery is served and logs a `[mcp-auth]` warning when neither mechanism is advertised — check the web pod's logs when clients report they couldn't register. As an alternative, register an OAuth client in WorkOS manually and paste its client ID into the MCP client's connector settings.

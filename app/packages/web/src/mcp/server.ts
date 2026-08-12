@@ -1,5 +1,7 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
+import type { JsonSchemaType } from "@modelcontextprotocol/server";
+import { z, type ZodTypeAny } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import { getToolRegistry } from "../tools/registry";
 import { authorizeToolCall } from "../tools/permissions";
 import { hasMembership, listUserOrganizations } from "../api/auth-middleware";
@@ -26,6 +28,28 @@ const ORG_ID_PARAM = z
   );
 
 /**
+ * Converts a registry tool's Zod shape (Zod 3, shared with the chat agent) to
+ * the Standard Schema the v2 SDK's `registerTool` takes. The SDK is pinned to
+ * Zod 4, so the shape cannot be handed over directly; instead it goes through
+ * JSON Schema — the same conversion, with the same trimming, that
+ * `toolToProvider` in src/chat/agent.ts does for the Anthropic API. The SDK's
+ * built-in validator then enforces it on 2026-era and legacy calls alike.
+ */
+function toInputSchema(shape: Record<string, ZodTypeAny>) {
+  const schema = zodToJsonSchema(z.object(shape), { $refStrategy: "none" }) as {
+    properties?: Record<string, unknown>;
+    required?: string[];
+  };
+  const properties = schema.properties ?? {};
+  const required = schema.required ?? [];
+  return fromJsonSchema<Record<string, unknown>>({
+    type: "object",
+    properties,
+    ...(required.length > 0 ? { required } : {}),
+  } as JsonSchemaType);
+}
+
+/**
  * Resolves the org for a single tool call. An explicit `org_id` is always
  * membership-checked, so this can never widen access beyond the orgs the
  * authenticated user already belongs to.
@@ -44,7 +68,9 @@ async function resolveCallAuth(
 /**
  * Builds a fresh McpServer instance scoped to a single authenticated caller.
  * Tool handlers close over the auth context, so each connection sees only the
- * caller's organization. Stateless — one server per HTTP request.
+ * caller's organization. Stateless — one server per HTTP request, which is
+ * also the 2026-07-28 protocol's model: the http-handler serves each request
+ * with a fresh instance whichever protocol era the client speaks.
  *
  * Tools are sourced from the shared registry (src/tools/registry.ts), which is
  * also consumed by the chat agent loop.
@@ -71,7 +97,7 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
       description:
         "Lists the organizations you belong to, with the id to pass as `org_id` on any " +
         "other tool. The entry marked `default: true` is used when `org_id` is omitted.",
-      inputSchema: {},
+      inputSchema: toInputSchema({}),
     },
     async () => {
       const orgs = await listUserOrganizations(toolAuth.userId);
@@ -81,8 +107,6 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
         role: o.role,
         default: o.id === toolAuth.organizationId,
       }));
-      // Returned as a fresh object literal, not a ToolResult: the SDK's result
-      // type needs an index signature, which only literals get implicitly.
       return {
         content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
         isError: false,
@@ -97,7 +121,7 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
       {
         title: tool.title,
         description: tool.description,
-        inputSchema: { ...tool.inputSchema, org_id: ORG_ID_PARAM },
+        inputSchema: toInputSchema({ ...tool.inputSchema, org_id: ORG_ID_PARAM }),
       },
       async (input) => {
         const { org_id: orgId, ...rest } = input as Record<string, unknown>;
