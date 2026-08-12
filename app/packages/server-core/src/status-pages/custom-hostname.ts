@@ -343,7 +343,33 @@ export async function attachCustomHostname(
     await kvPut(cfg, hostname, existing.slug);
   } catch (err) {
     // Roll back the CF hostname so a retry isn't stuck with an orphan.
-    await deleteCfHostname(cfg, ch.id).catch(() => undefined);
+    try {
+      await deleteCfHostname(cfg, ch.id);
+    } catch (cleanupErr) {
+      // Record identifiers when possible so detach can finish revocation.
+      const cleanupMsg = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+      try {
+        await persistHostnameFields(pageId, {
+          customHostname: hostname,
+          customHostnameStatus: "error",
+          cloudflareCustomHostnameId: ch.id,
+          customHostnameError: cleanupMsg,
+          customHostnameVerification: verification,
+        });
+      } catch (persistErr) {
+        const kvMsg = err instanceof Error ? err.message : String(err);
+        const persistMsg = persistErr instanceof Error ? persistErr.message : String(persistErr);
+        throw new StatusPageInputError(
+          `Failed to publish hostname mapping, and cleanup of Cloudflare custom hostname ` +
+            `${ch.id} (${hostname}) also failed. Manual revocation may be required. ` +
+            `KV error: ${kvMsg}. Cleanup error: ${cleanupMsg}. Persist error: ${persistMsg}.`,
+        );
+      }
+      throw new StatusPageInputError(
+        `Failed to publish hostname mapping; Cloudflare custom hostname ${ch.id} (${hostname}) ` +
+          `could not be deleted and was recorded for retry. Cleanup error: ${cleanupMsg}.`,
+      );
+    }
     throw err;
   }
 
