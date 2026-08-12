@@ -162,6 +162,7 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     target.kind === "ssh-fanout" ||
     target.kind === "metric-alerts" ||
     target.kind === "probes" ||
+    target.kind === "status-pages" ||
     target.kind === "quotas" ||
     target.kind === "incidents" ||
     target.kind === "workflows" ||

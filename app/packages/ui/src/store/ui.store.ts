@@ -22,6 +22,7 @@ export type WorkspaceTabTarget =
   | { kind: "ssh-fanout" }
   | { kind: "metric-alerts" }
   | { kind: "probes" }
+  | { kind: "status-pages" }
   | { kind: "quotas" }
   /**
    * Declared incidents (incident mode). Single-instance like Probes; the
@@ -113,6 +114,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "metric-alerts";
     case "probes":
       return "probes";
+    case "status-pages":
+      return "status-pages";
     case "quotas":
       return "quotas";
     case "incidents":
@@ -182,6 +185,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Alerts";
     case "probes":
       return "Probes";
+    case "status-pages":
+      return "Status pages";
     case "quotas":
       return "Quotas";
     case "incidents":
@@ -225,6 +230,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "ssh-fanout":
     case "metric-alerts":
     case "probes":
+    case "status-pages":
     case "quotas":
       return true;
     case "incidents":

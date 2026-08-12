@@ -14,13 +14,8 @@ export interface StatusPagesPanelProps {
 }
 
 /**
- * "Status pages" section of the Probes panel: which of the org's synthetic
- * probes are published to the public, and at what URL.
- *
- * It sits under the probe list rather than on a tab of its own for the reason
- * Potential savings sits under Costs — publishing monitoring is a decision you
- * make while looking at the monitoring, and a separate tab makes people go
- * looking for it.
+ * Status-page configuration: which of the org's synthetic probes are
+ * published to the public, and at what URL.
  *
  * The panel's job beyond CRUD is to make the *exposure* legible: whether a page
  * is live, exactly what URL it is live at, and a one-click way to revoke that

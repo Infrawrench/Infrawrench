@@ -344,6 +344,7 @@ export {
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
+  statusPagesTabTarget,
   quotasTabTarget,
   incidentsTabTarget,
   chatTabTarget,
@@ -848,6 +849,7 @@ export { EnvironmentDiffIcon } from "./components/icons/EnvironmentDiffIcon.js";
 export { FanoutIcon } from "./components/icons/FanoutIcon.js";
 export { MetricAlertIcon } from "./components/icons/MetricAlertIcon.js";
 export { ProbesIcon } from "./components/icons/ProbesIcon.js";
+export { StatusPagesIcon } from "./components/icons/StatusPagesIcon.js";
 export { IncidentsIcon } from "./components/icons/IncidentsIcon.js";
 export { EnvironmentsIcon } from "./components/icons/EnvironmentsIcon.js";
 export { ToolsIcon } from "./components/icons/ToolsIcon.js";

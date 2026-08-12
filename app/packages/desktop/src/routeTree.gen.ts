@@ -35,6 +35,7 @@ import { Route as QuotasRouteImport } from './routes/quotas'
 import { Route as SavingsRouteImport } from './routes/savings'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SshFanoutRouteImport } from './routes/ssh-fanout'
+import { Route as StatusPagesRouteImport } from './routes/status-pages'
 import { Route as WorkflowsRouteImport } from './routes/workflows'
 import { Route as AccountsAccountIdRouteImport } from './routes/accounts.$accountId'
 import { Route as DashboardDashboardIdRouteImport } from './routes/dashboard.$dashboardId'
@@ -170,6 +171,11 @@ const SshFanoutRoute = SshFanoutRouteImport.update({
   path: '/ssh-fanout',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StatusPagesRoute = StatusPagesRouteImport.update({
+  id: '/status-pages',
+  path: '/status-pages',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WorkflowsRoute = WorkflowsRouteImport.update({
   id: '/workflows',
   path: '/workflows',
@@ -219,6 +225,7 @@ export interface FileRoutesByFullPath {
   '/savings': typeof SavingsRoute
   '/settings': typeof SettingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
+  '/status-pages': typeof StatusPagesRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
   '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
@@ -251,6 +258,7 @@ export interface FileRoutesByTo {
   '/savings': typeof SavingsRoute
   '/settings': typeof SettingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
+  '/status-pages': typeof StatusPagesRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
   '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
@@ -284,6 +292,7 @@ export interface FileRoutesById {
   '/savings': typeof SavingsRoute
   '/settings': typeof SettingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
+  '/status-pages': typeof StatusPagesRoute
   '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
   '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
@@ -318,6 +327,7 @@ export interface FileRouteTypes {
     | '/savings'
     | '/settings'
     | '/ssh-fanout'
+    | '/status-pages'
     | '/workflows'
     | '/accounts/$accountId'
     | '/dashboard/$dashboardId'
@@ -350,6 +360,7 @@ export interface FileRouteTypes {
     | '/savings'
     | '/settings'
     | '/ssh-fanout'
+    | '/status-pages'
     | '/workflows'
     | '/accounts/$accountId'
     | '/dashboard/$dashboardId'
@@ -382,6 +393,7 @@ export interface FileRouteTypes {
     | '/savings'
     | '/settings'
     | '/ssh-fanout'
+    | '/status-pages'
     | '/workflows'
     | '/accounts/$accountId'
     | '/dashboard/$dashboardId'
@@ -415,6 +427,7 @@ export interface RootRouteChildren {
   SavingsRoute: typeof SavingsRoute
   SettingsRoute: typeof SettingsRoute
   SshFanoutRoute: typeof SshFanoutRoute
+  StatusPagesRoute: typeof StatusPagesRoute
   WorkflowsRoute: typeof WorkflowsRoute
   AccountsAccountIdRoute: typeof AccountsAccountIdRoute
   DashboardDashboardIdRoute: typeof DashboardDashboardIdRoute
@@ -605,6 +618,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SshFanoutRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/status-pages': {
+      id: '/status-pages'
+      path: '/status-pages'
+      fullPath: '/status-pages'
+      preLoaderRoute: typeof StatusPagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/workflows': {
       id: '/workflows'
       path: '/workflows'
@@ -663,6 +683,7 @@ const rootRouteChildren: RootRouteChildren = {
   SavingsRoute: SavingsRoute,
   SettingsRoute: SettingsRoute,
   SshFanoutRoute: SshFanoutRoute,
+  StatusPagesRoute: StatusPagesRoute,
   WorkflowsRoute: WorkflowsRoute,
   AccountsAccountIdRoute: AccountsAccountIdRoute,
   DashboardDashboardIdRoute: DashboardDashboardIdRoute,

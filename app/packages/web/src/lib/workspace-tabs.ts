@@ -21,6 +21,7 @@ import {
   sshFanoutTabTarget,
   metricAlertsTabTarget,
   probesTabTarget,
+  statusPagesTabTarget,
   quotasTabTarget,
   incidentsTabTarget,
   chatTabTarget,
@@ -219,6 +220,12 @@ export function getWorkspaceNavigateArgs(
     case "probes":
       return {
         to: "/org/$orgId/probes",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "status-pages":
+      return {
+        to: "/org/$orgId/status-pages",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -437,6 +444,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "probes") {
     return probesTabTarget();
+  }
+  if (s[0] === "status-pages") {
+    return statusPagesTabTarget();
   }
   if (s[0] === "quotas") {
     return quotasTabTarget();

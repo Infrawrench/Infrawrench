@@ -164,6 +164,14 @@ describe("probes tab kind", () => {
   });
 });
 
+describe("status pages tab kind", () => {
+  it("is a singleton tab with the expected title", () => {
+    expect(getWorkspaceTabId({ kind: "status-pages" })).toBe("status-pages");
+    expect(getWorkspaceTabFallbackTitle({ kind: "status-pages" })).toBe("Status pages");
+    expect(workspaceTabTargetsEqual({ kind: "status-pages" }, { kind: "status-pages" })).toBe(true);
+  });
+});
+
 describe("incidents tab kind", () => {
   it("is a singleton tab id regardless of which incident is open", () => {
     expect(getWorkspaceTabId({ kind: "incidents" })).toBe("incidents");
