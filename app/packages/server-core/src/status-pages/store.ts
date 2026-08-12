@@ -345,10 +345,18 @@ export async function rotateStatusPageSlugRecord(
       const { syncCustomHostnameKvForPage } = await import("./custom-hostname");
       await syncCustomHostnameKvForPage(updated);
     } catch (err) {
+      // Only restore if our write is still current — a concurrent rotation may
+      // have already moved the slug (and KV) past `nextSlug`.
       await db
         .update(statusPages)
         .set({ slug: previousSlug, updatedAt: new Date() })
-        .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)));
+        .where(
+          and(
+            eq(statusPages.organizationId, organizationId),
+            eq(statusPages.id, pageId),
+            eq(statusPages.slug, nextSlug),
+          ),
+        );
       throw err;
     }
   }
