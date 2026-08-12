@@ -328,8 +328,8 @@ export async function deleteStatusPageRecord(
  * Workers KV write runs inside the same transaction so an unversioned KV put
  * cannot land out of order with another rotation's committed slug. If KV
  * accepts the write but the transaction later aborts, we best-effort restore
- * the previous slug in KV so the vanity host does not point at a nonexistent
- * URL.
+ * the previous slug in KV under a fresh row lock so a concurrent success
+ * cannot be overwritten.
  */
 export async function rotateStatusPageSlugRecord(
   organizationId: string,
@@ -376,21 +376,24 @@ export async function rotateStatusPageSlugRecord(
   } catch (err) {
     const restore = kvRestore.current;
     if (restore) {
-      // The row lock is already released; a concurrent rotation may have
-      // committed. Only rewind KV when the DB still holds the slug we would
-      // restore to — otherwise we would clobber the newer mapping.
-      const [row] = await db
-        .select({ slug: statusPages.slug })
-        .from(statusPages)
-        .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)))
-        .limit(1);
-      if (row?.slug === restore.previousSlug) {
-        const { syncCustomHostnameKvForPage } = await import("./custom-hostname");
-        await syncCustomHostnameKvForPage({
-          customHostname: restore.hostname,
-          slug: restore.previousSlug,
-        }).catch(() => undefined);
-      }
+      // Re-take the row lock around the slug check + KV rewind so a concurrent
+      // rotation cannot commit between the read and the put.
+      await db
+        .transaction(async (tx) => {
+          const [row] = await tx
+            .select({ slug: statusPages.slug })
+            .from(statusPages)
+            .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)))
+            .limit(1)
+            .for("update");
+          if (row?.slug !== restore.previousSlug) return;
+          const { syncCustomHostnameKvForPage } = await import("./custom-hostname");
+          await syncCustomHostnameKvForPage({
+            customHostname: restore.hostname,
+            slug: restore.previousSlug,
+          });
+        })
+        .catch(() => undefined);
     }
     throw err;
   }

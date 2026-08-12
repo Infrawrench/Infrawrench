@@ -356,14 +356,28 @@ export async function attachCustomHostname(
       customHostnameVerification: verification,
     });
   } catch (err) {
-    await removeCustomHostnameInfra(hostname, ch.id);
-    // Unique race
-    if (
-      err &&
-      typeof err === "object" &&
-      "code" in err &&
-      (err as { code: string }).code === "23505"
-    ) {
+    const isUnique =
+      err && typeof err === "object" && "code" in err && (err as { code: string }).code === "23505";
+    try {
+      await removeCustomHostnameInfra(hostname, ch.id);
+    } catch (cleanupErr) {
+      // Cleanup failed — keep CF/KV identifiers on the page (unless the
+      // hostname is owned by another row) so detach can retry revocation.
+      if (!isUnique) {
+        await persistHostnameFields(pageId, {
+          customHostname: hostname,
+          customHostnameStatus: "error",
+          cloudflareCustomHostnameId: ch.id,
+          customHostnameError:
+            cleanupErr instanceof Error
+              ? cleanupErr.message
+              : "Failed to roll back custom hostname after attach",
+          customHostnameVerification: verification,
+        }).catch(() => undefined);
+      }
+      throw cleanupErr;
+    }
+    if (isUnique) {
       throw new StatusPageInputError("That hostname is already used by another status page");
     }
     throw err;
