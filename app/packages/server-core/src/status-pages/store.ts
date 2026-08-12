@@ -326,39 +326,59 @@ export async function deleteStatusPageRecord(
  *
  * Concurrent rotations serialize on `FOR UPDATE` of the page row, and the
  * Workers KV write runs inside the same transaction so an unversioned KV put
- * cannot land out of order with another rotation's committed slug. A KV
- * failure aborts the transaction and leaves the previous slug in place.
+ * cannot land out of order with another rotation's committed slug. If KV
+ * accepts the write but the transaction later aborts, we best-effort restore
+ * the previous slug in KV so the vanity host does not point at a nonexistent
+ * URL.
  */
 export async function rotateStatusPageSlugRecord(
   organizationId: string,
   pageId: string,
 ): Promise<StatusPage> {
-  await db.transaction(async (tx) => {
-    const [existing] = await tx
-      .select({
-        slug: statusPages.slug,
-        customHostname: statusPages.customHostname,
-      })
-      .from(statusPages)
-      .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)))
-      .limit(1)
-      .for("update");
-    if (!existing) throw new StatusPageInputError("Status page not found", 404);
+  let kvRestore: { hostname: string; previousSlug: string } | null = null;
+  try {
+    await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({
+          slug: statusPages.slug,
+          customHostname: statusPages.customHostname,
+        })
+        .from(statusPages)
+        .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)))
+        .limit(1)
+        .for("update");
+      if (!existing) throw new StatusPageInputError("Status page not found", 404);
 
-    const nextSlug = generateStatusPageSlug();
-    await tx
-      .update(statusPages)
-      .set({ slug: nextSlug, updatedAt: new Date() })
-      .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)));
+      const nextSlug = generateStatusPageSlug();
+      await tx
+        .update(statusPages)
+        .set({ slug: nextSlug, updatedAt: new Date() })
+        .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)));
 
-    if (existing.customHostname) {
+      if (existing.customHostname) {
+        // Remember restore target before the put so a lost success response or
+        // a commit abort can still rewind KV to the slug PostgreSQL kept.
+        kvRestore = {
+          hostname: existing.customHostname,
+          previousSlug: existing.slug,
+        };
+        const { syncCustomHostnameKvForPage } = await import("./custom-hostname");
+        await syncCustomHostnameKvForPage({
+          customHostname: existing.customHostname,
+          slug: nextSlug,
+        });
+      }
+    });
+  } catch (err) {
+    if (kvRestore) {
       const { syncCustomHostnameKvForPage } = await import("./custom-hostname");
       await syncCustomHostnameKvForPage({
-        customHostname: existing.customHostname,
-        slug: nextSlug,
-      });
+        customHostname: kvRestore.hostname,
+        slug: kvRestore.previousSlug,
+      }).catch(() => undefined);
     }
-  });
+    throw err;
+  }
   return (await getStatusPageWire(organizationId, pageId))!;
 }
 
