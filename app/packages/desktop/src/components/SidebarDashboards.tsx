@@ -10,6 +10,7 @@ import {
   MetricAlertIcon,
   EnvironmentsIcon,
   ProbesIcon,
+  StatusPagesIcon,
   QuotasIcon,
   IncidentsIcon,
   DeployIcon,
@@ -302,6 +303,12 @@ export function SidebarDashboards() {
             label: "Probes",
             icon: <ProbesIcon />,
             onClick: () => void navigate({ to: "/probes" }),
+          },
+          {
+            key: "status-pages",
+            label: "Status pages",
+            icon: <StatusPagesIcon />,
+            onClick: () => void navigate({ to: "/status-pages" }),
           },
           // Cloud-only, and with no local half at all: a quota reading is a
           // live credentialed provider call on a schedule only the poller

@@ -109,6 +109,14 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns status-pages route args", () => {
+    const args = getWorkspaceNavigateArgs({ kind: "status-pages" });
+    expect(args).toEqual({
+      to: "/org/$orgId/status-pages",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns quotas route args", () => {
     const args = getWorkspaceNavigateArgs({ kind: "quotas" });
     expect(args).toEqual({
@@ -326,6 +334,12 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the probes path", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/probes")).toEqual({ kind: "probes" });
+  });
+
+  it("parses the status-pages path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/status-pages")).toEqual({
+      kind: "status-pages",
+    });
   });
 
   it("parses the quotas path", () => {

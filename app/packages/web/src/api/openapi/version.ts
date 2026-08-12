@@ -63,4 +63,7 @@
 // parameterised template, stamp copies out with a mandatory TTL, and tear them
 // down (new `/environments` route family, new schemas, and a new
 // `environments` member on the TabTarget kind enum). All additive.
-export const API_VERSION = "1.21.0";
+// 1.22.0: `status-pages` on the TabTarget kind enum — status pages are their
+// own workspace tab rather than a section of Probes, and without the enum
+// member a persisted Status pages tab is silently dropped on reload. Additive.
+export const API_VERSION = "1.22.0";

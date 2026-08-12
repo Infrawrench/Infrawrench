@@ -31,6 +31,7 @@ import {
   LogsIcon,
   MetricAlertIcon,
   ProbesIcon,
+  StatusPagesIcon,
   QuotasIcon,
   IncidentsIcon,
   EnvironmentsIcon,
@@ -587,6 +588,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <ProbesIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/probes", params: { orgId: orgId! } }),
+              },
+              {
+                key: "status-pages",
+                label: "Status pages",
+                icon: <StatusPagesIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/status-pages", params: { orgId: orgId! } }),
               },
               {
                 key: "quotas",

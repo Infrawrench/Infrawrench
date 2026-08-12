@@ -10,6 +10,7 @@ import {
   iacTabTarget,
   environmentDiffTabTarget,
   probesTabTarget,
+  statusPagesTabTarget,
   incidentsTabTarget,
   environmentsTabTarget,
   resourceTabTarget,
@@ -64,6 +65,10 @@ describe("tab target factories", () => {
 
   it("probesTabTarget", () => {
     expect(probesTabTarget()).toEqual({ kind: "probes" });
+  });
+
+  it("statusPagesTabTarget", () => {
+    expect(statusPagesTabTarget()).toEqual({ kind: "status-pages" });
   });
 
   it("incidentsTabTarget omits incidentId for the list view", () => {

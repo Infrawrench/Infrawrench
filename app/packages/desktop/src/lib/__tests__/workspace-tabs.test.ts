@@ -6,6 +6,7 @@ import {
   invoicesTabTarget,
   deploymentsTabTarget,
   probesTabTarget,
+  statusPagesTabTarget,
   quotasTabTarget,
   incidentsTabTarget,
   environmentsTabTarget,
@@ -68,6 +69,11 @@ describe("getWorkspaceNavigateArgs", () => {
   it("returns probes route args", () => {
     const args = getWorkspaceNavigateArgs(probesTabTarget());
     expect(args.to).toBe("/probes");
+  });
+
+  it("returns status-pages route args", () => {
+    const args = getWorkspaceNavigateArgs(statusPagesTabTarget());
+    expect(args.to).toBe("/status-pages");
   });
 
   it("returns quotas route args", () => {
@@ -277,6 +283,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the probes path", () => {
     expect(syncWorkspaceRouteFromPath("/probes")).toEqual({ kind: "probes" });
+  });
+
+  it("parses the status-pages path", () => {
+    expect(syncWorkspaceRouteFromPath("/status-pages")).toEqual({ kind: "status-pages" });
   });
 
   it("parses the quotas path", () => {

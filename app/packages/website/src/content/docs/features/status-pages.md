@@ -14,8 +14,8 @@ costs no extra checks and cannot disagree with what your Probes tab says.
 
 <insert [A published status page as a visitor sees it — a green "All systems operational" banner, three components grouped under "Core services" with uptime percentages, and a row of 90 daily uptime bars under each] here>
 
-Find it under **Status pages**, below the probe list on the **Probes** tab of the web and desktop
-apps. The mobile app shows a read-only list of your pages and whether each is live, and the
+Find it on the **Status pages** tab of the web and desktop apps (its own sidebar entry, next to
+**Probes**). The mobile app shows a read-only list of your pages and whether each is live, and the
 `infrawrench` [CLI](./cli.md) answers the same question with `infrawrench status-pages`.
 
 ## Nothing is public until you publish it

@@ -55,6 +55,7 @@ import { WebIacPanel } from "./WebIacPanel";
 import { WebEnvironmentDiffPanel } from "./WebEnvironmentDiffPanel";
 import { WebMetricAlertsPanel } from "./WebMetricAlertsPanel";
 import { WebProbesPanel } from "./WebProbesPanel";
+import { WebStatusPagesPanel } from "./WebStatusPagesPanel";
 import { WebQuotasPanel } from "./WebQuotasPanel";
 import { WebIncidentsPanel } from "./WebIncidentsPanel";
 import { WebEnvironmentsPanel } from "./WebEnvironmentsPanel";
@@ -539,6 +540,8 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       return <WebMetricAlertsPanel key={orgId} orgId={orgId} />;
     case "probes":
       return <WebProbesPanel key={orgId} orgId={orgId} />;
+    case "status-pages":
+      return <WebStatusPagesPanel key={orgId} orgId={orgId} />;
     case "quotas":
       return <WebQuotasPanel key={orgId} orgId={orgId} />;
     case "incidents":

@@ -72,9 +72,9 @@ the normal retention windows.
 
 ## Publishing them
 
-The probes you already run are most of a status page. Under the probe list, **Status pages** lets
-you publish a chosen set of them at a public link — current state, uptime and 90 days of history,
-under names your customers would recognise, with no probe URLs or account details exposed. See
+The probes you already run are most of a status page. The **Status pages** tab lets you publish a
+chosen set of them at a public link — current state, uptime and 90 days of history, under names
+your customers would recognise, with no probe URLs or account details exposed. See
 [Public status pages](./status-pages.md).
 
 ## Requirements

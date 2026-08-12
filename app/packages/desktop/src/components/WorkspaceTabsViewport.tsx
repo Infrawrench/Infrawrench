@@ -53,6 +53,7 @@ import { DesktopIacPanel } from "@/components/DesktopIacPanel";
 import { DesktopEnvironmentDiffPanel } from "@/components/DesktopEnvironmentDiffPanel";
 import { DesktopMetricAlertsPanel } from "@/components/DesktopMetricAlertsPanel";
 import { DesktopProbesPanel } from "@/components/DesktopProbesPanel";
+import { DesktopStatusPagesPanel } from "@/components/DesktopStatusPagesPanel";
 import { DesktopQuotasPanel } from "@/components/DesktopQuotasPanel";
 import { DesktopIncidentsPanel } from "@/components/DesktopIncidentsPanel";
 import { DesktopEnvironmentsPanel } from "@/components/DesktopEnvironmentsPanel";
@@ -536,6 +537,8 @@ function renderPanel(
       return <DesktopMetricAlertsPanel />;
     case "probes":
       return <DesktopProbesPanel />;
+    case "status-pages":
+      return <DesktopStatusPagesPanel />;
     case "quotas":
       return <DesktopQuotasPanel />;
     case "incidents":
