@@ -4,6 +4,7 @@ import {
   formatTimeRemaining,
   instanceIsLive,
   normalizeEnvironmentSettings,
+  parseTtlDraft,
   type EnvironmentInstance,
   type EnvironmentInstanceStatus,
 } from "@infrawrench/client-core";
@@ -231,13 +232,8 @@ function LimitsSection({
   const [maxDraft, setMaxDraft] = useState(String(settings.maxTtlHours));
   const [defaultDraft, setDefaultDraft] = useState(String(settings.defaultTtlHours));
 
-  const parseDraft = (draft: string): number | null => {
-    if (draft.trim() === "") return null;
-    const parsed = Number(draft);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-  const maxTtlHours = parseDraft(maxDraft);
-  const defaultTtlHours = parseDraft(defaultDraft);
+  const maxTtlHours = parseTtlDraft(maxDraft);
+  const defaultTtlHours = parseTtlDraft(defaultDraft);
 
   const save = () => {
     if (maxTtlHours === null || defaultTtlHours === null) return;

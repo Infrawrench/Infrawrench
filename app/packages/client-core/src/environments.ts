@@ -526,6 +526,19 @@ export function resolveParameterValues(
 }
 
 /**
+ * Parse an hours input field into a number, or null for "unanswered".
+ *
+ * The guard every TTL text input shares: `Number("")` is 0 and
+ * `Number("abc")` is NaN, and storing either silently ships a value the user
+ * never typed. Null keeps the field visibly empty and the form invalid.
+ */
+export function parseTtlDraft(raw: string): number | null {
+  if (raw.trim() === "") return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
  * Validate a requested TTL against the org's ceiling. Returns a problem or
  * null. A TTL is mandatory — there is no "forever" branch to fall through to.
  */

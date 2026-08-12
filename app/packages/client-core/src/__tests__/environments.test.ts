@@ -27,6 +27,7 @@ import {
   suggestParameters,
   validateParameterValues,
   validateTemplate,
+  parseTtlDraft,
   validateTtlHours,
   type CaptureCreateField,
   type CaptureSourceResource,
@@ -337,6 +338,21 @@ describe("validateParameterValues / resolveParameterValues", () => {
       region: "eu",
       size: "s",
     });
+  });
+});
+
+describe("parseTtlDraft", () => {
+  it("parses an ordinary value", () => {
+    expect(parseTtlDraft("24")).toBe(24);
+  });
+
+  it("treats an empty or blank field as unanswered, not zero", () => {
+    expect(parseTtlDraft("")).toBeNull();
+    expect(parseTtlDraft("  ")).toBeNull();
+  });
+
+  it("treats an unparseable value as unanswered, not NaN", () => {
+    expect(parseTtlDraft("abc")).toBeNull();
   });
 });
 

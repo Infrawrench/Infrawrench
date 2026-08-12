@@ -24,8 +24,11 @@
  * `resource_id`, so the resource is deleted rather than left running
  * unrecorded — identity is certain, the provider returned the id moments
  * earlier — and if even that fails, the id is carried into the instance-level
- * error, a separate write with its own chance of landing and the last durable
- * place a human can recover it from.
+ * error (a retried write with its own chance of landing) and printed to the
+ * process log as `UNRECORDED RESOURCE` the moment the state exists. The log
+ * line is the terminus: when every database write is failing, it is the one
+ * channel that cannot also fail, and the chain has to end at a channel with
+ * that property rather than at another write.
  *
  * **No member runs without an expiry**, and the way to check that claim is to
  * enumerate the states a member row can end a run in. `status` × `resource_id`
@@ -562,6 +565,16 @@ export async function instantiateEnvironment(
               `${createdRecord.externalId ?? createdRecord.resourceId} ` +
               `("${createdRecord.displayName}") could not be recorded or rolled back. It has ` +
               `no expiry: delete it in the provider, then tear this environment down`;
+            // Logged the moment the unrecorded state exists, not only if the
+            // instance-status write below lands: every database write has
+            // failed by now, so the process log is the one channel left that
+            // cannot also fail, and this line is what an operator greps for.
+            console.error(
+              `[environments] UNRECORDED RESOURCE: org ${organizationId} instance ` +
+                `${instance.id} member ${member.key} holds resource ${createdRecord.resourceId} ` +
+                `(external ${createdRecord.externalId ?? "-"}, "${createdRecord.displayName}") ` +
+                `in account ${accountId} with no lease and no durable record`,
+            );
           }
         }
       }
@@ -570,11 +583,24 @@ export async function instantiateEnvironment(
   }
 
   if (failure) {
+    // Retried, and logged with the full failure text if it still cannot land:
+    // on the worst path this write is the last durable carrier of a created
+    // resource's id, so losing it silently is losing the resource.
     const anyCreated = Object.keys(created).length > 0;
-    await setInstanceStatus(instance.id, anyCreated ? "partial" : "failed", {
-      error: failure,
-      completedAt: anyCreated ? null : new Date(),
-    });
+    try {
+      await withRetry(() =>
+        setInstanceStatus(instance.id, anyCreated ? "partial" : "failed", {
+          error: failure,
+          completedAt: anyCreated ? null : new Date(),
+        }),
+      );
+    } catch (statusError) {
+      console.error(
+        `[environments] failed to record instance ${instance.id} failure "${failure}":`,
+        statusError,
+      );
+      throw statusError;
+    }
   } else {
     await setInstanceStatus(instance.id, "active", { error: null });
   }

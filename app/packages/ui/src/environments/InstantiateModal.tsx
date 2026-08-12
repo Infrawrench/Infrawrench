@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ENVIRONMENT_LIMITS,
+  parseTtlDraft,
   resolveParameterValues,
   validateParameterValues,
   validateTtlHours,
@@ -161,10 +162,7 @@ export function InstantiateModal({
               min={ENVIRONMENT_LIMITS.minTtlHours}
               max={settings.maxTtlHours}
               value={ttlHours ?? ""}
-              onChange={(e) => {
-                const parsed = Number(e.target.value);
-                setTtlHours(e.target.value === "" || Number.isNaN(parsed) ? null : parsed);
-              }}
+              onChange={(e) => setTtlHours(parseTtlDraft(e.target.value))}
               className="w-20 rounded-lg border border-border bg-surface px-2 py-1 text-xs text-on-surface"
               aria-label="Time to live in hours"
             />
