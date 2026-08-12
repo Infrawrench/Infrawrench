@@ -88,7 +88,7 @@ function InstanceItem({
             <span className="truncate text-sm font-medium text-on-surface">{instance.name}</span>
             <span className="text-xs text-on-surface-faint">from {instance.templateName}</span>
             {instance.status === "partial" && (
-              <span className="text-xs text-amber-400">partially created</span>
+              <span className="text-xs text-warning">partially created</span>
             )}
           </div>
           <p className="truncate text-xs text-on-surface-secondary">
@@ -104,7 +104,7 @@ function InstanceItem({
               type="button"
               onClick={onTearDown}
               disabled={busy}
-              className="rounded-lg px-2 py-1 text-xs text-red-400 transition-colors hover:bg-surface-sunken disabled:opacity-50"
+              className="rounded-lg px-2 py-1 text-xs text-danger transition-colors hover:bg-surface-sunken disabled:opacity-50"
             >
               {busy ? "Working…" : "Tear down"}
             </button>
@@ -122,7 +122,7 @@ function InstanceItem({
         </div>
       </div>
 
-      {instance.error && <p className="mt-2 text-xs text-amber-400">{instance.error}</p>}
+      {instance.error && <p className="mt-2 text-xs text-warning">{instance.error}</p>}
 
       {expanded && (
         <ul className="mt-3 space-y-1 border-t border-border pt-3">
@@ -140,7 +140,7 @@ function InstanceItem({
                       resourceTypeId: member.resourceTypeId,
                     })
                   }
-                  className="text-on-surface underline hover:text-blue-400"
+                  className="text-on-surface underline hover:text-info"
                 >
                   {member.displayName}
                 </button>
@@ -150,7 +150,7 @@ function InstanceItem({
               <span className="text-on-surface-faint">
                 {member.pluginId}/{member.resourceTypeId}
               </span>
-              {member.error && <span className="text-red-400">{member.error}</span>}
+              {member.error && <span className="text-danger">{member.error}</span>}
             </li>
           ))}
         </ul>
@@ -199,7 +199,7 @@ function TemplateItem({
             type="button"
             onClick={onDelete}
             disabled={busy}
-            className="rounded-lg px-2 py-1 text-xs text-red-400 transition-colors hover:bg-surface-sunken disabled:opacity-50"
+            className="rounded-lg px-2 py-1 text-xs text-danger transition-colors hover:bg-surface-sunken disabled:opacity-50"
           >
             Delete
           </button>
@@ -411,9 +411,9 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
   return (
     <div className="space-y-8">
       {error && (
-        <p className="text-sm text-red-400">
+        <p className="text-sm text-danger">
           {error}{" "}
-          <button type="button" onClick={reload} className="underline hover:text-red-300">
+          <button type="button" onClick={reload} className="underline hover:text-danger-strong">
             Retry
           </button>
         </p>

@@ -142,7 +142,7 @@ export function CaptureTemplateModal({
           </div>
         </div>
 
-        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+        {error && <p className="mt-3 text-sm text-danger">{error}</p>}
 
         {draft && (
           <div className="mt-5 space-y-4">
@@ -173,9 +173,7 @@ export function CaptureTemplateModal({
 
             {draft.skipped.length > 0 && (
               <div>
-                <h4 className="text-sm font-medium text-amber-400">
-                  {draft.skipped.length} skipped
-                </h4>
+                <h4 className="text-sm font-medium text-warning">{draft.skipped.length} skipped</h4>
                 <ul className="mt-1 space-y-1">
                   {draft.skipped.map((item) => (
                     <li key={item.resourceId} className="text-xs text-on-surface-faint">

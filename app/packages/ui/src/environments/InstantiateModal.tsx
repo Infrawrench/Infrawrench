@@ -170,7 +170,7 @@ export function InstantiateModal({
             />
             <span className="text-xs text-on-surface-faint">hours</span>
           </div>
-          {ttlProblem && <p className="mt-1 text-xs text-red-400">{ttlProblem}</p>}
+          {ttlProblem && <p className="mt-1 text-xs text-danger">{ttlProblem}</p>}
         </div>
 
         {template.parameters.length > 0 && (
@@ -204,7 +204,7 @@ export function InstantiateModal({
                 )}
               </label>
             ))}
-            {parameterProblem && <p className="text-xs text-red-400">{parameterProblem}</p>}
+            {parameterProblem && <p className="text-xs text-danger">{parameterProblem}</p>}
           </div>
         )}
 
@@ -253,7 +253,7 @@ export function InstantiateModal({
           )}
         </div>
 
-        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+        {error && <p className="mt-3 text-sm text-danger">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <button

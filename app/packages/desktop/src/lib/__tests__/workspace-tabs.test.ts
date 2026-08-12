@@ -85,6 +85,8 @@ describe("getWorkspaceNavigateArgs", () => {
     const detail = getWorkspaceNavigateArgs(incidentsTabTarget("inc-1"));
     expect(detail.to).toBe("/incidents");
     expect(detail.search).toEqual({ incident: "inc-1" });
+  });
+
   it("returns environments route args", () => {
     const args = getWorkspaceNavigateArgs(environmentsTabTarget());
     expect(args.to).toBe("/environments");
@@ -287,6 +289,8 @@ describe("syncWorkspaceRouteFromPath", () => {
       kind: "incidents",
       incidentId: "inc-1",
     });
+  });
+
   it("parses the environments path", () => {
     expect(syncWorkspaceRouteFromPath("/environments")).toEqual({ kind: "environments" });
   });
