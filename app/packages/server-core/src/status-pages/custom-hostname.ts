@@ -386,6 +386,15 @@ export async function attachCustomHostname(
               `Cleanup error: ${cleanupMsg}. Persist error: ${persistMsg}.`,
           );
         }
+      } else {
+        // Unique race — cannot store the hostname on this page. Still name the
+        // Cloudflare id so the losing request does not discard cleanup state.
+        const cleanupMsg = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+        throw new StatusPageInputError(
+          `That hostname is already used by another status page, and cleanup of ` +
+            `Cloudflare custom hostname ${ch.id} (${hostname}) failed: ${cleanupMsg}. ` +
+            `Manual revocation may be required.`,
+        );
       }
       throw cleanupErr;
     }
