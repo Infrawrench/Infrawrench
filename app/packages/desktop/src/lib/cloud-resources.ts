@@ -2,6 +2,9 @@ import type { AssociationSource, CostEstimate } from "@infrawrench/plugin-base";
 import type {
   AccessReviewResponse,
   BlastRadiusReport,
+  BackupCoverageResponse,
+  BackupPolicy,
+  BackupPolicyInput,
   DependencyGraphData,
   DnsInventoryResponse,
   EnvironmentDiffResponse,
@@ -119,6 +122,39 @@ export async function exportCloudAccessReview(
   staleDays: number,
 ): Promise<string> {
   return invoke("cloud_access_review_export", { orgId, format, staleDays });
+}
+
+/**
+ * The org's backup coverage, computed server-side over synced rows. There is
+ * no local-mode counterpart: the recovery objectives it is judged against are
+ * org state, and a local workspace has nowhere to store them.
+ */
+export async function fetchCloudBackups(orgId: string): Promise<BackupCoverageResponse> {
+  return invoke("cloud_backups", { orgId });
+}
+
+export async function fetchCloudBackupPolicies(orgId: string): Promise<BackupPolicy[]> {
+  const res = await invoke<{ policies: BackupPolicy[] }>("cloud_backup_policies", { orgId });
+  return res.policies ?? [];
+}
+
+export async function createCloudBackupPolicy(
+  orgId: string,
+  input: BackupPolicyInput,
+): Promise<void> {
+  await invoke("cloud_backup_policy_create", { orgId, input });
+}
+
+export async function updateCloudBackupPolicy(
+  orgId: string,
+  policyId: string,
+  patch: Partial<BackupPolicyInput>,
+): Promise<void> {
+  await invoke("cloud_backup_policy_update", { orgId, policyId, patch });
+}
+
+export async function deleteCloudBackupPolicy(orgId: string, policyId: string): Promise<void> {
+  await invoke("cloud_backup_policy_delete", { orgId, policyId });
 }
 
 export async function fetchCloudDns(orgId: string): Promise<DnsInventoryResponse> {

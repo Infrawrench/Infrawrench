@@ -19,6 +19,7 @@ import { Route as StatusSlugRouteImport } from './routes/status.$slug'
 import { Route as OrgOrgIdIndexRouteImport } from './routes/org.$orgId.index'
 import { Route as OrgOrgIdAccessReviewRouteImport } from './routes/org.$orgId.access-review'
 import { Route as OrgOrgIdAgentsRouteImport } from './routes/org.$orgId.agents'
+import { Route as OrgOrgIdBackupsRouteImport } from './routes/org.$orgId.backups'
 import { Route as OrgOrgIdChangesRouteImport } from './routes/org.$orgId.changes'
 import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
 import { Route as OrgOrgIdCostReportsRouteImport } from './routes/org.$orgId.cost-reports'
@@ -120,6 +121,11 @@ const OrgOrgIdAccessReviewRoute = OrgOrgIdAccessReviewRouteImport.update({
 const OrgOrgIdAgentsRoute = OrgOrgIdAgentsRouteImport.update({
   id: '/agents',
   path: '/agents',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdBackupsRoute = OrgOrgIdBackupsRouteImport.update({
+  id: '/backups',
+  path: '/backups',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdChangesRoute = OrgOrgIdChangesRouteImport.update({
@@ -412,6 +418,7 @@ export interface FileRoutesByFullPath {
   '/status/$slug': typeof StatusSlugRoute
   '/org/$orgId/access-review': typeof OrgOrgIdAccessReviewRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
+  '/org/$orgId/backups': typeof OrgOrgIdBackupsRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
@@ -475,6 +482,7 @@ export interface FileRoutesByTo {
   '/status/$slug': typeof StatusSlugRoute
   '/org/$orgId/access-review': typeof OrgOrgIdAccessReviewRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
+  '/org/$orgId/backups': typeof OrgOrgIdBackupsRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
@@ -538,6 +546,7 @@ export interface FileRoutesById {
   '/status/$slug': typeof StatusSlugRoute
   '/org/$orgId/access-review': typeof OrgOrgIdAccessReviewRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
+  '/org/$orgId/backups': typeof OrgOrgIdBackupsRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
@@ -604,6 +613,7 @@ export interface FileRouteTypes {
     | '/status/$slug'
     | '/org/$orgId/access-review'
     | '/org/$orgId/agents'
+    | '/org/$orgId/backups'
     | '/org/$orgId/changes'
     | '/org/$orgId/chat'
     | '/org/$orgId/cost-reports'
@@ -667,6 +677,7 @@ export interface FileRouteTypes {
     | '/status/$slug'
     | '/org/$orgId/access-review'
     | '/org/$orgId/agents'
+    | '/org/$orgId/backups'
     | '/org/$orgId/changes'
     | '/org/$orgId/cost-reports'
     | '/org/$orgId/costs'
@@ -729,6 +740,7 @@ export interface FileRouteTypes {
     | '/status/$slug'
     | '/org/$orgId/access-review'
     | '/org/$orgId/agents'
+    | '/org/$orgId/backups'
     | '/org/$orgId/changes'
     | '/org/$orgId/chat'
     | '/org/$orgId/cost-reports'
@@ -864,6 +876,13 @@ declare module '@tanstack/react-router' {
       path: '/agents'
       fullPath: '/org/$orgId/agents'
       preLoaderRoute: typeof OrgOrgIdAgentsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/backups': {
+      id: '/org/$orgId/backups'
+      path: '/backups'
+      fullPath: '/org/$orgId/backups'
+      preLoaderRoute: typeof OrgOrgIdBackupsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/changes': {
@@ -1340,6 +1359,7 @@ const OrgOrgIdSettingsRouteWithChildren =
 interface OrgOrgIdRouteChildren {
   OrgOrgIdAccessReviewRoute: typeof OrgOrgIdAccessReviewRoute
   OrgOrgIdAgentsRoute: typeof OrgOrgIdAgentsRoute
+  OrgOrgIdBackupsRoute: typeof OrgOrgIdBackupsRoute
   OrgOrgIdChangesRoute: typeof OrgOrgIdChangesRoute
   OrgOrgIdChatRoute: typeof OrgOrgIdChatRouteWithChildren
   OrgOrgIdCostReportsRoute: typeof OrgOrgIdCostReportsRouteWithChildren
@@ -1370,6 +1390,7 @@ interface OrgOrgIdRouteChildren {
 const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdAccessReviewRoute: OrgOrgIdAccessReviewRoute,
   OrgOrgIdAgentsRoute: OrgOrgIdAgentsRoute,
+  OrgOrgIdBackupsRoute: OrgOrgIdBackupsRoute,
   OrgOrgIdChangesRoute: OrgOrgIdChangesRoute,
   OrgOrgIdChatRoute: OrgOrgIdChatRouteWithChildren,
   OrgOrgIdCostReportsRoute: OrgOrgIdCostReportsRouteWithChildren,

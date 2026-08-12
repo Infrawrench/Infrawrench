@@ -121,6 +121,12 @@ export const ServerResourceType = rt({
     resizeNote:
       "Hetzner requires the server to be powered off before changing its type. The disk keeps its current size, so the change can be reverted.",
   },
+  // Backups land in the `image` type carrying this server's id in `boundTo`.
+  // Hetzner's `backup_window` on the server payload is not synced, so there is
+  // no automated-backup field to declare — an unbacked server reads as
+  // unprotected purely on the absence of a bound image, which is the honest
+  // answer from what we have.
+  backupPolicy: { protectedBy: ["image"] },
   // The lister always writes `firewallIds` ("" when none are attached), so
   // `equals ""` can't flag rows synced before the field existed.
   postureChecks: [

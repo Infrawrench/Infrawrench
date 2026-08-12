@@ -25,6 +25,10 @@ export const VolumeResourceType = rt({
   showInSidebar: true,
   supportsCreate: true,
   iconKey: "volume",
+  // Volume snapshots carry the volume's uuid in `snapshot.resourceId`. There
+  // is no DigitalOcean automated-backup setting for block storage, so an
+  // unsnapshotted volume genuinely has no restore point.
+  backupPolicy: { protectedBy: ["snapshot"] },
   // The lister always sets dropletIds (joined droplet_ids, "" when detached).
   orphanRule: {
     conditions: [{ fieldKey: "dropletIds", when: "empty" }],

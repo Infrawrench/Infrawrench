@@ -412,6 +412,174 @@ export interface DnsRecordRole {
 }
 
 /**
+ * What kind of protection a backup-ish resource type provides. Drives grouping
+ * and labels on the Backups surface only; the coverage maths is identical for
+ * every role.
+ */
+export type BackupRoleKind = "snapshot";
+
+/**
+ * Marks a resource type as one that **is a backup** — an EBS snapshot, an RDS
+ * snapshot, a Droplet backup image, a Neon or PlanetScale backup — and names
+ * the fields the host reads to join it back to the thing it protects.
+ *
+ * Same contract as `orphanRule`, `expiryFields`, `postureChecks` and
+ * `dnsRole`: evaluated over already-synced `fields`, **never an extra provider
+ * API call**. Every key defaults to the name the majority of providers already
+ * use, so a lister that stores `sourceId`/`createdAt`/`sizeGb` needs only
+ * `{ role: "snapshot" }`.
+ *
+ * The one key that carries weight is {@link sourceKey}: without it a snapshot
+ * can be counted but never attributed, so the host can tell you "you have 400
+ * snapshots" and nothing about your RPO. Declare it whenever the lister
+ * genuinely syncs the source id — and **only** then. A `sourceKey` naming a
+ * field the lister never populates would make every protected volume read as
+ * unprotected, which is worse than not declaring the role at all.
+ */
+export interface BackupRoleDeclaration {
+  /** What this type is. Currently only point-in-time snapshots/backups. */
+  role: BackupRoleKind;
+  /**
+   * Field that says which *kind* of thing an instance of this type is, for
+   * providers that model backups and non-backups as one type. Hetzner's
+   * `image` is the case: one listing carries public distribution images,
+   * user snapshots and automatic backups, and without this narrowing every
+   * public Ubuntu image would be counted as a backup of nothing.
+   *
+   * Instances whose value is not in {@link backupTypeValues} are skipped
+   * entirely — not counted, not reported as orphans.
+   */
+  backupTypeKey?: string;
+  /**
+   * Values of {@link backupTypeKey} (case-insensitive) that mean "this row is
+   * a backup". Required alongside `backupTypeKey` — a key with no value list
+   * has nothing to test, and a list with no key has nothing to read, which is
+   * the `privateValues requires privateKey` stance.
+   */
+  backupTypeValues?: string[];
+  /**
+   * Field holding the **id of the resource this backup protects** — a volume
+   * id, a disk self-link, a DB instance identifier, a branch id. Default
+   * `"sourceId"`. Matched against the candidate's external id, its Infrawrench
+   * id and its display name (the identity rules the dependency graph already
+   * uses), and a slash-path value is also matched on its last segment so a
+   * self-link joins to a bare disk name.
+   *
+   * A field whose value is empty on some instances is fine and expected —
+   * Hetzner only sets `bound_to` on automatic backups — those rows are
+   * reported as unattributable rather than as orphans.
+   *
+   * Mutually exclusive with {@link sourceTemplate}.
+   */
+  sourceKey?: string;
+  /**
+   * A `{field}` template composing the source's identity out of more than one
+   * field, for providers whose backup names its source in two halves —
+   * PlanetScale's `{databaseName}/{branchName}`, Spanner's
+   * `{instance}/{database}`. The same shape as `dependsOn`'s `matchTemplate`,
+   * and the reason it exists is the same: a bare `branchName` of `"main"`
+   * matches a branch in every database in the account, and an ambiguous match
+   * is no match — which would make every PlanetScale backup read as an orphan.
+   *
+   * A template referencing a field that is empty on an instance yields no
+   * source for that instance (unattributable), never a partial match.
+   *
+   * Mutually exclusive with {@link sourceKey}.
+   */
+  sourceTemplate?: string;
+  /**
+   * Field holding when the backup was taken. Default `"createdAt"`. This is
+   * the clock the RPO is measured against; parsed with the expiry radar's
+   * tolerance (ISO, date-only, epoch seconds or milliseconds).
+   *
+   * A backup whose timestamp is missing or unparseable **never satisfies an
+   * RPO** — an undatable backup is not evidence of a recent one — but it still
+   * counts as a backup, so the resource reads as "backed up, age unknown"
+   * rather than unprotected. That is why, unlike `dnsRole`, the default is not
+   * required to name a real field: a lister that stores no timestamp yields a
+   * degraded declaration, not a meaningless one.
+   */
+  createdKey?: string;
+  /**
+   * Field holding the backup's size, for the spend estimate on orphaned
+   * snapshots. Default `"sizeGb"`, read per {@link sizeUnit}. A value with a
+   * unit suffix (`"8 GiB"`) has its leading number taken; a value that is a
+   * pre-formatted human string with no leading number is skipped rather than
+   * guessed at.
+   */
+  sizeKey?: string;
+  /**
+   * What {@link sizeKey} is counted in. Default `"gib"`. Set `"bytes"` for
+   * listers that store a raw byte count (Spanner's `sizeBytes`) — the host
+   * converts, so the surface never reports 21 billion GiB.
+   */
+  sizeUnit?: "gib" | "bytes";
+}
+
+/**
+ * Marks a resource type as **stateful and therefore needing protection** — a
+ * volume, a disk, a managed database, a database cluster — and names both the
+ * types that can protect it and any provider-native automated backup the
+ * lister already syncs.
+ *
+ * The declaration is deliberately the mirror image of
+ * {@link BackupRoleDeclaration} rather than a field on it: the question "what
+ * protects this?" is answered by the protected type, because that is the type
+ * whose absence of a backup is the finding. A snapshot type that nothing
+ * declares as a protector is inert; a stateful type that declares no
+ * protectors and no automated-backup field is simply never judged.
+ */
+export interface BackupPolicyDeclaration {
+  /**
+   * Resource type ids (within this same plugin) whose instances protect this
+   * type — usually one snapshot type. An instance of one of these types whose
+   * `sourceKey` resolves to this resource counts as a backup of it.
+   *
+   * May be empty for a type protected only by a provider-native automated
+   * backup (a managed database with a retention window and no listable
+   * snapshot type).
+   */
+  protectedBy: string[];
+  /**
+   * Field that is **truthy when the provider is taking automated backups** —
+   * DO's droplet `backups` flag, Cloud SQL's `backupEnabled`. A resource whose
+   * automated backups are on is never reported as unprotected, even with no
+   * snapshot in the inventory, because the provider is holding restore points
+   * we cannot list.
+   *
+   * Truthiness follows the posture-check word lists (`true/1/yes/enabled` vs
+   * `false/0/no/disabled`); an absent or unrecognised value is treated as "we
+   * don't know", which never clears the resource and never flags it either.
+   * See {@link automatedBackupWhen} for the other reading.
+   */
+  automatedBackupFieldKey?: string;
+  /**
+   * How to read {@link automatedBackupFieldKey}:
+   * - `"truthy"` (default) — a boolean-ish flag.
+   * - `"present"` — **any non-empty value means backups are on**, because the
+   *   field holds a datum rather than a flag. DigitalOcean's droplet
+   *   `nextBackupStart` is the case: it carries the next backup window's ISO
+   *   timestamp when backups are enabled and `""` when they are not, which is
+   *   exactly what the existing `droplet-backups-disabled` posture check reads
+   *   with `equals ""`.
+   *
+   * Only set `"present"` on a field the lister writes unconditionally.
+   * A key the lister sometimes omits would read as "off" on the rows where it
+   * is missing.
+   */
+  automatedBackupWhen?: "truthy" | "present";
+  /**
+   * Field holding the provider-native **retention window in days** — RDS's
+   * `backupRetentionPeriod`, Azure's `backupRetentionDays`. A positive value
+   * both proves automated backups are on (so this key alone is enough; you
+   * need not also declare `automatedBackupFieldKey`) and is what the org's
+   * `minRetentionDays` policy is checked against. `0` is the documented
+   * provider encoding for "automated backups disabled" and is read that way.
+   */
+  retentionDaysFieldKey?: string;
+}
+
+/**
  * Declares the hostname space instances of this type are served at — the
  * provider-owned namespace a CNAME points into (`myapp.vercel.app`,
  * `assets.s3.amazonaws.com`). This is what makes dangling-DNS detection
@@ -787,6 +955,18 @@ export interface ResourceTypeDefinition {
    * hostnames is never analysed for takeover.
    */
   dnsServiceHosts?: DnsServiceHostRule[];
+  /**
+   * Marks this type as one that **is a backup** and names the fields joining
+   * it to what it protects; see {@link BackupRoleDeclaration}. Absent = the
+   * type never counts as protection for anything.
+   */
+  backupRole?: BackupRoleDeclaration;
+  /**
+   * Marks this type as **stateful and needing protection**, and names what can
+   * protect it; see {@link BackupPolicyDeclaration}. Absent = the type is
+   * never judged for backup coverage.
+   */
+  backupPolicy?: BackupPolicyDeclaration;
   /**
    * Start/stop action pair for sleep/wake schedules; see
    * {@link LifecycleActionsDeclaration}. Absent = the type cannot be

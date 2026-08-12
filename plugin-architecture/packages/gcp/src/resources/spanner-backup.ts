@@ -30,6 +30,16 @@ export const SpannerBackupResourceType = rt({
   expiryFields: [
     { fieldKey: "expireTime", from: "expiry", kind: "other", label: "Backup expires" },
   ],
+  // Databases are keyed `instance/name`, which is exactly what the two fields
+  // compose to — a bare `database` would match a same-named database in every
+  // instance in the project and resolve to nothing.
+  backupRole: {
+    role: "snapshot",
+    sourceTemplate: "{instance}/{database}",
+    createdKey: "createTime",
+    sizeKey: "sizeBytes",
+    sizeUnit: "bytes",
+  },
   parentTypeId: "spanner-instance",
   supportsCreate: true,
 });

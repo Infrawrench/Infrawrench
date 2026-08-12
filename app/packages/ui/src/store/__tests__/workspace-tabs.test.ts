@@ -80,6 +80,10 @@ describe("getWorkspaceTabId", () => {
     ).toBe("resource:acc-1:arn:aws");
   });
 
+  it("returns the singleton id for the backups target", () => {
+    expect(getWorkspaceTabId({ kind: "backups" })).toBe("backups");
+  });
+
   it("returns the singleton id for the posture target", () => {
     expect(getWorkspaceTabId({ kind: "posture" })).toBe("posture");
   });
@@ -207,6 +211,10 @@ describe("getWorkspaceTabFallbackTitle", () => {
     ).toBe("SFTP");
   });
 
+  it("returns 'Backups' for the backups target, matching the sidebar tile", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "backups" })).toBe("Backups");
+  });
+
   it("returns 'Posture' for the posture target, matching the sidebar tile", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "posture" })).toBe("Posture");
   });
@@ -302,6 +310,10 @@ describe("workspaceTabTargetsEqual", () => {
       view: "details",
     };
     expect(workspaceTabTargetsEqual(a, b)).toBe(true);
+  });
+
+  it("treats two backups targets as equal (singleton tab)", () => {
+    expect(workspaceTabTargetsEqual({ kind: "backups" }, { kind: "backups" })).toBe(true);
   });
 
   it("treats two posture targets as equal (singleton tab)", () => {

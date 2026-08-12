@@ -33,6 +33,11 @@ export const PsBranchResourceType = rt({
       label: "branched from",
     },
   ],
+  // PlanetScale exposes no retention window on the branch payload, so
+  // `production` (which is what makes a branch auto-backed-up) is deliberately
+  // not read as an automated-backup flag: it says the branch *should* have
+  // backups, not that it does. Only a listed `ps-backup` counts.
+  backupPolicy: { protectedBy: ["ps-backup"] },
   parentTypeId: "ps-database",
   supportsCreate: true,
   iconKey: "planetscale",

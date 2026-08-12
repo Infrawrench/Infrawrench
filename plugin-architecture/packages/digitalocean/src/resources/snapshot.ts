@@ -24,6 +24,11 @@ export const SnapshotResourceType = rt({
     { fieldKey: "resourceId", targetTypeId: "droplet", label: "snapshot of" },
     { fieldKey: "resourceId", targetTypeId: "volume", label: "snapshot of" },
   ],
+  // No `createdKey`: the lister puts `created_at` on the instance, never in
+  // `fields`, so these snapshots prove a restore point exists but can never
+  // date it. The host reports that as "backed up, age unknown" rather than
+  // pretending to an RPO.
+  backupRole: { role: "snapshot", sourceKey: "resourceId", sizeKey: "sizeGb" },
   parentTypeId: "project",
   showInSidebar: true,
   iconKey: "snapshot",

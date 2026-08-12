@@ -24,6 +24,16 @@ export const NeonSnapshotResourceType = rt({
   expiryFields: [
     { fieldKey: "expiresAt", from: "expiry", kind: "other", label: "Snapshot expires" },
   ],
+  // A branch's external id is `{projectId}/{branchId}` while `sourceBranchId`
+  // is bare — the same composition `ps-backup` needs, for the same reason.
+  // `size` is deliberately not declared: the lister stores a pre-formatted
+  // human string ("1.2 GB"), and reading it as a number would understate the
+  // orphan total by orders of magnitude.
+  backupRole: {
+    role: "snapshot",
+    sourceTemplate: "{projectId}/{sourceBranchId}",
+    createdKey: "createdAt",
+  },
   parentTypeId: "neon-branch",
   supportsCreate: true,
   supportsDelete: true,

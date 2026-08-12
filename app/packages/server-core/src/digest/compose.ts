@@ -131,6 +131,14 @@ export interface DigestInput {
   /** How many of those are critical or high. */
   accessFindingsSevere: number;
   /**
+   * Stateful resources with no backup we can see (from the backup coverage
+   * feed). Orphaned snapshots are deliberately excluded from this line — they
+   * are spend, and the digest already has a spend half.
+   */
+  backupsUnprotected: number;
+  /** Resources whose newest backup is older than an org policy allows. */
+  backupsRpoBreached: number;
+  /**
    * Set when the spend figures above were converted into the org's display
    * currency. Every renderer turns this into a caveat line — a converted total
    * that does not say so is worse than the several totals it replaced.
@@ -190,6 +198,10 @@ export interface WeeklyDigest {
   accessFindings: number;
   /** How many of those are critical or high. */
   accessFindingsSevere: number;
+  /** Stateful resources with no backup we can see. */
+  backupsUnprotected: number;
+  /** Resources whose newest backup is older than an org policy allows. */
+  backupsRpoBreached: number;
   /** Projected monthly change from the week's churn, when anything priced. */
   projection: DigestProjection | null;
   /** The week's largest measured cost-moving change, when one was measurable. */
@@ -450,6 +462,8 @@ export function composeWeeklyDigest(input: DigestInput): WeeklyDigest {
     quotasAtRisk: input.quotasAtRisk,
     accessFindings: input.accessFindings,
     accessFindingsSevere: input.accessFindingsSevere,
+    backupsUnprotected: input.backupsUnprotected,
+    backupsRpoBreached: input.backupsRpoBreached,
     projection: normalizeProjection(input.projection),
     costMover: input.costMover ?? null,
     ...(input.conversion ? { conversion: input.conversion } : {}),
@@ -662,6 +676,15 @@ export function digestSegments(digest: WeeklyDigest, narrative?: string | null):
         text: `: ${digest.accessFindings} open ${
           digest.accessFindings === 1 ? "finding" : "findings"
         } on cloud principals (${digest.accessFindingsSevere} critical or high)`,
+        bold: false,
+      },
+    ]);
+  }
+  if (digest.backupsUnprotected + digest.backupsRpoBreached > 0) {
+    lines.push([
+      { text: "Backups", bold: true },
+      {
+        text: `: ${digest.backupsUnprotected} unprotected, ${digest.backupsRpoBreached} past their RPO`,
         bold: false,
       },
     ]);

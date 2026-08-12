@@ -62,6 +62,10 @@ export const MySQLFlexibleServerResourceType = rt({
       },
     },
   ],
+  // As on the PostgreSQL flexible server next door: no listable snapshot type,
+  // so the retention window is the only protection signal — and the only one
+  // a policy can check.
+  backupPolicy: { protectedBy: [], retentionDaysFieldKey: "backupRetentionDays" },
   secretExportTemplates: [
     {
       id: "mysql-connection",

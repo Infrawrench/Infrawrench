@@ -54,4 +54,6 @@
 // 1.18.0: cost per change / cost per deploy — a batched change-impact query,
 // a per-deploy breakdown, and a route that pins either finding onto the cost
 // charts as an annotation. Three new routes, no existing shape changed.
-export const API_VERSION = "1.18.0";
+// 1.19.0: backup & restore coverage — the `/backups` feed and `/backups/policies`
+// CRUD, plus a `backups` member on the TabTarget enum. All additive.
+export const API_VERSION = "1.19.0";

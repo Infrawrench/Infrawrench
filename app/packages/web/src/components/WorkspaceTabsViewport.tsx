@@ -49,6 +49,7 @@ import { WebChangesPanel } from "./WebChangesPanel";
 import { WebExpiryPanel } from "./WebExpiryPanel";
 import { WebPosturePanel } from "./WebPosturePanel";
 import { WebAccessReviewPanel } from "./WebAccessReviewPanel";
+import { WebBackupsPanel } from "./WebBackupsPanel";
 import { WebDnsPanel } from "./WebDnsPanel";
 import { WebEnvironmentDiffPanel } from "./WebEnvironmentDiffPanel";
 import { WebMetricAlertsPanel } from "./WebMetricAlertsPanel";
@@ -425,6 +426,20 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
                   principal.resourceTypeId,
                 ),
               ),
+            )
+          }
+        />
+      );
+    case "backups":
+      return (
+        <WebBackupsPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's coverage.
+          key={orgId}
+          orgId={orgId}
+          openResource={(target) =>
+            void navigate(
+              getWorkspaceNavigateArgs(resourceTabTarget(target.accountId, target.resourceId)),
             )
           }
         />

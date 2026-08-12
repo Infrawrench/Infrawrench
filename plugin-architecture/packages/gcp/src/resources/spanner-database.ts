@@ -23,6 +23,10 @@ export const SpannerDatabaseResourceType = rt({
     // encryptionConfig stores the raw kmsKeyName — a full KMS resource path.
     { fieldKey: "encryptionConfig", targetTypeId: "kms-key", label: "encrypted by" },
   ],
+  // `versionRetentionPeriod` is deliberately not declared as a retention field:
+  // it is a PITR *version* window ("3600s"), not a backup retention in days,
+  // and reading it as one would report every database as failing a policy.
+  backupPolicy: { protectedBy: ["spanner-backup"] },
   parentTypeId: "spanner-instance",
   supportsCreate: true,
 });

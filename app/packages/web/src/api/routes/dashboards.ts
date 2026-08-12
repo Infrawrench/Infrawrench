@@ -690,6 +690,7 @@ app.post("/validate-tabs", async (c) => {
       target.kind === "expiring" ||
       target.kind === "posture" ||
       target.kind === "access-review" ||
+      target.kind === "backups" ||
       target.kind === "dns" ||
       target.kind === "environment-diff" ||
       target.kind === "ssh-fanout" ||

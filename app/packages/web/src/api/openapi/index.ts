@@ -48,6 +48,7 @@ import { registerExpiringPaths } from "./paths/expiring";
 import { registerQuotaPaths } from "./paths/quotas";
 import { registerPosturePaths } from "./paths/posture";
 import { registerAccessReviewPaths } from "./paths/access-review";
+import { registerBackupPaths } from "./paths/backups";
 import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
@@ -172,6 +173,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerQuotaPaths(ctx);
   registerPosturePaths(ctx);
   registerAccessReviewPaths(ctx);
+  registerBackupPaths(ctx);
   registerDnsPaths(ctx);
   registerEnvironmentDiffPaths(ctx);
   registerMomentPaths(ctx);

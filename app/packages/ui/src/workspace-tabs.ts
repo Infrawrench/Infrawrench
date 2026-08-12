@@ -54,6 +54,11 @@ export function accessReviewTabTarget(): WorkspaceTabTarget {
   return { kind: "access-review" };
 }
 
+/** Backup & restore coverage — "what is your actual RPO?". */
+export function backupsTabTarget(): WorkspaceTabTarget {
+  return { kind: "backups" };
+}
+
 export function dnsTabTarget(): WorkspaceTabTarget {
   return { kind: "dns" };
 }

@@ -670,6 +670,7 @@ export * from "./posture";
 // The customer's cloud principals, not Infrawrench's own roles (permissions
 // catalog) and not the credentials Infrawrench holds (credential-hygiene).
 export * from "./access-review";
+export * from "./backups";
 export * from "./dns";
 export * from "./environment-diff";
 export * from "./schedules";

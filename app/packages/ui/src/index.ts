@@ -336,6 +336,7 @@ export {
   expiringTabTarget,
   postureTabTarget,
   accessReviewTabTarget,
+  backupsTabTarget,
   dnsTabTarget,
   environmentDiffTabTarget,
   sshFanoutTabTarget,
@@ -739,6 +740,45 @@ export { AccessReviewSection } from "./access-review/AccessReviewSection.js";
 export type { AccessReviewSectionProps } from "./access-review/AccessReviewSection.js";
 export { PostureIcon } from "./components/icons/PostureIcon.js";
 export { AccessReviewIcon } from "./components/icons/AccessReviewIcon.js";
+
+/**
+ * Backup coverage — the pure contract (coverage computation, wire types,
+ * policy validation) lives in `@infrawrench/client-core` for the same reason
+ * posture's does; re-exported here because web and desktop import it from
+ * `ui`.
+ */
+export {
+  computeBackupCoverage,
+  createBackupPolicy,
+  deleteBackupPolicy,
+  fetchBackupCoverage,
+  fetchBackupPolicies,
+  formatHours,
+  riskyBackupFindings,
+  updateBackupPolicy,
+  validateBackupPolicyInput,
+  BACKUP_FINDING_KIND_LABELS,
+  BACKUP_POLICY_LIMITS,
+  BACKUP_SEVERITIES,
+  BACKUP_SEVERITY_LABELS,
+} from "@infrawrench/client-core";
+export type {
+  BackupCoverageResponse,
+  BackupCoverageRow,
+  BackupCoverageSummary,
+  BackupFinding,
+  BackupFindingKind,
+  BackupPolicy,
+  BackupPolicyDeclaration,
+  BackupPolicyInput,
+  BackupProtectionState,
+  BackupRoleDeclaration,
+  BackupScanInput,
+  BackupSeverity,
+} from "@infrawrench/client-core";
+export { BackupsSection } from "./backups/BackupsSection.js";
+export type { BackupsSectionProps } from "./backups/BackupsSection.js";
+export { BackupsIcon } from "./components/icons/BackupsIcon.js";
 export {
   DNS_CLASSIFICATION_LABELS,
   computeDnsInventory,

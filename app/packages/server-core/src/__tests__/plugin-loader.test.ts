@@ -356,6 +356,117 @@ describe("dnsRole declarations", () => {
   });
 });
 
+describe("backupRole declarations", () => {
+  it("name fields the type actually knows about", async () => {
+    // Explicitly-declared keys only — deliberately unlike `dnsRole`, which
+    // also checks its *defaults*. There, a record whose target field is stored
+    // elsewhere and unsaid is a record with no target: meaningless. Here a
+    // missing default is merely degraded — a snapshot with no `sourceKey` in
+    // `fields` is reported as unattributable, and one with no `createdKey`
+    // still proves a restore point exists, it just can't date it. Requiring
+    // the defaults would force DigitalOcean's and Hetzner's timestamp-less
+    // snapshot types out of the feature entirely for no gain. A key that IS
+    // written down but names nothing is still a typo, and still fails here.
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const role = type.backupRole;
+        if (!role) continue;
+        for (const key of [role.backupTypeKey, role.sourceKey, role.createdKey, role.sizeKey]) {
+          if (key && !type.fields.some((f) => f.key === key)) {
+            suspicious.push(`${plugin.manifest.id}/${type.id}.${key}`);
+          }
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+  });
+
+  it("only interpolate fields the type declares in sourceTemplate", async () => {
+    // The `dependsOn` matchTemplate check next door, for the same reason: a
+    // template over a field that never lands in `fields` renders to a partial
+    // string that matches nothing, and every backup of the type reads as an
+    // orphan.
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const template = type.backupRole?.sourceTemplate;
+        if (!template) continue;
+        for (const match of template.matchAll(/\{([^}]+)\}/g)) {
+          const key = match[1]?.trim();
+          if (key && !type.fields.some((f) => f.key === key)) {
+            suspicious.push(`${plugin.manifest.id}/${type.id}.${key}`);
+          }
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+  });
+});
+
+describe("backupPolicy declarations", () => {
+  it("name fields the type actually knows about", async () => {
+    // The `expiryFields` precedent: a retentionDaysFieldKey naming an
+    // undeclared field is dead config that would silently never match.
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const policy = type.backupPolicy;
+        if (!policy) continue;
+        for (const key of [policy.automatedBackupFieldKey, policy.retentionDaysFieldKey]) {
+          if (key && !type.fields.some((f) => f.key === key)) {
+            suspicious.push(`${plugin.manifest.id}/${type.id}.${key}`);
+          }
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+  });
+
+  it("only name protector types that exist in the same plugin and declare backupRole", async () => {
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    for (const { plugin } of loaded) {
+      const byId = new Map(plugin.resourceTypes.map((t) => [t.id, t]));
+      for (const type of plugin.resourceTypes) {
+        for (const protectorId of type.backupPolicy?.protectedBy ?? []) {
+          const protector = byId.get(protectorId);
+          if (!protector) {
+            suspicious.push(`${plugin.manifest.id}/${type.id} → missing ${protectorId}`);
+          } else if (!protector.backupRole) {
+            suspicious.push(`${plugin.manifest.id}/${type.id} → ${protectorId} has no backupRole`);
+          }
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+  });
+
+  it("carry something to judge them by", async () => {
+    // Mirrors the Zod refine, over the real registry: a policy with no
+    // protector and no provider-native field is a permanent "unknown" row.
+    const loaded = await loader.loadPlugins();
+    const inert: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const policy = type.backupPolicy;
+        if (!policy) continue;
+        if (
+          policy.protectedBy.length === 0 &&
+          !policy.automatedBackupFieldKey &&
+          !policy.retentionDaysFieldKey
+        ) {
+          inert.push(`${plugin.manifest.id}/${type.id}`);
+        }
+      }
+    }
+    expect(inert).toEqual([]);
+  });
+});
+
 describe("dnsServiceHosts declarations", () => {
   it("compile to an anchored pattern with a capture group", async () => {
     const loaded = await loader.loadPlugins();
