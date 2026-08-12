@@ -12,9 +12,9 @@ import type {
 } from "./types.js";
 
 const STATUS_BADGE: Record<IacResourceStatus, string> = {
-  managed: "bg-green-500/10 text-green-400",
-  drifted: "bg-amber-500/10 text-amber-400",
-  unmanaged: "bg-red-500/10 text-red-400",
+  managed: "bg-green-500/10 text-success",
+  drifted: "bg-amber-500/10 text-warning",
+  unmanaged: "bg-red-500/10 text-danger",
 };
 
 type StatusFilter = IacResourceStatus | "";
@@ -256,7 +256,7 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-100 dark:bg-red-900/20 border border-red-500/30 px-3 py-2 text-xs text-red-700 dark:text-red-200 break-words">
+        <div className="rounded-lg bg-red-100 dark:bg-red-900/20 border border-red-500/30 px-3 py-2 text-xs text-danger break-words">
           {error}
         </div>
       )}
@@ -362,7 +362,7 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
             <button
               type="button"
               onClick={() => void removeState(selectedStateId)}
-              className="text-[11px] text-on-surface-faint hover:text-red-400"
+              className="text-[11px] text-on-surface-faint hover:text-danger"
             >
               Delete this state
             </button>
@@ -506,7 +506,7 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
                           {entry.pluginId} · {entry.resourceTypeId}
                         </div>
                         {entry.unmappableReason && (
-                          <div className="text-[11px] text-amber-500/80 mt-0.5">
+                          <div className="text-[11px] text-warning/80 mt-0.5">
                             {entry.unmappableReason}
                           </div>
                         )}
