@@ -1,7 +1,13 @@
-import { useDraggable, useDroppable, useDndContext } from "@dnd-kit/core";
 import type { ResourceInstance, AttachTarget } from "@infrawrench/plugin-base";
-import type { DraggableResource } from "@infrawrench/ui";
+import { ResourcePill as SharedResourcePill, type DraggableResource } from "@infrawrench/ui";
 
+/**
+ * The account-detail resource pill: `@infrawrench/ui`'s ResourcePill plus the
+ * desktop-only concerns — building the DraggableResource from a raw
+ * ResourceInstance, deriving the SSH host for the context menu, and enabling
+ * secret-import drops. The rendering, drop logic, and keyboard behavior all
+ * live in the shared component.
+ */
 export function ResourcePill({
   resource,
   typeId,
@@ -45,16 +51,6 @@ export function ResourcePill({
     ...(attachTargets && attachTargets.length > 0 ? { attachTargets } : {}),
   };
 
-  const {
-    attributes,
-    listeners,
-    setNodeRef: setDragRef,
-    isDragging,
-  } = useDraggable({
-    id: resource.id,
-    data: { resource: draggableData },
-  });
-
   let sshHost = "";
   if (sshHostOutputKey) {
     let isRunning = true;
@@ -69,122 +65,25 @@ export function ResourcePill({
     }
   }
 
-  // Separate droppable from draggable — combining refs on the same node in a
-  // flex-wrap layout causes @dnd-kit to lose rect measurements during drag.
-  const { active } = useDndContext();
-  const activeResource = active?.data.current?.resource as DraggableResource | undefined;
-  const sameCluster = activeResource?.accountId === resource.accountId;
-  // Secret-import drops require a *different* account; attach drops require the *same* account.
-  const secretDropOk = (!!acceptsSecretImport || !!sshHost) && !sameCluster;
-  const attachMatch = activeResource?.attachTargets?.find(
-    (t) => t.pluginId === resource.pluginId && t.resourceTypeId === typeId,
-  );
-  const attachDropOk =
-    sameCluster &&
-    !!attachMatch &&
-    activeResource?.id !== resource.id &&
-    (!attachMatch.matchField ||
-      String(activeResource?.fields?.[attachMatch.matchField] ?? "") ===
-        String(resource.fields[attachMatch.matchField] ?? ""));
-  const isDropTarget = secretDropOk || attachDropOk;
-  const droppableId = attachDropOk
-    ? `attach-target:${resource.id}`
-    : `sidebar-resource:${resource.id}`;
-  const { setNodeRef: setDropRef, isOver } = useDroppable({
-    id: droppableId,
-    disabled: !isDropTarget,
-    ...(attachDropOk ? { data: { target: draggableData } } : {}),
-  });
-
-  const showDropHint = isOver && isDropTarget && !isDragging;
-  const dropHintLabel = attachDropOk ? (attachMatch?.verb ?? "Attach") : "Drop";
+  const contextMenu =
+    (sshHost || supportsMetrics) && onContextMenuOpen
+      ? (e: { preventDefault: () => void; clientX: number; clientY: number }) =>
+          onContextMenuOpen(e, sshHost)
+      : undefined;
 
   return (
-    <div ref={setDropRef} className="inline-flex">
-      <div
-        className={`group flex items-center gap-1 pr-1.5 rounded-full border transition-colors cursor-grab active:cursor-grabbing ${
-          showDropHint
-            ? "border-blue-500 bg-accent-muted"
-            : "border-border-strong bg-surface-raised hover:border-border-strong"
-        } ${isDragging ? "opacity-40" : ""}`}
-      >
-        <button
-          ref={setDragRef}
-          {...listeners}
-          {...attributes}
-          type="button"
-          onClick={onOpen}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              onOpen();
-              return;
-            }
-            // Keyboard equivalent of right-click: open the context menu at the pill.
-            if (
-              (sshHost || supportsMetrics) &&
-              onContextMenuOpen &&
-              (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))
-            ) {
-              e.preventDefault();
-              const rect = e.currentTarget.getBoundingClientRect();
-              onContextMenuOpen(
-                { preventDefault: () => {}, clientX: rect.left, clientY: rect.bottom },
-                sshHost,
-              );
-            }
-          }}
-          onContextMenu={
-            (sshHost || supportsMetrics) && onContextMenuOpen
-              ? (e) => onContextMenuOpen(e, sshHost)
-              : undefined
-          }
-          className="flex items-center gap-2 min-w-0 pl-3 py-1.5 text-left cursor-grab active:cursor-grabbing"
-        >
-          <span className="text-sm font-medium text-on-surface-secondary leading-none">
-            {resource.displayName}
-          </span>
-          {subtitle && (
-            <span className="text-xs text-on-surface-muted leading-none">{subtitle}</span>
-          )}
-        </button>
-
-        {showDropHint ? (
-          <span className="ml-1 text-xs text-accent">{dropHintLabel}</span>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onPin();
-              }}
-              title={pinned ? "Unpin" : "Pin to dashboard"}
-              aria-label={pinned ? "Unpin" : "Pin to dashboard"}
-              className={`ml-1 p-1 rounded-full text-xs transition-all ${
-                pinned
-                  ? "text-accent hover:text-accent-on-muted"
-                  : "text-on-surface-faint hover:text-on-surface-tertiary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
-              }`}
-            >
-              📌
-            </button>
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpen();
-              }}
-              title="Open detail view"
-              aria-label="Open detail view"
-              className="p-1 rounded-full text-on-surface-faint hover:text-on-surface-secondary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-all text-xs"
-            >
-              →
-            </button>
-          </>
-        )}
-      </div>
-    </div>
+    <SharedResourcePill
+      resource={draggableData}
+      subtitle={subtitle || undefined}
+      pinned={pinned}
+      onOpen={onOpen}
+      onPin={onPin}
+      onContextMenu={contextMenu}
+      // Secret-import drops require a *different* account; attach drops (which
+      // the shared pill derives from the active drag's attachTargets) require
+      // the *same* account.
+      droppable={!!acceptsSecretImport || !!sshHost}
+      droppableId={`sidebar-resource:${resource.id}`}
+    />
   );
 }

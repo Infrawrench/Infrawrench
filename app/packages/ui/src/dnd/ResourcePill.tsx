@@ -9,6 +9,13 @@ export interface ResourcePillProps {
   pinned?: boolean | undefined;
   onOpen: () => void;
   onPin?: (() => void) | undefined;
+  /**
+   * Right-click handler for the pill's main button (desktop's SSH / metrics
+   * context menu). Also reachable by keyboard — the ContextMenu key or
+   * Shift+F10 opens it anchored to the pill.
+   */
+  onContextMenu?:
+    ((e: { preventDefault: () => void; clientX: number; clientY: number }) => void) | undefined;
   /** Extra data attached to the dnd-kit draggable (e.g. workspaceTabTarget) */
   extraDragData?: Record<string, unknown> | undefined;
   /** Accept drops (for secret import / SSH tunnel on desktop) */
@@ -24,6 +31,7 @@ export function ResourcePill({
   pinned,
   onOpen,
   onPin,
+  onContextMenu,
   extraDragData,
   droppable,
   droppableId,
@@ -93,8 +101,16 @@ export function ResourcePill({
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
               onOpen();
+              return;
+            }
+            // Keyboard equivalent of right-click: open the context menu at the pill.
+            if (onContextMenu && (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))) {
+              e.preventDefault();
+              const rect = e.currentTarget.getBoundingClientRect();
+              onContextMenu({ preventDefault: () => {}, clientX: rect.left, clientY: rect.bottom });
             }
           }}
+          onContextMenu={onContextMenu}
           className="flex items-center gap-2 min-w-0 pl-3 py-1.5 text-left cursor-grab active:cursor-grabbing"
         >
           <span className="text-sm font-medium text-on-surface-secondary leading-none">
