@@ -33,7 +33,7 @@ const PRIMARY_BUTTON =
 const SECONDARY_BUTTON =
   "px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors";
 const DANGER_BUTTON =
-  "px-3 py-1.5 text-sm font-medium border border-red-500/40 text-red-300 hover:bg-red-500/10 disabled:opacity-50 rounded-lg transition-colors";
+  "px-3 py-1.5 text-sm font-medium border border-red-500/40 text-danger hover:bg-red-500/10 disabled:opacity-50 rounded-lg transition-colors";
 
 interface SharedConsolePanelProps {
   orgId: string;
@@ -195,7 +195,7 @@ export function SharedConsolePanel({
             </p>
 
             {error && (
-              <p className="text-xs text-red-300 border border-red-500/30 bg-red-500/10 rounded-lg p-2">
+              <p className="text-xs text-danger border border-red-500/30 bg-red-500/10 rounded-lg p-2">
                 {error}
               </p>
             )}
@@ -303,7 +303,7 @@ export function SharedConsolePanel({
                         <RoleBadge role={p.role} />
                         {p.driverRequestedAt && p.role !== "driver" && (
                           <span
-                            className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300"
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-warning"
                             title="They have asked for the keyboard"
                           >
                             asked
@@ -316,7 +316,7 @@ export function SharedConsolePanel({
                               type="button"
                               onClick={() => handover(p.id)}
                               disabled={busy}
-                              className="text-[11px] text-blue-300 hover:text-blue-200 disabled:opacity-50"
+                              className="text-[11px] text-info hover:text-info-strong disabled:opacity-50"
                             >
                               give keyboard
                             </button>
@@ -326,7 +326,7 @@ export function SharedConsolePanel({
                             type="button"
                             onClick={() => removeParticipant(p.id)}
                             disabled={busy}
-                            className="text-[11px] text-red-300 hover:text-red-200 disabled:opacity-50"
+                            className="text-[11px] text-danger hover:text-danger-strong disabled:opacity-50"
                           >
                             remove
                           </button>
@@ -374,7 +374,7 @@ export function SharedConsolePanel({
 export function RoleBadge({ role }: { role: "observer" | "driver" }) {
   return role === "driver" ? (
     <span
-      className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/15 text-green-300"
+      className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/15 text-success"
       title="Holds the keyboard. Everyone else's keystrokes are dropped by the server."
     >
       driver
