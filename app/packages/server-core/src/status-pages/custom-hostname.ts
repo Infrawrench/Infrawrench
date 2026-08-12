@@ -384,7 +384,6 @@ export async function attachCustomHostname(
             `Custom hostname attach left an orphan that could not be recorded for retry. ` +
               `Manually delete Cloudflare custom hostname ${ch.id} (${hostname}). ` +
               `Cleanup error: ${cleanupMsg}. Persist error: ${persistMsg}.`,
-            500,
           );
         }
       }
