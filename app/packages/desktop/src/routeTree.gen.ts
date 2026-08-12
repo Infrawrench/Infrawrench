@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AccessReviewRouteImport } from './routes/access-review'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as ChangesRouteImport } from './routes/changes'
 import { Route as ChatRouteImport } from './routes/chat'
@@ -39,6 +40,11 @@ import { Route as ResourceAccountIdResourceIdRouteImport } from './routes/resour
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccessReviewRoute = AccessReviewRouteImport.update({
+  id: '/access-review',
+  path: '/access-review',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentsRoute = AgentsRouteImport.update({
@@ -170,6 +176,7 @@ const ResourceAccountIdResourceIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/access-review': typeof AccessReviewRoute
   '/agents': typeof AgentsRoute
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
@@ -198,6 +205,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/access-review': typeof AccessReviewRoute
   '/agents': typeof AgentsRoute
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
@@ -227,6 +235,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/access-review': typeof AccessReviewRoute
   '/agents': typeof AgentsRoute
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
@@ -257,6 +266,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/access-review'
     | '/agents'
     | '/changes'
     | '/chat'
@@ -285,6 +295,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/access-review'
     | '/agents'
     | '/changes'
     | '/chat'
@@ -313,6 +324,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/access-review'
     | '/agents'
     | '/changes'
     | '/chat'
@@ -342,6 +354,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AccessReviewRoute: typeof AccessReviewRoute
   AgentsRoute: typeof AgentsRoute
   ChangesRoute: typeof ChangesRoute
   ChatRoute: typeof ChatRoute
@@ -376,6 +389,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/access-review': {
+      id: '/access-review'
+      path: '/access-review'
+      fullPath: '/access-review'
+      preLoaderRoute: typeof AccessReviewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agents': {
@@ -558,6 +578,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccessReviewRoute: AccessReviewRoute,
   AgentsRoute: AgentsRoute,
   ChangesRoute: ChangesRoute,
   ChatRoute: ChatRoute,

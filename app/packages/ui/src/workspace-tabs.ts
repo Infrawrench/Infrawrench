@@ -45,6 +45,15 @@ export function postureTabTarget(): WorkspaceTabTarget {
   return { kind: "posture" };
 }
 
+/**
+ * The cross-cloud access review — the principals inside the customer's clouds.
+ * A single-instance tab like Posture: the staleness window is a control on the
+ * page, not part of the tab's identity.
+ */
+export function accessReviewTabTarget(): WorkspaceTabTarget {
+  return { kind: "access-review" };
+}
+
 export function dnsTabTarget(): WorkspaceTabTarget {
   return { kind: "dns" };
 }

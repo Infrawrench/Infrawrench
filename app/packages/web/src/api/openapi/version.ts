@@ -44,4 +44,8 @@
 // notes, the joined timeline and the postmortem export), the `incidents` tab
 // kind on TabTarget, the `incidentAlerts` routing trigger, and `notices` on the
 // public status-page payload. All additive.
-export const API_VERSION = "1.15.0";
+// 1.16.0: the cross-cloud access review — the principals inside the customer's
+// clouds (IAM users and roles, service accounts, app registrations, bindings,
+// long-lived keys). Four new routes, a CSV/JSON evidence export, and a new
+// "access-review" member on the workspace TabTarget enum. All additive.
+export const API_VERSION = "1.16.0";

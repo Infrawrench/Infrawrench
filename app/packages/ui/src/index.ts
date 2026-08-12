@@ -335,6 +335,7 @@ export {
   changesTabTarget,
   expiringTabTarget,
   postureTabTarget,
+  accessReviewTabTarget,
   dnsTabTarget,
   environmentDiffTabTarget,
   sshFanoutTabTarget,
@@ -689,7 +690,55 @@ export type {
 } from "@infrawrench/client-core";
 export { PostureSection } from "./posture/PostureSection.js";
 export type { PostureSectionProps } from "./posture/PostureSection.js";
+
+/**
+ * Cross-cloud access review — the principals inside the *customer's* clouds,
+ * not Infrawrench's own team roles and not the credentials Infrawrench holds.
+ * The pure contract lives in `@infrawrench/client-core`; re-exported here
+ * because web and desktop import it from `ui`.
+ */
+export {
+  computeAccessReview,
+  collectAccessPrincipals,
+  accessFindingKey,
+  accessReviewToCsv,
+  alertableAccessFindings,
+  dismissAccessFinding,
+  emptyAccessReview,
+  fetchAccessReview,
+  normalizeStaleDays,
+  restoreAccessFinding,
+  ACCESS_REVIEW_RULE_IDS,
+  ACCESS_REVIEW_SEVERITIES,
+  ACCESS_REVIEW_SEVERITY_LABELS,
+  ACCESS_REVIEW_STALE_DAYS_MAX,
+  ACCESS_REVIEW_STALE_DAYS_MIN,
+  ACCESS_REVIEW_STALE_DAY_OPTIONS,
+  DEFAULT_ACCESS_REVIEW_STALE_DAYS,
+  PRINCIPAL_ROLE_LABELS,
+} from "@infrawrench/client-core";
+export type {
+  AccessFinding,
+  AccessPrincipal,
+  AccessReviewDismissal,
+  AccessReviewDismissInput,
+  AccessReviewResponse,
+  AccessReviewRuleId,
+  AccessReviewSeverity,
+  AccessScanAccount,
+  AccessScanInput,
+  AccessScanPlugin,
+  AccessScanResource,
+  AccessScanResourceType,
+  DismissedAccessFinding,
+  PrincipalActivity,
+  PrincipalRole,
+  PrincipalRoleDeclaration,
+} from "@infrawrench/client-core";
+export { AccessReviewSection } from "./access-review/AccessReviewSection.js";
+export type { AccessReviewSectionProps } from "./access-review/AccessReviewSection.js";
 export { PostureIcon } from "./components/icons/PostureIcon.js";
+export { AccessReviewIcon } from "./components/icons/AccessReviewIcon.js";
 export {
   DNS_CLASSIFICATION_LABELS,
   computeDnsInventory,

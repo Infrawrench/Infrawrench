@@ -5,6 +5,7 @@ import {
   costReportsTabTarget,
   invoicesTabTarget,
   postureTabTarget,
+  accessReviewTabTarget,
   environmentDiffTabTarget,
   probesTabTarget,
   incidentsTabTarget,
@@ -31,6 +32,10 @@ describe("tab target factories", () => {
 
   it("postureTabTarget", () => {
     expect(postureTabTarget()).toEqual({ kind: "posture" });
+  });
+
+  it("accessReviewTabTarget", () => {
+    expect(accessReviewTabTarget()).toEqual({ kind: "access-review" });
   });
 
   it("environmentDiffTabTarget carries the pair when given, and omits it otherwise", () => {

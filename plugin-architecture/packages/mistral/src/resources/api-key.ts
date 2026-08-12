@@ -32,6 +32,12 @@ export const MistralApiKeyResourceType = rt({
   expiryFields: [
     { fieldKey: "expirationDate", from: "expiry", kind: "api-token", label: "Key expires" },
   ],
+  principalRole: {
+    role: "key",
+    lastUsedKey: "lastUsed",
+    createdKey: "createdAt",
+    parentKey: "createdBy",
+  },
   supportsDelete: true,
   iconKey: "key",
 });

@@ -139,6 +139,21 @@ export type {
   PostureCategory,
 } from "./posture.js";
 
+// Principals — the identities inside the *customer's* clouds (IAM users and
+// roles, service accounts, app registrations, bindings, long-lived keys). The
+// workspace-wide review lives in `@infrawrench/client-core`
+// (`computeAccessReview`); this is only the declaration and its defaults.
+export {
+  resolvePrincipalKeys,
+  DEFAULT_PRINCIPAL_LAST_USED_KEY,
+  DEFAULT_PRINCIPAL_CREATED_KEY,
+} from "./principal.js";
+export type {
+  PrincipalRole,
+  PrincipalRoleDeclaration,
+  ResolvedPrincipalKeys,
+} from "./principal.js";
+
 // Orphan aggregation — the host-side scan over already-stored resources, plus
 // the shape every surface renders. Shared so the web server, the desktop app
 // and the CLI classify a workspace identically.

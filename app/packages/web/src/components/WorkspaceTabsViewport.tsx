@@ -48,6 +48,7 @@ import { LogWorkspacePanel, type LogWorkspaceClient } from "@infrawrench/ui";
 import { WebChangesPanel } from "./WebChangesPanel";
 import { WebExpiryPanel } from "./WebExpiryPanel";
 import { WebPosturePanel } from "./WebPosturePanel";
+import { WebAccessReviewPanel } from "./WebAccessReviewPanel";
 import { WebDnsPanel } from "./WebDnsPanel";
 import { WebEnvironmentDiffPanel } from "./WebEnvironmentDiffPanel";
 import { WebMetricAlertsPanel } from "./WebMetricAlertsPanel";
@@ -401,6 +402,27 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
                   finding.resourceId,
                   finding.pluginId,
                   finding.resourceTypeId,
+                ),
+              ),
+            )
+          }
+        />
+      );
+    case "access-review":
+      return (
+        <WebAccessReviewPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's principals.
+          key={orgId}
+          orgId={orgId}
+          openResource={(principal) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                resourceTabTarget(
+                  principal.accountId,
+                  principal.resourceId,
+                  principal.pluginId,
+                  principal.resourceTypeId,
                 ),
               ),
             )

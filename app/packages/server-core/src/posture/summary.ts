@@ -13,6 +13,7 @@
  * rest collapsed into a trailing count.
  */
 import type { PostureFinding, PostureSeverity } from "@infrawrench/client-core";
+import { escapeMrkdwnFragment } from "../slack-escape";
 
 /** Hard ceiling on individual findings named in the message body. */
 export const MAX_LISTED_FINDINGS = 8;
@@ -68,9 +69,20 @@ export function postureTitle(summary: PostureAlertSummary): string {
   return `Posture checks: ${plural(summary.total, "high-severity finding")}`;
 }
 
-/** `"<name> — <title> (critical)"`. */
-export function postureFindingLine(finding: PostureFinding): string {
-  return `${finding.displayName} — ${finding.title} (${finding.severity})`;
+/**
+ * `"<name> — <title> (critical)"`.
+ *
+ * `displayName` is synced from the customer's cloud, so a transport that
+ * interprets markup has to be handed an `escape` that neutralises it — a
+ * resource called `~assets~` would otherwise render struck through, which is
+ * what "already dealt with" looks like. The default is identity, for the
+ * plain-text transports.
+ */
+export function postureFindingLine(
+  finding: PostureFinding,
+  escape: (s: string) => string = (s) => s,
+): string {
+  return `${escape(finding.displayName)} — ${finding.title} (${finding.severity})`;
 }
 
 function countsLine(summary: PostureAlertSummary): string {
@@ -84,14 +96,18 @@ function countsLine(summary: PostureAlertSummary): string {
  * Card escaper turns `*` into a literal asterisk, so Teams must not receive
  * mrkdwn).
  */
-export function postureLines(summary: PostureAlertSummary, bold: (s: string) => string): string[] {
+export function postureLines(
+  summary: PostureAlertSummary,
+  bold: (s: string) => string,
+  escape: (s: string) => string = (s) => s,
+): string[] {
   const lines: string[] = [
     `${bold(plural(summary.total, "security finding"))} on synced resources`,
     countsLine(summary),
   ];
   if (summary.findings.length > 0) {
     lines.push("");
-    for (const finding of summary.findings) lines.push(`• ${postureFindingLine(finding)}`);
+    for (const finding of summary.findings) lines.push(`• ${postureFindingLine(finding, escape)}`);
   }
   if (summary.omitted > 0) {
     lines.push(`…and ${plural(summary.omitted, "more finding")} on the posture screen`);
@@ -101,7 +117,7 @@ export function postureLines(summary: PostureAlertSummary, bold: (s: string) => 
 
 /** Slack mrkdwn body. `slack.ts` escapes `&<>` and leaves `*bold*` intact. */
 export function formatPostureSlackBody(summary: PostureAlertSummary): string {
-  return postureLines(summary, (s) => `*${s}*`).join("\n");
+  return postureLines(summary, (s) => `*${s}*`, escapeMrkdwnFragment).join("\n");
 }
 
 /** Teams plain-text body — the Adaptive Card escaper strips markdown anyway. */

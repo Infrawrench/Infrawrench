@@ -18,6 +18,9 @@ export const DirectoryGroupResourceType = rt({
     f("createdAt", "Created", { required: false, editable: false }),
   ],
   outputs: [o("directoryGroupId", "Directory Group ID")],
+  // Groups grant through membership, so they belong on the review even though
+  // the IdP mirror carries nothing but a creation date.
+  principalRole: { role: "group", createdKey: "createdAt", parentKey: "directoryId" },
   parentTypeId: "directory",
   supportsDelete: false,
   iconKey: "group",

@@ -25,5 +25,8 @@ export const ApiKeyResourceType = rt({
     f("createdAt", "Created", { required: false }),
   ],
   outputs: [o("apiKeyId", "API Key ID"), o("apiKeyName", "API Key Name")],
+  // Metadata only: the list endpoint returns a creation date and nothing about
+  // use, so the review reports the key's age and leaves activity unknown.
+  principalRole: { role: "key", createdKey: "createdAt" },
   iconKey: "key",
 });

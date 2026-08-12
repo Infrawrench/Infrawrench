@@ -16,6 +16,9 @@ export const NeonRoleResourceType = rt({
     { fieldKey: "projectId", targetTypeId: "neon-project", label: "in project" },
     { fieldKey: "branchId", targetTypeId: "neon-branch", label: "on branch" },
   ],
+  // A Postgres role on a branch. Neon's roles list carries no timestamps and
+  // no grants, so this is inventory plus ownership.
+  principalRole: { role: "user", parentKey: "branchId" },
   parentTypeId: "neon-branch",
   supportsCreate: true,
   iconKey: "neon",

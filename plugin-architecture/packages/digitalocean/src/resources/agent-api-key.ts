@@ -24,6 +24,11 @@ export const AgentApiKeyResourceType = rt({
   // The lister records the owning agent uuid; an agent's externalId is that
   // same uuid.
   dependsOn: [{ fieldKey: "agentUuid", targetTypeId: "gen-ai-agent", label: "key for" }],
+  // A bearer token for one agent. DO returns no timestamps for these, so the
+  // review inventories them and asks who owns them. The plugin's "regenerate"
+  // handler is a rotation, not a revocation (and no header action declares
+  // it), so no `revokeActionId`.
+  principalRole: { role: "key", parentKey: "createdBy" },
   parentTypeId: "gen-ai-agent",
   showInSidebar: false,
   supportsCreate: true,

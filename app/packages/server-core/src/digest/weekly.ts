@@ -46,6 +46,7 @@ import { listExpiring } from "../expiry/feed";
 import { MAX_RESOURCES_PER_PROJECTION, projectMonthlySpend } from "../cost/estimate";
 import { listPosture } from "../posture/feed";
 import { getQuotaFeed } from "../quotas/feed";
+import { listAccessReview } from "../access-review/feed";
 import { routeAlert } from "../alerts/route";
 import { isEmailConfigured, sendEmails, type EmailMessage } from "../email";
 import { generateDigestNarrative } from "./narrative";
@@ -176,6 +177,7 @@ export async function buildWeeklyDigest(
     expiringSoon,
     postureCounts,
     quotasAtRisk,
+    accessCounts,
   ] = await Promise.all([
     db
       .select({ count })
@@ -255,6 +257,19 @@ export async function buildWeeklyDigest(
         console.error(`[quotas] digest feed for org ${organizationId} failed:`, err);
         return 0;
       }),
+    // Open access-review findings on the customer's cloud principals — a
+    // separate line from Posture because it is a separate question ("who can
+    // get in?" rather than "what is exposed?"). Same point-in-time headcount
+    // and the same defensive catch.
+    listAccessReview(organizationId)
+      .then((review) => ({
+        total: review.totalCount,
+        severe: review.counts.critical + review.counts.high,
+      }))
+      .catch((err) => {
+        console.error(`[access-review] digest feed for org ${organizationId} failed:`, err);
+        return { total: 0, severe: 0 };
+      }),
   ]);
 
   return composeWeeklyDigest({
@@ -270,6 +285,8 @@ export async function buildWeeklyDigest(
     postureCritical: postureCounts.critical,
     postureHigh: postureCounts.high,
     quotasAtRisk,
+    accessFindings: accessCounts.total,
+    accessFindingsSevere: accessCounts.severe,
     projection: await buildProjection(organizationId, fromDate, toDatePlusOne),
   });
 }

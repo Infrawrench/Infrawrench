@@ -54,6 +54,15 @@ export const ProjectApiKeyResourceType = rt({
       maxAgeDays: 180,
     },
   ],
+  // `lastUsedAt` is a genuine last-request timestamp, and the rotation budget
+  // above is what the access review reads for "past its rotation age" — it
+  // does not keep a budget of its own.
+  principalRole: {
+    role: "key",
+    lastUsedKey: "lastUsedAt",
+    createdKey: "createdAt",
+    parentKey: "ownerName",
+  },
   parentTypeId: "project",
   showInSidebar: true,
   iconKey: "key",

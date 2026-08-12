@@ -13,6 +13,7 @@ import {
   DeployIcon,
   ExpiryIcon,
   PostureIcon,
+  AccessReviewIcon,
   DomainsIcon,
   EnvironmentDiffIcon,
   FanoutIcon,
@@ -40,6 +41,7 @@ import {
   dashboardTabTarget,
   deploymentsTabTarget,
   dnsTabTarget,
+  accessReviewTabTarget,
   environmentDiffTabTarget,
   workflowsTabTarget,
   navigateToWorkspaceTarget,
@@ -262,6 +264,20 @@ export function SidebarDashboards() {
             label: "Changes",
             icon: <ChangesIcon />,
             onClick: () => void navigate({ to: "/changes" }),
+          },
+          // Cloud-only, unlike Posture next to it: the review joins the org's
+          // resource-ownership records and the shared dismissal store, neither
+          // of which local mode has, and answering "unowned" for every
+          // principal would describe the desktop app rather than the clouds.
+          // A workspace-tab kind, so the strip stays in sync with the panel.
+          {
+            key: "access-review",
+            label: "Access review",
+            icon: <AccessReviewIcon />,
+            onClick: () =>
+              void navigateToWorkspaceTarget(navigate, accessReviewTabTarget(), {
+                label: "Access review",
+              }),
           },
           // Cloud-only like Changes: probes run in the cloud poller through
           // the egress proxy, and results live in the cloud metric store.

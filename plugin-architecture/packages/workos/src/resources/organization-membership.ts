@@ -34,6 +34,19 @@ export const OrganizationMembershipResourceType = rt({
   ],
   outputs: [o("membershipId", "Membership ID")],
   dependsOn: [{ fieldKey: "userId", targetTypeId: "user", label: "member" }],
+  // The grant itself: which user holds which role in which organization. The
+  // "Deactivate" header action is already a plugin-action, so the access
+  // review's Revoke button rides the ordinary invoke-action path rather than
+  // any bespoke call. `role` is a single slug, so matching the whole value is
+  // exact.
+  principalRole: {
+    role: "binding",
+    createdKey: "createdAt",
+    adminIndicatorKey: "role",
+    adminValues: ["admin", "owner"],
+    parentKey: "userEmail",
+    revokeActionId: "deactivate",
+  },
   parentTypeId: "organization",
   showInSidebar: true,
   supportsCreate: true,

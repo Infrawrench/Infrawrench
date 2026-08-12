@@ -14,6 +14,10 @@ export const ManagedIdentityResourceType = rt({
   dependsOn: [
     { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
   ],
+  // ARM returns no timestamps and no role assignments for user-assigned
+  // identities, so the review lists them and joins ownership; everything else
+  // reads as unknown.
+  principalRole: { role: "service-account" },
   iconKey: "user",
   supportsCreate: true,
   attachTargets: [

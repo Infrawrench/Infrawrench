@@ -83,6 +83,10 @@ describe("getWorkspaceTabId", () => {
   it("returns the singleton id for the posture target", () => {
     expect(getWorkspaceTabId({ kind: "posture" })).toBe("posture");
   });
+
+  it("returns the singleton id for the access review target", () => {
+    expect(getWorkspaceTabId({ kind: "access-review" })).toBe("access-review");
+  });
 });
 
 describe("environment diff tab kind", () => {
@@ -206,6 +210,10 @@ describe("getWorkspaceTabFallbackTitle", () => {
   it("returns 'Posture' for the posture target, matching the sidebar tile", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "posture" })).toBe("Posture");
   });
+
+  it("returns 'Access review' for the access review target, matching the sidebar tile", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "access-review" })).toBe("Access review");
+  });
 });
 
 describe("workspaceTabTargetsEqual", () => {
@@ -298,5 +306,17 @@ describe("workspaceTabTargetsEqual", () => {
 
   it("treats two posture targets as equal (singleton tab)", () => {
     expect(workspaceTabTargetsEqual({ kind: "posture" }, { kind: "posture" })).toBe(true);
+  });
+
+  it("treats two access review targets as equal (singleton tab)", () => {
+    expect(workspaceTabTargetsEqual({ kind: "access-review" }, { kind: "access-review" })).toBe(
+      true,
+    );
+  });
+
+  // Different kinds must never collapse: Posture and Access review sit next to
+  // each other in the sidebar and answer different questions.
+  it("never equates the access review with posture", () => {
+    expect(workspaceTabTargetsEqual({ kind: "access-review" }, { kind: "posture" })).toBe(false);
   });
 });

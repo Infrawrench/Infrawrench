@@ -34,6 +34,16 @@ export const ApiKeyResourceType = rt({
   expiryFields: [
     { fieldKey: "expiresAt", from: "expiry", kind: "api-token", label: "Key expires" },
   ],
+  // "Deactivate key" is already a plugin-action and is genuinely a revocation
+  // rather than a delete (Anthropic has no delete endpoint), so it is exactly
+  // what the review's Revoke button should dispatch. No last-used: the Admin
+  // API reports none.
+  principalRole: {
+    role: "key",
+    createdKey: "createdAt",
+    parentKey: "principalId",
+    revokeActionId: "deactivate-key",
+  },
   parentTypeId: "workspace",
   showInSidebar: true,
   supportsCreate: false,

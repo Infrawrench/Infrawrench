@@ -19,6 +19,13 @@ export const ServiceAccountResourceType = rt({
         "Creates a new JSON credentials file on resolve. Contents match the standard Google application credentials format (gcloud, ADC, client libraries). Each resolve creates a fresh key — old keys keep working until rotated.",
     }),
   ],
+  // The IAM serviceAccounts.list response carries no creation date, no last
+  // authentication and no role bindings, so this declares the role and nothing
+  // else: the review lists the account, joins its recorded owner, and says
+  // "unknown" about everything it cannot see. Key age would need
+  // serviceAccounts.keys.list per account — an extra call this contract
+  // forbids.
+  principalRole: { role: "service-account" },
   supportsCreate: true,
   credentialFormats: [
     {

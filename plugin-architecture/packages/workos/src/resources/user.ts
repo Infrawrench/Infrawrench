@@ -29,6 +29,10 @@ export const UserResourceType = rt({
     }),
     o("email", "Email"),
   ],
+  // `lastSignInAt` is a real sign-in, which is the strongest activity evidence
+  // any principal type in the repo has. No `mfaKey`: the User Management list
+  // response says nothing about enrolled factors.
+  principalRole: { role: "user", lastUsedKey: "lastSignInAt", createdKey: "createdAt" },
   supportsCreate: true,
   supportsUpdate: true,
   supportsDelete: true,

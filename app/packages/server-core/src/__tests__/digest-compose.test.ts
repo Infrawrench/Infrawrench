@@ -65,6 +65,8 @@ function input(overrides: Partial<DigestInput> = {}): DigestInput {
     postureCritical: 0,
     postureHigh: 0,
     quotasAtRisk: 0,
+    accessFindings: 0,
+    accessFindingsSevere: 0,
     ...overrides,
   };
 }

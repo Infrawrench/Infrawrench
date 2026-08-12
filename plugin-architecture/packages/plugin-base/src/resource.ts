@@ -1,6 +1,7 @@
 import type { PeerGuidanceAction } from "./schema.js";
 import type { AssociationSource } from "./create.js";
 import type { PostureCheckRule, PostureSeverity } from "./posture.js";
+import type { PrincipalRoleDeclaration } from "./principal.js";
 
 export type { AssociationSource };
 
@@ -775,6 +776,18 @@ export interface ResourceTypeDefinition {
    * flagged as oversized.
    */
   rightsizing?: RightsizingDeclaration;
+  /**
+   * Marks this type as an identity principal inside the customer's cloud — an
+   * IAM user or role, a service account, an app registration, a role binding,
+   * a long-lived API key — and names the already-synced fields the
+   * cross-cloud access review reads; see {@link PrincipalRoleDeclaration}.
+   * Absent = instances never appear on the access review.
+   *
+   * This is about the principals in *your provider accounts*, not about
+   * Infrawrench's own team roles and not about the credentials Infrawrench
+   * stores for you.
+   */
+  principalRole?: PrincipalRoleDeclaration;
 }
 
 /** One predicate inside an {@link OrphanRule}. All conditions must hold. */

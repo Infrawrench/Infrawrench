@@ -482,6 +482,118 @@ describe("rightsizing declarations", () => {
   });
 });
 
+/**
+ * The access review's declaration, validated for the same silent-failure class
+ * as its siblings — but with one asymmetry worth stating out loud.
+ *
+ * An *explicitly declared* key that names no field is a typo: the author meant
+ * to read something and reads nothing. A *defaulted* key that resolves to no
+ * field is fine, and common: it simply means the provider does not tell us
+ * when the principal was last used, which the review reports as `unknown` and
+ * never as stale. So only explicit keys are checked.
+ */
+describe("principalRole declarations", () => {
+  it("name fields the type actually declares", async () => {
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const p = type.principalRole;
+        if (!p) continue;
+        // Only the explicitly declared keys — a defaulted one that resolves to
+        // nothing is the documented "we have no evidence" case.
+        for (const key of [
+          p.lastUsedKey,
+          p.createdKey,
+          p.adminIndicatorKey,
+          p.parentKey,
+          p.mfaKey,
+        ]) {
+          if (key === undefined) continue;
+          if (!type.fields.some((f) => f.key === key)) {
+            suspicious.push(`${plugin.manifest.id}/${type.id}.${key}`);
+          }
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+  });
+
+  it("only set adminValues alongside an adminIndicatorKey", async () => {
+    const loaded = await loader.loadPlugins();
+    const bad: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const p = type.principalRole;
+        if (!p) continue;
+        if (p.adminValues !== undefined && p.adminIndicatorKey === undefined) {
+          bad.push(`${plugin.manifest.id}/${type.id}`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("only put mfaKey on user principals", async () => {
+    const loaded = await loader.loadPlugins();
+    const bad: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const p = type.principalRole;
+        if (!p) continue;
+        if (p.mfaKey !== undefined && p.role !== "user") {
+          bad.push(`${plugin.manifest.id}/${type.id}`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  /**
+   * The Revoke button dispatches `revokeActionId` through the ordinary
+   * invoke-action path, so a typo'd id fails at the provider mid-review with a
+   * message nobody can act on. Nothing else checks these strings.
+   */
+  it("name a revoke action the plugin's detail view actually offers", async () => {
+    const loaded = await loader.loadPlugins();
+    const declared: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const actionId = type.principalRole?.revokeActionId;
+        if (actionId) declared.push(`${plugin.manifest.id}/${type.id}:${actionId}`);
+      }
+    }
+    // Both are `{ type: "plugin-action" }` header actions their plugin's
+    // `invokeAction` already handles, and both revoke rather than delete.
+    expect(declared.sort()).toEqual([
+      "anthropic/api-key:deactivate-key",
+      "workos/organization-membership:deactivate",
+    ]);
+  });
+
+  /**
+   * Access-review findings and posture findings share one dismissal store
+   * (`posture_dismissals`), keyed on `(organizationId, resourceId, ruleId)`.
+   * The namespaces stay disjoint because the review's rule ids all start
+   * `access-review:` — a plugin claiming that prefix would let one dismissal
+   * silence a finding on the other surface.
+   */
+  it("leave the access-review rule-id namespace to the access review", async () => {
+    const loaded = await loader.loadPlugins();
+    const collisions: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        for (const rule of type.postureChecks ?? []) {
+          if (rule.id.startsWith("access-review:")) {
+            collisions.push(`${plugin.manifest.id}/${type.id}/${rule.id}`);
+          }
+        }
+      }
+    }
+    expect(collisions).toEqual([]);
+  });
+});
+
 describe("getPlugin", () => {
   it("returns a loaded plugin by id", async () => {
     const p = await loader.getPlugin("aws");

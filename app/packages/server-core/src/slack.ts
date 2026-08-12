@@ -30,6 +30,7 @@ import type { SlackAvailableChannel } from "@infrawrench/client-core";
 import { db } from "./db/client";
 import { slackChannels, slackInstallations } from "./db/schema";
 import { buildAad, decrypt, encrypt } from "./encryption";
+import { escapeMrkdwn } from "./slack-escape";
 
 const SLACK_API = "https://slack.com/api";
 
@@ -570,14 +571,14 @@ function alertBlocks(alert: SlackAlert): { text: string; blocks: unknown[] } {
 }
 
 /**
- * Escape the three characters Slack treats as markup delimiters. Alert bodies
- * carry provider error text, so a stray `<` must not silently eat the rest of
- * the message as a malformed link. Exported for the approval-message updater,
- * which re-renders the same text after a decision.
+ * The escapers live in the database-free `slack-escape.ts` leaf so a module
+ * that only renders a message body does not have to import this file (and with
+ * it `db/client`). Re-exported here because this is where every existing
+ * caller — the approval-message updater, the inbound handler — imports them
+ * from, and one definition is the point.
  */
-export function escapeMrkdwn(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+export { escapeMrkdwnFragment } from "./slack-escape";
+export { escapeMrkdwn };
 
 interface TargetChannel {
   channelId: string;
