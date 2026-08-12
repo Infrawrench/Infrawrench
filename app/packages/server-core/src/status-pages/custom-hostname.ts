@@ -372,8 +372,10 @@ export async function attachCustomHostname(
 
   // Persist identifiers before activating the vanity host in KV so a crash
   // between these steps still leaves detach/delete enough state to revoke.
+  // Only fill an empty slot — a concurrent attach may have already won.
+  let recorded: boolean;
   try {
-    await persistHostnameFields(pageId, {
+    recorded = await persistHostnameRecoveryIfUnset(pageId, {
       customHostname: hostname,
       customHostnameStatus: mapped.status,
       cloudflareCustomHostnameId: ch.id,
@@ -395,24 +397,10 @@ export async function attachCustomHostname(
             `Manual revocation may be required.`,
         );
       }
-      // Persist may have failed for a transient reason — try to record ids for retry.
-      const recorded = await persistHostnameRecoveryIfUnset(pageId, {
-        customHostname: hostname,
-        customHostnameStatus: "error",
-        cloudflareCustomHostnameId: ch.id,
-        customHostnameError: cleanupMsg,
-        customHostnameVerification: verification,
-      }).catch(() => false);
-      if (!recorded) {
-        throw new StatusPageInputError(
-          `Failed to record custom hostname, and cleanup of Cloudflare custom hostname ` +
-            `${ch.id} (${hostname}) also failed. Manual revocation may be required. ` +
-            `Cleanup error: ${cleanupMsg}.`,
-        );
-      }
       throw new StatusPageInputError(
-        `Failed to record custom hostname; Cloudflare custom hostname ${ch.id} (${hostname}) ` +
-          `could not be deleted and was recorded for retry. Cleanup error: ${cleanupMsg}.`,
+        `Failed to record custom hostname, and cleanup of Cloudflare custom hostname ` +
+          `${ch.id} (${hostname}) also failed. Manual revocation may be required. ` +
+          `Cleanup error: ${cleanupMsg}.`,
       );
     }
     if (isUnique) {
@@ -420,29 +408,50 @@ export async function attachCustomHostname(
     }
     throw err;
   }
+  if (!recorded) {
+    try {
+      await deleteCfHostname(cfg, ch.id);
+    } catch (cleanupErr) {
+      const cleanupMsg = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+      throw new StatusPageInputError(
+        `This page already has a custom domain, and cleanup of Cloudflare custom hostname ` +
+          `${ch.id} (${hostname}) failed: ${cleanupMsg}. Manual revocation may be required.`,
+      );
+    }
+    throw new StatusPageInputError(
+      "This page already has a custom domain. Remove it before attaching another.",
+    );
+  }
 
   try {
     await kvPut(cfg, hostname, existing.slug);
   } catch (err) {
-    // Local identifiers exist — tear down external resources, then clear the row.
+    // Local identifiers exist — tear down external resources, then clear only
+    // our row (matched by Cloudflare id) so a concurrent attach is preserved.
     try {
       await removeCustomHostnameInfra(hostname, ch.id);
-      await persistHostnameFields(pageId, {
-        customHostname: null,
-        customHostnameStatus: "none",
-        cloudflareCustomHostnameId: null,
-        customHostnameError: null,
-        customHostnameVerification: null,
-      });
+      await db
+        .update(statusPages)
+        .set({
+          customHostname: null,
+          customHostnameStatus: "none",
+          cloudflareCustomHostnameId: null,
+          customHostnameError: null,
+          customHostnameVerification: null,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(statusPages.id, pageId), eq(statusPages.cloudflareCustomHostnameId, ch.id)));
     } catch (cleanupErr) {
       const cleanupMsg = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
-      await persistHostnameFields(pageId, {
-        customHostname: hostname,
-        customHostnameStatus: "error",
-        cloudflareCustomHostnameId: ch.id,
-        customHostnameError: cleanupMsg,
-        customHostnameVerification: verification,
-      }).catch(() => undefined);
+      await db
+        .update(statusPages)
+        .set({
+          customHostnameStatus: "error",
+          customHostnameError: cleanupMsg,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(statusPages.id, pageId), eq(statusPages.cloudflareCustomHostnameId, ch.id)))
+        .catch(() => undefined);
       throw new StatusPageInputError(
         `Failed to publish hostname mapping; Cloudflare custom hostname ${ch.id} (${hostname}) ` +
           `could not be fully cleaned up and remains recorded for retry. ` +
@@ -459,47 +468,57 @@ export async function refreshCustomHostname(
   organizationId: string,
   pageId: string,
 ): Promise<StatusPage> {
-  const existing = await getStatusPageWire(organizationId, pageId);
-  if (!existing) throw new StatusPageInputError("Status page not found", 404);
-  if (!existing.customHostname) {
-    throw new StatusPageInputError("This page has no custom domain to refresh");
-  }
-
   const cfg = requireConfig();
-  const meta = await readCfId(pageId);
-  if (!meta?.cfId) {
-    throw new StatusPageInputError(
-      "Custom domain is missing Cloudflare state — detach and re-attach",
-    );
-  }
 
-  const ch = await getCfHostname(cfg, meta.cfId);
-  const mapped = mapCfStatus(ch);
-  const verification = verificationFrom(cfg, ch);
+  // Serialize against slug rotation: read hostname + current slug under
+  // FOR UPDATE, refresh Cloudflare state, then KV-put that same slug before
+  // releasing so we cannot resurrect a retired public URL.
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({
+        customHostname: statusPages.customHostname,
+        cloudflareCustomHostnameId: statusPages.cloudflareCustomHostnameId,
+        slug: statusPages.slug,
+      })
+      .from(statusPages)
+      .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)))
+      .limit(1)
+      .for("update");
+    if (!row) throw new StatusPageInputError("Status page not found", 404);
+    if (!row.customHostname) {
+      throw new StatusPageInputError("This page has no custom domain to refresh");
+    }
+    if (!row.cloudflareCustomHostnameId) {
+      throw new StatusPageInputError(
+        "Custom domain is missing Cloudflare state — detach and re-attach",
+      );
+    }
 
-  // Keep KV fresh in case a prior write failed.
-  await kvPut(cfg, existing.customHostname, meta.slug);
+    const ch = await getCfHostname(cfg, row.cloudflareCustomHostnameId);
+    const mapped = mapCfStatus(ch);
+    const verification = verificationFrom(cfg, ch);
 
-  await persistHostnameFields(pageId, {
-    customHostname: existing.customHostname,
-    // verification_errors while still pending ("does not CNAME…") are expected
-    // progress messages — keep pending_dns / pending_ssl, not error.
-    customHostnameStatus: mapped.status,
-    cloudflareCustomHostnameId: meta.cfId,
-    customHostnameError: mapped.error,
-    customHostnameVerification: verification,
+    await kvPut(cfg, row.customHostname, row.slug);
+
+    const status =
+      ch.status === "deleted" || ch.status === "moved" ? ("error" as const) : mapped.status;
+    const error =
+      ch.status === "deleted" || ch.status === "moved"
+        ? (mapped.error ?? `Cloudflare status: ${ch.status}`)
+        : mapped.error;
+
+    await tx
+      .update(statusPages)
+      .set({
+        customHostname: row.customHostname,
+        customHostnameStatus: status,
+        cloudflareCustomHostnameId: row.cloudflareCustomHostnameId,
+        customHostnameError: error,
+        customHostnameVerification: verification,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)));
   });
-
-  // If Cloudflare reports a hard failure state, mark error.
-  if (ch.status === "deleted" || ch.status === "moved") {
-    await persistHostnameFields(pageId, {
-      customHostname: existing.customHostname,
-      customHostnameStatus: "error",
-      cloudflareCustomHostnameId: meta.cfId,
-      customHostnameError: mapped.error ?? `Cloudflare status: ${ch.status}`,
-      customHostnameVerification: verification,
-    });
-  }
 
   return (await getStatusPageWire(organizationId, pageId))!;
 }
