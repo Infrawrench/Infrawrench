@@ -378,8 +378,8 @@ export async function rotateStatusPageSlugRecord(
     if (restore) {
       // Re-take the row lock around the slug check + KV rewind so a concurrent
       // rotation cannot commit between the read and the put.
-      await db
-        .transaction(async (tx) => {
+      try {
+        await db.transaction(async (tx) => {
           const [row] = await tx
             .select({ slug: statusPages.slug })
             .from(statusPages)
@@ -392,8 +392,16 @@ export async function rotateStatusPageSlugRecord(
             customHostname: restore.hostname,
             slug: restore.previousSlug,
           });
-        })
-        .catch(() => undefined);
+        });
+      } catch (restoreErr) {
+        const orig = err instanceof Error ? err.message : String(err);
+        const restoreMsg = restoreErr instanceof Error ? restoreErr.message : String(restoreErr);
+        throw new StatusPageInputError(
+          `Slug rotation failed and Workers KV could not be restored to ${restore.previousSlug} ` +
+            `for ${restore.hostname}. Manual KV repair may be required. ` +
+            `Rotation error: ${orig}. Restore error: ${restoreMsg}.`,
+        );
+      }
     }
     throw err;
   }

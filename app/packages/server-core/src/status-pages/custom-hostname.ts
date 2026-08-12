@@ -13,7 +13,7 @@
  *   STATUS_PAGE_CNAME_TARGET
  *   STATUS_PAGE_KV_NAMESPACE_ID
  */
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import {
   type StatusPage,
   type StatusPageCustomHostnameStatus,
@@ -252,6 +252,37 @@ async function persistHostnameFields(
     .where(eq(statusPages.id, pageId));
 }
 
+/**
+ * Recovery write after a failed attach — only fills an empty hostname slot so
+ * a concurrent successful attach cannot be overwritten.
+ *
+ * @returns true when this page accepted the recovery row.
+ */
+async function persistHostnameRecoveryIfUnset(
+  pageId: string,
+  fields: {
+    customHostname: string;
+    customHostnameStatus: StatusPageCustomHostnameStatus;
+    cloudflareCustomHostnameId: string;
+    customHostnameError: string | null;
+    customHostnameVerification: StatusPageHostnameVerification | null;
+  },
+): Promise<boolean> {
+  const updated = await db
+    .update(statusPages)
+    .set({
+      customHostname: fields.customHostname,
+      customHostnameStatus: fields.customHostnameStatus,
+      cloudflareCustomHostnameId: fields.cloudflareCustomHostnameId,
+      customHostnameError: fields.customHostnameError,
+      customHostnameVerification: fields.customHostnameVerification,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(statusPages.id, pageId), isNull(statusPages.customHostname)))
+    .returning({ id: statusPages.id });
+  return updated.length > 0;
+}
+
 /** Keep Workers KV in sync when the slug changes (hostname unchanged). */
 export async function syncCustomHostnameKvForPage(
   page: Pick<StatusPage, "customHostname" | "slug">,
@@ -349,14 +380,22 @@ export async function attachCustomHostname(
       // Record identifiers when possible so detach can finish revocation.
       const cleanupMsg = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
       try {
-        await persistHostnameFields(pageId, {
+        const recorded = await persistHostnameRecoveryIfUnset(pageId, {
           customHostname: hostname,
           customHostnameStatus: "error",
           cloudflareCustomHostnameId: ch.id,
           customHostnameError: cleanupMsg,
           customHostnameVerification: verification,
         });
+        if (!recorded) {
+          throw new StatusPageInputError(
+            `Failed to publish hostname mapping; Cloudflare custom hostname ${ch.id} (${hostname}) ` +
+              `could not be deleted, and another hostname is already stored on this page. ` +
+              `Manual revocation may be required. Cleanup error: ${cleanupMsg}.`,
+          );
+        }
       } catch (persistErr) {
+        if (persistErr instanceof StatusPageInputError) throw persistErr;
         const kvMsg = err instanceof Error ? err.message : String(err);
         const persistMsg = persistErr instanceof Error ? persistErr.message : String(persistErr);
         throw new StatusPageInputError(
@@ -391,7 +430,7 @@ export async function attachCustomHostname(
       // hostname is owned by another row) so detach can retry revocation.
       if (!isUnique) {
         try {
-          await persistHostnameFields(pageId, {
+          const recorded = await persistHostnameRecoveryIfUnset(pageId, {
             customHostname: hostname,
             customHostnameStatus: "error",
             cloudflareCustomHostnameId: ch.id,
@@ -401,7 +440,17 @@ export async function attachCustomHostname(
                 : "Failed to roll back custom hostname after attach",
             customHostnameVerification: verification,
           });
+          if (!recorded) {
+            const cleanupMsg =
+              cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+            throw new StatusPageInputError(
+              `Custom hostname attach left orphan Cloudflare custom hostname ${ch.id} (${hostname}); ` +
+                `another hostname is already stored on this page. Manual revocation may be required. ` +
+                `Cleanup error: ${cleanupMsg}.`,
+            );
+          }
         } catch (persistErr) {
+          if (persistErr instanceof StatusPageInputError) throw persistErr;
           // Last resort: surface the Cloudflare id in the error so ops can
           // revoke manually — swallowing here would leave an unrecoverable orphan.
           const cleanupMsg = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
