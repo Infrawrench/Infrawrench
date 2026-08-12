@@ -64,10 +64,10 @@ function entryTone(entry: IncidentTimelineEntry): string {
 export function IncidentTimelineView({ timeline, error, onRetry }: IncidentTimelineViewProps) {
   if (error) {
     return (
-      <p className="text-sm text-red-400">
+      <p className="text-sm text-danger">
         {error}{" "}
         {onRetry && (
-          <button type="button" onClick={onRetry} className="underline hover:text-red-300">
+          <button type="button" onClick={onRetry} className="underline hover:text-danger-strong">
             Retry
           </button>
         )}
@@ -133,7 +133,7 @@ export function IncidentTimelineView({ timeline, error, onRetry }: IncidentTimel
                       href={entry.link.url}
                       target="_blank"
                       rel="noreferrer noopener"
-                      className="text-[11px] text-blue-400 hover:underline"
+                      className="text-[11px] text-info hover:underline"
                     >
                       Open provider status page
                     </a>

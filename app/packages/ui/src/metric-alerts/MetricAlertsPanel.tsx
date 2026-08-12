@@ -262,7 +262,7 @@ export function MetricAlertsPanel({ client, onDeclareIncident }: MetricAlertsPan
                               startedAt: e.firedAt,
                             })
                           }
-                          className="px-2 py-1 rounded-lg text-xs text-red-400 hover:bg-surface-sunken transition-colors"
+                          className="px-2 py-1 rounded-lg text-xs text-danger hover:bg-surface-sunken transition-colors"
                         >
                           Declare incident
                         </button>

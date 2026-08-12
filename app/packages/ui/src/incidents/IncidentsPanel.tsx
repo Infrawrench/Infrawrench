@@ -46,9 +46,9 @@ function severityTone(severity: string): string {
 function statusTone(status: string): string {
   switch (status) {
     case "open":
-      return "text-red-400";
+      return "text-danger";
     case "mitigated":
-      return "text-amber-400";
+      return "text-warning";
     default:
       return "text-on-surface-faint";
   }
@@ -257,10 +257,10 @@ export function IncidentsPanel({
                   title={artifact.error ?? artifact.label ?? undefined}
                   className={`px-2 py-0.5 rounded-full text-[11px] ${
                     isIncidentArtifactFailure(artifact.status)
-                      ? "bg-red-500/15 text-red-400"
+                      ? "bg-red-500/15 text-danger"
                       : artifact.status === "closed"
                         ? "bg-surface-sunken text-on-surface-faint"
-                        : "bg-emerald-500/15 text-emerald-400"
+                        : "bg-emerald-500/15 text-success"
                   }`}
                 >
                   {artifactLabel(artifact.kind)} · {artifact.status}
@@ -269,7 +269,7 @@ export function IncidentsPanel({
             </div>
             {failed.length > 0 && (
               <div className="rounded-lg border border-red-500/40 bg-red-500/5 px-3 py-2">
-                <p className="text-xs text-red-300">
+                <p className="text-xs text-danger-strong">
                   {failed.length === 1 ? "One thing" : `${failed.length} things`} on this incident
                   needs attention:
                 </p>
@@ -411,7 +411,7 @@ export function IncidentsPanel({
           </p>
         )}
 
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
       </div>
     );
   }
@@ -461,9 +461,9 @@ export function IncidentsPanel({
       </div>
 
       {error && (
-        <p className="text-sm text-red-400">
+        <p className="text-sm text-danger">
           {error}{" "}
-          <button type="button" onClick={reload} className="underline hover:text-red-300">
+          <button type="button" onClick={reload} className="underline hover:text-danger-strong">
             Retry
           </button>
         </p>
@@ -503,7 +503,7 @@ export function IncidentsPanel({
                       {incidentStatusLabel(incident.status)}
                     </span>
                     {failedCount > 0 && (
-                      <span className="text-xs text-red-400">
+                      <span className="text-xs text-danger">
                         {failedCount} artefact{failedCount === 1 ? "" : "s"} need
                         {failedCount === 1 ? "s" : ""} attention
                       </span>

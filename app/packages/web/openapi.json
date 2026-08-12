@@ -24418,6 +24418,7 @@
           "postureAlerts",
           "probeAlerts",
           "quotaAlerts",
+          "incidentAlerts",
           "weeklyDigest"
         ],
         "description": "A kind of alert that can be routed."

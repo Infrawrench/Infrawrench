@@ -231,7 +231,7 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
                               : {}),
                           })
                         }
-                        className="shrink-0 px-2 py-1 rounded-lg text-xs text-red-400 hover:bg-surface-sunken transition-colors"
+                        className="shrink-0 px-2 py-1 rounded-lg text-xs text-danger hover:bg-surface-sunken transition-colors"
                       >
                         Declare incident
                       </button>
