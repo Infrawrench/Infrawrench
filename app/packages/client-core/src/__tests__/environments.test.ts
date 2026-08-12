@@ -11,6 +11,8 @@ import {
   classifyTeardownMember,
   expectedMemberDisplayName,
   instanceMayOwnLiveResources,
+  inventoryDisposition,
+  mayConcludeMemberDeleted,
   leaseDeadlineFor,
   leaseShouldBeCancelled,
   memberNeedsLeaseRepair,
@@ -28,6 +30,7 @@ import {
   type CaptureCreateField,
   type CaptureSourceResource,
   type EnvironmentInstanceStatus,
+  type InventoryDisposition,
   type EnvironmentTemplateMember,
 } from "../environments";
 
@@ -666,6 +669,34 @@ describe("attemptedPositionCeiling / classifyTeardownMember", () => {
     expect(classifyTeardownMember({ status: "pending", resourceId: null, position: 3 }, 2)).toBe(
       "unattempted",
     );
+  });
+});
+
+describe("inventoryDisposition / mayConcludeMemberDeleted", () => {
+  it("reads a live row as present", () => {
+    expect(inventoryDisposition({ deletedAt: null })).toBe("present");
+    expect(mayConcludeMemberDeleted("present")).toBe(false);
+  });
+
+  it("reads a soft-deleted row as confirmation, because we wrote it", () => {
+    expect(inventoryDisposition({ deletedAt: new Date() })).toBe("confirmed-gone");
+    expect(mayConcludeMemberDeleted("confirmed-gone")).toBe(true);
+  });
+
+  // Regression: reconciliation treated "not in the live-rows query" as proof
+  // the provider resource was gone and marked the member `deleted`, which is
+  // terminal — the member left lease repair and teardown permanently while the
+  // resource billed forever. A missing row is the *ordinary* state for a
+  // member whose upsert failed, which is the same failure that stranded it.
+  it("refuses to read a missing row as anything at all", () => {
+    expect(inventoryDisposition(null)).toBe("unknown");
+    expect(inventoryDisposition(undefined)).toBe("unknown");
+    expect(mayConcludeMemberDeleted("unknown")).toBe(false);
+  });
+
+  it("only ever confirms on the one positive fact", () => {
+    const all: InventoryDisposition[] = ["present", "confirmed-gone", "unknown"];
+    expect(all.filter(mayConcludeMemberDeleted)).toEqual(["confirmed-gone"]);
   });
 });
 

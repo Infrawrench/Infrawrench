@@ -772,6 +772,48 @@ export function attemptedPositionCeiling(
 }
 
 /**
+ * What our own inventory can and cannot tell us about a provider resource.
+ *
+ * - `present` — we hold a live row for it.
+ * - `confirmed-gone` — we hold a row that is **soft-deleted**, which is the
+ *   record of a deletion *we performed*. That is a positive fact.
+ * - `unknown` — we hold no row at all. **This is not evidence of anything.**
+ *
+ * The third variant is the whole point. A missing row is the *ordinary* state
+ * for a member whose bookkeeping failed — `markMemberCreated` runs before
+ * `upsertCreatedResource`, so a create that succeeded and then lost its upsert
+ * leaves exactly this. Reading it as "the resource is gone" is the mirror
+ * image of the ownership mistake made earlier in this module's history:
+ * absence of a local row was not proof a resource was *ours*, and it is not
+ * proof a resource is *gone* either. Only the provider can support that claim,
+ * by being asked.
+ *
+ * It matters because `deleted` is terminal: a member that reaches it leaves
+ * lease repair and teardown permanently, so an inference that lands there
+ * costs a resource that bills forever.
+ */
+export type InventoryDisposition = "present" | "confirmed-gone" | "unknown";
+
+export function inventoryDisposition(
+  row: { deletedAt: Date | string | null } | null | undefined,
+): InventoryDisposition {
+  if (!row) return "unknown";
+  return row.deletedAt === null ? "present" : "confirmed-gone";
+}
+
+/**
+ * May a member holding a recorded `resource_id` be marked `deleted`?
+ *
+ * Only on confirmation. `deleted` is a claim that something no longer exists,
+ * and a local absence cannot support it — the resource was demonstrably
+ * created (we recorded its id), so "we have no row" says more about our
+ * bookkeeping than about the provider.
+ */
+export function mayConcludeMemberDeleted(disposition: InventoryDisposition): boolean {
+  return disposition === "confirmed-gone";
+}
+
+/**
  * Might this instance still own live cloud resources?
  *
  * The instance-level twin of {@link memberNeedsLeaseRepair}, and it exists for

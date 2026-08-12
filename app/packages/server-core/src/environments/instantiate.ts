@@ -65,6 +65,21 @@
  * of never deleting the wrong thing, and it is paid in visibility rather than
  * silence.
  *
+ * **Our own rows say nothing about provider state unless they say it
+ * positively.** The third bug of this shape found here, after state 6 and the
+ * ownership signals. A `resources` row that is *soft-deleted* records a
+ * deletion we performed and does confirm the resource is gone; a row that is
+ * *missing* confirms nothing at all — it is the ordinary residue of a failed
+ * upsert, which is the same failure that stranded the member. Reconciliation
+ * read the second as the first and marked such members `deleted`, which is
+ * terminal: they left lease repair and teardown for good while the resource
+ * billed on. `inventoryDisposition` now names the three cases and
+ * `mayConcludeMemberDeleted` accepts only the positive one. The same
+ * discipline applies to failures: the repair pass branches on what the
+ * inventory actually says rather than treating any thrown error as proof the
+ * row is absent, because answering a transient database error by deleting a
+ * live resource is the worse mistake.
+ *
  * **Delete only when identity is certain; where it is not, report and leave.**
  * Asymmetric on purpose — an orphan costs money, a wrong delete costs data.
  * Taken to its endpoint, that rule means **recovery does not delete at all**:
@@ -94,6 +109,8 @@ import {
   classifyTeardownMember,
   expectedMemberDisplayName,
   instanceMayOwnLiveResources,
+  inventoryDisposition,
+  mayConcludeMemberDeleted,
   leaseDeadlineFor,
   leaseShouldBeCancelled,
   memberNeedsLeaseRepair,
@@ -789,13 +806,23 @@ export async function reconcileEnvironmentInstances(organizationId: string): Pro
     // resource is exactly the case that must still be followed up.
     const holders = members.filter((m) => m.status !== "deleted" && m.resourceId);
     if (holders.length === 0) {
-      if (members.every((m) => m.status === "deleted" || !m.resourceId)) {
+      // An instance closes only when every member is *itself* `deleted`. A
+      // member that failed without ever recording an id may still correspond
+      // to something the provider holds (teardown reports it by name), and
+      // closing the instance over it would hide exactly that.
+      if (members.every((m) => m.status === "deleted")) {
         await setInstanceStatus(row.id, "deleted", { completedAt: new Date() });
       }
       continue;
     }
-    const alive = await db
-      .select({ id: resources.id })
+
+    // Soft-deleted rows are deliberately **included**: their `deleted_at` is
+    // the record of a deletion we performed, which is the only thing here that
+    // can confirm a resource is gone. Filtering them out would leave "row
+    // missing" and "row deleted" indistinguishable — and a missing row means
+    // our upsert failed, not that the provider dropped the resource.
+    const rows = await db
+      .select({ id: resources.id, deletedAt: resources.deletedAt })
       .from(resources)
       .where(
         and(
@@ -804,16 +831,35 @@ export async function reconcileEnvironmentInstances(organizationId: string): Pro
             resources.id,
             holders.map((m) => m.resourceId!),
           ),
-          isNull(resources.deletedAt),
         ),
       );
-    const aliveIds = new Set(alive.map((r) => r.id));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+
+    let unresolved = 0;
     for (const member of holders) {
-      if (!aliveIds.has(member.resourceId!)) {
+      const disposition = inventoryDisposition(byId.get(member.resourceId!));
+      if (mayConcludeMemberDeleted(disposition)) {
         await markMemberStatus(row.id, member.memberKey, "deleted", null);
+        continue;
+      }
+      unresolved += 1;
+      if (disposition === "unknown") {
+        // Never terminal. The member keeps its id, so lease repair still
+        // reaches it and teardown will still ask the provider about it.
+        console.warn(
+          `[environments] instance ${row.id} member ${member.memberKey} has no inventory row; ` +
+            "leaving it reconcilable rather than assuming its resource is gone",
+        );
       }
     }
-    if (aliveIds.size === 0) {
+    // Close only when nothing is left open: every holder confirmed gone, and
+    // every other member already `deleted`. A member with no id that never
+    // reached `deleted` is unresolved too — teardown has yet to ask the
+    // provider about it.
+    const othersSettled = members
+      .filter((m) => !holders.includes(m))
+      .every((m) => m.status === "deleted");
+    if (unresolved === 0 && othersSettled) {
       await setInstanceStatus(row.id, "deleted", { completedAt: new Date() });
     }
   }
@@ -888,12 +934,37 @@ async function repairMissingMemberLeases(organizationId: string): Promise<void> 
         environmentName: orphan.name,
       });
     } catch (error) {
-      // The lease needs a `resources` row to point at, and the member whose
-      // bookkeeping failed before the upsert has none. There is no way to give
-      // that resource a TTL, so honour the rule the other way: it was already
-      // marked for rollback, so retry the rollback. Identity is certain — this
-      // id came back from the provider during the run.
       console.error("[environments] could not attach a repair lease:", error);
+      // Branch on the *fact*, not on the failure. A throw here could be a
+      // transient database error or the org's lease cap, and answering either
+      // of those by deleting a live resource is a far worse mistake than
+      // waiting for the next pass.
+      const [stored] = await db
+        .select({ deletedAt: resources.deletedAt })
+        .from(resources)
+        .where(
+          and(eq(resources.organizationId, organizationId), eq(resources.id, orphan.resourceId)),
+        )
+        .limit(1);
+      const disposition = inventoryDisposition(stored);
+
+      if (mayConcludeMemberDeleted(disposition)) {
+        // Already reaped, and we hold the record of doing it.
+        await markMemberStatus(orphan.instanceId, orphan.memberKey, "deleted", null).catch(
+          () => undefined,
+        );
+        continue;
+      }
+      if (disposition === "present") {
+        // A lease *can* point at this row, so the failure was incidental.
+        // Leave it for the next pass rather than destroying the resource.
+        continue;
+      }
+
+      // `unknown`: no row for a lease to reference, so this resource can never
+      // be given a TTL. It was already marked for rollback once, so retry
+      // that — identity is certain, the id came back from the provider during
+      // the run.
       const rolledBack = await rollbackCreatedMember(organizationId, {
         accountId: orphan.accountId,
         pluginId: orphan.pluginId,
