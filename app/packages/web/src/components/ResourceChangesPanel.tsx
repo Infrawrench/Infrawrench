@@ -1,6 +1,12 @@
-import { useEffect, useState } from "react";
-import { ChangeDiffList, ChangeKindBadge, type ResourceChangeEntry } from "@infrawrench/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ChangeDiffList,
+  ChangeKindBadge,
+  RevertChangeButton,
+  type ResourceChangeEntry,
+} from "@infrawrench/ui";
 import { apiGet } from "@/lib/api";
+import { createWebChangeRevertClient } from "@/lib/changes-client";
 
 // The badge and the diff list moved to `@infrawrench/ui` when desktop grew a
 // Changes page — one definition of how a change reads. Re-exported here so the
@@ -19,6 +25,9 @@ interface ResourceChangesPanelProps {
 export function ResourceChangesPanel({ orgId, resourceId }: ResourceChangesPanelProps) {
   const [entries, setEntries] = useState<ResourceChangeEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const revertClient = useMemo(() => createWebChangeRevertClient(orgId), [orgId]);
+  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,7 +45,7 @@ export function ResourceChangesPanel({ orgId, resourceId }: ResourceChangesPanel
     return () => {
       cancelled = true;
     };
-  }, [orgId, resourceId]);
+  }, [orgId, resourceId, reloadKey]);
 
   if (error) {
     return <p className="p-6 text-sm text-danger">{error}</p>;
@@ -66,6 +75,20 @@ export function ResourceChangesPanel({ orgId, resourceId }: ResourceChangesPanel
             <span className="text-xs text-on-surface-tertiary">
               {new Date(entry.createdAt).toLocaleString()}
             </span>
+            {entry.revertedAt && (
+              <span
+                className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary"
+                title={`Reverted on ${new Date(entry.revertedAt).toLocaleString()}.`}
+              >
+                reverted
+              </span>
+            )}
+            <RevertChangeButton
+              entry={entry}
+              client={revertClient}
+              onReverted={reload}
+              className="ml-auto"
+            />
           </div>
           <ChangeDiffList entry={entry} />
         </li>

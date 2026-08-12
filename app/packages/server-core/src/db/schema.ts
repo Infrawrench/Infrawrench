@@ -180,6 +180,55 @@ export const resourceChanges = pgTable(
      */
     origin: text("origin").$type<"schedule">(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
+    /**
+     * When the revert's provider write actually landed, and who asked for it.
+     * Only `completeRevert` sets `reverted_at`, so a row carrying it is a row
+     * whose resource really was put back.
+     *
+     * No FK on the user id: the audit trail is the record of who did it, and
+     * this column must survive a member being removed from the org.
+     */
+    revertedAt: timestamp("reverted_at"),
+    revertedByUserId: text("reverted_by_user_id"),
+    /**
+     * Lease held by an in-flight revert, distinct from `reverted_at` on
+     * purpose. The route claims with `WHERE reverted_at IS NULL AND
+     * (revert_claimed_at IS NULL OR revert_claimed_at < now() - lease)`, so two
+     * concurrent reverts can't both reach the provider *and* a process that
+     * dies mid-write leaves a claim that expires instead of a row that is stuck
+     * forever. Cleared on success and on failure; the lease only matters when
+     * neither path ran.
+     */
+    revertClaimedAt: timestamp("revert_claimed_at"),
+    /**
+     * Identity of the claim holder, minted per attempt. Every write that ends a
+     * revert is fenced on it (`WHERE revert_claim_owner = <mine>`), so an
+     * attempt whose lease already lapsed — and whose event another attempt has
+     * since claimed under a token of its own — matches no row and cannot clear
+     * or complete the new holder's claim. A deadline alone is only a timer;
+     * this is what makes the lease an exclusion. Same shape as
+     * `account_network_flow_polls.lease_owner`.
+     */
+    revertClaimOwner: text("revert_claim_owner"),
+    /**
+     * When a revert last *issued* a provider write for this event — written
+     * immediately before the call, and deliberately not the same claim as
+     * `reverted_at`. "We asked the provider to put this back" and "the provider
+     * put this back" are different claims, exactly as `delivery_attempted_at`
+     * and `delivered_at` are on `managed_invoices`.
+     *
+     * This is the journal, and `revert_claimed_at` is the lock. Conflating them
+     * was a real bug: a claim also outlives an attempt that died *before*
+     * writing, so using the claim as proof of a write both wedged events behind
+     * a self-renewing lease and let an unrelated hand-edit be recorded as
+     * somebody's revert. Its absence proves no write was issued, which is what
+     * makes releasing the claim always safe.
+     *
+     * Survives a release (an attempt whose write threw may still have applied),
+     * and is cleared only by `completeRevert`, at which point `reverted_at`
+     * carries the fact instead.
+     */
+    revertWriteAttemptedAt: timestamp("revert_write_attempted_at"),
   },
   (t) => ({
     orgCreatedIdx: index("resource_changes_org_created_idx").on(t.organizationId, t.createdAt),

@@ -48,4 +48,7 @@
 // clouds (IAM users and roles, service accounts, app registrations, bindings,
 // long-lived keys). Four new routes, a CSV/JSON evidence export, and a new
 // "access-review" member on the workspace TabTarget enum. All additive.
-export const API_VERSION = "1.16.0";
+// 1.17.0: reverting a change-timeline event — a dry-run plan and an apply on
+// `/changes/{changeId}/revert`, plus an additive `revertedAt` on both change
+// feed entry schemas. All additive.
+export const API_VERSION = "1.17.0";

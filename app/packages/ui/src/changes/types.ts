@@ -1,4 +1,8 @@
-import type { ResourceChangeEntry } from "@infrawrench/client-core";
+import type {
+  ResourceChangeEntry,
+  RevertApplyResponse,
+  RevertPreviewResponse,
+} from "@infrawrench/client-core";
 
 /**
  * The change-timeline contract lives in client-core so mobile (which doesn't
@@ -9,6 +13,11 @@ export type {
   ResourceChangeEntry,
   ResourceChangeKind,
   ResourceFieldChange,
+  RevertPlan,
+  RevertFieldPlan,
+  RevertFieldStatus,
+  RevertPreviewResponse,
+  RevertApplyResponse,
 } from "@infrawrench/client-core";
 
 /** Filters the org feed accepts — one per query parameter the endpoint has. */
@@ -42,4 +51,22 @@ export interface ChangesClient {
   listChanges(query: ChangeFeedQuery): Promise<ChangeFeedPage>;
   /** Populates the account filter. A failure leaves the filter empty, never blocks the feed. */
   listAccounts(): Promise<ChangeFeedAccount[]>;
+  /**
+   * Time-travel undo. Optional the same way `MetricAlertsPanel`'s write methods
+   * are: a host that hasn't wired the revert endpoints simply renders no Revert
+   * button, and the server enforces `resources:write` regardless.
+   */
+  revert?: ChangeRevertClient | undefined;
+}
+
+/**
+ * The two halves of a revert — dry run, then apply. Kept as its own interface
+ * because the per-resource Changes tab needs it without the feed's paging and
+ * account lookup.
+ */
+export interface ChangeRevertClient {
+  /** `GET /changes/{changeId}/revert` — the plan, computed against live fields. */
+  preview(changeId: string): Promise<RevertPreviewResponse>;
+  /** `POST /changes/{changeId}/revert` — apply it. */
+  apply(changeId: string): Promise<RevertApplyResponse>;
 }

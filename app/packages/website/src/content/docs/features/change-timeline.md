@@ -25,7 +25,7 @@ Filter the feed by change kind or by account; results are paginated.
 
 The [mobile app](./mobile-app.md) has the same feed: open **Changes** at the top of the Resources tab. Filters are chips rather than dropdowns — change kind, account, and a time window (**Any time**, **24h**, **7d**, **30d**) — and **Load more** pages through the rest.
 
-Tap any event to open it: the full per-field before → after list, the resource's id, and a button through to the resource itself. Tapping a [drift notification](./mobile-push-notifications.md) opens the [moment view](./moment.md) centred on the window that alert covered — the digest's changes merged with everything else that happened around them.
+Tap any event to open it: the full per-field before → after list, the resource's id, a button through to the resource itself, and — on **Changed** events — the same [Revert](#reverting-a-change) flow the web app has, with the plan rendered in place rather than in a dialog. Tapping a [drift notification](./mobile-push-notifications.md) opens the [moment view](./moment.md) centred on the window that alert covered — the digest's changes merged with everything else that happened around them.
 
 <insert [Mobile Changes screen: the filter chip rows, a list of Appeared/Changed/Disappeared events, and one event expanded showing its before → after field values] here>
 
@@ -62,6 +62,51 @@ Two things deliberately do **not** produce events:
 
 - **Fields the lister stopped returning.** Synced state merges over stored state, so a user-supplied value the provider never echoes back (for example a root password set at create time) survives — and is not reported as removed on every cycle.
 - **Absences during provider errors.** If a resource type's list call fails, its resources are left untouched and nothing is reported as disappeared. Only a successful list that omits a known resource counts.
+
+## Reverting a change
+
+A **Revert** button sits on every row of the feed and on every event in a resource's **Changes** tab. It puts the changed fields back to what they were — the same edit you would have made by hand, made for you.
+
+Reverting is not a replay of history: it is a write against the resource **as it is now**. So the button opens a dry run first, and the dialog tells you, field by field, what would actually happen:
+
+| Verdict              | What it means                                                                                                                                       |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Will revert**      | The field still holds the value this change set, and the previous value can be written back. These are the fields the revert touches                |
+| **No change needed** | The field is already back at its old value — someone (or something) beat you to it. Nothing is written                                              |
+| **Changed since**    | The field moved **again** after this event. Reverting would silently discard that newer value, so the field is left alone and both values are shown |
+| **Not writable**     | The field is outside what the provider lets Infrawrench edit, or its previous value isn't something an edit form can submit                         |
+| **Provider-derived** | An `outputs.` entry. Outputs are computed by the provider from other state — there is nothing to write                                              |
+
+Whether a field can be written at all is decided by the plugin, not by Infrawrench: the revert can only set fields the resource's **Edit** form offers. A field the provider treats as read-only, an identity field it won't let you rename, and a secret all fall outside that set, and the dialog says so rather than attempting a provider call that doesn't exist.
+
+<insert [The revert confirmation dialog for a changed resource, showing a mix of Will revert / Changed since / Not writable field verdicts above the Revert button] here>
+
+### The one race it can't win
+
+The plan is rebuilt against a fresh read of the resource immediately before the write, so pressing **Revert** on a stale dialog is safe: anything that moved in the meantime comes back as **Changed since** and is left alone.
+
+What that check cannot do is hold the field still while the write happens. If someone edits the same field in the provider's own console — or a Terraform run does — in the fraction of a second between Infrawrench reading the field and writing it, their value is overwritten with no warning. Infrawrench can't prevent this, because setting a field goes through one generic update call that has no way to say "only if it still equals this"; providers that support conditional writes have no route to express one here.
+
+In practice the window is one API round-trip wide, and reverting a change nobody else is touching is not a risky operation. But it is a real window, and it is worth knowing about before you revert something during an incident that several people are working on at once.
+
+### What can't be reverted
+
+- **Appearances and disappearances.** Undoing a resource showing up means deleting it, and undoing one vanishing means recreating it. Neither is a field write, so neither is a revert — the button is present but disabled and says which action to take instead.
+- **Events with no field diff.** There is nothing to invert.
+- **Events already reverted.** Reverting is a one-shot: once an event has been reverted the row is labelled **reverted** and the button is disabled. If two people press Revert at the same moment, exactly one write happens and the other is told so.
+
+An event only counts as reverted once the provider has accepted the write. If a revert is interrupted part-way — a deploy, a restart, a dropped connection — the event is held for five minutes and then becomes revertible again, so an undo that never landed is never left looking like one that did.
+
+Very occasionally a provider is slow enough that a revert outlives that five-minute hold and someone else's retry picks the event up first. When that happens the slow request tells you so explicitly, listing the fields it did write, rather than quietly reporting success — both attempts are putting back the same recorded values, so the resource ends up correct either way, but the message is worth reading before you retry again.
+
+If the revert reaches the provider but Infrawrench then fails to record it, you get an explicit error saying the resource **has** been put back and the timeline hasn't caught up. Retry it: the retry sees the fields are already back, records the revert without touching the provider again, and the event picks up its **reverted** label. That reconciliation only happens when Infrawrench actually issued a write for that event — it keeps a note before calling the provider — so a resource you put back by hand is never claimed as somebody's revert.
+
+### Guardrails
+
+- Reverting needs the **Resources: write** permission — the same one editing a resource needs.
+- It is blocked by an active [change freeze](../team-and-billing/change-freeze.md), like any other provider mutation, and can be overridden by an admin the same way.
+- Every revert that reaches the provider is written to the [audit log](../team-and-billing/audit-log.md) as `resource.change_revert`, naming who did it, the change event, and the fields written — including the rare superseded case below, which is recorded as `outcome: superseded` so it doesn't read as a second, separate revert. A revert that wrote nothing writes no audit entry either. Attribution is best-effort rather than guaranteed: a cloud provider's API and Infrawrench's database can't be written to together as one transaction, so in the rare case the audit entry itself fails the API says so explicitly and the details go to the server log instead of being dropped quietly.
+- The revert shows up in the timeline itself. Nothing special-cases it: the next poll sees the resource differ from its stored snapshot and records the undo as an ordinary **Changed** event.
 
 ## Drift alerts
 
@@ -106,10 +151,10 @@ If you need a permanent record of a change, export it while it is still in the w
 
 ## Requirements
 
-- The feed needs the `resources:read` permission; the drift alert settings need `org:settings:write`.
+- The feed needs the `resources:read` permission; reverting needs `resources:write`; the drift alert settings need `org:settings:write`.
 - Events accumulate from the first poll after your org picks up this feature; there is no retroactive history.
 - History is capped at the 90-day retention window described above.
 
-The feed is also available over the [HTTP API](../team-and-billing/openapi.md): `GET /api/org/{orgId}/changes` for the paginated org feed and `GET /api/org/{orgId}/changes/resource` for a single resource.
+The feed is also available over the [HTTP API](../team-and-billing/openapi.md): `GET /api/org/{orgId}/changes` for the paginated org feed and `GET /api/org/{orgId}/changes/resource` for a single resource. Reverting is the same path under two verbs — `GET /api/org/{orgId}/changes/{changeId}/revert` returns the plan without writing anything, and `POST` to the same path applies it.
 
 The same comparison, pointed at a different pair of snapshots, is what [environment diff](./environment-diff.md) runs: instead of one account against its own past, two accounts against each other.

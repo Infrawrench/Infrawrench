@@ -133,6 +133,29 @@ export interface PeerPluginIntegration {
 }
 
 /**
+ * Whether the host's Edit form offers this field, and therefore whether the
+ * host may submit it through `updateResource`.
+ *
+ * This predicate *is* the writable surface of a resource type — everything the
+ * host does that writes a field goes through the same edit path, so anything
+ * that needs to know "can I set this?" (the inline Edit modal, the detail
+ * endpoint's `editableFields`, the change-timeline revert) asks here rather
+ * than re-deriving the rule. `secret` and `association` kinds are excluded
+ * because the form has no wiring for external references, and `editable:
+ * false` is the plugin declaring an identity/key field the provider won't let
+ * you rename.
+ *
+ * It says nothing about whether the resource type supports updates at all —
+ * that is `ResourceTypeDefinition.supportsUpdate` plus a plugin client that
+ * implements `updateResource`, both of which the caller checks.
+ */
+export function isFieldEditable(field: FieldDefinition): boolean {
+  if (field.editable === false) return false;
+  if (field.kind === "secret" || field.kind === "association") return false;
+  return true;
+}
+
+/**
  * Evaluate `integration.unreachableWhen` against a resource's fields. Returns
  * the guidance to display when the predicate matches, or `null` when the
  * integration is reachable (or the predicate isn't declared).

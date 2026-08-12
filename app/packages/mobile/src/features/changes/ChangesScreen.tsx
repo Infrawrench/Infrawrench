@@ -15,6 +15,7 @@ import { ProviderIncidentNotice } from "@/components/ProviderIncidentNotice";
 import { Chip, ChipRow } from "@/components/form";
 import { colors, spacing } from "@/lib/theme";
 import { ChangeDiffList, ChangeKindBadge } from "./ChangeParts";
+import { RevertChangeSection } from "./RevertChangeSection";
 
 /**
  * The org-wide change timeline — every resource the cloud poller saw appear,
@@ -208,6 +209,7 @@ export function ChangesScreen({ since, accountId: initialAccountId }: ChangesScr
               entry={entry}
               expanded={expandedId === entry.id}
               onToggle={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
+              onReverted={() => void feed.refetch()}
               onOpenResource={() =>
                 router.push(
                   `/org/${orgId}/resources/${encodeURIComponent(entry.pluginId)}/${encodeURIComponent(entry.resourceTypeId)}/${encodeURIComponent(entry.resourceId)}?accountId=${encodeURIComponent(entry.accountId)}`,
@@ -241,11 +243,13 @@ function ChangeEntryRow({
   expanded,
   onToggle,
   onOpenResource,
+  onReverted,
 }: {
   entry: ResourceChangeEntry;
   expanded: boolean;
   onToggle: () => void;
   onOpenResource: () => void;
+  onReverted: () => void;
 }) {
   const scope = [entry.accountName, `${entry.pluginId}/${entry.resourceTypeId}`]
     .filter(Boolean)
@@ -288,6 +292,12 @@ function ChangeEntryRow({
             {entry.resourceId}
           </Text>
           <Button label="Open resource" variant="secondary" onPress={onOpenResource} />
+          {/* Only on `updated` rows: the two hints above already say why a
+              creation or a disappearance has no undo, and repeating it under a
+              dead button would be the same sentence twice. */}
+          {entry.changeKind === "updated" && (
+            <RevertChangeSection entry={entry} onReverted={onReverted} />
+          )}
         </View>
       )}
     </View>

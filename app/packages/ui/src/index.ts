@@ -974,11 +974,22 @@ export {
   ChangesPanel,
   ChangeKindBadge,
   ChangeDiffList,
+  RevertChangeButton,
+  RevertChangeDialog,
+  localRevertRefusal,
   type ChangesPanelProps,
   type ChangesClient,
+  type ChangeRevertClient,
   type ChangeFeedQuery,
   type ChangeFeedPage,
   type ChangeFeedAccount,
+  type RevertChangeButtonProps,
+  type RevertChangeDialogProps,
+  type RevertPlan,
+  type RevertFieldPlan,
+  type RevertFieldStatus,
+  type RevertPreviewResponse,
+  type RevertApplyResponse,
 } from "./changes/index.js";
 
 // Moment view ("what changed around 03:14?") — panel + host contract. The

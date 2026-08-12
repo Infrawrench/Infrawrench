@@ -12,6 +12,7 @@ import {
 } from "../../services/plugin-clients";
 import { loadSecretStatesForResource } from "../../services/secret-states";
 import type { ResourceInstance, DetailViewSchema, PeerPaneSchema } from "@infrawrench/plugin-base";
+import { isFieldEditable } from "@infrawrench/plugin-base";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 import { registerManifestRoutes } from "./resource-detail/manifests";
@@ -377,9 +378,12 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
 
   const canDelete = !!client.deleteResource && resourceTypeDef?.supportsDelete !== false;
   const canEdit = !!client.updateResource && !!resourceTypeDef?.supportsUpdate;
+  // `isFieldEditable` is the one definition of a resource type's writable
+  // surface (plugin-base) — the Edit modal filters with it, and the change
+  // timeline's revert asks it whether a drifted field can be put back.
   const editableFields = canEdit
     ? (resourceTypeDef?.fields ?? []).flatMap((f) =>
-        f.editable !== false && f.kind !== "secret" && f.kind !== "association"
+        isFieldEditable(f)
           ? [
               {
                 key: f.key,

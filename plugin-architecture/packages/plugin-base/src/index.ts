@@ -126,7 +126,11 @@ export type {
   ResourceCreateReturn,
 } from "./instance.js";
 export { normalizeResourceCreateResult } from "./instance.js";
-export { evaluatePeerIntegrationUnreachable, evaluateOrphanRule } from "./resource.js";
+export {
+  evaluatePeerIntegrationUnreachable,
+  evaluateOrphanRule,
+  isFieldEditable,
+} from "./resource.js";
 
 // Posture checks — declarative security-exposure rules over already-synced
 // fields, the security sibling of `orphanRule`. The workspace-wide aggregation
