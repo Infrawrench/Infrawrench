@@ -11,6 +11,7 @@ import {
   environmentDiffTabTarget,
   probesTabTarget,
   incidentsTabTarget,
+  environmentsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -55,6 +56,10 @@ describe("tab target factories", () => {
       a: "acc-a",
       b: "acc-b",
     });
+  });
+
+  it("environmentsTabTarget", () => {
+    expect(environmentsTabTarget()).toEqual({ kind: "environments" });
   });
 
   it("probesTabTarget", () => {

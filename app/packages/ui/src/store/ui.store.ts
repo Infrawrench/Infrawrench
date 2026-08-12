@@ -18,6 +18,7 @@ export type WorkspaceTabTarget =
   | { kind: "dns" }
   | { kind: "iac" }
   | { kind: "environment-diff"; a?: string; b?: string }
+  | { kind: "environments" }
   | { kind: "ssh-fanout" }
   | { kind: "metric-alerts" }
   | { kind: "probes" }
@@ -104,6 +105,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
     // the open Diff tab rather than pile up a tab per comparison.
     case "environment-diff":
       return "environment-diff";
+    case "environments":
+      return "environments";
     case "ssh-fanout":
       return "ssh-fanout";
     case "metric-alerts":
@@ -170,6 +173,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "IaC";
     case "environment-diff":
       return "Env diff";
+    case "environments":
+      return "Environments";
     // Titles match the sidebar tiles the pages are opened from.
     case "ssh-fanout":
       return "Fan-out";
@@ -216,6 +221,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "backups":
     case "dns":
     case "iac":
+    case "environments":
     case "ssh-fanout":
     case "metric-alerts":
     case "probes":

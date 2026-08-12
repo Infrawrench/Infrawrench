@@ -53,6 +53,7 @@ import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
 import { registerLeasePaths } from "./paths/leases";
+import { registerEnvironmentPaths } from "./paths/environments";
 import { registerSessionRecordingPaths } from "./paths/session-recordings";
 import { registerSharedConsolePaths } from "./paths/shared-consoles";
 import { registerAccessRequestPaths } from "./paths/access-requests";
@@ -180,6 +181,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerMomentPaths(ctx);
   registerSchedulePaths(ctx);
   registerLeasePaths(ctx);
+  registerEnvironmentPaths(ctx);
   registerSessionRecordingPaths(ctx);
   registerSharedConsolePaths(ctx);
   registerAccessRequestPaths(ctx);
@@ -394,6 +396,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Resource leases",
         description:
           "Optional TTLs on resources ('a test cluster for 3 days'). Active leases ride the expiry radar; auto-delete leases are announced twice and then deleted at expiry by the poller, deferring during change freezes.",
+      },
+      {
+        name: "Ephemeral environments",
+        description:
+          "Capture a set of existing resources as a parameterised template built from each plugin's own create-field metadata, stamp copies of it out in dependency order with a mandatory TTL, and tear them down. Expiry runs through the existing resource-lease pass, so every copy deletes itself.",
       },
       {
         name: "Credit burndown",
@@ -689,6 +696,24 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // additionally requires resources:delete (checked in the handler — the
   // lease becomes a standing deletion), which this one-permission-per-route
   // map cannot express.
+  // ephemeral environments — the leases stance: reads are a view over the org's
+  // own resources, template edits are writes, teardown is a delete, and
+  // instantiation needs both (every instance carries a standing auto-delete).
+  // The TTL ceiling is org settings, not a resource edit.
+  "GET /environments/settings": "resources:read",
+  "PUT /environments/settings": "org:settings:write",
+  "POST /environments/capture": "resources:read",
+  "GET /environments/templates": "resources:read",
+  "POST /environments/templates": "resources:write",
+  "GET /environments/templates/{templateId}": "resources:read",
+  "PUT /environments/templates/{templateId}": "resources:write",
+  "DELETE /environments/templates/{templateId}": "resources:write",
+  "POST /environments/templates/{templateId}/estimate": "resources:read",
+  "POST /environments/templates/{templateId}/instantiate": "resources:write",
+  "GET /environments/instances": "resources:read",
+  "GET /environments/instances/{instanceId}": "resources:read",
+  "POST /environments/instances/{instanceId}/teardown": "resources:delete",
+  "DELETE /environments/instances/{instanceId}": "resources:write",
   "GET /leases": "resources:read",
   "GET /leases/resource": "resources:read",
   "POST /leases": "resources:write",

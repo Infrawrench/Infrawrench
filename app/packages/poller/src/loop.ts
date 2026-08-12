@@ -10,6 +10,10 @@ import { runExpiryAlerts } from "@infrawrench/server-core/expiry/alerts";
 import { runPostureAlerts } from "@infrawrench/server-core/posture/alerts";
 import { runSchedulePass } from "@infrawrench/server-core/schedules/pass";
 import { runLeasePass } from "@infrawrench/server-core/leases/pass";
+import {
+  runEnvironmentRepairPass,
+  runEnvironmentReconcilePass,
+} from "@infrawrench/server-core/environments/pass";
 import { runLogAlertPass } from "@infrawrench/server-core/log-workspaces/pass";
 import { runMetricAlertPass } from "@infrawrench/server-core/metric-alerts/pass";
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
@@ -197,6 +201,13 @@ export class PollerLoop extends TickLoop {
     // resource at expiry, deferring during change freezes. Defensive like the
     // others.
     await this.tickLeases();
+
+    // Ephemeral-environment repair. Runs immediately after the lease pass
+    // because it *feeds* it: a member stranded with a live resource and no
+    // lease is invisible to leases until this gives it one. Claims with the
+    // same protocol, and failures land on the row (`repair_error`) rather
+    // than in a log nobody reads.
+    await this.tickEnvironments();
 
     // Ninth pass: log-match alerts. Claims due alert-enabled saved log
     // queries with the same lease protocol (`log_workspace_queries.
@@ -389,6 +400,32 @@ export class PollerLoop extends TickLoop {
       await runLeasePass({ limit: 4 });
     } catch (e) {
       console.error("[poller] lease tick failed:", e);
+    }
+  }
+
+  /**
+   * Re-attach TTLs to ephemeral-environment members that lost them, and close
+   * out instances whose resources are confirmed gone.
+   *
+   * Without this the whole recovery story depended on somebody opening the
+   * Environments page — and the environment whose creation failed badly is the
+   * one nobody opens again, and the one still billing.
+   */
+  private async tickEnvironments(): Promise<void> {
+    try {
+      const result = await runEnvironmentRepairPass({ limit: 4 });
+      if (result.claimed > 0) {
+        console.log(
+          `[poller] environment repair: ${result.repaired} repaired, ${result.failed} failed`,
+        );
+      }
+    } catch (e) {
+      console.error("[poller] environment repair tick failed:", e);
+    }
+    try {
+      await runEnvironmentReconcilePass({ limit: 10 });
+    } catch (e) {
+      console.error("[poller] environment reconcile tick failed:", e);
     }
   }
 

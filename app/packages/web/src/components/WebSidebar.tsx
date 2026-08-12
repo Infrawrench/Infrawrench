@@ -33,6 +33,7 @@ import {
   ProbesIcon,
   QuotasIcon,
   IncidentsIcon,
+  EnvironmentsIcon,
 } from "@infrawrench/ui";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
@@ -528,6 +529,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <GraphIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/graph", params: { orgId: orgId! } }),
+              },
+              {
+                key: "environments",
+                label: "Environments",
+                icon: <EnvironmentsIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/environments", params: { orgId: orgId! } }),
               },
               {
                 key: "expiring",

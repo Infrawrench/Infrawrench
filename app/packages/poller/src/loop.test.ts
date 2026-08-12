@@ -82,6 +82,16 @@ vi.mock("@infrawrench/server-core/metric-alerts/pass", () => ({
   runMetricAlertPass: (...a: unknown[]) => runMetricAlertPass(...a),
 }));
 
+// Mocked for the same reason as the metric-alert pass: the real module pulls
+// in the whole instantiate chain (plugin loading, org account clients), which
+// this suite has no business importing.
+const runEnvironmentRepairPass = vi.fn();
+const runEnvironmentReconcilePass = vi.fn();
+vi.mock("@infrawrench/server-core/environments/pass", () => ({
+  runEnvironmentRepairPass: (...a: unknown[]) => runEnvironmentRepairPass(...a),
+  runEnvironmentReconcilePass: (...a: unknown[]) => runEnvironmentReconcilePass(...a),
+}));
+
 import { PollerLoop } from "./loop";
 
 function row(id: string) {
@@ -122,6 +132,8 @@ beforeEach(() => {
   settleAbandonedRecordings.mockResolvedValue(0);
   pruneCreditSnapshots.mockResolvedValue(0);
   runMetricAlertPass.mockResolvedValue({ claimed: 0 });
+  runEnvironmentRepairPass.mockResolvedValue({ claimed: 0, repaired: 0, failed: 0 });
+  runEnvironmentReconcilePass.mockResolvedValue({ organizations: 0 });
 });
 
 afterEach(() => {
@@ -129,6 +141,37 @@ afterEach(() => {
 });
 
 describe("PollerLoop", () => {
+  // Regression: every ephemeral-environment recovery layer used to hang off
+  // `GET /instances`, so a member left holding a live resource with no lease
+  // was only repaired while somebody had the page open — and the environment
+  // whose creation failed badly is the one nobody opens again, and the one
+  // still billing. The poller must reach it with no read involved.
+  it("repairs stranded environment members on a tick, with no instance-list read", async () => {
+    runEnvironmentRepairPass.mockResolvedValue({ claimed: 1, repaired: 1, failed: 0 });
+    const loop = new PollerLoop();
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runEnvironmentRepairPass).toHaveBeenCalledTimes(1);
+    expect(runEnvironmentRepairPass).toHaveBeenCalledWith({ limit: 4 });
+    expect(runEnvironmentReconcilePass).toHaveBeenCalledWith({ limit: 10 });
+    await loop.stop();
+  });
+
+  it("keeps ticking environments after a repair pass throws", async () => {
+    runEnvironmentRepairPass.mockRejectedValueOnce(new Error("database down"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const loop = new PollerLoop({ tickMs: 1000 });
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+    // A throwing repair must not take the reconcile half down with it, nor
+    // the next tick — this is the pass that stops resources billing forever.
+    expect(runEnvironmentReconcilePass).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(runEnvironmentRepairPass).toHaveBeenCalledTimes(2);
+    errSpy.mockRestore();
+    await loop.stop();
+  });
+
   it("does nothing on a tick when no rows are due", async () => {
     const loop = new PollerLoop();
     loop.start();

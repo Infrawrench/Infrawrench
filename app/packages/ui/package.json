@@ -69,6 +69,11 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./environments": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
     "./workflows/prompt-bridge": {
       "types": "./dist/workflows/prompt-bridge.d.ts",
       "import": "./dist/workflows/prompt-bridge.js",

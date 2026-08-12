@@ -247,6 +247,13 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns environments route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "environments" })).toEqual({
+      to: "/org/$orgId/environments",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("sets replace when requested", () => {
     const args = getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId: "d1" }, true);
     expect(args.replace).toBe(true);
@@ -301,6 +308,20 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(
       syncWorkspaceRouteFromPath("/org/test-org/environment-diff", undefined, "?a=acc-a&b=acc-b"),
     ).toEqual({ kind: "environment-diff", a: "acc-a", b: "acc-b" });
+  });
+
+  it("parses the environments path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/environments")).toEqual({
+      kind: "environments",
+    });
+  });
+
+  // `/environments` and `/environment-diff` are distinct segments; a prefix
+  // match would have swallowed one into the other.
+  it("does not confuse environments with the environment diff", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/environment-diff", undefined, "")).toEqual({
+      kind: "environment-diff",
+    });
   });
 
   it("parses the probes path", () => {

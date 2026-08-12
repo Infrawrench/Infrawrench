@@ -77,6 +77,15 @@ export function environmentDiffTabTarget(a?: string, b?: string): WorkspaceTabTa
   return { kind: "environment-diff", ...(a ? { a } : {}), ...(b ? { b } : {}) };
 }
 
+/**
+ * The Environments page — ephemeral-environment templates and the live
+ * instances stamped out of them, with their TTL countdowns. One tab: the page
+ * is the surface, and a template or instance is something you open within it.
+ */
+export function environmentsTabTarget(): WorkspaceTabTarget {
+  return { kind: "environments" };
+}
+
 export function sshFanoutTabTarget(): WorkspaceTabTarget {
   return { kind: "ssh-fanout" };
 }

@@ -130,6 +130,26 @@ describe("environment diff tab kind", () => {
   });
 });
 
+describe("environments tab kind", () => {
+  it("is a singleton tab id", () => {
+    expect(getWorkspaceTabId({ kind: "environments" })).toBe("environments");
+  });
+
+  it("falls back to the sidebar tile's title", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "environments" })).toBe("Environments");
+  });
+
+  it("compares equal to itself", () => {
+    expect(workspaceTabTargetsEqual({ kind: "environments" }, { kind: "environments" })).toBe(true);
+  });
+
+  it("is not the environment diff", () => {
+    expect(workspaceTabTargetsEqual({ kind: "environments" }, { kind: "environment-diff" })).toBe(
+      false,
+    );
+  });
+});
+
 describe("probes tab kind", () => {
   it("is a singleton tab id", () => {
     expect(getWorkspaceTabId({ kind: "probes" })).toBe("probes");

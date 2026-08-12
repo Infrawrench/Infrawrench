@@ -4191,3 +4191,4 @@ export * from "./quota-schema.js";
 export * from "./incident-schema.js";
 export * from "./backup-schema.js";
 export * from "./iac-schema.js";
+export * from "./environment-schema.js";

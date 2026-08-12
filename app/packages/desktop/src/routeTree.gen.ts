@@ -20,6 +20,7 @@ import { Route as CostsRouteImport } from './routes/costs'
 import { Route as DeploymentsRouteImport } from './routes/deployments'
 import { Route as DnsRouteImport } from './routes/dns'
 import { Route as EnvironmentDiffRouteImport } from './routes/environment-diff'
+import { Route as EnvironmentsRouteImport } from './routes/environments'
 import { Route as ExpiringRouteImport } from './routes/expiring'
 import { Route as GraphRouteImport } from './routes/graph'
 import { Route as IacRouteImport } from './routes/iac'
@@ -92,6 +93,11 @@ const DnsRoute = DnsRouteImport.update({
 const EnvironmentDiffRoute = EnvironmentDiffRouteImport.update({
   id: '/environment-diff',
   path: '/environment-diff',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EnvironmentsRoute = EnvironmentsRouteImport.update({
+  id: '/environments',
+  path: '/environments',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ExpiringRoute = ExpiringRouteImport.update({
@@ -198,6 +204,7 @@ export interface FileRoutesByFullPath {
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
   '/environment-diff': typeof EnvironmentDiffRoute
+  '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
   '/iac': typeof IacRoute
@@ -229,6 +236,7 @@ export interface FileRoutesByTo {
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
   '/environment-diff': typeof EnvironmentDiffRoute
+  '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
   '/iac': typeof IacRoute
@@ -261,6 +269,7 @@ export interface FileRoutesById {
   '/deployments': typeof DeploymentsRoute
   '/dns': typeof DnsRoute
   '/environment-diff': typeof EnvironmentDiffRoute
+  '/environments': typeof EnvironmentsRoute
   '/expiring': typeof ExpiringRoute
   '/graph': typeof GraphRoute
   '/iac': typeof IacRoute
@@ -294,6 +303,7 @@ export interface FileRouteTypes {
     | '/deployments'
     | '/dns'
     | '/environment-diff'
+    | '/environments'
     | '/expiring'
     | '/graph'
     | '/iac'
@@ -325,6 +335,7 @@ export interface FileRouteTypes {
     | '/deployments'
     | '/dns'
     | '/environment-diff'
+    | '/environments'
     | '/expiring'
     | '/graph'
     | '/iac'
@@ -356,6 +367,7 @@ export interface FileRouteTypes {
     | '/deployments'
     | '/dns'
     | '/environment-diff'
+    | '/environments'
     | '/expiring'
     | '/graph'
     | '/iac'
@@ -388,6 +400,7 @@ export interface RootRouteChildren {
   DeploymentsRoute: typeof DeploymentsRoute
   DnsRoute: typeof DnsRoute
   EnvironmentDiffRoute: typeof EnvironmentDiffRoute
+  EnvironmentsRoute: typeof EnvironmentsRoute
   ExpiringRoute: typeof ExpiringRoute
   GraphRoute: typeof GraphRoute
   IacRoute: typeof IacRoute
@@ -485,6 +498,13 @@ declare module '@tanstack/react-router' {
       path: '/environment-diff'
       fullPath: '/environment-diff'
       preLoaderRoute: typeof EnvironmentDiffRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/environments': {
+      id: '/environments'
+      path: '/environments'
+      fullPath: '/environments'
+      preLoaderRoute: typeof EnvironmentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/expiring': {
@@ -628,6 +648,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeploymentsRoute: DeploymentsRoute,
   DnsRoute: DnsRoute,
   EnvironmentDiffRoute: EnvironmentDiffRoute,
+  EnvironmentsRoute: EnvironmentsRoute,
   ExpiringRoute: ExpiringRoute,
   GraphRoute: GraphRoute,
   IacRoute: IacRoute,
