@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventEmitter } from "node:events";
+import { McpServer } from "@modelcontextprotocol/server";
 
 const mockAuthenticate = vi.fn();
 vi.mock("@/mcp/auth", () => ({
@@ -7,6 +8,10 @@ vi.mock("@/mcp/auth", () => ({
   buildWwwAuthenticate: (url: string) => `Bearer resource_metadata="${url}"`,
 }));
 
+// A real (empty) McpServer rather than a stub: the SDK transports drive the
+// server over its protocol wiring, so a `{ connect, close }` fake would never
+// produce a response. The org-scoped tool surface is covered by
+// mcp-server.test.ts; here only the HTTP plumbing is under test.
 const mockBuildMcpServer = vi.fn();
 vi.mock("@/mcp/server", () => ({
   buildMcpServer: (...a: unknown[]) => mockBuildMcpServer(...a),
@@ -16,15 +21,6 @@ vi.mock("@/mcp/well-known", () => ({
   buildResourceMetadataUrl: (u: string) => `${u}/.well-known/oauth-protected-resource`,
 }));
 
-const mockHandleRequest = vi.fn();
-const mockTransportClose = vi.fn();
-vi.mock("@modelcontextprotocol/sdk/server/streamableHttp.js", () => ({
-  StreamableHTTPServerTransport: class {
-    handleRequest = mockHandleRequest;
-    close = mockTransportClose;
-  },
-}));
-
 const { handleMcpHttp } = await import("@/mcp/http-handler");
 
 function makeReq(opts: {
@@ -32,18 +28,23 @@ function makeReq(opts: {
   authorization?: string | null;
   body?: string;
   url?: string;
-}): EventEmitter & Record<string, unknown> {
-  const req = new EventEmitter() as EventEmitter & Record<string, unknown>;
+  headers?: Record<string, string>;
+}): EventEmitter & Record<string | symbol, unknown> {
+  const req = new EventEmitter() as EventEmitter & Record<string | symbol, unknown>;
   req.method = opts.method ?? "GET";
   req.url = opts.url ?? "/api/mcp";
   req.headers = {
     host: "app.infrawrench.com",
+    accept: "application/json, text/event-stream",
+    "content-type": "application/json",
     ...(opts.authorization ? { authorization: opts.authorization } : {}),
+    ...(opts.headers ?? {}),
   };
   req.socket = {};
-  // Push the body once the handler attaches its "end" listener (it attaches
-  // "data" and "end" together inside readJsonBody). Emitting on listener
-  // registration avoids racing the handler's awaited auth step.
+  // The handler consumes the body itself (readJsonBody) before handing the
+  // request to the SDK adapter, which then iterates the request for a body it
+  // will never use (a pre-parsed body is passed alongside). Satisfy both: emit
+  // the body on listener registration, and be an exhausted async iterable.
   req.on("newListener", (event) => {
     if (event !== "end") return;
     queueMicrotask(() => {
@@ -51,6 +52,7 @@ function makeReq(opts: {
       req.emit("end");
     });
   });
+  req[Symbol.asyncIterator] = async function* () {};
   return req;
 }
 
@@ -60,14 +62,28 @@ function makeRes() {
     headers: Record<string, string>;
     body?: string;
     setHeader: (k: string, v: string) => void;
-    end: (b?: string) => void;
+    writeHead: (code: number, headers?: Record<string, string>) => unknown;
+    write: (chunk: string | Uint8Array) => unknown;
+    end: (b?: string | Uint8Array) => void;
   };
   res.headers = {};
   res.setHeader = (k, v) => {
     res.headers[k.toLowerCase()] = v;
   };
+  res.writeHead = (code, headers) => {
+    res.statusCode = code;
+    for (const [k, v] of Object.entries(headers ?? {})) res.headers[k.toLowerCase()] = v;
+    return res;
+  };
+  const decode = (chunk: string | Uint8Array) =>
+    typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+  res.write = (chunk) => {
+    res.body = (res.body ?? "") + decode(chunk);
+    return true;
+  };
   res.end = (b) => {
-    if (b !== undefined) res.body = b;
+    if (b !== undefined) res.body = (res.body ?? "") + decode(b);
+    res.emit("finish");
   };
   return res;
 }
@@ -75,8 +91,9 @@ function makeRes() {
 describe("handleMcpHttp", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockBuildMcpServer.mockResolvedValue({ connect: vi.fn(), close: vi.fn() });
-    mockHandleRequest.mockResolvedValue(undefined);
+    mockBuildMcpServer.mockImplementation(
+      async () => new McpServer({ name: "test", version: "0.0.0" }),
+    );
   });
 
   it("returns 401 with a WWW-Authenticate header when unauthenticated", async () => {
@@ -98,11 +115,9 @@ describe("handleMcpHttp", () => {
     expect(res.body).toContain("Invalid JSON body");
   });
 
-  it("connects the server and handles a valid POST request", async () => {
+  it("serves a legacy (2025-era) request with a plain JSON response", async () => {
     const auth = { userId: "u1", organizationId: "org-1" };
     mockAuthenticate.mockResolvedValue(auth);
-    const connect = vi.fn().mockResolvedValue(undefined);
-    mockBuildMcpServer.mockResolvedValue({ connect, close: vi.fn() });
 
     const req = makeReq({
       method: "POST",
@@ -113,11 +128,46 @@ describe("handleMcpHttp", () => {
     await handleMcpHttp(req as never, res as never);
 
     expect(mockBuildMcpServer).toHaveBeenCalledWith(auth);
-    expect(connect).toHaveBeenCalled();
-    expect(mockHandleRequest).toHaveBeenCalledWith(req, res, {
-      jsonrpc: "2.0",
-      method: "ping",
-      id: 1,
+    expect(res.statusCode).toBe(200);
+    // enableJsonResponse: the body is the JSON-RPC result itself, not an SSE
+    // frame — the behaviour hand-rolled clients depend on.
+    expect(res.headers["content-type"]).toContain("application/json");
+    const parsed = JSON.parse(res.body ?? "");
+    expect(parsed).toMatchObject({ jsonrpc: "2.0", id: 1, result: {} });
+  });
+
+  it("answers a modern (2026-07-28) server/discover probe", async () => {
+    const auth = { userId: "u1", organizationId: "org-1" };
+    mockAuthenticate.mockResolvedValue(auth);
+
+    const req = makeReq({
+      method: "POST",
+      authorization: "Bearer t",
+      headers: {
+        "mcp-protocol-version": "2026-07-28",
+        "mcp-method": "server/discover",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "server/discover",
+        params: {
+          _meta: {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+          },
+        },
+      }),
+    });
+    const res = makeRes();
+    await handleMcpHttp(req as never, res as never);
+
+    expect(res.statusCode).toBe(200);
+    const parsed = JSON.parse(res.body ?? "");
+    expect(parsed.result.supportedVersions).toContain("2026-07-28");
+    // 2026-era responses carry the server identity in _meta, not the body.
+    expect(parsed.result._meta["io.modelcontextprotocol/serverInfo"]).toMatchObject({
+      name: "test",
     });
   });
 
@@ -149,24 +199,20 @@ describe("handleMcpHttp", () => {
       expect(res.headers["x-frame-options"]).toBe("DENY");
     });
 
-    it("sets them before the SDK transport takes the response over", async () => {
-      // The transport writes the body itself, so the headers have to be on the
-      // response before `handleRequest` is reached — not added afterwards.
+    it("sets them on SDK-served responses", async () => {
+      // applySecurityHeaders runs before the SDK adapter ever touches the
+      // response, so they ride along on whatever the transport writes.
       mockAuthenticate.mockResolvedValue({ userId: "u1", organizationId: "org-1" });
-      let headersAtTransport: Record<string, string> = {};
       const res = makeRes();
-      mockHandleRequest.mockImplementation(() => {
-        headersAtTransport = { ...res.headers };
-        return Promise.resolve(undefined);
-      });
       const req = makeReq({
         method: "POST",
         authorization: "Bearer t",
         body: JSON.stringify({ jsonrpc: "2.0", method: "ping", id: 1 }),
       });
       await handleMcpHttp(req as never, res as never);
-      expect(headersAtTransport["content-security-policy"]).toBe("frame-ancestors 'none'");
-      expect(headersAtTransport["x-frame-options"]).toBe("DENY");
+      expect(res.statusCode).toBe(200);
+      expect(res.headers["content-security-policy"]).toBe("frame-ancestors 'none'");
+      expect(res.headers["x-frame-options"]).toBe("DENY");
     });
   });
 });

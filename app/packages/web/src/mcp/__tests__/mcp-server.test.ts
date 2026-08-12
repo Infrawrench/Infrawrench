@@ -33,8 +33,7 @@ vi.mock("@/tools/permissions", () => ({
 
 const { buildMcpServer } = await import("@/mcp/server");
 const middleware = await import("@/api/auth-middleware");
-const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+const { Client, InMemoryTransport } = await import("@modelcontextprotocol/client");
 
 async function connect() {
   const server = await buildMcpServer({ userId: "user_1", organizationId: "org_default" });

@@ -31,7 +31,8 @@
     "@infrawrench/workflow-runtime": "workspace:*",
     "@kubernetes/client-node": "^1.4.0",
     "@libsql/client": "^0.14.0",
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
     "@scalar/hono-api-reference": "^0.11.13",
     "@tanstack/react-router": "^1.170.23",
     "@workos-inc/node": "^8.13.0",
@@ -58,6 +59,7 @@
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/router-plugin": "^1.168.27",
     "@types/archiver": "^6.0.4",
