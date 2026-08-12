@@ -138,7 +138,7 @@ function SharedConsoleJoinPage() {
               {preview.share.recordingId ? " and to the session recording" : ""}.
             </p>
             {error && (
-              <p className="text-xs text-red-300 border border-red-500/30 bg-red-500/10 rounded-lg p-2">
+              <p className="text-xs text-danger border border-red-500/30 bg-red-500/10 rounded-lg p-2">
                 {error}
               </p>
             )}
@@ -156,7 +156,7 @@ function SharedConsoleJoinPage() {
                     : "Join as observer"}
               </button>
             ) : (
-              <p className="text-sm text-amber-300 border border-amber-500/30 bg-amber-500/10 rounded-lg p-3">
+              <p className="text-sm text-warning border border-amber-500/30 bg-amber-500/10 rounded-lg p-3">
                 {preview.error ?? "You cannot join this session."}
               </p>
             )}
