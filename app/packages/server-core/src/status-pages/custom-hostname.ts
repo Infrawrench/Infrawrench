@@ -314,25 +314,6 @@ export async function removeCustomHostnameInfra(
   if (cfId) await deleteCfHostname(cfg, cfId);
 }
 
-/** Tear down CF + KV before a page row is deleted. */
-export async function teardownCustomHostnameForPage(pageId: string): Promise<void> {
-  // Lock the row through teardown so a concurrent refresh cannot KV-put the
-  // mapping back after we delete it.
-  await db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({
-        hostname: statusPages.customHostname,
-        cfId: statusPages.cloudflareCustomHostnameId,
-      })
-      .from(statusPages)
-      .where(eq(statusPages.id, pageId))
-      .limit(1)
-      .for("update");
-    if (!row) return;
-    await removeCustomHostnameInfra(row.hostname, row.cfId);
-  });
-}
-
 export async function attachCustomHostname(
   organizationId: string,
   pageId: string,

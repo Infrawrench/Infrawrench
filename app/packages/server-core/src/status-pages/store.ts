@@ -306,13 +306,28 @@ export async function deleteStatusPageRecord(
 ): Promise<StatusPage> {
   const existing = await getStatusPageWire(organizationId, pageId);
   if (!existing) throw new StatusPageInputError("Status page not found", 404);
-  // Tear down Cloudflare + KV before the row goes — cascade would leave orphans
-  // on the SaaS zone and a stale hostname→slug mapping.
-  const { teardownCustomHostnameForPage } = await import("./custom-hostname");
-  await teardownCustomHostnameForPage(pageId);
-  await db
-    .delete(statusPages)
-    .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)));
+
+  // Hold FOR UPDATE across Cloudflare/KV teardown and the row DELETE so a
+  // concurrent refresh/rotation cannot republish a mapping that we then leave
+  // behind after the page is gone.
+  const { removeCustomHostnameInfra } = await import("./custom-hostname");
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({
+        hostname: statusPages.customHostname,
+        cfId: statusPages.cloudflareCustomHostnameId,
+      })
+      .from(statusPages)
+      .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)))
+      .limit(1)
+      .for("update");
+    if (!row) throw new StatusPageInputError("Status page not found", 404);
+
+    await removeCustomHostnameInfra(row.hostname, row.cfId);
+    await tx
+      .delete(statusPages)
+      .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)));
+  });
   return existing;
 }
 
