@@ -418,8 +418,30 @@ export async function attachCustomHostname(
   }
 
   try {
-    await kvPut(cfg, hostname, existing.slug);
+    // Publish under FOR UPDATE with the current slug so a concurrent rotation
+    // cannot leave KV mapped to a retired public URL.
+    await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select({
+          slug: statusPages.slug,
+          cloudflareCustomHostnameId: statusPages.cloudflareCustomHostnameId,
+        })
+        .from(statusPages)
+        .where(eq(statusPages.id, pageId))
+        .limit(1)
+        .for("update");
+      if (!locked || locked.cloudflareCustomHostnameId !== ch.id) {
+        throw new StatusPageInputError(
+          "Custom hostname attach was interrupted; try attaching again.",
+        );
+      }
+      await kvPut(cfg, hostname, locked.slug);
+    });
   } catch (err) {
+    if (err instanceof StatusPageInputError && /interrupted/i.test(err.message)) {
+      await removeCustomHostnameInfra(hostname, ch.id).catch(() => undefined);
+      throw err;
+    }
     // Local identifiers exist — tear down external resources, then clear only
     // our row (matched by Cloudflare id) so a concurrent attach is preserved.
     try {
