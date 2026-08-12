@@ -364,16 +364,29 @@ export async function attachCustomHostname(
       // Cleanup failed — keep CF/KV identifiers on the page (unless the
       // hostname is owned by another row) so detach can retry revocation.
       if (!isUnique) {
-        await persistHostnameFields(pageId, {
-          customHostname: hostname,
-          customHostnameStatus: "error",
-          cloudflareCustomHostnameId: ch.id,
-          customHostnameError:
-            cleanupErr instanceof Error
-              ? cleanupErr.message
-              : "Failed to roll back custom hostname after attach",
-          customHostnameVerification: verification,
-        }).catch(() => undefined);
+        try {
+          await persistHostnameFields(pageId, {
+            customHostname: hostname,
+            customHostnameStatus: "error",
+            cloudflareCustomHostnameId: ch.id,
+            customHostnameError:
+              cleanupErr instanceof Error
+                ? cleanupErr.message
+                : "Failed to roll back custom hostname after attach",
+            customHostnameVerification: verification,
+          });
+        } catch (persistErr) {
+          // Last resort: surface the Cloudflare id in the error so ops can
+          // revoke manually — swallowing here would leave an unrecoverable orphan.
+          const cleanupMsg = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+          const persistMsg = persistErr instanceof Error ? persistErr.message : String(persistErr);
+          throw new StatusPageInputError(
+            `Custom hostname attach left an orphan that could not be recorded for retry. ` +
+              `Manually delete Cloudflare custom hostname ${ch.id} (${hostname}). ` +
+              `Cleanup error: ${cleanupMsg}. Persist error: ${persistMsg}.`,
+            500,
+          );
+        }
       }
       throw cleanupErr;
     }
