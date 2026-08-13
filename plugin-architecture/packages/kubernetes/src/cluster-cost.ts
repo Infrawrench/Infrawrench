@@ -32,10 +32,8 @@ import {
 } from "./metrics-api.js";
 import {
   loadBalancerRate,
-  parseNodeRates,
   rateForNode,
   storageRate,
-  hasAnyRate,
   type NodeRateTable,
   type RateSource,
 } from "./node-rates.js";
@@ -269,13 +267,3 @@ function buildLoadBalancers(
 
   return out;
 }
-
-/** Convenience: parse the credential and run, in one call. */
-export async function computeClusterCostFromCredential(
-  k8sFetch: K8sFetch,
-  rawRates: string | undefined,
-): Promise<ClusterCostResult> {
-  return computeClusterCost(k8sFetch, parseNodeRates(rawRates));
-}
-
-export { hasAnyRate };

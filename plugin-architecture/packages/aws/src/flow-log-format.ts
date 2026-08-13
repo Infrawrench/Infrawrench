@@ -30,27 +30,6 @@
  */
 export const REQUIRED_FLOW_FIELDS = ["srcaddr", "dstaddr", "bytes", "flow-direction"] as const;
 
-/**
- * Fields we read when present. Everything here improves the answer and nothing
- * here is required — a flow log carrying only the required four still produces
- * pairs, just with more of them landing in `unknown`.
- */
-export const OPTIONAL_FLOW_FIELDS = [
-  "packets",
-  "az-id",
-  "next-hop-az-id",
-  "traffic-path",
-  "pkt-src-aws-service",
-  "pkt-dst-aws-service",
-  "interface-type",
-  "instance-id",
-  "interface-id",
-  "log-status",
-  "region",
-  "vpc-id",
-  "subnet-id",
-] as const;
-
 const DOCS_URL = "https://docs.aws.amazon.com/vpc/latest/userguide/flow-log-records.html";
 
 /**

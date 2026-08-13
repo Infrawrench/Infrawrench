@@ -37,7 +37,9 @@ import type {
   FileSearchStore,
   GeminiFile,
   GeminiModel,
+  GenerateContentRequest,
   GenerateContentResponse,
+  InteractionRequest,
   InteractionResponse,
   ListCachedContentsResponse,
   ListFileSearchDocumentsResponse,
@@ -1517,7 +1519,7 @@ export class GeminiClient implements PluginClient {
         input: text,
         response_format: { type: "audio" },
         generation_config: { speech_config: [{ voice }] },
-      }),
+      } satisfies InteractionRequest),
     });
 
     const audio = response.interaction?.output_audio;
@@ -1633,7 +1635,7 @@ export class GeminiClient implements PluginClient {
               },
             ],
             generationConfig: { temperature: 0 },
-          }),
+          } satisfies GenerateContentRequest),
         },
       );
     } catch (error) {

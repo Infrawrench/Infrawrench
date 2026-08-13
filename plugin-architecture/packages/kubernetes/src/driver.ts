@@ -60,11 +60,6 @@ function getConfig(kubeconfig: string): CachedConfig {
   return entry;
 }
 
-/** For unit testing — drops cached KubeConfig instances. */
-export function _resetDriverCache(): void {
-  cache.clear();
-}
-
 function str(params: Record<string, unknown> | undefined, key: string): string | undefined {
   const v = params?.[key];
   return typeof v === "string" ? v : undefined;

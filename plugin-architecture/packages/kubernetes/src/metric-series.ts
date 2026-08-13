@@ -156,17 +156,3 @@ export function buildCostMetricSeries(
       return [];
   }
 }
-
-/**
- * The series a *cloud* cluster resource sees on its own Metrics tab, merged in
- * by the host because the peer integration sets `exposeMetricsToParent`. The
- * parent is the whole cluster, so it gets the cluster-level series.
- */
-export function buildParentClusterMetricSeries(
-  costs: CostIndex,
-  timeRange?: { startMs: number; endMs: number },
-): MetricSeries[] {
-  const endMs = timeRange?.endMs ?? Date.now();
-  const startMs = timeRange?.startMs ?? endMs - 24 * 60 * 60 * 1000;
-  return clusterSeries(costs.cluster, costs.currency, { startMs, endMs });
-}
