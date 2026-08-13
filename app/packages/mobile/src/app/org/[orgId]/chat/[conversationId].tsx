@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CHAT_MODELS,
@@ -32,7 +32,7 @@ export default function ConversationScreen() {
   const { api, orgId } = useOrgApi();
   const queryClient = useQueryClient();
   const client = useMemo(() => createBearerChatClient(api, orgId), [api, orgId]);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<FlatList<ChatConversationMessage>>(null);
 
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState<StreamingState>({
@@ -313,6 +313,32 @@ export default function ConversationScreen() {
     [messages],
   );
 
+  const renderMessage = useCallback(
+    ({ item: message }: { item: ChatConversationMessage }) => (
+      <MessageView
+        message={message}
+        pendingByToolUseId={pendingByToolUseId}
+        pendingSecretsByToolUseId={pendingSecretsByToolUseId}
+        toolResults={toolResultsById}
+        activeSleepIds={activeSleepIds}
+        expandedTools={expandedTools}
+        onToggleTool={toggleTool}
+        onResolve={resolveAction}
+        onSubmitSecret={submitSecret}
+      />
+    ),
+    [
+      activeSleepIds,
+      expandedTools,
+      pendingByToolUseId,
+      pendingSecretsByToolUseId,
+      resolveAction,
+      submitSecret,
+      toggleTool,
+      toolResultsById,
+    ],
+  );
+
   if (detail.isLoading) return <LoadingView />;
   if (detail.isError) {
     return (
@@ -366,56 +392,50 @@ export default function ConversationScreen() {
           </Text>
         ) : null}
       </View>
-      <ScrollView
+      <FlatList
         ref={scrollRef}
+        data={visibleMessages}
+        keyExtractor={(message) => message.id}
+        renderItem={renderMessage}
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: spacing.lg, gap: spacing.sm }}
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
-      >
-        {visibleMessages.map((m) => (
-          <MessageView
-            key={m.id}
-            message={m}
-            pendingByToolUseId={pendingByToolUseId}
-            pendingSecretsByToolUseId={pendingSecretsByToolUseId}
-            toolResults={toolResultsById}
-            activeSleepIds={activeSleepIds}
-            expandedTools={expandedTools}
-            onToggleTool={toggleTool}
-            onResolve={resolveAction}
-            onSubmitSecret={submitSecret}
-          />
-        ))}
-        {streaming.userText != null && (
-          <View style={[styles.bubble, styles.bubbleUser]}>
-            <Text style={styles.userText}>{streaming.userText}</Text>
-          </View>
-        )}
-        {streaming.active && (
+        ListFooterComponent={
           <View style={{ gap: spacing.sm }}>
-            {streaming.text.length > 0 && <ChatMarkdown text={streaming.text} />}
-            {streaming.toolUses.map((t) => (
-              <View key={t.id} style={styles.toolCard}>
-                <View style={styles.toolCardHeader}>
-                  <Text style={styles.toolName}>{t.name}</Text>
-                  <Text style={t.executed ? styles.toolStatusDone : styles.toolStatusMuted}>
-                    {t.executed ? "Done" : "Running…"}
-                  </Text>
-                </View>
+            {streaming.userText != null && (
+              <View style={[styles.bubble, styles.bubbleUser]}>
+                <Text style={styles.userText}>{streaming.userText}</Text>
               </View>
-            ))}
-            {streaming.text.length === 0 && streaming.toolUses.length === 0 && (
-              <Text style={styles.faintLine}>Thinking…</Text>
             )}
+            {streaming.active && (
+              <View style={{ gap: spacing.sm }}>
+                {streaming.text.length > 0 && <ChatMarkdown text={streaming.text} />}
+                {streaming.toolUses.map((toolUse) => (
+                  <View key={toolUse.id} style={styles.toolCard}>
+                    <View style={styles.toolCardHeader}>
+                      <Text style={styles.toolName}>{toolUse.name}</Text>
+                      <Text
+                        style={toolUse.executed ? styles.toolStatusDone : styles.toolStatusMuted}
+                      >
+                        {toolUse.executed ? "Done" : "Running…"}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+                {streaming.text.length === 0 && streaming.toolUses.length === 0 && (
+                  <Text style={styles.faintLine}>Thinking…</Text>
+                )}
+              </View>
+            )}
+            {sleeping != null && (
+              <Text style={styles.faintLine}>
+                Sleeping {sleeping} second{sleeping === 1 ? "" : "s"}…
+              </Text>
+            )}
+            {streaming.error != null && <Text style={styles.errorLine}>{streaming.error}</Text>}
           </View>
-        )}
-        {sleeping != null && (
-          <Text style={styles.faintLine}>
-            Sleeping {sleeping} second{sleeping === 1 ? "" : "s"}…
-          </Text>
-        )}
-        {streaming.error != null && <Text style={styles.errorLine}>{streaming.error}</Text>}
-      </ScrollView>
+        }
+      />
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}

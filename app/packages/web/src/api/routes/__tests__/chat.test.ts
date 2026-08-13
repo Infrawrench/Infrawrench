@@ -42,6 +42,12 @@ vi.mock("@/chat/billing", () => ({ getMonthlySpend: vi.fn() }));
 // The Slack mirror of pending-action decisions; drags in server-core's db
 // client (which demands DATABASE_URL) if imported for real.
 vi.mock("@/chat/slack-approvals", () => ({ noteChatToolApprovalDecided: vi.fn() }));
+vi.mock("@/auth/effective-permissions", () => ({
+  effectivePermissions: async () => new Set(["secrets:write"]),
+}));
+vi.mock("@infrawrench/server-core/permissions/catalog", () => ({
+  hasPermission: () => true,
+}));
 vi.mock("uuid", () => ({ v4: () => "conv-1" }));
 
 const { chatRoutes } = await import("@/api/routes/chat");
