@@ -56,7 +56,7 @@ const PROBE_VALUES = ["infrawrench-probe", "1", "true", "[]"] as const;
  * a mapper that iterates the bag (tags, labels) should see nothing rather than
  * an infinite set of invented keys.
  */
-function probeFields(value: string): Record<string, string | number | boolean> {
+function probeFields(value: string): Record<string, string> {
   return new Proxy(
     {},
     {
@@ -65,7 +65,7 @@ function probeFields(value: string): Record<string, string | number | boolean> {
       ownKeys: () => [],
       getOwnPropertyDescriptor: () => undefined,
     },
-  ) as Record<string, string | number | boolean>;
+  ) as Record<string, string>;
 }
 
 function probeResource(pluginId: string, resourceTypeId: string, value: string): ResourceInstance {
@@ -76,7 +76,7 @@ function probeResource(pluginId: string, resourceTypeId: string, value: string):
     accountId: "probe",
     displayName: "infrawrench-probe",
     fields: probeFields(value),
-    resolvedOutputs: probeFields(value) as unknown as Record<string, string>,
+    resolvedOutputs: probeFields(value),
     secretStates: [],
     externalId: "infrawrench-probe",
     createdAt: "",
