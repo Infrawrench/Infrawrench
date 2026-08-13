@@ -46,7 +46,7 @@ URL-encode special characters in `user` and `password` (e.g. `@` → `%40`).
 
 If you've added a managed-Kafka resource elsewhere (Aiven, Confluent Cloud, MSK), reference its connection-string output instead of pasting a URL.
 
-<insert [Kafka Add-account form with the kafka:// URL field filled in] here>
+![Kafka Add-account form with the kafka:// URL field filled in](https://agent-assets.infrawrench.com/docs-screenshots/plugins/kafka/add-account.png)
 
 ## Notable flows
 

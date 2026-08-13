@@ -20,7 +20,7 @@ One field. [dashboard.cohere.com/api-keys](https://dashboard.cohere.com/api-keys
 
 Cohere issues two kinds of key: a **Trial** key (free, heavily rate-limited, not for production) and a **Production** key (paid, billed per token). Either works here and both see exactly the same models, datasets, fine-tunes, embed jobs and batches.
 
-<insert [Cohere Add-account form with the single API key field] here>
+![Cohere Add-account form with the single API key field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cohere/add-account.png)
 
 ## The Speech tab
 
@@ -28,7 +28,7 @@ Cohere ships **transcription only** — there is no text-to-speech endpoint anyw
 
 Transcription runs on `cohere-transcribe-03-2026`. Language is **required** by the API, so pick the one spoken in the clip rather than hoping for auto-detection. Cohere returns plain text with no word-level timings, so there is no word table under the transcript.
 
-<insert [Cohere Speech tab on a model, showing the transcribe half with the required language picker] here>
+![Cohere Speech tab on a model, showing the transcribe half with the required language picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cohere/speech-tab-transcribe.png)
 
 ## Tips & limits
 

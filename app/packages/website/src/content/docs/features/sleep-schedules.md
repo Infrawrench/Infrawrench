@@ -37,7 +37,7 @@ One schedule per resource. Times are wall-clock in the chosen zone and stay corr
 
 The **Sleep schedules** section of the Costs panel lists every schedule in the org — the window, the next transition, the last run's outcome, and the projected saving — with pause/resume, edit, and delete controls.
 
-<insert [Screenshot of the Sleep schedules section on the Costs panel with several schedules listed, one paused and one showing a "Skipped: freeze" badge] here>
+![Screenshot of the Sleep schedules section on the Costs panel with several schedules listed, one paused and one showing a "Skipped: freeze" badge](https://agent-assets.infrawrench.com/docs-screenshots/features/sleep-schedules/costs-panel-section.png)
 
 Creating, editing, and deleting a schedule are recorded in the [audit log](../team-and-billing/audit-log.md).
 

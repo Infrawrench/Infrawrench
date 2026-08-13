@@ -16,7 +16,7 @@ sidebar_order: 22
 
 Vercel → **Account Settings → Tokens → Create**.
 
-<insert [Vercel Add-account form with token and optional team-ID field] here>
+![Vercel Add-account form with token and optional team-ID field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/vercel/add-account.png)
 
 If you belong to a Team, provide the team ID so infrawrench lists team-owned projects.
 

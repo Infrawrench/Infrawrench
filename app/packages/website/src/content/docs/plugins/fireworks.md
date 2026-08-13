@@ -27,7 +27,7 @@ Two fields, both required.
 
 The account id is required because **Fireworks has no whoami endpoint**. Every control-plane path is `/v1/accounts/{account_id}/…`, so without it nothing lists at all. You can read it off any of your model strings: `accounts/my-team/models/my-model` → `my-team`. It is also shown at the top of app.fireworks.ai.
 
-<insert [The Fireworks AI Add-account form showing the API key and Account ID fields] here>
+![The Fireworks AI Add-account form showing the API key and Account ID fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/fireworks/add-account.png)
 
 ## Two planes, one key
 

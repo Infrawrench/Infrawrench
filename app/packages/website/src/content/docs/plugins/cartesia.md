@@ -18,7 +18,7 @@ Cartesia gates two endpoints behind a **separate admin key**, so this plugin ask
 
 **Admin API Key** (optional) — created in the same console with the **Admin** key type. Starts `sk_car_admin_` and is **not** interchangeable with the key above. Cartesia only accepts an admin key on `/usage/credits` and `/api-keys`, so leaving it blank hides the **API Keys** list and the credit-usage figure, and cost collection cannot run (see [Cost](#cost)). Voices, dictionaries, synthesis and transcription all keep working. Admin keys are created at **play.cartesia.ai/keys/admin**, and only by an organization admin.
 
-<insert [Cartesia Add-account form showing the required API key and the optional admin API key with its sk_car_admin_ placeholder] here>
+![Cartesia Add-account form showing the required API key and the optional admin API key with its sk_car_admin_ placeholder](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cartesia/add-account.png)
 
 ## Cost
 
@@ -39,7 +39,7 @@ Open a voice for a **Speech** tab with both halves. See [Speech testing](../feat
 - **Synthesize** runs **Sonic** — `sonic-3.5` (current flagship, sub-90 ms latency), `sonic-3` (previous generation, pinned) or `sonic-latest` (a rolling beta that can change without notice, so not for production). Opening a voice preselects it. Audio comes back as 44.1 kHz 128 kbps mp3.
 - **Transcribe** always runs **`ink-whisper`** — Cartesia's only transcription model — so the model picker applies to synthesis only, and the language picker applies to transcription.
 
-<insert [Cartesia Speech tab on a voice, showing the Sonic model picker and a synthesized clip in the player] here>
+![Cartesia Speech tab on a voice, showing the Sonic model picker and a synthesized clip in the player](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cartesia/speech-tab-sonic.png)
 
 ## Tips & limits
 

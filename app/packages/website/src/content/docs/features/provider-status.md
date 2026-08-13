@@ -22,7 +22,7 @@ Status feeds are public: no credentials are involved, nothing counts against you
 
 **Notifications.** A new **Provider incidents** trigger fans out over the same transports as the other alerts — Slack channels, Microsoft Teams webhooks, and mobile push. It's on by default and can be toggled per channel and per user in **Settings → Notifications** (and on the mobile notifications screen). One notification per incident per organization — no repeats as the incident evolves. Provider incidents deliberately never page SMS or voice: an upstream outage isn't something your on-call can fix.
 
-<insert [Notification settings page showing the "Provider incidents" toggle among the alert triggers for a Slack channel] here>
+![Notification settings page showing the "Provider incidents" toggle among the alert triggers for a Slack channel](https://agent-assets.infrawrench.com/docs-screenshots/features/provider-status/provider-incidents-trigger.png)
 
 **The weekly digest** gains a "Provider incidents" line counting the upstream incidents that overlapped your providers during the reported week.
 

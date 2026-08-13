@@ -18,7 +18,7 @@ A single **Docker Host** field — the address of the Docker daemon to talk to. 
 - **Local Unix socket** (desktop only): `unix:///var/run/docker.sock`
 - **Remote TCP**: `tcp://host:2376` (TLS) or `tcp://host:2375` (plaintext, insecure)
 
-<insert [Docker Add-account form with the single Docker Host field] here>
+![Docker Add-account form with the single Docker Host field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/docker/add-account.png)
 
 ## Notable flows
 

@@ -26,9 +26,9 @@ If what you want is the rows rather than a graph — a recurring dump into a war
 
 This card belongs to this dashboard and nothing else. To save the same configuration under a name and put it on several dashboards at once, make a [cost report](./cost-reports.md) instead and choose **Saved report** from the same menu.
 
-<insert [Dashboard "+" tile open with the add menu showing Pin a resource / Cost graph / Saved report / New budget / Existing budget] here>
+![Dashboard "+" tile open with the add menu showing Pin a resource / Cost graph / Saved report / New budget / Existing budget](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/dash-add-menu.png)
 
-<insert [Cost graph config modal with chart type, binning, date range, group-by, and a provider filter row] here>
+![Cost graph config modal with chart type, binning, date range, group-by, and a provider filter row](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/cost-graph-config-modal.png)
 
 Cost and budget cards drag around the grid like pinned resources, and share the same order — see [Arrange cards](./dashboard.md#arrange-cards).
 
@@ -46,7 +46,7 @@ Cost and budget cards drag around the grid like pinned resources, and share the 
 | Compare    | Overlay the previous period as a dashed line, with a % change badge                                       |
 | Forecast   | Project the recent trend forward as a dashed continuation                                                 |
 
-<insert [A stacked-bar cost graph grouped by service with a forecast dashed line and previous-period comparison] here>
+![A stacked-bar cost graph grouped by service with a forecast dashed line and previous-period comparison](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/cost-graph-service-forecast.png)
 
 Currencies are never merged: if your accounts bill in more than one currency the graph shows one series per currency and says so under the title.
 
@@ -60,7 +60,7 @@ Filter rows are the discoverable way to narrow a graph: every dimension is in th
 
 The **Query** toggle above the filter rows switches between the two. They are two views of the same filter, not two filters: switching either way keeps exactly what you had, and whatever you save is the same structure a graph built from rows would have saved.
 
-<insert [Cost graph config modal with the filter editor in Query mode, showing the text box containing provider = 'aws' AND tag['env'] != 'dev' and the Rows/Query toggle above it] here>
+![Cost graph config modal with the filter editor in Query mode, showing the text box containing provider = 'aws' AND tag['env'] != 'dev' and the Rows/Query toggle above it](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/cost-graph-query-mode.png)
 
 ### The grammar
 
@@ -135,7 +135,7 @@ The same filter — "prod only", "team platform's accounts" — tends to get reb
 
 The important part is that applying a saved filter is a **reference, not a copy**. A graph, report or budget stores the filter's id, and the server looks the rows up every time the query runs. Edit "prod only" once — add the new production account — and every graph, report and budget using it changes on its next refresh. Nothing ever holds a stale copy.
 
-<insert [The cost graph editor's Filters section with a "Prod only" saved-filter chip applied above the filter rows, and the "Apply saved filter…" picker visible] here>
+![The cost graph editor's Filters section with a "Prod only" saved-filter chip applied above the filter rows](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/saved-filter-chip.png)
 
 ### Applying and creating one
 
@@ -145,7 +145,7 @@ Going the other way, once you have built rows worth keeping, **Save these rows a
 
 Saved filters are managed on the **Costs** panel, in the **Saved filters** section under your budgets — that is where the objects they scope live. Each row shows the filter as query text; editing one warns you what it will re-scope by naming every graph, report and budget that references it.
 
-<insert [The Costs panel's Saved filters section listing two filters with their query text, with the edit modal open showing the "Saving changes budget ..." referent warning] here>
+![The Costs panel's Saved filters section listing two filters with their query text, with the edit modal open showing the "Saving changes budget ..." referent warning](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/saved-filters-edit-modal.png)
 
 ### Deleting one is refused while it is in use
 
@@ -204,9 +204,9 @@ Budgets take the same setting, and it's the same reasoning: a budget tracking am
 
 From the terminal the same two questions are `infrawrench costs --basis amortized` and `infrawrench costs --charge-type usage` (repeat the flag for more than one kind); `--group-by charge_type` prints the split. The text output names the basis next to the total, so a number copied out of it says what it is.
 
-<insert [Cost graph config modal showing the Cost basis select set to Amortized, next to the Group by select set to Charge type] here>
+![Cost graph config modal showing the Cost basis select set to Amortized, next to the Group by select set to Charge type](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/config-amortized-charge-type.png)
 
-<insert [Two cost graphs side by side for the same month: one on a cash basis with a single tall commitment-fee bar, one amortized with that fee spread evenly across the days] here>
+![Two cost graphs side by side for the same month: one on a cash basis with a single tall commitment-fee bar, one amortized with that fee spread evenly across the days](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/cash-vs-amortized.png)
 
 ### When the number is an estimate
 
@@ -222,7 +222,7 @@ Check the plugin's page under [Plugins](../plugins/aws.md) to see whether its co
 
 `infrawrench costs` prints the same note above the chart and lists these accounts as `estimatedAccounts` under `--json`. Over `GET /costs/status` it is the `estimated` flag on each account, alongside `chargeTypes` and `amortization`.
 
-<insert [Dashboard showing the neutral "Spend for Hetzner is estimated" banner above a cost widget, with the explanation about list rates and deleted resources] here>
+![Dashboard showing the neutral "Spend for Hetzner is estimated" banner above a cost widget, with the explanation about list rates and deleted resources](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/hetzner-estimated-banner.png)
 
 ## Currency
 
@@ -230,7 +230,7 @@ Spend is stored in the currency each provider bills in, and **currencies are nev
 
 **Settings → Currency** closes it, as an explicit opt-in. Set a display currency, state the exchange rates yourself, and every cost surface folds the currencies you have priced into that one.
 
-<insert [Settings → Currency page with a display currency of USD set and three exchange rate rows (EUR, GBP, SEK) with different effective dates] here>
+![Settings → Currency page with a display currency of USD set and three exchange rate rows (EUR, GBP, SEK) with different effective dates](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/currency-settings.png)
 
 ### It is off until you turn it on
 
@@ -293,7 +293,7 @@ Each budget has one or more thresholds:
 
 Every threshold fires at most once per calendar month. Alerts show up as a badge on the budget card, as a [mobile push notification](./mobile-push-notifications.md) to org members who have the app installed and budget alerts enabled in their per-org notification preferences, in any [Slack](./slack-alerts.md) or [Microsoft Teams](./teams-alerts.md) channel opted into budget alerts, and — if your org has Twilio configured on the **Settings → Notifications** page — as an SMS to your on-call recipients.
 
-<insert [Budget card showing a progress bar at 72% with threshold ticks, a forecast marker, and an alert badge] here>
+![Budget card showing a progress bar at 72% with threshold ticks, a forecast marker, and an alert badge](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/budget-card.png)
 
 Budgets alert on totals you chose. For spend you didn't see coming — a provider or service suddenly billing far above its own baseline, or one that had never billed at all — see [cost anomaly alerts](./cost-anomaly-alerts.md), which work with no configuration and can be [tuned](./cost-anomaly-alerts.md#tuning-detection) if the defaults are too loud or too quiet. Anomalies can text the same on-call recipients as a budget crossing, but unlike budgets they [do not until you ask them to](./cost-anomaly-alerts.md#paging-by-sms).
 
@@ -329,7 +329,7 @@ A dashboard's **+** tile offers both halves:
 
 The same budget can appear on as many dashboards as you like — one budget, many views of it. [Cost reports](./cost-reports.md) work the same way for graphs.
 
-<insert [Costs panel showing the month-to-date spend chart at the top and two budget cards below, one labelled "On no dashboard"] here>
+![Costs panel showing the month-to-date spend chart at the top and two budget cards below, one labelled "On no dashboard"](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/costs-panel-overview.png)
 
 ### Unit costs
 
@@ -376,7 +376,7 @@ Either way, re-reporting a day restates it rather than adding to it, and neither
 
 Collection runs unattended and retries with a growing backoff, so a provider that needs setup would otherwise just look like an account with no spend. Instead, the last failure is kept against the account and shown as a banner above the cost widgets on the dashboard — on web, desktop, and mobile alike:
 
-<insert [Dashboard with an amber "Cost collection is failing for Infrawrench GCP" banner above the cost widgets, showing the billing-export message and its link] here>
+![Dashboard with an amber "Cost collection is failing for Infrawrench GCP" banner above the cost widgets, showing the billing-export message and its link](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/gcp-failing-banner.png)
 
 Where the plugin can tell exactly what is missing, the banner carries a link straight to the provider page that fixes it — for example GCP's Cloud Billing export settings for the account's project. Fix the cause and the next collection backfills the days that were missed; the banner clears itself on the first success.
 
@@ -388,7 +388,7 @@ Collection can also succeed and come back with nothing. This is normal for a fre
 
 Because nothing failed, there is no error to report — so the account gets its own, calmer banner instead of a blank graph with no explanation:
 
-<insert [Dashboard showing the neutral "No spend data yet for Infrawrench GCP" banner above an empty cost widget] here>
+![Dashboard showing the neutral "No spend data yet for Infrawrench GCP" banner above an empty cost widget](https://agent-assets.infrawrench.com/docs-screenshots/features/cloud-costs/gcp-empty-banner.png)
 
 It clears itself the moment the first row lands. If it persists for more than a couple of days, the export is usually configured but not actually delivering — check it at the provider rather than in Infrawrench.
 

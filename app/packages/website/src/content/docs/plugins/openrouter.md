@@ -19,7 +19,7 @@ OpenRouter needs **two keys**, because neither one can do the other's job.
 
 **Inference API Key** (optional) — [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys). A normal `sk-or-v1-…` key. Management keys are explicitly rejected by the completion endpoints, so the **Speech tab** needs one of these. Without it every list still works and the Speech tab renders with an explanation instead of failing.
 
-<insert [OpenRouter Add-account form showing the required Management Key field and the optional Inference API Key field, with the description explaining why both exist] here>
+![OpenRouter Add-account form showing the required Management Key field and the optional Inference API Key field, with the description explaining why both exist](https://agent-assets.infrawrench.com/docs-screenshots/plugins/openrouter/add-account.png)
 
 ## Comparing providers for a model
 

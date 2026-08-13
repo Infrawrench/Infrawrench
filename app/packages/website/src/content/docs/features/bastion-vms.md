@@ -54,7 +54,7 @@ The agent's status pill in **Settings → Bastions** flips to **Connected** with
 
 When adding a new cloud account, pick the bastion in the new **Egress via** dropdown:
 
-<insert [Add account modal in the credentials step with the "Egress via" dropdown expanded showing "Direct (no bastion)" and the user's registered bastions.] here>
+![Add account modal in the credentials step with the "Egress via" dropdown expanded showing "Direct (no bastion)" and the user's registered bastions.](https://agent-assets.infrawrench.com/docs-screenshots/features/bastion-vms/egress-via-expanded.png)
 
 For existing accounts, use the same dropdown in the account edit flow. Changing the binding takes effect immediately for any subsequent API calls.
 

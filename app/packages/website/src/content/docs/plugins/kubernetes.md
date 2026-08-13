@@ -32,7 +32,7 @@ Paste a kubeconfig YAML, or an output reference from an EKS / AKS / GKE / DOKS /
 
 There is one optional second field, **Cluster hourly rates**, used only for cost allocation — see [Cost allocation](#cost-allocation) below. Leave it blank unless you are connecting a cluster that has no cloud account behind it in Infrawrench, or you want to price the parts of the cluster that are not node compute.
 
-<insert [Kubernetes Add-account form with kubeconfig textarea and output-ref picker] here>
+![Kubernetes Add-account form with kubeconfig textarea and output-ref picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/kubernetes/add-account.png)
 
 ## Cost allocation
 

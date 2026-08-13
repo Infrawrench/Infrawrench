@@ -21,7 +21,7 @@ Every item lands in a severity bucket: **expired**, **critical** (within 7 days)
 
 Web, desktop and mobile all get an **Expiring** screen: severity totals up top, then the feed grouped by kind (TLS certificates, domains, API tokens, secret versions, …), by account, or by severity, each row naming the resource, what exactly expires, and how long is left. The resource name is a button — activate it (mouse or keyboard) to open the resource itself and renew, rotate or delete it.
 
-<insert [Web Expiring screen showing the severity summary (expired / 7d / 30d / lead-time counts) and the feed grouped by kind, with a TLS certificate at "in 5d" marked critical] here>
+![Web Expiring screen showing the severity summary (expired / 7d / 30d / lead-time counts) and the feed grouped by kind, with a TLS certificate at "in 5d" marked critical](https://agent-assets.infrawrench.com/docs-screenshots/features/expiry-radar/expiring-screen.png)
 
 On desktop the screen works in both modes: signed into Infrawrench Cloud it shows the organization-wide feed; in local-only mode it computes the same countdown from the workspace on your machine.
 
@@ -31,7 +31,7 @@ On desktop the screen works in both modes: signed into Infrawrench Cloud it show
 
 The cloud poller sweeps every organization's feed and, when items sit inside your lead time, sends one summary alert — counts per severity plus the soonest deadlines — over the same transports as every other alert: Slack channels, Microsoft Teams webhooks, and mobile push. The **Expiry alerts** trigger is on by default and can be toggled per channel and per user in **Settings → Notifications** (and on the mobile notifications screen). Alerts are rate-limited to one per organization per day, so a certificate three weeks out reminds you daily, not every fifteen seconds.
 
-<insert [Org settings showing the Expiry radar card with the enabled toggle and lead-time input set to 60 days] here>
+![Org settings showing the Expiry radar card with the enabled toggle and lead-time input set to 60 days](https://agent-assets.infrawrench.com/docs-screenshots/features/expiry-radar/settings-card.png)
 
 The lead time is the knob: it decides both where the "upcoming" bucket ends on the screen and how early the poller starts alerting. Set it per organization in the same settings card — 30 days if you only want near-term noise, 90 if your renewals need procurement lead time.
 

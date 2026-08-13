@@ -23,7 +23,7 @@ Together AI has a single key type. Create one at [api.together.ai/settings/api-k
 
 There is no second admin key to add, and you do not need to supply a project id — the plugin reads it from `GET /v1/whoami`, which is also how it validates the key when you add the account.
 
-<insert [The Together AI Add-account form with the single API key field] here>
+![The Together AI Add-account form with the single API key field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/together/add-account.png)
 
 ## Speech tab
 
@@ -34,7 +34,7 @@ Open any of Together's speech models and you get a **Speech** tab with both halv
 
 See [Speech testing](../features/speech-testing.md) for how the panel works in general.
 
-<insert [The Speech tab on the Kokoro-82M model, showing the voice picker and a synthesized clip] here>
+![The Speech tab on the Kokoro-82M model, showing the voice picker and a synthesized clip](https://agent-assets.infrawrench.com/docs-screenshots/plugins/together/speech-tab-kokoro.png)
 
 ## Notable flows
 

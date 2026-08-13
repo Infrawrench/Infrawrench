@@ -22,7 +22,7 @@ Create a token at [replicate.com/account/api-tokens](https://replicate.com/accou
 
 Replicate has a single token type — the same token covers predictions, models, trainings, deployments and files.
 
-<insert [The Replicate Add-account form with the API token field] here>
+![The Replicate Add-account form with the API token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/replicate/add-account.png)
 
 ## Notable flows
 

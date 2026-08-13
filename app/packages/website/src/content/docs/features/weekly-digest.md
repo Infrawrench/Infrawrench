@@ -22,7 +22,7 @@ Each digest covers the last complete Monday-to-Sunday week and contains:
 
 Go to **Settings → Notifications** and tick **Send a weekly digest** in the Weekly digest section. The first scheduled digest arrives at the next send time — enabling mid-week doesn't immediately send a stale one. If you want to see one right away, press **Send now**: it composes last week's digest and sends it immediately, which is also the quickest way to confirm the whole pipeline works.
 
-<insert [Settings → Notifications page showing the Weekly digest section: the enable checkbox ticked, the send day / hour / time zone controls, the AI summary checkbox, the email recipient list, and the last-attempt status line] here>
+![Settings → Notifications page showing the Weekly digest section: the enable checkbox ticked, the send day / hour / time zone controls, the AI summary checkbox, the email recipient list, and the last-attempt status line](https://agent-assets.infrawrench.com/docs-screenshots/features/weekly-digest/digest-settings.png)
 
 The settings are org-wide and take the **Organization settings** permission, exactly like the Slack and Teams routing above them.
 
@@ -57,7 +57,7 @@ The Weekly digest section also carries an **email recipient list**. Addresses he
 
 Recipients are an organization-level list rather than a per-member setting, and deliberately so: the digest is a destination-shaped notification like a Slack channel, not a personal alert. That also means an address doesn't have to belong to an Infrawrench user — a `finance@` alias or a distribution list works fine, and reaches people who never sign in.
 
-<insert [The email recipient list in the Weekly digest section with two addresses listed and the add-recipient field below] here>
+![The email recipient list in the Weekly digest section with two addresses listed and the add-recipient field below](https://agent-assets.infrawrench.com/docs-screenshots/features/weekly-digest/email-recipients.png)
 
 If your deployment has no mail provider configured, the section says so and email recipients receive nothing. Self-hosters: email goes out through [Mailgun](https://www.mailgun.com/), so this needs `MAILGUN_API_KEY`, `MAILGUN_DOMAIN` and `EMAIL_FROM` set on the server — plus `MAILGUN_API_BASE` if your Mailgun account is in the EU region. Without them, email delivery is skipped with a log line and the digest still reaches Slack and Teams.
 

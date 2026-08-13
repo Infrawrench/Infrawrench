@@ -12,7 +12,7 @@ sidebar_order: 16
 
 A single **Server(s)** field — `host:port` (default port `11211`), or a comma-separated list for multiple servers. Memcached has no auth by default — do not expose it publicly. Use an [SSH tunnel](../features/ssh-tunnels.md) or a private network.
 
-<insert [Memcached Add-account form with the Server(s) field] here>
+![Memcached Add-account form with the Server(s) field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/memcached/add-account.png)
 
 ## Notable flows
 

@@ -21,7 +21,7 @@ sidebar_order: 12
 
 Neon console → **Account → API keys → New API key**.
 
-<insert [Neon Add-account form with API key field] here>
+![Neon Add-account form with API key field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/neon/add-account.png)
 
 ## Notable flows
 

@@ -23,7 +23,7 @@ The view unions the feeds Infrawrench already indexes — it collects nothing ne
 
 Every event carries a severity, and each row deep-links to its native screen — the resource, the workflow, the deploy log, the provider's incident page.
 
-<insert [Web moment view for a timestamp with the window preset row (±15m/±1h/±6h), a mixed timeline showing a deploy failure in red, resource changes, and an incident-started event] here>
+![Web moment view for a timestamp with the window preset row (±15m/±1h/±6h), a mixed timeline showing a deploy failure in red, resource changes, and an incident-started event](https://agent-assets.infrawrench.com/docs-screenshots/features/moment/moment-window.png)
 
 ## Correlation, not just concatenation
 

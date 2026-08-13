@@ -20,7 +20,7 @@ sidebar_order: 18
 
 Databricks workspace → **User Settings → Developer → Access tokens → Generate new token**. You will need the workspace URL too.
 
-<insert [Databricks Add-account form with workspace URL and PAT fields] here>
+![Databricks Add-account form with workspace URL and PAT fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/databricks/add-account.png)
 
 ## Notable flows
 

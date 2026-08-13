@@ -19,7 +19,7 @@ Fly.io dashboard → **Account → Access Tokens → Create Token**. Tokens are 
 - **API Token** — the token from the Fly dashboard.
 - **Organization Slug** — your Fly org slug (defaults to `personal`).
 
-<insert [Fly Add-account form with API token and organization slug fields] here>
+![Fly Add-account form with API token and organization slug fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/fly/add-account.png)
 
 Infrawrench uses the token for both the Machines API and the GraphQL API.
 

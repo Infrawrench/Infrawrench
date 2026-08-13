@@ -22,7 +22,7 @@ Create a service principal (Azure Portal → Microsoft Entra ID → App registra
 - **Client secret**
 - **Subscription ID**
 
-<insert [Azure Add-account form with tenant / client / secret / subscription fields] here>
+![Azure Add-account form with tenant / client / secret / subscription fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/azure/add-account.png)
 
 ## Notable flows
 

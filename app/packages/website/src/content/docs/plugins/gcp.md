@@ -21,7 +21,7 @@ Paste a **Service account key (JSON)** — download from GCP Console → IAM & A
 
 You can optionally set a **Project ID** to override the project embedded in the key. Leave blank to use the project from the key file.
 
-<insert [GCP Add-account form with service account JSON textarea and optional project ID field] here>
+![GCP Add-account form with service account JSON textarea and optional project ID field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/gcp/add-account.png)
 
 ### Credential preflight & least-privilege role
 

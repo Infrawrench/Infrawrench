@@ -19,7 +19,7 @@ Scaleway Console → **Identity and Access Management → API keys → Generate 
 - **Access Key** and **Secret Key** — from the generated API key.
 - **Default Project ID** — the project resources will be scoped to.
 
-<insert [Scaleway Add-account form with access / secret / project fields] here>
+![Scaleway Add-account form with access / secret / project fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/scaleway/add-account.png)
 
 ## Notable flows
 

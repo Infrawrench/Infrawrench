@@ -29,7 +29,7 @@ Without the management key, everything on the inference key keeps working. What 
 
 You never have to find your team id. The plugin discovers it from `GET /auth/management-keys/validation` when a management key is present, and falls back to `GET /v1/api-key` otherwise.
 
-<insert [xAI Add-account form showing the required API Key field and the optional Management Key field, with its description explaining what breaks without it] here>
+![xAI Add-account form showing the required API Key field and the optional Management Key field, with its description explaining what breaks without it](https://agent-assets.infrawrench.com/docs-screenshots/plugins/xai/add-account.png)
 
 ## The Speech tab
 
@@ -38,7 +38,7 @@ Open any voice — built-in or custom — and you get a **Speech** tab with both
 - **Synthesize** posts to `POST /v1/tts`. The voice picker is filled from `GET /v1/tts/voices` plus your own custom voices, so the built-ins (Eve, Ara, Leo, Rex, Sal) and anything you have cloned appear side by side. Opening a voice preselects it. The language picker covers every BCP-47 code xAI documents, plus **Auto-detect**.
 - **Transcribe** posts to `POST /v1/stt` with speaker diarization on, and returns word-level timings with per-word confidence.
 
-<insert [xAI Speech tab on the Eve voice, with the voice picker open showing built-in and custom voices, and a transcript with word timings and speaker labels below] here>
+![xAI Speech tab on the Eve voice, with the voice picker open showing built-in and custom voices, and a transcript with word timings and speaker labels below](https://agent-assets.infrawrench.com/docs-screenshots/plugins/xai/speech-tab-eve.png)
 
 ## Costs and metrics
 

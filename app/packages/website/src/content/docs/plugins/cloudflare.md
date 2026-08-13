@@ -45,7 +45,7 @@ The API token field in the **Add account** and **Update credentials** forms show
 
 If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My Profile → API Tokens → Create Token** and grant the permissions matching the resources you plan to manage.
 
-<insert [Cloudflare Add-account form with the API token field and the "Create a token with these scopes" link highlighted] here>
+![Cloudflare Add-account form with the API token field and the "Create a token with these scopes" link highlighted](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cloudflare/add-account.png)
 
 ### Credential preflight & token template
 
