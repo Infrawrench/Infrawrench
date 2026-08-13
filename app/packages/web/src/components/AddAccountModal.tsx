@@ -49,7 +49,13 @@ export function AddAccountModal({
           ),
         ),
       )
-      .catch(() => setBastions([]));
+      .catch((e: unknown) => {
+        // A failed load must not render as "no bastions" — the picker would
+        // silently offer only direct connections.
+        toast.error("Failed to load bastions", {
+          description: e instanceof Error ? e.message : String(e),
+        });
+      });
   }, [orgId]);
 
   useEffect(() => {
@@ -59,7 +65,12 @@ export function AddAccountModal({
           rows.map((r) => ({ id: r.id, pluginId: r.pluginId, displayName: r.displayName })),
         ),
       )
-      .catch(() => setAccounts([]));
+      .catch((e: unknown) => {
+        // Same as bastions: don't render a failed load as "no accounts".
+        toast.error("Failed to load accounts", {
+          description: e instanceof Error ? e.message : String(e),
+        });
+      });
   }, [orgId]);
 
   const saveAccount = useCallback(

@@ -625,12 +625,18 @@ export async function assembleIncidentTimeline(
   // rather than exactly on its boundary.
   const halfWindowMinutes = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 120_000) + 1);
 
+  let momentError: string | null = null;
   const [moment, notes, probeTransitions, metricEvents] = await Promise.all([
     computeMoment(organizationId, {
       at: centre,
       windowMinutes: halfWindowMinutes,
       permissions: actor.permissions,
-    }).catch(() => null),
+    }).catch((e: unknown) => {
+      // Degrade to a timeline without correlated events, but say why in the
+      // moment feed's error slot rather than a fixed placeholder.
+      momentError = e instanceof Error ? e.message : String(e);
+      return null;
+    }),
     listIncidentNoteRecords(incident.id),
     loadProbeTransitions(organizationId, from, to, actor.permissions),
     loadMetricAlertEvents(organizationId, from, to, actor.permissions),
@@ -651,7 +657,13 @@ export async function assembleIncidentTimeline(
         status: feed.status,
         error: feed.error ?? null,
       }))
-    : [{ feed: "moment", status: "error" as const, error: "The moment union could not be read." }];
+    : [
+        {
+          feed: "moment",
+          status: "error" as const,
+          error: momentError ?? "The moment union could not be read.",
+        },
+      ];
 
   return {
     incidentId: incident.id,

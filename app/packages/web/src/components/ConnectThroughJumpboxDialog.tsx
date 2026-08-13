@@ -42,6 +42,7 @@ export function ConnectThroughJumpboxDialog({
 }: Props) {
   const orgId = useOrgId();
   const [sshAccounts, setSshAccounts] = useState<AccountListItem[] | null>(null);
+  const [accountsError, setAccountsError] = useState<string | null>(null);
   const [jumpboxId, setJumpboxId] = useState<string>("");
   const [useAddress, setUseAddress] = useState<"public" | "private">(
     privateHost ? "private" : "public",
@@ -52,7 +53,11 @@ export function ConnectThroughJumpboxDialog({
   useEffect(() => {
     apiGet<AccountListItem[]>(`/api/org/${orgId}/accounts`)
       .then((rows) => setSshAccounts(rows.filter((r) => r.pluginId === "ssh")))
-      .catch(() => setSshAccounts([]));
+      // A failed load must not read as "no SSH accounts yet" — that message
+      // sends the user off to create an account they may already have.
+      .catch((e: unknown) =>
+        setAccountsError(e instanceof Error ? e.message : "Failed to load accounts"),
+      );
   }, [orgId]);
 
   if (showAddAccount) {
@@ -113,7 +118,9 @@ export function ConnectThroughJumpboxDialog({
             <label htmlFor="ctj-jumpbox" className="block text-xs text-on-surface-tertiary mb-1">
               Jumpbox
             </label>
-            {sshAccounts === null ? (
+            {accountsError !== null ? (
+              <p className="text-xs text-danger">Failed to load SSH accounts: {accountsError}</p>
+            ) : sshAccounts === null ? (
               <p className="text-xs text-on-surface-faint">Loading…</p>
             ) : sshAccounts.length === 0 ? (
               <p className="text-xs text-on-surface-faint">
