@@ -463,8 +463,8 @@ export async function checkWorkflowSource(
   // Typecheck stays on the static path — precise create-field unions are an
   // editor nicety, and a cold enrich would make every check pay provider latency.
   const dts = await generateWorkflowTypings(organizationId, {
-    metrics: opts.metrics,
-    triggerKind: opts.triggerKind,
+    ...opts,
+    enrichCreateFields: false,
   });
   return typecheckWorkflow({ source, dts });
 }
