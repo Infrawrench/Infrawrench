@@ -251,12 +251,11 @@ export type UnitCostMode = (typeof UNIT_COST_MODES)[number];
  * `CostGraphConfig.unitCostMode` spells the same union out inline to avoid a
  * circular import. This fails the build if the two ever drift apart.
  */
-type ModesMatchGraphConfig = UnitCostMode extends UnitCostGraphMode
+true satisfies UnitCostMode extends UnitCostGraphMode
   ? UnitCostGraphMode extends UnitCostMode
     ? true
     : never
   : never;
-export type UnitCostModesMatchGraphConfig = ModesMatchGraphConfig;
 
 export const UNIT_COST_MODE_LABELS: Record<UnitCostMode, string> = {
   unit_cost: "Cost per unit",
