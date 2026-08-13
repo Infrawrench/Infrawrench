@@ -202,6 +202,36 @@ describe("incidents tab kind", () => {
   });
 });
 
+describe("workflows tab kind", () => {
+  it("is a singleton tab id regardless of which workflow is open", () => {
+    expect(getWorkspaceTabId({ kind: "workflows" })).toBe("workflows");
+    expect(getWorkspaceTabId({ kind: "workflows", workflowId: "wf-1" })).toBe("workflows");
+  });
+
+  it("falls back to the sidebar tile's title", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "workflows" })).toBe("Workflows");
+  });
+
+  it("compares by workflow, so reactivation restores the one that was open", () => {
+    expect(workspaceTabTargetsEqual({ kind: "workflows" }, { kind: "workflows" })).toBe(true);
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "workflows", workflowId: "wf-1" },
+        { kind: "workflows", workflowId: "wf-1" },
+      ),
+    ).toBe(true);
+    expect(
+      workspaceTabTargetsEqual(
+        { kind: "workflows", workflowId: "wf-1" },
+        { kind: "workflows", workflowId: "wf-2" },
+      ),
+    ).toBe(false);
+    expect(
+      workspaceTabTargetsEqual({ kind: "workflows" }, { kind: "workflows", workflowId: "wf-1" }),
+    ).toBe(false);
+  });
+});
+
 describe("getWorkspaceTabFallbackTitle", () => {
   it("returns 'Dashboard' for dashboard target", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "dashboard", dashboardId: "x" })).toBe("Dashboard");

@@ -9,6 +9,7 @@ import {
   statusPagesTabTarget,
   quotasTabTarget,
   incidentsTabTarget,
+  workflowsTabTarget,
   environmentsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
@@ -91,6 +92,16 @@ describe("getWorkspaceNavigateArgs", () => {
     const detail = getWorkspaceNavigateArgs(incidentsTabTarget("inc-1"));
     expect(detail.to).toBe("/incidents");
     expect(detail.search).toEqual({ incident: "inc-1" });
+  });
+
+  it("returns workflows route args, clearing the param for the list view", () => {
+    const list = getWorkspaceNavigateArgs(workflowsTabTarget());
+    expect(list.to).toBe("/workflows");
+    expect(list.search).toEqual({});
+
+    const detail = getWorkspaceNavigateArgs(workflowsTabTarget("wf-1"));
+    expect(detail.to).toBe("/workflows");
+    expect(detail.search).toEqual({ workflow: "wf-1" });
   });
 
   it("returns environments route args", () => {
@@ -298,6 +309,14 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/incidents", undefined, "?incident=inc-1")).toEqual({
       kind: "incidents",
       incidentId: "inc-1",
+    });
+  });
+
+  it("parses the workflows path, with and without a selected workflow", () => {
+    expect(syncWorkspaceRouteFromPath("/workflows")).toEqual({ kind: "workflows" });
+    expect(syncWorkspaceRouteFromPath("/workflows", undefined, "?workflow=wf-1")).toEqual({
+      kind: "workflows",
+      workflowId: "wf-1",
     });
   });
 

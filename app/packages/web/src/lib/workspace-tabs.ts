@@ -41,6 +41,7 @@ export {
   accountTabTarget,
   chatTabTarget,
   incidentsTabTarget,
+  workflowsTabTarget,
   costReportsTabTarget,
   invoicesTabTarget,
   resourceTabTarget,
@@ -85,11 +86,20 @@ export function getWorkspaceNavigateArgs(
         ...(replace ? { replace: true } : {}),
       };
     case "workflows":
-      return {
-        to: "/org/$orgId/workflows",
-        params: { orgId },
-        ...(replace ? { replace: true } : {}),
-      };
+      // The workflow id is a path segment rather than a search param, so a
+      // workflow link reads as a place: /org/{org}/workflows/{id}. Slack/Teams
+      // `infra.page()` buttons and the mobile app already mint that URL.
+      return target.workflowId
+        ? {
+            to: "/org/$orgId/workflows/$workflowId",
+            params: { orgId, workflowId: target.workflowId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/workflows",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
     case "deployments":
       return {
         to: "/org/$orgId/deployments",
@@ -372,7 +382,7 @@ export function syncWorkspaceRouteFromPath(
   const s = segments.slice(offset);
 
   if (s[0] === "workflows") {
-    return workflowsTabTarget();
+    return workflowsTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "deployments") {
     // `?repo=owner/name` arrives from a /deploy/... hotlink.

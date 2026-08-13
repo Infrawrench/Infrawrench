@@ -241,7 +241,7 @@ function renderPanel(
     case "agents":
       return <DesktopAgentsPanel navigate={(args) => void navigate(args)} />;
     case "workflows":
-      return <DesktopWorkflowsPanel />;
+      return <DesktopWorkflowsPanel workflowId={t.workflowId} />;
     case "costs":
       return (
         <CostsPanel
