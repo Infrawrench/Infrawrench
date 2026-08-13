@@ -72,4 +72,6 @@
 // 1.24.0: reusable organization-level workflow secret metadata, write-only
 // values, per-workflow assignment routes, and the human-only chat secret
 // handoff endpoint. All additive.
-export const API_VERSION = "1.24.0";
+// 1.25.0: chat `ask_question` answer route — the in-app agent can pause for a
+// selection (with Other) or a textarea and resume once the user submits.
+export const API_VERSION = "1.25.0";

@@ -61,6 +61,14 @@ export function createDesktopChatClient(orgId: string): ChatClient {
         value,
       });
     },
+    async answerQuestion(conversationId, pendingId, answers) {
+      await invoke("cloud_chat_answer_question", {
+        orgId,
+        conversationId,
+        pendingId,
+        answers,
+      });
+    },
     async *streamTurn(conversationId, body): AsyncIterable<ChatTurnEvent> {
       const streamId = crypto.randomUUID();
       const channel = `cloud_chat_stream_${streamId}`;

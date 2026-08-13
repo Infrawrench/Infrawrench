@@ -39,6 +39,7 @@ import { registerOrgConfigPaths } from "./paths/org-config";
 import { registerWorkflowApprovalPaths } from "./paths/workflow-approvals";
 import { registerWorkflowPaths } from "./paths/workflows";
 import { registerWorkflowSecretPaths } from "./paths/workflow-secrets";
+import { registerChatPaths } from "./paths/chat";
 import { registerDeploymentPaths } from "./paths/deployments";
 import { registerPagePaths } from "./paths/pages";
 import { registerResourcePaths } from "./paths/resources";
@@ -167,6 +168,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerWorkflowApprovalPaths(ctx);
   registerWorkflowPaths(ctx);
   registerWorkflowSecretPaths(ctx);
+  registerChatPaths(ctx);
   registerDeploymentPaths(ctx);
   registerPagePaths(ctx);
   registerResourcePaths(ctx);
@@ -363,6 +365,12 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "Workflow (runbook) surface exposed over HTTP — the approval requests " +
           "raised by infra.waitForApproval(...) inside runs, and the cron-schedule " +
           "sub-resource. Full workflow CRUD is managed in the app.",
+      },
+      {
+        name: "Chat",
+        description:
+          "Hosted AI chat — conversation CRUD, the SSE agent stream, pending-action " +
+          "approval, secure secret handoff, and structured answers to agent questions.",
       },
       {
         name: "Resources",
@@ -643,6 +651,7 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PATCH /workflow-secrets/{id}": "secrets:write",
   "PUT /workflow-secrets/{id}/value": "secrets:write",
   "DELETE /workflow-secrets/{id}": "secrets:write",
+  "POST /chat/conversations/{conversationId}/pending/{pendingId}/answer": "chat:write",
   // agents
   "GET /agents/accounts": "accounts:read",
   "GET /agents/settings": "accounts:read",

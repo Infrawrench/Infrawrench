@@ -408,6 +408,7 @@ const INVOKE_CHANNELS = [
   "cloud_chat_spend",
   "cloud_chat_resolve_pending",
   "cloud_chat_submit_secret",
+  "cloud_chat_answer_question",
   "cloud_chat_stream_start",
   "cloud_chat_stream_abort",
 ] as const;

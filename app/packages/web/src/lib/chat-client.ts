@@ -44,6 +44,11 @@ export function createWebChatClient(orgId: string): ChatClient {
         value,
       });
     },
+    async answerQuestion(conversationId, pendingId, answers) {
+      await apiPost(`${base}/conversations/${conversationId}/pending/${pendingId}/answer`, {
+        answers,
+      });
+    },
     async *streamTurn(conversationId, body): AsyncIterable<ChatTurnEvent> {
       const res = await fetch(`${base}/conversations/${conversationId}/messages`, {
         method: "POST",

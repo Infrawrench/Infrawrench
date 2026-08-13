@@ -3,9 +3,16 @@ import { useLocalSearchParams } from "expo-router";
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ASK_QUESTION_LIMITS,
+  ASK_QUESTION_OTHER_ID,
+  ASK_QUESTION_TOOL_NAME,
   CHAT_MODELS,
+  askQuestionAnswersComplete,
   createBearerChatClient,
   microsToUsd,
+  parseAskQuestionInput,
+  type AskQuestion,
+  type AskQuestionAnswer,
   type ChatContentBlock,
   type ChatConversationMessage,
   type ChatPendingAction,
@@ -100,8 +107,8 @@ export default function ConversationScreen() {
             const toolUseId = ev["toolUseId"] as string;
             setActiveSleepIds((ids) => new Set(ids).add(toolUseId));
           } else if (ev.type === "tool_use_start") {
-            // Sleep renders as its own indicator, not as a tool card.
-            if (ev["name"] === "sleep") continue;
+            // Sleep and ask_question render as their own UI, not as a tool card.
+            if (ev["name"] === "sleep" || ev["name"] === ASK_QUESTION_TOOL_NAME) continue;
             setStreaming((s) => ({
               ...s,
               toolUses: [
@@ -265,6 +272,27 @@ export default function ConversationScreen() {
     [client, conversationId, reload, startStream],
   );
 
+  const answerQuestion = useCallback(
+    async (pending: ChatPendingAction, answers: AskQuestionAnswer[]) => {
+      try {
+        await client.answerQuestion(conversationId, pending.id, answers);
+        await reload();
+        if (sleepingRef.current) return;
+        const fresh = await client.getConversation(conversationId);
+        const unresolved = fresh.pendingActions.some(
+          (item) => item.status === "pending" || item.status === "approved",
+        );
+        const secretUnresolved = fresh.pendingSecretRequests.some(
+          (item) => item.status === "pending" || item.status === "submitting",
+        );
+        if (!unresolved && !secretUnresolved) await startStream({ resume: true });
+      } catch {
+        throw new Error("Could not send answers. Try again.");
+      }
+    },
+    [client, conversationId, reload, startStream],
+  );
+
   const toggleTool = useCallback((id: string) => {
     setExpandedTools((prev) => {
       const next = new Set(prev);
@@ -325,6 +353,7 @@ export default function ConversationScreen() {
         onToggleTool={toggleTool}
         onResolve={resolveAction}
         onSubmitSecret={submitSecret}
+        onAnswerQuestion={answerQuestion}
       />
     ),
     [
@@ -334,6 +363,7 @@ export default function ConversationScreen() {
       pendingSecretsByToolUseId,
       resolveAction,
       submitSecret,
+      answerQuestion,
       toggleTool,
       toolResultsById,
     ],
@@ -476,6 +506,7 @@ function MessageView({
   onToggleTool,
   onResolve,
   onSubmitSecret,
+  onAnswerQuestion,
 }: {
   message: ChatConversationMessage;
   pendingByToolUseId: Map<string, ChatPendingAction>;
@@ -486,6 +517,7 @@ function MessageView({
   onToggleTool: (id: string) => void;
   onResolve: (pending: ChatPendingAction, action: "approve" | "reject") => Promise<void>;
   onSubmitSecret: (request: ChatPendingSecretRequest, value: string) => Promise<void>;
+  onAnswerQuestion: (pending: ChatPendingAction, answers: AskQuestionAnswer[]) => Promise<void>;
 }) {
   // DM layout: the user's messages are right-aligned bubbles, the assistant
   // replies flow plainly on the left.
@@ -516,6 +548,7 @@ function MessageView({
           onToggle={onToggleTool}
           onResolve={onResolve}
           onSubmitSecret={onSubmitSecret}
+          onAnswerQuestion={onAnswerQuestion}
         />
       ))}
     </View>
@@ -532,6 +565,7 @@ function BlockView({
   onToggle,
   onResolve,
   onSubmitSecret,
+  onAnswerQuestion,
 }: {
   block: ChatContentBlock;
   pending: ChatPendingAction | undefined;
@@ -543,6 +577,7 @@ function BlockView({
   onToggle: (id: string) => void;
   onResolve: (pending: ChatPendingAction, action: "approve" | "reject") => Promise<void>;
   onSubmitSecret: (request: ChatPendingSecretRequest, value: string) => Promise<void>;
+  onAnswerQuestion: (pending: ChatPendingAction, answers: AskQuestionAnswer[]) => Promise<void>;
 }) {
   // Approve executes the tool synchronously server-side (a workflow run can
   // take minutes), so the buttons must lock and the label must say the action
@@ -581,6 +616,16 @@ function BlockView({
     return pendingSecret ? (
       <MobileSecretRequest request={pendingSecret} onSubmit={onSubmitSecret} />
     ) : null;
+  }
+  if (block.name === ASK_QUESTION_TOOL_NAME) {
+    return (
+      <MobileQuestionCard
+        blockInput={block.input}
+        pending={pending}
+        result={result}
+        onAnswer={onAnswerQuestion}
+      />
+    );
   }
 
   const status = pending?.status ?? (result?.isError ? "errored" : "executed");
@@ -720,6 +765,169 @@ function MobileSecretRequest({
   );
 }
 
+type QuestionDraft = { optionId?: string; text?: string };
+
+function questionDraft(optionId: string, text: string | undefined): QuestionDraft {
+  return text === undefined ? { optionId } : { optionId, text };
+}
+
+function MobileQuestionCard({
+  blockInput,
+  pending,
+  result,
+  onAnswer,
+}: {
+  blockInput: Record<string, unknown>;
+  pending: ChatPendingAction | undefined;
+  result: { text: string; isError: boolean } | undefined;
+  onAnswer: (pending: ChatPendingAction, answers: AskQuestionAnswer[]) => Promise<void>;
+}) {
+  const parsed = parseAskQuestionInput(pending?.toolInput ?? blockInput);
+  const questions: AskQuestion[] = parsed.ok ? parsed.questions : [];
+  const [draft, setDraft] = useState<Record<string, QuestionDraft>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const waiting = pending?.status === "pending";
+  const resolved = pending?.status === "executed" || (!waiting && result != null);
+  const resultText = pending?.result ?? result?.text;
+  const complete = askQuestionAnswersComplete(
+    questions,
+    new Map(Object.entries(draft).map(([id, value]) => [id, value])),
+  );
+
+  function patch(questionId: string, next: QuestionDraft): void {
+    setDraft((current) => ({ ...current, [questionId]: { ...current[questionId], ...next } }));
+  }
+
+  async function submit(): Promise<void> {
+    if (!pending || submitting || !waiting || !complete) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onAnswer(
+        pending,
+        questions.map((question) => {
+          const value = draft[question.id] ?? {};
+          return {
+            questionId: question.id,
+            ...(value.optionId ? { optionId: value.optionId } : {}),
+            ...(value.text ? { text: value.text } : {}),
+          };
+        }),
+      );
+    } catch {
+      setError("Could not send answers. Try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <View style={styles.toolCard}>
+      <View style={styles.toolCardHeader}>
+        <Text style={styles.secretTitle}>
+          {questions.length === 1 ? "Question" : `${questions.length} questions`}
+        </Text>
+        <Text style={resolved ? styles.toolStatusDone : styles.toolStatusWarning}>
+          {resolved ? "Answered" : submitting ? "Sending…" : "Waiting for answer"}
+        </Text>
+      </View>
+      {waiting &&
+        questions.map((question) => {
+          const value = draft[question.id] ?? {};
+          if (question.type === "text") {
+            return (
+              <View key={question.id} style={styles.questionBlock}>
+                <Text style={styles.questionPrompt}>{question.prompt}</Text>
+                <TextInput
+                  style={[styles.secretInput, styles.questionTextarea]}
+                  value={value.text ?? ""}
+                  onChangeText={(text) => patch(question.id, { text })}
+                  editable={!submitting}
+                  multiline
+                  maxLength={ASK_QUESTION_LIMITS.maxAnswerLength}
+                  accessibilityLabel={question.prompt}
+                />
+              </View>
+            );
+          }
+          return (
+            <View key={question.id} style={styles.questionBlock}>
+              <Text style={styles.questionPrompt}>{question.prompt}</Text>
+              {(question.options ?? []).map((option) => {
+                const selected = value.optionId === option.id;
+                return (
+                  <Pressable
+                    key={option.id}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    disabled={submitting}
+                    onPress={() => patch(question.id, questionDraft(option.id, value.text))}
+                    style={[styles.questionOption, selected && styles.questionOptionSelected]}
+                  >
+                    <Text
+                      style={[
+                        styles.questionOptionText,
+                        selected && styles.questionOptionTextSelected,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+              <View
+                style={[
+                  styles.questionOther,
+                  value.optionId === ASK_QUESTION_OTHER_ID && styles.questionOptionSelected,
+                ]}
+              >
+                <Pressable
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: value.optionId === ASK_QUESTION_OTHER_ID }}
+                  disabled={submitting}
+                  onPress={() =>
+                    patch(question.id, questionDraft(ASK_QUESTION_OTHER_ID, value.text))
+                  }
+                >
+                  <Text style={styles.questionOptionText}>Other</Text>
+                </Pressable>
+                <TextInput
+                  style={styles.secretInput}
+                  value={value.optionId === ASK_QUESTION_OTHER_ID ? (value.text ?? "") : ""}
+                  onChangeText={(text) =>
+                    patch(question.id, { optionId: ASK_QUESTION_OTHER_ID, text })
+                  }
+                  onFocus={() =>
+                    patch(question.id, questionDraft(ASK_QUESTION_OTHER_ID, value.text))
+                  }
+                  editable={!submitting}
+                  placeholder="Type another answer…"
+                  placeholderTextColor={colors.textFaint}
+                  maxLength={ASK_QUESTION_LIMITS.maxAnswerLength}
+                  accessibilityLabel={`Other answer for ${question.prompt}`}
+                />
+              </View>
+            </View>
+          );
+        })}
+      {waiting && (
+        <View style={styles.questionSubmit}>
+          <Button
+            label={submitting ? "Sending…" : "Submit"}
+            disabled={submitting || !complete}
+            onPress={() => void submit()}
+          />
+          {error ? <Text style={styles.errorLine}>{error}</Text> : null}
+        </View>
+      )}
+      {resolved && resultText != null ? (
+        <Text style={styles.questionResult}>{resultText}</Text>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   header: {
     gap: spacing.xs,
@@ -810,6 +1018,44 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   secretHint: { color: colors.textFaint, fontSize: 11 },
+  questionBlock: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  questionPrompt: { color: colors.textSecondary, fontSize: 13, fontWeight: "600" },
+  questionOption: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  questionOptionSelected: {
+    borderColor: colors.accent,
+    backgroundColor: colors.surfaceOverlay,
+  },
+  questionOptionText: { color: colors.textSecondary, fontSize: 13 },
+  questionOptionTextSelected: { color: colors.text, fontWeight: "600" },
+  questionOther: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    padding: spacing.sm,
+    gap: spacing.xs,
+  },
+  questionTextarea: { minHeight: 72, textAlignVertical: "top" },
+  questionSubmit: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    gap: spacing.xs,
+  },
+  questionResult: {
+    color: colors.textMuted,
+    fontSize: 12,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
   inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",

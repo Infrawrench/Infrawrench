@@ -66,6 +66,12 @@ export function createBearerChatClient(api: CloudFetch, orgId: string): ChatClie
         body: JSON.stringify({ value }),
       });
     },
+    async answerQuestion(conversationId, pendingId, answers) {
+      await api.org(orgId, `${base}/conversations/${conversationId}/pending/${pendingId}/answer`, {
+        method: "POST",
+        body: JSON.stringify({ answers }),
+      });
+    },
     async *streamTurn(conversationId, body): AsyncIterable<ChatTurnEvent> {
       const res = await api.raw(
         `/api/org/${encodeURIComponent(orgId)}${base}/conversations/${conversationId}/messages`,

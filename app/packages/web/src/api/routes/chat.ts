@@ -1,8 +1,9 @@
 /**
  * Chat API — conversation CRUD plus a streaming SSE endpoint that runs the
- * agent loop and a pending-action approval endpoint that gates destructive
- * tool calls. Authenticates via session cookie, WorkOS Bearer, or API key
- * with the `chat:write` scope — see ../../chat/auth.ts.
+ * agent loop, a pending-action approval endpoint that gates destructive tool
+ * calls, a structured-answer endpoint for `ask_question`, and a human-only
+ * secret-request handoff. Authenticates via session cookie, WorkOS Bearer, or
+ * API key with the `chat:write` scope — see ../../chat/auth.ts.
  */
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -32,6 +33,12 @@ import { enterAuditPrincipal } from "../../services/audit-context";
 import { logAudit } from "../../services/audit";
 import { storeWorkflowSecretFromChat } from "../../chat/workflow-secret-store";
 import { effectivePermissions } from "../../auth/effective-permissions";
+import {
+  ASK_QUESTION_TOOL_NAME,
+  formatAskQuestionResult,
+  parseAskQuestionInput,
+  validateAskQuestionAnswers,
+} from "@infrawrench/client-core";
 
 const app = new Hono();
 
@@ -315,6 +322,12 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
   if (row.pending.status !== "pending") {
     return c.json({ error: `Action already resolved (status=${row.pending.status})` }, 409);
   }
+  if (row.pending.toolName === ASK_QUESTION_TOOL_NAME) {
+    return c.json(
+      { error: "This pending action is a question; submit answers instead of approve/reject." },
+      400,
+    );
+  }
 
   const toolAuth: ToolAuthContext = {
     userId: auth.userId,
@@ -400,6 +413,82 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
     noteDecided("approved");
     return c.json({ error: e instanceof Error ? e.message : "Execution failed" }, 500);
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /pending/:pendingId/answer — structured reply to ask_question         */
+/* -------------------------------------------------------------------------- */
+app.post("/conversations/:id/pending/:pendingId/answer", async (c) => {
+  const orgId = c.req.param("orgId") ?? "";
+  const auth = await authenticateChat(c, orgId, "chat:write");
+  if (auth instanceof Response) return auth;
+  const conversationId = c.req.param("id");
+  const pendingId = c.req.param("pendingId");
+
+  const [row] = await db
+    .select({
+      pending: chatPendingActions,
+      orgId: chatConversations.organizationId,
+      userId: chatConversations.userId,
+    })
+    .from(chatPendingActions)
+    .innerJoin(chatConversations, eq(chatConversations.id, chatPendingActions.conversationId))
+    .where(
+      and(
+        eq(chatPendingActions.id, pendingId),
+        eq(chatPendingActions.conversationId, conversationId),
+      ),
+    )
+    .limit(1);
+  if (!row) return c.json({ error: "Pending action not found" }, 404);
+  if (row.orgId !== auth.organizationId || row.userId !== auth.userId) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  if (row.pending.toolName !== ASK_QUESTION_TOOL_NAME) {
+    return c.json({ error: "This pending action is not a question." }, 400);
+  }
+  if (row.pending.status !== "pending") {
+    return c.json({ error: `Question already answered (status=${row.pending.status})` }, 409);
+  }
+
+  const parsedQuestions = parseAskQuestionInput(row.pending.toolInput);
+  if (!parsedQuestions.ok) {
+    return c.json({ error: parsedQuestions.error }, 400);
+  }
+
+  const body = await c.req.json<{ answers?: unknown }>().catch(() => ({ answers: undefined }));
+  const parsedAnswers = validateAskQuestionAnswers(parsedQuestions.questions, body.answers);
+  if (!parsedAnswers.ok) return c.json({ error: parsedAnswers.error }, 400);
+
+  const result = formatAskQuestionResult(parsedQuestions.questions, parsedAnswers.answers);
+  const claimed = await db
+    .update(chatPendingActions)
+    .set({
+      status: "executed",
+      result,
+      isError: false,
+      resolvedAt: new Date(),
+    })
+    .where(and(eq(chatPendingActions.id, pendingId), eq(chatPendingActions.status, "pending")))
+    .returning({ id: chatPendingActions.id });
+  if (claimed.length === 0) {
+    return c.json({ error: "Question already answered" }, 409);
+  }
+
+  const [actions, requests] = await Promise.all([
+    db
+      .select({ status: chatPendingActions.status })
+      .from(chatPendingActions)
+      .where(eq(chatPendingActions.messageId, row.pending.messageId)),
+    db
+      .select({ status: chatPendingSecretRequests.status })
+      .from(chatPendingSecretRequests)
+      .where(eq(chatPendingSecretRequests.messageId, row.pending.messageId)),
+  ]);
+  const allResolved =
+    actions.every((item) => ["executed", "errored", "rejected"].includes(item.status)) &&
+    requests.every((item) => item.status === "stored");
+  return c.json({ ok: true, allResolved });
 });
 
 /* -------------------------------------------------------------------------- */

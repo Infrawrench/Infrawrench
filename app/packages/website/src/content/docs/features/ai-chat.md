@@ -18,7 +18,7 @@ Infrawrench ships an in-app **AI chat**, running on Google Gemini or Anthropic C
 
 - **In the web app** — `/org/{orgId}/chat`. Each conversation opens as its own workspace tab, so the tab bar and browser tab title follow the chat you are in, and a streaming reply keeps running while you switch to a dashboard and back. New conversations are private to the user who created them.
 - **In the desktop app** — chat opens as a workspace tab once you sign in to Infrawrench Cloud and pick an organization ([desktop vs web](../core-concepts/desktop-vs-web.md)). The conversation history, the agent loop, and billing all live in the cloud, so the same sessions appear on web and desktop. In local-only mode the chat section is hidden.
-- **In the [mobile app](./mobile-app.md)** — the Chat tab talks to the same cloud conversations, with the same model picker, approval cards, and sleep countdowns as web and desktop.
+- **In the [mobile app](./mobile-app.md)** — the Chat tab talks to the same cloud conversations, with the same model picker, approval cards, question forms, and sleep countdowns as web and desktop.
 - **In the sidebar** (web and desktop) — a **Chat** section lists your recent sessions (like Workflows and Dashboards). Click **+** to start a new chat, click a session to reopen it, or hover and click **×** to archive it. Click the section header to see all chats.
 - **API** — `POST /api/org/{orgId}/chat/conversations/{id}/messages`. Auth is the same WorkOS session as the rest of the web UI, or an [API key](../team-and-billing/api-keys.md) with the `chat:write` scope.
 
@@ -46,6 +46,7 @@ Everything the UI exposes. The chat shares the [MCP server](./mcp.md)'s tool reg
 - **Workflow secrets** — list reusable secret metadata, securely ask you to set or rotate a value, delete secrets, and assign them while writing a workflow. Secret values never enter the conversation or the model's tool arguments.
 - **Deployments** — read your [Infrafile](./infrafile.md) deploy history (`list_deployments`, `get_deployment`), list the repos your GitHub App can deploy from (`list_deployable_repos`), preview a deploy without building anything (`plan_deployment`), and put a known-good image back (`rollback_deployment`). There is deliberately **no tool that deploys** — building and shipping a release is slow, expensive, and irreversible, so a human starts it from the Deploy tab or the CLI. Both `plan_deployment` and `rollback_deployment` go through the approval flow.
 - **The web** — `web_search` and `web_fetch`, so the agent can check current documentation instead of relying on training data. Chat-only; see [Reading the web](#reading-the-web).
+- **Questions** — `ask_question`, so the agent can pause for a choice from a list (with an Other field) or a free-text answer instead of asking in the composer. Chat-only; see [Asking you a question](#asking-you-a-question).
 - **Costs & budgets** — `query_costs` for spend questions ("what did we spend on AWS last month?"), `list_cost_dimension_values`, `get_cost_status`, and budget CRUD (`list_budgets`, `get_budget`, `create_budget`, `update_budget`, `delete_budget`). These enforce the caller's `costs:read` / `budgets:*` [role permissions](../team-and-billing/roles-and-permissions.md). See [Cloud costs](./cloud-costs.md).
 
 ## Reading the web
@@ -67,6 +68,19 @@ Searches cost a small amount per query on top of tokens, and show up in your [ch
 If the deployment has no search backend or no egress proxy configured, the matching tool simply isn't offered and the agent will tell you what it would have looked up. Self-hosters: see `INFRAWRENCH_CHAT_SEARCH_BACKEND` and `WORKFLOW_FETCH_PROXY_URL` in `.env.example`.
 
 <insert [A chat turn where the agent used web_search: the tool card, and the reply below it citing linked sources] here>
+
+## Asking you a question
+
+The chat agent has an `ask_question` tool (chat-only — the [MCP server](./mcp.md) does not expose it) for decisions and missing information: which region, which account, a name, a short note. Instead of asking in the reply, it pauses the turn on a form inline in the conversation.
+
+Each question is one of:
+
+- **Selection** — a list of options the agent proposed, plus an **Other** field you can type into if none of them fit.
+- **Text** — a textarea for a free-form answer.
+
+The agent can mix both in one form. Submit sends every answer together and the conversation resumes. This is not the destructive-action approval card — deletes, exec, and the rest still go through Approve / Reject.
+
+<insert [AI chat conversation paused on an ask-question card with a region selection, an Other text field, and a notes textarea] here>
 
 ## Destructive-action approval
 
@@ -146,11 +160,12 @@ GET    /conversations/{id}          # fetch with messages + pending actions
 DELETE /conversations/{id}          # archive
 POST   /conversations/{id}/messages # SSE stream; body: {text} or {resume: true}
 POST   /conversations/{id}/pending/{pendingId}  # body: {action: "approve" | "reject"}
+POST   /conversations/{id}/pending/{pendingId}/answer  # body: {answers}; ask_question only
 POST   /conversations/{id}/secret-requests/{requestId} # body: {value}; human-only, write-only
 GET    /spend                       # month-to-date + cap
 ```
 
-`POST /messages` streams Server-Sent Events shaped as `{type: "text_delta" | "tool_use_start" | "tool_use_input" | "tool_executed" | "pending_action" | "secret_request" | "sleep" | "turn_end" | "spend_blocked" | "error", ...}`. When the agent suspends on a destructive tool or secure secret request, the stream ends with `turn_end {hasPending: true}` — resolve every pending item, then resume by POSTing `{resume: true}`.
+`POST /messages` streams Server-Sent Events shaped as `{type: "text_delta" | "tool_use_start" | "tool_use_input" | "tool_executed" | "pending_action" | "secret_request" | "sleep" | "turn_end" | "spend_blocked" | "error", ...}`. When the agent suspends on a destructive tool, a question, or a secure secret request, the stream ends with `turn_end {hasPending: true}` — resolve every pending item, then resume by POSTing `{resume: true}`.
 
 ## Why an API and not just MCP?
 
