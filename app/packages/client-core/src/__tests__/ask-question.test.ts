@@ -5,6 +5,7 @@ import {
   formatAskQuestionResult,
   parseAskQuestionInput,
   validateAskQuestionAnswers,
+  type AskQuestion,
 } from "../chat/ask-question";
 
 const selection = {
@@ -15,9 +16,9 @@ const selection = {
     { id: "eu", label: "EU" },
     { id: "us", label: "US" },
   ],
-};
+} as const satisfies AskQuestion;
 
-const text = { id: "notes", prompt: "Anything else?", type: "text" };
+const text = { id: "notes", prompt: "Anything else?", type: "text" } as const satisfies AskQuestion;
 
 describe("parseAskQuestionInput", () => {
   it("accepts mixed selection and text questions", () => {

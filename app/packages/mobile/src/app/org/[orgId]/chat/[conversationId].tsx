@@ -59,8 +59,11 @@ export default function ConversationScreen() {
   const sleepingRef = useRef(false);
   const [expandedTools, setExpandedTools] = useState<ReadonlySet<string>>(new Set());
 
-  const detailKey = ["chat-conversation", orgId, conversationId] as const;
-  const spendKey = ["chat-spend", orgId] as const;
+  const detailKey = useMemo(
+    () => ["chat-conversation", orgId, conversationId] as const,
+    [orgId, conversationId],
+  );
+  const spendKey = useMemo(() => ["chat-spend", orgId] as const, [orgId]);
 
   const detail = useQuery({
     queryKey: detailKey,
