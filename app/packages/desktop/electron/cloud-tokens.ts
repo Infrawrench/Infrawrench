@@ -294,29 +294,34 @@ export async function getAuthStatus(): Promise<{
   };
 }
 
+/**
+ * The signed-in user's organizations. `[]` means "signed out" (no token, or
+ * the refresh token is dead) — a network or server failure throws instead, so
+ * callers can tell "you have no organizations" from "the request failed". The
+ * IPC handler serializes the rejection to the renderer, and the CLI's
+ * top-level handler prints it.
+ */
 export async function fetchCloudOrgs(): Promise<
   Array<{ id: string; displayName: string; role: string }>
 > {
   let token = await getAccessToken();
   if (!token) return [];
 
-  try {
-    let response = await fetch(`${CLOUD_URL}/api/auth/orgs`, {
+  let response = await fetch(`${CLOUD_URL}/api/auth/orgs`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 401) {
+    const refreshed = await forceRefreshAccessToken();
+    if (!refreshed) return [];
+    token = refreshed;
+    response = await fetch(`${CLOUD_URL}/api/auth/orgs`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (response.status === 401) {
-      const refreshed = await forceRefreshAccessToken();
-      if (!refreshed) return [];
-      token = refreshed;
-      response = await fetch(`${CLOUD_URL}/api/auth/orgs`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-    }
-    if (!response.ok) return [];
-    return (await response.json()) as Array<{ id: string; displayName: string; role: string }>;
-  } catch {
-    return [];
   }
+  if (!response.ok) {
+    throw new Error(`Loading organizations failed: HTTP ${response.status}`);
+  }
+  return (await response.json()) as Array<{ id: string; displayName: string; role: string }>;
 }
 
 export interface PkceChallenge {

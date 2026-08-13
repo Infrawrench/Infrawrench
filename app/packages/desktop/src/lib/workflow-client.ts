@@ -165,8 +165,12 @@ async function getLocalCreateFields(
         await withTimeout(client.getCreateConfig(typeId), CREATE_CONFIG_TIMEOUT_MS),
       );
     }
-  } catch {
-    value = null;
+  } catch (err) {
+    // Best-effort by contract (see docstring), but a transient provider error
+    // must not be cached as "this type has no create fields" for the whole
+    // TTL — log it and let the next call retry.
+    console.warn(`[workflow-client] create config for ${key} failed:`, err);
+    return null;
   }
   createFieldsCache.set(key, { at: now, value });
   return value;

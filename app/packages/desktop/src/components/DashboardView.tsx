@@ -131,6 +131,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const [editingName, setEditingName] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [cardStatus, setCardStatus] = useState<Record<string, CardStatus>>({});
 
   const [spotlightMode, setSpotlightMode] = useState<"pin" | "navigate" | null>(null);
@@ -437,8 +438,11 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       });
 
       setPinned(rows);
-    } catch {
-      // empty dashboard
+      setLoadError(null);
+    } catch (err) {
+      // A failed load must not render as an empty dashboard — that reads as
+      // "you have no pins" and hides broken plugins or an unreachable cloud.
+      setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -1030,6 +1034,14 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     return (
       <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
         Dashboard not found.
+      </div>
+    );
+  }
+
+  if (loadError !== null) {
+    return (
+      <div className="flex items-center justify-center h-full text-danger text-sm">
+        Failed to load the dashboard: {loadError}
       </div>
     );
   }

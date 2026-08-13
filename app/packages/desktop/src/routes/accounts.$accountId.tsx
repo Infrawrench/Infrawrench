@@ -682,7 +682,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         ? await invoke<Record<string, string>>("cloud_get_account_credentials", {
             orgId: activeCloudOrgId,
             accountId,
-          }).catch(() => ({}) as Record<string, string>)
+          })
         : await invoke<Record<string, string>>("account_get_credentials", { accountId });
       setEditCredsState({
         plugin: {
