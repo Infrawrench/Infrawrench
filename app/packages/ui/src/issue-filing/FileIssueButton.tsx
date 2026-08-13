@@ -107,12 +107,3 @@ export function FileIssueButton({ sourceKind, sourceId, draft, className }: File
     </>
   );
 }
-
-export interface FileJiraIssueButtonProps extends FileIssueButtonProps {}
-
-/**
- * @deprecated The button has been tracker-aware since Linear landed; this
- * alias keeps older imports compiling. It is the same component — under a
- * provider with Linear connected it will offer Linear too.
- */
-export const FileJiraIssueButton = FileIssueButton;

@@ -365,16 +365,3 @@ export function FileIssueModal({
     </Modal>
   );
 }
-
-export interface FileJiraIssueModalProps {
-  sourceKind: JiraSourceKind;
-  sourceId: string;
-  /** Prefilled summary/description/labels, built by the calling list. */
-  draft: JiraIssueDraft;
-  onClose: () => void;
-}
-
-/** @deprecated Jira-locked mount of {@link FileIssueModal}, kept for older hosts. */
-export function FileJiraIssueModal(props: FileJiraIssueModalProps) {
-  return <FileIssueModal {...props} trackers={["jira"]} />;
-}
