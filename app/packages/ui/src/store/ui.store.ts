@@ -121,7 +121,11 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
     case "incidents":
       return "incidents";
     case "workflows":
-      return target.workflowId ? `workflows:${target.workflowId}` : "workflows";
+      // Not keyed by workflow: opening a second workflow should retarget the
+      // open Workflows tab rather than pile up a tab per workflow. The id on
+      // the target is remembered state (which editor is open), compared in
+      // workspaceTabTargetsEqual so a reload or a tab switch comes back to it.
+      return "workflows";
     case "deployments":
       // Not keyed by repo: a hotlink to a different repo should retarget the
       // open Deploy tab rather than pile up a tab per repository.

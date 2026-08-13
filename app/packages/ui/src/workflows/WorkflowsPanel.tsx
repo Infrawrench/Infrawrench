@@ -130,6 +130,13 @@ infra.log("hello from your workflow");
 interface WorkflowsPanelProps {
   client: WorkflowClient;
   /**
+   * Which workflow the editor opens on; the host mirrors it into the URL.
+   * Omit (and omit {@link onWorkflowChange}) for an uncontrolled panel.
+   */
+  workflowId?: string | undefined;
+  /** Called when the selection changes, so the host can record it on the tab. */
+  onWorkflowChange?: ((workflowId: string | null) => void) | undefined;
+  /**
    * Whether git triggers are available. Off for the desktop/local client
    * (workflows live locally with no always-on host to watch a repo); on for
    * the web/proxy client, which connects GitHub and watches repos server-side.
@@ -247,11 +254,14 @@ function runSessionReducer(state: RunSession, action: RunSessionAction): RunSess
 
 export function WorkflowsPanel({
   client,
+  workflowId,
+  onWorkflowChange,
   gitTriggers = false,
   gitIntegration,
   budgetIntegration,
 }: WorkflowsPanelProps) {
   const [list, setList] = useState<WorkflowSummary[]>([]);
+  const [listed, setListed] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<WorkflowSummary | null>(null);
@@ -314,6 +324,8 @@ export function WorkflowsPanel({
       setList(await client.list());
     } catch (e) {
       setError(messageOf(e));
+    } finally {
+      setListed(true);
     }
   }, [client]);
 
@@ -412,6 +424,25 @@ export function WorkflowsPanel({
     [client, list, fetchStaticTypings, scheduleEnrichTypings],
   );
 
+  // The URL owns which workflow is open when the host passes `workflowId`.
+  // Wait for the first list fetch so a deep link can populate the draft from
+  // the summary row. Uncontrolled mounts (tests, no onWorkflowChange) keep
+  // selection local.
+  useEffect(() => {
+    if (!listed) return;
+    if (workflowId) {
+      void selectWorkflow(workflowId);
+      return;
+    }
+    if (!onWorkflowChange) return;
+    setSelectedId(null);
+    setDraft(null);
+    dispatchSession({ kind: "cleared" });
+    dispatchDetail({ kind: "cleared" });
+    // Re-selecting whenever `list` refreshes would clobber in-progress edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- URL is the source of truth.
+  }, [workflowId, listed]);
+
   const createWorkflow = useCallback(async () => {
     setBusy(true);
     setError(null);
@@ -425,13 +456,14 @@ export function WorkflowsPanel({
         enabled: true,
       });
       await refreshList();
+      onWorkflowChange?.(created.id);
       await selectWorkflow(created.id);
     } catch (e) {
       setError(messageOf(e));
     } finally {
       setBusy(false);
     }
-  }, [client, refreshList, selectWorkflow]);
+  }, [client, onWorkflowChange, refreshList, selectWorkflow]);
 
   const save = useCallback(async () => {
     if (!draft) return;
@@ -496,6 +528,7 @@ export function WorkflowsPanel({
     setBusy(true);
     try {
       await client.remove(draft.id);
+      onWorkflowChange?.(null);
       setSelectedId(null);
       setDraft(null);
       await refreshList();
@@ -504,7 +537,7 @@ export function WorkflowsPanel({
     } finally {
       setBusy(false);
     }
-  }, [client, draft, refreshList]);
+  }, [client, draft, onWorkflowChange, refreshList]);
 
   const patch = useCallback((p: Partial<WorkflowSummary>) => {
     setDraft((d) => (d ? { ...d, ...p } : d));
@@ -574,7 +607,10 @@ export function WorkflowsPanel({
                 key={wf.id}
                 workflow={wf}
                 selected={wf.id === selectedId}
-                onClick={() => void selectWorkflow(wf.id)}
+                onClick={() => {
+                  onWorkflowChange?.(wf.id);
+                  void selectWorkflow(wf.id);
+                }}
               />
             ))
           )}

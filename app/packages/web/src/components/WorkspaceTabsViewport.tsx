@@ -32,7 +32,12 @@ import { WebChatPanel } from "./WebChatPanel";
 import { WebGraphPanel } from "./WebGraphPanel";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
 import { CostReportsPanel, type CostReportsClient } from "@infrawrench/ui/cost-reports";
-import { costReportsTabTarget, incidentsTabTarget, invoicesTabTarget } from "@/lib/workspace-tabs";
+import {
+  costReportsTabTarget,
+  incidentsTabTarget,
+  invoicesTabTarget,
+  workflowsTabTarget,
+} from "@/lib/workspace-tabs";
 import {
   environmentDiffTabTarget,
   resourceTabTarget,
@@ -237,7 +242,18 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
         />
       );
     case "workflows":
-      return <WebWorkflowsPanel client={getWorkflowClient(orgId)} orgId={orgId} />;
+      return (
+        <WebWorkflowsPanel
+          client={getWorkflowClient(orgId)}
+          orgId={orgId}
+          workflowId={t.workflowId}
+          // The URL owns which workflow is open — navigating is what records it
+          // on the tab, so a reload or a tab switch comes back to it.
+          onSelectWorkflow={(workflowId) =>
+            void navigate(getWorkspaceNavigateArgs(workflowsTabTarget(workflowId ?? undefined)))
+          }
+        />
+      );
     case "deployments":
       return (
         <WebDeploymentsPanel

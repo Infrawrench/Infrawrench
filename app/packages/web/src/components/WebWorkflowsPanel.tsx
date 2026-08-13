@@ -12,8 +12,23 @@ import { apiGet } from "@/lib/api";
  * trigger sources: the GitHub integration for git triggers (connection status +
  * repos + install flow) and the org's cost budgets for budget triggers. Desktop
  * renders WorkflowsPanel directly with both off.
+ *
+ * Which workflow is open lives in the URL, the IncidentsPanel stance: that is
+ * what records it on the tab so a reload comes back to it, and it makes a
+ * workflow a link somebody can paste — Slack/Teams `infra.page()` buttons
+ * already mint `/org/{org}/workflows/{id}`.
  */
-export function WebWorkflowsPanel({ client, orgId }: { client: WorkflowClient; orgId: string }) {
+export function WebWorkflowsPanel({
+  client,
+  orgId,
+  workflowId,
+  onSelectWorkflow,
+}: {
+  client: WorkflowClient;
+  orgId: string;
+  workflowId?: string | undefined;
+  onSelectWorkflow: (workflowId: string | null) => void;
+}) {
   const [repos, setRepos] = useState<GitRepoOption[]>([]);
   const [configured, setConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -83,6 +98,8 @@ export function WebWorkflowsPanel({ client, orgId }: { client: WorkflowClient; o
   return (
     <WorkflowsPanel
       client={client}
+      workflowId={workflowId}
+      onWorkflowChange={onSelectWorkflow}
       gitTriggers
       gitIntegration={{ configured, repos, loading, onConnect }}
       budgetIntegration={{ budgets, loading: budgetsLoading }}

@@ -95,7 +95,14 @@ export function getWorkspaceNavigateArgs(
     case "agents":
       return { to: "/agents", ...(replace ? { replace: true } : {}) };
     case "workflows":
-      return { to: "/workflows", ...(replace ? { replace: true } : {}) };
+      // Search passed explicitly, the settings/chat rule: navigating from a
+      // workflow back to the list must CLEAR ?workflow= or the route resolves
+      // straight back into the workflow somebody just left.
+      return {
+        to: "/workflows",
+        search: target.workflowId ? { workflow: target.workflowId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
     case "deployments":
       return {
         to: "/deployments",
@@ -248,7 +255,8 @@ export function syncWorkspaceRouteFromPath(
   const normalizedHash = hash?.replace(/^#/, "");
   const segments = pathname.split("/").filter(Boolean);
   if (segments[0] === "workflows") {
-    return workflowsTabTarget();
+    const params = new URLSearchParams(search ?? "");
+    return workflowsTabTarget(params.get("workflow") ?? undefined);
   }
   if (segments[0] === "deployments") {
     const params = new URLSearchParams(search ?? "");

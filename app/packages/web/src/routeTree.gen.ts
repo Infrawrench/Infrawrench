@@ -51,6 +51,7 @@ import { Route as OrgOrgIdCostReportsReportIdRouteImport } from './routes/org.$o
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
 import { Route as OrgOrgIdIncidentsIncidentIdRouteImport } from './routes/org.$orgId.incidents.$incidentId'
 import { Route as OrgOrgIdInvoicesInvoiceIdRouteImport } from './routes/org.$orgId.invoices.$invoiceId'
+import { Route as OrgOrgIdWorkflowsWorkflowIdRouteImport } from './routes/org.$orgId.workflows.$workflowId'
 import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
 import { Route as OrgOrgIdSettingsAccessRequestsRouteImport } from './routes/org.$orgId.settings.access-requests'
 import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
@@ -292,6 +293,12 @@ const OrgOrgIdInvoicesInvoiceIdRoute =
     path: '/$invoiceId',
     getParentRoute: () => OrgOrgIdInvoicesRoute,
   } as any)
+const OrgOrgIdWorkflowsWorkflowIdRoute =
+  OrgOrgIdWorkflowsWorkflowIdRouteImport.update({
+    id: '/$workflowId',
+    path: '/$workflowId',
+    getParentRoute: () => OrgOrgIdWorkflowsRoute,
+  } as any)
 const OrgOrgIdSettingsIndexRoute = OrgOrgIdSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -460,7 +467,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
-  '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
+  '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRouteWithChildren
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
@@ -468,6 +475,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
+  '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
@@ -525,7 +533,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
-  '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
+  '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRouteWithChildren
   '/org/$orgId': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
@@ -533,6 +541,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
+  '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
@@ -594,7 +603,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
-  '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
+  '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRouteWithChildren
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
@@ -602,6 +611,7 @@ export interface FileRoutesById {
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
+  '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
@@ -672,6 +682,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
+    | '/org/$orgId/workflows/$workflowId'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
@@ -737,6 +748,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
+    | '/org/$orgId/workflows/$workflowId'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
@@ -805,6 +817,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
+    | '/org/$orgId/workflows/$workflowId'
     | '/org/$orgId/settings/access-requests'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
@@ -1138,6 +1151,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdInvoicesInvoiceIdRouteImport
       parentRoute: typeof OrgOrgIdInvoicesRoute
     }
+    '/org/$orgId/workflows/$workflowId': {
+      id: '/org/$orgId/workflows/$workflowId'
+      path: '/$workflowId'
+      fullPath: '/org/$orgId/workflows/$workflowId'
+      preLoaderRoute: typeof OrgOrgIdWorkflowsWorkflowIdRouteImport
+      parentRoute: typeof OrgOrgIdWorkflowsRoute
+    }
     '/org/$orgId/settings/': {
       id: '/org/$orgId/settings/'
       path: '/'
@@ -1356,6 +1376,17 @@ const OrgOrgIdInvoicesRouteChildren: OrgOrgIdInvoicesRouteChildren = {
 const OrgOrgIdInvoicesRouteWithChildren =
   OrgOrgIdInvoicesRoute._addFileChildren(OrgOrgIdInvoicesRouteChildren)
 
+interface OrgOrgIdWorkflowsRouteChildren {
+  OrgOrgIdWorkflowsWorkflowIdRoute: typeof OrgOrgIdWorkflowsWorkflowIdRoute
+}
+
+const OrgOrgIdWorkflowsRouteChildren: OrgOrgIdWorkflowsRouteChildren = {
+  OrgOrgIdWorkflowsWorkflowIdRoute: OrgOrgIdWorkflowsWorkflowIdRoute,
+}
+
+const OrgOrgIdWorkflowsRouteWithChildren =
+  OrgOrgIdWorkflowsRoute._addFileChildren(OrgOrgIdWorkflowsRouteChildren)
+
 interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsAccessRequestsRoute: typeof OrgOrgIdSettingsAccessRequestsRoute
   OrgOrgIdSettingsApiKeysRoute: typeof OrgOrgIdSettingsApiKeysRoute
@@ -1440,7 +1471,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
   OrgOrgIdSshFanoutRoute: typeof OrgOrgIdSshFanoutRoute
   OrgOrgIdStatusPagesRoute: typeof OrgOrgIdStatusPagesRoute
-  OrgOrgIdWorkflowsRoute: typeof OrgOrgIdWorkflowsRoute
+  OrgOrgIdWorkflowsRoute: typeof OrgOrgIdWorkflowsRouteWithChildren
   OrgOrgIdIndexRoute: typeof OrgOrgIdIndexRoute
   OrgOrgIdAccountsAccountIdRoute: typeof OrgOrgIdAccountsAccountIdRoute
   OrgOrgIdDashboardDashboardIdRoute: typeof OrgOrgIdDashboardDashboardIdRoute
@@ -1474,7 +1505,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,
   OrgOrgIdSshFanoutRoute: OrgOrgIdSshFanoutRoute,
   OrgOrgIdStatusPagesRoute: OrgOrgIdStatusPagesRoute,
-  OrgOrgIdWorkflowsRoute: OrgOrgIdWorkflowsRoute,
+  OrgOrgIdWorkflowsRoute: OrgOrgIdWorkflowsRouteWithChildren,
   OrgOrgIdIndexRoute: OrgOrgIdIndexRoute,
   OrgOrgIdAccountsAccountIdRoute: OrgOrgIdAccountsAccountIdRoute,
   OrgOrgIdDashboardDashboardIdRoute: OrgOrgIdDashboardDashboardIdRoute,

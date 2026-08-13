@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   ApprovalsInbox,
   WorkflowsPanel,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/cloud-workflows";
 import { listCloudBudgets } from "@/lib/cloud-costs";
 import { invoke } from "@/lib/invoke";
+import { navigateToWorkspaceTarget, workflowsTabTarget } from "@/lib/workspace-tabs";
 
 /**
  * Desktop wrapper around the shared WorkflowsPanel.
@@ -65,11 +67,21 @@ function getApprovalsClient(orgId: string): ApprovalsClient {
   return client;
 }
 
-export function DesktopWorkflowsPanel() {
+export function DesktopWorkflowsPanel({ workflowId }: { workflowId?: string | undefined }) {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
+  const navigate = useNavigate();
   const client = useMemo(
     () => (activeCloudOrgId ? getCloudClient(activeCloudOrgId) : getLocalClient()),
     [activeCloudOrgId],
+  );
+
+  const onWorkflowChange = useCallback(
+    (next: string | null) => {
+      void navigateToWorkspaceTarget(navigate, workflowsTabTarget(next ?? undefined), {
+        label: "Workflows",
+      });
+    },
+    [navigate],
   );
 
   const [repos, setRepos] = useState<GitRepoOption[]>([]);
@@ -142,7 +154,10 @@ export function DesktopWorkflowsPanel() {
       .catch(() => undefined);
   }, [activeCloudOrgId]);
 
-  if (!activeCloudOrgId) return <WorkflowsPanel client={client} />;
+  if (!activeCloudOrgId)
+    return (
+      <WorkflowsPanel client={client} workflowId={workflowId} onWorkflowChange={onWorkflowChange} />
+    );
 
   // The org-wide inbox rides above the panel rather than living in a tab of its
   // own: the desktop app has no settings-route tree to hang it off, and an
@@ -156,6 +171,8 @@ export function DesktopWorkflowsPanel() {
       <div className="flex-1 min-h-0">
         <WorkflowsPanel
           client={client}
+          workflowId={workflowId}
+          onWorkflowChange={onWorkflowChange}
           gitTriggers
           gitIntegration={{ configured, repos, loading: gitLoading, onConnect }}
           budgetIntegration={{ budgets, loading: budgetsLoading }}

@@ -26,6 +26,7 @@ import {
   resourceSftpTabTarget,
   costReportsTabTarget,
   invoicesTabTarget,
+  workflowsTabTarget,
   getWorkspaceNavigateArgs,
   isRouteHostedTabPanel,
   navigateToWorkspaceTarget,
@@ -138,6 +139,22 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(args).toEqual({
       to: "/org/$orgId/incidents/$incidentId",
       params: { orgId: "test-org", incidentId: "inc-1" },
+    });
+  });
+
+  it("returns workflows list route args", () => {
+    const args = getWorkspaceNavigateArgs({ kind: "workflows" });
+    expect(args).toEqual({
+      to: "/org/$orgId/workflows",
+      params: { orgId: "test-org" },
+    });
+  });
+
+  it("returns workflow detail route args when the tab remembers one", () => {
+    const args = getWorkspaceNavigateArgs({ kind: "workflows", workflowId: "wf-1" });
+    expect(args).toEqual({
+      to: "/org/$orgId/workflows/$workflowId",
+      params: { orgId: "test-org", workflowId: "wf-1" },
     });
   });
 
@@ -354,6 +371,17 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/org/myorg/incidents/inc-1")).toEqual({
       kind: "incidents",
       incidentId: "inc-1",
+    });
+  });
+
+  it("parses the workflows list path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/workflows")).toEqual({ kind: "workflows" });
+  });
+
+  it("parses a workflow detail path back onto the same tab", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/workflows/wf-1")).toEqual({
+      kind: "workflows",
+      workflowId: "wf-1",
     });
   });
 
@@ -586,6 +614,38 @@ describe("invoices tab", () => {
       const path = args.to
         .replace("$orgId", args.params!["orgId"]!)
         .replace("$invoiceId", args.params!["invoiceId"] ?? "");
+      expect(syncWorkspaceRouteFromPath(path)).toEqual(target);
+    }
+  });
+});
+
+describe("workflows tab", () => {
+  it("workflowsTabTarget omits workflowId for the list view", () => {
+    expect(workflowsTabTarget()).toEqual({ kind: "workflows" });
+    expect(workflowsTabTarget("wf-1")).toEqual({ kind: "workflows", workflowId: "wf-1" });
+  });
+
+  it("navigates to the list path without a workflow and the detail path with one", () => {
+    expect(getWorkspaceNavigateArgs(workflowsTabTarget())).toEqual({
+      to: "/org/$orgId/workflows",
+      params: { orgId: "test-org" },
+    });
+    expect(getWorkspaceNavigateArgs(workflowsTabTarget("wf-1"))).toEqual({
+      to: "/org/$orgId/workflows/$workflowId",
+      params: { orgId: "test-org", workflowId: "wf-1" },
+    });
+  });
+
+  it("round-trips through the route sync", () => {
+    // The URL is what records the open workflow on the tab, so a target that
+    // does not survive this round trip loses the workflow on reload — and a
+    // leftover /workflows/{id} path with no matching route used to paint
+    // TanStack Router's default "Not Found" under the panel.
+    for (const target of [workflowsTabTarget(), workflowsTabTarget("wf-1")]) {
+      const args = getWorkspaceNavigateArgs(target);
+      const path = args.to
+        .replace("$orgId", args.params!["orgId"]!)
+        .replace("$workflowId", args.params!["workflowId"] ?? "");
       expect(syncWorkspaceRouteFromPath(path)).toEqual(target);
     }
   });

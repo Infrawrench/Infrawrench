@@ -12,6 +12,7 @@ import {
   probesTabTarget,
   statusPagesTabTarget,
   incidentsTabTarget,
+  workflowsTabTarget,
   environmentsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
@@ -74,6 +75,11 @@ describe("tab target factories", () => {
   it("incidentsTabTarget omits incidentId for the list view", () => {
     expect(incidentsTabTarget()).toEqual({ kind: "incidents" });
     expect(incidentsTabTarget("inc-1")).toEqual({ kind: "incidents", incidentId: "inc-1" });
+  });
+
+  it("workflowsTabTarget omits workflowId for the list view", () => {
+    expect(workflowsTabTarget()).toEqual({ kind: "workflows" });
+    expect(workflowsTabTarget("wf-1")).toEqual({ kind: "workflows", workflowId: "wf-1" });
   });
 
   it("costReportsTabTarget omits reportId for the list view", () => {
