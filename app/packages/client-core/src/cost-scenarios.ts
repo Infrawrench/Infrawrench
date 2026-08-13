@@ -36,7 +36,7 @@
  */
 
 import type { CostFilter } from "./costs";
-import type { CloudFetch } from "./fetch";
+import { CloudApiError, type CloudFetch } from "./fetch";
 
 /* ------------------------------------------------------------------ *
  * The adjustment vocabulary.
@@ -697,7 +697,7 @@ export async function listCostScenarioModels(
   return res?.models ?? [];
 }
 
-/** One model by id, or null when it doesn't resolve. */
+/** One model by id, or null when the server says it doesn't exist. */
 export async function getCostScenarioModel(
   api: CloudFetch,
   orgId: string,
@@ -708,7 +708,10 @@ export async function getCostScenarioModel(
       orgId,
       `/cost-scenarios/${encodeURIComponent(modelId)}`,
     );
-  } catch {
-    return null;
+  } catch (error) {
+    // Only a 404 means "no such model". Anything else (network, auth, 5xx)
+    // propagates so callers show an error state instead of "not found".
+    if (error instanceof CloudApiError && error.status === 404) return null;
+    throw error;
   }
 }

@@ -31,7 +31,7 @@
 
 import { CostQueryFormatError, formatCostQuery, parseCostQuery } from "./cost-query-language";
 import type { CostFilter } from "./costs";
-import type { CloudFetch } from "./fetch";
+import { CloudApiError, type CloudFetch } from "./fetch";
 
 /** Bounds the API enforces on saved filter names and descriptions. */
 export const SAVED_COST_FILTER_LIMITS = {
@@ -178,8 +178,9 @@ export async function listSavedCostFilters(
 }
 
 /**
- * One saved filter by id, or null when it doesn't resolve — which a caller
- * must surface as "this reference is broken", never render as "no filter".
+ * One saved filter by id, or null when the server says it doesn't exist —
+ * which a caller must surface as "this reference is broken", never render as
+ * "no filter".
  */
 export async function getSavedCostFilter(
   api: CloudFetch,
@@ -191,7 +192,10 @@ export async function getSavedCostFilter(
       orgId,
       `/saved-cost-filters/${encodeURIComponent(savedFilterId)}`,
     );
-  } catch {
-    return null;
+  } catch (error) {
+    // Only a 404 is "no such filter". Network, auth, and 5xx failures
+    // propagate so callers show an error state instead of a broken reference.
+    if (error instanceof CloudApiError && error.status === 404) return null;
+    throw error;
   }
 }
