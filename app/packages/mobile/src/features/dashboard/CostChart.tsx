@@ -25,6 +25,18 @@ import {
   type CostQueryResponse,
 } from "@infrawrench/client-core";
 import { colors, spacing } from "@/lib/theme";
+import {
+  Bars,
+  EdgeLabels,
+  GridTicks,
+  CHART_HEIGHT as HEIGHT,
+  CHART_WIDTH as WIDTH,
+  MARK_GAP,
+  PAD,
+  PLOT_H,
+  PLOT_W,
+  SERIES_COLORS,
+} from "./chart-primitives";
 
 /**
  * The cost chart, drawn with `react-native-svg`.
@@ -40,8 +52,6 @@ import { colors, spacing } from "@/lib/theme";
  * our categorical order tellable apart.
  */
 
-/** The app-wide categorical order (web `chart-theme.ts`), assigned per entity. */
-const SERIES_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f87171", "#a78bfa", "#fb923c"];
 /** "Other" is always neutral — never a categorical hue. */
 const OTHER_COLOR = "#6b7280";
 /** The forecast overlay reads as the same measure, so it wears series one. */
@@ -53,14 +63,6 @@ const FORECAST_COLOR = SERIES_COLORS[0]!;
  * to tell them apart at a glance on a phone.
  */
 const SCENARIO_COLOR = SERIES_COLORS[2]!;
-
-const WIDTH = 320;
-const HEIGHT = 168;
-const PAD = { top: 8, right: 6, bottom: 18, left: 46 };
-const PLOT_W = WIDTH - PAD.left - PAD.right;
-const PLOT_H = HEIGHT - PAD.top - PAD.bottom;
-/** Surface-colored gap between adjacent marks, in viewBox units. */
-const MARK_GAP = 2;
 
 export interface CostChartProps {
   response: CostQueryResponse;
@@ -202,28 +204,7 @@ export function CostChart({ response, chartType, binning, currency, annotations 
   return (
     <View style={{ gap: spacing.sm }}>
       <Svg width="100%" height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`}>
-        {/* Recessive gridlines carrying the tick labels. */}
-        {axis.ticks.map((t) => (
-          <G key={t}>
-            <SvgLine
-              x1={PAD.left}
-              y1={y(t)}
-              x2={WIDTH - PAD.right}
-              y2={y(t)}
-              stroke={colors.border}
-              strokeWidth={1}
-            />
-            <SvgText
-              x={PAD.left - 4}
-              y={y(t) + 3}
-              fill={colors.textFaint}
-              fontSize={8}
-              textAnchor="end"
-            >
-              {formatMoney(t, currency)}
-            </SvgText>
-          </G>
-        ))}
+        <GridTicks ticks={axis.ticks} y={y} format={(t) => formatMoney(t, currency)} />
 
         {chartType === "stacked_bar" || chartType === "multi_bar" ? (
           <Bars
@@ -305,21 +286,10 @@ export function CostChart({ response, chartType, binning, currency, annotations 
           );
         })}
 
-        {/* First and last bucket only — interior labels collide at this width. */}
-        <SvgText x={PAD.left} y={HEIGHT - 5} fill={colors.textFaint} fontSize={8}>
-          {formatBucketLabel(buckets[0]!, binning)}
-        </SvgText>
-        {buckets.length > 1 && (
-          <SvgText
-            x={WIDTH - PAD.right}
-            y={HEIGHT - 5}
-            fill={colors.textFaint}
-            fontSize={8}
-            textAnchor="end"
-          >
-            {formatBucketLabel(buckets[buckets.length - 1]!, binning)}
-          </SvgText>
-        )}
+        <EdgeLabels
+          start={formatBucketLabel(buckets[0]!, binning)}
+          end={buckets.length > 1 ? formatBucketLabel(buckets[buckets.length - 1]!, binning) : null}
+        />
       </Svg>
 
       <Legend
@@ -339,60 +309,6 @@ export function CostChart({ response, chartType, binning, currency, annotations 
 
       {markers.length > 0 && <AnnotationNotes markers={markers} />}
     </View>
-  );
-}
-
-function Bars({
-  series,
-  bucketCount,
-  stacked,
-  band,
-  y,
-}: {
-  series: PlotSeries[];
-  bucketCount: number;
-  stacked: boolean;
-  band: number;
-  y: (value: number) => number;
-}) {
-  const zero = y(0);
-  const groupWidth = Math.max(2, band - MARK_GAP * 2);
-  const barWidth = stacked ? groupWidth : Math.max(1.5, groupWidth / series.length - MARK_GAP / 2);
-
-  return (
-    <G>
-      {Array.from({ length: bucketCount }, (_, i) => {
-        let stackTop = 0;
-        return (
-          <G key={i}>
-            {series.map((s, si) => {
-              const value = s.values[i] ?? 0;
-              if (value === 0) return null;
-              const left = PAD.left + band * i + (band - groupWidth) / 2;
-              const x = stacked ? left : left + si * (barWidth + MARK_GAP / 2);
-              const top = stacked ? y(stackTop + value) : y(value);
-              const bottom = stacked ? y(stackTop) : zero;
-              if (stacked) stackTop += value;
-              const height = Math.abs(bottom - top);
-              if (height <= 0) return null;
-              return (
-                <Rect
-                  key={s.label}
-                  x={x}
-                  y={Math.min(top, bottom)}
-                  width={barWidth}
-                  // A surface gap keeps stacked segments legible; a segment
-                  // thinner than the gap still has to draw something.
-                  height={stacked ? Math.max(0.5, height - MARK_GAP) : height}
-                  fill={s.color}
-                  rx={stacked ? 0 : 2}
-                />
-              );
-            })}
-          </G>
-        );
-      })}
-    </G>
   );
 }
 
