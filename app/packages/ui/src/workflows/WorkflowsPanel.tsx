@@ -212,6 +212,35 @@ export function WorkflowsPanel({
   const [breakpoints, setBreakpoints] = useState<Set<number>>(() => new Set());
   // The active debug session (the client fills in resume/step/stop per pause).
   const debugSessionRef = useRef<DebugSession | null>(null);
+  // Bumped whenever we start a typings load so a slow enrich pass can't
+  // overwrite typings for a workflow the user already left.
+  const typingsEpochRef = useRef(0);
+
+  /** Fast static surface (plugin defs + account names). Call {@link scheduleEnrichTypings} after applying it. */
+  const fetchStaticTypings = useCallback(
+    async (id: string): Promise<string> => {
+      typingsEpochRef.current += 1;
+      return client.getTypings(id);
+    },
+    [client],
+  );
+
+  /** Second pass: precise create() field unions. Best-effort; never blocks the editor. */
+  const scheduleEnrichTypings = useCallback(
+    (id: string) => {
+      const epoch = typingsEpochRef.current;
+      void client
+        .getTypings(id, { enrich: true })
+        .then((enriched) => {
+          if (typingsEpochRef.current !== epoch) return;
+          dispatchDetail({ kind: "typings", dts: enriched });
+        })
+        .catch(() => {
+          // Keep the static surface.
+        });
+    },
+    [client],
+  );
 
   const toggleBreakpoint = useCallback((line: number) => {
     const set = breakpointsRef.current;
@@ -286,16 +315,19 @@ export function WorkflowsPanel({
       if (wf) setDraft(structuredCloneSafe(wf));
       try {
         const [typings, runRows, metricRows] = await Promise.all([
-          client.getTypings(id),
+          fetchStaticTypings(id),
           client.listRuns(id),
           client.listMetrics(id),
         ]);
         dispatchDetail({ kind: "loaded", dts: typings, runs: runRows, metrics: metricRows });
+        // After the static surface is on screen — never before, or a fast
+        // enrich can land and then get clobbered by the `loaded` dispatch.
+        scheduleEnrichTypings(id);
       } catch (e) {
         setError(messageOf(e));
       }
     },
-    [client, list],
+    [client, list, fetchStaticTypings, scheduleEnrichTypings],
   );
 
   const createWorkflow = useCallback(async () => {
@@ -332,14 +364,15 @@ export function WorkflowsPanel({
         enabled: draft.enabled,
       });
       await refreshList();
-      // Metrics may have changed → regenerate typings.
-      dispatchDetail({ kind: "typings", dts: await client.getTypings(draft.id) });
+      // Metrics may have changed → regenerate typings (static first, enrich after).
+      dispatchDetail({ kind: "typings", dts: await fetchStaticTypings(draft.id) });
+      scheduleEnrichTypings(draft.id);
     } catch (e) {
       setError(messageOf(e));
     } finally {
       setBusy(false);
     }
-  }, [client, draft, refreshList]);
+  }, [client, draft, refreshList, fetchStaticTypings, scheduleEnrichTypings]);
 
   const run = useCallback(async () => {
     if (!draft) return;

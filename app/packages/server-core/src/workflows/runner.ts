@@ -141,10 +141,11 @@ async function clientForWorkflow(organizationId: string, accountId: string, side
 /**
  * Enumerate the org's accounts grouped by plugin, with resource-type metadata.
  *
- * `enrichCreateFields` (typings path only) additionally fetches each createable
- * type's live create config so `create({...})` is typed, and probes each
- * sidecar's capability flags — both hit provider APIs, so the runtime path
- * (every run) leaves them off and uses the generic signatures.
+ * `enrichCreateFields` (typings upgrade pass only) additionally fetches each
+ * createable type's live create config so `create({...})` is typed, and probes
+ * each sidecar's capability flags — both hit provider APIs. The editor/chat
+ * first-paint path leaves them off (static plugin defs + DB accounts); the
+ * runtime path (every run) does too.
  */
 export async function listOrgPlugins(
   organizationId: string,

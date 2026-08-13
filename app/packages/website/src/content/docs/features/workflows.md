@@ -597,19 +597,19 @@ Paste the same value into your provider's webhook configuration. The secret is w
 
 The [AI chat](./ai-chat.md) and [MCP](./mcp.md) surfaces can author workflows for you — "make a workflow that shuts down the dev cluster when my Production budget goes over 90%" is a single request. Both use the same tools:
 
-| Tool                    | What it does                                                                                       |
-| ----------------------- | -------------------------------------------------------------------------------------------------- |
-| `list_workflows`        | The org's workflows with their triggers, metrics, and last/next run.                               |
-| `get_workflow`          | One workflow, including its source, current metric values, and recent runs.                        |
-| `get_workflow_typings`  | The generated `infra.d.ts` — your real accounts, resource types, create fields, and SSH key names. |
-| `check_workflow_source` | Type-checks a draft without saving it.                                                             |
-| `write_workflow`        | Creates or updates a workflow. Type-checks first and **refuses to save** source with type errors.  |
-| `run_workflow`          | Runs it now and returns the status, logs, output, and any error.                                   |
-| `delete_workflow`       | Soft-deletes it (run history is kept).                                                             |
+| Tool                    | What it does                                                                                                                                                                  |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_workflows`        | The org's workflows with their triggers, metrics, and last/next run.                                                                                                          |
+| `get_workflow`          | One workflow, including its source, current metric values, and recent runs.                                                                                                   |
+| `get_workflow_typings`  | The generated `infra.d.ts` — your real accounts, resource types, and SSH key names. Default is the fast static surface; pass `enrich:true` for precise create() field unions. |
+| `check_workflow_source` | Type-checks a draft without saving it.                                                                                                                                        |
+| `write_workflow`        | Creates or updates a workflow. Type-checks first and **refuses to save** source with type errors.                                                                             |
+| `run_workflow`          | Runs it now and returns the status, logs, output, and any error.                                                                                                              |
+| `delete_workflow`       | Soft-deletes it (run history is kept).                                                                                                                                        |
 
 Asking for a recurring check is a single request too — "check my Kubernetes clusters' pods every hour and page me if any restart count goes above 5" builds the cron workflow above, `infra.page` and all. The typings tell the model that paging exists and that it is throttled per key, so it writes the check to page unconditionally rather than inventing its own bookkeeping.
 
-`get_workflow_typings` is the important one. The `infra` API is generated per organization — account names, which resource groups exist, which fields `create()` takes, which peers a cluster or database exposes — so a model that writes from memory guesses wrong. Handing it the real declaration file first is what makes the generated code compile against _your_ setup. It also reflects the trigger: a budget-triggered workflow gets `infra.event` typed as the crossing payload, and only manual workflows get `infra.prompt`.
+`get_workflow_typings` is the important one. The `infra` API is generated per organization — account names, which resource groups exist, which peers a cluster or database exposes — so a model that writes from memory guesses wrong. Handing it the real declaration file first is what makes the generated code compile against _your_ setup. It also reflects the trigger: a budget-triggered workflow gets `infra.event` typed as the crossing payload, and only manual workflows get `infra.prompt`. The default response is the fast static surface (`create` fields are `Record<string, string>`); pass `enrich:true` only when you need precise create() field unions from live provider configs — that hits provider APIs and can be slow. The same split is on the HTTP route: `GET /api/org/{orgId}/workflows/{id}/typings` is static, and `?enrich=1` is the upgrade pass the editor runs in the background.
 
 The tool also keeps the model's context small: an organization with many connected plugins can have a very large `infra.d.ts`, so instead of returning the whole file the tool sends the global scope (the `infra` object and everything it references by name) plus an index of the named per-plugin interfaces, and the model fetches just the ones it needs — `typeNames: ["aws"]` pulls every AWS interface, or individual names like `Account_aws` can be requested as they are encountered. Small organizations still get the whole file in one call, and `scope: "full"` always returns everything.
 

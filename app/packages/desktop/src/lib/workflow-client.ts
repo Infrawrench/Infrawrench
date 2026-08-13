@@ -332,9 +332,9 @@ async function resolveLocalCreateSshKeyFields(
 /**
  * Build the account-tree the isolate's `infra.accounts` is generated from.
  *
- * `enrichCreateFields` (typings path only) fetches each createable type's live
- * create config so `create({...})` is typed; the runtime path (every run) leaves
- * it off to avoid provider API calls on run startup.
+ * `enrichCreateFields` (typings upgrade pass only) fetches each createable
+ * type's live create config so `create({...})` is typed. The editor first-paint
+ * and the runtime path (every run) leave it off to avoid provider API latency.
  */
 async function listLocalPlugins(
   opts: { enrichCreateFields?: boolean } = {},
@@ -658,12 +658,16 @@ export function createDesktopWorkflowClient(): WorkflowClient {
       notifyWorkflowsChanged();
     },
 
-    async getTypings(id: string) {
+    async getTypings(id: string, opts?: { enrich?: boolean }) {
       const wf = await loadRow(id);
-      // Enrichment + key listing are best-effort — never let them fail the whole
-      // typings response (which would drop the editor back to `infra: any`).
+      // Default = static plugin defs + accounts (fast first paint). Enrichment
+      // + key listing are best-effort — never let them fail the whole typings
+      // response (which would drop the editor back to `infra: any`).
+      const pluginsPromise = opts?.enrich
+        ? listLocalPlugins({ enrichCreateFields: true }).catch(() => listLocalPlugins())
+        : listLocalPlugins();
       const [plugins, sshKeyNames] = await Promise.all([
-        listLocalPlugins({ enrichCreateFields: true }).catch(() => listLocalPlugins()),
+        pluginsPromise,
         listLocalSshKeyNames().catch(() => [] as string[]),
       ]);
       const trigger = wf

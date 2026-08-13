@@ -197,7 +197,8 @@ export function createCloudWorkflowClient(orgId: string): WorkflowClient {
     remove: async (id: string) => {
       await invoke("cloud_delete_workflow", { orgId, id });
     },
-    getTypings: (id: string) => invoke<string>("cloud_workflow_typings", { orgId, id }),
+    getTypings: (id: string, opts?: { enrich?: boolean }) =>
+      invoke<string>("cloud_workflow_typings", { orgId, id, enrich: opts?.enrich === true }),
     listRuns: (id: string) => invoke<WorkflowRunRow[]>("cloud_workflow_runs", { orgId, id }),
     listMetrics: (id: string) =>
       invoke<WorkflowMetricRow[]>("cloud_workflow_metrics", { orgId, id }),

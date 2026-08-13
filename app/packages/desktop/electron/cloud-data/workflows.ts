@@ -45,13 +45,17 @@ ipcMain.handle("cloud_delete_workflow", async (_e, { orgId, id }: WorkflowIdArgs
   return { ok: true };
 });
 
-ipcMain.handle("cloud_workflow_typings", async (_e, { orgId, id }: WorkflowIdArgs) => {
-  const res = await cloudFetch<{ dts: string }>(
-    orgId,
-    `/workflows/${encodeURIComponent(id)}/typings`,
-  );
-  return res?.dts ?? "";
-});
+ipcMain.handle(
+  "cloud_workflow_typings",
+  async (_e, { orgId, id, enrich }: WorkflowIdArgs & { enrich?: boolean }) => {
+    const q = enrich ? "?enrich=1" : "";
+    const res = await cloudFetch<{ dts: string }>(
+      orgId,
+      `/workflows/${encodeURIComponent(id)}/typings${q}`,
+    );
+    return res?.dts ?? "";
+  },
+);
 
 // Non-interactive run. Interactive/debug runs go over the websocket instead
 // (`workflow:*` frames), exactly as they do in the browser.

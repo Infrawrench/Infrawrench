@@ -627,7 +627,10 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "PUT /custom-graphs/{id}": "dashboards:write",
   "DELETE /custom-graphs/{id}": "dashboards:write",
   "POST /custom-graphs/{id}/render": "dashboards:read",
-  // workflows (share the dashboards permissions, like custom graphs)
+  // workflows — typings rides workflows:read (same as the editor/tool path);
+  // the schedule sub-resource still shares the dashboards permissions used when
+  // it was documented (CI managing when a UI-created workflow runs).
+  "GET /workflows/{id}/typings": "workflows:read",
   "GET /workflows/{id}/schedule": "dashboards:read",
   "PUT /workflows/{id}/schedule": "dashboards:write",
   "DELETE /workflows/{id}/schedule": "dashboards:write",

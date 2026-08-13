@@ -123,8 +123,8 @@ export function createWebWorkflowClient(orgId: string): WorkflowClient {
       fetch(`${base}/${id}`, jsonInit("DELETE"))
         .then((r) => jsonOrThrow<{ ok: boolean }>(r))
         .then(() => undefined),
-    getTypings: (id: string) =>
-      fetch(`${base}/${id}/typings`, jsonInit("GET"))
+    getTypings: (id: string, opts?: { enrich?: boolean }) =>
+      fetch(`${base}/${id}/typings${opts?.enrich ? "?enrich=1" : ""}`, jsonInit("GET"))
         .then((r) => jsonOrThrow<{ dts: string }>(r))
         .then((d) => d.dts),
     run: (id: string, debug?: DebugSession) =>

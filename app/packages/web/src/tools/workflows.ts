@@ -235,15 +235,18 @@ export function workflowTools(): ToolDefinition[] {
       description:
         "Return the generated `infra.d.ts` that workflow source is written against — the same " +
         "ambient declarations the editor uses, specialized with THIS organization's real account " +
-        "names, resource types, create-field shapes, SSH key names, and the workflow's declared " +
-        "metrics. ALWAYS call this before writing or editing workflow source: the `infra` API is " +
-        "generated per organization and cannot be guessed. Small organizations get the whole file " +
-        "in one call; large ones get the global scope (the `infra` object, InfraAccounts, event, " +
-        "metrics, fetch) plus an index of the named per-plugin interfaces it references — call " +
-        "again with typeNames to pull just the plugins you are working with instead of the whole " +
-        "file. Pass workflowId to type against an existing workflow, or pass triggerKind/metrics " +
-        "to preview the typings for one you are about to create (a budget trigger types " +
-        "`infra.event` with the crossing payload; only manual workflows get `infra.prompt`).",
+        "names, resource types, SSH key names, and the workflow's declared metrics. ALWAYS call " +
+        "this before writing or editing workflow source: the `infra` API is generated per " +
+        "organization and cannot be guessed. The default response is the fast static surface " +
+        "(`create` fields are `Record<string, string>`); pass enrich:true only when you need " +
+        "precise create() field unions from live provider configs — that hits provider APIs and " +
+        "can be slow. Small organizations get the whole file in one call; large ones get the " +
+        "global scope (the `infra` object, InfraAccounts, event, metrics, fetch) plus an index " +
+        "of the named per-plugin interfaces it references — call again with typeNames to pull " +
+        "just the plugins you are working with instead of the whole file. Pass workflowId to " +
+        "type against an existing workflow, or pass triggerKind/metrics to preview the typings " +
+        "for one you are about to create (a budget trigger types `infra.event` with the " +
+        "crossing payload; only manual workflows get `infra.prompt`).",
       inputSchema: {
         workflowId: z
           .string()
@@ -254,6 +257,13 @@ export function workflowTools(): ToolDefinition[] {
           .optional()
           .describe("Ignored when workflowId is given. Defaults to manual."),
         metrics: metricsSchema.optional(),
+        enrich: z
+          .boolean()
+          .optional()
+          .describe(
+            "When true, hit provider APIs for precise create() field unions and live sidecar " +
+              "capability flags. Slow on a cold cache — omit for the initial look at the API.",
+          ),
         scope: z
           .enum(["full", "global"])
           .optional()
@@ -289,6 +299,7 @@ export function workflowTools(): ToolDefinition[] {
           const parts = await generateWorkflowTypingsParts(auth.organizationId, {
             metrics,
             triggerKind,
+            enrichCreateFields: input["enrich"] === true,
           });
 
           const requested = input["typeNames"] as string[] | undefined;
