@@ -2346,7 +2346,7 @@ export const orgDigestSettings = pgTable("org_digest_settings", {
  *
  * Recipients are an **org-level address list**, not a per-member opt-in, for
  * the same reason `slack_channels` and `msteams_webhooks` are: the digest is a
- * `ChannelTrigger`, a scheduled summary sent to a destination an admin picked,
+ * channel-only trigger, a scheduled summary sent to a destination an admin picked,
  * not a per-user alert. An address list also reaches a finance alias or an
  * exec who has no Infrawrench login, which a member opt-in never could.
  * `push_preferences` stays the precedent for the four *alert* triggers only.

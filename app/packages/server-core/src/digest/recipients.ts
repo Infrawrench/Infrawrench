@@ -3,7 +3,7 @@
  *
  * Recipients are an org-level address list rather than a per-member opt-in.
  * The reasoning is in `db/schema.ts` above `digestEmailRecipients`, and short:
- * the digest is a `ChannelTrigger`, so its destinations are things an admin
+ * the digest is a channel-only trigger, so its destinations are things an admin
  * configures (a Slack channel, a Teams webhook, a mailing list), not things
  * each user opts into on their own phone the way `push_preferences` works for
  * the four alert triggers.

@@ -26,15 +26,12 @@ export type PushData = PushNotificationData;
  * `client-core/src/alert-routing.ts` — the single list that used to be spelled
  * out here, in three database schemas and in three `TRIGGER_COLUMN` maps.
  *
- * `PushTrigger` and `ChannelTrigger` are the same type now. They were distinct
- * because the weekly digest could reach a channel but not a phone, and that is
- * still true — it is just expressed as `channelOnly` on the registry entry and
- * enforced in one place (`alerts/route.ts` drops a `push` destination for a
- * channel-only trigger) instead of by two type aliases that every call site had
- * to pick correctly between.
+ * The digest can reach a channel but not a phone; that is expressed as
+ * `channelOnly` on the registry entry and enforced in one place
+ * (`alerts/route.ts` drops a `push` destination for a channel-only trigger)
+ * rather than by a separate trigger type.
  */
 export type PushTrigger = AlertTrigger;
-export type ChannelTrigger = AlertTrigger;
 
 export interface PushMessage {
   title: string;
