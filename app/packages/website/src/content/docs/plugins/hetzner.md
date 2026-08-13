@@ -21,7 +21,7 @@ sidebar_order: 5
 
 Hetzner Cloud Console → select a project → **Security → API tokens → Generate API token**. Read + write.
 
-<insert [Hetzner Add-account form with API token field] here>
+![Hetzner Add-account form with API token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/hetzner/add-account.png)
 
 Each API token is project-scoped. Add one infrawrench account per Hetzner project.
 

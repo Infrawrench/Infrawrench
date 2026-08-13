@@ -8,7 +8,7 @@ Somebody left in March. Their IAM user is still there, so is the service account
 
 The access review is that answer, standing: every principal your connected accounts have synced, in one list, with the ones worth a conversation flagged.
 
-<insert [The Access review tab with the Findings view open, grouped by severity, showing a mix of stale, admin and unowned findings across at least two providers] here>
+![The Access review tab with the Findings view open, grouped by severity, showing a mix of stale, admin and unowned findings across at least two providers](https://agent-assets.infrawrench.com/docs-screenshots/features/access-review/findings-by-severity.png)
 
 ## What counts as a principal
 
@@ -62,7 +62,7 @@ Some access is meant to look like this. A break-glass role really is admin; a sh
 
 It is suppressed, not deleted: the rule keeps being evaluated, the finding reappears under **Dismissed** with your note and your name for as long as it still matches, and it is included and labelled in the export. Restoring it puts it back. Dismissing needs the `resources:write` permission — members can read the review but cannot silence it.
 
-<insert [The Dismissed section expanded, showing an accepted admin finding with its note and the person who accepted it, and the Restore button] here>
+![The Dismissed section expanded, showing an accepted admin finding with its note and the person who accepted it, and the Restore button](https://agent-assets.infrawrench.com/docs-screenshots/features/access-review/dismissed-expanded.png)
 
 ### Revoking
 

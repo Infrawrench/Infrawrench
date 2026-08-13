@@ -22,7 +22,7 @@ The dashboard is the first thing you see after sign-in. It is a grid of pinned r
 
 Every kind of card is draggable and they all share one order, so a cost graph or budget can sit between two resource cards rather than being stuck at the end of the grid. New cards are added at the end. The order is per dashboard and shared with everyone in the org.
 
-<insert [Dashboard with a Droplet card, an EKS cluster card, and a Postgres database card] here>
+![Dashboard with a Droplet card, an EKS cluster card, and a Postgres database card](https://agent-assets.infrawrench.com/docs-screenshots/features/dashboard/pinned-resource-cards.png)
 
 ## What cards show
 
@@ -46,7 +46,7 @@ The **+** tile on a dashboard is a menu: pin a resource, add a **Cost graph**, p
 
 Budget cards are views onto a budget, not the budget itself: removing one leaves the budget tracking and alerting, and the [**Costs** panel](./cloud-costs.md#the-costs-panel) lists every budget whether or not a dashboard shows it. **Saved report** cards work the same way — they point at a [cost report](./cost-reports.md) by id, so editing the report updates every dashboard showing it, and a **Cost graph** stays the one-off card owned by this dashboard alone.
 
-<insert [Dashboard "+" tile menu open showing Pin a resource, Cost graph, Saved report, New budget, Existing budget, and Custom graph entries] here>
+![Dashboard "+" tile menu open showing Pin a resource, Cost graph, Saved report, New budget, Existing budget, and Custom graph entries](https://agent-assets.infrawrench.com/docs-screenshots/features/dashboard/dash-add-menu.png)
 
 ## Multiple dashboards
 

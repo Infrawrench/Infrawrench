@@ -12,7 +12,7 @@ No new metric collection and no guesswork tables: the percentiles come from the 
 
 Open **Costs** in the sidebar and scroll to **Oversized**, just below Potential savings. Each row shows the machine, its current and recommended size, the p95 CPU and memory figures backing the call, and the estimated monthly saving.
 
-<insert [Costs page scrolled to the Oversized section, showing a flagged server row with current → recommended size, p95 CPU/memory figures, a monthly saving on the right, and the Apply resize button] here>
+![Costs page scrolled to the Oversized section, showing a flagged server row with current → recommended size, p95 CPU/memory figures, a monthly saving on the right, and the Apply resize button](https://agent-assets.infrawrench.com/docs-screenshots/features/right-sizing/oversized-section.png)
 
 The same list is on the mobile app's Costs tab (read-only — apply from web or desktop), in the `infrawrench oversized` CLI subcommand (`--json` for scripts), and as the `list_oversized_resources` [MCP tool](./mcp.md).
 

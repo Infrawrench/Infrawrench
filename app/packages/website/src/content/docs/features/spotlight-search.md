@@ -6,7 +6,7 @@ sidebar_order: 2
 
 Hit **Cmd + K** (macOS) or **Ctrl + K** (Windows / Linux) from anywhere in the app.
 
-<insert [Spotlight palette with a few resource matches] here>
+![Spotlight palette with a few resource matches](https://agent-assets.infrawrench.com/docs-screenshots/features/spotlight-search/spotlight-palette.png)
 
 ## What it searches
 

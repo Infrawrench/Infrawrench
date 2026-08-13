@@ -14,7 +14,7 @@ Open **Costs** in the sidebar and scroll to **Potential savings**, below the mon
 
 Flagged resources are grouped by account, each row showing the resource, its type, and the reason it was flagged. Where Infrawrench collects cost data for the account, rows are annotated with the resource's spend over the last 30 days.
 
-<insert [Costs page scrolled to the Potential savings section, showing flagged resources grouped by account — each row with resource name, type badge, reason string, and a 30-day cost figure on the right] here>
+![Costs page scrolled to the Potential savings section, showing flagged resources grouped by account — each row with resource name, type badge, reason string, and a 30-day cost figure on the right](https://agent-assets.infrawrench.com/docs-screenshots/features/orphan-finder/potential-savings-section.png)
 
 Each resource name is a button — activate it to jump to that resource's detail page, where you can confirm it really is unused and delete it in place. It is an ordinary tab stop, so you can reach every flagged resource from the keyboard.
 

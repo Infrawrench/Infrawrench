@@ -26,7 +26,7 @@ Generate an access key pair in the AWS console (**IAM → Users → Security cre
 - **Secret access key**
 - **Default region**
 
-<insert [AWS Add-account form with access key / secret / region fields] here>
+![AWS Add-account form with access key / secret / region fields](https://agent-assets.infrawrench.com/docs-screenshots/plugins/aws/add-account.png)
 
 Use least-privilege policies. For read-only browsing, the `ReadOnlyAccess` managed policy is usually enough; for creating resources, you need the matching write permissions.
 

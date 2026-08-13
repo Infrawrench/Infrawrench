@@ -42,7 +42,7 @@ The triggers:
 | **Resource drift** | Resources appeared or disappeared between polls. Batched into one digest per organization per cooldown window — see [Change timeline](./change-timeline.md). **Off by default.**         |
 | **Pages**          | Your own code needs a human — a [workflow](./workflows.md) calling `infra.page(...)` or suspended on `infra.waitForApproval(...)`, or a [server calling `POST /pages`](./server-push.md) |
 
-<insert [Web Settings → Notifications page showing the push trigger toggles, a registered device row, and the Send test push button] here>
+![Web Settings → Notifications page showing the push trigger toggles, a registered device row, and the Send test push button](https://agent-assets.infrawrench.com/docs-screenshots/features/mobile-push-notifications/push-settings-web.png)
 
 ### Sync-failure incidents
 

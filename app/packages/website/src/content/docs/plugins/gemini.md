@@ -22,7 +22,7 @@ One field. Google AI Studio → **Get API key**, at [aistudio.google.com/app/api
 
 This is deliberately _not_ a Vertex AI service account and not a Google Cloud OAuth credential — neither will authenticate against this host.
 
-<insert [Gemini Add-account form with the single AI Studio API key field] here>
+![Gemini Add-account form with the single AI Studio API key field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/gemini/add-account.png)
 
 ## The Speech tab
 
@@ -33,7 +33,7 @@ Open any model for a **Speech** tab with both halves. See [Speech testing](../fe
 
 The language picker leads with **Match the input text**, which is the usual case; pinning a BCP-47 tag forces the output language.
 
-<insert [Gemini Speech tab with the voice picker open showing the thirty prebuilt voices and their style descriptors] here>
+![Gemini Speech tab with the voice picker open showing the thirty prebuilt voices and their style descriptors](https://agent-assets.infrawrench.com/docs-screenshots/plugins/gemini/speech-tab-voice-picker.png)
 
 ## Tips & limits
 

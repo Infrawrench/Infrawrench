@@ -22,7 +22,7 @@ The chain has a hard cap of 8 hops and cycles are detected and rejected, so misc
 
 When adding a new SSH account (sidebar → **Add account** → **SSH**), the credential form includes a **Connect through** dropdown listing your other SSH accounts. Pick one and save — the new account will now dial through it on every terminal/SFTP open.
 
-<insert [AddAccountModal showing the SSH credential form with the "Connect through" dropdown expanded to show another SSH account] here>
+![AddAccountModal showing the SSH credential form with the "Connect through" dropdown expanded to show another SSH account](https://agent-assets.infrawrench.com/docs-screenshots/features/ssh-jumpbox/connect-through-expanded.png)
 
 ### From a cloud VM's detail page
 

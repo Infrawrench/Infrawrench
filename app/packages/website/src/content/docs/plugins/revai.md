@@ -16,7 +16,7 @@ sidebar_order: 47
 
 **Deployment** (required, defaults to US) — `us` (the default host) or `eu` (Frankfurt). This is not cosmetic: see below.
 
-<insert [Rev AI Add-account form showing the access token field and the US / EU deployment picker] here>
+![Rev AI Add-account form showing the access token field and the US / EU deployment picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/revai/add-account.png)
 
 ## The Speech tab
 

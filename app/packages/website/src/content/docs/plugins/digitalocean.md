@@ -227,7 +227,7 @@ The connection string and CA certificate outputs flow the same way as the other 
 1. DigitalOcean → **API → Tokens → Generate new token**. Read + write scope.
 2. Paste into the add-account form.
 
-<insert [DigitalOcean Add-account form with API token field] here>
+![DigitalOcean Add-account form with API token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/digitalocean/add-account.png)
 
 ## Notable flows
 

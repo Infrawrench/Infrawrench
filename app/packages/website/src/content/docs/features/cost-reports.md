@@ -14,7 +14,7 @@ A **cost report** is the same graph as an object. It has a name, its own page, a
 
 **Reports** in the sidebar, next to **Costs**. It lists every saved report in the org, what each one charts, and how many dashboards carry a card for it.
 
-<insert [Reports page listing three saved cost reports with their shapes and dashboard counts, one showing "On no dashboard"] here>
+![Reports page listing three saved cost reports with their shapes and dashboard counts, one showing "On no dashboard"](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/reports-list.png)
 
 ## Create a report
 
@@ -22,7 +22,7 @@ A **cost report** is the same graph as an object. It has a name, its own page, a
 2. Give it a name and configure the graph — the same editor a dashboard [cost graph](./cloud-costs.md#add-a-cost-graph) uses, with the same chart types, binning, date ranges, group-by, filters, cost basis, comparison and forecast options.
 3. **Save**. You land on the report's own page.
 
-<insert [The cost graph editor opened from the Reports page, with a name field filled in as "Monthly spend by service"] here>
+![The cost graph editor opened from the Reports page, with a name field filled in as "Monthly spend by service"](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-editor-name.png)
 
 A report saved with a **relative** date range ("last 30 days") means a different window every day it runs, which is usually what you want. Pin it to fixed dates with an absolute range instead.
 
@@ -36,13 +36,13 @@ The report's page draws the chart full width, with the report's name, its descri
 - **Dashboards** — add or remove its cards, one per dashboard.
 - **Delete** — see below.
 
-<insert [A cost report's detail page showing the full-width chart, the report name, and a "On Production" dashboard link underneath] here>
+![A cost report's detail page showing the full-width chart, the report name, and a "On Production" dashboard link underneath](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-detail.png)
 
 ## Folders
 
 Once the list grows past a screenful, group it. **New folder** on the Reports page creates one; every report and folder has a **Move** action that files it wherever you like, and each folder offers **New subfolder**, **Rename**, **Move**, and **Delete**. Folders nest up to **three levels** deep — enough for "team / area / month" without turning the list into an expedition.
 
-<insert [Reports page with reports grouped under a "Finance" folder and its "Monthly" subfolder, with the Move menu open on one report showing the folder targets] here>
+![Reports page with reports grouped under a "Finance" folder and its "Monthly" subfolder, with the Move menu open on one report showing the folder targets](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/reports-folders-move.png)
 
 Folders organize the list and change nothing else. A report keeps its id, its URL, its dashboard cards, and its name-based matching in the [CLI](#from-the-command-line) and chat no matter where it is filed. Two things follow from that:
 
@@ -64,7 +64,7 @@ Both exist on purpose: putting one chart on one dashboard should not require nam
 
 A report card has no **Edit** of its own — it opens the report's page instead, where the list of everywhere else it appears is visible. Changing a shared report from one of its cards, without seeing the other four, is exactly the mistake this avoids.
 
-<insert [Dashboard "+" tile menu open showing Pin a resource, Cost graph, Saved report, New budget, Existing budget, and Custom graph entries] here>
+![Dashboard "+" tile menu open showing Pin a resource, Cost graph, Saved report, New budget, Existing budget, and Custom graph entries](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/dash-add-menu.png)
 
 ## Cards vs the report itself
 
@@ -81,7 +81,7 @@ A card whose report no longer exists could only ever render as an unavailable ti
 
 The **Delivery** section on a report's page sends it on a schedule to **Slack channels**, **Microsoft Teams webhooks**, and **email addresses** — the digest model: each schedule owns its own destinations, chosen when it is created.
 
-<insert [A report's detail page with the Delivery section showing two schedules — one "Weekly · Monday 08:00 Europe/Berlin" delivering to a Slack channel with status "Delivered", one monthly schedule to two email addresses with a red "Failed" status and its error text underneath] here>
+![A report's detail page with the Delivery section showing two schedules — one "Weekly · Monday 08:00 Europe/Berlin" delivering to a Slack channel with status "Delivered", one monthly schedule to two email addresses with a red "Failed" status and its error text underneath](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-delivery.png)
 
 Each schedule has:
 
@@ -96,7 +96,7 @@ Two behaviours worth knowing:
 - **An empty result still sends**, saying so. A quiet period and a broken schedule look identical from the receiving end, so the delivery says out loud that it ran and found nothing.
 - **Failures are visible where you configured them.** Each schedule shows its last attempt's status and error on the report page. A total failure retries with a short backoff (up to three attempts); a _partial_ delivery — Slack took it, Teams didn't — is never retried automatically, because a retry would post the report twice where it already landed. **Send now** is the recovery once the failing destination is fixed.
 
-<insert [The "New delivery schedule" modal with a weekly cadence, hour and timezone fields, Slack channel checkboxes, a Teams webhook checkbox, and an email recipients box filled in] here>
+![The "New delivery schedule" modal with a weekly cadence, hour and timezone fields, Slack channel checkboxes, a Teams webhook checkbox, and an email recipients box filled in](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-delivery-modal.png)
 
 Viewing a report's schedules needs `costs:read`; creating, editing, deleting, and **Send now** need `org:settings:write` — the same step up [cost exports](./cost-exports.md) take, because a schedule is standing authorisation to send org spend to addresses its creator picked. Every change and manual send lands in the [audit log](../team-and-billing/audit-log.md).
 
@@ -106,7 +106,7 @@ A step change in a spend chart explains itself for about a fortnight. After that
 
 An **annotation** is a dated note drawn over the chart, so the explanation lives next to the number.
 
-<insert [A cost report chart with two numbered annotation markers on it — one a dashed vertical line labelled 1, one a shaded band across four bars labelled 2 — and the annotation chips reading "Jul 4 · Migrated the API fleet to Graviton" and "Jul 18 – Jul 22 · Datacentre migration" underneath the chart] here>
+![A cost report chart with two numbered annotation markers on it — one a dashed vertical line labelled 1, one a shaded band labelled 2 — and the annotation chips reading "Jul 4 · Migrated the API fleet to Graviton" and "Jul 18 – Jul 22 · Datacentre migration" underneath the chart](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-reports/report-annotations.png)
 
 ### Writing one
 

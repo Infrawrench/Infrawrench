@@ -26,7 +26,7 @@ field — Infrawrench works out which one you gave it:
   out — base64-encoded JSON holding the key, the app ID, and the region
 - a raw **`sk_live_…` secret key**, if your app still uses one
 
-<insert [UploadThing Add-account form showing the single API Key or Token field] here>
+![UploadThing Add-account form showing the single API Key or Token field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/uploadthing/add-account.png)
 
 ## Notable flows
 

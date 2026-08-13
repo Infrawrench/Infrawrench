@@ -28,7 +28,7 @@ The first rule takes the expensive ones; whatever it does not take falls through
 
 A rule can also be a **tee** rather than a branch: untick _Stop here_ and evaluation continues past it, so an audit channel can copy every alert without shadowing the rules below it.
 
-<insert [The Alert routing card in Settings → Notifications, showing two rules — a narrow "anomalies over $500 on prod → #incidents" above a broad "everything → #infra-noise" — with the first rule expanded to show its conditions] here>
+![The Alert routing card in Settings → Notifications, showing two rules — a narrow "anomalies over $500 on prod → #incidents" above a broad "everything → #infra-noise" — with the first rule expanded to show its conditions](https://agent-assets.infrawrench.com/docs-screenshots/features/alert-routing/two-rules.png)
 
 ## Conditions
 

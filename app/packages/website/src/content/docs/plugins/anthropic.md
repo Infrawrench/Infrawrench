@@ -24,7 +24,7 @@ Anthropic splits its API across two credentials that share a prefix but nothing 
 
 The Admin API does not exist on individual (non-organization) accounts, so there is nothing to add on a personal plan.
 
-<insert [Anthropic Add-account form showing the required API Key field and the optional Admin API Key field with its admin-only description] here>
+![Anthropic Add-account form showing the required API Key field and the optional Admin API Key field with its admin-only description](https://agent-assets.infrawrench.com/docs-screenshots/plugins/anthropic/add-account.png)
 
 ## Costs
 

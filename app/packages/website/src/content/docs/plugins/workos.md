@@ -22,7 +22,7 @@ One field. WorkOS dashboard → **API Keys**.
 - `sk_test_…` keys manage the **sandbox** environment, `sk_live_…` keys manage **production**. An account maps to one environment — add two accounts to see both.
 - This is unrelated to the WorkOS credentials Infrawrench itself signs in with. The plugin manages **your** WorkOS environment with your key.
 
-<insert [WorkOS Add-account form with the API key field and the dashboard help link] here>
+![WorkOS Add-account form with the API key field and the dashboard help link](https://agent-assets.infrawrench.com/docs-screenshots/plugins/workos/add-account.png)
 
 ## Pickers everywhere
 

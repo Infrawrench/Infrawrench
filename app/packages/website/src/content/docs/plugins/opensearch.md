@@ -52,7 +52,7 @@ For IAM-controlled Amazon OpenSearch domains, set:
 
 The plugin signs every request with SigV4 using the same `@smithy/signature-v4` signer the AWS SDK uses, so any IAM policy attached to the user/role flows through unchanged.
 
-<insert [OpenSearch Add-account form with Auth Mode dropdown and the credential fields that appear for the selected mode] here>
+![OpenSearch Add-account form with Auth Mode dropdown and the credential fields that appear for the selected mode](https://agent-assets.infrawrench.com/docs-screenshots/plugins/opensearch/add-account.png)
 
 ## Notable flows
 
