@@ -27,6 +27,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, gt, sql } from "drizzle-orm";
+import type { CapacitySlot } from "@infrawrench/client-core";
 
 import { db } from "../db/client.js";
 import { capacitySlots } from "../db/schema.js";
@@ -46,15 +47,9 @@ export const CAPACITY_SLOT_TERM_MONTHS = 24;
  */
 export const CAPACITY_SLOT_PRICE_USD = 200;
 
-export interface CapacitySlot {
-  id: string;
-  quantity: number;
-  status: string;
-  startsAt: string;
-  expiresAt: string;
-  termMonths: number;
-  amountPaidCents: number | null;
-}
+// One purchase row, as the billing status reports it. The wire shape is the
+// client contract; client-core (`api-types.ts`) owns it.
+export type { CapacitySlot };
 
 /**
  * End of a slot's term, `CAPACITY_SLOT_TERM_MONTHS` after it starts.

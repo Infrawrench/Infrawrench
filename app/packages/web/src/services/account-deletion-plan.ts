@@ -9,14 +9,15 @@
  * stands between a deletion and an ownerless (or memberless) organization with
  * a live subscription still billing.
  */
+import type { OwnershipBlocker } from "@infrawrench/client-core";
+
 import { isOwnerRole } from "./org-roles";
 
-/** An organization the caller must hand over before they can delete. */
-export interface OwnershipBlocker {
-  id: string;
-  name: string;
-  memberCount: number;
-}
+/**
+ * An organization the caller must hand over before they can delete. The wire
+ * shape is the client contract; client-core (`profile.ts`) owns it.
+ */
+export type { OwnershipBlocker };
 
 export interface AccountDeletionPlan {
   /** Deleted with the account — the caller is their only member. */

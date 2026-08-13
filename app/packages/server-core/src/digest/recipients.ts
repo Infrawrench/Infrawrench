@@ -10,15 +10,14 @@
  */
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
+import type { DigestEmailRecipient } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
 import { digestEmailRecipients } from "../db/schema";
 import { normalizeEmailAddress } from "../email";
 
-export interface DigestEmailRecipient {
-  id: string;
-  email: string;
-}
+// The wire shape is the client contract; client-core (`digest.ts`) owns it.
+export type { DigestEmailRecipient };
 
 /** Every address the org routes its digest to, alphabetically. */
 export async function listDigestEmailRecipients(

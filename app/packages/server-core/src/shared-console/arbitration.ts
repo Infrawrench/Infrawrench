@@ -28,14 +28,16 @@
  *    the check that passed when they joined.
  */
 
+import type { SharedConsoleStatus } from "@infrawrench/client-core";
+
 /** What a participant may do on the console. */
 export type ParticipantRole = "observer" | "driver";
 
 /** Whether a participant is currently on the console. */
 export type ParticipantStatus = "joined" | "left" | "removed";
 
-/** Lifecycle of the share itself. */
-export type SharedConsoleStatus = "active" | "revoked" | "ended";
+/** Lifecycle of the share itself — the wire vocabulary, owned by client-core. */
+export type { SharedConsoleStatus };
 
 /**
  * The permission a direct terminal session to a resource requires.

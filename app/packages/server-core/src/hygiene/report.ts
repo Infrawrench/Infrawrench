@@ -27,6 +27,12 @@
  * unused-permission conclusion until there is enough of it.
  */
 import { and, asc, eq, gte, isNull, sql } from "drizzle-orm";
+import type {
+  HygieneFinding,
+  HygieneFindingKind,
+  HygieneReport,
+  HygieneSeverity,
+} from "@infrawrench/client-core";
 
 import { db } from "../db/client";
 import { apiKeys, auditLogs, organizationMembers, roles, sshKeys, users } from "../db/schema";
@@ -57,52 +63,10 @@ const MIN_HISTORY_DAYS_FOR_PERMISSION_FINDINGS = 30;
  */
 const NEW_KEY_GRACE_DAYS = 14;
 
-export type HygieneSeverity = "high" | "medium" | "low";
-
-export type HygieneFindingKind =
-  | "api_key_never_used"
-  | "api_key_idle"
-  | "api_key_expired_not_revoked"
-  | "api_key_wildcard_scope"
-  | "api_key_unused_scopes"
-  | "ssh_key_never_used"
-  | "ssh_key_idle"
-  | "member_unused_permissions";
-
-export interface HygieneFinding {
-  /** Stable across runs, so a UI can remember what has been looked at. */
-  id: string;
-  kind: HygieneFindingKind;
-  severity: HygieneSeverity;
-  /** One line naming the thing and the problem. */
-  title: string;
-  /** The evidence. */
-  detail: string;
-  /** What to do about it. */
-  recommendation: string;
-  entityType: "api-key" | "ssh-key" | "member";
-  entityId: string;
-  entityName: string;
-  /** Structured facts for the table columns and `--json`. */
-  facts: Record<string, string | number | boolean | null>;
-}
-
-export interface HygieneReport {
-  generatedAt: string;
-  /** The activity window findings were computed over. */
-  windowDays: number;
-  /**
-   * Days of audit history the org actually has, or null when it has none.
-   * Below {@link MIN_HISTORY_DAYS_FOR_PERMISSION_FINDINGS} the unused-permission
-   * findings are withheld and {@link HygieneReport.permissionFindingsWithheld}
-   * says so.
-   */
-  auditHistoryDays: number | null;
-  /** True when there was not enough history to judge unused permissions. */
-  permissionFindingsWithheld: boolean;
-  findings: HygieneFinding[];
-  counts: Record<HygieneSeverity | "total", number>;
-}
+// The report's wire shapes are the client contract, declared once in
+// client-core (`credential-hygiene.ts`) and re-exported here so the builder
+// and its consumers cannot drift from what the clients decode.
+export type { HygieneFinding, HygieneFindingKind, HygieneReport, HygieneSeverity };
 
 const SEVERITY_ORDER: Record<HygieneSeverity, number> = { high: 0, medium: 1, low: 2 };
 

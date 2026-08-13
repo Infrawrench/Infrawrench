@@ -16,9 +16,12 @@
  *      provider yet, and an object that is empty on Monday and full on Tuesday
  *      is worse than no object at all.
  */
+import type { CostExportCadence } from "@infrawrench/client-core";
+
 import { addDays, civilMoment, isValidTimeZone } from "../digest/compose";
 
-export type CostExportCadence = "daily" | "weekly" | "monthly";
+// The cadence vocabulary is the wire contract; client-core (`cost-exports.ts`) owns it.
+export type { CostExportCadence };
 
 /** One object's worth of days. `from`/`to` are inclusive ISO `YYYY-MM-DD`. */
 export interface CostExportPeriod {

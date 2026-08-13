@@ -6,6 +6,7 @@
  */
 import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import { gunzipSync } from "node:zlib";
+import type { SessionRecordingStatus, SessionRecordingUsage } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
 import {
@@ -28,7 +29,8 @@ export type { RecordingParticipant };
  */
 const ABANDONED_AFTER_MS = 2 * 60 * 1000;
 
-export type SessionRecordingStatus = "recording" | "complete" | "truncated" | "abandoned";
+// The status vocabulary is the wire contract; client-core owns it.
+export type { SessionRecordingStatus };
 
 /** One recording as the list and detail views see it. */
 export interface SessionRecordingSummary {
@@ -247,14 +249,7 @@ export async function deleteSessionRecording(
 }
 
 /** Totals for the settings header ("142 recordings, 38 MB, oldest 12 Jun"). */
-export interface SessionRecordingUsage {
-  recordingCount: number;
-  /** Stored (compressed, base64) size in bytes — what the org actually costs us. */
-  storedBytes: number;
-  /** Captured terminal bytes before compression. */
-  capturedBytes: number;
-  oldestStartedAt: string | null;
-}
+export type { SessionRecordingUsage };
 
 export async function getSessionRecordingUsage(
   organizationId: string,

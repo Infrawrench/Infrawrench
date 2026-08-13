@@ -16,6 +16,7 @@
  */
 import { and, desc, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
+import type { WorkflowApproval, WorkflowApprovalStatus } from "@infrawrench/client-core";
 
 import {
   DEFAULT_APPROVAL_TIMEOUT_MINUTES,
@@ -262,22 +263,13 @@ async function pageAboutApproval(ctx: WorkflowApprovalContext, body: string): Pr
   if (sms.succeeded === 0) await store.release(prior);
 }
 
-export type WorkflowApprovalStatus = "pending" | "approved" | "denied" | "expired";
+// The wire shapes are the client contract, owned by client-core
+// (`workflow-approvals.ts`) and re-exported here so the summaries this module
+// builds cannot drift from what every surface decodes.
+export type { WorkflowApprovalStatus };
 
 /** One approval row, shaped for the HTTP API and the run view. */
-export interface WorkflowApprovalSummary {
-  id: string;
-  workflowId: string;
-  workflowName: string | null;
-  runId: string;
-  title: string;
-  message: string;
-  status: WorkflowApprovalStatus;
-  expiresAt: string;
-  decidedAt: string | null;
-  decidedByName: string | null;
-  createdAt: string;
-}
+export type WorkflowApprovalSummary = WorkflowApproval;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

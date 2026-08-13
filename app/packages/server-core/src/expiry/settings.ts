@@ -13,7 +13,11 @@
  * page about every certificate an org owns.
  */
 import { eq } from "drizzle-orm";
-import { DEFAULT_EXPIRY_LEAD_DAYS, EXPIRY_ALERT_LIMITS } from "@infrawrench/client-core";
+import {
+  DEFAULT_EXPIRY_LEAD_DAYS,
+  EXPIRY_ALERT_LIMITS,
+  type ExpirySettingsPatch,
+} from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { orgExpirySettings } from "../db/schema";
 
@@ -68,10 +72,8 @@ export async function getExpirySettings(organizationId: string): Promise<ExpiryS
   return row ? toRecord(row) : defaultExpirySettings(organizationId);
 }
 
-export interface ExpirySettingsPatch {
-  enabled?: boolean;
-  leadDays?: number;
-}
+// The patch shape is the client contract; client-core (`expiry.ts`) owns it.
+export type { ExpirySettingsPatch };
 
 function clampInt(value: number, bounds: { min: number; max: number }, label: string): number {
   if (!Number.isInteger(value)) throw new Error(`${label} must be a whole number`);

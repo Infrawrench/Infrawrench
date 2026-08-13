@@ -17,7 +17,7 @@
  * of its own, not a side effect of this one. The message carries the numbers
  * and a deep link to the live chart.
  */
-import type { CostConversion } from "@infrawrench/client-core";
+import type { CostConversion, ReportNotificationCadence } from "@infrawrench/client-core";
 import {
   addDays,
   civilMoment,
@@ -28,7 +28,7 @@ import {
 } from "../digest/compose";
 import { zonedInstant } from "../cost-exports/periods";
 
-export type ReportNotificationCadence = "daily" | "weekly" | "monthly";
+export type { ReportNotificationCadence };
 
 /** What the last attempt for a schedule did. Same vocabulary as the digest. */
 export type ReportDeliveryStatus = "pending" | "succeeded" | "partial" | "failed" | "no_targets";

@@ -18,6 +18,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   validateOwnershipPatch,
+  type OwnerCandidate,
   type ResourceOwnerAnnotation,
   type ResourceOwnership,
   type ResourceOwnershipListResponse,
@@ -331,13 +332,8 @@ export async function upsertOwnership(
   return getOwnershipByResource(organizationId, patch.resourceId);
 }
 
-/** One person the owner picker can offer. */
-export interface OwnerCandidate {
-  userId: string;
-  /** Display name, falling back to the email when the user has no name set. */
-  name: string;
-  email: string;
-}
+/** One person the owner picker can offer. Client-core (`ownership.ts`) owns the shape. */
+export type { OwnerCandidate };
 
 /**
  * Org members an owner can be set to.

@@ -9,6 +9,7 @@
  * "$42, six days left at your current burn" is a decision.
  */
 import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
+import type { CreditBurndown, CreditPollFailure, CreditPot } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
 import {
@@ -31,56 +32,12 @@ import {
 /** How far back the burn estimate looks. */
 export const BURN_WINDOW_DAYS = 30;
 
-export interface CreditPot {
-  accountId: string;
-  accountName: string;
-  pluginId: string;
-  /** The provider's own word for this pot ("Credits", "Balance"). */
-  capabilityLabel: string;
-  /** Where the user tops up, when the plugin declares it. */
-  topUpUrl: string | null;
-  potKey: string;
-  label: string;
-  remaining: number;
-  currency: string;
-  granted: number | null;
-  /** Hard expiry on the credit itself, independent of burn. */
-  creditExpiresAt: string | null;
-  observedAt: string;
-  burnPerDay: number | null;
-  burnSpanDays: number;
-  observations: number;
-  topUps: number;
-  runwayDays: number | null;
-  exhaustedAt: string | null;
-  neverEmpties: boolean;
-  /** True when the credit's own expiry, not the burn, is the deadline. */
-  limitedByExpiry: boolean;
-  urgency: RunwayUrgency;
-}
+// The feed's wire shapes are the client contract, owned by client-core
+// (`credits.ts` — where `CreditBurndownFeed` is `CreditBurndown`) and
+// re-exported here so this builder cannot drift from what the surfaces decode.
+export type { CreditPot, CreditPollFailure };
 
-/** An account whose balance could not be read, and why. */
-export interface CreditPollFailure {
-  accountId: string;
-  accountName: string;
-  pluginId: string;
-  error: string;
-  helpLabel: string | null;
-  helpUrl: string | null;
-  failureCount: number;
-}
-
-export interface CreditBurndownFeed {
-  pots: CreditPot[];
-  failures: CreditPollFailure[];
-  /**
-   * Accounts on a credit-capable plugin that have never been collected. Named
-   * rather than omitted: an empty screen that should have had rows on it is a
-   * bug the user can see and we cannot.
-   */
-  pendingAccountIds: string[];
-  burnWindowDays: number;
-}
+export type CreditBurndownFeed = CreditBurndown;
 
 /**
  * Every pot the org holds, most urgent first.

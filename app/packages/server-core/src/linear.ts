@@ -49,6 +49,7 @@
  */
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
+import type { LinearIssueLink, LinearTeam } from "@infrawrench/client-core";
 
 import { db } from "./db/client";
 import { linearIntegrations, linearIssueLinks } from "./db/schema";
@@ -438,12 +439,10 @@ export async function verifyStoredLinearCredentials(
   return verifyLinearCredentials(await requireLinearApiKey(organizationId));
 }
 
-export interface LinearTeam {
-  id: string;
-  /** Short prefix issue identifiers are built from, e.g. `ENG` in `ENG-123`. */
-  key: string;
-  name: string;
-}
+// The picker/link shapes are the client contract, owned by client-core
+// (`linear.ts`) and re-exported here so the mappers below cannot drift from
+// what every surface decodes.
+export type { LinearTeam };
 
 /**
  * Teams the stored key can see, for the team picker — every Linear issue
@@ -539,16 +538,7 @@ export async function createLinearIssue(args: CreateLinearIssueArgs): Promise<Cr
 
 // --- Links ---
 
-export interface LinearIssueLink {
-  id: string;
-  sourceKind: LinearSourceKind;
-  sourceId: string;
-  /** e.g. `ENG-123`. */
-  issueIdentifier: string;
-  issueUrl: string;
-  createdByUserId: string | null;
-  createdAt: string;
-}
+export type { LinearIssueLink };
 
 function toLinkRecord(row: typeof linearIssueLinks.$inferSelect): LinearIssueLink {
   return {

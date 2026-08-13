@@ -26,6 +26,7 @@
  */
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
+import type { AccessRequest, AccessRequestStatus, ActiveElevation } from "@infrawrench/client-core";
 
 import { appPath, fanOutApprovalRequest, formatApprovalExpiry } from "../approvals/notify";
 import { db } from "../db/client";
@@ -48,30 +49,13 @@ export const DEFAULT_REQUEST_TIMEOUT_MINUTES = 60;
 export const MAX_GRANT_MINUTES = 8 * 60;
 export const MIN_GRANT_MINUTES = 5;
 
-export type AccessRequestStatus = "pending" | "approved" | "denied" | "expired";
+// The wire shapes are the client contract, owned by client-core
+// (`access-requests.ts`) and re-exported here so the row builder below cannot
+// drift from what every surface decodes.
+export type { AccessRequestStatus };
 
 /** One request, shaped for the HTTP API and the queue UI. */
-export interface AccessRequestSummary {
-  id: string;
-  userId: string;
-  userName: string | null;
-  permissions: string[];
-  reason: string;
-  durationMinutes: number;
-  status: AccessRequestStatus;
-  expiresAt: string;
-  decidedAt: string | null;
-  decidedByUserId: string | null;
-  decidedByName: string | null;
-  decisionNote: string | null;
-  grantedAt: string | null;
-  grantExpiresAt: string | null;
-  revokedAt: string | null;
-  revokedByName: string | null;
-  /** True when this row is granting permissions right now. */
-  active: boolean;
-  createdAt: string;
-}
+export type AccessRequestSummary = AccessRequest;
 
 function toSummary(row: typeof accessRequests.$inferSelect, now: number): AccessRequestSummary {
   return {
@@ -109,13 +93,7 @@ function isGrantLive(row: typeof accessRequests.$inferSelect, now: number): bool
  * ------------------------------------------------------------------ */
 
 /** A live elevation, as the permission resolver reports it. */
-export interface ActiveElevation {
-  requestId: string;
-  permissions: string[];
-  /** When the window closes; the caller loses these permissions then. */
-  expiresAt: string;
-  reason: string;
-}
+export type { ActiveElevation };
 
 /**
  * Every live grant for one member, or `[]`.

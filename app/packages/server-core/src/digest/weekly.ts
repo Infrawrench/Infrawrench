@@ -44,6 +44,7 @@ import {
   costBasisLabel,
   itemsWithinLead,
   MAX_CHANGE_IMPACT_BATCH,
+  type DigestStatus,
 } from "@infrawrench/client-core";
 import { loadChangeCostImpacts } from "../cost/change-impact-load";
 import { queryCosts } from "../clickhouse/cost-readers";
@@ -563,7 +564,7 @@ export async function deliverWeeklyDigest(
 // --- Scheduling, claiming, and the retry state machine ---
 
 /** What the last attempt for `lastSentWeekStart` did. Surfaced in the API and UI. */
-export type DigestStatus = "pending" | "succeeded" | "partial" | "failed" | "no_targets";
+export type { DigestStatus };
 
 /** A row's schedule, normalized so a hand-edited row can't break the math. */
 export function scheduleFromRow(row: {

@@ -12,6 +12,7 @@
  * is the sum of the *decreases* between consecutive readings, and increases
  * are recorded as top-ups rather than netted off.
  */
+import type { RunwayUrgency } from "@infrawrench/client-core";
 
 /** One reading of one pot. */
 export interface CreditObservation {
@@ -178,7 +179,7 @@ function daysUntilExpiry(expiresAt: string | null | undefined, now: number): num
  * matters is whether there is time to do something about it: a purchase order
  * takes a week at most organizations, and a weekend is when nobody is looking.
  */
-export type RunwayUrgency = "critical" | "warning" | "ok" | "unknown";
+export type { RunwayUrgency };
 
 export function runwayUrgency(runway: RunwayEstimate): RunwayUrgency {
   if (runway.neverEmpties) return "ok";

@@ -11,6 +11,7 @@
  * so the only tunable is the on/off switch.
  */
 import { eq } from "drizzle-orm";
+import type { PostureSettingsPatch } from "@infrawrench/client-core";
 import { db } from "../db/client";
 import { orgPostureSettings } from "../db/schema";
 
@@ -50,9 +51,8 @@ export async function getPostureSettings(organizationId: string): Promise<Postur
   return row ? toRecord(row) : defaultPostureSettings(organizationId);
 }
 
-export interface PostureSettingsPatch {
-  enabled?: boolean;
-}
+// The patch shape is the client contract; client-core (`posture.ts`) owns it.
+export type { PostureSettingsPatch };
 
 /**
  * Write the org's settings, creating the row on first save. `lastNotifiedAt`

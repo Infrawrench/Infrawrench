@@ -62,6 +62,7 @@
  */
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
+import type { JiraIssueLink, JiraIssueType, JiraProject } from "@infrawrench/client-core";
 
 import { db } from "./db/client";
 import { jiraIntegrations, jiraIssueLinks } from "./db/schema";
@@ -643,11 +644,10 @@ export async function verifyStoredJiraCredentials(
   return verifyJiraCredentials(await requireJiraCredentials(organizationId));
 }
 
-export interface JiraProject {
-  id: string;
-  key: string;
-  name: string;
-}
+// The picker/link shapes are the client contract, owned by client-core
+// (`jira.ts`) and re-exported here so the mappers below cannot drift from
+// what every surface decodes.
+export type { JiraProject };
 
 /**
  * Projects the stored account can see, for the project picker.
@@ -671,13 +671,7 @@ export async function listJiraProjects(organizationId: string): Promise<JiraProj
     .map((p) => ({ id: p.id, key: p.key, name: p.name }));
 }
 
-export interface JiraIssueType {
-  id: string;
-  name: string;
-  /** Subtasks need a parent issue, so the picker hides them. */
-  subtask: boolean;
-  description: string | null;
-}
+export type { JiraIssueType };
 
 /**
  * Issue types available *in a given project*, for the type picker.
@@ -774,15 +768,7 @@ export async function createJiraIssue(args: CreateJiraIssueArgs): Promise<Create
 
 // --- Links ---
 
-export interface JiraIssueLink {
-  id: string;
-  sourceKind: JiraSourceKind;
-  sourceId: string;
-  issueKey: string;
-  issueUrl: string;
-  createdByUserId: string | null;
-  createdAt: string;
-}
+export type { JiraIssueLink };
 
 function toLinkRecord(row: typeof jiraIssueLinks.$inferSelect): JiraIssueLink {
   return {
