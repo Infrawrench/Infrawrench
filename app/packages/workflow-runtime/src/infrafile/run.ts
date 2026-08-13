@@ -276,6 +276,9 @@ export async function runInfrafile(opts: RunInfrafileOptions): Promise<Infrafile
       // An Infrafile has no declared metrics — `infra.metrics` stays an empty
       // (but working) surface rather than being absent and throwing.
       metrics: "{}",
+      // Deployment credentials use the Infrafile env/run surfaces. Workflow
+      // secret assignments are deliberately unavailable to repository code.
+      secrets: "{}",
       event: JSON.stringify({ kind: "manual" }),
     },
     limits,
@@ -300,6 +303,7 @@ function buildProgram(userJs: string): string {
     `const __host = env.__host;`,
     `const __accountsTree = env.__accountsTree;`,
     `const __metrics = env.__metrics;`,
+    `const __secrets = env.__secrets;`,
     `const __event = env.__event;`,
     PRELUDE,
     INFRAFILE_PRELUDE,

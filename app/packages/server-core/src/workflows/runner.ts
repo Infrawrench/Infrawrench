@@ -24,6 +24,7 @@ import {
   type RunLogEntry,
   type RunResult,
   type RunTriggerSource,
+  type WorkflowSecretRef,
   type SidecarRef,
   type WorkflowEvent,
   type WorkflowHost,
@@ -47,6 +48,9 @@ import { clearWorkflowPage, pageFromWorkflow } from "./paging";
 import { requestApprovalAndWait } from "./approvals";
 import { buildWorkflowAuthorizer } from "./authorize";
 import { staticResourceCapabilities } from "@infrawrench/workflow-runtime";
+// Integration seam: the workflow-secrets backend owns assignment metadata and
+// plaintext decryption. Keep those concerns out of the runner/runtime.
+import { listWorkflowSecretRefs, loadWorkflowSecretValues } from "../workflow-secrets";
 
 // Re-exported so the cloud web host (which builds its own interactive host) can
 // reuse the same SSH deps, plugin enrichment, and SSH-key resolution as the
@@ -431,6 +435,22 @@ function eventKindFor(source: RunTriggerSource): "manual" | "cron" | "git" | "ap
   return source === "budget" ? "api" : source;
 }
 
+export function validateWorkflowSecretValues(
+  refs: readonly WorkflowSecretRef[],
+  values: Readonly<Record<string, string | null | undefined>>,
+): Record<string, string> {
+  const assigned: Record<string, string> = {};
+  for (const ref of refs) {
+    const value = values[ref.name];
+    if (typeof value !== "string") {
+      // Name only: never interpolate a decrypted value into an error/run record.
+      throw new Error(`Assigned workflow secret "${ref.name}" has no plaintext value.`);
+    }
+    assigned[ref.name] = value;
+  }
+  return assigned;
+}
+
 /**
  * Execute a single workflow run for an automated (cron/git) or manual trigger.
  * Persists a `workflow_runs` row, runs the source in the isolate, records the
@@ -445,6 +465,19 @@ export async function runOrgWorkflow(opts: RunOrgWorkflowOptions): Promise<RunOr
     )
     .limit(1);
   if (!wf) throw new Error("Workflow not found");
+
+  // Resolve authority and the complete assignment snapshot before creating the
+  // run or entering QuickJS. A missing value therefore cannot become a partial
+  // execution, and plaintext never crosses the host RPC bridge.
+  const authorize = await buildWorkflowAuthorizer(opts.organizationId, wf.id, {
+    userId: opts.runAsUserId,
+  });
+  authorize("secrets.load");
+  const [secretRefs, loadedSecretValues] = await Promise.all([
+    listWorkflowSecretRefs(opts.organizationId, wf.id),
+    loadWorkflowSecretValues(opts.organizationId, wf.id),
+  ]);
+  const secretValues = validateWorkflowSecretValues(secretRefs, loadedSecretValues);
 
   const metricDefs = (wf.metricDefs ?? []) as MetricDef[];
   await seedMetrics(opts.organizationId, wf.id, metricDefs);
@@ -471,16 +504,11 @@ export async function runOrgWorkflow(opts: RunOrgWorkflowOptions): Promise<RunOr
     ...(opts.signal ? { signal: opts.signal } : {}),
   });
 
-  // Resolved before the isolate starts, so the per-operation gate below is a
-  // synchronous map lookup rather than a query on every RPC.
-  const authorize = await buildWorkflowAuthorizer(opts.organizationId, wf.id, {
-    userId: opts.runAsUserId,
-  });
-
   const result = await runWorkflow({
     source: wf.source,
     host,
     authorize,
+    secrets: secretValues,
     interactive: Boolean(opts.interactive),
     // `api` and `budget` are both "not a person at a keyboard"; the event still
     // reports the real source so a workflow can branch on it.

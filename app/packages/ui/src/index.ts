@@ -125,6 +125,7 @@ export type {
   WorkflowApprovalRow,
   WorkflowMetricDef,
   WorkflowMetricRow,
+  WorkflowSecretSummary,
   WorkflowRunLog,
   WorkflowRunResult,
   WorkflowRunRow,

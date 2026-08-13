@@ -78,6 +78,7 @@ describe("buildWorkflowAuthorizer", () => {
 
     expect(() => authorize("resource.list")).not.toThrow();
     expect(() => authorize("resource.resolveOutput")).not.toThrow();
+    expect(() => authorize("secrets.load")).not.toThrow();
     expect(() => authorize("ssh.exec")).not.toThrow();
     expect(() => authorize("resource.query")).not.toThrow();
     expect(() => authorize("sftp.get")).not.toThrow();
@@ -100,6 +101,12 @@ describe("buildWorkflowAuthorizer", () => {
     for (const method of ["log", "output", "metric.get", "metric.set", "line", "fetch", "page"]) {
       expect(() => authorize(method), method).not.toThrow();
     }
+  });
+
+  it("requires secrets:read before loading assigned values", async () => {
+    grant([]);
+    const authorize = await buildWorkflowAuthorizer("org-1", "wf-1", { userId: "u1" });
+    expect(() => authorize("secrets.load")).toThrow(/secrets:read/);
   });
 
   it("falls back to the workflow's author when no user triggered the run", async () => {

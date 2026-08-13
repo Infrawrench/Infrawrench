@@ -778,6 +778,20 @@
       "when": 1787011200001,
       "tag": "0110_ephemeral_environments",
       "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1787011200002,
+      "tag": "0111_workflow_secrets",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1787011200003,
+      "tag": "0112_chat_secret_requests",
+      "breakpoints": true
     }
   ]
 }

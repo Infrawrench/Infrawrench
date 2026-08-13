@@ -24,6 +24,7 @@ import {
   type InfraDtsParts,
   type MetricDef,
   type TypecheckResult,
+  type WorkflowSecretRef,
   type WorkflowTrigger,
 } from "@infrawrench/workflow-runtime";
 import { listOrgSshKeyNames } from "@infrawrench/server-core/workflows/runner";
@@ -32,6 +33,7 @@ import { isWorkflowAiConfigured } from "@infrawrench/server-core/workflows/ai";
 import { db } from "../db/client";
 import { budgets, workflowMetrics, workflowRuns, workflows } from "../db/schema";
 import { listOrgPlugins } from "./workflow-host";
+import { setWorkflowSecretAssignments, validateWorkflowSecretIds } from "./workflow-secrets";
 
 export type WorkflowRow = typeof workflows.$inferSelect;
 
@@ -53,6 +55,8 @@ export interface WorkflowBody {
   trigger?: WorkflowTrigger;
   metrics?: MetricDef[];
   enabled?: boolean;
+  /** Replaces the reusable organization secrets assigned to this workflow. */
+  secretIds?: string[];
   /**
    * HMAC secret for git triggers. `undefined` leaves the stored value alone;
    * `null` or `""` clears it (and with it, signature enforcement).
@@ -219,6 +223,10 @@ export async function createWorkflow(
   body: WorkflowBody,
   userId: string | null,
 ): Promise<WorkflowRow> {
+  const secretIds =
+    body.secretIds === undefined
+      ? undefined
+      : await validateWorkflowSecretIds(organizationId, body.secretIds);
   const trigger = normalizeTrigger(body.trigger ?? { kind: "manual" });
   await validateTrigger(organizationId, trigger);
   const enabled = body.enabled ?? true;
@@ -241,6 +249,9 @@ export async function createWorkflow(
     createdAt: now,
     updatedAt: now,
   });
+  if (secretIds !== undefined) {
+    await setWorkflowSecretAssignments(organizationId, id, secretIds);
+  }
   return requireWorkflow(organizationId, id);
 }
 
@@ -273,6 +284,9 @@ export async function updateWorkflow(
       updatedAt: new Date(),
     })
     .where(eq(workflows.id, id));
+  if (body.secretIds !== undefined) {
+    await setWorkflowSecretAssignments(organizationId, id, body.secretIds);
+  }
   return requireWorkflow(organizationId, id);
 }
 
@@ -385,6 +399,8 @@ export async function listWorkflowMetrics(workflowId: string) {
 
 export type WorkflowTypingsOpts = {
   metrics?: MetricDef[];
+  /** Assigned secret names only; plaintext never enters generated typings. */
+  secrets?: WorkflowSecretRef[];
   triggerKind?: WorkflowTrigger["kind"];
   /**
    * When true, hit provider APIs for precise `create({...})` field unions and
@@ -418,6 +434,7 @@ async function workflowTypingsInput(
   return {
     plugins,
     metrics: opts.metrics ?? [],
+    secrets: opts.secrets ?? [],
     interactive: triggerKind === "manual",
     triggerKind,
     // Cloud runs have the cost store, so `infra.costs.write` is available.

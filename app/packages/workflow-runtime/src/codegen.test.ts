@@ -87,4 +87,47 @@ describe("generateInfraDtsParts", () => {
     expect(global).toContain("interface InfraMetrics");
     expect(global).toContain("declare function fetch(");
   });
+
+  it("types only assigned secret names as readonly strings", () => {
+    const dts = generateInfraDts({
+      ...input,
+      secrets: [
+        { key: "secret-1", name: "API_TOKEN" },
+        { key: "secret-2", name: "stripe.apiKey" },
+      ],
+    });
+    expect(dts).toContain("readonly API_TOKEN: string;");
+    expect(dts).toContain("readonly stripe: {");
+    expect(dts).toContain("readonly apiKey: string;");
+    expect(dts).toContain("readonly secrets: InfraSecrets;");
+  });
+
+  it("emits an empty typed secret interface with no assignments", () => {
+    const dts = generateInfraDts(input);
+    expect(dts).toContain("interface InfraSecrets {}");
+  });
+
+  it.each([
+    ["scalar first", ["stripe", "stripe.apiKey"]],
+    ["nested first", ["stripe.apiKey", "stripe"]],
+  ])("rejects colliding secret paths (%s)", (_label, names) => {
+    expect(() =>
+      generateInfraDts({
+        ...input,
+        secrets: names.map((name, index) => ({ key: `secret-${index}`, name })),
+      }),
+    ).toThrow('Workflow secret names "stripe" and "stripe.apiKey" cannot coexist.');
+  });
+
+  it("rejects duplicate assigned secret names", () => {
+    expect(() =>
+      generateInfraDts({
+        ...input,
+        secrets: [
+          { key: "secret-1", name: "API_TOKEN" },
+          { key: "secret-2", name: "API_TOKEN" },
+        ],
+      }),
+    ).toThrow('Workflow secret name "API_TOKEN" is assigned more than once.');
+  });
 });

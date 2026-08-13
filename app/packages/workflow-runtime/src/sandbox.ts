@@ -12,6 +12,7 @@ import type { WorkflowHost, WorkflowRunContext } from "./host.js";
 import { PRELUDE } from "./prelude.js";
 import { transpileWorkflow } from "./transpile.js";
 import {
+  assertNoWorkflowSecretNameCollisions,
   DEFAULT_RUN_LIMITS,
   type MetricValue,
   type RunLimits,
@@ -24,6 +25,8 @@ import {
 export interface RunWorkflowOptions {
   source: string;
   host: WorkflowHost;
+  /** Assigned plaintext values, snapshotted into frozen `infra.secrets`. */
+  secrets?: Readonly<Record<string, string>>;
   /** Manual/interactive (allows infra.prompt) vs automated. */
   interactive: boolean;
   limits?: Partial<RunLimits>;
@@ -68,6 +71,7 @@ function buildProgram(userJs: string, debug: boolean): string {
     `const __host = env.__host;`,
     `const __accountsTree = env.__accountsTree;`,
     `const __metrics = env.__metrics;`,
+    `const __secrets = env.__secrets;`,
     `const __event = env.__event;`,
     // Debug runs inject `await __line(n)` before each statement (see transpile);
     // route it to the host so the editor can highlight + pause at breakpoints.
@@ -85,21 +89,86 @@ function buildProgram(userJs: string, debug: boolean): string {
   ].join("\n");
 }
 
+const SECRET_NAME_RE = /^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*$/;
+const REDACTED = "[REDACTED]";
+
+function prepareSecrets(
+  input: Readonly<Record<string, string>> | undefined,
+): Record<string, string> {
+  const snapshot: Record<string, string> = Object.create(null) as Record<string, string>;
+  assertNoWorkflowSecretNameCollisions(Object.keys(input ?? {}));
+  for (const [name, value] of Object.entries(input ?? {})) {
+    if (!SECRET_NAME_RE.test(name)) {
+      throw new Error(`Assigned workflow secret has invalid runtime name "${name}".`);
+    }
+    if (typeof value !== "string") {
+      throw new Error(`Assigned workflow secret "${name}" has no plaintext value.`);
+    }
+    snapshot[name] = value;
+  }
+  return snapshot;
+}
+
+function secretRedactor(secrets: Readonly<Record<string, string>>) {
+  const values = [...new Set(Object.values(secrets).filter((value) => value.length > 0))].sort(
+    (a, b) => b.length - a.length,
+  );
+  const text = (value: string): string => {
+    let redacted = value;
+    for (const secret of values) redacted = redacted.split(secret).join(REDACTED);
+    return redacted;
+  };
+  const value = (input: unknown): unknown => {
+    if (typeof input === "string") return text(input);
+    if (Array.isArray(input)) return input.map(value);
+    if (input && typeof input === "object") {
+      return Object.fromEntries(
+        Object.entries(input).map(([key, child]) => [text(key), value(child)]),
+      );
+    }
+    return input;
+  };
+  const error = (input: RunResult["error"]): RunResult["error"] =>
+    input
+      ? {
+          message: text(input.message),
+          ...(input.stack ? { stack: text(input.stack) } : {}),
+        }
+      : undefined;
+  return { text, value, error };
+}
+
 export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> {
   const limits: RunLimits = { ...DEFAULT_RUN_LIMITS, ...opts.limits };
   const startedAt = Date.now();
   const logs: RunLogEntry[] = [];
   let output: unknown;
+  let secretsSnapshot: Record<string, string>;
+  try {
+    secretsSnapshot = prepareSecrets(opts.secrets);
+  } catch (err) {
+    const finishedAt = Date.now();
+    return {
+      status: "failure",
+      logs,
+      error: toError(err) ?? { message: "Failed to load assigned workflow secrets." },
+      startedAt,
+      finishedAt,
+      durationMs: finishedAt - startedAt,
+    };
+  }
+  const redact = secretRedactor(secretsSnapshot);
 
   const ctx: WorkflowRunContext = {
     interactive: opts.interactive,
     ...(opts.authorize ? { authorize: opts.authorize } : {}),
     log: (entry) => {
-      logs.push(entry);
-      opts.onLog?.(entry);
+      const safeEntry = { ...entry, message: redact.text(entry.message) };
+      logs.push(safeEntry);
+      opts.onLog?.(safeEntry);
     },
     setOutput: (value) => {
-      output = value;
+      output = redact.value(value);
     },
   };
 
@@ -113,7 +182,9 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> 
       durationMs: finishedAt - startedAt,
     };
     if (output !== undefined) result.output = output;
-    if (error !== undefined) result.error = error;
+    if (error !== undefined) {
+      result.error = redact.error(error) ?? { message: "Workflow failed." };
+    }
     return result;
   };
 
@@ -149,6 +220,7 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> 
     env: {
       accountsTree: JSON.stringify(tree),
       metrics: JSON.stringify(metricsSnapshot),
+      secrets: JSON.stringify(secretsSnapshot),
       event: JSON.stringify(opts.event ?? { kind: "manual" }),
     },
     limits,

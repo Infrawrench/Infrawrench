@@ -22,6 +22,7 @@
  */
 import { ipcMain, type WebContents } from "electron";
 import { workflowFetch } from "./workflow-fetch";
+import { loadLocalWorkflowSecretValuesForWorkflow } from "./workflow-secrets";
 // The runtime is ESM-only (its package exports raw .ts), so this CommonJS main
 // module pulls types statically (erased) and `runWorkflow` via dynamic import,
 // matching how main.ts loads other ESM-only deps (see electron-updater).
@@ -209,7 +210,14 @@ ipcMain.handle(
       interactive,
       runToken,
       debug,
-    }: { source: string; interactive: boolean; runToken: string; debug?: boolean },
+      workflowId,
+    }: {
+      source: string;
+      interactive: boolean;
+      runToken: string;
+      debug?: boolean;
+      workflowId: string;
+    },
   ) => {
     const host = createBridgedHost(event.sender, runToken);
     const controller = new AbortController();
@@ -219,6 +227,7 @@ ipcMain.handle(
       return await runWorkflow({
         source,
         host,
+        secrets: await loadLocalWorkflowSecretValuesForWorkflow(workflowId),
         interactive,
         ...(debug ? { debug: true } : {}),
         signal: controller.signal,

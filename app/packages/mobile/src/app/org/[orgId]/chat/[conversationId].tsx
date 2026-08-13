@@ -9,6 +9,7 @@ import {
   type ChatContentBlock,
   type ChatConversationMessage,
   type ChatPendingAction,
+  type ChatPendingSecretRequest,
 } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { Button, ErrorView, LoadingView } from "@/components/ui";
@@ -171,7 +172,10 @@ export default function ConversationScreen() {
         const unresolved = data.pendingActions.some(
           (p) => p.status === "pending" || p.status === "approved",
         );
-        if (!unresolved) await startStream({ resume: true });
+        const secretUnresolved = data.pendingSecretRequests.some(
+          (request) => request.status === "pending" || request.status === "submitting",
+        );
+        if (!unresolved && !secretUnresolved) await startStream({ resume: true });
       }
     },
     [client, conversationId, queryClient, orgId, reload],
@@ -220,7 +224,14 @@ export default function ConversationScreen() {
         const unresolved = fresh.pendingActions.some(
           (p) => p.status === "pending" || p.status === "approved",
         );
-        if (!unresolved && fresh.pendingActions.length > 0) {
+        const secretUnresolved = fresh.pendingSecretRequests.some(
+          (request) => request.status === "pending" || request.status === "submitting",
+        );
+        if (
+          !unresolved &&
+          !secretUnresolved &&
+          fresh.pendingActions.length + fresh.pendingSecretRequests.length > 0
+        ) {
           await startStream({ resume: true });
         }
       } catch (e) {
@@ -228,6 +239,27 @@ export default function ConversationScreen() {
           ...s,
           error: e instanceof Error ? e.message : "Failed to resolve action",
         }));
+      }
+    },
+    [client, conversationId, reload, startStream],
+  );
+
+  const submitSecret = useCallback(
+    async (request: ChatPendingSecretRequest, value: string) => {
+      try {
+        await client.submitSecretRequest(conversationId, request.id, value);
+        await reload();
+        if (sleepingRef.current) return;
+        const fresh = await client.getConversation(conversationId);
+        const unresolved = fresh.pendingActions.some(
+          (item) => item.status === "pending" || item.status === "approved",
+        );
+        const secretUnresolved = fresh.pendingSecretRequests.some(
+          (item) => item.status === "pending" || item.status === "submitting",
+        );
+        if (!unresolved && !secretUnresolved) await startStream({ resume: true });
+      } catch {
+        throw new Error("Secret could not be stored. Try again.");
       }
     },
     [client, conversationId, reload, startStream],
@@ -249,6 +281,13 @@ export default function ConversationScreen() {
   const pendingByToolUseId = useMemo(
     () => new Map(pendingActions.map((p) => [p.toolUseId, p])),
     [pendingActions],
+  );
+  const pendingSecretsByToolUseId = useMemo(
+    () =>
+      new Map(
+        (detail.data?.pendingSecretRequests ?? []).map((request) => [request.toolUseId, request]),
+      ),
+    [detail.data?.pendingSecretRequests],
   );
 
   // Tool results live in follow-up user messages; index them by tool_use_id so
@@ -338,11 +377,13 @@ export default function ConversationScreen() {
             key={m.id}
             message={m}
             pendingByToolUseId={pendingByToolUseId}
+            pendingSecretsByToolUseId={pendingSecretsByToolUseId}
             toolResults={toolResultsById}
             activeSleepIds={activeSleepIds}
             expandedTools={expandedTools}
             onToggleTool={toggleTool}
             onResolve={resolveAction}
+            onSubmitSecret={submitSecret}
           />
         ))}
         {streaming.userText != null && (
@@ -408,19 +449,23 @@ export default function ConversationScreen() {
 function MessageView({
   message,
   pendingByToolUseId,
+  pendingSecretsByToolUseId,
   toolResults,
   activeSleepIds,
   expandedTools,
   onToggleTool,
   onResolve,
+  onSubmitSecret,
 }: {
   message: ChatConversationMessage;
   pendingByToolUseId: Map<string, ChatPendingAction>;
+  pendingSecretsByToolUseId: Map<string, ChatPendingSecretRequest>;
   toolResults: Map<string, { text: string; isError: boolean }>;
   activeSleepIds: ReadonlySet<string>;
   expandedTools: ReadonlySet<string>;
   onToggleTool: (id: string) => void;
   onResolve: (pending: ChatPendingAction, action: "approve" | "reject") => Promise<void>;
+  onSubmitSecret: (request: ChatPendingSecretRequest, value: string) => Promise<void>;
 }) {
   // DM layout: the user's messages are right-aligned bubbles, the assistant
   // replies flow plainly on the left.
@@ -442,11 +487,15 @@ function MessageView({
           key={i}
           block={block}
           pending={block.type === "tool_use" ? pendingByToolUseId.get(block.id) : undefined}
+          pendingSecret={
+            block.type === "tool_use" ? pendingSecretsByToolUseId.get(block.id) : undefined
+          }
           result={block.type === "tool_use" ? toolResults.get(block.id) : undefined}
           sleepInProgress={block.type === "tool_use" && activeSleepIds.has(block.id)}
           expanded={block.type === "tool_use" && expandedTools.has(block.id)}
           onToggle={onToggleTool}
           onResolve={onResolve}
+          onSubmitSecret={onSubmitSecret}
         />
       ))}
     </View>
@@ -456,20 +505,24 @@ function MessageView({
 function BlockView({
   block,
   pending,
+  pendingSecret,
   result,
   sleepInProgress,
   expanded,
   onToggle,
   onResolve,
+  onSubmitSecret,
 }: {
   block: ChatContentBlock;
   pending: ChatPendingAction | undefined;
+  pendingSecret: ChatPendingSecretRequest | undefined;
   result: { text: string; isError: boolean } | undefined;
   /** True while this sleep tool_use is still counting down client-side. */
   sleepInProgress: boolean;
   expanded: boolean;
   onToggle: (id: string) => void;
   onResolve: (pending: ChatPendingAction, action: "approve" | "reject") => Promise<void>;
+  onSubmitSecret: (request: ChatPendingSecretRequest, value: string) => Promise<void>;
 }) {
   // Approve executes the tool synchronously server-side (a workflow run can
   // take minutes), so the buttons must lock and the label must say the action
@@ -503,6 +556,11 @@ function BlockView({
     return (
       <Text style={styles.sleepMarker}>Slept {Number.isFinite(secs) ? secs : "a few"} seconds</Text>
     );
+  }
+  if (block.name === "write_workflow_secret") {
+    return pendingSecret ? (
+      <MobileSecretRequest request={pendingSecret} onSubmit={onSubmitSecret} />
+    ) : null;
   }
 
   const status = pending?.status ?? (result?.isError ? "errored" : "executed");
@@ -576,6 +634,72 @@ function BlockView({
   );
 }
 
+function MobileSecretRequest({
+  request,
+  onSubmit,
+}: {
+  request: ChatPendingSecretRequest;
+  onSubmit: (request: ChatPendingSecretRequest, value: string) => Promise<void>;
+}) {
+  const [value, setValue] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const resolved = request.status === "stored";
+
+  async function submit(): Promise<void> {
+    if (submitting || resolved || value.length === 0) return;
+    const submittedValue = value;
+    setValue("");
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSubmit(request, submittedValue);
+    } catch {
+      setError("Secret could not be stored. Try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <View style={styles.toolCard}>
+      <View style={styles.toolCardHeader}>
+        <Text style={styles.secretTitle}>{request.title ?? `Enter ${request.name}`}</Text>
+        <Text style={resolved ? styles.toolStatusDone : styles.toolStatusWarning}>
+          {resolved ? "Stored" : submitting ? "Storing…" : "Value required"}
+        </Text>
+      </View>
+      {request.description ? (
+        <Text style={styles.secretDescription}>{request.description}</Text>
+      ) : null}
+      {!resolved && (
+        <View style={styles.secretForm}>
+          <TextInput
+            style={styles.secretInput}
+            value={value}
+            onChangeText={setValue}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!submitting && request.status !== "submitting"}
+            onSubmitEditing={() => void submit()}
+            accessibilityLabel={request.title ?? `Secret value for ${request.name}`}
+          />
+          <Button
+            label={submitting ? "Storing…" : "Store"}
+            disabled={submitting || request.status === "submitting" || value.length === 0}
+            onPress={() => void submit()}
+          />
+          {error ? <Text style={styles.errorLine}>{error}</Text> : null}
+          <Text style={styles.secretHint}>
+            Sent directly to encrypted secret storage. It is never shown to the model.
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   header: {
     gap: spacing.xs,
@@ -643,6 +767,29 @@ const styles = StyleSheet.create({
   },
   toolDetailLabel: { color: colors.textFaint, fontSize: 11 },
   toolDetailText: { color: colors.textMuted, fontSize: 11, fontFamily: "Menlo" },
+  secretTitle: { color: colors.textSecondary, fontSize: 13, fontWeight: "600" },
+  secretDescription: {
+    color: colors.textMuted,
+    fontSize: 12,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  secretForm: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  secretInput: {
+    color: colors.text,
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  secretHint: { color: colors.textFaint, fontSize: 11 },
   inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",

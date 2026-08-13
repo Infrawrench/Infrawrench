@@ -32,6 +32,9 @@ const INVOKE_CHANNELS = [
   "workflow_run",
   "workflow_stop",
   "workflow_host_reply",
+  "workflow_secrets_list",
+  "workflow_secret_upsert",
+  "workflow_secret_delete",
   // plugin drivers
   "plugin_sql_query",
   "plugin_sql_execute",
@@ -348,6 +351,10 @@ const INVOKE_CHANNELS = [
   "cloud_run_workflow",
   "cloud_workflow_runs",
   "cloud_workflow_metrics",
+  "cloud_list_workflow_secrets",
+  "cloud_get_workflow_secrets",
+  "cloud_upsert_workflow_secret",
+  "cloud_delete_workflow_secret",
   "cloud_list_workflow_approvals",
   "cloud_decide_workflow_approval",
   "cloud_github_status",
@@ -400,6 +407,7 @@ const INVOKE_CHANNELS = [
   "cloud_chat_archive_conversation",
   "cloud_chat_spend",
   "cloud_chat_resolve_pending",
+  "cloud_chat_submit_secret",
   "cloud_chat_stream_start",
   "cloud_chat_stream_abort",
 ] as const;

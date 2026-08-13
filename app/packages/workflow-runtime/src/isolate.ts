@@ -58,6 +58,8 @@ export interface IsolateEnvValues {
   accountsTree: string;
   /** JSON `Record<string, MetricValue>` snapshot the prelude proxies. */
   metrics: string;
+  /** JSON `Record<string, string>` snapshot exposed as frozen `infra.secrets`. */
+  secrets: string;
   /** JSON `WorkflowEvent` describing what started this run. */
   event: string;
 }
@@ -139,6 +141,7 @@ export async function runIsolate(opts: RunIsolateOptions): Promise<IsolateOutcom
   const env = {
     __accountsTree: opts.env.accountsTree,
     __metrics: opts.env.metrics,
+    __secrets: opts.env.secrets,
     __event: opts.env.event,
     __host: async (method: string, argsJson: string): Promise<string> => {
       const args = argsJson ? (JSON.parse(argsJson) as Record<string, unknown>) : {};

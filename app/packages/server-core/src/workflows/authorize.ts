@@ -69,6 +69,9 @@ export const WORKFLOW_OPERATION_PERMISSIONS: Readonly<Record<string, string | nu
   "resource.logs": "resources:read",
   "resource.metrics": "resources:read",
   "resource.getManifest": "resources:read",
+  // Loading assigned workflow values happens before isolate execution rather
+  // than through dispatch, but uses the same fail-closed permission map.
+  "secrets.load": "secrets:read",
 
   // --- mutations ---------------------------------------------------------
   "resource.create": "resources:write",

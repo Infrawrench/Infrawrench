@@ -15,7 +15,12 @@
  */
 import { z } from "zod";
 
-import type { InfraDtsNamedType, MetricDef, WorkflowTrigger } from "@infrawrench/workflow-runtime";
+import type {
+  InfraDtsNamedType,
+  MetricDef,
+  WorkflowSecretRef,
+  WorkflowTrigger,
+} from "@infrawrench/workflow-runtime";
 
 import {
   WorkflowError,
@@ -31,6 +36,14 @@ import {
 } from "../services/workflows";
 import { runWorkflowById } from "../services/workflow-runner";
 import { logAudit } from "../services/audit";
+import {
+  WorkflowSecretError,
+  createWorkflowSecret,
+  deleteWorkflowSecret,
+  listAssignedWorkflowSecrets,
+  listWorkflowSecrets,
+  updateWorkflowSecretMetadata,
+} from "../services/workflow-secrets";
 import { denyUnlessPermitted } from "./permissions";
 import { ok, okText, err, type ToolDefinition, type ToolResult } from "./types";
 
@@ -159,8 +172,12 @@ function formatDiagnostics(
 
 /** Turn a service-level failure into a tool error result. */
 function toolError(e: unknown): ToolResult {
-  if (e instanceof WorkflowError) return err(e.message);
+  if (e instanceof WorkflowError || e instanceof WorkflowSecretError) return err(e.message);
   throw e;
+}
+
+function secretRefs(secrets: Array<{ id: string; name: string }>): WorkflowSecretRef[] {
+  return secrets.map((secret) => ({ key: secret.id, name: secret.name }));
 }
 
 /** Summary shape returned by the list/get/write tools. */
@@ -181,6 +198,114 @@ function summarize(wf: Awaited<ReturnType<typeof requireWorkflow>>, includeSourc
 
 export function workflowTools(): ToolDefinition[] {
   return [
+    {
+      name: "list_workflow_secrets",
+      title: "List workflow secrets",
+      description:
+        "List reusable organization-level workflow secret metadata. Values are never returned; " +
+        "hasValue only reports whether a value was supplied through the HTTP API.",
+      inputSchema: {},
+      risk: "read",
+      permission: "secrets:read",
+      handler: async (_input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "secrets:read");
+        if (denied) return denied;
+        return ok(await listWorkflowSecrets(auth.organizationId));
+      },
+    },
+
+    {
+      name: "write_workflow_secret",
+      title: "Write workflow secret",
+      description:
+        "Request a write-only value for a reusable workflow secret. In Infrawrench chat this opens " +
+        "a human-only password prompt whose value never enters model context. MCP exposes the same " +
+        "metadata-only tool but cannot accept or change the value; complete it securely in Infrawrench.",
+      inputSchema: {
+        secretId: z.string().optional().describe("Omit to create metadata."),
+        name: z.string().describe("Secret name, used in infra.secrets.<name>."),
+        title: z
+          .string()
+          .optional()
+          .describe("Title shown on Infrawrench's secure password prompt."),
+        description: z
+          .string()
+          .nullable()
+          .optional()
+          .describe("Secret description and secure-prompt guidance."),
+      },
+      risk: "write",
+      permission: "secrets:write",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "secrets:write");
+        if (denied) return denied;
+        const secretId = input["secretId"] as string | undefined;
+        const name = input["name"] as string;
+        try {
+          const secret = secretId
+            ? await updateWorkflowSecretMetadata(auth.organizationId, secretId, {
+                name,
+                ...(input["description"] !== undefined
+                  ? { description: input["description"] as string | null }
+                  : {}),
+              })
+            : await createWorkflowSecret(auth.organizationId, {
+                name,
+                ...(input["description"] !== undefined
+                  ? { description: input["description"] as string | null }
+                  : {}),
+              });
+          void logAudit({
+            organizationId: auth.organizationId,
+            userId: auth.userId,
+            action: secretId ? "workflow_secret.update" : "workflow_secret.create",
+            entityType: "workflow_secret",
+            entityId: secret.id,
+            metadata: { name: secret.name, source: auth.source },
+          });
+          return ok({
+            ...secret,
+            valueStatus: secretId
+              ? `unchanged (${secret.hasValue ? "set" : "not set"})`
+              : "not set",
+          });
+        } catch (e) {
+          return toolError(e);
+        }
+      },
+    },
+
+    {
+      name: "delete_workflow_secret",
+      title: "Delete workflow secret",
+      description:
+        "Delete reusable workflow secret metadata, its encrypted value, and all workflow assignments. Audit-logged.",
+      inputSchema: { secretId: z.string() },
+      risk: "destructive",
+      permission: "secrets:write",
+      handler: async (input, auth) => {
+        const denied = await denyUnlessPermitted(auth, "secrets:write");
+        if (denied) return denied;
+        try {
+          const secret = await deleteWorkflowSecret(
+            auth.organizationId,
+            input["secretId"] as string,
+          );
+          void logAudit({
+            organizationId: auth.organizationId,
+            userId: auth.userId,
+            action: "workflow_secret.delete",
+            entityType: "workflow_secret",
+            entityId: secret.id,
+            metadata: { name: secret.name, hadValue: secret.hasValue, source: auth.source },
+          });
+          return ok({ ok: true });
+        } catch (e) {
+          return toolError(e);
+        }
+      },
+    },
+
     {
       name: "list_workflows",
       title: "List workflows",
@@ -214,15 +339,30 @@ export function workflowTools(): ToolDefinition[] {
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "workflows:read");
         if (denied) return denied;
+        const secretsDenied = await denyUnlessPermitted(auth, "secrets:read");
+        const canReadSecrets = secretsDenied === null;
         const id = input["workflowId"] as string;
         try {
           const wf = await requireWorkflow(auth.organizationId, id);
           const limit = Math.max(0, Math.min(20, (input["runLimit"] as number) ?? 5));
-          const [runs, metrics] = await Promise.all([
+          const [runs, metrics, assignedSecrets] = await Promise.all([
             limit > 0 ? listWorkflowRuns(wf.id, limit) : Promise.resolve([]),
             listWorkflowMetrics(wf.id),
+            canReadSecrets
+              ? listAssignedWorkflowSecrets(auth.organizationId, wf.id)
+              : Promise.resolve([]),
           ]);
-          return ok({ ...summarize(wf, true), metricValues: metrics, runs });
+          return ok({
+            ...summarize(wf, true),
+            ...(canReadSecrets
+              ? {
+                  secretIds: assignedSecrets.map((secret) => secret.id),
+                  assignedSecrets,
+                }
+              : {}),
+            metricValues: metrics,
+            runs,
+          });
         } catch (e) {
           return toolError(e);
         }
@@ -257,6 +397,10 @@ export function workflowTools(): ToolDefinition[] {
           .optional()
           .describe("Ignored when workflowId is given. Defaults to manual."),
         metrics: metricsSchema.optional(),
+        secretIds: z
+          .array(z.string())
+          .optional()
+          .describe("Assigned workflow secret ids to include in draft typings."),
         enrich: z
           .boolean()
           .optional()
@@ -287,17 +431,29 @@ export function workflowTools(): ToolDefinition[] {
         const denied = await denyUnlessPermitted(auth, "workflows:read");
         if (denied) return denied;
         const workflowId = input["workflowId"] as string | undefined;
+        if (workflowId || input["secretIds"] !== undefined) {
+          const secretsDenied = await denyUnlessPermitted(auth, "secrets:read");
+          if (secretsDenied) return secretsDenied;
+        }
         try {
           let metrics = (input["metrics"] as MetricDef[] | undefined) ?? [];
+          let assignedSecrets: Array<{ id: string; name: string }> = [];
           let triggerKind =
             (input["triggerKind"] as WorkflowTrigger["kind"] | undefined) ?? "manual";
           if (workflowId) {
             const wf = await requireWorkflow(auth.organizationId, workflowId);
             metrics = (wf.metricDefs ?? []) as MetricDef[];
             triggerKind = (wf.trigger as WorkflowTrigger).kind;
+            assignedSecrets = await listAssignedWorkflowSecrets(auth.organizationId, workflowId);
+          } else if (input["secretIds"] !== undefined) {
+            const wanted = new Set(input["secretIds"] as string[]);
+            assignedSecrets = (await listWorkflowSecrets(auth.organizationId)).filter((secret) =>
+              wanted.has(secret.id),
+            );
           }
           const parts = await generateWorkflowTypingsParts(auth.organizationId, {
             metrics,
+            secrets: secretRefs(assignedSecrets),
             triggerKind,
             enrichCreateFields: input["enrich"] === true,
           });
@@ -362,14 +518,20 @@ export function workflowTools(): ToolDefinition[] {
           .describe("Check against an existing workflow's trigger + metrics."),
         triggerKind: z.enum(["manual", "cron", "git", "budget"]).optional(),
         metrics: metricsSchema.optional(),
+        secretIds: z.array(z.string()).optional(),
       },
       risk: "read",
       permission: "workflows:read",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "workflows:read");
         if (denied) return denied;
+        if (input["workflowId"] !== undefined || input["secretIds"] !== undefined) {
+          const secretsDenied = await denyUnlessPermitted(auth, "secrets:read");
+          if (secretsDenied) return secretsDenied;
+        }
         try {
           let metrics = (input["metrics"] as MetricDef[] | undefined) ?? [];
+          let assignedSecrets: Array<{ id: string; name: string }> = [];
           let triggerKind =
             (input["triggerKind"] as WorkflowTrigger["kind"] | undefined) ?? "manual";
           const workflowId = input["workflowId"] as string | undefined;
@@ -377,9 +539,16 @@ export function workflowTools(): ToolDefinition[] {
             const wf = await requireWorkflow(auth.organizationId, workflowId);
             metrics = (wf.metricDefs ?? []) as MetricDef[];
             triggerKind = (wf.trigger as WorkflowTrigger).kind;
+            assignedSecrets = await listAssignedWorkflowSecrets(auth.organizationId, workflowId);
+          } else if (input["secretIds"] !== undefined) {
+            const wanted = new Set(input["secretIds"] as string[]);
+            assignedSecrets = (await listWorkflowSecrets(auth.organizationId)).filter((secret) =>
+              wanted.has(secret.id),
+            );
           }
           const result = await checkWorkflowSource(auth.organizationId, input["source"] as string, {
             metrics,
+            secrets: secretRefs(assignedSecrets),
             triggerKind,
           });
           return ok(result);
@@ -415,6 +584,10 @@ export function workflowTools(): ToolDefinition[] {
         trigger: triggerSchema.optional(),
         metrics: metricsSchema.optional(),
         enabled: z.boolean().optional(),
+        secretIds: z
+          .array(z.string())
+          .optional()
+          .describe("Replace the reusable organization secrets assigned to this workflow."),
         skipTypecheck: z
           .boolean()
           .optional()
@@ -426,6 +599,10 @@ export function workflowTools(): ToolDefinition[] {
         const denied = await denyUnlessPermitted(auth, "workflows:write");
         if (denied) return denied;
         const workflowId = input["workflowId"] as string | undefined;
+        if (workflowId || input["secretIds"] !== undefined) {
+          const secretsDenied = await denyUnlessPermitted(auth, "secrets:read");
+          if (secretsDenied) return secretsDenied;
+        }
 
         try {
           const existing = workflowId
@@ -440,6 +617,15 @@ export function workflowTools(): ToolDefinition[] {
             (input["metrics"] as MetricDef[] | undefined) ??
             ((existing?.metricDefs ?? []) as MetricDef[]);
           const source = (input["source"] as string | undefined) ?? existing?.source ?? "";
+          const requestedSecretIds =
+            input["secretIds"] !== undefined ? new Set(input["secretIds"] as string[]) : undefined;
+          const typingSecrets = requestedSecretIds
+            ? (await listWorkflowSecrets(auth.organizationId)).filter((secret) =>
+                requestedSecretIds.has(secret.id),
+              )
+            : existing
+              ? await listAssignedWorkflowSecrets(auth.organizationId, existing.id)
+              : [];
 
           // Type-check the *resulting* workflow, not just the new source: a
           // trigger change alone can invalidate it (infra.prompt disappears for
@@ -448,6 +634,7 @@ export function workflowTools(): ToolDefinition[] {
           if (source.trim() && !input["skipTypecheck"]) {
             check = await checkWorkflowSource(auth.organizationId, source, {
               metrics,
+              secrets: secretRefs(typingSecrets),
               triggerKind: trigger.kind,
             });
             if (check.hasErrors) {
@@ -468,6 +655,9 @@ export function workflowTools(): ToolDefinition[] {
             ...(triggerInput ? { trigger } : {}),
             ...(input["metrics"] !== undefined ? { metrics } : {}),
             ...(input["enabled"] !== undefined ? { enabled: input["enabled"] as boolean } : {}),
+            ...(input["secretIds"] !== undefined
+              ? { secretIds: input["secretIds"] as string[] }
+              : {}),
           };
 
           const saved = existing
@@ -487,8 +677,14 @@ export function workflowTools(): ToolDefinition[] {
             },
           });
 
+          const assignedSecrets =
+            existing || input["secretIds"] !== undefined
+              ? await listAssignedWorkflowSecrets(auth.organizationId, saved.id)
+              : [];
           return ok({
             ...summarize(saved, true),
+            secretIds: assignedSecrets.map((secret) => secret.id),
+            assignedSecrets,
             ...(check
               ? {
                   typecheck: {

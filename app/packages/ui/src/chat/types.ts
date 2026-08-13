@@ -8,6 +8,7 @@ export type {
   ChatContentBlock,
   ChatConversationMessage,
   ChatPendingAction,
+  ChatPendingSecretRequest,
   ConversationSummary,
   ChatModelOption,
   SpendStatus,

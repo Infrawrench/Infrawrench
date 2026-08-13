@@ -674,6 +674,8 @@ export async function runGraph(opts: RunGraphOptions): Promise<GraphRunResult> {
       // rather than a bare ReferenceError.
       accountsTree: opts.infra?.accountsTreeJson ?? "[]",
       metrics: "{}",
+      // Graphs are read-only dashboards and have no workflow secret assignments.
+      secrets: "{}",
       event: JSON.stringify({
         // A button press is always an interaction, whatever the caller said.
         kind: opts.button
@@ -733,6 +735,7 @@ function buildProgram(userJs: string): string {
     `const __host = env.__host;`,
     `const __accountsTree = env.__accountsTree;`,
     `const __metrics = env.__metrics;`,
+    `const __secrets = env.__secrets;`,
     `const __event = env.__event;`,
     // The workflow prelude supplies `infra.accounts` (reads + ssh reach the
     // graph dispatcher's whitelist; everything else fails closed there). The

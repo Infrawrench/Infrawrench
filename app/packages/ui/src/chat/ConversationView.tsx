@@ -9,6 +9,7 @@ import {
   type ChatConversationMessage,
   type ChatContentBlock,
   type ChatPendingAction,
+  type ChatPendingSecretRequest,
   type ConversationSummary,
   type SpendStatus,
 } from "./types.js";
@@ -35,6 +36,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
   const [conversation, setConversation] = useState<ConversationSummary | null>(null);
   const [messages, setMessages] = useState<ChatConversationMessage[]>([]);
   const [pending, setPending] = useState<ChatPendingAction[]>([]);
+  const [pendingSecrets, setPendingSecrets] = useState<ChatPendingSecretRequest[]>([]);
   const [spend, setSpend] = useState<SpendStatus | null>(null);
   const [streaming, setStreaming] = useState<StreamingState>({
     active: false,
@@ -67,6 +69,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
       setConversation(data.conversation);
       setMessages(data.messages);
       setPending(data.pendingActions);
+      setPendingSecrets(data.pendingSecretRequests);
       setSpend(s);
       if (opts?.clearStreamingBuffer) {
         setStreaming((st) => ({ ...st, userText: undefined, text: "", toolUses: [] }));
@@ -200,7 +203,10 @@ export function ConversationView({ client, conversationId }: Props): React.React
         const unresolved = data.pendingActions.some(
           (p) => p.status === "pending" || p.status === "approved",
         );
-        if (!unresolved) await startStream({ resume: true });
+        const secretUnresolved = data.pendingSecretRequests.some(
+          (request) => request.status === "pending" || request.status === "submitting",
+        );
+        if (!unresolved && !secretUnresolved) await startStream({ resume: true });
       }
     },
     [client, conversationId, reload],
@@ -237,7 +243,14 @@ export function ConversationView({ client, conversationId }: Props): React.React
     const unresolved = data.pendingActions.some(
       (p) => p.status === "pending" || p.status === "approved",
     );
-    if (!unresolved && data.pendingActions.length > 0) {
+    const secretUnresolved = data.pendingSecretRequests.some(
+      (request) => request.status === "pending" || request.status === "submitting",
+    );
+    if (
+      !unresolved &&
+      !secretUnresolved &&
+      data.pendingActions.length + data.pendingSecretRequests.length > 0
+    ) {
       await startStream({ resume: true });
     }
   }, [client, conversationId, startStream]);
@@ -256,6 +269,12 @@ export function ConversationView({ client, conversationId }: Props): React.React
     await resumeIfResolved();
   }
 
+  async function handleSecretSubmit(requestId: string, value: string): Promise<void> {
+    await client.submitSecretRequest(conversationId, requestId, value);
+    await reload();
+    await resumeIfResolved();
+  }
+
   const pendingByMessage = useMemo(() => {
     const m = new Map<string, ChatPendingAction[]>();
     for (const p of pending) {
@@ -265,6 +284,11 @@ export function ConversationView({ client, conversationId }: Props): React.React
     }
     return m;
   }, [pending]);
+
+  const pendingSecretsByToolUseId = useMemo(
+    () => new Map(pendingSecrets.map((request) => [request.toolUseId, request])),
+    [pendingSecrets],
+  );
 
   // Tool results live in follow-up user messages; index them by tool_use_id so
   // each result renders inside its tool card instead of as a "You" message.
@@ -330,10 +354,12 @@ export function ConversationView({ client, conversationId }: Props): React.React
               key={m.id}
               message={m}
               pendingActions={pendingByMessage.get(m.id) ?? []}
+              pendingSecrets={pendingSecretsByToolUseId}
               toolResults={toolResultsById}
               activeSleepIds={activeSleepIds}
               onApprove={handleApprove}
               onReject={handleReject}
+              onSubmitSecret={handleSecretSubmit}
             />
           ))}
           {streaming.userText && (
@@ -408,19 +434,23 @@ export function ConversationView({ client, conversationId }: Props): React.React
 interface BubbleProps {
   message: ChatConversationMessage;
   pendingActions: ChatPendingAction[];
+  pendingSecrets: Map<string, ChatPendingSecretRequest>;
   toolResults: Map<string, { text: string; isError: boolean }>;
   activeSleepIds: ReadonlySet<string>;
   onApprove(id: string): Promise<void>;
   onReject(id: string, reason?: string): Promise<void>;
+  onSubmitSecret(id: string, value: string): Promise<void>;
 }
 
 function MessageBubble({
   message,
   pendingActions,
+  pendingSecrets,
   toolResults,
   activeSleepIds,
   onApprove,
   onReject,
+  onSubmitSecret,
 }: BubbleProps): React.ReactElement {
   const isAssistant = message.role === "assistant";
   const pendingByToolUseId = new Map<string, ChatPendingAction>(
@@ -450,10 +480,12 @@ function MessageBubble({
           key={i}
           block={block}
           pending={block.type === "tool_use" ? pendingByToolUseId.get(block.id) : undefined}
+          pendingSecret={block.type === "tool_use" ? pendingSecrets.get(block.id) : undefined}
           result={block.type === "tool_use" ? toolResults.get(block.id) : undefined}
           sleepInProgress={block.type === "tool_use" && activeSleepIds.has(block.id)}
           onApprove={onApprove}
           onReject={onReject}
+          onSubmitSecret={onSubmitSecret}
         />
       ))}
     </div>
@@ -463,20 +495,24 @@ function MessageBubble({
 interface BlockProps {
   block: ChatContentBlock;
   pending: ChatPendingAction | undefined;
+  pendingSecret: ChatPendingSecretRequest | undefined;
   result: { text: string; isError: boolean } | undefined;
   /** True while this sleep tool_use is still counting down client-side. */
   sleepInProgress: boolean;
   onApprove(id: string): Promise<void>;
   onReject(id: string, reason?: string): Promise<void>;
+  onSubmitSecret(id: string, value: string): Promise<void>;
 }
 
 function BlockView({
   block,
   pending,
+  pendingSecret,
   result,
   sleepInProgress,
   onApprove,
   onReject,
+  onSubmitSecret,
 }: BlockProps): React.ReactElement | null {
   // Approve executes the tool synchronously server-side (a workflow run can
   // take minutes), so the buttons must lock and the label must say the action
@@ -510,6 +546,11 @@ function BlockView({
           Slept {Number.isFinite(secs) ? secs : "a few"} seconds
         </div>
       );
+    }
+    if (block.name === "write_workflow_secret") {
+      return pendingSecret ? (
+        <SecretRequestCard request={pendingSecret} onSubmit={onSubmitSecret} />
+      ) : null;
     }
     const status = pending?.status ?? (result?.isError ? "errored" : "executed");
     const statusLabel =
@@ -594,4 +635,81 @@ function BlockView({
   // tool_result blocks render inside their tool card (see toolResultsById);
   // nothing to show standalone.
   return null;
+}
+
+function SecretRequestCard({
+  request,
+  onSubmit,
+}: {
+  request: ChatPendingSecretRequest;
+  onSubmit(id: string, value: string): Promise<void>;
+}): React.ReactElement {
+  const [value, setValue] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const resolved = request.status === "stored";
+
+  async function submit(): Promise<void> {
+    if (submitting || resolved || value.length === 0) return;
+    const submittedValue = value;
+    setValue("");
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSubmit(request.id, submittedValue);
+    } catch {
+      setError("Secret could not be stored. Try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="border border-border rounded-lg bg-surface-overlay text-xs">
+      <div className="px-3 py-2">
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-medium text-on-surface-secondary">
+            {request.title ?? `Enter ${request.name}`}
+          </span>
+          <span className={resolved ? "text-success" : "text-warning"}>
+            {resolved ? "Stored" : submitting ? "Storing…" : "Value required"}
+          </span>
+        </div>
+        {request.description && <p className="mt-1 text-on-surface-muted">{request.description}</p>}
+      </div>
+      {!resolved && (
+        <div className="border-t border-border px-3 py-2 space-y-2">
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void submit();
+                }
+              }}
+              disabled={submitting || request.status === "submitting"}
+              autoComplete="new-password"
+              aria-label={request.title ?? `Secret value for ${request.name}`}
+              className="min-w-0 flex-1 bg-surface border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <button
+              type="button"
+              disabled={submitting || request.status === "submitting" || value.length === 0}
+              onClick={() => void submit()}
+              className="px-2.5 py-1 font-medium bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-50 disabled:pointer-events-none"
+            >
+              {submitting ? "Storing…" : "Store"}
+            </button>
+          </div>
+          {error && <div className="text-danger">{error}</div>}
+          <div className="text-on-surface-faint">
+            Sent directly to encrypted secret storage. It is never shown to the model.
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

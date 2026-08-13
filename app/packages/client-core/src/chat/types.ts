@@ -90,6 +90,25 @@ export interface ChatPendingAction {
   createdAt: string;
 }
 
+/**
+ * Metadata for a workflow secret value that must be supplied directly by a
+ * human. The value is never part of this contract.
+ */
+export interface ChatPendingSecretRequest {
+  id: string;
+  conversationId: string;
+  messageId: string;
+  toolUseId: string;
+  secretId: string | null;
+  name: string;
+  title: string | null;
+  description: string | null;
+  status: "pending" | "submitting" | "stored";
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ConversationSummary {
   id: string;
   title: string;
@@ -167,6 +186,7 @@ export interface ChatTurnEvent {
     | "tool_use_input"
     | "tool_executed"
     | "pending_action"
+    | "secret_request"
     | "sleep"
     | "turn_end"
     | "spend_blocked"
@@ -178,6 +198,7 @@ export interface ChatConversationDetail {
   conversation: ConversationSummary;
   messages: ChatConversationMessage[];
   pendingActions: ChatPendingAction[];
+  pendingSecretRequests: ChatPendingSecretRequest[];
 }
 
 /**
@@ -199,6 +220,8 @@ export interface ChatClient {
     action: "approve" | "reject",
     reason?: string,
   ): Promise<void>;
+  /** Submit a secret directly to encrypted storage; the value is never returned. */
+  submitSecretRequest(conversationId: string, requestId: string, value: string): Promise<void>;
   /** Run one agent turn; yields SSE events until the turn ends or errors. */
   streamTurn(
     conversationId: string,

@@ -10,12 +10,14 @@
 import type {
   MetricDef,
   MetricValueType,
+  WorkflowSecretRef,
   WorkflowCreateFieldInfo,
   WorkflowPluginInfo,
   WorkflowResourceTypeInfo,
   WorkflowSidecarInfo,
   WorkflowTriggerKind,
 } from "./types.js";
+import { assertNoWorkflowSecretNameCollisions } from "./types.js";
 
 /** A valid TS identifier fragment derived from an arbitrary id. */
 function ident(raw: string): string {
@@ -432,6 +434,40 @@ ${props}
 }`;
 }
 
+interface SecretTypeNode {
+  children: Map<string, SecretTypeNode>;
+}
+
+function renderSecretNode(node: SecretTypeNode, indent: string): string {
+  return [...node.children]
+    .map(([name, child]) => {
+      const nested = child.children.size > 0;
+      const type = nested ? `{\n${renderSecretNode(child, `${indent}  `)}\n${indent}}` : "string";
+      return `${indent}/** Assigned workflow secret. Available only while the workflow runs. */\n${indent}readonly ${name}: ${type};`;
+    })
+    .join("\n");
+}
+
+function renderSecrets(secrets: WorkflowSecretRef[]): string {
+  assertNoWorkflowSecretNameCollisions(secrets.map((secret) => secret.name));
+  const root: SecretTypeNode = { children: new Map() };
+  for (const secret of secrets) {
+    const parts = secret.name.split(".");
+    if (parts.some((part) => !/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(part))) continue;
+    let node = root;
+    for (const part of parts) {
+      let child = node.children.get(part);
+      if (!child) {
+        child = { children: new Map() };
+        node.children.set(part, child);
+      }
+      node = child;
+    }
+  }
+  const props = renderSecretNode(root, "  ");
+  return props ? `interface InfraSecrets {\n${props}\n}` : "interface InfraSecrets {}";
+}
+
 /**
  * The `infra.event` type for this workflow's trigger. Budget triggers carry a
  * payload (which budget, which threshold, what the spend actually was) so the
@@ -753,6 +789,8 @@ interface FetchResponse {
 export interface GenerateInfraDtsInput {
   plugins: WorkflowPluginInfo[];
   metrics: MetricDef[];
+  /** Only secrets assigned to this workflow; values never enter generated source. */
+  secrets?: WorkflowSecretRef[];
   /** When false, prompt() is typed as unavailable (automated triggers). */
   interactive?: boolean;
   /**
@@ -989,12 +1027,16 @@ ${accountsProps || "  [pluginId: string]: never;"}
 
 ${renderMetrics(input.metrics)}
 
+${renderSecrets(input.secrets ?? [])}
+
 interface InfraApi {
   /** Accounts grouped by provider plugin. */
   readonly accounts: InfraAccounts;
 ${promptDecl}
   /** Read and write this workflow's declared metrics. */
   readonly metrics: InfraMetrics;
+  /** Read this workflow's assigned secrets from the frozen run-start snapshot. */
+  readonly secrets: InfraSecrets;
   /** What started this run. Frozen. */
   readonly event: WorkflowEvent;
 ${costsDecl}

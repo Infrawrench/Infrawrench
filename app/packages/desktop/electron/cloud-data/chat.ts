@@ -80,6 +80,25 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle(
+  "cloud_chat_submit_secret",
+  async (
+    _e,
+    {
+      orgId,
+      conversationId,
+      requestId,
+      value,
+    }: { orgId: string; conversationId: string; requestId: string; value: string },
+  ) => {
+    return cloudFetch(
+      orgId,
+      `/chat/conversations/${encodeURIComponent(conversationId)}/secret-requests/${encodeURIComponent(requestId)}`,
+      { method: "POST", body: JSON.stringify({ value }) },
+    );
+  },
+);
+
 const activeStreams = new Map<string, AbortController>();
 
 ipcMain.handle(

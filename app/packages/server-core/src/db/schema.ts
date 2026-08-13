@@ -3320,6 +3320,41 @@ export const chatPendingActions = pgTable(
   }),
 );
 
+/**
+ * A model-requested workflow secret awaiting direct human entry.
+ *
+ * This table is intentionally metadata-only. The submitted value bypasses chat
+ * persistence entirely and is written straight to the encrypted workflow
+ * secret store by the authenticated route.
+ */
+export const chatPendingSecretRequests = pgTable(
+  "chat_pending_secret_requests",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => chatConversations.id, { onDelete: "cascade" }),
+    messageId: text("message_id")
+      .notNull()
+      .references(() => chatMessages.id, { onDelete: "cascade" }),
+    toolUseId: text("tool_use_id").notNull(),
+    secretId: text("secret_id"),
+    name: text("name").notNull(),
+    title: text("title"),
+    description: text("description"),
+    /** "pending" | "submitting" | "stored" */
+    status: text("status").notNull().default("pending"),
+    resolvedAt: timestamp("resolved_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    conversationIdx: index("chat_pending_secret_requests_conversation_idx").on(t.conversationId),
+    messageIdx: index("chat_pending_secret_requests_message_idx").on(t.messageId),
+    statusIdx: index("chat_pending_secret_requests_status_idx").on(t.status),
+  }),
+);
+
 export const chatUsage = pgTable(
   "chat_usage",
   {

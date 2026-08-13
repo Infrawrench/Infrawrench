@@ -23,6 +23,15 @@ vi.mock("@/services/workflows", () => ({
 }));
 
 vi.mock("@/services/workflow-runner", () => ({ runWorkflowById: vi.fn() }));
+vi.mock("@/services/workflow-secrets", () => ({
+  WorkflowSecretError: class WorkflowSecretError extends Error {
+    status = 400;
+  },
+  getWorkflowSecretAssignments: vi.fn(),
+  listAssignedWorkflowSecrets: vi.fn(),
+  setWorkflowSecretAssignments: vi.fn(),
+}));
+vi.mock("@/services/audit", () => ({ logAudit: vi.fn() }));
 vi.mock("@/auth/permissions", () => ({ requirePermission: vi.fn() }));
 
 const workflows = (await import("@/api/routes/workflows")).default;

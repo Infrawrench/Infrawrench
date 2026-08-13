@@ -94,6 +94,44 @@ export interface MetricDef {
   description?: string;
 }
 
+/**
+ * Metadata for a secret that may be assigned to a workflow. Values deliberately
+ * never travel in this type: codegen needs only the stable assignment key and
+ * the property name exposed under `infra.secrets`.
+ */
+export interface SecretDef {
+  key: string;
+  name: string;
+}
+
+/** A secret assignment attached to one workflow. */
+export type WorkflowSecretRef = SecretDef;
+
+/**
+ * A scalar secret and one of its descendants cannot coexist: `stripe` is a
+ * string while `stripe.apiKey` requires it to be an object. Reject that shape
+ * before codegen or snapshot construction so insertion order never decides
+ * which value silently disappears.
+ */
+export function assertNoWorkflowSecretNameCollisions(names: readonly string[]): void {
+  const all = new Set<string>();
+  for (const name of names) {
+    if (all.has(name)) {
+      throw new Error(`Workflow secret name "${name}" is assigned more than once.`);
+    }
+    all.add(name);
+  }
+  for (const name of all) {
+    const parts = name.split(".");
+    for (let i = 1; i < parts.length; i += 1) {
+      const ancestor = parts.slice(0, i).join(".");
+      if (all.has(ancestor)) {
+        throw new Error(`Workflow secret names "${ancestor}" and "${name}" cannot coexist.`);
+      }
+    }
+  }
+}
+
 /** Persisted definition of a workflow. */
 export interface WorkflowDefinition {
   id: string;
