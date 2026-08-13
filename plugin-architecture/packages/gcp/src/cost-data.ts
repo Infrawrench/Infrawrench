@@ -31,7 +31,7 @@ export interface GcpCostContext {
   billingExportTable: string;
 }
 
-export const BILLING_EXPORT_SETUP_URL =
+const BILLING_EXPORT_SETUP_URL =
   "https://cloud.google.com/billing/docs/how-to/export-data-bigquery";
 
 /**

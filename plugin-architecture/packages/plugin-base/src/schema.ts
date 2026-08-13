@@ -1063,7 +1063,7 @@ export type ChatStreamEvent =
  *    keys encoded into the `_name` field of each returned document so the
  *    Firestore-style UI can address them.
  */
-export interface NoSqlBrowserCapability {
+interface NoSqlBrowserCapability {
   driver: "firestore" | "mongodb-peer" | "dynamodb";
   /** Database identifier shown above the collection list (e.g. Firestore database id). */
   databaseLabel: string;

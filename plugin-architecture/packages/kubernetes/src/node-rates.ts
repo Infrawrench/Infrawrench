@@ -78,7 +78,7 @@ export const EMPTY_RATE_TABLE: NodeRateTable = {
 };
 
 /** The `*` key in {@link NodeRateTable.storageGiBMonth}: any storage class. */
-export const ANY_STORAGE_CLASS = "*";
+const ANY_STORAGE_CLASS = "*";
 
 function coerceRateMap(value: unknown): Record<string, number> {
   if (!value || typeof value !== "object") return {};

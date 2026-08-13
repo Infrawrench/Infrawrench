@@ -30,7 +30,7 @@ interface ApiAuthResult {
  * migration `0055_grandfather_workflow_permissions`, so a key's stored array
  * already says everything the key grants.
  */
-export function migrateScopes(scopes: string[] | null | undefined): string[] {
+function migrateScopes(scopes: string[] | null | undefined): string[] {
   if (!scopes) return [];
   let changed = false;
   const out: string[] = [];

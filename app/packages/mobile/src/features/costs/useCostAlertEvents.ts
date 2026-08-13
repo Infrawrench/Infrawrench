@@ -3,7 +3,7 @@ import { listCostAlertEvents, listCostAlerts } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 
 /** How many recent change-alert firings the mobile section shows. */
-export const COST_ALERT_EVENTS_SHOWN = 20;
+const COST_ALERT_EVENTS_SHOWN = 20;
 
 /**
  * The org's change-based cost alerts (`GET /cost-alerts`). Read-only on

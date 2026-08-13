@@ -8,11 +8,6 @@ import {
 import { apiGet } from "@/lib/api";
 import { createWebChangeRevertClient } from "@/lib/changes-client";
 
-// The badge and the diff list moved to `@infrawrench/ui` when desktop grew a
-// Changes page — one definition of how a change reads. Re-exported here so the
-// existing web imports keep working.
-export { ChangeDiffList, ChangeKindBadge };
-
 interface ResourceChangesPanelProps {
   orgId: string;
   resourceId: string;

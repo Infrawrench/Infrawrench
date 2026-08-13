@@ -22,9 +22,6 @@ export {
   resolveInfrafile,
   rollbackDeployment,
   runDeployment,
-  type DeploymentRunRow,
-  type ResolvedSource,
-  type RunDeploymentOptions,
 } from "@infrawrench/server-core/infrafile/runner";
 
 /* --------------------------------------------------------- deploy on push -- */

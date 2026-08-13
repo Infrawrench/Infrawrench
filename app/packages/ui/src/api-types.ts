@@ -15,7 +15,6 @@ export type {
   Bastion,
   BillingStatus,
   CapacitySlot,
-  CapacityStatus,
   Dashboard,
   InvitationSummary,
   Recipient,

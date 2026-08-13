@@ -6,7 +6,6 @@
  * This module is the stable import path — it re-exports the whole renderer
  * surface so callers never have to know which domain file a renderer lives in.
  */
-export { safeParseJson } from "./detail-renderers/shared.js";
 export { applyDropletDetail } from "./detail-renderers/droplet.js";
 export {
   applyVolumeDetail,

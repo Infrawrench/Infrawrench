@@ -37,7 +37,7 @@ import { releaseSeat } from "./seats";
 import { logAudit } from "./audit";
 import { classifyMemberships, type AccountDeletionPlan } from "./account-deletion-plan";
 
-export type { AccountDeletionPlan, MembershipRow, OwnershipBlocker } from "./account-deletion-plan";
+export type { AccountDeletionPlan } from "./account-deletion-plan";
 
 export class AccountDeletionError extends Error {
   constructor(

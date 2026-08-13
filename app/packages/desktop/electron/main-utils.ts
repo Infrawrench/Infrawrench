@@ -111,7 +111,7 @@ export class UserFacingError extends Error {
 }
 
 /** Thrown instead of minting a key. The CLI prints it without a stack trace. */
-export class MasterKeyUnavailableError extends UserFacingError {
+class MasterKeyUnavailableError extends UserFacingError {
   constructor() {
     super(
       "Could not read this workspace's master key. Nothing was changed — a new key would " +

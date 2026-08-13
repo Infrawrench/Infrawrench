@@ -43,7 +43,7 @@ export interface K8sResourceQuota {
   };
 }
 
-export interface K8sResourceQuotaList {
+interface K8sResourceQuotaList {
   items?: K8sResourceQuota[];
 }
 

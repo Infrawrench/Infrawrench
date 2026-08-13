@@ -40,7 +40,7 @@ import { SYSTEM_NAMESPACES } from "./resource-listers.js";
 /** Stable service labels. Changing one of these re-keys history — don't. */
 export const SERVICE_WORKLOAD = "kubernetes-workload";
 export const SERVICE_IDLE = "kubernetes-idle";
-export const SERVICE_SYSTEM_RESERVED = "kubernetes-system-reserved";
+const SERVICE_SYSTEM_RESERVED = "kubernetes-system-reserved";
 /** Attributed PersistentVolumeClaims — a workload's or a namespace's disks. */
 export const SERVICE_STORAGE = "kubernetes-storage";
 /** Bound volumes nothing mounts. Idle capacity in disk form, own bucket. */
@@ -60,7 +60,7 @@ export const SERVICE_CONTROL_PLANE = "kubernetes-control-plane";
  * history this plugin cannot produce; each daily run appends one more day and
  * the series builds up over time.
  */
-export function snapshotDay(range: CostFetchRange): string {
+function snapshotDay(range: CostFetchRange): string {
   return range.toDate;
 }
 

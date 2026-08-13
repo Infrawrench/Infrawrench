@@ -21,7 +21,6 @@ import {
 export {
   isHostKeyTrustResponse,
   trustPayloadFromFrame,
-  hostKeyLabel,
   type HostKeyTrustPayload,
 } from "@infrawrench/ui";
 

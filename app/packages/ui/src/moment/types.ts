@@ -1,20 +1,8 @@
 /**
  * The moment-view contract lives in client-core so mobile (which doesn't
- * depend on this package) shares one definition; re-exported for web and
- * desktop the same way the change-timeline types are.
+ * depend on this package) shares one definition; the package index re-exports
+ * it for web and desktop the same way the change-timeline types are.
  */
-export type {
-  MomentEvent,
-  MomentEventLink,
-  MomentFeedId,
-  MomentFeedStatus,
-  MomentIncidentSpan,
-  MomentRequest,
-  MomentResponse,
-  MomentSeverity,
-  MomentTimelineItem,
-} from "@infrawrench/client-core";
-
 import type { MomentRequest, MomentResponse } from "@infrawrench/client-core";
 
 /**

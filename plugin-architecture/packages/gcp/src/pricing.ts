@@ -17,7 +17,7 @@ interface CloudBillingSku {
   }>;
 }
 
-export type GceDiskType = "pd-balanced" | "pd-ssd" | "pd-standard";
+type GceDiskType = "pd-balanced" | "pd-ssd" | "pd-standard";
 
 export interface PricingRates {
   machineRates: Record<string, { corePerHourUsd: number; ramPerGiBHourUsd: number }>;

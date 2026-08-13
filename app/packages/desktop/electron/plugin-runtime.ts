@@ -288,7 +288,7 @@ export async function getAccountCredentials(accountId: string): Promise<Record<s
 }
 
 /** Load the plugin + decrypted credentials for a local account. */
-export async function createAccountPluginClient(
+async function createAccountPluginClient(
   account: LocalAccountRow,
 ): Promise<{ plugin: Plugin; client: PluginClient }> {
   const loaded = await getPlugin(account.pluginId);

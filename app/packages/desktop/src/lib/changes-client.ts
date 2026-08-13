@@ -64,7 +64,7 @@ export function createDesktopChangesClient(): ChangesClient {
  * rather than an id for the same reason the feed does — an org switch under a
  * mounted panel must reach the new org.
  */
-export function createDesktopChangeRevertClient(requireOrg: () => string): ChangeRevertClient {
+function createDesktopChangeRevertClient(requireOrg: () => string): ChangeRevertClient {
   return {
     preview: (changeId) =>
       invoke<RevertPreviewResponse>("cloud_change_revert_preview", {

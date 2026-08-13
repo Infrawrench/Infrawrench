@@ -59,7 +59,7 @@ const INTERNAL_PATHS: ReadonlySet<string> = new Set([
 ]);
 
 /** Whether a documented path is internal (all methods on a path share the verdict). */
-export function isInternalPath(path: string): boolean {
+function isInternalPath(path: string): boolean {
   if (INTERNAL_PATHS.has(path)) return true;
   return INTERNAL_PATH_PREFIXES.some((prefix) => path.startsWith(prefix));
 }

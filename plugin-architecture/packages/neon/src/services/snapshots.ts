@@ -23,7 +23,7 @@ function isSnapshot(value: unknown): value is Snapshot {
   return hasStringFields(value, SNAPSHOT_REQUIRED_FIELDS);
 }
 
-export function buildSnapshotResource(
+function buildSnapshotResource(
   accountId: string,
   projectId: string,
   snap: Snapshot,

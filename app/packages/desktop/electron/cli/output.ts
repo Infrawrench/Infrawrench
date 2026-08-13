@@ -72,7 +72,7 @@ export const c = {
 };
 
 /** Palette used to color chart series / plugin names consistently. */
-export const SERIES_COLORS = [c.cyan, c.magenta, c.green, c.yellow, c.blue, c.red];
+const SERIES_COLORS = [c.cyan, c.magenta, c.green, c.yellow, c.blue, c.red];
 
 export function seriesColor(index: number): (s: string) => string {
   return SERIES_COLORS[index % SERIES_COLORS.length]!;

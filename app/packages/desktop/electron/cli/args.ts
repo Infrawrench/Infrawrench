@@ -111,7 +111,7 @@ export interface DeployFlags {
 }
 
 /** Flags for `export`. */
-export interface ExportFlags {
+interface ExportFlags {
   /** Export format. Only "terraform" today; validated in the command. */
   format?: string | undefined;
 }

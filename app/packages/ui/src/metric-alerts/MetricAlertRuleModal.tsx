@@ -17,8 +17,6 @@ const inputClass =
   "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 
-export { DEFAULT_METRIC_ALERT_INPUT };
-
 export interface MetricAlertRuleModalProps {
   initialInput: MetricAlertRuleInput;
   client: MetricAlertsClient;

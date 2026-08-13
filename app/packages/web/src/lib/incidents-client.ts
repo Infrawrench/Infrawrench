@@ -62,5 +62,3 @@ export function createWebIncidentsClient(orgId: string, canWrite = true): Incide
     },
   } satisfies IncidentsClient & { declareIncident: (input: IncidentDeclare) => Promise<Incident> };
 }
-
-export type { IncidentStatus };

@@ -73,7 +73,7 @@ export const ResourceId = z
  * the `code` field so clients can re-authenticate and retry instead of
  * reporting a permanent authorization failure.
  */
-export const ReauthenticationRequiredResponse = strict({
+const ReauthenticationRequiredResponse = strict({
   error: z.string().openapi({ description: "Human-readable error message" }),
   code: z.literal("reauthentication_required"),
 }).openapi("ReauthenticationRequired");

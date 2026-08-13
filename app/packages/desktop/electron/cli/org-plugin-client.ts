@@ -173,11 +173,7 @@ function notAvailable(what: string): CliError {
   );
 }
 
-export function createOrgPluginClient(
-  orgId: string,
-  accountId: string,
-  pluginId: string,
-): PluginClient {
+function createOrgPluginClient(orgId: string, accountId: string, pluginId: string): PluginClient {
   const rowsForType = async (typeId: string): Promise<ResourceRow[]> => {
     await ensureSynced(orgId, accountId);
     const rows = await listCloudResources(orgId, accountId);

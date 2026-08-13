@@ -13,7 +13,7 @@ import {
 } from "../plugin-runtime";
 import { CLOUD_URL } from "../../env";
 
-export type OutputMode = "json" | "text";
+type OutputMode = "json" | "text";
 
 export interface CliFlags {
   output: OutputMode;
@@ -42,7 +42,7 @@ export class CliError extends Error {
   }
 }
 
-export function notSignedInError(): CliError {
+function notSignedInError(): CliError {
   return new CliError(
     "Not signed in to Infrawrench Cloud. Run `infrawrench login` (or sign in from the desktop app — the CLI shares its session).",
   );

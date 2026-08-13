@@ -1,9 +1,6 @@
 import type { ResourceOwnership, ResourceOwnershipPatch } from "@infrawrench/client-core";
 
 export type {
-  OwnerCandidate,
-  OwnerSummary,
-  ResourceOwnerAnnotation,
   ResourceOwnership,
   ResourceOwnershipListResponse,
   ResourceOwnershipPatch,

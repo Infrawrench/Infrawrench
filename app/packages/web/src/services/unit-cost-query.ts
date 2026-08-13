@@ -272,6 +272,3 @@ export async function runUnitCostQuery(
   if (conversion) response.conversion = conversion;
   return response;
 }
-
-/** The page size `GET /business-metrics/{id}/values` clamps to. */
-export const MAX_METRIC_VALUES_PAGE = BUSINESS_METRIC_LIMITS.maxValuesPageSize;

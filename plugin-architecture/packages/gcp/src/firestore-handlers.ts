@@ -69,7 +69,7 @@ export interface FirestoreUsageMetrics {
   error: string;
 }
 
-export interface FirestoreIamBinding {
+interface FirestoreIamBinding {
   role: string;
   members: string[];
 }

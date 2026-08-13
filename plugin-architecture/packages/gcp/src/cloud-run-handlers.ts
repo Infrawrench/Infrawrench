@@ -24,7 +24,7 @@ export interface CloudRunRevisionSummary {
   serviceAccount: string;
 }
 
-export interface CloudRunIamBinding {
+interface CloudRunIamBinding {
   role: string;
   members: string[];
 }
@@ -49,7 +49,7 @@ export interface CloudRunFullServiceResult {
   error: string;
 }
 
-export interface CloudRunDomainDnsRecord {
+interface CloudRunDomainDnsRecord {
   /** Subdomain or apex name the user must add as a DNS record. */
   name: string;
   /** Record type (A, AAAA, CNAME). */
@@ -58,7 +58,7 @@ export interface CloudRunDomainDnsRecord {
   rrdata: string;
 }
 
-export interface CloudRunDomainMapping {
+interface CloudRunDomainMapping {
   domain: string;
   ready: boolean;
   status: string;

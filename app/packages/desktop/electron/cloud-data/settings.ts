@@ -54,7 +54,7 @@ interface SettingsRequestArgs {
   body?: unknown;
 }
 
-export interface SettingsRequestResult {
+interface SettingsRequestResult {
   status: number;
   bodyText: string;
 }

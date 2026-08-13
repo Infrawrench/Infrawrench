@@ -44,7 +44,6 @@ import {
   type IncidentMetricAlertEvent,
   type IncidentNote,
   type IncidentProbeTransition,
-  type IncidentSeverity,
   type IncidentTimelineResponse,
   type PostmortemResource,
 } from "@infrawrench/client-core";
@@ -55,7 +54,6 @@ import {
   resolveStatusPageNotice,
 } from "@infrawrench/server-core/status-pages/notices";
 import {
-  IncidentInputError,
   addIncidentNoteRecord,
   closeIncidentArtifact,
   createIncidentRecord,
@@ -73,8 +71,6 @@ import { metricAlertEvents, resources, syntheticProbes } from "@/db/schema";
 import { createChangeFreeze, endChangeFreeze } from "./change-freezes";
 import { computeMoment } from "./moment";
 import { logAudit } from "./audit";
-
-export { IncidentInputError };
 
 /** Everything the composition needs about the caller. */
 export interface IncidentActor {
@@ -385,10 +381,6 @@ async function publishNotice(
 /* ------------------------------------------------------------------ *
  * Transition (mitigate / resolve / edit)
  * ------------------------------------------------------------------ */
-
-export interface TransitionResult {
-  incident: Incident;
-}
 
 /**
  * Apply a patch and, when it resolves the incident, undo exactly what this
@@ -836,4 +828,4 @@ async function lookupResources(
 }
 
 /** Re-exported so routes have one import for the read path. */
-export { getIncidentRecord, listIncidentNoteRecords, type IncidentSeverity };
+export { getIncidentRecord, listIncidentNoteRecords };

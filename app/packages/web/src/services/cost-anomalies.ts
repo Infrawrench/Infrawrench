@@ -88,19 +88,6 @@ export async function listRecentCostAnomalies(
   return rows.map(toCostAnomaly);
 }
 
-/** One anomaly by id, scoped to the org. Null when it isn't theirs. */
-export async function getCostAnomaly(
-  organizationId: string,
-  anomalyId: string,
-): Promise<CostAnomaly | null> {
-  const [row] = await db
-    .select()
-    .from(costAnomalies)
-    .where(and(eq(costAnomalies.id, anomalyId), eq(costAnomalies.organizationId, organizationId)))
-    .limit(1);
-  return row ? toCostAnomaly(row) : null;
-}
-
 /**
  * Explain a finding: record the sentence on the anomaly and put it on the
  * charts as an annotation at the anomaly's own day, org-wide.

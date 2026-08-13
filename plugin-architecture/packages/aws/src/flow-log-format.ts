@@ -28,7 +28,7 @@
  * here, and the honest thing to do about that is say so with the fix rather
  * than quietly produce a screen of zeroes.
  */
-export const REQUIRED_FLOW_FIELDS = ["srcaddr", "dstaddr", "bytes", "flow-direction"] as const;
+const REQUIRED_FLOW_FIELDS = ["srcaddr", "dstaddr", "bytes", "flow-direction"] as const;
 
 const DOCS_URL = "https://docs.aws.amazon.com/vpc/latest/userguide/flow-log-records.html";
 
@@ -109,7 +109,7 @@ export function insightsAlias(field: string): string {
  * entirely wrong. That failure is silent, which is why this is generated from
  * the provider's own `LogFormat` rather than assumed.
  */
-export function buildParseClause(fields: string[]): string {
+function buildParseClause(fields: string[]): string {
   const pattern = fields.map(() => "*").join(" ");
   const names = fields.map(insightsAlias).join(", ");
   return `parse @message "${pattern}" as ${names}`;

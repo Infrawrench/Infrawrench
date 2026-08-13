@@ -123,7 +123,7 @@ export const TTS_LANGUAGES: SpeechPanelOption[] = [
  * type it is handed rather than blocking on this list, so a browser recording
  * gets a real attempt and a real error rather than a client-side refusal.
  */
-export const DOCUMENTED_AUDIO_MIME_TYPES = [
+const DOCUMENTED_AUDIO_MIME_TYPES = [
   "audio/wav",
   "audio/mp3",
   "audio/aiff",

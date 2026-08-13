@@ -1239,7 +1239,7 @@ let _cached: OpenAPIObject | null = null;
 let _cachedPublic: OpenAPIObject | null = null;
 
 /** The full spec, internal routes included. Used by `generate:openapi`. */
-export async function getOpenApiDocument(opts: BuildOptions = {}): Promise<OpenAPIObject> {
+async function getOpenApiDocument(opts: BuildOptions = {}): Promise<OpenAPIObject> {
   if (_cached) return _cached;
   _cached = await buildOpenApiDocument(opts);
   return _cached;

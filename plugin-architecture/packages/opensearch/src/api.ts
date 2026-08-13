@@ -3,9 +3,9 @@ import { HttpRequest } from "@smithy/protocol-http";
 import { SignatureV4 } from "@smithy/signature-v4";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 
-export type AuthMode = "basic" | "apiKey" | "awsSigv4";
+type AuthMode = "basic" | "apiKey" | "awsSigv4";
 
-export interface OpenSearchAuth {
+interface OpenSearchAuth {
   mode: AuthMode;
   username?: string;
   password?: string;

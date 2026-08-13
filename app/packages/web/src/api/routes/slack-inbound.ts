@@ -499,7 +499,7 @@ async function handleStatusCommand(members: LinkedMember[], query: string): Prom
 /* Slash-command dispatch                                                     */
 /* -------------------------------------------------------------------------- */
 
-export async function handleSlashCommand(args: {
+async function handleSlashCommand(args: {
   teamId: string;
   slackUserId: string;
   text: string;
@@ -587,7 +587,7 @@ async function resumeConversation(conversationId: string, auth: ToolAuthContext)
   }
 }
 
-export async function handleBlockAction(payload: SlackInteractionPayload): Promise<void> {
+async function handleBlockAction(payload: SlackInteractionPayload): Promise<void> {
   const teamId = payload.team?.id;
   const slackUserId = payload.user?.id;
   const responseUrl = payload.response_url;

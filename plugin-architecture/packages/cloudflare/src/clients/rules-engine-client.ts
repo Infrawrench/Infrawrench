@@ -13,7 +13,7 @@ import type { PhaseParam, RulesetCreateParams } from "cloudflare/resources/rules
  * per-action parameter shapes — the redirect status code, the edge-TTL mode,
  * the rate-limit characteristics — instead of being asserted into place.
  */
-export type CloudflareRuleBody = NonNullable<RulesetCreateParams["rules"]>[number];
+type CloudflareRuleBody = NonNullable<RulesetCreateParams["rules"]>[number];
 
 /**
  * Generic Cloudflare "Rules engine" client. The modern rules products

@@ -12,7 +12,7 @@
 
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 
-export interface TursoInvoiceRecord {
+interface TursoInvoiceRecord {
   invoice_number?: string;
   amount_due?: string;
   due_date?: string;

@@ -20,8 +20,8 @@ import { logAudit } from "./audit";
  * written to the audit trail.
  */
 
-export const CHANGE_FREEZE_OVERRIDE_HEADER = "x-change-freeze-override";
-export const CHANGE_FREEZE_ACTIVE_CODE = "change_freeze_active";
+const CHANGE_FREEZE_OVERRIDE_HEADER = "x-change-freeze-override";
+const CHANGE_FREEZE_ACTIVE_CODE = "change_freeze_active";
 
 export interface ChangeFreezeRow {
   id: string;

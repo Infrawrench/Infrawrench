@@ -32,10 +32,8 @@ import { logAudit } from "./audit";
  * missing something the org requires). Same protocol, different verdict.
  */
 
-export { TAG_POLICY_OVERRIDE_HEADER, TAG_POLICY_UNMET_CODE };
-
 /** JSON body of the 422 returned when the tag policy blocks a create. */
-export function tagPolicyBlockedPayload(policy: TagPolicy, violations: TagPolicyViolation[]) {
+function tagPolicyBlockedPayload(policy: TagPolicy, violations: TagPolicyViolation[]) {
   return {
     error:
       `Organization tag policy not met: ${describeTagViolations(violations)}. ` +

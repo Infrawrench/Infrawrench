@@ -502,5 +502,3 @@ export async function fetchHetznerCostData(
 
   return acc.toRows();
 }
-
-export type { HetznerRateCard };

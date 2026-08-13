@@ -23,7 +23,7 @@ function isNeonFunction(value: unknown): value is NeonFunction {
   return hasStringFields(value, FUNCTION_REQUIRED_FIELDS);
 }
 
-export function buildFunctionResource(
+function buildFunctionResource(
   accountId: string,
   ref: BranchRef,
   fn: NeonFunction,
@@ -83,7 +83,7 @@ export async function listAllFunctions(
   return results;
 }
 
-export function buildAiGatewayResource(
+function buildAiGatewayResource(
   accountId: string,
   ref: BranchRef,
   baseUrl: string,

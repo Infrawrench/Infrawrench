@@ -56,12 +56,6 @@ const responseCache = new Map<string, CacheEntry>();
  */
 const inFlight = new Set<string>();
 
-/** Test hook. */
-export function clearRightsizingCache(): void {
-  responseCache.clear();
-  inFlight.clear();
-}
-
 export async function listRightsizing(
   organizationId: string,
   { refresh = false }: { refresh?: boolean } = {},

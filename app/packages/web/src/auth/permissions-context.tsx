@@ -77,20 +77,3 @@ export function usePermissions(): PermissionsContextValue {
   }
   return ctx;
 }
-
-interface CanProps {
-  permission?: string;
-  any?: string[];
-  fallback?: ReactNode;
-  children: ReactNode;
-}
-
-/**
- * Conditionally render `children` only when the current user has the given
- * permission (or any of the listed `any` permissions).
- */
-export function Can({ permission, any, fallback = null, children }: CanProps) {
-  const { has, hasAny } = usePermissions();
-  const allowed = permission ? has(permission) : any ? hasAny(...any) : true;
-  return <>{allowed ? children : fallback}</>;
-}

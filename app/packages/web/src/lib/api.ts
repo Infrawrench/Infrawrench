@@ -13,12 +13,6 @@ import {
   PlanRequiredClientError,
 } from "@infrawrench/ui";
 
-// The transport-agnostic error classes moved to @infrawrench/client-core so
-// the shared settings sections can catch them regardless of host; re-exported
-// here so existing `@/lib/api` imports keep working.
-export { SeatLimitReachedClientError, PlanRequiredClientError };
-export type { SeatLimitPayload } from "@infrawrench/ui";
-
 const SIGN_IN_URL = "/api/auth/sign-in";
 
 /** True for the structured 403 that `auth/step-up.ts` returns. */

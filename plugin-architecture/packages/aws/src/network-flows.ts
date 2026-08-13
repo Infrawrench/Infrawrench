@@ -68,7 +68,7 @@ import {
  * `server-core/src/network-flow/pricing.ts` for why modelling either would be
  * worse than not modelling them.
  */
-export const AWS_NETWORK_FLOW_RATES: NetworkFlowCapabilityDeclaration["rates"] = {
+const AWS_NETWORK_FLOW_RATES: NetworkFlowCapabilityDeclaration["rates"] = {
   currency: "USD",
   asOf: "2026-08-11",
   perGb: {

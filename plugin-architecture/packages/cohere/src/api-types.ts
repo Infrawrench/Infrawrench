@@ -57,7 +57,7 @@ export interface CohereModel {
  * `audio` member despite `/v2/audio/transcriptions` existing — the speech
  * model is not discoverable through the endpoint filter.
  */
-export type CompatibleEndpoint =
+type CompatibleEndpoint =
   "chat" | "embed" | "classify" | "summarize" | "rerank" | "rate" | "generate";
 
 export interface ListModelsResponse {
@@ -73,7 +73,7 @@ export interface ListModelsResponse {
  * `validationStatus`) while its response fields are snake_case.
  * Row counts and byte sizes are per-part, not top-level.
  */
-export interface CohereDatasetPart {
+interface CohereDatasetPart {
   name?: string;
   url?: string;
   index?: number;
@@ -151,7 +151,7 @@ export interface CohereFinetunedModel {
 }
 
 /** All nine documented values. */
-export type FinetunedModelStatus =
+type FinetunedModelStatus =
   | "STATUS_UNSPECIFIED"
   | "STATUS_FINETUNING"
   | "STATUS_DEPLOYING_API"
@@ -170,7 +170,7 @@ export interface ListFinetunedModelsResponse {
 }
 
 /** `GET /v1/finetuning/finetuned-models/{id}/events` */
-export interface FinetunedModelEvent {
+interface FinetunedModelEvent {
   user_id?: string;
   status?: FinetunedModelStatus;
   created_at?: string;
@@ -187,7 +187,7 @@ export interface ListEventsResponse {
  * ⚠️ The path is `training-step-metrics`, not `metrics`, and the response key
  * is `step_metrics`.
  */
-export interface TrainingStepMetric {
+interface TrainingStepMetric {
   created_at?: string;
   step_number?: number;
   metrics?: Record<string, number>;
@@ -214,7 +214,7 @@ export interface CohereEmbedJob {
   meta?: ApiMeta;
 }
 
-export type EmbedJobStatus = "processing" | "complete" | "cancelling" | "cancelled" | "failed";
+type EmbedJobStatus = "processing" | "complete" | "cancelling" | "cancelled" | "failed";
 
 export interface ListEmbedJobsResponse {
   embed_jobs?: CohereEmbedJob[];
@@ -240,7 +240,7 @@ export interface CohereBatch {
   status_reason?: string;
 }
 
-export type BatchStatus =
+type BatchStatus =
   | "BATCH_STATUS_UNSPECIFIED"
   | "BATCH_STATUS_QUEUED"
   | "BATCH_STATUS_IN_PROGRESS"
@@ -254,7 +254,7 @@ export interface ListBatchesResponse {
   next_page_token?: string;
 }
 
-export interface ApiMeta {
+interface ApiMeta {
   api_version?: { version?: string; is_deprecated?: boolean; is_experimental?: boolean };
   billed_units?: Record<string, number>;
   tokens?: Record<string, number>;

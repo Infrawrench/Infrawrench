@@ -10,7 +10,7 @@ const description =
 
 const trimmedBody = body.trim();
 
-export interface HarnessSnippet {
+interface HarnessSnippet {
   /** Where the snippet goes — a file path, or a "run this" hint. */
   file: string;
   content: string;

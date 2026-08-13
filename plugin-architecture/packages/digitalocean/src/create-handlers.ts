@@ -37,7 +37,7 @@ import {
   containerRegistryCreateResource,
 } from "./create-handlers/container-registry.js";
 
-export type { DoCreateContext, DoCreateArgs } from "./create-handlers/shared.js";
+export type { DoCreateContext } from "./create-handlers/shared.js";
 export { estimateDoDatabaseMonthlyPrice } from "./create-handlers/database.js";
 
 const getConfigHandlers: GetConfigHandler[] = [

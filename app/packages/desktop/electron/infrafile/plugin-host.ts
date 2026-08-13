@@ -24,7 +24,7 @@ import { getSqlite } from "../db";
 import { buildAad, decryptValue, getEncryptionKey } from "../main-utils";
 
 /** Decrypt one account's credentials straight out of the local database. */
-export async function getAccountCredentials(accountId: string): Promise<Record<string, string>> {
+async function getAccountCredentials(accountId: string): Promise<Record<string, string>> {
   const db = await getSqlite();
   const stmt = db.prepare(
     "SELECT encrypted_credentials, credentials_iv FROM accounts WHERE id = ? LIMIT 1",

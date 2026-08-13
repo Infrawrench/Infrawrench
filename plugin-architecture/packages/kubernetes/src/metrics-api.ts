@@ -64,7 +64,7 @@ export interface ClusterUtilization {
   pods: Map<string, ResourcePair>;
 }
 
-export const NO_UTILIZATION: ClusterUtilization = {
+const NO_UTILIZATION: ClusterUtilization = {
   status: { available: false, reason: "not-installed" },
   nodes: new Map(),
   pods: new Map(),

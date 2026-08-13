@@ -18,7 +18,7 @@ interface CloudDashboardPin {
  * card's whole contents are DB-only server-side, so they arrive inline with the
  * dashboard.
  */
-export interface CloudDashboardWorkflowPin {
+interface CloudDashboardWorkflowPin {
   pinId: string;
   workflowId: string;
   gridX: number;

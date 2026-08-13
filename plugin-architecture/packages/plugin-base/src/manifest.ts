@@ -90,7 +90,7 @@ export interface DockerDriverDeclaration {
  * The host owns the kubeconfig parsing + auth (via @kubernetes/client-node);
  * the plugin issues typed operations via KubernetesHostServices.
  */
-export interface KubernetesDriverDeclaration {
+interface KubernetesDriverDeclaration {
   /** Identifier for the K8s driver — always "kubernetes". */
   driver: string;
   /** The key in the account credentials that holds the kubeconfig YAML. */

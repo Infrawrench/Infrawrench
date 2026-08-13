@@ -8,12 +8,12 @@
  * picks up bastion egress routing and a custom CA.
  */
 
-export interface MultipartTextPart {
+interface MultipartTextPart {
   name: string;
   value: string;
 }
 
-export interface MultipartFilePart {
+interface MultipartFilePart {
   name: string;
   filename: string;
   contentType: string;

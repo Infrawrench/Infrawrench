@@ -30,7 +30,7 @@ export function useBusinessMetrics() {
  * How many metrics get a card. The phone is a glance surface and each card is
  * its own round trip; the web panel is where a long list belongs.
  */
-export const MOBILE_UNIT_COST_METRIC_LIMIT = 4;
+const MOBILE_UNIT_COST_METRIC_LIMIT = 4;
 
 /**
  * One trailing-30-day unit-cost series per metric, in parallel.

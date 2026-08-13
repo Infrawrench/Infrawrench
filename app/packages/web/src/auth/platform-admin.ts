@@ -9,7 +9,7 @@ import { createMiddleware } from "hono/factory";
  * a comma-separated, case-insensitive list of user emails. Unset means
  * nobody — the admin surface is disabled entirely.
  */
-export function isPlatformAdmin(email: string): boolean {
+function isPlatformAdmin(email: string): boolean {
   const raw = process.env["INFRAWRENCH_PLATFORM_ADMIN_EMAILS"];
   if (!raw) return false;
   return raw

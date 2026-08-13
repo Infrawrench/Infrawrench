@@ -189,7 +189,7 @@ export interface CostModelInput {
 }
 
 /** How a figure was arrived at. Never hide this from the user. */
-export type AllocationBasis = "usage-or-requests" | "requests";
+type AllocationBasis = "usage-or-requests" | "requests";
 
 export interface Efficiency {
   /** used / requested, 0..n. `null` when there is nothing to divide by. */
@@ -243,7 +243,7 @@ export interface PodAllocation {
  * `resources.requests` edit, a disk is a `kubectl delete pvc`, and a load
  * balancer is an ingress consolidation.
  */
-export interface CostBreakdown {
+interface CostBreakdown {
   /** Share of node price — the pods' allocation. */
   computeHourlyCost: number | null;
   computeDailyCost: number | null;
@@ -297,7 +297,7 @@ export interface NamespaceAllocation extends CostBreakdown {
 }
 
 /** One PersistentVolumeClaim, priced and attributed. */
-export interface VolumeAllocation {
+interface VolumeAllocation {
   name: string;
   namespace: string;
   storageClass: string;
@@ -332,7 +332,7 @@ export interface VolumeAllocation {
 }
 
 /** One `LoadBalancer` Service, priced and attributed. */
-export interface LoadBalancerAllocation {
+interface LoadBalancerAllocation {
   name: string;
   namespace: string;
   address: string;
@@ -345,7 +345,7 @@ export interface LoadBalancerAllocation {
   dailyCost: number | null;
 }
 
-export interface StorageTotals {
+interface StorageTotals {
   volumes: VolumeAllocation[];
   /** Every claim, including unbound ones. */
   count: number;
@@ -367,7 +367,7 @@ export interface StorageTotals {
   unpricedClasses: string[];
 }
 
-export interface LoadBalancerTotals {
+interface LoadBalancerTotals {
   loadBalancers: LoadBalancerAllocation[];
   count: number;
   /** Provisioned (has an address) — the ones that can be billing. */
@@ -378,7 +378,7 @@ export interface LoadBalancerTotals {
   anyUnpriced: boolean;
 }
 
-export interface NodeAllocation {
+interface NodeAllocation {
   name: string;
   instanceType: string;
   zone: string;

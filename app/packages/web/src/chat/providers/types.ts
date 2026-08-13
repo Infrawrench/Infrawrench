@@ -28,7 +28,7 @@ export interface ProviderTool {
 }
 
 /** Token counts for one turn, normalized across providers. */
-export interface ProviderUsage {
+interface ProviderUsage {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;

@@ -94,7 +94,7 @@ export class CostScenarioLimitError extends Error {
  * `costScenarioModelInputError`, which the editors run too, so a form refuses
  * exactly what the API refuses and in the same words.
  */
-export function normalizeCostScenarioInput(input: CostScenarioModelInput): {
+function normalizeCostScenarioInput(input: CostScenarioModelInput): {
   name: string;
   description: string | null;
   currency: string;

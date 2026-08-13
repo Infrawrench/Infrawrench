@@ -53,7 +53,7 @@ export const PAUSED_METHODS: ReadonlySet<string> = new Set([
   "ai",
 ]);
 
-export interface IsolateEnvValues {
+interface IsolateEnvValues {
   /** JSON `WorkflowPluginInfo[]` — the read-only accounts tree. */
   accountsTree: string;
   /** JSON `Record<string, MetricValue>` snapshot the prelude proxies. */

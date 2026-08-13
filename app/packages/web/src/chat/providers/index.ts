@@ -6,13 +6,7 @@ import { anthropicProvider } from "./anthropic";
 import { geminiProvider } from "./gemini";
 import type { ChatProvider } from "./types";
 
-export type {
-  ChatProvider,
-  ProviderEvent,
-  ProviderTool,
-  ProviderUsage,
-  TurnRequest,
-} from "./types";
+export type { ChatProvider, ProviderTool } from "./types";
 
 export function providerForModel(model: string): ChatProvider {
   if (model.startsWith("gemini-")) return geminiProvider;

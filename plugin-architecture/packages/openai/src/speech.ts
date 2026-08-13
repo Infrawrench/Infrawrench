@@ -32,15 +32,10 @@ export const DEFAULT_TTS_MODEL = "gpt-4o-mini-tts-2025-12-15";
 export const DEFAULT_STT_MODEL = "gpt-4o-transcribe";
 
 /** Models `POST /v1/audio/speech` accepts, per `CreateSpeechRequest.model`. */
-export const TTS_MODELS = new Set([
-  "gpt-4o-mini-tts-2025-12-15",
-  "gpt-4o-mini-tts",
-  "tts-1",
-  "tts-1-hd",
-]);
+const TTS_MODELS = new Set(["gpt-4o-mini-tts-2025-12-15", "gpt-4o-mini-tts", "tts-1", "tts-1-hd"]);
 
 /** Models `POST /v1/audio/transcriptions` accepts, per `CreateTranscriptionRequest.model`. */
-export const STT_MODELS = new Set([
+const STT_MODELS = new Set([
   "gpt-4o-transcribe",
   "gpt-4o-mini-transcribe",
   "gpt-4o-mini-transcribe-2025-12-15",

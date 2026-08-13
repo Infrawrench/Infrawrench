@@ -1,17 +1,13 @@
 import type { StatusPage, StatusPageCreate, StatusPagePatch } from "@infrawrench/client-core";
 
 export type {
-  PublicStatusComponent,
   PublicStatusPage,
-  StatusComponentState,
-  StatusHistoryDay,
   StatusPage,
   StatusPageComponent,
   StatusPageComponentInput,
   StatusPageCreate,
   StatusPageListResponse,
   StatusPagePatch,
-  StatusPageState,
 } from "@infrawrench/client-core";
 
 /**

@@ -54,7 +54,7 @@ export interface ListModelsResponse {
 // -----------------------------------------------------------------------------
 
 /** `STATE_UNSPECIFIED | CREATING | ACTIVE | FAILED` — only four, no DELETING. */
-export type TunedModelState = "STATE_UNSPECIFIED" | "CREATING" | "ACTIVE" | "FAILED";
+type TunedModelState = "STATE_UNSPECIFIED" | "CREATING" | "ACTIVE" | "FAILED";
 
 export interface TunedModel {
   name?: string;
@@ -92,8 +92,8 @@ export interface ListTunedModelsResponse {
 // Files — https://ai.google.dev/api/files
 // -----------------------------------------------------------------------------
 
-export type FileState = "STATE_UNSPECIFIED" | "PROCESSING" | "ACTIVE" | "FAILED";
-export type FileSource = "SOURCE_UNSPECIFIED" | "UPLOADED" | "GENERATED" | "REGISTERED";
+type FileState = "STATE_UNSPECIFIED" | "PROCESSING" | "ACTIVE" | "FAILED";
+type FileSource = "SOURCE_UNSPECIFIED" | "UPLOADED" | "GENERATED" | "REGISTERED";
 
 export interface GeminiFile {
   name?: string;
@@ -167,7 +167,7 @@ export interface ListOperationsResponse {
 }
 
 /** The full documented `BatchState` enum. */
-export type BatchState =
+type BatchState =
   | "BATCH_STATE_UNSPECIFIED"
   | "BATCH_STATE_PENDING"
   | "BATCH_STATE_RUNNING"
@@ -176,7 +176,7 @@ export type BatchState =
   | "BATCH_STATE_CANCELLED"
   | "BATCH_STATE_EXPIRED";
 
-export interface GenerateContentBatch {
+interface GenerateContentBatch {
   name?: string;
   displayName?: string;
   model?: string;
@@ -224,7 +224,7 @@ export interface ListFileSearchStoresResponse {
  * ⚠️ Documents use a different state-enum prefix from Files:
  * `STATE_PENDING` / `STATE_ACTIVE` / `STATE_FAILED`.
  */
-export type DocumentState = "STATE_UNSPECIFIED" | "STATE_PENDING" | "STATE_ACTIVE" | "STATE_FAILED";
+type DocumentState = "STATE_UNSPECIFIED" | "STATE_PENDING" | "STATE_ACTIVE" | "STATE_FAILED";
 
 export interface FileSearchDocument {
   name?: string;
@@ -278,7 +278,7 @@ export interface InteractionRequest {
  * and `channels` at runtime and wraps the bytes in a WAV header itself when
  * the payload has no container.
  */
-export interface AudioContent {
+interface AudioContent {
   data?: string;
   mime_type?: string;
   sample_rate?: number;
@@ -333,7 +333,7 @@ export interface GenerateContentResponse {
 // -----------------------------------------------------------------------------
 
 /** `google.rpc.Status`. */
-export interface RpcStatus {
+interface RpcStatus {
   code?: number;
   message?: string;
   details?: unknown[];

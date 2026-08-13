@@ -31,7 +31,7 @@ export interface GcpQuota {
   owner?: string;
 }
 
-export interface GcpRegion {
+interface GcpRegion {
   name?: string;
   status?: string;
   quotas?: GcpQuota[];

@@ -29,7 +29,7 @@ import { resolveSshConfig, sshExecCapture } from "./ssh";
 import { HostKeyTrustRequiredError } from "./ssh-host-keys";
 import { resolveSafeHost } from "./host-validation";
 
-export const FANOUT_MAX_CONCURRENCY = 16;
+const FANOUT_MAX_CONCURRENCY = 16;
 
 export interface FanoutTargetSummary {
   kind: "account" | "resource";
@@ -49,7 +49,7 @@ export interface FanoutTargetSummary {
   tags: string[];
 }
 
-export interface FanoutTargetRef {
+interface FanoutTargetRef {
   kind: "account" | "resource";
   id: string;
 }

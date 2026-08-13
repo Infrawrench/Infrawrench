@@ -9,11 +9,6 @@ import type { TokenPair } from "@infrawrench/client-core" with { "resolution-mod
 import { getDb, getEncryptionKey, encryptValue, decryptValue } from "./main-utils";
 import { CLIENT_ID, CLOUD_URL, WORKOS_API_URL } from "../env";
 
-// The same pair client-core's platform-neutral TokenManager persists — this
-// store predates that port (client-core's header says so); the shape now has
-// one home there.
-export type { TokenPair };
-
 let currentTokens: TokenPair | null = null;
 let refreshInFlight: Promise<boolean> | null = null;
 let proactiveRefreshTimer: NodeJS.Timeout | null = null;
@@ -171,7 +166,7 @@ export async function exchangeAuthorizationCode(
 
 // WorkOS rotates refresh tokens on each use, so concurrent refreshes race and
 // all but one get invalid_grant. Singleflight gates them.
-export async function refreshAccessToken(): Promise<boolean> {
+async function refreshAccessToken(): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight;
   refreshInFlight = doRefresh().finally(() => {
     refreshInFlight = null;

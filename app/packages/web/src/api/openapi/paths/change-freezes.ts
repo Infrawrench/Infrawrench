@@ -37,7 +37,7 @@ const ChangeFreezeStatus = strict({
  * `freezes:override` may retry with the `x-change-freeze-override: true`
  * header; the override is audit-logged.
  */
-export const ChangeFreezeBlocked = strict({
+const ChangeFreezeBlocked = strict({
   error: z.string(),
   code: z.literal("change_freeze_active"),
   freeze: strict({

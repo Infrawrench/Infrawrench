@@ -33,7 +33,7 @@
 import { QuotaAccessError, type QuotaUsage } from "@infrawrench/plugin-base";
 
 /** The subset of `GET /v2/account` this module decodes. */
-export interface DoAccountResponse {
+interface DoAccountResponse {
   account?: {
     droplet_limit?: number;
     /** Reserved IPs, under the pre-rename field name. See the module header. */
@@ -44,7 +44,7 @@ export interface DoAccountResponse {
 }
 
 /** The `meta` envelope every DO list endpoint carries. */
-export interface DoListMeta {
+interface DoListMeta {
   meta?: { total?: number };
 }
 

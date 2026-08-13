@@ -11,7 +11,7 @@ import type { Permission } from "@infrawrench/server-core/permissions/catalog";
  * - `destructive`  deletions, manifest applies, exec, write SQL, add/destroy
  *                  secret versions, credential exports — always confirm in UI.
  */
-export type ToolRisk = "read" | "write" | "destructive";
+type ToolRisk = "read" | "write" | "destructive";
 
 export interface ToolAuthContext {
   userId: string;

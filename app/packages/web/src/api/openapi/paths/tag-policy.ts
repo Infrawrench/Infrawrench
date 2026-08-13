@@ -39,7 +39,7 @@ const TagPolicyViolation = strict({
  * `tag-policy:override` may retry with `x-tag-policy-override: true`; both
  * blocks and overrides are audit-logged.
  */
-export const TagPolicyBlocked = strict({
+const TagPolicyBlocked = strict({
   error: z.string(),
   code: z.literal("tag_policy_unmet"),
   violations: z.array(TagPolicyViolation),

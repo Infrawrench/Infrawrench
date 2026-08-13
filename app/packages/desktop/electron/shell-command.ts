@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export const SHELL_COMMAND_NAME = "infrawrench";
+const SHELL_COMMAND_NAME = "infrawrench";
 
 export interface ShellCommandStatus {
   installed: boolean;
@@ -43,17 +43,6 @@ function candidateDirsPosix(): string[] {
 
 function windowsBinDir(): string {
   return path.join(app.getPath("userData"), "bin");
-}
-
-export function shellCommandTargetPath(): string {
-  if (process.platform === "win32") {
-    return path.join(windowsBinDir(), `${SHELL_COMMAND_NAME}.cmd`);
-  }
-  for (const dir of candidateDirsPosix()) {
-    const p = path.join(dir, SHELL_COMMAND_NAME);
-    if (fs.existsSync(p)) return p;
-  }
-  return path.join(candidateDirsPosix()[0]!, SHELL_COMMAND_NAME);
 }
 
 export function getShellCommandStatus(): ShellCommandStatus {

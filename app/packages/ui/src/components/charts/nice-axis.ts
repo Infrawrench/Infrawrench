@@ -8,7 +8,7 @@
  * No React, no recharts imports — unit-test target.
  */
 
-export { niceAxis, type AxisScale } from "@infrawrench/client-core";
+export { niceAxis } from "@infrawrench/client-core";
 
 export interface RowsExtentOptions {
   /** Keys drawn as one stack — their positive and negative parts sum per row. */

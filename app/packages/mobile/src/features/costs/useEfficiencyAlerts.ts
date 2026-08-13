@@ -3,7 +3,7 @@ import { listEfficiencyAlertEvents } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 
 /** How many recent efficiency-alert firings the mobile section shows. */
-export const EFFICIENCY_ALERTS_SHOWN = 20;
+const EFFICIENCY_ALERTS_SHOWN = 20;
 
 /**
  * The three efficiency alerts — commitment expiry, idle commitments, unit-cost

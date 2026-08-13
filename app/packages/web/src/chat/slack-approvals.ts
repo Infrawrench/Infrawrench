@@ -33,7 +33,7 @@ const INPUT_SUMMARY_MAX_FIELDS = 8;
  * audience than the conversation owner. The full input stays where it always
  * was: the authenticated in-app approval view.
  */
-export function summarizeToolInput(toolInput: unknown): string {
+function summarizeToolInput(toolInput: unknown): string {
   if (toolInput === null || toolInput === undefined) return "no input";
   if (Array.isArray(toolInput)) {
     return `a list of ${toolInput.length} item${toolInput.length === 1 ? "" : "s"}`;
@@ -49,10 +49,7 @@ export function summarizeToolInput(toolInput: unknown): string {
 }
 
 /** The request's headline/body, shared by the initial post and the update. */
-export function chatApprovalText(
-  toolName: string,
-  toolInput: unknown,
-): { title: string; body: string } {
+function chatApprovalText(toolName: string, toolInput: unknown): { title: string; body: string } {
   return {
     title: `Approval needed: ${toolName}`,
     body:

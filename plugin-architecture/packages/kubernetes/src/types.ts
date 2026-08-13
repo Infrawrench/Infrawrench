@@ -1,4 +1,4 @@
-export interface K8sOwnerReference {
+interface K8sOwnerReference {
   apiVersion?: string;
   kind?: string;
   name?: string;
@@ -6,7 +6,7 @@ export interface K8sOwnerReference {
   controller?: boolean;
 }
 
-export interface K8sMeta {
+interface K8sMeta {
   name: string;
   namespace?: string;
   uid: string;
@@ -43,7 +43,7 @@ export interface K8sNode {
 }
 
 /** A container's `resources` block. Values are Kubernetes quantity strings. */
-export interface K8sResourceRequirements {
+interface K8sResourceRequirements {
   requests?: Record<string, string>;
   limits?: Record<string, string>;
 }

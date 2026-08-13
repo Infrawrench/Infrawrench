@@ -232,7 +232,7 @@ function cappedRates(
 }
 
 /** Parse a `/pricing` body into the typed, decimal-safe rate card. */
-export function parseRateCard(body: RawPricingResponse): HetznerRateCard {
+function parseRateCard(body: RawPricingResponse): HetznerRateCard {
   const pricing = body?.pricing;
   if (!pricing) throw new Error("Hetzner pricing: /pricing returned no pricing object");
 
@@ -287,12 +287,12 @@ export function parseRateCard(body: RawPricingResponse): HetznerRateCard {
 }
 
 /** The one capability {@link fetchRateCard} needs from the caller. */
-export interface PricingFetcher {
+interface PricingFetcher {
   fetch<T>(path: string): Promise<T>;
 }
 
 /** Fetch and parse the rate card. Uses the project token already held. */
-export async function fetchRateCard(fetcher: PricingFetcher): Promise<HetznerRateCard> {
+async function fetchRateCard(fetcher: PricingFetcher): Promise<HetznerRateCard> {
   return parseRateCard(await fetcher.fetch<RawPricingResponse>("/pricing"));
 }
 

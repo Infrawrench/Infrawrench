@@ -12,16 +12,6 @@ import { TickLoop } from "@infrawrench/server-core/tick-loop";
 
 const TICK_MS = 30_000;
 
-/** The subset of `runDeployment`'s options a deploy-on-push run needs. */
-export interface DeploymentRunRequest {
-  organizationId: string;
-  repo: string;
-  branch: string;
-  env: string;
-  answers: Record<string, string>;
-  interactive: boolean;
-}
-
 /** The git-trigger fields the watcher reads from a workflow's `trigger` jsonb. */
 interface GitTrigger {
   kind?: string;

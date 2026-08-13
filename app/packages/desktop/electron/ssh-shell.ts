@@ -14,7 +14,7 @@ import {
 } from "./ssh-host-keys";
 
 /** A single hop in a jumpbox chain. */
-export interface SshShellJumpHop {
+interface SshShellJumpHop {
   host: string;
   port: number;
   username: string;

@@ -61,12 +61,11 @@ const CurrencyConfig = strict({
 }).openapi("CurrencyConfig");
 
 /**
- * The conversion report every converted cost payload carries. Exported so the
- * cost-query and showback path files can attach it to their own responses —
- * a converted number that does not say it was converted is the one outcome
- * this whole surface exists to prevent.
+ * The conversion report every converted cost payload carries — a converted
+ * number that does not say it was converted is the one outcome this whole
+ * surface exists to prevent.
  */
-export const CostConversion = strict({
+const CostConversion = strict({
   displayCurrency: CurrencyCode,
   converted: z.array(
     strict({

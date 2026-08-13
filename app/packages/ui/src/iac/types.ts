@@ -12,8 +12,6 @@ export type {
   IacImportPlanResponse,
   IacReconciliationEntry,
   IacReconciliationResponse,
-  IacResourceStatus,
-  IacStateOnlyResource,
   IacStateSummary,
 } from "@infrawrench/client-core";
 

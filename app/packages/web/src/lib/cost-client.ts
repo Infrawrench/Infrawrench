@@ -59,7 +59,7 @@ import { apiDelete, apiGet, apiPost, apiPut } from "./api";
  * keeping one definition means a change to the query endpoint cannot reach one
  * surface and miss the other.
  */
-export function createWebCostApi(orgId: string): CostApi {
+function createWebCostApi(orgId: string): CostApi {
   return {
     queryCosts: (req: CostQueryRequest) =>
       apiPost<CostQueryResponse>(`/api/org/${orgId}/costs/query`, req),

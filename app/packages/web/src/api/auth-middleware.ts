@@ -36,7 +36,7 @@ export interface AuthSession {
  * effective set, and a handler that reached into `scopes` here would be reading
  * the un-intersected ceiling rather than what the key may actually do.
  */
-export interface ApiKeyPrincipal {
+interface ApiKeyPrincipal {
   /** `api_keys.id`. Recorded on every audit row the request writes. */
   id: string;
   /** The key's stored scopes, before intersection with the owner's role. */

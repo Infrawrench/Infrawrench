@@ -33,7 +33,7 @@ interface AccountRow {
 }
 
 /** Thrown for an account id that isn't in this workspace (or was deleted). */
-export class LocalAccountNotFoundError extends Error {
+class LocalAccountNotFoundError extends Error {
   constructor(accountId: string) {
     super(`No account ${accountId} in this workspace.`);
     this.name = "LocalAccountNotFoundError";
