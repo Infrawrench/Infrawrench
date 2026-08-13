@@ -36,6 +36,13 @@ vi.mock("@infrawrench/server-core/db/schema", () => ({
     attemptCount: "attemptCount",
     lastSentWeekStart: "lastSentWeekStart",
   },
+  // The expiry/quota/posture radars build their dailyWindowStore at module
+  // scope (`table:` in each store config), so their settings tables — and the
+  // engine's own `accounts` import — have to exist on the mock too.
+  orgExpirySettings: { organizationId: "organizationId" },
+  orgQuotaSettings: { organizationId: "organizationId" },
+  orgPostureSettings: { organizationId: "organizationId" },
+  accounts: { id: "id", organizationId: "organizationId" },
 }));
 
 // Partial: the ClickHouse schema is built with `sql` at module load, so a
