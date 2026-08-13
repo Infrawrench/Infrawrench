@@ -16,6 +16,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { costExports } from "../db/schema";
+import type { CostExportDestination, CostExportQuery } from "@infrawrench/client-core";
 import { runCostExport } from "./run";
 import type { CostExportRecord } from "./store";
 
@@ -67,14 +68,14 @@ export async function claimDueCostExports(limit: number): Promise<CostExportReco
     organizationId: String(r["organization_id"]),
     name: String(r["name"]),
     format: String(r["format"]),
-    query: r["query"] as Record<string, unknown>,
+    query: r["query"] as CostExportQuery,
     cadence: String(r["cadence"]),
     hour: Number(r["hour"]),
     timezone: String(r["timezone"]),
     restatementDays: Number(r["restatement_days"]),
     enabled: r["enabled"] === true,
     destinationKind: String(r["destination_kind"]),
-    destination: r["destination"] as Record<string, unknown>,
+    destination: r["destination"] as CostExportDestination,
     encryptedCredentials: (r["encrypted_credentials"] as string | null) ?? null,
     credentialsIv: (r["credentials_iv"] as string | null) ?? null,
     credentialHint: (r["credential_hint"] as string | null) ?? null,

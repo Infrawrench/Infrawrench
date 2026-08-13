@@ -35,7 +35,6 @@
 import type {
   CostExportDestination,
   CostExportObject,
-  CostExportQuery,
   CostExportRunResult,
 } from "@infrawrench/client-core";
 import { getCostCoverage } from "../clickhouse/cost-readers";
@@ -213,8 +212,8 @@ export async function runCostExport(
   const retryDelays = opts.persistRetryDelaysMs ?? PERSIST_RETRY_DELAYS_MS;
   const cadence = row.cadence as CostExportCadence;
   const format = row.format === "ndjson" ? "ndjson" : "csv";
-  const query = row.query as unknown as CostExportQuery;
-  const destination = row.destination as unknown as CostExportDestination;
+  const query = row.query;
+  const destination = row.destination;
   const guarded = !toleratesRedelivery(destination);
 
   // Rescheduled from the wall clock at the end of the run, not from `now`: a

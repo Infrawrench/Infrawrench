@@ -19,6 +19,8 @@ import type {
   AlertDestination,
   BillingRuleAdjustment,
   BillingRuleMatch,
+  CostExportDestination,
+  CostExportQuery,
   EscalationPolicy,
   QuietHours,
 } from "@infrawrench/client-core";
@@ -3890,7 +3892,7 @@ export const costExports = pgTable(
      * inventing an export-only filter language is what keeps "filtered to
      * account X" meaning one thing across the product.
      */
-    query: jsonb("query").$type<Record<string, unknown>>().notNull(),
+    query: jsonb("query").$type<CostExportQuery>().notNull(),
     /**
      * `daily` | `weekly` | `monthly`. Doubles as the *period* definition — a
      * run writes one object per calendar day, ISO week, or calendar month.
@@ -3918,7 +3920,7 @@ export const costExports = pgTable(
      * URL hint). Everything here is shown back to the user; anything secret
      * lives in {@link encryptedCredentials}.
      */
-    destination: jsonb("destination").$type<Record<string, unknown>>().notNull(),
+    destination: jsonb("destination").$type<CostExportDestination>().notNull(),
     /**
      * AES-256-GCM encrypted JSON credential bundle — `{accessKeyId, secretAccessKey}`
      * for S3, `{url}` for HTTP (a pre-signed URL carries its own signature, so
