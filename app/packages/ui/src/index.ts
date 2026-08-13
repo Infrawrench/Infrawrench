@@ -233,6 +233,7 @@ export { FirestoreDocumentBrowser } from "./components/FirestoreDocumentBrowser.
 export type { FirestoreDocumentBrowserProps } from "./components/FirestoreDocumentBrowser.js";
 export { PromptNoSqlCommandModal } from "./components/PromptNoSqlCommandModal.js";
 export type { PromptNoSqlCommandModalProps } from "./components/PromptNoSqlCommandModal.js";
+export { DashboardAddMenu } from "./components/DashboardAddMenu.js";
 
 export { DetailView } from "./components/detail/DetailView.js";
 export { AssociationPicker } from "./components/detail/AssociationPicker.js";
