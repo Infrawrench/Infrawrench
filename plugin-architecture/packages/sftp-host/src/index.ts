@@ -68,7 +68,9 @@ export function withSftp<T>(
           });
       });
     });
-    client.once("error", (err) => reject(new Error(`SSH error: ${err.message}`)));
+    // Keep the ssh2 error as `cause`: its `level`/`code` distinguish an auth
+    // failure from an unreachable host, which the message alone does not.
+    client.once("error", (err) => reject(new Error(`SSH error: ${err.message}`, { cause: err })));
     client.connect(buildConnectConfig(config, options));
   });
 }

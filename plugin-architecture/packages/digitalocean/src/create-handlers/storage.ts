@@ -242,6 +242,7 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
           throw new Error(
             `DigitalOcean plugin: couldn't auto-generate Spaces access keys via POST /spaces/keys (${message}). ` +
               "Make sure the API token has the spaces_keys:create scope, or generate a key manually in the DO console (API > Spaces Keys) and edit this account.",
+            { cause: err },
           );
         });
       const minted = mintResp.key;
@@ -341,7 +342,17 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
             grants: [{ bucket: "", permission: "fullaccess" }],
           }),
         })
-        .catch(() => null);
+        .catch((err: unknown) => {
+          // The put already failed with a 403; if the recovery mint fails too,
+          // say why (usually a token without spaces_keys:create) instead of
+          // falling through to the bare 403.
+          const message = err instanceof Error ? err.message : String(err);
+          throw new Error(
+            `Spaces S3 API error 403 creating bucket "${bucketName}", and re-minting access keys via POST /spaces/keys failed (${message}). ` +
+              "Make sure the API token has the spaces_keys:create scope, or generate a key manually in the DO console (API > Spaces Keys) and edit this account.",
+            { cause: err },
+          );
+        });
       const replacement = mintResp?.key;
       if (replacement?.access_key && replacement?.secret_key) {
         accessKeyId = replacement.access_key;
