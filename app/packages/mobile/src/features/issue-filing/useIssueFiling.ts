@@ -44,7 +44,7 @@ export function useLinearIntegration() {
 }
 
 /** Every filed Linear link in the org, indexed for per-row lookup. */
-export function useLinearLinks() {
+function useLinearLinks() {
   const { api, orgId } = useOrgApi();
   const { has } = useOrgPermissions();
   const canRead = has("linear:read");
@@ -90,7 +90,7 @@ export function useFileLinearIssue() {
  * `linear:write`. Both halves matter — a button that opens a sheet which can
  * only 403 is worse than no button.
  */
-export function useCanFileLinear(): boolean {
+function useCanFileLinear(): boolean {
   const { has } = useOrgPermissions();
   const integration = useLinearIntegration();
   return has("linear:write") && Boolean(integration.data);
