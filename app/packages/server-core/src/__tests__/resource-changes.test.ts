@@ -6,7 +6,7 @@ vi.mock("../db/client", () => ({ db: {} }));
 vi.mock("../db/schema", () => ({ resourceChanges: {} }));
 
 import { computeResourceChangeEvents, diffResourceRecords } from "../resource-changes";
-import type { PriorResourceSnapshot } from "../resource-changes";
+import type { FetchedResourceSnapshot, PriorResourceSnapshot } from "../resource-changes";
 
 function prior(over: Partial<PriorResourceSnapshot> = {}): PriorResourceSnapshot {
   return {
@@ -21,18 +21,16 @@ function prior(over: Partial<PriorResourceSnapshot> = {}): PriorResourceSnapshot
   };
 }
 
-function fetched(over: Partial<Record<string, unknown>> = {}) {
+function fetched(over: Partial<FetchedResourceSnapshot> = {}): FetchedResourceSnapshot {
   return {
     id: "aws:acc-1:i-1",
     pluginId: "aws",
     resourceTypeId: "vm",
-    accountId: "acc-1",
     displayName: "web-1",
     fields: { status: "running", size: "t3.micro" },
     resolvedOutputs: { ip: "1.2.3.4" },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ...over,
-  } as any;
+  };
 }
 
 describe("diffResourceRecords", () => {

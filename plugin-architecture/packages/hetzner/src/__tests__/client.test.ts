@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
+import type { HttpHostServices, ResourceInstance } from "@infrawrench/plugin-base";
 import { HetznerClient } from "../client.js";
 import { plugin } from "../plugin.js";
 
@@ -530,11 +531,11 @@ describe("getCreateConfig", () => {
     const keys = cfg.fields.map((f) => f.key);
     expect(keys).toContain("serverType");
     expect(keys).toContain("image");
-    const sizeField = cfg.fields.find((f) => f.key === "serverType") as any;
-    expect(sizeField.sizes.map((s: any) => s.id)).toEqual(["cx22", "cax11", "weird"]);
-    expect(sizeField.sizes.find((s: any) => s.id === "cx22").priceMonthly).toBeCloseTo(3.57);
-    const imageField = cfg.fields.find((f) => f.key === "image") as any;
-    expect(imageField.images.find((i: any) => i.id === "2").label).toBe("Debian");
+    const sizeField = cfg.fields.find((f) => f.key === "serverType")!;
+    expect(sizeField.sizes!.map((s) => s.id)).toEqual(["cx22", "cax11", "weird"]);
+    expect(sizeField.sizes!.find((s) => s.id === "cx22")!.priceMonthly).toBeCloseTo(3.57);
+    const imageField = cfg.fields.find((f) => f.key === "image")!;
+    expect(imageField.images!.find((i) => i.id === "2")!.label).toBe("Debian");
     expect(imageField.defaultValue).toBe("ubuntu-24.04");
   });
 
@@ -564,7 +565,7 @@ describe("getCreateConfig", () => {
     const c = makeClient();
     const cfg = await c.getCreateConfig("placement-group");
     expect(cfg.fields.map((f) => f.key)).toEqual(["name", "type"]);
-    const typeField = cfg.fields.find((f) => f.key === "type") as any;
+    const typeField = cfg.fields.find((f) => f.key === "type")!;
     expect(typeField.defaultValue).toBe("spread");
   });
 
@@ -1241,7 +1242,7 @@ describe("fetchMetricSeries", () => {
 });
 
 describe("renderDetail / renderSidebarItem", () => {
-  const server = {
+  const server: ResourceInstance = {
     id: `${ACCOUNT}:server:1`,
     pluginId: "hetzner",
     resourceTypeId: "server",
@@ -1253,7 +1254,7 @@ describe("renderDetail / renderSidebarItem", () => {
     externalId: "1",
     createdAt: "x",
     updatedAt: "x",
-  } as any;
+  };
 
   it("renderDetail for server uses status dot", () => {
     const c = makeClient();
@@ -1468,13 +1469,17 @@ describe("getCreateSizePricing (per-location server type prices)", () => {
 
 describe("caCert routing via host http service", () => {
   it("uses services.http.request when caCert provided", async () => {
-    const request = vi.fn(async () => ({ status: 200, body: JSON.stringify({ servers: [] }) }));
+    const request = vi.fn<HttpHostServices["request"]>(async () => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ servers: [] }),
+    }));
     const c = new HetznerClient({ apiToken: "tok", caCert: "PEM" }, resourceTypes, {
       http: { request },
-    } as any);
+    });
     await c.listResources("server", ACCOUNT);
     expect(request).toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
-    expect((request.mock.calls as unknown as [unknown[]])[0]![0]).toMatchObject({ caCert: "PEM" });
+    expect(request.mock.calls[0]![0]).toMatchObject({ caCert: "PEM" });
   });
 });

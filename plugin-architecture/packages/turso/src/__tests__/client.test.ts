@@ -14,11 +14,12 @@ const api = {
   },
 };
 
-const createClient = vi.fn(() => api);
+type CreateClientArgs = Parameters<(typeof import("@tursodatabase/api"))["createClient"]>;
+
+const createClient = vi.fn((..._args: CreateClientArgs) => api);
 
 vi.mock("@tursodatabase/api", () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  createClient: (...args: any[]) => createClient(...(args as [])),
+  createClient: (...args: CreateClientArgs) => createClient(...args),
 }));
 
 import { TursoClient } from "../client.js";

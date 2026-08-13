@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AlertEvent } from "../alerts/route";
 import { alertReachedImpl, routed } from "./helpers/route-alert";
 
 /**
@@ -88,9 +89,9 @@ const db = {
 };
 vi.mock("../db/client", () => ({ db }));
 
-const routeAlert = vi.fn(async (..._args: unknown[]) => routed());
+const routeAlert = vi.fn(async (_event: AlertEvent) => routed());
 vi.mock("../alerts/route", () => ({
-  routeAlert: (...a: unknown[]) => routeAlert(...a),
+  routeAlert: (event: AlertEvent) => routeAlert(event),
   alertReached: alertReachedImpl,
 }));
 
@@ -143,7 +144,7 @@ function holding(over: Record<string, unknown> = {}) {
 }
 
 function triggersRouted(): string[] {
-  return routeAlert.mock.calls.map((call) => (call[0] as { trigger: string }).trigger);
+  return routeAlert.mock.calls.map((call) => call[0].trigger);
 }
 
 beforeEach(async () => {
@@ -191,10 +192,10 @@ describe("evaluateCommitmentAlertsForOrg — routing", () => {
   it("carries the deep-link payload and the routable facts", async () => {
     await evaluate("org1", NOW, true);
     const expiry = routeAlert.mock.calls
-      .map((c) => c[0] as Record<string, any>)
-      .find((e) => e["trigger"] === "commitmentExpiryAlerts")!;
+      .map((c) => c[0])
+      .find((e) => e.trigger === "commitmentExpiryAlerts")!;
 
-    expect(expiry["pushData"]).toMatchObject({
+    expect(expiry.pushData).toMatchObject({
       type: "commitment_expiry",
       orgId: "org1",
       accountId: "acct1",
@@ -202,20 +203,20 @@ describe("evaluateCommitmentAlertsForOrg — routing", () => {
       horizonDays: 30,
     });
     // Rules match on facts, not on the sentence.
-    expect(expiry["facts"]).toMatchObject({ accountId: "acct1", pluginId: "aws", currency: "USD" });
-    expect(expiry["facts"]["amountCents"]).toBeGreaterThan(0);
+    expect(expiry.facts).toMatchObject({ accountId: "acct1", pluginId: "aws", currency: "USD" });
+    expect(expiry.facts?.amountCents).toBeGreaterThan(0);
   });
 
   it("names the thing, the number, and what to do", async () => {
     await evaluate("org1", NOW, true);
     const idle = routeAlert.mock.calls
-      .map((c) => c[0] as Record<string, any>)
-      .find((e) => e["trigger"] === "commitmentIdleAlerts")!;
+      .map((c) => c[0])
+      .find((e) => e.trigger === "commitmentIdleAlerts")!;
 
-    expect(idle["body"]).toContain("1-yr Compute Savings Plan");
-    expect(idle["body"]).toContain("prod");
-    expect(idle["body"]).toMatch(/\$\d/); // the money, not just a percentage
-    expect(idle["body"]).toContain("Move matching workloads");
+    expect(idle.body).toContain("1-yr Compute Savings Plan");
+    expect(idle.body).toContain("prod");
+    expect(idle.body).toMatch(/\$\d/); // the money, not just a percentage
+    expect(idle.body).toContain("Move matching workloads");
   });
 
   it("marks an idle commitment info rather than warning", async () => {
@@ -223,10 +224,10 @@ describe("evaluateCommitmentAlertsForOrg — routing", () => {
     // org that sleeps through `info` should keep sleeping through it.
     await evaluate("org1", NOW, true);
     const idle = routeAlert.mock.calls
-      .map((c) => c[0] as Record<string, any>)
-      .find((e) => e["trigger"] === "commitmentIdleAlerts")!;
+      .map((c) => c[0])
+      .find((e) => e.trigger === "commitmentIdleAlerts")!;
     // The trigger's own default severity is `info`; the driver passes none.
-    expect(idle["severity"]).toBeUndefined();
+    expect(idle.severity).toBeUndefined();
   });
 });
 

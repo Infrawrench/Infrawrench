@@ -26,11 +26,14 @@ const api = {
   deleteProjectBranchDataApi: vi.fn(),
 };
 
-const createApiClient = vi.fn(() => api);
+type CreateApiClientArgs = Parameters<
+  (typeof import("@neondatabase/api-client"))["createApiClient"]
+>;
+
+const createApiClient = vi.fn((..._args: CreateApiClientArgs) => api);
 
 vi.mock("@neondatabase/api-client", () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  createApiClient: (...args: any[]) => createApiClient(...(args as [])),
+  createApiClient: (...args: CreateApiClientArgs) => createApiClient(...args),
   ConsumptionHistoryGranularity: { Hourly: "hourly" },
   EndpointType: { ReadWrite: "read_write", ReadOnly: "read_only" },
   BucketAccessLevel: { Private: "private", PublicRead: "public_read" },

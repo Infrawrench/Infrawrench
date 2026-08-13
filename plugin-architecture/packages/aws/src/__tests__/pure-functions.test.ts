@@ -6,7 +6,7 @@ import { policiesToOptions } from "../iam-policies.js";
 import { decodeIndexesField, buildDynamoSchemaTab } from "../dynamodb-detail.js";
 import { renderDetail, renderSidebarItem } from "../render-resource.js";
 import { fetchDashboardStats } from "../dashboard-metrics.js";
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { KeyValueListNode, ResourceInstance } from "@infrawrench/plugin-base";
 
 function makeResource(partial: Partial<ResourceInstance>): ResourceInstance {
   return {
@@ -253,8 +253,8 @@ describe("render-resource.renderDetail", () => {
     expect(view.noSqlBrowser?.driver).toBe("dynamodb");
     expect(view.customTabs).toHaveLength(1);
     // underscore-prefixed fields stripped from details
-    const detailItems = (view.sections[0] as any).children[0].items;
-    expect(detailItems.find((i: any) => i.key === "_indexesJson")).toBeUndefined();
+    const detailItems = (view.sections[0]!.children[0] as KeyValueListNode).items;
+    expect(detailItems.find((i) => i.key === "_indexesJson")).toBeUndefined();
   });
 
   it("renders route53-record-set via shared helper", () => {
@@ -292,7 +292,7 @@ describe("render-resource.renderDetail", () => {
 
   it("treats sns/sqs as healthy without explicit state", () => {
     const view = renderDetail(makeResource({ resourceTypeId: "sns-topic" }), [], "r");
-    expect((view.status as any).status).toBe("healthy");
+    expect(view.status?.status).toBe("healthy");
   });
 
   it("maps a known state to a status dot and includes outputs section", () => {
@@ -302,16 +302,16 @@ describe("render-resource.renderDetail", () => {
       resolvedOutputs: { publicIp: "1.2.3.4" },
     });
     const view = renderDetail(r, [], "r");
-    expect((view.status as any).status).toBe("healthy");
-    const titles = view.sections.map((s: any) => s.title);
+    expect(view.status?.status).toBe("healthy");
+    const titles = view.sections.map((s) => s.title);
     expect(titles).toContain("Outputs");
   });
 
   it("uses info status for unknown state and no outputs section", () => {
     const r = makeResource({ resourceTypeId: "ec2-instance", fields: { state: "weird-state" } });
     const view = renderDetail(r, [], "r");
-    expect((view.status as any).status).toBe("info");
-    expect(view.sections.map((s: any) => s.title)).not.toContain("Outputs");
+    expect(view.status?.status).toBe("info");
+    expect(view.sections.map((s) => s.title)).not.toContain("Outputs");
   });
 });
 
@@ -327,20 +327,20 @@ describe("render-resource.renderSidebarItem", () => {
     const priv = renderSidebarItem(
       makeResource({ resourceTypeId: "route53-hosted-zone", fields: { isPrivate: true } }),
     );
-    expect((priv.status as any).label).toBe("Private");
+    expect(priv.status?.label).toBe("Private");
     const pub = renderSidebarItem(
       makeResource({ resourceTypeId: "route53-hosted-zone", fields: {} }),
     );
-    expect((pub.status as any).label).toBe("Active");
+    expect(pub.status?.label).toBe("Active");
   });
   it("generic state mapping", () => {
-    expect(
-      (renderSidebarItem(makeResource({ fields: { state: "running" } })).status as any).status,
-    ).toBe("healthy");
-    expect(
-      (renderSidebarItem(makeResource({ fields: { status: "failed" } })).status as any).status,
-    ).toBe("error");
-    expect((renderSidebarItem(makeResource({ fields: {} })).status as any).status).toBe("info");
+    expect(renderSidebarItem(makeResource({ fields: { state: "running" } })).status?.status).toBe(
+      "healthy",
+    );
+    expect(renderSidebarItem(makeResource({ fields: { status: "failed" } })).status?.status).toBe(
+      "error",
+    );
+    expect(renderSidebarItem(makeResource({ fields: {} })).status?.status).toBe("info");
   });
 });
 

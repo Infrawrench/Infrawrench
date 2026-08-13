@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AlertEvent } from "../alerts/route";
 import { alertReachedImpl, routed } from "./helpers/route-alert";
 
 /**
@@ -90,9 +91,9 @@ const db = {
 };
 vi.mock("../db/client", () => ({ db }));
 
-const routeAlert = vi.fn(async (..._args: unknown[]) => routed());
+const routeAlert = vi.fn(async (_event: AlertEvent) => routed());
 vi.mock("../alerts/route", () => ({
-  routeAlert: (...a: unknown[]) => routeAlert(...a),
+  routeAlert: (event: AlertEvent) => routeAlert(event),
   alertReached: alertReachedImpl,
 }));
 
@@ -182,9 +183,7 @@ describe("evaluateUnitCostRegressionsForOrg — routing", () => {
     await evaluate("org1", NOW, true);
 
     expect(routeAlert).toHaveBeenCalledTimes(1);
-    expect((routeAlert.mock.calls[0]![0] as { trigger: string }).trigger).toBe(
-      "unitCostRegressionAlerts",
-    );
+    expect(routeAlert.mock.calls[0]![0].trigger).toBe("unitCostRegressionAlerts");
     expect(sendPushToOrg).not.toHaveBeenCalled();
     expect(sendSlackToChannels).not.toHaveBeenCalled();
     expect(sendMsTeamsToWebhooks).not.toHaveBeenCalled();
@@ -192,12 +191,12 @@ describe("evaluateUnitCostRegressionsForOrg — routing", () => {
 
   it("names the metric, the move, and what to look at", async () => {
     await evaluate("org1", NOW, true);
-    const event = routeAlert.mock.calls[0]![0] as Record<string, any>;
+    const event = routeAlert.mock.calls[0]![0];
 
-    expect(event["title"]).toBe("Unit cost up 40%: Active customers");
-    expect(event["body"]).toContain("cost per customer");
-    expect(event["body"]).toContain("Check what changed");
-    expect(event["pushData"]).toMatchObject({
+    expect(event.title).toBe("Unit cost up 40%: Active customers");
+    expect(event.body).toContain("cost per customer");
+    expect(event.body).toContain("Check what changed");
+    expect(event.pushData).toMatchObject({
       type: "unit_cost_regression",
       orgId: "org1",
       metricId: "metric1",
@@ -205,8 +204,8 @@ describe("evaluateUnitCostRegressionsForOrg — routing", () => {
       currency: "USD",
     });
     // Rules match on the scope's spend, not the sub-cent unit cost.
-    expect(event["facts"]).toMatchObject({ currency: "USD", key: "active-customers" });
-    expect(event["facts"]["amountCents"]).toBe(196_000);
+    expect(event.facts).toMatchObject({ currency: "USD", key: "active-customers" });
+    expect(event.facts?.amountCents).toBe(196_000);
   });
 
   it("stamps the row once a delivery reached (or was held for) somebody", async () => {

@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const fetchSigned = vi.fn();
+/** The real request type `fetchSigned` receives — the mock records these. */
+type FetchSignedArg = Parameters<(typeof import("../signed-request.js"))["fetchSigned"]>[0];
+
+const fetchSigned = vi.fn<(req: FetchSignedArg) => Promise<unknown>>();
 const getAwsClients = vi.fn();
 
-vi.mock("../signed-request.js", () => ({ fetchSigned: (...a: unknown[]) => fetchSigned(...a) }));
+vi.mock("../signed-request.js", () => ({ fetchSigned: (req: FetchSignedArg) => fetchSigned(req) }));
 vi.mock("../aws-clients.js", () => ({ getAwsClients: (...a: unknown[]) => getAwsClients(...a) }));
 
 import {
@@ -53,8 +56,8 @@ describe("ec2Call", () => {
       xmlResponse("<Resp><vpcSet><item><vpcId>v-1</vpcId></item></vpcSet></Resp>"),
     );
     const out = await ec2Call<Record<string, unknown>>(creds, "DescribeVpcs", { Foo: "bar" });
-    expect((out["vpcSet"] as any).item[0].vpcId).toBe("v-1");
-    const arg = fetchSigned.mock.calls[0]![0] as any;
+    expect((out["vpcSet"] as { item: Array<{ vpcId: string }> }).item[0]!.vpcId).toBe("v-1");
+    const arg = fetchSigned.mock.calls[0]![0];
     expect(arg.method).toBe("GET");
     expect(arg.url).toContain("Action=DescribeVpcs");
     expect(arg.url).toContain("Version=2016-11-15");
@@ -68,17 +71,17 @@ describe("jsonCall", () => {
     fetchSigned.mockResolvedValue(jsonResponse({ ok: 1 }));
     const out = await jsonCall<{ ok: number }>(creds, "ecs", "Svc.Action", { a: 1 });
     expect(out.ok).toBe(1);
-    const arg = fetchSigned.mock.calls[0]![0] as any;
+    const arg = fetchSigned.mock.calls[0]![0];
     expect(arg.method).toBe("POST");
     expect(arg.headers["X-Amz-Target"]).toBe("Svc.Action");
     expect(arg.headers["Content-Type"]).toBe("application/x-amz-json-1.1");
-    expect(JSON.parse(arg.body)).toEqual({ a: 1 });
+    expect(JSON.parse(arg.body as string)).toEqual({ a: 1 });
   });
 
   it("uses json-1.0 content type for dynamodb/sqs/states/apprunner", async () => {
     fetchSigned.mockResolvedValue(jsonResponse({}));
     await jsonCall(creds, "dynamodb", "DynamoDB_20120810.ListTables", {});
-    expect((fetchSigned.mock.calls[0]![0] as any).headers["Content-Type"]).toBe(
+    expect(fetchSigned.mock.calls[0]![0].headers["Content-Type"]).toBe(
       "application/x-amz-json-1.0",
     );
   });
@@ -94,7 +97,7 @@ describe("ec2QueryCall / queryPostCall", () => {
       "2014-10-31",
     );
     expect(out["x"]).toBe("1");
-    expect((fetchSigned.mock.calls[0]![0] as any).method).toBe("GET");
+    expect(fetchSigned.mock.calls[0]![0].method).toBe("GET");
   });
   it("queryPostCall POST form-encoded parses XML", async () => {
     fetchSigned.mockResolvedValue(xmlResponse("<R><y>2</y></R>"));
@@ -108,7 +111,7 @@ describe("ec2QueryCall / queryPostCall", () => {
       },
     );
     expect(out["y"]).toBe("2");
-    const arg = fetchSigned.mock.calls[0]![0] as any;
+    const arg = fetchSigned.mock.calls[0]![0];
     expect(arg.method).toBe("POST");
     expect(arg.headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
     expect(arg.body).toContain("Action=CreateRole");
@@ -121,14 +124,14 @@ describe("restJsonCall", () => {
     fetchSigned.mockResolvedValue(jsonResponse({ z: 1 }));
     const out = await restJsonCall<{ z: number }>(creds, "batch", "/v1/createjobqueue", { a: 1 });
     expect(out.z).toBe(1);
-    const arg = fetchSigned.mock.calls[0]![0] as any;
+    const arg = fetchSigned.mock.calls[0]![0];
     expect(arg.headers["Content-Type"]).toBe("application/json");
     expect(arg.url).toContain("/v1/createjobqueue");
   });
   it("GET omits body", async () => {
     fetchSigned.mockResolvedValue(jsonResponse({}));
     await restJsonCall(creds, "batch", "/v1/list", {}, "GET");
-    const arg = fetchSigned.mock.calls[0]![0] as any;
+    const arg = fetchSigned.mock.calls[0]![0];
     expect(arg.body).toBeUndefined();
     expect(arg.headers["Content-Type"]).toBeUndefined();
   });
@@ -151,7 +154,7 @@ describe("endpoint resolution branches", () => {
   it("neptune/docdb force the rds host with their own signing names", async () => {
     fetchSigned.mockResolvedValue(xmlResponse("<R/>"));
     await ec2QueryCall(creds, "neptune", "DescribeDBClusters", "2014-10-31");
-    const arg = fetchSigned.mock.calls[0]![0] as any;
+    const arg = fetchSigned.mock.calls[0]![0];
     expect(arg.url).toContain("rds.us-east-1.amazonaws.com");
     expect(arg.service).toBe("rds");
   });
@@ -159,7 +162,7 @@ describe("endpoint resolution branches", () => {
   it("global service uses us-east-1 signing region", async () => {
     fetchSigned.mockResolvedValue(xmlResponse("<R/>"));
     await ec2QueryCall({ ...creds, region: "eu-west-1" }, "iam", "ListUsers", "2010-05-08");
-    const arg = fetchSigned.mock.calls[0]![0] as any;
+    const arg = fetchSigned.mock.calls[0]![0];
     expect(arg.credentials.region).toBe("us-east-1");
   });
 
@@ -180,7 +183,7 @@ describe("endpoint resolution branches", () => {
     );
     fetchSigned.mockResolvedValue(jsonResponse({}));
     await jsonCall(creds, "ecs", "T.A", {});
-    expect((fetchSigned.mock.calls[0]![0] as any).url).toContain("ecs.us-east-1.amazonaws.com");
+    expect(fetchSigned.mock.calls[0]![0].url).toContain("ecs.us-east-1.amazonaws.com");
   });
 
   it("falls back to legacy host when endpoint is not a function", async () => {
@@ -189,7 +192,7 @@ describe("endpoint resolution branches", () => {
     );
     fetchSigned.mockResolvedValue(jsonResponse({}));
     await jsonCall(creds, "ecr", "T.A", {});
-    expect((fetchSigned.mock.calls[0]![0] as any).url).toContain("api.ecr.us-east-1.amazonaws.com");
+    expect(fetchSigned.mock.calls[0]![0].url).toContain("api.ecr.us-east-1.amazonaws.com");
   });
 
   it("legacy sagemaker host fallback", async () => {
@@ -198,9 +201,7 @@ describe("endpoint resolution branches", () => {
     );
     fetchSigned.mockResolvedValue(jsonResponse({}));
     await jsonCall(creds, "sagemaker", "T.A", {});
-    expect((fetchSigned.mock.calls[0]![0] as any).url).toContain(
-      "api.sagemaker.us-east-1.amazonaws.com",
-    );
+    expect(fetchSigned.mock.calls[0]![0].url).toContain("api.sagemaker.us-east-1.amazonaws.com");
   });
 
   it("throws on unknown service", async () => {

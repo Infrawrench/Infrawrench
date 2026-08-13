@@ -35,8 +35,7 @@ const api = {
 };
 
 vi.mock("@neondatabase/api-client", () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  createApiClient: (..._args: any[]) => api,
+  createApiClient: () => api,
   ConsumptionHistoryGranularity: { Hourly: "hourly" },
   EndpointType: { ReadWrite: "read_write", ReadOnly: "read_only" },
   BucketAccessLevel: { Private: "private", PublicRead: "public_read" },

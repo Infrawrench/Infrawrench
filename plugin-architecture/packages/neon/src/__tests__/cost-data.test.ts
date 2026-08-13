@@ -10,9 +10,10 @@ vi.mock("@neondatabase/api-client", () => ({
 }));
 
 import { fetchNeonCostData } from "../cost-data";
+import type { Api } from "@neondatabase/api-client";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const apiAny = api as any;
+/** The two stubbed endpoints stand in for the full generated client. */
+const apiClient = api as unknown as Api<unknown>;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -32,7 +33,7 @@ afterEach(() => {
 
 describe("fetchNeonCostData retention clamping", () => {
   it("clamps a backfill start older than Neon's 60-day retention to 59 days", async () => {
-    await fetchNeonCostData(apiAny, { fromDate: "2026-05-08", toDate: "2026-08-06" });
+    await fetchNeonCostData(apiClient, { fromDate: "2026-05-08", toDate: "2026-08-06" });
     // 59 days before 2026-08-06 is 2026-06-08; asking for 2026-05-08 would 406.
     expect(api.getConsumptionHistoryPerProjectV2).toHaveBeenCalledWith(
       expect.objectContaining({ from: "2026-06-08T00:00:00Z", to: "2026-08-06T23:59:59Z" }),
@@ -40,14 +41,17 @@ describe("fetchNeonCostData retention clamping", () => {
   });
 
   it("leaves an in-window range untouched", async () => {
-    await fetchNeonCostData(apiAny, { fromDate: "2026-08-03", toDate: "2026-08-06" });
+    await fetchNeonCostData(apiClient, { fromDate: "2026-08-03", toDate: "2026-08-06" });
     expect(api.getConsumptionHistoryPerProjectV2).toHaveBeenCalledWith(
       expect.objectContaining({ from: "2026-08-03T00:00:00Z" }),
     );
   });
 
   it("returns no rows without calling the API when the range is entirely outside retention", async () => {
-    const rows = await fetchNeonCostData(apiAny, { fromDate: "2026-03-01", toDate: "2026-03-31" });
+    const rows = await fetchNeonCostData(apiClient, {
+      fromDate: "2026-03-01",
+      toDate: "2026-03-31",
+    });
     expect(rows).toEqual([]);
     expect(api.getConsumptionHistoryPerProjectV2).not.toHaveBeenCalled();
   });
@@ -73,7 +77,10 @@ describe("fetchNeonCostData retention clamping", () => {
         pagination: undefined,
       },
     });
-    const rows = await fetchNeonCostData(apiAny, { fromDate: "2026-08-03", toDate: "2026-08-06" });
+    const rows = await fetchNeonCostData(apiClient, {
+      fromDate: "2026-08-03",
+      toDate: "2026-08-06",
+    });
     expect(rows).toEqual([
       {
         date: "2026-08-05",

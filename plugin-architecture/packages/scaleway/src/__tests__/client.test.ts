@@ -1,4 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
+import type { HttpHostServices, SignedS3FetchOptions } from "@infrawrench/plugin-base";
+import type { K8Sv1 } from "@scaleway/sdk-k8s";
+import type { Rdbv1 } from "@scaleway/sdk-rdb";
+import type { Blockv1 } from "@scaleway/sdk-block";
 
 // ── Mock the Scaleway SDK clients ───────────────────────────────────────────
 // Each SDK exposes a namespace (e.g. `Instancev1`) whose `.API` is a class
@@ -34,23 +38,23 @@ const { sdkMocks, instanceMethods, k8sMethods, rdbMethods, blockMethods, s3Mocks
       listClusters: vi.fn(),
       listPools: vi.fn(),
       listVersions: vi.fn(),
-      createCluster: vi.fn(),
+      createCluster: vi.fn<(req: Readonly<K8Sv1.CreateClusterRequest>) => Promise<unknown>>(),
       deleteCluster: vi.fn(),
       getClusterKubeConfig: vi.fn(),
     },
     rdbMethods: {
       listInstances: vi.fn(),
       getInstance: vi.fn(),
-      createInstance: vi.fn(),
+      createInstance: vi.fn<(req: Readonly<Rdbv1.CreateInstanceRequest>) => Promise<unknown>>(),
       deleteInstance: vi.fn(),
     },
     blockMethods: {
       listVolumes: vi.fn(),
-      createVolume: vi.fn(),
+      createVolume: vi.fn<(req: Readonly<Blockv1.CreateVolumeRequest>) => Promise<unknown>>(),
       deleteVolume: vi.fn(),
     },
     s3Mocks: {
-      signedS3Fetch: vi.fn(),
+      signedS3Fetch: vi.fn<(opts: SignedS3FetchOptions) => Promise<Response>>(),
       listS3Objects: vi.fn(),
       uploadS3Object: vi.fn(),
       makeS3Folder: vi.fn(),
@@ -71,7 +75,7 @@ vi.mock("@scaleway/sdk-instance", () => ({
   Instancev1: {
     API: class {
       constructor() {
-        return instanceMethods as any;
+        return instanceMethods;
       }
     },
   },
@@ -80,7 +84,7 @@ vi.mock("@scaleway/sdk-k8s", () => ({
   K8Sv1: {
     API: class {
       constructor() {
-        return k8sMethods as any;
+        return k8sMethods;
       }
     },
   },
@@ -89,7 +93,7 @@ vi.mock("@scaleway/sdk-rdb", () => ({
   Rdbv1: {
     API: class {
       constructor() {
-        return rdbMethods as any;
+        return rdbMethods;
       }
     },
   },
@@ -98,7 +102,7 @@ vi.mock("@scaleway/sdk-block", () => ({
   Blockv1: {
     API: class {
       constructor() {
-        return blockMethods as any;
+        return blockMethods;
       }
     },
   },
@@ -133,8 +137,7 @@ function s3Response(status: number, text: string): Response {
   } as unknown as Response;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let fetchMock: any;
+let fetchMock: MockInstance<typeof fetch>;
 
 beforeEach(() => {
   fetchMock = vi.spyOn(globalThis, "fetch");
@@ -183,12 +186,12 @@ describe("constructor", () => {
   });
 
   it("routes SDK calls through host HTTP services when provided by plugin factory", async () => {
-    const request = vi.fn(async () => ({
+    const request = vi.fn<HttpHostServices["request"]>(async () => ({
       status: 200,
       headers: { "Content-Type": "application/json" },
       body: '{"ok":true}',
     }));
-    const c = plugin.createClient(CREDS, { http: { request } } as any) as ScalewayClient;
+    const c = plugin.createClient(CREDS, { http: { request } }) as ScalewayClient;
 
     await c.listResources("instance", ACCOUNT);
 
@@ -566,11 +569,11 @@ describe("getCreateConfig", () => {
       ],
     });
     const cfg = await c.getCreateConfig("instance");
-    const size = cfg.fields.find((f) => f.key === "commercialType") as any;
-    expect(size.sizes.find((s: any) => s.id === "DEV1-S").priceMonthly).toBe(7.99);
-    expect(size.sizes.find((s: any) => s.id === "GP1-XS").priceMonthly).toBe(73);
-    const image = cfg.fields.find((f) => f.key === "image") as any;
-    expect(image.images.map((i: any) => i.id)).toEqual(["img1"]);
+    const size = cfg.fields.find((f) => f.key === "commercialType")!;
+    expect(size.sizes!.find((o) => o.id === "DEV1-S")!.priceMonthly).toBe(7.99);
+    expect(size.sizes!.find((o) => o.id === "GP1-XS")!.priceMonthly).toBe(73);
+    const image = cfg.fields.find((f) => f.key === "image")!;
+    expect(image.images!.map((i) => i.id)).toEqual(["img1"]);
     expect(image.defaultValue).toBe("img1");
   });
 
@@ -579,9 +582,9 @@ describe("getCreateConfig", () => {
     instanceMethods.listServersTypes.mockRejectedValue(new Error("x"));
     instanceMethods.listImages.mockRejectedValue(new Error("x"));
     const cfg = await c.getCreateConfig("instance");
-    const size = cfg.fields.find((f) => f.key === "commercialType") as any;
-    expect(size.sizes[0].id).toBe("DEV1-S");
-    const image = cfg.fields.find((f) => f.key === "image") as any;
+    const size = cfg.fields.find((f) => f.key === "commercialType")!;
+    expect(size.sizes![0]!.id).toBe("DEV1-S");
+    const image = cfg.fields.find((f) => f.key === "image")!;
     expect(image.defaultValue).toBe("ubuntu_jammy");
   });
 
@@ -592,8 +595,8 @@ describe("getCreateConfig", () => {
       servers: { "DEV1-M": { ncpus: 3, ram: 4 * 1024 * 1024 * 1024 } },
     });
     const cfg = await c.getCreateConfig("kapsule-cluster");
-    const ver = cfg.fields.find((f) => f.key === "version") as any;
-    expect(ver.options[0].id).toBe("1.30.2");
+    const ver = cfg.fields.find((f) => f.key === "version")!;
+    expect(ver.options![0]!.id).toBe("1.30.2");
   });
 
   it("kapsule config fallbacks when SDK throws", async () => {
@@ -601,10 +604,10 @@ describe("getCreateConfig", () => {
     k8sMethods.listVersions.mockRejectedValue(new Error("x"));
     instanceMethods.listServersTypes.mockRejectedValue(new Error("x"));
     const cfg = await c.getCreateConfig("kapsule-cluster");
-    const ver = cfg.fields.find((f) => f.key === "version") as any;
-    expect(ver.options[0].id).toBe("1.30.2");
-    const size = cfg.fields.find((f) => f.key === "nodeType") as any;
-    expect(size.sizes[0].id).toBe("DEV1-M");
+    const ver = cfg.fields.find((f) => f.key === "version")!;
+    expect(ver.options![0]!.id).toBe("1.30.2");
+    const size = cfg.fields.find((f) => f.key === "nodeType")!;
+    expect(size.sizes![0]!.id).toBe("DEV1-M");
   });
 
   it("rdb config static", async () => {
@@ -752,18 +755,18 @@ describe("createResource", () => {
     });
     expect(r.externalId).toBe("fr-par/cl9");
     expect(r.fields["nodeCount"]).toBe(4);
-    const arg = (k8sMethods.createCluster.mock.calls as unknown as [unknown[]])[0]![0] as any;
+    const arg = k8sMethods.createCluster.mock.calls[0]![0];
     expect(arg.type).toBe("kapsule");
     expect(arg.cni).toBe("cilium");
     expect(arg.pools).toHaveLength(1);
-    expect(arg.pools[0].name).toBe("k8s-default-pool");
-    expect(arg.pools[0].nodeType).toBe("DEV1-M");
-    expect(arg.pools[0].size).toBe(4);
-    expect(arg.pools[0].zone).toBe("fr-par-1");
-    expect(arg.pools[0].autohealing).toBe(true);
+    expect(arg.pools![0]!.name).toBe("k8s-default-pool");
+    expect(arg.pools![0]!.nodeType).toBe("DEV1-M");
+    expect(arg.pools![0]!.size).toBe(4);
+    expect(arg.pools![0]!.zone).toBe("fr-par-1");
+    expect(arg.pools![0]!.autohealing).toBe(true);
     // Nodes need a public IP (or a NAT gateway) to pull images — the default
     // pool must not come up isolated.
-    expect(arg.pools[0].publicIpDisabled).toBe(false);
+    expect(arg.pools![0]!.publicIpDisabled).toBe(false);
   });
 
   it("kapsule create defaults invalid node count to 3", async () => {
@@ -780,11 +783,11 @@ describe("createResource", () => {
     const c = makeClient();
     k8sMethods.createCluster.mockResolvedValue({ id: "cl11" });
     const r = await c.createResource("kapsule-cluster", ACCOUNT, { region: "fr-par" });
-    const arg = (k8sMethods.createCluster.mock.calls as unknown as [unknown[]])[0]![0] as any;
+    const arg = k8sMethods.createCluster.mock.calls[0]![0];
     expect(arg.version).toBe("1.30.2");
     expect(arg.cni).toBe("cilium");
-    expect(arg.pools[0].nodeType).toBe("DEV1-M");
-    expect(arg.pools[0].name).toBe("cluster-default-pool");
+    expect(arg.pools![0]!.nodeType).toBe("DEV1-M");
+    expect(arg.pools![0]!.name).toBe("cluster-default-pool");
     expect(r.fields["nodeType"]).toBe("DEV1-M");
   });
 
@@ -809,7 +812,7 @@ describe("createResource", () => {
     expect(r.externalId).toBe("fr-par/db9");
     expect(r.fields["engine"]).toBe("PostgreSQL");
     expect(r.fields["engineVersion"]).toBe("16");
-    const arg = (rdbMethods.createInstance.mock.calls as unknown as [unknown[]])[0]![0] as any;
+    const arg = rdbMethods.createInstance.mock.calls[0]![0];
     expect(arg.isHaCluster).toBe(true);
     expect(arg.disableBackup).toBe(true);
   });
@@ -830,7 +833,7 @@ describe("createResource", () => {
       region: "fr-par",
     });
     expect(r.externalId).toBe("fr-par/b");
-    const arg = (s3Mocks.signedS3Fetch.mock.calls as unknown as [unknown[]])[0]![0] as any;
+    const arg = s3Mocks.signedS3Fetch.mock.calls[0]![0];
     expect(arg.method).toBe("PUT");
     expect(arg.url).toBe("https://b.s3.fr-par.scw.cloud/");
   });
@@ -853,8 +856,8 @@ describe("createResource", () => {
     expect(r.externalId).toBe("fr-par-1/v9");
     expect(r.fields["sizeGb"]).toBe(100);
     expect(r.fields["perfIops"]).toBe("15000");
-    const arg = (blockMethods.createVolume.mock.calls as unknown as [unknown[]])[0]![0] as any;
-    expect(arg.fromEmpty.size).toBe(100 * 1_000_000_000);
+    const arg = blockMethods.createVolume.mock.calls[0]![0];
+    expect(arg.fromEmpty?.size).toBe(100 * 1_000_000_000);
     expect(arg.projectId).toBe("proj-uuid");
   });
 
@@ -913,7 +916,7 @@ describe("deleteResource", () => {
       `${ACCOUNT}:object-storage-bucket:fr-par/b`,
       ACCOUNT,
     );
-    const arg = (s3Mocks.signedS3Fetch.mock.calls as unknown as [unknown[]])[0]![0] as any;
+    const arg = s3Mocks.signedS3Fetch.mock.calls[0]![0];
     expect(arg.method).toBe("DELETE");
     expect(arg.url).toBe("https://b.s3.fr-par.scw.cloud/");
   });
@@ -1145,7 +1148,7 @@ describe("fetchMetricSeries", () => {
 
   it("returns [] when no cockpit data source", async () => {
     const c = makeClient({ ...CREDS, cockpitQueryToken: "tok" });
-    fetchMock.mockResolvedValue(s3Response(404, "") as any);
+    fetchMock.mockResolvedValue(s3Response(404, ""));
     expect(
       await c.fetchMetricSeries("instance", `${ACCOUNT}:instance:fr-par-1/srv1`, ACCOUNT),
     ).toEqual([]);
@@ -1153,31 +1156,29 @@ describe("fetchMetricSeries", () => {
 
   it("queries cockpit and maps series", async () => {
     const c = makeClient({ ...CREDS, cockpitQueryToken: "tok" });
-    (fetchMock as any).mockImplementation(
-      async (url: string | URL | Request, _init?: RequestInit) => {
-        const u = String(url);
-        if (u.includes("/data-sources")) {
-          return {
-            ok: true,
-            status: 200,
-            json: async () => ({ data_sources: [{ url: "https://cockpit" }] }),
-            text: async () => "",
-          } as unknown as Response;
-        }
-        if (u.includes("/query_range")) {
-          return {
-            ok: true,
-            status: 200,
-            json: async () => ({
-              status: "success",
-              data: { result: [{ values: [[1700000000, "12.5"]] }] },
-            }),
-            text: async () => "",
-          } as unknown as Response;
-        }
-        return s3Response(404, "") as any;
-      },
-    );
+    fetchMock.mockImplementation(async (url: string | URL | Request, _init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("/data-sources")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ data_sources: [{ url: "https://cockpit" }] }),
+          text: async () => "",
+        } as unknown as Response;
+      }
+      if (u.includes("/query_range")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            status: "success",
+            data: { result: [{ values: [[1700000000, "12.5"]] }] },
+          }),
+          text: async () => "",
+        } as unknown as Response;
+      }
+      return s3Response(404, "");
+    });
     const series = await c.fetchMetricSeries(
       "instance",
       `${ACCOUNT}:instance:fr-par-1/srv1`,
@@ -1189,7 +1190,7 @@ describe("fetchMetricSeries", () => {
   });
 
   it("queries cockpit through host HTTP services when provided", async () => {
-    const request = vi.fn(async ({ url }: { url: string }) => {
+    const request = vi.fn<HttpHostServices["request"]>(async ({ url }) => {
       if (url.includes("/data-sources")) {
         return {
           status: 200,
@@ -1206,9 +1207,10 @@ describe("fetchMetricSeries", () => {
         }),
       };
     });
-    const c = plugin.createClient({ ...CREDS, cockpitQueryToken: "tok" }, {
-      http: { request },
-    } as any) as ScalewayClient;
+    const c = plugin.createClient(
+      { ...CREDS, cockpitQueryToken: "tok" },
+      { http: { request } },
+    ) as ScalewayClient;
 
     const series = await c.fetchMetricSeries(
       "instance",
@@ -1240,7 +1242,7 @@ describe("fetchMetricSeries", () => {
   it("data source cache + query failure returns []", async () => {
     const c = makeClient({ ...CREDS, cockpitQueryToken: "tok" });
     let dsCalls = 0;
-    (fetchMock as any).mockImplementation(async (url: string | URL | Request) => {
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
       const u = String(url);
       if (u.includes("/data-sources")) {
         dsCalls++;
@@ -1251,8 +1253,8 @@ describe("fetchMetricSeries", () => {
           text: async () => "",
         } as unknown as Response;
       }
-      if (u.includes("/query_range")) return s3Response(500, "") as any;
-      return s3Response(404, "") as any;
+      if (u.includes("/query_range")) return s3Response(500, "");
+      return s3Response(404, "");
     });
     const id = `${ACCOUNT}:instance:fr-par-1/srv1`;
     expect(await c.fetchMetricSeries("instance", id, ACCOUNT)).toEqual([]);
@@ -1278,7 +1280,7 @@ describe("fetchMetricSeries", () => {
 });
 
 describe("renderDetail / renderSidebarItem", () => {
-  function res(typeId: string, fields: Record<string, unknown>) {
+  function res(typeId: string, fields: Record<string, string | number | boolean>) {
     return {
       id: `${ACCOUNT}:${typeId}:x`,
       pluginId: "scaleway",
@@ -1291,7 +1293,7 @@ describe("renderDetail / renderSidebarItem", () => {
       externalId: "x",
       createdAt: "x",
       updatedAt: "x",
-    } as any;
+    };
   }
 
   it("renderDetail status branches", () => {
@@ -1336,14 +1338,12 @@ describe("storage browser verbs", () => {
   it("listStorageObjects delegates after region probe", async () => {
     const c = makeClient();
     s3Mocks.signedS3Fetch.mockResolvedValue(s3Response(200, ""));
-    s3Mocks.listS3Objects.mockResolvedValue([{ key: "a", size: 1 }] as any);
+    s3Mocks.listS3Objects.mockResolvedValue([{ key: "a", size: 1 }]);
     const out = await c.listStorageObjects("mybucket", "prefix/");
     expect(out).toEqual([{ key: "a", size: 1 }]);
     expect(s3Mocks.listS3Objects).toHaveBeenCalled();
     // region probe used signedS3Fetch HEAD
-    expect(
-      ((s3Mocks.signedS3Fetch.mock.calls as unknown as [unknown[]])[0]![0] as any).method,
-    ).toBe("HEAD");
+    expect(s3Mocks.signedS3Fetch.mock.calls[0]![0].method).toBe("HEAD");
   });
 
   it("region probe accepts 403 as a hit", async () => {
@@ -1430,7 +1430,7 @@ describe("getManifest / applyManifest", () => {
     s3Mocks.getS3BucketPolicy.mockResolvedValue("");
     await c.getManifest(`${ACCOUNT}:object-storage-bucket:bareBucket`, ACCOUNT);
     // getObjectStorageConfig probed for bucket "bareBucket"
-    const call = (s3Mocks.signedS3Fetch.mock.calls as unknown as [unknown[]])[0]![0] as any;
+    const call = s3Mocks.signedS3Fetch.mock.calls[0]![0];
     expect(call.url).toContain("/bareBucket");
   });
 

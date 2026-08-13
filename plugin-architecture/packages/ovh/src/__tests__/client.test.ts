@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
-import type { HostServices } from "@infrawrench/plugin-base";
+import type { HostServices, ResourceInstance } from "@infrawrench/plugin-base";
 import { OvhClient } from "../client.js";
 import { plugin } from "../plugin.js";
 
@@ -676,12 +676,12 @@ describe("getCreateConfig", () => {
       return okJson([]);
     });
     const cfg = await c.getCreateConfig("instance");
-    const region = cfg.fields.find((f) => f.key === "region") as any;
-    expect(region.regions.map((r: any) => r.id)).toEqual(["GRA11"]);
-    expect(region.regions[0].location).toBe("Gravelines, France");
-    const size = cfg.fields.find((f) => f.key === "flavorId") as any;
-    expect(size.sizes.map((s: any) => s.id)).toEqual(["f1"]);
-    const image = cfg.fields.find((f) => f.key === "imageId") as any;
+    const region = cfg.fields.find((f) => f.key === "region")!;
+    expect(region.regions!.map((r) => r.id)).toEqual(["GRA11"]);
+    expect(region.regions![0]!.location).toBe("Gravelines, France");
+    const size = cfg.fields.find((f) => f.key === "flavorId")!;
+    expect(size.sizes!.map((s) => s.id)).toEqual(["f1"]);
+    const image = cfg.fields.find((f) => f.key === "imageId")!;
     expect(image.defaultValue).toBe("img1");
   });
 
@@ -700,8 +700,8 @@ describe("getCreateConfig", () => {
       return okJson([]);
     });
     const cfg = await c.getCreateConfig("managed-kube");
-    const flavor = cfg.fields.find((f) => f.key === "flavor") as any;
-    expect(flavor.sizes.map((s: any) => s.id)).toEqual(["b3-8", "b2-7"]);
+    const flavor = cfg.fields.find((f) => f.key === "flavor")!;
+    expect(flavor.sizes!.map((s) => s.id)).toEqual(["b3-8", "b2-7"]);
     expect(flavor.defaultValue).toBe("b3-8");
   });
 
@@ -715,7 +715,7 @@ describe("getCreateConfig", () => {
       return okJson([]);
     });
     const cfg = await c.getCreateConfig("managed-kube");
-    const flavor = cfg.fields.find((f) => f.key === "flavor") as any;
+    const flavor = cfg.fields.find((f) => f.key === "flavor")!;
     expect(flavor.sizes).toEqual([]);
   });
 
@@ -1340,7 +1340,7 @@ describe("fetchDashboardStats", () => {
 });
 
 describe("renderDetail / renderSidebarItem", () => {
-  function res(overrides: Record<string, unknown> = {}) {
+  function res(overrides: Partial<ResourceInstance> = {}): ResourceInstance {
     return {
       id: `${ACCOUNT}:instance:i-1`,
       pluginId: "ovh",
@@ -1354,7 +1354,7 @@ describe("renderDetail / renderSidebarItem", () => {
       createdAt: "x",
       updatedAt: "x",
       ...overrides,
-    } as any;
+    };
   }
 
   it("renderDetail healthy with label", () => {
@@ -1387,7 +1387,7 @@ describe("renderDetail / renderSidebarItem", () => {
   it("renderDetail with no status omits label", () => {
     const c = makeClient();
     const d = c.renderDetail(res({ fields: { region: "GRA11" } }));
-    expect((d.status as any).label).toBeUndefined();
+    expect(d.status?.label).toBeUndefined();
     expect(d.status!.status).toBe("info");
   });
 

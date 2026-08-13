@@ -81,18 +81,14 @@ describe("tunnel lifecycle", () => {
     const server = getTunnelEntries()[0]!.server;
 
     // fake a channel + socket and drive a successful forwardOut
-    const channel = new EventEmitter() as any;
-    channel.pipe = vi.fn();
-    channel.end = vi.fn();
+    const channel = Object.assign(new EventEmitter(), { pipe: vi.fn(), end: vi.fn() });
     forwardOutMock.mockImplementationOnce((_h, _p, rh, rp, cb) => {
       expect(rh).toBe("10.0.0.5");
       expect(rp).toBe(5432);
       cb(null, channel);
     });
 
-    const socket = new EventEmitter() as any;
-    socket.pipe = vi.fn();
-    socket.destroy = vi.fn();
+    const socket = Object.assign(new EventEmitter(), { pipe: vi.fn(), destroy: vi.fn() });
 
     // emit a connection on the server to trigger the createServer callback
     server.emit("connection", socket);
@@ -117,9 +113,7 @@ describe("tunnel lifecycle", () => {
       cb(new Error("channel open failed"), undefined);
     });
 
-    const socket = new EventEmitter() as any;
-    socket.destroy = vi.fn();
-    socket.pipe = vi.fn();
+    const socket = Object.assign(new EventEmitter(), { destroy: vi.fn(), pipe: vi.fn() });
     server.emit("connection", socket);
     expect(socket.destroy).toHaveBeenCalled();
     expect(socket.pipe).not.toHaveBeenCalled();
@@ -163,7 +157,9 @@ describe("tunnel lifecycle", () => {
     expect(found).not.toBeNull();
     expect(found!.extras.accountId).toBe("acc-y");
 
-    const missing = findTunnel((r) => (r.extras as any)?.organizationId === "nope");
+    const missing = findTunnel<{ organizationId: string } | undefined>(
+      (r) => r.extras?.organizationId === "nope",
+    );
     expect(missing).toBeNull();
   });
 });

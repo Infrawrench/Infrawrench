@@ -3,7 +3,8 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { utils } from "ssh2";
+import { utils, type ParsedKey } from "ssh2";
+import type { Duplex } from "node:stream";
 
 import { InProcessAgent, buildInProcessAgent, type SignOutcome } from "../in-process-agent.js";
 
@@ -60,10 +61,10 @@ function readResponse(buf: Buffer): { type: number; body: Buffer } {
 
 /** Drive a single request through the agent's duplex stream and read the reply. */
 async function roundTrip(agent: InProcessAgent, request: Buffer): Promise<Buffer> {
-  const stream = await new Promise<NodeJS.ReadWriteStream>((resolve, reject) => {
+  const stream = await new Promise<Duplex>((resolve, reject) => {
     agent.getStream((err, s) => {
       if (err || !s) reject(err ?? new Error("no stream"));
-      else resolve(s as unknown as NodeJS.ReadWriteStream);
+      else resolve(s);
     });
   });
   return new Promise<Buffer>((resolve) => {
@@ -188,7 +189,7 @@ describe("InProcessAgent.sign (BaseAgent override)", () => {
   it("is a no-op when no callback is supplied", () => {
     const k = parsePriv(fixtures.ed);
     const agent = new InProcessAgent([k]);
-    expect(() => agent.sign(k, Buffer.from("x"), {} as any)).not.toThrow();
+    expect(() => agent.sign(k, Buffer.from("x"), {})).not.toThrow();
   });
 });
 
@@ -287,8 +288,8 @@ describe("InProcessAgent.getStream — framing edge cases", () => {
   it("buffers partial frames across writes and emits one reply", async () => {
     const k = parsePriv(fixtures.ed);
     const agent = new InProcessAgent([k]);
-    const stream = await new Promise<NodeJS.ReadWriteStream>((resolve, reject) => {
-      agent.getStream((err, s) => (err || !s ? reject(err) : resolve(s as any)));
+    const stream = await new Promise<Duplex>((resolve, reject) => {
+      agent.getStream((err, s) => (err || !s ? reject(err) : resolve(s)));
     });
     const full = requestIdentitiesFrame();
     const reply = new Promise<Buffer>((resolve) => stream.once("data", (c: Buffer) => resolve(c)));
@@ -302,12 +303,10 @@ describe("InProcessAgent.getStream — framing edge cases", () => {
   it("destroys the stream on an absurd message length", async () => {
     const k = parsePriv(fixtures.ed);
     const agent = new InProcessAgent([k]);
-    const stream = await new Promise<NodeJS.ReadWriteStream>((resolve, reject) => {
-      agent.getStream((err, s) => (err || !s ? reject(err) : resolve(s as any)));
+    const stream = await new Promise<Duplex>((resolve, reject) => {
+      agent.getStream((err, s) => (err || !s ? reject(err) : resolve(s)));
     });
-    const errP = new Promise<Error>((resolve) =>
-      (stream as any).once("error", (e: Error) => resolve(e)),
-    );
+    const errP = new Promise<Error>((resolve) => stream.once("error", (e: Error) => resolve(e)));
     // length field claims > 256KiB
     stream.write(u32(300 * 1024));
     const err = await errP;
@@ -324,7 +323,7 @@ describe("InProcessAgent.getStream — signRaw / key-type edge cases via fake Pa
       getPublicSSH: () => opts.pub,
       isPrivateKey: () => true,
       sign: opts.sign,
-    } as any;
+    } as unknown as ParsedKey;
   }
 
   it("reports unsupported_key_type and returns FAILURE for an unknown key type", async () => {
@@ -413,7 +412,9 @@ describe("findKey via string public key (toPublicSSH string branch)", () => {
     const pubString = fs.readFileSync(path.join(tmpDir, "ed.pub"), "utf8");
     const agent = new InProcessAgent([k]);
     const cb = vi.fn();
-    agent.sign(pubString as any, Buffer.from("payload"), cb);
+    // Deliberately passes the OpenSSH string form where the signature says
+    // ParsedKey — findKey's string branch is exactly what is under test.
+    agent.sign(pubString as unknown as ParsedKey, Buffer.from("payload"), cb);
     expect(cb).toHaveBeenCalledTimes(1);
     expect(cb.mock.calls[0]![0]).toBeNull();
     expect(Buffer.isBuffer(cb.mock.calls[0]![1])).toBe(true);
@@ -423,7 +424,7 @@ describe("findKey via string public key (toPublicSSH string branch)", () => {
     const k = parsePriv(fixtures.ed);
     const agent = new InProcessAgent([k]);
     const cb = vi.fn();
-    agent.sign("garbage" as any, Buffer.from("x"), cb);
+    agent.sign("garbage" as unknown as ParsedKey, Buffer.from("x"), cb);
     expect(cb.mock.calls[0]![0]).toBeInstanceOf(Error);
   });
 });

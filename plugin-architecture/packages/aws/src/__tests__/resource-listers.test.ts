@@ -31,14 +31,22 @@ interface MockResponses {
 
 function makeCtx(r: MockResponses): ListerContext {
   return {
-    ec2: vi.fn(async (action, params) => r.ec2?.(action, params) ?? {}) as any,
-    json: vi.fn(async (service, target, body) => r.json?.(service, target, body) ?? {}) as any,
-    jsonGet: vi.fn(async (service, path) => r.jsonGet?.(service, path) ?? {}) as any,
-    restJson: vi.fn(async (service, path) => r.restJson?.(service, path) ?? {}) as any,
+    ec2: vi.fn(async (action, params) => r.ec2?.(action, params) ?? {}) as ListerContext["ec2"],
+    json: vi.fn(
+      async (service, target, body) => r.json?.(service, target, body) ?? {},
+    ) as ListerContext["json"],
+    jsonGet: vi.fn(
+      async (service, path) => r.jsonGet?.(service, path) ?? {},
+    ) as ListerContext["jsonGet"],
+    restJson: vi.fn(
+      async (service, path) => r.restJson?.(service, path) ?? {},
+    ) as ListerContext["restJson"],
     ec2Query: vi.fn(
       async (service, action, version) => r.ec2Query?.(service, action, version) ?? {},
-    ) as any,
-    xmlGet: vi.fn(async (service, path) => r.xmlGet?.(service, path) ?? {}) as any,
+    ) as ListerContext["ec2Query"],
+    xmlGet: vi.fn(
+      async (service, path) => r.xmlGet?.(service, path) ?? {},
+    ) as ListerContext["xmlGet"],
     id: (a, t, e) => `${a}:${t}:${e}`,
     now: () => "2020-01-01T00:00:00Z",
     region: "us-east-1",
@@ -357,7 +365,7 @@ describe("listECSServices", () => {
         if (target.endsWith("ListClusters"))
           return { clusterArns: ["arn:cluster/c1", "arn:cluster/c2"] };
         if (target.endsWith("ListServices")) {
-          if ((body as any).cluster === "arn:cluster/c2") throw new Error("denied");
+          if (body["cluster"] === "arn:cluster/c2") throw new Error("denied");
           return { serviceArns: ["arn:svc/s1"] };
         }
         if (target.endsWith("DescribeServices"))
@@ -430,7 +438,7 @@ describe("listDynamoDBTables", () => {
     const ctx = makeCtx({
       json: (_s, target, body) => {
         if (target.endsWith("ListTables")) return { TableNames: ["A"] };
-        if (target.endsWith("DescribeTable") && (body as any).TableName === "A")
+        if (target.endsWith("DescribeTable") && body["TableName"] === "A")
           throw new Error("denied");
         return {};
       },
@@ -470,7 +478,7 @@ describe("listSQSQueues", () => {
         if (target.endsWith("ListQueues"))
           return { QueueUrls: ["https://sqs/acct/q1.fifo", "https://sqs/acct/bad"] };
         if (target.endsWith("GetQueueAttributes")) {
-          if ((body as any).QueueUrl.endsWith("bad")) throw new Error("denied");
+          if (String(body["QueueUrl"]).endsWith("bad")) throw new Error("denied");
           return {
             Attributes: {
               ApproximateNumberOfMessages: "3",
