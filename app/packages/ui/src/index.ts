@@ -73,6 +73,7 @@ export type {
   AgentClient,
   AgentCreateBody,
   AgentLaunchDefaults,
+  AgentOpenSessionResult,
   AgentRepoConfig,
   AgentRepoResourceSpec,
   AgentRuntimeLanguage,

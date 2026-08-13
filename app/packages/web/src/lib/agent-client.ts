@@ -1,15 +1,12 @@
 import type {
   AgentClient,
   AgentCreateBody,
+  AgentOpenSessionResult,
   AgentSession,
   AgentSettings,
   AgentVmAccount,
 } from "@infrawrench/ui/agents";
 import { jsonInit, jsonOrThrow } from "./cookie-json";
-
-// Full openSession response per the shared AgentClient contract — the server
-// also returns the managed key (sshKeyId/sshKeyName) alongside command/cwd.
-type AgentOpenSessionResult = Awaited<ReturnType<AgentClient["openSession"]>>;
 
 export function createWebAgentClient(orgId: string): AgentClient {
   const base = `/api/org/${orgId}/agents`;

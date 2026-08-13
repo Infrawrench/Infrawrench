@@ -196,6 +196,30 @@ export interface ChatTurnEvent {
   [key: string]: unknown;
 }
 
+/** One in-flight tool call, accumulated from `tool_use_*` turn events. */
+export interface ChatStreamingToolUse {
+  id: string;
+  name: string;
+  /** Input JSON, concatenated from `tool_use_input` deltas. Surfaces that don't render inputs leave it empty. */
+  input: string;
+  executed?: boolean;
+}
+
+/**
+ * View state a surface accumulates while a turn streams — the reduction of
+ * {@link ChatTurnEvent}s every chat host performs. Declared here so the web,
+ * desktop and mobile reducers agree on what a turn in flight looks like.
+ */
+export interface ChatStreamingState {
+  active: boolean;
+  /** Optimistic echo of the user message just sent, until the reload swaps in the persisted copy. */
+  userText?: string | undefined;
+  /** Buffered text for the in-flight assistant message. */
+  text: string;
+  toolUses: ChatStreamingToolUse[];
+  error?: string | undefined;
+}
+
 export interface ChatConversationDetail {
   conversation: ConversationSummary;
   messages: ChatConversationMessage[];

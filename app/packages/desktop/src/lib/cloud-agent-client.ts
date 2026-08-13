@@ -1,16 +1,13 @@
 import type {
   AgentClient,
   AgentCreateBody,
+  AgentOpenSessionResult,
   AgentSession,
   AgentSettings,
   AgentVmAccount,
 } from "@infrawrench/ui/agents";
 import { useUIStore } from "@infrawrench/ui";
 import { invoke } from "./invoke";
-
-// Full openSession response per the shared AgentClient contract — the server
-// also returns the managed key (sshKeyId/sshKeyName) alongside command/cwd.
-type AgentOpenSessionResult = Awaited<ReturnType<AgentClient["openSession"]>>;
 
 /**
  * Agents mode against the selected org — the desktop counterpart of

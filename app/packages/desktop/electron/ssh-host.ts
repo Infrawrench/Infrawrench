@@ -2,6 +2,9 @@ import { dialog, ipcMain } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { AgentSshKey as SharedAgentSshKey } from "@infrawrench/ui" with {
+  "resolution-mode": "import",
+};
 import {
   openTunnel,
   getActiveTunnels,
@@ -316,17 +319,12 @@ ipcMain.handle("ssh_check_pageant", () => isPageantRunning());
 ipcMain.handle("ssh_check_1password", () => is1PasswordAgentRunning());
 
 /**
- * Wire shape for `ssh_list_1password_keys` IPC. The renderer-side mirror is
- * `AgentSshKey` exported from `@infrawrench/ui` (see
- * `app/packages/ui/src/components/create-resource/SshKeyPicker.tsx`). The two
- * shapes must stay in sync — keep this definition identical to the UI one
- * (the renderer treats `keyType` as optional, which is a superset of this).
+ * Wire shape for `ssh_list_1password_keys` IPC — the same `AgentSshKey` the
+ * renderer's `SshKeyPicker` consumes, imported rather than mirrored so the two
+ * sides cannot drift. The renderer treats `keyType` as optional; this process
+ * always resolves the algorithm, so it is required here.
  */
-interface AgentSshKey {
-  name: string;
-  publicKey: string;
-  keyType: string;
-}
+type AgentSshKey = SharedAgentSshKey & { keyType: string };
 
 // ssh2's OpenSSHAgent.getIdentities returns `Array<ParsedKey | PublicKeyEntry>`
 // per its types; the runtime hands back ParsedKey instances. Narrow by

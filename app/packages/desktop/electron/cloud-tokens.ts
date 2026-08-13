@@ -5,14 +5,14 @@
 // the local master key and persisted in the SQLite `cloud_sync_state` table,
 // which is why a CLI invocation shares the desktop app's sign-in.
 import crypto from "node:crypto";
+import type { TokenPair } from "@infrawrench/client-core" with { "resolution-mode": "import" };
 import { getDb, getEncryptionKey, encryptValue, decryptValue } from "./main-utils";
 import { CLIENT_ID, CLOUD_URL, WORKOS_API_URL } from "../env";
 
-export interface TokenPair {
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: number;
-}
+// The same pair client-core's platform-neutral TokenManager persists — this
+// store predates that port (client-core's header says so); the shape now has
+// one home there.
+export type { TokenPair };
 
 let currentTokens: TokenPair | null = null;
 let refreshInFlight: Promise<boolean> | null = null;

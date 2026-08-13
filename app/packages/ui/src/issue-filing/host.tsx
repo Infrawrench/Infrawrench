@@ -5,6 +5,8 @@ import {
   indexLinearLinks,
   jiraLinkKey,
   linearLinkKey,
+  type IssueLinksForSource,
+  type IssueTracker,
   type JiraIntegration,
   type JiraIssueLink,
   type JiraSourceKind,
@@ -22,8 +24,8 @@ export interface IssueFilingApi {
   post<T = unknown>(path: string, body?: unknown): Promise<T>;
 }
 
-/** The trackers a finding can be filed to. */
-export type IssueTracker = "jira" | "linear";
+/** The trackers a finding can be filed to. Client-core (`issue-filing.ts`) owns both shapes. */
+export type { IssueLinksForSource, IssueTracker };
 
 export interface IssueFilingHostProps {
   orgId: string;
@@ -39,12 +41,6 @@ export interface IssueFilingHostProps {
   /** Open the filed issue in a new tab (web) or the system browser (desktop). */
   openExternal: (url: string) => void;
   children: ReactNode;
-}
-
-/** What a findings row knows about where it has already been filed. */
-export interface IssueLinksForSource {
-  jira?: JiraIssueLink | undefined;
-  linear?: LinearIssueLink | undefined;
 }
 
 export interface IssueFilingValue {

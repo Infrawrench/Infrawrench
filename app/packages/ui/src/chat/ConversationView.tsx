@@ -15,6 +15,7 @@ import {
   type ChatContentBlock,
   type ChatPendingAction,
   type ChatPendingSecretRequest,
+  type ChatStreamingState as StreamingState,
   type ConversationSummary,
   type SpendStatus,
   type AskQuestion,
@@ -24,19 +25,6 @@ import {
 interface Props {
   client: ChatClient;
   conversationId: string;
-}
-
-interface StreamingState {
-  active: boolean;
-  /**
-   * Optimistic echo of the user message just sent, shown as a bubble until
-   * the reload swaps in the persisted copy.
-   */
-  userText?: string | undefined;
-  /** Buffered text for the in-flight assistant message. */
-  text: string;
-  toolUses: Array<{ id: string; name: string; input: string; executed?: boolean }>;
-  error?: string | undefined;
 }
 
 interface ConversationViewState {

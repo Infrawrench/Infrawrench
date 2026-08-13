@@ -17,22 +17,13 @@ import {
   type ChatConversationMessage,
   type ChatPendingAction,
   type ChatPendingSecretRequest,
+  type ChatStreamingState as StreamingState,
 } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { Button, ErrorView, LoadingView } from "@/components/ui";
 import { KeyboardAvoider } from "@/components/KeyboardAvoider";
 import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { colors, radii, spacing } from "@/lib/theme";
-
-interface StreamingState {
-  active: boolean;
-  /** Optimistic echo of the user message until the reload swaps in the persisted copy. */
-  userText?: string | undefined;
-  /** Buffered text for the in-flight assistant message. */
-  text: string;
-  toolUses: Array<{ id: string; name: string; executed?: boolean }>;
-  error?: string | undefined;
-}
 
 export default function ConversationScreen() {
   const { conversationId } = useLocalSearchParams<{ conversationId: string }>();
@@ -116,7 +107,9 @@ export default function ConversationScreen() {
               ...s,
               toolUses: [
                 ...s.toolUses,
-                { id: ev["toolUseId"] as string, name: ev["name"] as string },
+                // Mobile renders the tool name only, so the input stays empty
+                // rather than being accumulated from tool_use_input deltas.
+                { id: ev["toolUseId"] as string, name: ev["name"] as string, input: "" },
               ],
             }));
           } else if (ev.type === "tool_executed") {

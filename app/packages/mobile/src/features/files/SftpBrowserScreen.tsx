@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Alert, Text, View } from "react-native";
+import type { StorageObject } from "@infrawrench/plugin-base";
 import { useQuery } from "@tanstack/react-query";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
@@ -20,13 +21,8 @@ import { colors } from "@/lib/theme";
  * plus host/username, since `resolveSshConfig` otherwise has nothing to dial.
  */
 
-interface SftpEntry {
-  key: string;
-  name: string;
-  size: number;
-  lastModified: string;
-  isDirectory: boolean;
-}
+/** The SFTP listing rides the plugin storage-object contract; plugin-base owns the shape. */
+type SftpEntry = StorageObject;
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

@@ -15,6 +15,8 @@ export type {
   ChatTurnEvent,
   ChatConversationDetail,
   ChatClient,
+  ChatStreamingState,
+  ChatStreamingToolUse,
 } from "@infrawrench/client-core";
 export {
   CHAT_MODELS,

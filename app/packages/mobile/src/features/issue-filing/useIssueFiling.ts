@@ -7,7 +7,8 @@ import {
   indexLinearLinks,
   linearLinkKey,
   type CreateLinearIssueArgs,
-  type JiraIssueLink,
+  type IssueLinksForSource,
+  type IssueTracker,
   type JiraSourceKind,
   type LinearIssueLink,
 } from "@infrawrench/client-core";
@@ -27,7 +28,7 @@ import { useCanFileJira, useJiraLinks } from "../jira/useJira";
  * row on a phone connection.
  */
 
-export type IssueTracker = "jira" | "linear";
+export type { IssueTracker };
 
 /** The org's Linear connection, or null when it is not connected. */
 export function useLinearIntegration() {
@@ -109,10 +110,7 @@ export function useFilableTrackers(): IssueTracker[] {
 }
 
 /** What a findings row knows about where it has already been filed. */
-export interface IssueLinksForSource {
-  jira?: JiraIssueLink | undefined;
-  linear?: LinearIssueLink | undefined;
-}
+export type { IssueLinksForSource };
 
 /**
  * Every tracker's link for one finding — both, when it was filed to both.

@@ -165,3 +165,10 @@ export interface AgentClient {
   /** Delete the session and destroy its VM (if it still exists). */
   deleteSession(id: string): Promise<void>;
 }
+
+/**
+ * Full `openSession` response per the contract above — the server also returns
+ * the managed key (`sshKeyId`/`sshKeyName`) alongside `command`/`cwd`. Derived
+ * here, once, so the web and desktop clients cannot drift from the interface.
+ */
+export type AgentOpenSessionResult = Awaited<ReturnType<AgentClient["openSession"]>>;

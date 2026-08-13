@@ -7,29 +7,15 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { OrgMembership, OrgRoleSummary } from "@infrawrench/client-core";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { apiGet } from "@/lib/api";
-
-interface CurrentUserRole {
-  id: string;
-  name: string;
-  description: string | null;
-  isSystem: boolean;
-  systemKey: string | null;
-}
-
-interface MeResponse {
-  userId: string;
-  email: string;
-  role: CurrentUserRole | null;
-  permissions: string[];
-}
 
 interface PermissionsContextValue {
   loading: boolean;
   error: string | null;
   permissions: readonly string[];
-  role: CurrentUserRole | null;
+  role: OrgRoleSummary | null;
   has(permission: string): boolean;
   /** Returns true if the user has any of the listed permissions. */
   hasAny(...permissions: string[]): boolean;
@@ -45,7 +31,7 @@ interface ProviderProps {
 
 export function PermissionsProvider({ orgId, children }: ProviderProps) {
   const [permissions, setPermissions] = useState<readonly string[]>([]);
-  const [role, setRole] = useState<CurrentUserRole | null>(null);
+  const [role, setRole] = useState<OrgRoleSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +39,7 @@ export function PermissionsProvider({ orgId, children }: ProviderProps) {
     setLoading(true);
     setError(null);
     try {
-      const me = await apiGet<MeResponse>(`/api/org/${orgId}/team/me`);
+      const me = await apiGet<OrgMembership>(`/api/org/${orgId}/team/me`);
       setPermissions(me.permissions);
       setRole(me.role);
     } catch (e) {

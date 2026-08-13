@@ -7,7 +7,7 @@ import {
   useUIStore,
   type SettingsHostValue,
 } from "@infrawrench/ui";
-import { hasPermission } from "@infrawrench/client-core";
+import { hasPermission, type OrgMembership } from "@infrawrench/client-core";
 import { CLOUD_URL } from "../../env";
 import { invoke } from "../lib/invoke";
 import { createDesktopSettingsApi, requestText } from "../lib/settings-client";
@@ -15,12 +15,6 @@ import { mountPlaybackTerminal } from "../lib/playback-terminal";
 import { createCloudApprovalsClient } from "../lib/cloud-workflows";
 import { navigateToWorkspaceTarget, settingsTabTarget } from "../lib/workspace-tabs";
 import { workflowsTabTarget } from "@infrawrench/ui";
-
-interface MeResponse {
-  userId: string;
-  email: string;
-  permissions: string[];
-}
 
 /**
  * Cloud-mode org settings — the same sections the web app renders, over the
@@ -54,7 +48,7 @@ function CloudSettings({ orgId, section }: { orgId: string; section: string }) {
   const refreshPermissions = useCallback(async () => {
     setPermissionsLoading(true);
     try {
-      const me = await api.get<MeResponse>(`/api/org/${orgId}/team/me`);
+      const me = await api.get<OrgMembership>(`/api/org/${orgId}/team/me`);
       setPermissions(me.permissions);
     } catch {
       setPermissions([]);

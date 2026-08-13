@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { formatRedisResult, kvConsoleProfile, parseKvCommand } from "@infrawrench/client-core";
+import {
+  formatRedisResult,
+  kvConsoleProfile,
+  parseKvCommand,
+  type KvConsoleLine as ConsoleLine,
+} from "@infrawrench/client-core";
 import { formatErrorMessage } from "../utils.js";
-
-interface ConsoleLine {
-  kind: "input" | "output" | "error";
-  text: string;
-}
 
 export interface KvConsoleProps {
   driverName: string;

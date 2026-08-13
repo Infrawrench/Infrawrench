@@ -4,6 +4,12 @@
  * parsing lives here and each host only supplies the widgets.
  */
 
+/** One echoed line in the console transcript, on every surface. */
+export interface KvConsoleLine {
+  kind: "input" | "output" | "error";
+  text: string;
+}
+
 export function tokenize(cmd: string): string[] {
   const tokens: string[] = [];
   let current = "";

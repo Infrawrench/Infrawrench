@@ -1,6 +1,11 @@
 import { useCallback, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { formatRedisResult, kvConsoleProfile, parseKvCommand } from "@infrawrench/client-core";
+import {
+  formatRedisResult,
+  kvConsoleProfile,
+  parseKvCommand,
+  type KvConsoleLine as ConsoleLine,
+} from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { Button } from "@/components/ui";
 import { KeyboardAvoider } from "@/components/KeyboardAvoider";
@@ -15,11 +20,6 @@ import { colors, radii, spacing } from "@/lib/theme";
  * There are no arrow keys on a phone, so history is recall-by-tap: tap any
  * echoed command to put it back in the input.
  */
-
-interface ConsoleLine {
-  kind: "input" | "output" | "error";
-  text: string;
-}
 
 export function KvConsoleScreen({
   accountId,

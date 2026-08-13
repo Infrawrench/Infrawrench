@@ -585,6 +585,7 @@ export {
   formatRedisResult,
   parseKvCommand,
   kvConsoleProfile,
+  type KvConsoleLine,
   type KvConsoleProfile,
 } from "./kv-console";
 export {
@@ -697,6 +698,7 @@ export * from "./network-flows";
 export * from "./iac";
 export * from "./jira";
 export * from "./linear";
+export * from "./issue-filing";
 export * from "./cost-exports";
 export * from "./change-cost-impact";
 export * from "./report-notifications";
