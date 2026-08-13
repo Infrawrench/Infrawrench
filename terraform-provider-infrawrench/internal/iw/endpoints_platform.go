@@ -59,12 +59,6 @@ func (c *Client) DeleteProbe(ctx context.Context, id string) error {
 
 /* ------------------------------ metric alerts ------------------------------ */
 
-func (c *Client) ListMetricAlerts(ctx context.Context) ([]MetricAlertRule, error) {
-	var out []MetricAlertRule
-	err := c.Get(ctx, "/metric-alerts", &out)
-	return out, err
-}
-
 func (c *Client) GetMetricAlert(ctx context.Context, id string) (*MetricAlertRule, error) {
 	var out MetricAlertRule
 	if err := c.Get(ctx, "/metric-alerts/"+seg(id), &out); err != nil {
@@ -232,12 +226,6 @@ func (c *Client) DeleteChangeFreeze(ctx context.Context, id string) error {
 
 /* ------------------------------ custom graphs ------------------------------ */
 
-func (c *Client) ListCustomGraphs(ctx context.Context) ([]CustomGraph, error) {
-	var out []CustomGraph
-	err := c.Get(ctx, "/custom-graphs", &out)
-	return out, err
-}
-
 func (c *Client) GetCustomGraph(ctx context.Context, id string) (*CustomGraph, error) {
 	var out CustomGraph
 	if err := c.Get(ctx, "/custom-graphs/"+seg(id), &out); err != nil {
@@ -364,12 +352,6 @@ func (c *Client) ListPermissions(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return envelope.Permissions, nil
-}
-
-func (c *Client) ListMembers(ctx context.Context) ([]OrgMember, error) {
-	var out []OrgMember
-	err := c.Get(ctx, "/team/members", &out)
-	return out, err
 }
 
 /* --------------------------------- ssh keys -------------------------------- */
@@ -581,12 +563,6 @@ func (c *Client) DeleteAccount(ctx context.Context, id string) error {
 }
 
 /* ----------------------------- managed accounts ---------------------------- */
-
-func (c *Client) ListManagedAccounts(ctx context.Context) ([]ManagedAccount, error) {
-	var out []ManagedAccount
-	err := c.Get(ctx, "/managed-accounts", &out)
-	return out, err
-}
 
 func (c *Client) GetManagedAccount(ctx context.Context, id string) (*ManagedAccount, error) {
 	var out ManagedAccount

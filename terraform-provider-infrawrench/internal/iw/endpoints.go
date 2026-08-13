@@ -172,12 +172,6 @@ func (c *Client) PutTagPolicy(ctx context.Context, in TagPolicy) (*TagPolicy, er
 
 /* ------------------------------ saved filters ------------------------------ */
 
-func (c *Client) ListSavedFilters(ctx context.Context) ([]SavedCostFilter, error) {
-	var out []SavedCostFilter
-	err := c.Get(ctx, "/saved-cost-filters", &out)
-	return out, err
-}
-
 func (c *Client) GetSavedFilter(ctx context.Context, id string) (*SavedCostFilter, error) {
 	var out SavedCostFilter
 	if err := c.Get(ctx, "/saved-cost-filters/"+seg(id), &out); err != nil {
@@ -207,12 +201,6 @@ func (c *Client) DeleteSavedFilter(ctx context.Context, id string) error {
 }
 
 /* ------------------------------- cost reports ------------------------------ */
-
-func (c *Client) ListCostReports(ctx context.Context) ([]CostReport, error) {
-	var out []CostReport
-	err := c.Get(ctx, "/cost-reports", &out)
-	return out, err
-}
 
 func (c *Client) GetCostReport(ctx context.Context, id string) (*CostReport, error) {
 	var out CostReport
@@ -370,12 +358,6 @@ func (c *Client) DeleteScenarioModel(ctx context.Context, id string) error {
 
 /* ------------------------------- billing rules ----------------------------- */
 
-func (c *Client) ListBillingRules(ctx context.Context) ([]BillingRule, error) {
-	var out []BillingRule
-	err := c.Get(ctx, "/billing-rules", &out)
-	return out, err
-}
-
 func (c *Client) GetBillingRule(ctx context.Context, id string) (*BillingRule, error) {
 	var out BillingRule
 	if err := c.Get(ctx, "/billing-rules/"+seg(id), &out); err != nil {
@@ -405,12 +387,6 @@ func (c *Client) DeleteBillingRule(ctx context.Context, id string) error {
 }
 
 /* ------------------------------- cost exports ------------------------------ */
-
-func (c *Client) ListCostExports(ctx context.Context) ([]CostExport, error) {
-	var out []CostExport
-	err := c.Get(ctx, "/cost-exports", &out)
-	return out, err
-}
 
 func (c *Client) GetCostExport(ctx context.Context, id string) (*CostExport, error) {
 	var out CostExport
