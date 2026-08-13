@@ -701,6 +701,21 @@ export * from "./cost-exports";
 export * from "./change-cost-impact";
 export * from "./report-notifications";
 export * from "./chat/types";
+export {
+  ASK_QUESTION_LIMITS,
+  ASK_QUESTION_OTHER_ID,
+  ASK_QUESTION_TOOL_NAME,
+  askQuestionAnswersComplete,
+  formatAskQuestionResult,
+  parseAskQuestionInput,
+  validateAskQuestionAnswers,
+  type AskQuestion,
+  type AskQuestionAnswer,
+  type AskQuestionAnswersResult,
+  type AskQuestionOption,
+  type AskQuestionParseResult,
+  type AskQuestionType,
+} from "./chat/ask-question";
 export { createBearerChatClient } from "./chat/bearer-client";
 export * from "./ws-protocol";
 export {

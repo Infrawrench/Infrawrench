@@ -99,6 +99,30 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle(
+  "cloud_chat_answer_question",
+  async (
+    _e,
+    {
+      orgId,
+      conversationId,
+      pendingId,
+      answers,
+    }: {
+      orgId: string;
+      conversationId: string;
+      pendingId: string;
+      answers: Array<{ questionId: string; optionId?: string; text?: string }>;
+    },
+  ) => {
+    return cloudFetch(
+      orgId,
+      `/chat/conversations/${encodeURIComponent(conversationId)}/pending/${encodeURIComponent(pendingId)}/answer`,
+      { method: "POST", body: JSON.stringify({ answers }) },
+    );
+  },
+);
+
 const activeStreams = new Map<string, AbortController>();
 
 ipcMain.handle(

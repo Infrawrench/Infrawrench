@@ -48,6 +48,7 @@ import {
   storedSecretToolResult,
   WRITE_WORKFLOW_SECRET_TOOL_NAME,
 } from "./secret-requests";
+import { ASK_QUESTION_TOOL_NAME, parseAskQuestionInput } from "@infrawrench/client-core";
 
 const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
 // Hard cap on thinking + response text per request. Both Opus 5 and Gemini 3.6
@@ -95,12 +96,75 @@ const SLEEP_TOOL: ProviderTool = {
   },
 };
 
+/**
+ * Chat-only (not in the shared registry, so MCP never sees it): pause the turn
+ * until the user answers one or more questions in the conversation UI. Selection
+ * questions always get an Other text field; text questions get a textarea.
+ */
+const ASK_QUESTION_TOOL: ProviderTool = {
+  name: ASK_QUESTION_TOOL_NAME,
+  description:
+    "Ask the user one or more questions and wait for their answers before continuing. Use this " +
+    "when you need a decision, a preference, or missing information — not to confirm a " +
+    "destructive action (those already have an approval card). Prefer this over asking in prose " +
+    "so the user can pick from a list or type into a form. Each question is either a selection " +
+    "(radio options; the UI always adds an Other text field) or a free-text textarea. You can " +
+    "mix types in one call. Max 8 questions.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      questions: {
+        type: "array",
+        minItems: 1,
+        maxItems: 8,
+        description: "Questions to show the user. Mix selection and text as needed.",
+        items: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              description: "Stable id used to key the answer. Optional; defaults to q1, q2, …",
+            },
+            prompt: {
+              type: "string",
+              description: "The question shown to the user.",
+            },
+            type: {
+              type: "string",
+              enum: ["selection", "text"],
+              description:
+                'selection: radio list plus an Other text field. text: a textarea. Do not include an "other" option yourself — the UI adds it.',
+            },
+            options: {
+              type: "array",
+              minItems: 2,
+              maxItems: 12,
+              description: "Choices when type is selection. Required for selection; omit for text.",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string", description: "Stable id for this choice." },
+                  label: { type: "string", description: "Label shown to the user." },
+                },
+                required: ["id", "label"],
+              },
+            },
+          },
+          required: ["prompt", "type"],
+        },
+      },
+    },
+    required: ["questions"],
+  },
+};
+
 const SYSTEM_PROMPT = `You are Infrawrench's in-app agent. You help the user manage their infrastructure — listing and inspecting resources, executing SQL, running ops actions, rotating credentials, and so on — through the tools exposed to you. Every tool maps to something the user can already do in the Infrawrench UI.
 
 Style:
 - Be direct. Don't narrate your tool plans before running them; just run them.
 - When a tool errors, surface the error verbatim and suggest a fix.
 - For destructive actions (delete, drop, restart, secret destroy, credential export, manifest apply, SQL writes, exec, KV writes, Docker stop/restart), the UI will prompt the user to approve before the action runs. Describe what you're about to do in the tool_use, but don't ask the user separately — the approval UI handles confirmation.
+- When you need a decision, a preference, or information the user hasn't given you, call \`ask_question\` instead of asking in prose. Use \`type: "selection"\` with concrete options when the choices are known (the UI always adds an Other text field — do not add an Other option yourself). Use \`type: "text"\` for a free-form answer. You can mix both in one call. Do not use this to confirm destructive actions.
 - Never print revealed secret values or accessed credentials inline unless the user explicitly asks. Refer to them by description ("the AWS access key has been generated and downloaded").
 - Prefer the most specific tool for the job (e.g. \`gcp_create_secret_manager_secret\` over \`create_resource\` when both are available).
 - You can read the public web: \`web_search\` for a question, \`web_fetch\` to read one URL (GET only, public addresses only). Reach for them when being out of date would change your answer — current provider pricing or quotas, a changelog or deprecation, an unfamiliar error string, the current shape of a third-party API — and prefer them over answering from memory on anything that changes. Not every deployment has them; if they aren't in your tool list, say what you'd have looked up rather than guessing. Cite what you used: link the sources inline so the user can check them.
@@ -324,6 +388,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
     ...registry.map(toolToProvider),
     ...webSpecs.map(toolToProvider),
     SLEEP_TOOL,
+    ASK_QUESTION_TOOL,
   ];
 
   // Loop until we get an end_turn / max_tokens / a destructive tool batch.
@@ -530,6 +595,42 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
           resolvedAt: new Date(),
         });
         yield { type: "sleep", toolUseId: tu.id, seconds };
+        suspended = true;
+        continue;
+      }
+      if (tu.name === ASK_QUESTION_TOOL_NAME) {
+        const parsed = parseAskQuestionInput(tu.input);
+        if (!parsed.ok) {
+          autoBlocks.push({
+            type: "tool_result",
+            tool_use_id: tu.id,
+            content: [{ type: "text", text: parsed.error }],
+            is_error: true,
+          });
+          yield {
+            type: "tool_executed",
+            toolUseId: tu.id,
+            isError: true,
+            resultPreview: parsed.error,
+          };
+          continue;
+        }
+        const pendingId = uuidv4();
+        await db.insert(chatPendingActions).values({
+          id: pendingId,
+          conversationId,
+          messageId: assistantMessageId,
+          toolUseId: tu.id,
+          toolName: ASK_QUESTION_TOOL_NAME,
+          toolInput: { questions: parsed.questions },
+          status: "pending",
+        });
+        yield {
+          type: "pending_action",
+          pendingActionId: pendingId,
+          toolName: ASK_QUESTION_TOOL_NAME,
+          toolUseId: tu.id,
+        };
         suspended = true;
         continue;
       }

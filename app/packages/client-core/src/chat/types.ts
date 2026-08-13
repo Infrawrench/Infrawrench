@@ -10,6 +10,8 @@
  * these for backwards compatibility.
  */
 
+import type { AskQuestionAnswer } from "./ask-question";
+
 /**
  * Which provider minted a block's opaque signature. A conversation's model can
  * be changed mid-thread (PATCH /conversations/:id), so history routinely mixes
@@ -222,6 +224,12 @@ export interface ChatClient {
   ): Promise<void>;
   /** Submit a secret directly to encrypted storage; the value is never returned. */
   submitSecretRequest(conversationId: string, requestId: string, value: string): Promise<void>;
+  /** Answer an `ask_question` pending action and resume when every sibling is resolved. */
+  answerQuestion(
+    conversationId: string,
+    pendingId: string,
+    answers: AskQuestionAnswer[],
+  ): Promise<void>;
   /** Run one agent turn; yields SSE events until the turn ends or errors. */
   streamTurn(
     conversationId: string,

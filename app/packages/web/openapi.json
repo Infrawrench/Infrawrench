@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.24.0",
+    "version": "1.25.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -99,6 +99,10 @@
     {
       "name": "Workflows",
       "description": "Workflow (runbook) surface exposed over HTTP — the approval requests raised by infra.waitForApproval(...) inside runs, and the cron-schedule sub-resource. Full workflow CRUD is managed in the app."
+    },
+    {
+      "name": "Chat",
+      "description": "Hosted AI chat — conversation CRUD, the SSE agent stream, pending-action approval, secure secret handoff, and structured answers to agent questions."
     },
     {
       "name": "Resources",
@@ -11654,6 +11658,70 @@
         "required": [
           "ok",
           "allResolved"
+        ],
+        "additionalProperties": false
+      },
+      "ChatAskQuestionResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "allResolved": {
+            "type": "boolean",
+            "description": "True when every pending action and secret request on this assistant message is resolved, so the caller may POST {resume: true}."
+          }
+        },
+        "required": [
+          "ok",
+          "allResolved"
+        ],
+        "additionalProperties": false
+      },
+      "ChatAskQuestionAnswer": {
+        "type": "object",
+        "properties": {
+          "questionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Id of the question being answered."
+          },
+          "optionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Listed option id, or `other` when the user typed a custom value."
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000,
+            "description": "Required for text questions and when optionId is `other`."
+          }
+        },
+        "required": [
+          "questionId"
+        ],
+        "additionalProperties": false
+      },
+      "ChatAskQuestionInput": {
+        "type": "object",
+        "properties": {
+          "answers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatAskQuestionAnswer"
+            },
+            "minItems": 1,
+            "description": "One answer per question the agent asked."
+          }
+        },
+        "required": [
+          "answers"
         ],
         "additionalProperties": false
       },
@@ -41874,6 +41942,114 @@
           }
         },
         "operationId": "postOrgOrgIdChatConversationsConversationIdSecretRequestsRequestId"
+      }
+    },
+    "/api/org/{orgId}/chat/conversations/{conversationId}/pending/{pendingId}/answer": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Answer an agent question",
+        "description": "Submit answers to a chat-only `ask_question` pending action (selection with an Other field, or a textarea). Not used for destructive-tool approval.\n\n_Requires permission: `chat:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Chat conversation id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "conversationId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Pending ask_question action id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "pendingId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatAskQuestionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Answers recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatAskQuestionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdChatConversationsConversationIdPendingPendingIdAnswer",
+        "x-required-permission": "chat:write"
       }
     },
     "/api/org/{orgId}/deployments/repos": {

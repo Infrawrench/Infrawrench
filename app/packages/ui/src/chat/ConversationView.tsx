@@ -5,6 +5,11 @@ import {
   CHAT_MODELS,
   emitChatConversationsChanged,
   microsToUsd,
+  ASK_QUESTION_LIMITS,
+  ASK_QUESTION_OTHER_ID,
+  ASK_QUESTION_TOOL_NAME,
+  askQuestionAnswersComplete,
+  parseAskQuestionInput,
   type ChatClient,
   type ChatConversationMessage,
   type ChatContentBlock,
@@ -12,6 +17,8 @@ import {
   type ChatPendingSecretRequest,
   type ConversationSummary,
   type SpendStatus,
+  type AskQuestion,
+  type AskQuestionAnswer,
 } from "./types.js";
 
 interface Props {
@@ -171,8 +178,8 @@ export function ConversationView({ client, conversationId }: Props): React.React
               }),
             });
           } else if (ev.type === "tool_use_start") {
-            // Sleep renders as its own indicator, not as a tool card.
-            if (ev["name"] === "sleep") continue;
+            // Sleep and ask_question render as their own UI, not as a tool card.
+            if (ev["name"] === "sleep" || ev["name"] === ASK_QUESTION_TOOL_NAME) continue;
             dispatch({
               update: (current) => ({
                 streaming: {
@@ -362,6 +369,15 @@ export function ConversationView({ client, conversationId }: Props): React.React
     await resumeIfResolved();
   }
 
+  async function handleAnswerQuestion(
+    pendingId: string,
+    answers: AskQuestionAnswer[],
+  ): Promise<void> {
+    await client.answerQuestion(conversationId, pendingId, answers);
+    await reload();
+    await resumeIfResolved();
+  }
+
   const pendingByMessage = useMemo(() => {
     const m = new Map<string, ChatPendingAction[]>();
     for (const p of pending) {
@@ -447,6 +463,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
               onApprove={handleApprove}
               onReject={handleReject}
               onSubmitSecret={handleSecretSubmit}
+              onAnswerQuestion={handleAnswerQuestion}
             />
           ))}
           {streaming.userText && (
@@ -527,6 +544,7 @@ interface BubbleProps {
   onApprove(id: string): Promise<void>;
   onReject(id: string, reason?: string): Promise<void>;
   onSubmitSecret(id: string, value: string): Promise<void>;
+  onAnswerQuestion(id: string, answers: AskQuestionAnswer[]): Promise<void>;
 }
 
 function MessageBubble({
@@ -538,6 +556,7 @@ function MessageBubble({
   onApprove,
   onReject,
   onSubmitSecret,
+  onAnswerQuestion,
 }: BubbleProps): React.ReactElement {
   const isAssistant = message.role === "assistant";
   const pendingByToolUseId = new Map<string, ChatPendingAction>(
@@ -573,6 +592,7 @@ function MessageBubble({
           onApprove={onApprove}
           onReject={onReject}
           onSubmitSecret={onSubmitSecret}
+          onAnswerQuestion={onAnswerQuestion}
         />
       ))}
     </div>
@@ -589,6 +609,7 @@ interface BlockProps {
   onApprove(id: string): Promise<void>;
   onReject(id: string, reason?: string): Promise<void>;
   onSubmitSecret(id: string, value: string): Promise<void>;
+  onAnswerQuestion(id: string, answers: AskQuestionAnswer[]): Promise<void>;
 }
 
 function BlockView({
@@ -600,6 +621,7 @@ function BlockView({
   onApprove,
   onReject,
   onSubmitSecret,
+  onAnswerQuestion,
 }: BlockProps): React.ReactElement | null {
   // Approve executes the tool synchronously server-side (a workflow run can
   // take minutes), so the buttons must lock and the label must say the action
@@ -638,6 +660,16 @@ function BlockView({
       return pendingSecret ? (
         <SecretRequestCard request={pendingSecret} onSubmit={onSubmitSecret} />
       ) : null;
+    }
+    if (block.name === ASK_QUESTION_TOOL_NAME) {
+      return (
+        <QuestionCard
+          blockInput={block.input}
+          pending={pending}
+          result={result}
+          onAnswer={onAnswerQuestion}
+        />
+      );
     }
     const status = pending?.status ?? (result?.isError ? "errored" : "executed");
     const statusLabel =
@@ -798,5 +830,205 @@ function SecretRequestCard({
         </div>
       )}
     </div>
+  );
+}
+
+type QuestionDraft = { optionId?: string; text?: string };
+
+function questionDraft(optionId: string, text: string | undefined): QuestionDraft {
+  return text === undefined ? { optionId } : { optionId, text };
+}
+
+function questionsFromInput(
+  pending: ChatPendingAction | undefined,
+  blockInput: Record<string, unknown>,
+): AskQuestion[] {
+  const parsed = parseAskQuestionInput(pending?.toolInput ?? blockInput);
+  return parsed.ok ? parsed.questions : [];
+}
+
+function QuestionCard({
+  blockInput,
+  pending,
+  result,
+  onAnswer,
+}: {
+  blockInput: Record<string, unknown>;
+  pending: ChatPendingAction | undefined;
+  result: { text: string; isError: boolean } | undefined;
+  onAnswer(id: string, answers: AskQuestionAnswer[]): Promise<void>;
+}): React.ReactElement {
+  const questions = questionsFromInput(pending, blockInput);
+  const [draft, setDraft] = useState<Record<string, QuestionDraft>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const waiting = pending?.status === "pending";
+  const resolved = pending?.status === "executed" || (!waiting && result != null);
+  const resultText = pending?.result ?? result?.text;
+  const complete = askQuestionAnswersComplete(
+    questions,
+    new Map(Object.entries(draft).map(([id, value]) => [id, value])),
+  );
+
+  function patch(questionId: string, next: QuestionDraft): void {
+    setDraft((current) => ({ ...current, [questionId]: { ...current[questionId], ...next } }));
+  }
+
+  async function submit(): Promise<void> {
+    if (!pending || submitting || !waiting || !complete) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onAnswer(
+        pending.id,
+        questions.map((question) => {
+          const value = draft[question.id] ?? {};
+          return {
+            questionId: question.id,
+            ...(value.optionId ? { optionId: value.optionId } : {}),
+            ...(value.text ? { text: value.text } : {}),
+          };
+        }),
+      );
+    } catch {
+      setError("Could not send answers. Try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="border border-border rounded-lg bg-surface-overlay text-xs">
+      <div className="flex items-center justify-between gap-3 px-3 py-2">
+        <span className="font-medium text-on-surface-secondary">
+          {questions.length === 1 ? "Question" : `${questions.length} questions`}
+        </span>
+        <span className={resolved ? "text-success" : "text-warning"}>
+          {resolved ? "Answered" : submitting ? "Sending…" : "Waiting for answer"}
+        </span>
+      </div>
+      {waiting && questions.length > 0 && (
+        <div className="border-t border-border px-3 py-2 space-y-3">
+          {questions.map((question) => (
+            <QuestionField
+              key={question.id}
+              question={question}
+              value={draft[question.id] ?? {}}
+              disabled={submitting}
+              onChange={(next) => patch(question.id, next)}
+            />
+          ))}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={submitting || !complete}
+              onClick={() => void submit()}
+              className="px-2.5 py-1 font-medium bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-50 disabled:pointer-events-none"
+            >
+              {submitting ? "Sending…" : "Submit"}
+            </button>
+            {error && <div className="text-danger">{error}</div>}
+          </div>
+        </div>
+      )}
+      {resolved && resultText != null && (
+        <pre className="border-t border-border px-3 py-2 whitespace-pre-wrap break-words text-on-surface-muted">
+          {resultText}
+        </pre>
+      )}
+      {!resolved && questions.length === 0 && (
+        <div className="border-t border-border px-3 py-2 text-danger">
+          Could not read this question.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuestionField({
+  question,
+  value,
+  disabled,
+  onChange,
+}: {
+  question: AskQuestion;
+  value: QuestionDraft;
+  disabled: boolean;
+  onChange(next: QuestionDraft): void;
+}): React.ReactElement {
+  if (question.type === "text") {
+    return (
+      <label className="block space-y-1">
+        <span className="font-medium text-on-surface-secondary">{question.prompt}</span>
+        <textarea
+          value={value.text ?? ""}
+          onChange={(event) => onChange({ text: event.target.value })}
+          disabled={disabled}
+          rows={3}
+          maxLength={ASK_QUESTION_LIMITS.maxAnswerLength}
+          aria-label={question.prompt}
+          className="w-full bg-surface border border-border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y min-h-[4.5rem]"
+        />
+      </label>
+    );
+  }
+
+  const options = question.options ?? [];
+  const selected = value.optionId;
+  return (
+    <fieldset className="space-y-1.5">
+      <legend className="font-medium text-on-surface-secondary">{question.prompt}</legend>
+      <div role="radiogroup" aria-label={question.prompt} className="flex flex-col gap-1">
+        {options.map((option) => {
+          const checked = selected === option.id;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={checked}
+              disabled={disabled}
+              onClick={() => onChange(questionDraft(option.id, value.text))}
+              className={`text-left px-2 py-1.5 rounded border transition-colors disabled:opacity-50 ${
+                checked
+                  ? "border-blue-500 bg-blue-500/10 text-on-surface"
+                  : "border-border hover:border-on-surface-muted text-on-surface-secondary"
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+        <div
+          className={`rounded border px-2 py-1.5 space-y-1.5 ${
+            selected === ASK_QUESTION_OTHER_ID ? "border-blue-500 bg-blue-500/10" : "border-border"
+          }`}
+        >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={selected === ASK_QUESTION_OTHER_ID}
+            disabled={disabled}
+            onClick={() => onChange(questionDraft(ASK_QUESTION_OTHER_ID, value.text))}
+            className="text-left w-full text-on-surface-secondary disabled:opacity-50"
+          >
+            Other
+          </button>
+          <input
+            type="text"
+            value={selected === ASK_QUESTION_OTHER_ID ? (value.text ?? "") : ""}
+            onChange={(event) =>
+              onChange({ optionId: ASK_QUESTION_OTHER_ID, text: event.target.value })
+            }
+            onFocus={() => onChange(questionDraft(ASK_QUESTION_OTHER_ID, value.text))}
+            disabled={disabled}
+            maxLength={ASK_QUESTION_LIMITS.maxAnswerLength}
+            placeholder="Type another answer…"
+            aria-label={`Other answer for ${question.prompt}`}
+            className="w-full bg-surface border border-border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+      </div>
+    </fieldset>
   );
 }

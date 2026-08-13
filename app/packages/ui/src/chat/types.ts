@@ -16,7 +16,18 @@ export type {
   ChatConversationDetail,
   ChatClient,
 } from "@infrawrench/client-core";
-export { CHAT_MODELS, DEFAULT_CHAT_MODEL, microsToUsd } from "@infrawrench/client-core";
+export {
+  CHAT_MODELS,
+  DEFAULT_CHAT_MODEL,
+  microsToUsd,
+  ASK_QUESTION_LIMITS,
+  ASK_QUESTION_OTHER_ID,
+  ASK_QUESTION_TOOL_NAME,
+  askQuestionAnswersComplete,
+  parseAskQuestionInput,
+  type AskQuestion,
+  type AskQuestionAnswer,
+} from "@infrawrench/client-core";
 
 /**
  * Window event fired whenever chat conversations change (created, archived,
