@@ -67,7 +67,11 @@ describe("createCloudWorkflowClient", () => {
 
     invoke.mockResolvedValue("declare const infra: any;");
     await client.getTypings("w1");
-    expect(invoke).toHaveBeenCalledWith("cloud_workflow_typings", { orgId: "org1", id: "w1" });
+    expect(invoke).toHaveBeenCalledWith("cloud_workflow_typings", {
+      orgId: "org1",
+      id: "w1",
+      enrich: false,
+    });
   });
 
   it("runs non-debug over HTTP rather than the websocket", async () => {

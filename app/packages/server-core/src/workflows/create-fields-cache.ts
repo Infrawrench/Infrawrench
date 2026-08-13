@@ -1,12 +1,13 @@
 /**
- * Eagerly distills each createable resource type's form schema (via the plugin's
+ * Distills each createable resource type's form schema (via the plugin's
  * `getCreateConfig`) into {@link WorkflowResourceTypeInfo.createFields}, so the
  * generated `infra.d.ts` can type `create({...})` with real keys and option
  * unions instead of `Record<string, string>`.
  *
- * `getCreateConfig` hits the provider's live API (regions/sizes/images), so
- * results are cached per `${pluginId}:${typeId}` with a short TTL to avoid
- * re-fetching every time the editor (re)opens. Best-effort: any failure leaves
+ * Used by the typings **upgrade** pass (`enrichCreateFields: true`) after the
+ * editor/chat has already painted the static surface. `getCreateConfig` hits
+ * the provider's live API (regions/sizes/images), so results are cached per
+ * `${pluginId}:${typeId}` with a short TTL. Best-effort: any failure leaves
  * `createFields` undefined and codegen falls back to the generic signature.
  *
  * Shared by the cloud web host and the poller (both build the accounts tree).

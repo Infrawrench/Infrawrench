@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.22.0",
+    "version": "1.23.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -11369,6 +11369,19 @@
           "decidedAt",
           "decidedByName",
           "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "WorkflowTypingsResponse": {
+        "type": "object",
+        "properties": {
+          "dts": {
+            "type": "string",
+            "description": "Ambient TypeScript declarations for this workflow's `infra` API — the same file the Monaco editor and `check` endpoint type against."
+          }
+        },
+        "required": [
+          "dts"
         ],
         "additionalProperties": false
       },
@@ -40883,6 +40896,76 @@
         },
         "operationId": "postOrgOrgIdWorkflowApprovalsIdDeny",
         "x-required-permission": "workflows:approve"
+      }
+    },
+    "/api/org/{orgId}/workflows/{id}/typings": {
+      "get": {
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Generated infra.d.ts for a workflow",
+        "description": "The ambient TypeScript declarations workflow source is written against, specialized with this organization's connected accounts, resource types, SSH key names, and the workflow's trigger + metrics. Default is the fast static surface (`create` fields are `Record<string, string>`). Pass `enrich=1` for a second pass that hits provider APIs for precise create() field unions and live sidecar capability flags — the editor loads static first and upgrades when that finishes.\n\n_Requires permission: `workflows:read`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Workflow id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1",
+                "true"
+              ],
+              "description": "When `1` or `true`, enrich create() field shapes and sidecar capabilities from live provider configs. Omit for the fast static surface."
+            },
+            "required": false,
+            "name": "enrich",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Generated declarations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowTypingsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdWorkflowsIdTypings",
+        "x-required-permission": "workflows:read"
       }
     },
     "/api/org/{orgId}/workflows/{id}/schedule": {

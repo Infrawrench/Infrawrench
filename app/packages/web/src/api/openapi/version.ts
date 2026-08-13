@@ -66,4 +66,7 @@
 // 1.22.0: `status-pages` on the TabTarget kind enum — status pages are their
 // own workspace tab rather than a section of Probes, and without the enum
 // member a persisted Status pages tab is silently dropped on reload. Additive.
-export const API_VERSION = "1.22.0";
+// 1.23.0: workflow typings as a published route — GET
+// `/workflows/{id}/typings` with an optional `enrich` query (static first paint
+// vs live create-field unions). Additive.
+export const API_VERSION = "1.23.0";

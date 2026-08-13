@@ -3,11 +3,10 @@ import { strict, ErrorResponses, Ok, OrgIdParam, Uuid, IsoDateTime } from "../co
 import type { BuildContext } from "../context";
 
 /**
- * Workflow cron-schedule endpoints. The full workflow CRUD surface (source,
- * runs, typings, metrics) is not yet in the published spec — registering it is
- * a follow-up; the schedule sub-resource is documented first because it is the
- * piece programmatic clients automate (create a workflow in the UI, then have
- * CI or an SDK manage when it runs).
+ * Workflow schedule + typings. The rest of the workflow CRUD surface (source,
+ * runs, metrics, check, run) is not yet in the published spec — registering it
+ * is a follow-up. Schedule is what CI/SDKs automate; typings is what editors
+ * and agents load against the org's real accounts.
  */
 
 const CronExpression = z
@@ -60,12 +59,55 @@ const WorkflowScheduleInput = strict({
   }),
 }).openapi("WorkflowScheduleInput");
 
+const WorkflowTypingsResponse = strict({
+  dts: z.string().openapi({
+    description:
+      "Ambient TypeScript declarations for this workflow's `infra` API — the same " +
+      "file the Monaco editor and `check` endpoint type against.",
+  }),
+}).openapi("WorkflowTypingsResponse");
+
 export function registerWorkflowPaths(ctx: BuildContext) {
   const { registry } = ctx;
   const idParam = () =>
     OrgIdParam.extend({
       id: Uuid.openapi({ param: { name: "id", in: "path" }, description: "Workflow id" }),
     });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/workflows/{id}/typings",
+    tags: ["Workflows"],
+    summary: "Generated infra.d.ts for a workflow",
+    description:
+      "The ambient TypeScript declarations workflow source is written against, specialized " +
+      "with this organization's connected accounts, resource types, SSH key names, and the " +
+      "workflow's trigger + metrics. Default is the fast static surface (`create` fields are " +
+      "`Record<string, string>`). Pass `enrich=1` for a second pass that hits provider APIs for " +
+      "precise create() field unions and live sidecar capability flags — the editor loads " +
+      "static first and upgrades when that finishes.",
+    request: {
+      params: idParam(),
+      query: strict({
+        enrich: z
+          .enum(["1", "true"])
+          .optional()
+          .openapi({
+            param: { name: "enrich", in: "query" },
+            description:
+              "When `1` or `true`, enrich create() field shapes and sidecar capabilities from " +
+              "live provider configs. Omit for the fast static surface.",
+          }),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Generated declarations",
+        content: { "application/json": { schema: WorkflowTypingsResponse } },
+      },
+      404: ErrorResponses[404],
+    },
+  });
 
   registry.registerPath({
     method: "get",

@@ -243,7 +243,12 @@ export interface WorkflowClient {
   create(body: WorkflowSaveBody): Promise<WorkflowSummary>;
   update(id: string, body: WorkflowSaveBody): Promise<WorkflowSummary>;
   remove(id: string): Promise<void>;
-  getTypings(id: string): Promise<string>;
+  /**
+   * Generated `infra.d.ts` for this workflow. Default is the fast static
+   * surface (plugin defs + account names). Pass `{ enrich: true }` for a
+   * second pass that types `create({...})` from live provider configs.
+   */
+  getTypings(id: string, opts?: { enrich?: boolean }): Promise<string>;
   /** Run a workflow. Pass `debug` for a live-debug (manual) run. */
   run(id: string, debug?: DebugSession): Promise<{ runId: string; result: WorkflowRunResult }>;
   listRuns(id: string): Promise<WorkflowRunRow[]>;

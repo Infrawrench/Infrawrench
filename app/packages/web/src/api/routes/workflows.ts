@@ -145,14 +145,19 @@ app.delete("/:id/schedule", async (c) => {
   }
 });
 
-// Generated TypeScript typings for the editor
+// Generated TypeScript typings for the editor.
+// Default = static plugin defs + account names (fast). `?enrich=1` hits
+// providers for precise create() field unions — the editor loads static first
+// and upgrades in a second pass.
 app.get("/:id/typings", async (c) => {
   requirePermission(c, "workflows:read");
   const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
+  const enrich = c.req.query("enrich") === "1" || c.req.query("enrich") === "true";
   const dts = await generateWorkflowTypings(orgId(c), {
     metrics: (wf.metricDefs ?? []) as MetricDef[],
     triggerKind: (wf.trigger as WorkflowTrigger).kind,
+    enrichCreateFields: enrich,
   });
   return c.json({ dts });
 });

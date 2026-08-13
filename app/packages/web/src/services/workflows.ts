@@ -383,19 +383,35 @@ export async function listWorkflowMetrics(workflowId: string) {
     .where(and(eq(workflowMetrics.workflowId, workflowId), isNull(workflowMetrics.deletedAt)));
 }
 
+export type WorkflowTypingsOpts = {
+  metrics?: MetricDef[];
+  triggerKind?: WorkflowTrigger["kind"];
+  /**
+   * When true, hit provider APIs for precise `create({...})` field unions and
+   * live sidecar capability flags. Slow on a cold cache — callers that need
+   * the big surface immediately (editor first paint, chat init) leave this
+   * off and upgrade in a second pass.
+   */
+  enrichCreateFields?: boolean;
+};
+
 /**
- * Gather the org-specific inputs for typings generation. Enrichment and
- * SSH-key listing are best-effort niceties — never let them fail the whole
- * thing (which would drop the caller back to `infra: any`).
+ * Gather the org-specific inputs for typings generation. The default path is
+ * static plugin defs + DB accounts (no provider calls). Enrichment and SSH-key
+ * listing are best-effort niceties — never let them fail the whole thing
+ * (which would drop the caller back to `infra: any`).
  */
 async function workflowTypingsInput(
   organizationId: string,
-  opts: { metrics?: MetricDef[]; triggerKind?: WorkflowTrigger["kind"] },
+  opts: WorkflowTypingsOpts,
 ): Promise<GenerateInfraDtsInput> {
+  const pluginsPromise = opts.enrichCreateFields
+    ? listOrgPlugins(organizationId, { enrichCreateFields: true }).catch(() =>
+        listOrgPlugins(organizationId),
+      )
+    : listOrgPlugins(organizationId);
   const [plugins, sshKeyNames] = await Promise.all([
-    listOrgPlugins(organizationId, { enrichCreateFields: true }).catch(() =>
-      listOrgPlugins(organizationId),
-    ),
+    pluginsPromise,
     listOrgSshKeyNames(organizationId).catch(() => [] as string[]),
   ]);
   const triggerKind = opts.triggerKind ?? "manual";
@@ -421,7 +437,7 @@ async function workflowTypingsInput(
  */
 export async function generateWorkflowTypings(
   organizationId: string,
-  opts: { metrics?: MetricDef[]; triggerKind?: WorkflowTrigger["kind"] } = {},
+  opts: WorkflowTypingsOpts = {},
 ): Promise<string> {
   return generateInfraDts(await workflowTypingsInput(organizationId, opts));
 }
@@ -433,7 +449,7 @@ export async function generateWorkflowTypings(
  */
 export async function generateWorkflowTypingsParts(
   organizationId: string,
-  opts: { metrics?: MetricDef[]; triggerKind?: WorkflowTrigger["kind"] } = {},
+  opts: WorkflowTypingsOpts = {},
 ): Promise<InfraDtsParts> {
   return generateInfraDtsParts(await workflowTypingsInput(organizationId, opts));
 }
@@ -442,8 +458,13 @@ export async function generateWorkflowTypingsParts(
 export async function checkWorkflowSource(
   organizationId: string,
   source: string,
-  opts: { metrics?: MetricDef[]; triggerKind?: WorkflowTrigger["kind"] } = {},
+  opts: WorkflowTypingsOpts = {},
 ): Promise<TypecheckResult> {
-  const dts = await generateWorkflowTypings(organizationId, opts);
+  // Typecheck stays on the static path — precise create-field unions are an
+  // editor nicety, and a cold enrich would make every check pay provider latency.
+  const dts = await generateWorkflowTypings(organizationId, {
+    metrics: opts.metrics,
+    triggerKind: opts.triggerKind,
+  });
   return typecheckWorkflow({ source, dts });
 }
