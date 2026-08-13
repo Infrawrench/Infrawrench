@@ -60,6 +60,12 @@ export function createBearerChatClient(api: CloudFetch, orgId: string): ChatClie
         body: JSON.stringify({ action, ...(reason ? { reason } : {}) }),
       });
     },
+    async submitSecretRequest(conversationId, requestId, value) {
+      await api.org(orgId, `${base}/conversations/${conversationId}/secret-requests/${requestId}`, {
+        method: "POST",
+        body: JSON.stringify({ value }),
+      });
+    },
     async *streamTurn(conversationId, body): AsyncIterable<ChatTurnEvent> {
       const res = await api.raw(
         `/api/org/${encodeURIComponent(orgId)}${base}/conversations/${conversationId}/messages`,

@@ -67,6 +67,54 @@ export const workflows = pgTable(
   }),
 );
 
+/**
+ * Organization-level values that workflows may opt into. The encrypted value
+ * is deliberately nullable so metadata can be created without supplying the
+ * secret to MCP/chat tooling.
+ */
+export const workflowSecrets = pgTable(
+  "workflow_secrets",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    /** AES-256-GCM ciphertext. AAD: `workflowSecret:<id>:value`. */
+    encryptedValue: text("encrypted_value"),
+    encryptedValueIv: text("encrypted_value_iv"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgNameUnique: uniqueIndex("workflow_secrets_org_name_unique").on(t.organizationId, t.name),
+    orgIdx: index("workflow_secrets_org_idx").on(t.organizationId),
+  }),
+);
+
+/** Explicit opt-in of reusable organization secrets to one workflow. */
+export const workflowSecretAssignments = pgTable(
+  "workflow_secret_assignments",
+  {
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    secretId: text("secret_id")
+      .notNull()
+      .references(() => workflowSecrets.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    workflowSecretUnique: uniqueIndex("workflow_secret_assignments_unique").on(
+      t.workflowId,
+      t.secretId,
+    ),
+    workflowIdx: index("workflow_secret_assignments_workflow_idx").on(t.workflowId),
+    secretIdx: index("workflow_secret_assignments_secret_idx").on(t.secretId),
+  }),
+);
+
 export const workflowRuns = pgTable(
   "workflow_runs",
   {

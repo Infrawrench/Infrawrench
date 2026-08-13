@@ -74,6 +74,47 @@ describe("createCloudWorkflowClient", () => {
     });
   });
 
+  it("maps secret assignments and reusable secret operations", async () => {
+    const client = createCloudWorkflowClient("org1");
+
+    await client.update("w1", { assignedSecretIds: ["s1", "s2"] });
+    expect(invoke).toHaveBeenCalledWith("cloud_update_workflow", {
+      orgId: "org1",
+      id: "w1",
+      body: { secretIds: ["s1", "s2"] },
+    });
+
+    invoke.mockResolvedValue([{ id: "s1", name: "TOKEN", hasValue: true }]);
+    await client.listSecrets();
+    expect(invoke).toHaveBeenCalledWith("cloud_list_workflow_secrets", { orgId: "org1" });
+
+    invoke.mockResolvedValue({
+      secretIds: ["s1"],
+      secrets: [{ id: "s1", name: "TOKEN", hasValue: true }],
+    });
+    await expect(client.getAssignedSecrets("w1")).resolves.toEqual({
+      assignedSecretIds: ["s1"],
+      secrets: [{ id: "s1", name: "TOKEN", hasValue: true }],
+    });
+    expect(invoke).toHaveBeenCalledWith("cloud_get_workflow_secrets", {
+      orgId: "org1",
+      id: "w1",
+    });
+
+    await client.upsertSecret({ name: "TOKEN", value: "write-only" });
+    expect(invoke).toHaveBeenCalledWith("cloud_upsert_workflow_secret", {
+      orgId: "org1",
+      name: "TOKEN",
+      value: "write-only",
+    });
+
+    await client.deleteSecret("s1");
+    expect(invoke).toHaveBeenCalledWith("cloud_delete_workflow_secret", {
+      orgId: "org1",
+      id: "s1",
+    });
+  });
+
   it("runs non-debug over HTTP rather than the websocket", async () => {
     const client = createCloudWorkflowClient("org1");
     invoke.mockResolvedValue({ runId: "r1", result: { status: "ok", logs: [] } });

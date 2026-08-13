@@ -53,6 +53,14 @@ export function createDesktopChatClient(orgId: string): ChatClient {
         ...(reason ? { reason } : {}),
       });
     },
+    async submitSecretRequest(conversationId, requestId, value) {
+      await invoke("cloud_chat_submit_secret", {
+        orgId,
+        conversationId,
+        requestId,
+        value,
+      });
+    },
     async *streamTurn(conversationId, body): AsyncIterable<ChatTurnEvent> {
       const streamId = crypto.randomUUID();
       const channel = `cloud_chat_stream_${streamId}`;

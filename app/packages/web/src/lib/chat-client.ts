@@ -39,6 +39,11 @@ export function createWebChatClient(orgId: string): ChatClient {
         ...(reason ? { reason } : {}),
       });
     },
+    async submitSecretRequest(conversationId, requestId, value) {
+      await apiPost(`${base}/conversations/${conversationId}/secret-requests/${requestId}`, {
+        value,
+      });
+    },
     async *streamTurn(conversationId, body): AsyncIterable<ChatTurnEvent> {
       const res = await fetch(`${base}/conversations/${conversationId}/messages`, {
         method: "POST",

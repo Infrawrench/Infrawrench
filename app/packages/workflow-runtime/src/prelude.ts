@@ -5,6 +5,7 @@
  *   - `__host(method, argsJson)` — async RPC into the host (returns a JSON string)
  *   - `__accountsTree` — JSON string of WorkflowPluginInfo[] (accounts by plugin)
  *   - `__metrics` — JSON string of the declared metrics' current values
+ *   - `__secrets` — JSON string of the assigned secrets' plaintext values
  *   - `__event` — JSON string describing what triggered this run
  *
  * Keeping the ergonomic object graph in pure JS here (rather than marshalling a
@@ -358,6 +359,38 @@ export const PRELUDE = String.raw`
     metricDirty.clear();
   };
 
+  // Assigned secrets are a frozen, synchronous run-start snapshot. They never
+  // cross the host RPC bridge, which also keeps them away from model calls and
+  // operation arguments unless the workflow explicitly passes one there.
+  const secrets = Object.freeze((() => {
+    try {
+      const parsed = JSON.parse(__secrets || "{}");
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      const root = Object.create(null);
+      for (const [name, value] of Object.entries(parsed)) {
+        const parts = name.split(".");
+        let target = root;
+        for (let i = 0; i < parts.length - 1; i++) {
+          const part = parts[i];
+          if (!target[part] || typeof target[part] !== "object") {
+            target[part] = Object.create(null);
+          }
+          target = target[part];
+        }
+        target[parts[parts.length - 1]] = value;
+      }
+      const freeze = (value) => {
+        for (const child of Object.values(value)) {
+          if (child && typeof child === "object") freeze(child);
+        }
+        return Object.freeze(value);
+      };
+      return freeze(root);
+    } catch (e) {
+      return {};
+    }
+  })());
+
   // What kicked off this run. Frozen: it describes the past, and a workflow
   // mutating it would only confuse a later read of the same object.
   const event = Object.freeze((() => {
@@ -440,6 +473,7 @@ export const PRELUDE = String.raw`
     accounts,
     prompt: (spec) => rpc("prompt", { spec: typeof spec === "string" ? { message: spec } : spec }),
     metrics,
+    secrets,
     event,
     costs,
     businessMetrics,

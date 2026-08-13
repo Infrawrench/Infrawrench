@@ -80,9 +80,11 @@ export async function runWorkflowInMain(
   host: WorkflowHost,
   opts: {
     debug?: boolean;
+    /** Electron main loads this workflow's assigned secret snapshot from SQLite. */
+    workflowId: string;
     onStart?: (stop: () => void) => void;
     onLog?: (entry: RunLogEntry) => void;
-  } = {},
+  },
 ): Promise<RunResult> {
   ensureListening();
   const runToken = crypto.randomUUID();
@@ -96,6 +98,7 @@ export async function runWorkflowInMain(
       source,
       interactive,
       runToken,
+      workflowId: opts.workflowId,
       ...(opts.debug ? { debug: true } : {}),
     });
   } finally {

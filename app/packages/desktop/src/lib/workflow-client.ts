@@ -33,6 +33,7 @@ import {
   type PromptSpec,
   type SidecarRef,
   type WorkflowCreateFieldInfo,
+  type WorkflowSecretRef,
   type WorkflowPluginInfo,
 } from "@infrawrench/workflow-runtime/client";
 
@@ -44,6 +45,7 @@ import type {
   WorkflowRunResult,
   WorkflowRunRow,
   WorkflowSaveBody,
+  WorkflowSecretSummary,
   WorkflowSummary,
   WorkflowTrigger,
 } from "@infrawrench/ui/workflows";
@@ -69,6 +71,7 @@ interface WorkflowRow {
   source: string;
   trigger: string;
   metric_defs: string;
+  assigned_secret_ids: string;
   enabled: number;
   next_run_at: string | null;
   last_run_at: string | null;
@@ -98,6 +101,7 @@ function rowToSummary(row: WorkflowRow): WorkflowSummary {
     source: row.source,
     trigger: safeParse<WorkflowTrigger>(row.trigger, { kind: "manual" }),
     metricDefs: safeParse<MetricDef[]>(row.metric_defs, []),
+    assignedSecretIds: safeParse<string[]>(row.assigned_secret_ids, []),
     enabled: row.enabled === 1,
     nextRunAt: row.next_run_at,
     lastRunAt: row.last_run_at,
@@ -602,8 +606,8 @@ export function createDesktopWorkflowClient(): WorkflowClient {
       const id = crypto.randomUUID();
       const now = new Date().toISOString();
       await db.execute(
-        `INSERT INTO workflows (id, name, description, source, trigger, metric_defs, enabled, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO workflows (id, name, description, source, trigger, metric_defs, assigned_secret_ids, enabled, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           id,
           body.name?.trim() || "Untitled workflow",
@@ -611,6 +615,7 @@ export function createDesktopWorkflowClient(): WorkflowClient {
           body.source ?? "",
           JSON.stringify(body.trigger ?? { kind: "manual" }),
           JSON.stringify(body.metrics ?? []),
+          JSON.stringify(body.assignedSecretIds ?? []),
           body.enabled === false ? 0 : 1,
           now,
           now,
@@ -626,14 +631,17 @@ export function createDesktopWorkflowClient(): WorkflowClient {
       const db = await getDb();
       const now = new Date().toISOString();
       await db.execute(
-        `UPDATE workflows SET name = $1, description = $2, source = $3, trigger = $4, metric_defs = $5, enabled = $6, updated_at = $7
-         WHERE id = $8`,
+        `UPDATE workflows SET name = $1, description = $2, source = $3, trigger = $4, metric_defs = $5, assigned_secret_ids = $6, enabled = $7, updated_at = $8
+         WHERE id = $9`,
         [
           body.name?.trim() || existing.name,
           body.description ?? existing.description,
           body.source ?? existing.source,
           body.trigger !== undefined ? JSON.stringify(body.trigger) : existing.trigger,
           body.metrics !== undefined ? JSON.stringify(body.metrics) : existing.metric_defs,
+          body.assignedSecretIds !== undefined
+            ? JSON.stringify(body.assignedSecretIds)
+            : existing.assigned_secret_ids,
           body.enabled === undefined ? existing.enabled : body.enabled ? 1 : 0,
           now,
           id,
@@ -666,16 +674,27 @@ export function createDesktopWorkflowClient(): WorkflowClient {
       const pluginsPromise = opts?.enrich
         ? listLocalPlugins({ enrichCreateFields: true }).catch(() => listLocalPlugins())
         : listLocalPlugins();
-      const [plugins, sshKeyNames] = await Promise.all([
+      const [plugins, sshKeyNames, localSecrets] = await Promise.all([
         pluginsPromise,
         listLocalSshKeyNames().catch(() => [] as string[]),
+        invoke<WorkflowSecretSummary[]>("workflow_secrets_list").catch(
+          () => [] as WorkflowSecretSummary[],
+        ),
       ]);
       const trigger = wf
         ? safeParse<WorkflowTrigger>(wf.trigger, { kind: "manual" })
         : { kind: "manual" as const };
+      const assignedSecretIds = new Set(wf ? safeParse<string[]>(wf.assigned_secret_ids, []) : []);
+      const secretRefs: WorkflowSecretRef[] = [];
+      for (const secret of localSecrets) {
+        if (assignedSecretIds.has(secret.id)) {
+          secretRefs.push({ key: secret.id, name: secret.name });
+        }
+      }
       return generateInfraDts({
         plugins,
         metrics: wf ? safeParse<MetricDef[]>(wf.metric_defs, []) : [],
+        secrets: secretRefs,
         interactive: trigger.kind === "manual",
         triggerKind: trigger.kind,
         // Local workflows have no cost store (costs are cloud-only), so
@@ -729,6 +748,30 @@ export function createDesktopWorkflowClient(): WorkflowClient {
         unit: r.unit,
         value: r.value == null ? null : safeParse(r.value, null),
       }));
+    },
+
+    async getAssignedSecrets(id: string) {
+      const wf = await loadRow(id);
+      if (!wf) throw new Error("Workflow not found");
+      const assignedSecretIds = safeParse<string[]>(wf.assigned_secret_ids, []);
+      const assigned = new Set(assignedSecretIds);
+      const secrets = (await invoke<WorkflowSecretSummary[]>("workflow_secrets_list")).filter(
+        (secret) => assigned.has(secret.id),
+      );
+      return { assignedSecretIds, secrets };
+    },
+
+    listSecrets: () => invoke<WorkflowSecretSummary[]>("workflow_secrets_list"),
+
+    upsertSecret: ({ id, name, value }) =>
+      invoke<WorkflowSecretSummary>("workflow_secret_upsert", {
+        ...(id ? { id } : {}),
+        name,
+        value,
+      }),
+
+    async deleteSecret(id: string) {
+      await invoke("workflow_secret_delete", { id });
     },
 
     async run(id: string, debug?: DebugSession) {
@@ -947,6 +990,7 @@ export async function runWorkflowById(
 
   const result = await runWorkflowInMain(wf.source, opts.interactive, host, {
     debug: Boolean(debug),
+    workflowId: id,
     onStart: (stop) => {
       stopMain = stop;
     },

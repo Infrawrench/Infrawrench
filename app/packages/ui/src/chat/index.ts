@@ -12,6 +12,7 @@ export type {
   ChatConversationDetail,
   ChatConversationMessage,
   ChatPendingAction,
+  ChatPendingSecretRequest,
   ChatTurnEvent,
   ConversationSummary,
   SpendStatus,

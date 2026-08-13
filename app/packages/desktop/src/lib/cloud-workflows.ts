@@ -24,6 +24,7 @@ import type {
   WorkflowRunResult,
   WorkflowRunRow,
   WorkflowSaveBody,
+  WorkflowSecretSummary,
   WorkflowSummary,
 } from "@infrawrench/ui/workflows";
 
@@ -188,12 +189,16 @@ export function createCloudApprovalsClient(orgId: string): ApprovalsClient {
 }
 
 export function createCloudWorkflowClient(orgId: string): WorkflowClient {
+  const workflowBody = (body: WorkflowSaveBody) => {
+    const { assignedSecretIds, ...rest } = body;
+    return assignedSecretIds === undefined ? rest : { ...rest, secretIds: assignedSecretIds };
+  };
   return {
     list: () => listCloudWorkflows(orgId),
     create: (body: WorkflowSaveBody) =>
-      invoke<WorkflowSummary>("cloud_create_workflow", { orgId, body }),
+      invoke<WorkflowSummary>("cloud_create_workflow", { orgId, body: workflowBody(body) }),
     update: (id: string, body: WorkflowSaveBody) =>
-      invoke<WorkflowSummary>("cloud_update_workflow", { orgId, id, body }),
+      invoke<WorkflowSummary>("cloud_update_workflow", { orgId, id, body: workflowBody(body) }),
     remove: async (id: string) => {
       await invoke("cloud_delete_workflow", { orgId, id });
     },
@@ -202,6 +207,22 @@ export function createCloudWorkflowClient(orgId: string): WorkflowClient {
     listRuns: (id: string) => invoke<WorkflowRunRow[]>("cloud_workflow_runs", { orgId, id }),
     listMetrics: (id: string) =>
       invoke<WorkflowMetricRow[]>("cloud_workflow_metrics", { orgId, id }),
+    getAssignedSecrets: (id: string) =>
+      invoke<{ secretIds: string[]; secrets: WorkflowSecretSummary[] }>(
+        "cloud_get_workflow_secrets",
+        { orgId, id },
+      ).then(({ secretIds, secrets }) => ({ assignedSecretIds: secretIds, secrets })),
+    listSecrets: () => invoke<WorkflowSecretSummary[]>("cloud_list_workflow_secrets", { orgId }),
+    upsertSecret: ({ id, name, value }) =>
+      invoke<WorkflowSecretSummary>("cloud_upsert_workflow_secret", {
+        orgId,
+        ...(id ? { id } : {}),
+        name,
+        value,
+      }),
+    deleteSecret: async (id: string) => {
+      await invoke("cloud_delete_workflow_secret", { orgId, id });
+    },
     run: (id: string, debug?: DebugSession) =>
       debug
         ? runDebug(orgId, id, debug)

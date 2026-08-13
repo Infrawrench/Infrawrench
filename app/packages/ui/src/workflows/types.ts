@@ -31,6 +31,13 @@ export interface WorkflowMetricDef {
   unit?: string;
 }
 
+/** Write-only reusable workflow secret metadata. Values are never returned. */
+export interface WorkflowSecretSummary {
+  id: string;
+  name: string;
+  hasValue: boolean;
+}
+
 /**
  * Loose shape of a workflow metric def as persisted (jsonb/text column) and
  * read back by dashboard pins. Older rows may carry `unit: null` and `type`
@@ -91,6 +98,10 @@ export interface WorkflowSummary {
   source: string;
   trigger: WorkflowTrigger;
   metricDefs: WorkflowMetricDef[];
+  /** Reusable org/local secrets exposed to this workflow as `infra.secrets.<name>`. */
+  assignedSecretIds: string[];
+  /** Metadata for assigned secrets when included by the host response. */
+  assignedSecrets?: WorkflowSecretSummary[];
   enabled: boolean;
   webhookToken?: string | null;
   /**
@@ -206,6 +217,7 @@ export interface WorkflowSaveBody {
   source?: string;
   trigger?: WorkflowTrigger;
   metrics?: WorkflowMetricDef[];
+  assignedSecretIds?: string[];
   enabled?: boolean;
 }
 
@@ -253,6 +265,17 @@ export interface WorkflowClient {
   run(id: string, debug?: DebugSession): Promise<{ runId: string; result: WorkflowRunResult }>;
   listRuns(id: string): Promise<WorkflowRunRow[]>;
   listMetrics(id: string): Promise<WorkflowMetricRow[]>;
+  /** Assigned ids and metadata for one workflow; values remain write-only. */
+  getAssignedSecrets(id: string): Promise<{
+    assignedSecretIds: string[];
+    secrets: WorkflowSecretSummary[];
+  }>;
+  /** List reusable secrets. Values remain write-only. */
+  listSecrets(): Promise<WorkflowSecretSummary[]>;
+  /** Create a secret or rotate its value when `id` is supplied. */
+  upsertSecret(input: { id?: string; name: string; value: string }): Promise<WorkflowSecretSummary>;
+  /** Permanently remove a reusable secret after UI confirmation. */
+  deleteSecret(id: string): Promise<void>;
   /**
    * Pending approval requests for one workflow's runs. Optional — approvals
    * are cloud-only, so the desktop/local client omits both methods and the

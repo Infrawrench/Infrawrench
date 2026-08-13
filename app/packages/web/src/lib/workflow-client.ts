@@ -11,6 +11,7 @@ import type {
   WorkflowRunResult,
   WorkflowRunRow,
   WorkflowSaveBody,
+  WorkflowSecretSummary,
   WorkflowSummary,
 } from "@infrawrench/ui/workflows";
 import { requestWorkflowPrompt } from "@infrawrench/ui/workflows/prompt-bridge";
@@ -18,6 +19,11 @@ import { jsonInit, jsonOrThrow } from "./cookie-json";
 
 export function createWebWorkflowClient(orgId: string): WorkflowClient {
   const base = `/api/org/${orgId}/workflows`;
+  const secretsBase = `/api/org/${orgId}/workflow-secrets`;
+  const workflowBody = (body: WorkflowSaveBody) => {
+    const { assignedSecretIds, ...rest } = body;
+    return assignedSecretIds === undefined ? rest : { ...rest, secretIds: assignedSecretIds };
+  };
 
   /**
    * Debug run over the websocket: the browser owns breakpoints + stepping, the
@@ -116,9 +122,11 @@ export function createWebWorkflowClient(orgId: string): WorkflowClient {
   return {
     list: () => fetch(base, jsonInit("GET")).then((r) => jsonOrThrow<WorkflowSummary[]>(r)),
     create: (b: WorkflowSaveBody) =>
-      fetch(base, jsonInit("POST", b)).then((r) => jsonOrThrow<WorkflowSummary>(r)),
+      fetch(base, jsonInit("POST", workflowBody(b))).then((r) => jsonOrThrow<WorkflowSummary>(r)),
     update: (id: string, b: WorkflowSaveBody) =>
-      fetch(`${base}/${id}`, jsonInit("PUT", b)).then((r) => jsonOrThrow<WorkflowSummary>(r)),
+      fetch(`${base}/${id}`, jsonInit("PUT", workflowBody(b))).then((r) =>
+        jsonOrThrow<WorkflowSummary>(r),
+      ),
     remove: (id: string) =>
       fetch(`${base}/${id}`, jsonInit("DELETE"))
         .then((r) => jsonOrThrow<{ ok: boolean }>(r))
@@ -139,6 +147,33 @@ export function createWebWorkflowClient(orgId: string): WorkflowClient {
       fetch(`${base}/${id}/metrics`, jsonInit("GET")).then((r) =>
         jsonOrThrow<WorkflowMetricRow[]>(r),
       ),
+    getAssignedSecrets: (id: string) =>
+      fetch(`${base}/${id}/secrets`, jsonInit("GET"))
+        .then((r) => jsonOrThrow<{ secretIds: string[]; secrets: WorkflowSecretSummary[] }>(r))
+        .then(({ secretIds, secrets }) => ({ assignedSecretIds: secretIds, secrets })),
+    listSecrets: () =>
+      fetch(secretsBase, jsonInit("GET")).then((r) => jsonOrThrow<WorkflowSecretSummary[]>(r)),
+    upsertSecret: async ({ id, name, value }) => {
+      let secret: WorkflowSecretSummary;
+      if (id) {
+        secret = await fetch(
+          `${secretsBase}/${encodeURIComponent(id)}`,
+          jsonInit("PATCH", { name }),
+        ).then((r) => jsonOrThrow<WorkflowSecretSummary>(r));
+      } else {
+        secret = await fetch(secretsBase, jsonInit("POST", { name })).then((r) =>
+          jsonOrThrow<WorkflowSecretSummary>(r),
+        );
+      }
+      return fetch(
+        `${secretsBase}/${encodeURIComponent(secret.id)}/value`,
+        jsonInit("PUT", { value }),
+      ).then((r) => jsonOrThrow<WorkflowSecretSummary>(r));
+    },
+    deleteSecret: (id: string) =>
+      fetch(`${secretsBase}/${encodeURIComponent(id)}`, jsonInit("DELETE"))
+        .then((r) => jsonOrThrow<{ ok: boolean }>(r))
+        .then(() => undefined),
     listPendingApprovals: (workflowId: string) =>
       fetch(
         `/api/org/${orgId}/workflow-approvals?status=pending&workflowId=${encodeURIComponent(workflowId)}`,

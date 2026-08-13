@@ -43,6 +43,7 @@ Everything the UI exposes. The chat shares the [MCP server](./mcp.md)'s tool reg
 - **Credentials** — `export_credential` to download IAM access keys, service-account JSON, connection strings, etc.
 - **SSH keys** — list, generate (Ed25519), import, and delete the org's [SSH keys](../team-and-billing/ssh-keys.md). Generated private keys stay encrypted server-side and are used by id with `ssh_exec`; deletion goes through the approval flow.
 - **Workflows** — read, write, type-check, and run [workflows](./workflows.md). Ask for "a workflow that scales the dev cluster to zero when the Production budget goes over 90%" and the agent fetches your org's generated `infra` typings, writes the source against them, type-checks it before saving, and can run it once to prove it works. Deleting a workflow goes through the approval flow. See [Writing workflows with an AI client](./workflows.md#writing-workflows-with-an-ai-client).
+- **Workflow secrets** — list reusable secret metadata, securely ask you to set or rotate a value, delete secrets, and assign them while writing a workflow. Secret values never enter the conversation or the model's tool arguments.
 - **Deployments** — read your [Infrafile](./infrafile.md) deploy history (`list_deployments`, `get_deployment`), list the repos your GitHub App can deploy from (`list_deployable_repos`), preview a deploy without building anything (`plan_deployment`), and put a known-good image back (`rollback_deployment`). There is deliberately **no tool that deploys** — building and shipping a release is slow, expensive, and irreversible, so a human starts it from the Deploy tab or the CLI. Both `plan_deployment` and `rollback_deployment` go through the approval flow.
 - **The web** — `web_search` and `web_fetch`, so the agent can check current documentation instead of relying on training data. Chat-only; see [Reading the web](#reading-the-web).
 - **Costs & budgets** — `query_costs` for spend questions ("what did we spend on AWS last month?"), `list_cost_dimension_values`, `get_cost_status`, and budget CRUD (`list_budgets`, `get_budget`, `create_budget`, `update_budget`, `delete_budget`). These enforce the caller's `costs:read` / `budgets:*` [role permissions](../team-and-billing/roles-and-permissions.md). See [Cloud costs](./cloud-costs.md).
@@ -74,6 +75,14 @@ Every tool is tagged with a risk tier: `read`, `write`, or `destructive`. Read a
 The UI surfaces these as Approve / Reject cards inline in the conversation. Approving runs the tool and resumes the model with the result; rejecting feeds the model an error message it can react to.
 
 Tool calls render as compact status cards (`Running…` → `Done`); the input JSON and the tool's result sit behind a collapsed **Details** toggle on each card, except while an action is pending approval, when the input is shown so you can see exactly what you're approving.
+
+## Secure secret input
+
+When the agent calls `write_workflow_secret`, the conversation pauses on a password field labelled with the requested title, description, and secret name. The value is posted directly from your web, desktop, or mobile client to encrypted workflow-secret storage. It is never added to your user message, the assistant's tool input, pending-action JSON, Slack or push notifications, audit metadata, or the result sent back to the model.
+
+Only a signed-in human with `secrets:write` can submit the field. The permission is checked when the agent requests it and again when you submit, so a role change cannot leave a stale prompt with more authority than you have. The agent receives only the secret id/name and `stored: true`, then can assign that id to a workflow.
+
+<insert [AI chat conversation paused on the secure workflow-secret password field, showing the requested title and secret name] here>
 
 ## Waiting on slow operations
 
@@ -137,10 +146,11 @@ GET    /conversations/{id}          # fetch with messages + pending actions
 DELETE /conversations/{id}          # archive
 POST   /conversations/{id}/messages # SSE stream; body: {text} or {resume: true}
 POST   /conversations/{id}/pending/{pendingId}  # body: {action: "approve" | "reject"}
+POST   /conversations/{id}/secret-requests/{requestId} # body: {value}; human-only, write-only
 GET    /spend                       # month-to-date + cap
 ```
 
-`POST /messages` streams Server-Sent Events shaped as `{type: "text_delta" | "tool_use_start" | "tool_use_input" | "tool_executed" | "pending_action" | "sleep" | "turn_end" | "spend_blocked" | "error", ...}`. When the agent suspends on a destructive tool, the stream ends with `turn_end {hasPending: true}` — resume after approving by POSTing `{resume: true}`.
+`POST /messages` streams Server-Sent Events shaped as `{type: "text_delta" | "tool_use_start" | "tool_use_input" | "tool_executed" | "pending_action" | "secret_request" | "sleep" | "turn_end" | "spend_blocked" | "error", ...}`. When the agent suspends on a destructive tool or secure secret request, the stream ends with `turn_end {hasPending: true}` — resolve every pending item, then resume by POSTing `{resume: true}`.
 
 ## Why an API and not just MCP?
 

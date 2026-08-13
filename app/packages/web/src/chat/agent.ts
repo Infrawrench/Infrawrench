@@ -15,7 +15,12 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { eq, and, asc, desc } from "drizzle-orm";
 import { db } from "../db/client";
-import { chatConversations, chatMessages, chatPendingActions } from "../db/schema";
+import {
+  chatConversations,
+  chatMessages,
+  chatPendingActions,
+  chatPendingSecretRequests,
+} from "../db/schema";
 import { getToolRegistry } from "../tools/registry";
 import { authorizeToolCall } from "../tools/permissions";
 import type { ToolAuthContext, ToolDefinition, ToolResult } from "../tools/types";
@@ -36,6 +41,13 @@ import { recordUsage } from "./billing";
 import { providerForModel, type ProviderTool } from "./providers";
 import { notifyChatToolApproval } from "./slack-approvals";
 import { webChatTools, webChatToolSpecs } from "./web/tools";
+import {
+  pendingSecretRequestValues,
+  sanitizeSecretToolBlocks,
+  secretRequestMetadata,
+  storedSecretToolResult,
+  WRITE_WORKFLOW_SECRET_TOOL_NAME,
+} from "./secret-requests";
 
 const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
 // Hard cap on thinking + response text per request. Both Opus 5 and Gemini 3.6
@@ -112,6 +124,15 @@ export type AgentEvent =
   | { type: "tool_use_input"; toolUseId: string; partialJson: string }
   | { type: "tool_executed"; toolUseId: string; isError: boolean; resultPreview: string }
   | { type: "pending_action"; pendingActionId: string; toolName: string; toolUseId: string }
+  | {
+      type: "secret_request";
+      requestId: string;
+      toolUseId: string;
+      secretId?: string;
+      name: string;
+      title?: string;
+      description?: string;
+    }
   | { type: "sleep"; toolUseId: string; seconds: number }
   | {
       type: "turn_end";
@@ -154,12 +175,15 @@ async function collectResolvedToolResults(
   const assistant = latestAssistant[0];
   if (!assistant) return null;
 
-  const pending = await db
-    .select()
-    .from(chatPendingActions)
-    .where(eq(chatPendingActions.messageId, assistant.id));
+  const [pending, secretRequests] = await Promise.all([
+    db.select().from(chatPendingActions).where(eq(chatPendingActions.messageId, assistant.id)),
+    db
+      .select()
+      .from(chatPendingSecretRequests)
+      .where(eq(chatPendingSecretRequests.messageId, assistant.id)),
+  ]);
 
-  if (pending.length === 0) return null;
+  if (pending.length === 0 && secretRequests.length === 0) return null;
   if (pending.some((p) => p.status === "pending" || p.status === "approved")) {
     // "approved" means the user clicked approve but the executor hasn't run
     // yet. The pending-action route is responsible for transitioning approved
@@ -167,13 +191,31 @@ async function collectResolvedToolResults(
     // approval is mid-flight; treat as unresolved.
     return null;
   }
+  if (secretRequests.some((request) => request.status !== "stored")) return null;
 
-  return pending.map<AnthropicContentBlock>((p) => ({
-    type: "tool_result",
-    tool_use_id: p.toolUseId,
-    content: [{ type: "text", text: p.result ?? "" }],
-    is_error: p.isError,
-  }));
+  return [
+    ...pending.map<AnthropicContentBlock>((p) => ({
+      type: "tool_result",
+      tool_use_id: p.toolUseId,
+      content: [{ type: "text", text: p.result ?? "" }],
+      is_error: p.isError,
+    })),
+    ...secretRequests.map<AnthropicContentBlock>((request) => ({
+      type: "tool_result",
+      tool_use_id: request.toolUseId,
+      content: [
+        {
+          type: "text",
+          text: storedSecretToolResult({
+            secretId: request.secretId,
+            requestId: request.id,
+            name: request.name,
+          }),
+        },
+      ],
+      is_error: false,
+    })),
+  ];
 }
 
 async function loadConversationForApi(
@@ -344,6 +386,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
     let cacheReadTokens = 0;
     let cacheWriteTokens = 0;
     let collectedBlocks: AnthropicContentBlock[] = [];
+    const secretToolUseIds = new Set<string>();
     let costMicros = 0;
 
     try {
@@ -374,7 +417,15 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
               cacheReadTokens = ev.usage.cacheReadTokens;
               cacheWriteTokens = ev.usage.cacheWriteTokens;
             } else {
-              yield ev;
+              if (ev.type === "tool_use_start" && ev.name === WRITE_WORKFLOW_SECRET_TOOL_NAME) {
+                secretToolUseIds.add(ev.toolUseId);
+              }
+              // A secret request's streamed arguments are never needed by the
+              // client. Suppress them so even a provider returning an
+              // out-of-schema field cannot put plaintext on the wire.
+              if (ev.type !== "tool_use_input" || !secretToolUseIds.has(ev.toolUseId)) {
+                yield ev;
+              }
             }
           }
         } catch (e) {
@@ -384,6 +435,10 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
           };
           return;
         }
+
+        // Strip every out-of-schema field from secret tool input before it can
+        // enter chat history or a pending row.
+        collectedBlocks = sanitizeSecretToolBlocks(collectedBlocks);
 
         // Persist the assistant message.
         await db.insert(chatMessages).values({
@@ -507,6 +562,27 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
           is_error: true,
         });
         yield { type: "tool_executed", toolUseId: tu.id, isError: true, resultPreview: text };
+        continue;
+      }
+      if (tu.name === WRITE_WORKFLOW_SECRET_TOOL_NAME) {
+        const metadata = secretRequestMetadata(tu.input);
+        const requestId = uuidv4();
+        await db.insert(chatPendingSecretRequests).values(
+          pendingSecretRequestValues({
+            id: requestId,
+            conversationId,
+            messageId: assistantMessageId,
+            toolUseId: tu.id,
+            metadata,
+          }),
+        );
+        yield {
+          type: "secret_request",
+          requestId,
+          toolUseId: tu.id,
+          ...metadata,
+        };
+        suspended = true;
         continue;
       }
       if (tool.risk === "destructive") {

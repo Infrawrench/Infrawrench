@@ -58,6 +58,34 @@ describe("typecheckWorkflow", () => {
     expect(result.diagnostics[0]).toMatchObject({ line: 2, category: "error", code: 2339 });
   });
 
+  it("types assigned secrets as strings and rejects unknown names", () => {
+    const secretsDts = generateInfraDts({
+      plugins: PLUGINS,
+      metrics: [],
+      triggerKind: "manual",
+      secrets: [
+        { key: "secret-1", name: "API_TOKEN" },
+        { key: "secret-2", name: "stripe.apiKey" },
+      ],
+    });
+    expect(
+      typecheckWorkflow({
+        source:
+          "const token: string = infra.secrets.API_TOKEN; const stripeKey: string = infra.secrets.stripe.apiKey;",
+        dts: secretsDts,
+      }).hasErrors,
+    ).toBe(false);
+    expect(
+      typecheckWorkflow({ source: "infra.secrets.NOT_ASSIGNED;", dts: secretsDts }).hasErrors,
+    ).toBe(true);
+    expect(
+      typecheckWorkflow({
+        source: 'infra.secrets.API_TOKEN = "replacement";',
+        dts: secretsDts,
+      }).hasErrors,
+    ).toBe(true);
+  });
+
   it("reports a plugin the org has no accounts for", () => {
     // Account *names* are an open union (literals are suggestions, not a
     // constraint), but a plugin namespace that isn't connected does not exist.

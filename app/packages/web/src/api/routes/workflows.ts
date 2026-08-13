@@ -39,6 +39,13 @@ import {
   type WorkflowScheduleBody,
 } from "../../services/workflows";
 import { runWorkflowById } from "../../services/workflow-runner";
+import { logAudit } from "../../services/audit";
+import {
+  WorkflowSecretError,
+  getWorkflowSecretAssignments,
+  listAssignedWorkflowSecrets,
+  setWorkflowSecretAssignments,
+} from "../../services/workflow-secrets";
 
 const app = new Hono();
 
@@ -49,6 +56,7 @@ function orgId(c: Context): string {
 /** Map a service-level failure onto its HTTP response. */
 function fail(c: Context, e: unknown) {
   if (e instanceof WorkflowError) return c.json({ error: e.message }, e.status);
+  if (e instanceof WorkflowSecretError) return c.json({ error: e.message }, e.status);
   throw e;
 }
 
@@ -67,9 +75,21 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   requirePermission(c, "workflows:write");
   const body = (await c.req.json()) as WorkflowBody;
+  if (body.secretIds !== undefined) requirePermission(c, "secrets:read");
   const userId = (c.get("session") as { userId?: string } | undefined)?.userId ?? null;
   try {
-    return c.json(redactWorkflow(await createWorkflow(orgId(c), body, userId)), 201);
+    const workflow = await createWorkflow(orgId(c), body, userId);
+    if (body.secretIds !== undefined) {
+      void logAudit({
+        organizationId: orgId(c),
+        userId: userId ?? undefined,
+        action: "workflow.secrets_assign",
+        entityType: "workflow",
+        entityId: workflow.id,
+        metadata: { secretIds: body.secretIds },
+      });
+    }
+    return c.json(redactWorkflow(workflow), 201);
   } catch (e) {
     return fail(c, e);
   }
@@ -85,8 +105,20 @@ app.get("/:id", async (c) => {
 app.put("/:id", async (c) => {
   requirePermission(c, "workflows:write");
   const body = (await c.req.json()) as WorkflowBody;
+  if (body.secretIds !== undefined) requirePermission(c, "secrets:read");
   try {
-    return c.json(redactWorkflow(await updateWorkflow(orgId(c), c.req.param("id"), body)));
+    const workflow = await updateWorkflow(orgId(c), c.req.param("id"), body);
+    if (body.secretIds !== undefined) {
+      void logAudit({
+        organizationId: orgId(c),
+        userId: (c.get("session") as { userId?: string }).userId,
+        action: "workflow.secrets_assign",
+        entityType: "workflow",
+        entityId: workflow.id,
+        metadata: { secretIds: body.secretIds },
+      });
+    }
+    return c.json(redactWorkflow(workflow));
   } catch (e) {
     return fail(c, e);
   }
@@ -97,6 +129,47 @@ app.delete("/:id", async (c) => {
   try {
     await softDeleteWorkflow(orgId(c), c.req.param("id"));
     return c.json({ ok: true });
+  } catch (e) {
+    return fail(c, e);
+  }
+});
+
+// Reusable organization secrets explicitly made available to this workflow.
+app.get("/:id/secrets", async (c) => {
+  requirePermission(c, "secrets:read");
+  try {
+    const secrets = await listAssignedWorkflowSecrets(orgId(c), c.req.param("id"));
+    return c.json({ secretIds: secrets.map((secret) => secret.id), secrets });
+  } catch (e) {
+    return fail(c, e);
+  }
+});
+
+app.put("/:id/secrets", async (c) => {
+  requirePermission(c, "workflows:write");
+  requirePermission(c, "secrets:read");
+  const body = (await c.req.json().catch(() => null)) as { secretIds?: unknown } | null;
+  if (
+    !body ||
+    !Array.isArray(body.secretIds) ||
+    !body.secretIds.every((id): id is string => typeof id === "string")
+  ) {
+    return c.json({ error: "Body must include a secretIds string array." }, 400);
+  }
+  try {
+    const secrets = await setWorkflowSecretAssignments(orgId(c), c.req.param("id"), body.secretIds);
+    void logAudit({
+      organizationId: orgId(c),
+      userId: (c.get("session") as { userId?: string }).userId,
+      action: "workflow.secrets_assign",
+      entityType: "workflow",
+      entityId: c.req.param("id"),
+      metadata: { secretIds: secrets.map((secret) => secret.id) },
+    });
+    return c.json({
+      secretIds: await getWorkflowSecretAssignments(orgId(c), c.req.param("id")),
+      secrets,
+    });
   } catch (e) {
     return fail(c, e);
   }
@@ -151,11 +224,14 @@ app.delete("/:id/schedule", async (c) => {
 // and upgrades in a second pass.
 app.get("/:id/typings", async (c) => {
   requirePermission(c, "workflows:read");
+  requirePermission(c, "secrets:read");
   const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
   const enrich = c.req.query("enrich") === "1" || c.req.query("enrich") === "true";
+  const assignedSecrets = await listAssignedWorkflowSecrets(orgId(c), wf.id);
   const dts = await generateWorkflowTypings(orgId(c), {
     metrics: (wf.metricDefs ?? []) as MetricDef[],
+    secrets: assignedSecrets.map((secret) => ({ key: secret.id, name: secret.name })),
     triggerKind: (wf.trigger as WorkflowTrigger).kind,
     enrichCreateFields: enrich,
   });
@@ -165,11 +241,14 @@ app.get("/:id/typings", async (c) => {
 // Headless type check of a candidate source (editorless clients).
 app.post("/:id/check", async (c) => {
   requirePermission(c, "workflows:read");
+  requirePermission(c, "secrets:read");
   const wf = await load(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
   const body = (await c.req.json().catch(() => ({}))) as { source?: string };
+  const assignedSecrets = await listAssignedWorkflowSecrets(orgId(c), wf.id);
   const result = await checkWorkflowSource(orgId(c), body.source ?? wf.source, {
     metrics: (wf.metricDefs ?? []) as MetricDef[],
+    secrets: assignedSecrets.map((secret) => ({ key: secret.id, name: secret.name })),
     triggerKind: (wf.trigger as WorkflowTrigger).kind,
   });
   return c.json(result);

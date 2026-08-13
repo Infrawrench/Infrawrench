@@ -9,7 +9,13 @@ import { streamSSE } from "hono/streaming";
 import { eq, and, isNull, desc, asc } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { db } from "../../db/client";
-import { chatConversations, chatMessages, chatPendingActions, users } from "../../db/schema";
+import {
+  chatConversations,
+  chatMessages,
+  chatPendingActions,
+  chatPendingSecretRequests,
+  users,
+} from "../../db/schema";
 import { authenticateChat } from "../../chat/auth";
 import {
   runAgentTurn,
@@ -20,8 +26,12 @@ import {
 import { noteChatToolApprovalDecided } from "../../chat/slack-approvals";
 import { getMonthlySpend } from "../../chat/billing";
 import { CHAT_MODELS, DEFAULT_CHAT_MODEL } from "@infrawrench/ui";
+import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import type { ToolAuthContext } from "../../tools/types";
 import { enterAuditPrincipal } from "../../services/audit-context";
+import { logAudit } from "../../services/audit";
+import { storeWorkflowSecretFromChat } from "../../chat/workflow-secret-store";
+import { effectivePermissions } from "../../auth/effective-permissions";
 
 const app = new Hono();
 
@@ -122,32 +132,38 @@ app.get("/conversations/:id", async (c) => {
   if (auth instanceof Response) return auth;
   const conversationId = c.req.param("id");
 
-  const [conv] = await db
-    .select()
-    .from(chatConversations)
-    .where(
-      and(
-        eq(chatConversations.id, conversationId),
-        eq(chatConversations.organizationId, auth.organizationId),
-        eq(chatConversations.userId, auth.userId),
-      ),
-    )
-    .limit(1);
+  const [conversationRows, messages, pending, pendingSecretRequests] = await Promise.all([
+    db
+      .select()
+      .from(chatConversations)
+      .where(
+        and(
+          eq(chatConversations.id, conversationId),
+          eq(chatConversations.organizationId, auth.organizationId),
+          eq(chatConversations.userId, auth.userId),
+        ),
+      )
+      .limit(1),
+    db
+      .select()
+      .from(chatMessages)
+      .where(eq(chatMessages.conversationId, conversationId))
+      .orderBy(asc(chatMessages.createdAt)),
+    db
+      .select()
+      .from(chatPendingActions)
+      .where(eq(chatPendingActions.conversationId, conversationId))
+      .orderBy(asc(chatPendingActions.createdAt)),
+    db
+      .select()
+      .from(chatPendingSecretRequests)
+      .where(eq(chatPendingSecretRequests.conversationId, conversationId))
+      .orderBy(asc(chatPendingSecretRequests.createdAt)),
+  ]);
+  const [conv] = conversationRows;
   if (!conv) return c.json({ error: "Not found" }, 404);
 
-  const messages = await db
-    .select()
-    .from(chatMessages)
-    .where(eq(chatMessages.conversationId, conversationId))
-    .orderBy(asc(chatMessages.createdAt));
-
-  const pending = await db
-    .select()
-    .from(chatPendingActions)
-    .where(eq(chatPendingActions.conversationId, conversationId))
-    .orderBy(asc(chatPendingActions.createdAt));
-
-  return c.json({ conversation: conv, messages, pendingActions: pending });
+  return c.json({ conversation: conv, messages, pendingActions: pending, pendingSecretRequests });
 });
 
 /* DELETE /:id — archive */
@@ -383,6 +399,124 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
     // copies' decision controls still retire.
     noteDecided("approved");
     return c.json({ error: e instanceof Error ? e.message : "Execution failed" }, 500);
+  }
+});
+
+/* -------------------------------------------------------------------------- */
+/* POST /secret-requests/:requestId — human-only, write-only secret handoff   */
+/* -------------------------------------------------------------------------- */
+app.post("/conversations/:id/secret-requests/:requestId", async (c) => {
+  const orgId = c.req.param("orgId") ?? "";
+  const auth = await authenticateChat(c, orgId, "chat:write");
+  if (auth instanceof Response) return auth;
+  // API keys are machine principals. This endpoint is deliberately restricted
+  // to an authenticated human session or WorkOS Bearer token.
+  if (auth.via === "api-key") return c.json({ error: "Human authentication required" }, 403);
+  const permissions = await effectivePermissions({
+    userId: auth.userId,
+    organizationId: auth.organizationId,
+    ...(auth.scopes ? { scopes: auth.scopes } : {}),
+  });
+  if (!hasPermission(permissions, "secrets:write")) {
+    return c.json({ error: "Missing required permission: secrets:write" }, 403);
+  }
+
+  const conversationId = c.req.param("id");
+  const requestId = c.req.param("requestId");
+  const body = await c.req.json<{ value?: unknown }>().catch(() => ({ value: undefined }));
+  if (typeof body.value !== "string") return c.json({ error: "`value` must be a string" }, 400);
+
+  const [row] = await db
+    .select({
+      request: chatPendingSecretRequests,
+      orgId: chatConversations.organizationId,
+      userId: chatConversations.userId,
+    })
+    .from(chatPendingSecretRequests)
+    .innerJoin(
+      chatConversations,
+      eq(chatConversations.id, chatPendingSecretRequests.conversationId),
+    )
+    .where(
+      and(
+        eq(chatPendingSecretRequests.id, requestId),
+        eq(chatPendingSecretRequests.conversationId, conversationId),
+      ),
+    )
+    .limit(1);
+  if (!row) return c.json({ error: "Secret request not found" }, 404);
+  if (row.orgId !== auth.organizationId || row.userId !== auth.userId) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  if (row.request.status !== "pending") {
+    return c.json({ error: "Secret request already submitted" }, 409);
+  }
+
+  const claimed = await db
+    .update(chatPendingSecretRequests)
+    .set({ status: "submitting", updatedAt: new Date() })
+    .where(
+      and(
+        eq(chatPendingSecretRequests.id, requestId),
+        eq(chatPendingSecretRequests.status, "pending"),
+      ),
+    )
+    .returning({ id: chatPendingSecretRequests.id });
+  if (claimed.length === 0) return c.json({ error: "Secret request already submitted" }, 409);
+
+  try {
+    const stored = await storeWorkflowSecretFromChat({
+      organizationId: auth.organizationId,
+      secretId: row.request.secretId,
+      name: row.request.name,
+      description: row.request.description,
+      value: body.value,
+      onResolvedId: async (secretId) => {
+        // Persist only the resulting id before the value write. If encryption
+        // or storage fails, a retry updates the same secret instead of creating
+        // a duplicate.
+        await db
+          .update(chatPendingSecretRequests)
+          .set({ secretId, updatedAt: new Date() })
+          .where(eq(chatPendingSecretRequests.id, requestId));
+      },
+    });
+    void logAudit({
+      organizationId: auth.organizationId,
+      userId: auth.userId,
+      action: "workflow_secret.value_write",
+      entityType: "workflow_secret",
+      entityId: stored.id,
+      metadata: { name: stored.name, source: "chat" },
+    });
+    await db
+      .update(chatPendingSecretRequests)
+      .set({ status: "stored", resolvedAt: new Date(), updatedAt: new Date() })
+      .where(eq(chatPendingSecretRequests.id, requestId));
+
+    const [actions, requests] = await Promise.all([
+      db
+        .select({ status: chatPendingActions.status })
+        .from(chatPendingActions)
+        .where(eq(chatPendingActions.messageId, row.request.messageId)),
+      db
+        .select({ status: chatPendingSecretRequests.status })
+        .from(chatPendingSecretRequests)
+        .where(eq(chatPendingSecretRequests.messageId, row.request.messageId)),
+    ]);
+    const allResolved =
+      actions.every((item) => ["executed", "errored", "rejected"].includes(item.status)) &&
+      requests.every((item) => item.status === "stored");
+    return c.json({ ok: true, allResolved });
+  } catch {
+    // Do not serialize or log the exception: third-party/database errors can
+    // contain bound values. Reset the metadata-only claim so the human can
+    // safely retry.
+    await db
+      .update(chatPendingSecretRequests)
+      .set({ status: "pending", updatedAt: new Date() })
+      .where(eq(chatPendingSecretRequests.id, requestId));
+    return c.json({ error: "Secret could not be stored" }, 500);
   }
 });
 

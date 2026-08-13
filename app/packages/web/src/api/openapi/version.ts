@@ -69,4 +69,7 @@
 // 1.23.0: workflow typings as a published route — GET
 // `/workflows/{id}/typings` with an optional `enrich` query (static first paint
 // vs live create-field unions). Additive.
-export const API_VERSION = "1.23.0";
+// 1.24.0: reusable organization-level workflow secret metadata, write-only
+// values, per-workflow assignment routes, and the human-only chat secret
+// handoff endpoint. All additive.
+export const API_VERSION = "1.24.0";

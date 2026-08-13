@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { ChatMarkdown } from "./ChatMarkdown.js";
 import { useUIStore } from "../store/ui.store.js";
 import {
@@ -9,6 +9,7 @@ import {
   type ChatConversationMessage,
   type ChatContentBlock,
   type ChatPendingAction,
+  type ChatPendingSecretRequest,
   type ConversationSummary,
   type SpendStatus,
 } from "./types.js";
@@ -31,24 +32,56 @@ interface StreamingState {
   error?: string | undefined;
 }
 
+interface ConversationViewState {
+  conversation: ConversationSummary | null;
+  messages: ChatConversationMessage[];
+  pending: ChatPendingAction[];
+  pendingSecrets: ChatPendingSecretRequest[];
+  spend: SpendStatus | null;
+  streaming: StreamingState;
+  input: string;
+  sleeping: number | null;
+  activeSleepIds: ReadonlySet<string>;
+}
+
+type ConversationViewAction =
+  | { patch: Partial<ConversationViewState> }
+  | { update: (state: ConversationViewState) => Partial<ConversationViewState> };
+
+function conversationViewReducer(
+  state: ConversationViewState,
+  action: ConversationViewAction,
+): ConversationViewState {
+  return { ...state, ...("patch" in action ? action.patch : action.update(state)) };
+}
+
 export function ConversationView({ client, conversationId }: Props): React.ReactElement {
-  const [conversation, setConversation] = useState<ConversationSummary | null>(null);
-  const [messages, setMessages] = useState<ChatConversationMessage[]>([]);
-  const [pending, setPending] = useState<ChatPendingAction[]>([]);
-  const [spend, setSpend] = useState<SpendStatus | null>(null);
-  const [streaming, setStreaming] = useState<StreamingState>({
-    active: false,
-    text: "",
-    toolUses: [],
+  const [state, dispatch] = useReducer(conversationViewReducer, {
+    conversation: null,
+    messages: [],
+    pending: [],
+    pendingSecrets: [],
+    spend: null,
+    streaming: { active: false, text: "", toolUses: [] },
+    input: "",
+    sleeping: null,
+    activeSleepIds: new Set<string>(),
   });
-  const [input, setInput] = useState("");
-  /** Seconds remaining of a client-side sleep the agent requested. */
-  const [sleeping, setSleeping] = useState<number | null>(null);
+  const {
+    conversation,
+    messages,
+    pending,
+    pendingSecrets,
+    spend,
+    streaming,
+    input,
+    sleeping,
+    activeSleepIds,
+  } = state;
   /**
-   * tool_use ids of sleeps still counting down — their persisted "Slept N
-   * seconds" markers stay hidden until the wait has actually happened.
+   * Sleep countdown plus the tool_use ids still waiting. Persisted "Slept N
+   * seconds" markers stay hidden until the wait actually happened.
    */
-  const [activeSleepIds, setActiveSleepIds] = useState<ReadonlySet<string>>(new Set());
   // Ref mirror for callbacks that must not resume mid-countdown (approving a
   // destructive action while a sleep from the same batch is still running).
   const sleepingRef = useRef(false);
@@ -64,13 +97,25 @@ export function ConversationView({ client, conversationId }: Props): React.React
       // a single render. Clearing the streaming buffer in a later microtask
       // than setMessages briefly showed the turn's text twice (persisted +
       // still-buffered) — a flash of duplicated text at the end of each turn.
-      setConversation(data.conversation);
-      setMessages(data.messages);
-      setPending(data.pendingActions);
-      setSpend(s);
-      if (opts?.clearStreamingBuffer) {
-        setStreaming((st) => ({ ...st, userText: undefined, text: "", toolUses: [] }));
-      }
+      dispatch({
+        update: (current) => ({
+          conversation: data.conversation,
+          messages: data.messages,
+          pending: data.pendingActions,
+          pendingSecrets: data.pendingSecretRequests,
+          spend: s,
+          ...(opts?.clearStreamingBuffer
+            ? {
+                streaming: {
+                  ...current.streaming,
+                  userText: undefined,
+                  text: "",
+                  toolUses: [],
+                },
+              }
+            : {}),
+        }),
+      });
       // Keep any workspace tab pointing at this conversation titled after it —
       // conversations auto-rename after the first message. Done here (not in a
       // sidebar component) so it works even when the sidebar is collapsed. On
@@ -99,7 +144,11 @@ export function ConversationView({ client, conversationId }: Props): React.React
 
   const startStream = useCallback(
     async (body: { text?: string; resume?: boolean }) => {
-      setStreaming({ active: true, userText: body.text, text: "", toolUses: [] });
+      dispatch({
+        patch: {
+          streaming: { active: true, userText: body.text, text: "", toolUses: [] },
+        },
+      });
       // Longest sleep the agent requested this turn; the wait runs here on
       // the client after the stream suspends, then hands back to the server.
       let sleepSeconds = 0;
@@ -108,40 +157,62 @@ export function ConversationView({ client, conversationId }: Props): React.React
         for await (const ev of client.streamTurn(conversationId, body)) {
           if (ev.type === "text_delta") {
             const delta = ev["delta"] as string;
-            setStreaming((s) => ({ ...s, text: s.text + delta }));
+            dispatch({
+              update: (current) => ({
+                streaming: { ...current.streaming, text: current.streaming.text + delta },
+              }),
+            });
           } else if (ev.type === "sleep") {
             sleepSeconds = Math.max(sleepSeconds, Number(ev["seconds"]) || 0);
             const toolUseId = ev["toolUseId"] as string;
-            setActiveSleepIds((ids) => new Set(ids).add(toolUseId));
+            dispatch({
+              update: (current) => ({
+                activeSleepIds: new Set(current.activeSleepIds).add(toolUseId),
+              }),
+            });
           } else if (ev.type === "tool_use_start") {
             // Sleep renders as its own indicator, not as a tool card.
             if (ev["name"] === "sleep") continue;
-            setStreaming((s) => ({
-              ...s,
-              toolUses: [
-                ...s.toolUses,
-                {
-                  id: ev["toolUseId"] as string,
-                  name: ev["name"] as string,
-                  input: "",
+            dispatch({
+              update: (current) => ({
+                streaming: {
+                  ...current.streaming,
+                  toolUses: [
+                    ...current.streaming.toolUses,
+                    {
+                      id: ev["toolUseId"] as string,
+                      name: ev["name"] as string,
+                      input: "",
+                    },
+                  ],
                 },
-              ],
-            }));
+              }),
+            });
           } else if (ev.type === "tool_use_input") {
             const id = ev["toolUseId"] as string;
             const partial = ev["partialJson"] as string;
-            setStreaming((s) => ({
-              ...s,
-              toolUses: s.toolUses.map((t) =>
-                t.id === id ? { ...t, input: t.input + partial } : t,
-              ),
-            }));
+            dispatch({
+              update: (current) => ({
+                streaming: {
+                  ...current.streaming,
+                  toolUses: current.streaming.toolUses.map((t) =>
+                    t.id === id ? { ...t, input: t.input + partial } : t,
+                  ),
+                },
+              }),
+            });
           } else if (ev.type === "tool_executed") {
             const id = ev["toolUseId"] as string;
-            setStreaming((s) => ({
-              ...s,
-              toolUses: s.toolUses.map((t) => (t.id === id ? { ...t, executed: true } : t)),
-            }));
+            dispatch({
+              update: (current) => ({
+                streaming: {
+                  ...current.streaming,
+                  toolUses: current.streaming.toolUses.map((t) =>
+                    t.id === id ? { ...t, executed: true } : t,
+                  ),
+                },
+              }),
+            });
           } else if (ev.type === "pending_action") {
             // Server has persisted the action; we'll see it after reload.
           } else if (ev.type === "turn_end") {
@@ -154,26 +225,42 @@ export function ConversationView({ client, conversationId }: Props): React.React
             await reload({ clearStreamingBuffer: true });
           } else if (ev.type === "spend_blocked") {
             const cap = microsToUsd(Number(ev["monthlyCapMicros"]));
-            setStreaming((s) => ({
-              ...s,
-              error: ev["freeTier"]
-                ? `Free-tier chat limit reached ($${cap}/month). Add a payment method in Settings → Billing to keep chatting, or wait for next month.`
-                : `Monthly chat spend cap reached ($${cap}). Increase the cap in org settings or wait for next month.`,
-            }));
+            dispatch({
+              update: (current) => ({
+                streaming: {
+                  ...current.streaming,
+                  error: ev["freeTier"]
+                    ? `Free-tier chat limit reached ($${cap}/month). Add a payment method in Settings → Billing to keep chatting, or wait for next month.`
+                    : `Monthly chat spend cap reached ($${cap}). Increase the cap in org settings or wait for next month.`,
+                },
+              }),
+            });
             break;
           } else if (ev.type === "error") {
-            setStreaming((s) => ({ ...s, error: ev["message"] as string }));
+            dispatch({
+              update: (current) => ({
+                streaming: { ...current.streaming, error: ev["message"] as string },
+              }),
+            });
             break;
           }
         }
       } catch (e) {
-        setStreaming((s) => ({
-          ...s,
-          error: e instanceof Error ? e.message : "Chat stream failed",
-        }));
+        dispatch({
+          update: (current) => ({
+            streaming: {
+              ...current.streaming,
+              error: e instanceof Error ? e.message : "Chat stream failed",
+            },
+          }),
+        });
       }
 
-      setStreaming((s) => ({ ...s, active: false }));
+      dispatch({
+        update: (current) => ({
+          streaming: { ...current.streaming, active: false },
+        }),
+      });
       // clearStreamingBuffer: the optimistic user bubble is swapped for the
       // persisted message in the same render.
       await reload({ clearStreamingBuffer: true });
@@ -188,19 +275,21 @@ export function ConversationView({ client, conversationId }: Props): React.React
         sleepingRef.current = true;
         try {
           for (let remaining = sleepSeconds; remaining > 0; remaining--) {
-            setSleeping(remaining);
+            dispatch({ patch: { sleeping: remaining } });
             await new Promise((resolve) => setTimeout(resolve, 1000));
           }
         } finally {
           sleepingRef.current = false;
-          setSleeping(null);
-          setActiveSleepIds(new Set());
+          dispatch({ patch: { sleeping: null, activeSleepIds: new Set() } });
         }
         const data = await client.getConversation(conversationId);
         const unresolved = data.pendingActions.some(
           (p) => p.status === "pending" || p.status === "approved",
         );
-        if (!unresolved) await startStream({ resume: true });
+        const secretUnresolved = data.pendingSecretRequests.some(
+          (request) => request.status === "pending" || request.status === "submitting",
+        );
+        if (!unresolved && !secretUnresolved) await startStream({ resume: true });
       }
     },
     [client, conversationId, reload],
@@ -209,23 +298,27 @@ export function ConversationView({ client, conversationId }: Props): React.React
   async function handleSend(): Promise<void> {
     const text = input.trim();
     if (!text || streaming.active || sleeping != null) return;
-    setInput("");
+    dispatch({ patch: { input: "" } });
     await startStream({ text });
   }
 
   async function handleModelChange(model: string): Promise<void> {
     if (!conversation || model === conversation.model) return;
     // Optimistic — the select shouldn't snap back while the PATCH is in flight.
-    setConversation({ ...conversation, model });
+    dispatch({ patch: { conversation: { ...conversation, model } } });
     try {
       await client.setConversationModel(conversationId, model);
       emitChatConversationsChanged();
     } catch (e) {
-      setConversation(conversation);
-      setStreaming((s) => ({
-        ...s,
-        error: e instanceof Error ? e.message : "Failed to change model",
-      }));
+      dispatch({
+        update: (current) => ({
+          conversation,
+          streaming: {
+            ...current.streaming,
+            error: e instanceof Error ? e.message : "Failed to change model",
+          },
+        }),
+      });
     }
   }
 
@@ -237,7 +330,14 @@ export function ConversationView({ client, conversationId }: Props): React.React
     const unresolved = data.pendingActions.some(
       (p) => p.status === "pending" || p.status === "approved",
     );
-    if (!unresolved && data.pendingActions.length > 0) {
+    const secretUnresolved = data.pendingSecretRequests.some(
+      (request) => request.status === "pending" || request.status === "submitting",
+    );
+    if (
+      !unresolved &&
+      !secretUnresolved &&
+      data.pendingActions.length + data.pendingSecretRequests.length > 0
+    ) {
       await startStream({ resume: true });
     }
   }, [client, conversationId, startStream]);
@@ -256,6 +356,12 @@ export function ConversationView({ client, conversationId }: Props): React.React
     await resumeIfResolved();
   }
 
+  async function handleSecretSubmit(requestId: string, value: string): Promise<void> {
+    await client.submitSecretRequest(conversationId, requestId, value);
+    await reload();
+    await resumeIfResolved();
+  }
+
   const pendingByMessage = useMemo(() => {
     const m = new Map<string, ChatPendingAction[]>();
     for (const p of pending) {
@@ -265,6 +371,11 @@ export function ConversationView({ client, conversationId }: Props): React.React
     }
     return m;
   }, [pending]);
+
+  const pendingSecretsByToolUseId = useMemo(
+    () => new Map(pendingSecrets.map((request) => [request.toolUseId, request])),
+    [pendingSecrets],
+  );
 
   // Tool results live in follow-up user messages; index them by tool_use_id so
   // each result renders inside its tool card instead of as a "You" message.
@@ -330,10 +441,12 @@ export function ConversationView({ client, conversationId }: Props): React.React
               key={m.id}
               message={m}
               pendingActions={pendingByMessage.get(m.id) ?? []}
+              pendingSecrets={pendingSecretsByToolUseId}
               toolResults={toolResultsById}
               activeSleepIds={activeSleepIds}
               onApprove={handleApprove}
               onReject={handleReject}
+              onSubmitSecret={handleSecretSubmit}
             />
           ))}
           {streaming.userText && (
@@ -378,7 +491,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
         <div className="max-w-3xl mx-auto flex gap-2">
           <textarea
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => dispatch({ patch: { input: e.target.value } })}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -408,19 +521,23 @@ export function ConversationView({ client, conversationId }: Props): React.React
 interface BubbleProps {
   message: ChatConversationMessage;
   pendingActions: ChatPendingAction[];
+  pendingSecrets: Map<string, ChatPendingSecretRequest>;
   toolResults: Map<string, { text: string; isError: boolean }>;
   activeSleepIds: ReadonlySet<string>;
   onApprove(id: string): Promise<void>;
   onReject(id: string, reason?: string): Promise<void>;
+  onSubmitSecret(id: string, value: string): Promise<void>;
 }
 
 function MessageBubble({
   message,
   pendingActions,
+  pendingSecrets,
   toolResults,
   activeSleepIds,
   onApprove,
   onReject,
+  onSubmitSecret,
 }: BubbleProps): React.ReactElement {
   const isAssistant = message.role === "assistant";
   const pendingByToolUseId = new Map<string, ChatPendingAction>(
@@ -450,10 +567,12 @@ function MessageBubble({
           key={i}
           block={block}
           pending={block.type === "tool_use" ? pendingByToolUseId.get(block.id) : undefined}
+          pendingSecret={block.type === "tool_use" ? pendingSecrets.get(block.id) : undefined}
           result={block.type === "tool_use" ? toolResults.get(block.id) : undefined}
           sleepInProgress={block.type === "tool_use" && activeSleepIds.has(block.id)}
           onApprove={onApprove}
           onReject={onReject}
+          onSubmitSecret={onSubmitSecret}
         />
       ))}
     </div>
@@ -463,20 +582,24 @@ function MessageBubble({
 interface BlockProps {
   block: ChatContentBlock;
   pending: ChatPendingAction | undefined;
+  pendingSecret: ChatPendingSecretRequest | undefined;
   result: { text: string; isError: boolean } | undefined;
   /** True while this sleep tool_use is still counting down client-side. */
   sleepInProgress: boolean;
   onApprove(id: string): Promise<void>;
   onReject(id: string, reason?: string): Promise<void>;
+  onSubmitSecret(id: string, value: string): Promise<void>;
 }
 
 function BlockView({
   block,
   pending,
+  pendingSecret,
   result,
   sleepInProgress,
   onApprove,
   onReject,
+  onSubmitSecret,
 }: BlockProps): React.ReactElement | null {
   // Approve executes the tool synchronously server-side (a workflow run can
   // take minutes), so the buttons must lock and the label must say the action
@@ -510,6 +633,11 @@ function BlockView({
           Slept {Number.isFinite(secs) ? secs : "a few"} seconds
         </div>
       );
+    }
+    if (block.name === "write_workflow_secret") {
+      return pendingSecret ? (
+        <SecretRequestCard request={pendingSecret} onSubmit={onSubmitSecret} />
+      ) : null;
     }
     const status = pending?.status ?? (result?.isError ? "errored" : "executed");
     const statusLabel =
@@ -594,4 +722,81 @@ function BlockView({
   // tool_result blocks render inside their tool card (see toolResultsById);
   // nothing to show standalone.
   return null;
+}
+
+function SecretRequestCard({
+  request,
+  onSubmit,
+}: {
+  request: ChatPendingSecretRequest;
+  onSubmit(id: string, value: string): Promise<void>;
+}): React.ReactElement {
+  const [value, setValue] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const resolved = request.status === "stored";
+
+  async function submit(): Promise<void> {
+    if (submitting || resolved || value.length === 0) return;
+    const submittedValue = value;
+    setValue("");
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSubmit(request.id, submittedValue);
+    } catch {
+      setError("Secret could not be stored. Try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="border border-border rounded-lg bg-surface-overlay text-xs">
+      <div className="px-3 py-2">
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-medium text-on-surface-secondary">
+            {request.title ?? `Enter ${request.name}`}
+          </span>
+          <span className={resolved ? "text-success" : "text-warning"}>
+            {resolved ? "Stored" : submitting ? "Storing…" : "Value required"}
+          </span>
+        </div>
+        {request.description && <p className="mt-1 text-on-surface-muted">{request.description}</p>}
+      </div>
+      {!resolved && (
+        <div className="border-t border-border px-3 py-2 space-y-2">
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void submit();
+                }
+              }}
+              disabled={submitting || request.status === "submitting"}
+              autoComplete="new-password"
+              aria-label={request.title ?? `Secret value for ${request.name}`}
+              className="min-w-0 flex-1 bg-surface border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <button
+              type="button"
+              disabled={submitting || request.status === "submitting" || value.length === 0}
+              onClick={() => void submit()}
+              className="px-2.5 py-1 font-medium bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-50 disabled:pointer-events-none"
+            >
+              {submitting ? "Storing…" : "Store"}
+            </button>
+          </div>
+          {error && <div className="text-danger">{error}</div>}
+          <div className="text-on-surface-faint">
+            Sent directly to encrypted secret storage. It is never shown to the model.
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

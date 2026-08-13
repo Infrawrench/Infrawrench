@@ -38,6 +38,7 @@ import { registerCustomGraphPaths } from "./paths/custom-graphs";
 import { registerOrgConfigPaths } from "./paths/org-config";
 import { registerWorkflowApprovalPaths } from "./paths/workflow-approvals";
 import { registerWorkflowPaths } from "./paths/workflows";
+import { registerWorkflowSecretPaths } from "./paths/workflow-secrets";
 import { registerDeploymentPaths } from "./paths/deployments";
 import { registerPagePaths } from "./paths/pages";
 import { registerResourcePaths } from "./paths/resources";
@@ -165,6 +166,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerOrgConfigPaths(ctx);
   registerWorkflowApprovalPaths(ctx);
   registerWorkflowPaths(ctx);
+  registerWorkflowSecretPaths(ctx);
   registerDeploymentPaths(ctx);
   registerPagePaths(ctx);
   registerResourcePaths(ctx);
@@ -631,9 +633,16 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   // the schedule sub-resource still shares the dashboards permissions used when
   // it was documented (CI managing when a UI-created workflow runs).
   "GET /workflows/{id}/typings": "workflows:read",
+  "GET /workflows/{id}/secrets": "secrets:read",
+  "PUT /workflows/{id}/secrets": "workflows:write",
   "GET /workflows/{id}/schedule": "dashboards:read",
   "PUT /workflows/{id}/schedule": "dashboards:write",
   "DELETE /workflows/{id}/schedule": "dashboards:write",
+  "GET /workflow-secrets": "secrets:read",
+  "POST /workflow-secrets": "secrets:write",
+  "PATCH /workflow-secrets/{id}": "secrets:write",
+  "PUT /workflow-secrets/{id}/value": "secrets:write",
+  "DELETE /workflow-secrets/{id}": "secrets:write",
   // agents
   "GET /agents/accounts": "accounts:read",
   "GET /agents/settings": "accounts:read",

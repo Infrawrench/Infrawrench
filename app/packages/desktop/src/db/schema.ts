@@ -274,6 +274,22 @@ CREATE TABLE IF NOT EXISTS workflow_pages (
 
 MIGRATIONS.push(WORKFLOW_PAGES_MIGRATION);
 
+// Reusable local workflow secrets. Values are AES-GCM encrypted by Electron
+// main with the workspace master key; the renderer only receives metadata.
+const WORKFLOW_SECRETS_MIGRATION = `
+ALTER TABLE workflows ADD COLUMN assigned_secret_ids TEXT NOT NULL DEFAULT '[]';
+CREATE TABLE IF NOT EXISTS workflow_secrets (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  encrypted_value TEXT,
+  value_iv TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`;
+
+MIGRATIONS.push(WORKFLOW_SECRETS_MIGRATION);
+
 const AGENTS_MIGRATION = `
 CREATE TABLE IF NOT EXISTS agent_settings (
   id TEXT PRIMARY KEY DEFAULT 'default',

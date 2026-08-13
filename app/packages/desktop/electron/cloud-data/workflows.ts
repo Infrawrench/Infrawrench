@@ -71,6 +71,48 @@ ipcMain.handle("cloud_workflow_metrics", async (_e, { orgId, id }: WorkflowIdArg
   return (await cloudFetch<unknown[]>(orgId, `/workflows/${encodeURIComponent(id)}/metrics`)) ?? [];
 });
 
+ipcMain.handle("cloud_list_workflow_secrets", async (_e, { orgId }: { orgId: string }) => {
+  return (await cloudFetch<unknown[]>(orgId, "/workflow-secrets")) ?? [];
+});
+
+ipcMain.handle(
+  "cloud_get_workflow_secrets",
+  async (_e, { orgId, id }: { orgId: string; id: string }) => {
+    return cloudFetch(orgId, `/workflows/${encodeURIComponent(id)}/secrets`);
+  },
+);
+
+ipcMain.handle(
+  "cloud_upsert_workflow_secret",
+  async (
+    _e,
+    { orgId, id, name, value }: { orgId: string; id?: string; name: string; value: string },
+  ) => {
+    const secret = id
+      ? await cloudFetch<{ id: string }>(orgId, `/workflow-secrets/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ name }),
+        })
+      : await cloudFetch<{ id: string }>(orgId, "/workflow-secrets", {
+          method: "POST",
+          body: JSON.stringify({ name }),
+        });
+    if (!secret?.id) throw new Error("Workflow secret save returned no id");
+    return cloudFetch(orgId, `/workflow-secrets/${encodeURIComponent(secret.id)}/value`, {
+      method: "PUT",
+      body: JSON.stringify({ value }),
+    });
+  },
+);
+
+ipcMain.handle(
+  "cloud_delete_workflow_secret",
+  async (_e, { orgId, id }: { orgId: string; id: string }) => {
+    await cloudFetch(orgId, `/workflow-secrets/${encodeURIComponent(id)}`, { method: "DELETE" });
+    return { ok: true };
+  },
+);
+
 // --- Human approval steps (infra.waitForApproval) --------------------------
 //
 // Cloud-only, like the rest of this file: a suspended run lives on the server,

@@ -473,6 +473,25 @@ Even then the row stays distinguishable — every workflow-written row carries a
 
 Limits: 1,000 rows per call (larger arrays are chunked for you) and 50,000 rows per run. Keys beginning `infrawrench:` are reserved and rejected. Cost storage is cloud-only, so `infra.costs` is unavailable in the desktop app's local workflows — the generated types mark it as such so you catch it while editing.
 
+## Secrets
+
+Workflow secrets are reusable, encrypted organization values for API tokens, signing keys, and other credentials a workflow needs. Create or rotate them in the workflow editor's **Secrets** section, then assign only the secrets that workflow should receive. Values are write-only: after saving, Infrawrench shows **Value set** but never displays the value again.
+
+Each assigned name becomes a readonly, typed property:
+
+```ts
+const response = await fetch("https://api.example.com/deploy", {
+  method: "POST",
+  headers: { authorization: `Bearer ${infra.secrets.DEPLOY_TOKEN}` },
+});
+```
+
+Names may be identifiers such as `DEPLOY_TOKEN`, or dot paths such as `stripe.apiKey` (used as `infra.secrets.stripe.apiKey`). The editor autocompletes only the secrets assigned to that workflow. A run takes an encrypted value snapshot at startup, fails before executing if an assigned value is missing, and requires `secrets:read` from the user the run acts for. Exact assigned values are redacted from persisted workflow logs and output, but workflow source should still never deliberately print or transform credentials.
+
+Secrets are reusable across workflows, while assignment is explicit per workflow. Deleting a secret removes all of its assignments. Organization config exports and generated typings include no secret values.
+
+<insert [Workflow editor Secrets section showing reusable secrets, Value set status, and assignment checkboxes] here>
+
 ## Metrics
 
 When you create a workflow you can declare **metrics** in the UI (a key, label, type, and optional unit). Each metric you declare becomes a **typed property** on `infra.metrics`, named after its key — read it like a variable and assign to it to persist a new value:
@@ -597,15 +616,18 @@ Paste the same value into your provider's webhook configuration. The secret is w
 
 The [AI chat](./ai-chat.md) and [MCP](./mcp.md) surfaces can author workflows for you — "make a workflow that shuts down the dev cluster when my Production budget goes over 90%" is a single request. Both use the same tools:
 
-| Tool                    | What it does                                                                                                                                                                  |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_workflows`        | The org's workflows with their triggers, metrics, and last/next run.                                                                                                          |
-| `get_workflow`          | One workflow, including its source, current metric values, and recent runs.                                                                                                   |
-| `get_workflow_typings`  | The generated `infra.d.ts` — your real accounts, resource types, and SSH key names. Default is the fast static surface; pass `enrich:true` for precise create() field unions. |
-| `check_workflow_source` | Type-checks a draft without saving it.                                                                                                                                        |
-| `write_workflow`        | Creates or updates a workflow. Type-checks first and **refuses to save** source with type errors.                                                                             |
-| `run_workflow`          | Runs it now and returns the status, logs, output, and any error.                                                                                                              |
-| `delete_workflow`       | Soft-deletes it (run history is kept).                                                                                                                                        |
+| Tool                     | What it does                                                                                                                                                                  |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_workflows`         | The org's workflows with their triggers, metrics, and last/next run.                                                                                                          |
+| `get_workflow`           | One workflow, including its source, current metric values, and recent runs.                                                                                                   |
+| `get_workflow_typings`   | The generated `infra.d.ts` — your real accounts, resource types, and SSH key names. Default is the fast static surface; pass `enrich:true` for precise create() field unions. |
+| `check_workflow_source`  | Type-checks a draft without saving it.                                                                                                                                        |
+| `write_workflow`         | Creates or updates a workflow. Type-checks first and **refuses to save** source with type errors.                                                                             |
+| `run_workflow`           | Runs it now and returns the status, logs, output, and any error.                                                                                                              |
+| `delete_workflow`        | Soft-deletes it (run history is kept).                                                                                                                                        |
+| `list_workflow_secrets`  | Lists reusable workflow secret ids, names, and whether each has a value — never the values.                                                                                   |
+| `write_workflow_secret`  | Opens a secure password prompt in Infrawrench chat; MCP can create or update metadata but cannot carry plaintext.                                                             |
+| `delete_workflow_secret` | Deletes an encrypted secret and removes its workflow assignments.                                                                                                             |
 
 Asking for a recurring check is a single request too — "check my Kubernetes clusters' pods every hour and page me if any restart count goes above 5" builds the cron workflow above, `infra.page` and all. The typings tell the model that paging exists and that it is throttled per key, so it writes the check to page unconditionally rather than inventing its own bookkeeping.
 
@@ -631,6 +653,7 @@ Every operation the sandbox performs is checked against the permissions of the u
 | ----------------------------------------------------------- | ------------------- |
 | Listing, reading, describing, logs, metrics, manifests      | `resources:read`    |
 | Reading a resource output (`resolveOutput`)                 | `secrets:read`      |
+| Reading assigned `infra.secrets` values                     | `secrets:read`      |
 | `create()`, `update()`, applying a manifest, importing YAML | `resources:write`   |
 | `delete()`                                                  | `resources:delete`  |
 | `.ssh()`, `.query()`, the KV helpers, NoSQL                 | `resources:execute` |

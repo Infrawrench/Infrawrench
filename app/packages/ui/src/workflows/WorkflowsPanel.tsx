@@ -20,6 +20,7 @@ import type {
   WorkflowRunLog,
   WorkflowRunResult,
   WorkflowRunRow,
+  WorkflowSecretSummary,
   WorkflowSummary,
   WorkflowTrigger,
 } from "./types.js";
@@ -56,6 +57,63 @@ function overlayMetricTypings(dts: string, defs: WorkflowMetricDef[]): string {
   const block = renderMetricsInterface(defs);
   const re = /interface InfraMetrics \{[\s\S]*?\n\}/;
   return re.test(dts) ? dts.replace(re, block) : `${dts}\n${block}\n`;
+}
+
+export function overlaySecretTypings(dts: string, secrets: WorkflowSecretSummary[]): string {
+  type Node = { value: boolean; children: Map<string, Node> };
+  const root: Node = { value: false, children: new Map() };
+  for (const secret of secrets) {
+    const parts = secret.name.split(".");
+    if (parts.some((part) => !SECRET_NAME_RE.test(part))) continue;
+    let node = root;
+    for (const part of parts) {
+      let child = node.children.get(part);
+      if (!child) {
+        child = { value: false, children: new Map() };
+        node.children.set(part, child);
+      }
+      node = child;
+    }
+    node.value = true;
+  }
+  const render = (node: Node, indent: string): string =>
+    [...node.children.entries()]
+      .map(([name, child]) => {
+        if (child.children.size === 0) return `${indent}readonly ${name}: string;`;
+        if (child.value) {
+          // Corrupt/legacy assignments may contain both `stripe` and
+          // `stripe.apiKey`. The service rejects that shape; keep the editor
+          // fail-closed if it still arrives instead of silently dropping one.
+          return `${indent}readonly ${name}: never;`;
+        }
+        return `${indent}readonly ${name}: {\n${render(child, `${indent}  `)}\n${indent}};`;
+      })
+      .join("\n");
+  const block = `interface InfraSecrets {\n${render(root, "  ")}\n}`;
+  const marker = "interface InfraSecrets {";
+  const start = dts.indexOf(marker);
+  let withSecrets: string;
+  if (start < 0) {
+    withSecrets = `${dts}\n${block}\n`;
+  } else {
+    let depth = 0;
+    let end = -1;
+    for (let i = dts.indexOf("{", start); i < dts.length; i += 1) {
+      if (dts[i] === "{") depth += 1;
+      if (dts[i] === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          end = i + 1;
+          break;
+        }
+      }
+    }
+    withSecrets =
+      end < 0 ? `${dts}\n${block}\n` : `${dts.slice(0, start)}${block}${dts.slice(end)}`;
+  }
+  return /interface InfraApi \{[\s\S]*?readonly secrets: InfraSecrets;/.test(withSecrets)
+    ? withSecrets
+    : `${withSecrets}\ninterface InfraApi {\n  readonly secrets: InfraSecrets;\n}\n`;
 }
 
 const STARTER_SOURCE = `// Workflow — runs in a sandboxed isolate with a typed \`infra\` object.
@@ -199,6 +257,8 @@ export function WorkflowsPanel({
   const [draft, setDraft] = useState<WorkflowSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [secrets, setSecrets] = useState<WorkflowSecretSummary[]>([]);
+  const [secretsLoading, setSecretsLoading] = useState(true);
   // The selected workflow's server state — typings, run history, metrics, and
   // the pending infra.waitForApproval(...) requests for its runs (approvals are
   // cloud only; the desktop client omits the approval methods).
@@ -257,9 +317,21 @@ export function WorkflowsPanel({
     }
   }, [client]);
 
+  const refreshSecrets = useCallback(async () => {
+    setSecretsLoading(true);
+    try {
+      setSecrets(await client.listSecrets());
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setSecretsLoading(false);
+    }
+  }, [client]);
+
   useEffect(() => {
     void refreshList();
-  }, [refreshList]);
+    void refreshSecrets();
+  }, [refreshList, refreshSecrets]);
 
   const refreshApprovals = useCallback(
     async (workflowId: string) => {
@@ -314,11 +386,21 @@ export function WorkflowsPanel({
       const wf = list.find((w) => w.id === id);
       if (wf) setDraft(structuredCloneSafe(wf));
       try {
-        const [typings, runRows, metricRows] = await Promise.all([
+        const [typings, runRows, metricRows, assignment] = await Promise.all([
           fetchStaticTypings(id),
           client.listRuns(id),
           client.listMetrics(id),
+          client.getAssignedSecrets(id),
         ]);
+        setDraft((current) =>
+          current?.id === id
+            ? {
+                ...current,
+                assignedSecretIds: assignment.assignedSecretIds,
+                assignedSecrets: assignment.secrets,
+              }
+            : current,
+        );
         dispatchDetail({ kind: "loaded", dts: typings, runs: runRows, metrics: metricRows });
         // After the static surface is on screen — never before, or a fast
         // enrich can land and then get clobbered by the `loaded` dispatch.
@@ -339,6 +421,7 @@ export function WorkflowsPanel({
         source: STARTER_SOURCE,
         trigger: { kind: "manual" },
         metrics: [],
+        assignedSecretIds: [],
         enabled: true,
       });
       await refreshList();
@@ -361,6 +444,7 @@ export function WorkflowsPanel({
         source: draft.source,
         trigger: draft.trigger,
         metrics: draft.metricDefs,
+        assignedSecretIds: draft.assignedSecretIds ?? [],
         enabled: draft.enabled,
       });
       await refreshList();
@@ -433,9 +517,17 @@ export function WorkflowsPanel({
   // changes on every keystroke and re-overlaying the typings each time is
   // wasted work.
   const metricDefs = draft?.metricDefs;
+  const assignedSecrets = useMemo(() => {
+    const assigned = new Set(draft?.assignedSecretIds ?? []);
+    return secrets.filter((secret) => assigned.has(secret.id));
+  }, [draft?.assignedSecretIds, secrets]);
   const liveDts = useMemo(
-    () => (metricDefs ? overlayMetricTypings(detail.dts, metricDefs) : detail.dts),
-    [detail.dts, metricDefs],
+    () =>
+      overlaySecretTypings(
+        metricDefs ? overlayMetricTypings(detail.dts, metricDefs) : detail.dts,
+        assignedSecrets,
+      ),
+    [detail.dts, metricDefs, assignedSecrets],
   );
 
   const filteredList = useMemo(() => {
@@ -583,6 +675,28 @@ export function WorkflowsPanel({
             defs={draft.metricDefs}
             values={detail.metrics}
             onChange={(defs) => patch({ metricDefs: defs })}
+          />
+
+          <SecretsEditor
+            secrets={secrets}
+            assignedIds={draft.assignedSecretIds ?? []}
+            loading={secretsLoading}
+            onAssignedIdsChange={(assignedSecretIds) => patch({ assignedSecretIds })}
+            onUpsert={async (input) => {
+              const saved = await client.upsertSecret(input);
+              await refreshSecrets();
+              return saved;
+            }}
+            onDelete={async (id) => {
+              await client.deleteSecret(id);
+              patch({
+                assignedSecretIds: (draft.assignedSecretIds ?? []).filter(
+                  (secretId) => secretId !== id,
+                ),
+              });
+              await refreshSecrets();
+            }}
+            onError={(message) => setError(message)}
           />
 
           {error && (
@@ -1202,6 +1316,232 @@ function MetricsEditor({
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+const SECRET_NAME_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+const SECRET_PATH_RE = /^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*$/;
+
+function SecretsEditor({
+  secrets,
+  assignedIds,
+  loading,
+  onAssignedIdsChange,
+  onUpsert,
+  onDelete,
+  onError,
+}: {
+  secrets: WorkflowSecretSummary[];
+  assignedIds: string[];
+  loading: boolean;
+  onAssignedIdsChange: (ids: string[]) => void;
+  onUpsert: (input: { id?: string; name: string; value: string }) => Promise<WorkflowSecretSummary>;
+  onDelete: (id: string) => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const nameId = useId();
+  const valueId = useId();
+  const [name, setName] = useState("");
+  const [value, setValue] = useState("");
+  const [rotatingId, setRotatingId] = useState<string | null>(null);
+  const [rotationValue, setRotationValue] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const assigned = useMemo(() => new Set(assignedIds), [assignedIds]);
+
+  const create = async () => {
+    const trimmedName = name.trim();
+    if (!SECRET_PATH_RE.test(trimmedName)) {
+      setValidationError(
+        "Secret names must be JavaScript identifiers, optionally separated by dots (for example API_TOKEN or stripe.apiKey).",
+      );
+      return;
+    }
+    if (!value) {
+      setValidationError("Enter an initial secret value.");
+      return;
+    }
+    setValidationError(null);
+    setBusyId("new");
+    try {
+      const saved = await onUpsert({ name: trimmedName, value });
+      onAssignedIdsChange([...new Set([...assignedIds, saved.id])]);
+      setName("");
+      setValue("");
+    } catch (e) {
+      onError(messageOf(e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const rotate = async (secret: WorkflowSecretSummary) => {
+    if (!rotationValue) {
+      setValidationError("Enter a replacement value.");
+      return;
+    }
+    setValidationError(null);
+    setBusyId(secret.id);
+    try {
+      await onUpsert({ id: secret.id, name: secret.name, value: rotationValue });
+      setRotationValue("");
+      setRotatingId(null);
+    } catch (e) {
+      onError(messageOf(e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="px-3 py-2 border-b border-white/10 text-xs">
+      <div className="mb-2">
+        <span className="opacity-60">Secrets</span>
+        <span className="ml-2 opacity-50">
+          Assigned values are available as readonly infra.secrets properties.
+        </span>
+      </div>
+
+      <div className="flex items-end gap-2 flex-wrap">
+        <label className="flex flex-col gap-1" htmlFor={nameId}>
+          <span className="opacity-60">Name</span>
+          <input
+            id={nameId}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="DATABASE_TOKEN"
+            autoComplete="off"
+            spellCheck={false}
+            className="bg-transparent border border-white/15 rounded px-2 py-1 w-40 font-mono"
+          />
+        </label>
+        <label className="flex flex-col gap-1" htmlFor={valueId}>
+          <span className="opacity-60">Initial value</span>
+          <input
+            id={valueId}
+            type="password"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            autoComplete="new-password"
+            spellCheck={false}
+            className="bg-surface-overlay border border-white/15 rounded px-2 py-1 w-52 font-mono"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => void create()}
+          disabled={busyId !== null}
+          className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-50"
+        >
+          Add and assign
+        </button>
+      </div>
+
+      {validationError && (
+        <div role="alert" className="mt-1 text-danger">
+          {validationError}
+        </div>
+      )}
+
+      <div className="mt-2 space-y-1">
+        {loading ? (
+          <div className="opacity-50">Loading secrets…</div>
+        ) : secrets.length === 0 ? (
+          <div className="opacity-50">No reusable secrets yet.</div>
+        ) : (
+          secrets.map((secret) => {
+            const rotationId = `workflow-secret-rotation-${secret.id}`;
+            return (
+              <div key={secret.id} className="flex items-center gap-2 flex-wrap">
+                <label className="flex items-center gap-1.5 min-w-44">
+                  <input
+                    type="checkbox"
+                    checked={assigned.has(secret.id)}
+                    onChange={(e) =>
+                      onAssignedIdsChange(
+                        e.target.checked
+                          ? [...new Set([...assignedIds, secret.id])]
+                          : assignedIds.filter((id) => id !== secret.id),
+                      )
+                    }
+                  />
+                  <code>{secret.name}</code>
+                </label>
+                <span className={secret.hasValue ? "text-success/80" : "text-warning"}>
+                  {secret.hasValue ? "Value set" : "No value"}
+                </span>
+                {rotatingId === secret.id ? (
+                  <>
+                    <label htmlFor={rotationId} className="sr-only">
+                      Replacement value for {secret.name}
+                    </label>
+                    <input
+                      id={rotationId}
+                      type="password"
+                      value={rotationValue}
+                      onChange={(e) => setRotationValue(e.target.value)}
+                      placeholder="Replacement value"
+                      autoComplete="new-password"
+                      spellCheck={false}
+                      className="bg-surface-overlay border border-white/15 rounded px-2 py-1 w-44 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void rotate(secret)}
+                      disabled={busyId !== null}
+                      className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 disabled:opacity-50"
+                    >
+                      Save value
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRotatingId(null);
+                        setRotationValue("");
+                      }}
+                      className="px-2 py-0.5 opacity-60 hover:opacity-100"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRotatingId(secret.id);
+                      setRotationValue("");
+                    }}
+                    className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20"
+                  >
+                    {secret.hasValue ? "Rotate value" : "Set value"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        `Delete workflow secret "${secret.name}"? It will be unassigned from workflows.`,
+                      )
+                    )
+                      return;
+                    setBusyId(secret.id);
+                    void onDelete(secret.id)
+                      .catch((e) => onError(messageOf(e)))
+                      .finally(() => setBusyId(null));
+                  }}
+                  disabled={busyId !== null}
+                  aria-label={`Delete workflow secret ${secret.name}`}
+                  className="px-2 py-0.5 text-danger opacity-80 hover:opacity-100 disabled:opacity-50"
+                >
+                  Delete
+                </button>
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }
