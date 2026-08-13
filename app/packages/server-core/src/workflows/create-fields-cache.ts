@@ -74,8 +74,12 @@ export async function getCreateFieldsForType(
         await withTimeout(client.getCreateConfig(typeId), CONFIG_TIMEOUT_MS),
       );
     }
-  } catch {
-    value = null;
+  } catch (err) {
+    // Never-throws by contract (see docstring), but a transient provider
+    // error must not be cached as "no create fields" for the whole TTL —
+    // log it and let the next call retry.
+    console.warn(`[create-fields-cache] getCreateConfig for ${key} failed:`, err);
+    return null;
   }
   cache.set(key, { at: now, value });
   return value;

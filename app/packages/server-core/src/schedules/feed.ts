@@ -42,24 +42,28 @@ interface CostTotalEntry {
 async function loadCostTotals(organizationId: string): Promise<Map<string, CostTotalEntry> | null> {
   const to = isoDay(new Date());
   const from = addDays(to, -(SCHEDULE_COST_WINDOW_DAYS - 1));
+  // Only the ClickHouse read is allowed to fail; a bug in the merge below must
+  // throw, not read as "ClickHouse down".
+  let totals: Awaited<ReturnType<typeof getResourceCostTotals>>;
   try {
-    const totals = await getResourceCostTotals(organizationId, from, to);
-    const byKey = new Map<string, CostTotalEntry>();
-    for (const t of totals) {
-      const key = `${t.accountId} ${t.resourceId}`;
-      const existing = byKey.get(key);
-      if (!existing) {
-        byKey.set(key, { amount: t.amount, currency: t.currency });
-      } else if (existing.currency !== null && existing.currency !== t.currency) {
-        existing.currency = null;
-      } else {
-        existing.amount += t.amount;
-      }
-    }
-    return byKey;
-  } catch {
+    totals = await getResourceCostTotals(organizationId, from, to);
+  } catch (err) {
+    console.warn(`[schedules] cost totals for org ${organizationId} unavailable:`, err);
     return null;
   }
+  const byKey = new Map<string, CostTotalEntry>();
+  for (const t of totals) {
+    const key = `${t.accountId} ${t.resourceId}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, { amount: t.amount, currency: t.currency });
+    } else if (existing.currency !== null && existing.currency !== t.currency) {
+      existing.currency = null;
+    } else {
+      existing.amount += t.amount;
+    }
+  }
+  return byKey;
 }
 
 function toWire(

@@ -279,7 +279,10 @@ async function lookupUserName(userId: string): Promise<string | null> {
       .where(eq(users.id, userId))
       .limit(1);
     return row?.displayName ?? row?.email ?? null;
-  } catch {
+  } catch (err) {
+    // Display-only value; log like the shared-console sibling so a schema or
+    // logic bug doesn't pass as "user has no name".
+    console.error(`[break-glass] resolving the name of user ${userId} failed:`, err);
     return null;
   }
 }

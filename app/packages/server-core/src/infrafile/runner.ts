@@ -94,7 +94,16 @@ async function installationForRepo(
     .from(githubInstallations)
     .where(eq(githubInstallations.organizationId, organizationId));
   for (const install of installs) {
-    const repos = await listInstallationRepos(install.installationId).catch(() => []);
+    // Per-installation skip keeps one dead installation from blocking the
+    // rest, but say so — a GitHub outage must not silently read as "repo not
+    // connected".
+    const repos = await listInstallationRepos(install.installationId).catch((err: unknown) => {
+      console.warn(
+        `[infrafile] listing repos for installation ${install.installationId} failed:`,
+        err,
+      );
+      return [];
+    });
     if (repos.some((r) => r.fullName.toLowerCase() === fullName.toLowerCase())) {
       return install.installationId;
     }
@@ -185,7 +194,15 @@ export async function listDeployableRepos(
 
   const out: { fullName: string; defaultBranch: string }[] = [];
   for (const install of installs) {
-    for (const repo of await listInstallationRepos(install.installationId).catch(() => [])) {
+    // Same per-installation skip-with-log as installationForRepo.
+    const repos = await listInstallationRepos(install.installationId).catch((err: unknown) => {
+      console.warn(
+        `[infrafile] listing repos for installation ${install.installationId} failed:`,
+        err,
+      );
+      return [];
+    });
+    for (const repo of repos) {
       out.push({ fullName: repo.fullName, defaultBranch: repo.defaultBranch ?? "main" });
     }
   }

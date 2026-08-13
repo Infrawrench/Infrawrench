@@ -47,24 +47,28 @@ async function loadCostTotals(
 ): Promise<Map<string, { amount: number; currency: string | null }> | null> {
   const to = isoDay(new Date());
   const from = addDays(to, -(BACKUP_COST_WINDOW_DAYS - 1));
+  // Only the ClickHouse read is allowed to fail; a bug in the merge below must
+  // throw, not read as "ClickHouse down".
+  let totals: Awaited<ReturnType<typeof getResourceCostTotals>>;
   try {
-    const totals = await getResourceCostTotals(organizationId, from, to);
-    const byKey = new Map<string, { amount: number; currency: string | null }>();
-    for (const t of totals) {
-      const key = `${t.accountId} ${t.resourceId}`;
-      const existing = byKey.get(key);
-      if (!existing) byKey.set(key, { amount: t.amount, currency: t.currency });
-      // A resource billed in two currencies has no meaningful total; null
-      // marks it and the computation drops the quote rather than adding
-      // pounds to dollars.
-      else if (existing.currency !== null && existing.currency !== t.currency)
-        existing.currency = null;
-      else existing.amount += t.amount;
-    }
-    return byKey;
-  } catch {
+    totals = await getResourceCostTotals(organizationId, from, to);
+  } catch (err) {
+    console.warn(`[backups] cost totals for org ${organizationId} unavailable:`, err);
     return null;
   }
+  const byKey = new Map<string, { amount: number; currency: string | null }>();
+  for (const t of totals) {
+    const key = `${t.accountId} ${t.resourceId}`;
+    const existing = byKey.get(key);
+    if (!existing) byKey.set(key, { amount: t.amount, currency: t.currency });
+    // A resource billed in two currencies has no meaningful total; null
+    // marks it and the computation drops the quote rather than adding
+    // pounds to dollars.
+    else if (existing.currency !== null && existing.currency !== t.currency)
+      existing.currency = null;
+    else existing.amount += t.amount;
+  }
+  return byKey;
 }
 
 /**
