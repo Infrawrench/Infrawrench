@@ -17,6 +17,7 @@
  * Pure functions only: no database, no clock, no I/O. The recorder decides
  * *when* an event happened; this module only decides how it is written down.
  */
+import type { CastEvent, CastEventCode } from "@infrawrench/client-core";
 
 /**
  * Event kinds we emit. `"o"` output, `"i"` input, `"r"` resize, `"m"` marker.
@@ -28,8 +29,11 @@
  * keyboard, the share was revoked. Putting that in-band means the tape answers
  * "whose hands were on this at 04:12" on its own, in a format a third-party
  * viewer already understands, rather than only in a column beside it.
+ *
+ * The vocabulary is the wire contract; client-core (`session-recordings.ts`)
+ * owns it, and the parsers on both sides accept exactly this set.
  */
-export type CastEventCode = "o" | "i" | "r" | "m";
+export type { CastEventCode };
 
 export interface CastHeader {
   width: number;
@@ -79,13 +83,8 @@ export function encodeResizeData(cols: number, rows: number): string {
   return `${Math.max(1, Math.trunc(cols))}x${Math.max(1, Math.trunc(rows))}`;
 }
 
-/** One decoded event, as the player consumes it. */
-export interface CastEvent {
-  /** Seconds since session start. */
-  time: number;
-  code: CastEventCode;
-  data: string;
-}
+/** One decoded event, as the player consumes it. Client-core owns the shape. */
+export type { CastEvent };
 
 export interface ParsedCast {
   header: CastHeader & { version: number };

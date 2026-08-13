@@ -142,7 +142,14 @@ export async function fetchSessionRecordingCast(
  * Cast parsing and playback timing — pure, so every surface shares it.
  * ------------------------------------------------------------------ */
 
-export type CastEventCode = "o" | "i" | "r";
+/**
+ * `"o"` output, `"i"` input, `"r"` resize, `"m"` marker. Markers are
+ * asciinema's own annotation event — the recorder emits one when somebody
+ * joined a shared session, took the keyboard, or the share was revoked, so the
+ * tape itself answers "whose hands were on this at 04:12". Players ignore them
+ * for byte replay (only `"o"` is ever written to the terminal).
+ */
+export type CastEventCode = "o" | "i" | "r" | "m";
 
 export interface CastEvent {
   /** Seconds since the session started. */
@@ -190,7 +197,7 @@ export function parseCast(text: string): ParsedCast {
       if (!Array.isArray(parsed) || parsed.length < 3) continue;
       const [time, code, data] = parsed as [unknown, unknown, unknown];
       if (typeof time !== "number" || typeof data !== "string") continue;
-      if (code !== "o" && code !== "i" && code !== "r") continue;
+      if (code !== "o" && code !== "i" && code !== "r" && code !== "m") continue;
       events.push({ time, code, data });
     } catch {
       /* see the note above */
