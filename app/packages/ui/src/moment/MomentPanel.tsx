@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { T, Var, useGT } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 import {
   buildMomentTimeline,
   describeIncidentBadge,
@@ -77,6 +79,8 @@ export function MomentPanel({
   onOpenEvent,
   onOpenUrl,
 }: MomentPanelProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   // "" = around now. Kept in the input's local format so typing stays sane.
   const [atInput, setAtInput] = useState(() => (initialAt ? isoToLocalInput(initialAt) : ""));
   // Guard the host-supplied initial window like MomentScreen does — only a
@@ -151,7 +155,7 @@ export function MomentPanel({
           title={event.severity}
         />
         <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary whitespace-nowrap shrink-0">
-          {MOMENT_FEED_LABELS[event.feed] ?? event.feed}
+          {gtData(MOMENT_FEED_LABELS[event.feed] ?? event.feed)}
         </span>
         {onOpenEvent && event.link ? (
           <button
@@ -168,7 +172,9 @@ export function MomentPanel({
         {badge && (
           <span
             className="rounded-full border border-amber-500/40 text-warning px-2 py-0.5 text-xs whitespace-nowrap shrink-0"
-            title="This event falls inside a provider incident's span — correlation, not causation."
+            title={gt(
+              "This event falls inside a provider incident's span — correlation, not causation.",
+            )}
           >
             {badge}
           </span>
@@ -182,15 +188,16 @@ export function MomentPanel({
 
   return (
     <div className="flex-1 overflow-auto p-6">
-      <h1 className="text-xl font-semibold mb-1">Investigate a moment</h1>
+      <h1 className="text-xl font-semibold mb-1">{gt("Investigate a moment")}</h1>
       <p className="text-sm text-on-surface-muted mb-6">
-        Everything the platform knows happened around a timestamp — changes, incidents, anomalies,
-        runs, deployments, audit entries and freezes, merged into one timeline.
+        {gt(
+          "Everything the platform knows happened around a timestamp — changes, incidents, anomalies, runs, deployments, audit entries and freezes, merged into one timeline.",
+        )}
       </p>
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <label htmlFor="moment-at" className="sr-only">
-          Timestamp to investigate
+          {gt("Timestamp to investigate")}
         </label>
         <input
           id="moment-at"
@@ -204,14 +211,14 @@ export function MomentPanel({
           onClick={() => setAtInput("")}
           disabled={atInput === ""}
           className="px-3 py-1.5 text-sm border border-border-strong rounded-lg text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-40"
-          title="Centre the window on the current time"
+          title={gt("Centre the window on the current time")}
         >
-          Around now
+          {gt("Around now")}
         </button>
         <div
           className="flex rounded-lg border border-border-strong overflow-hidden"
           role="group"
-          aria-label="Window size"
+          aria-label={gt("Window size")}
         >
           {MOMENT_WINDOW_PRESETS.map((preset) => (
             <button
@@ -225,7 +232,7 @@ export function MomentPanel({
                   : "text-on-surface-tertiary hover:text-on-surface-secondary"
               }`}
             >
-              {preset.label}
+              {gtData(preset.label)}
             </button>
           ))}
         </div>
@@ -234,7 +241,7 @@ export function MomentPanel({
           onClick={() => void load()}
           className="ml-auto px-3 py-1.5 text-sm border border-border-strong rounded-lg text-on-surface-tertiary hover:text-on-surface-secondary"
         >
-          Refresh
+          {gt("Refresh")}
         </button>
       </div>
 
@@ -250,18 +257,18 @@ export function MomentPanel({
               }`}
               title={
                 feed.status === "error"
-                  ? (feed.error ?? "The feed's query failed.")
+                  ? (feed.error ?? gt("The feed's query failed."))
                   : feed.status === "omitted"
-                    ? "Your role lacks this feed's read permission."
-                    : "This feed had more events than the window returns."
+                    ? gt("Your role lacks this feed's read permission.")
+                    : gt("This feed had more events than the window returns.")
               }
             >
-              {MOMENT_FEED_LABELS[feed.feed] ?? feed.feed}{" "}
+              {gtData(MOMENT_FEED_LABELS[feed.feed] ?? feed.feed)}{" "}
               {feed.status === "error"
-                ? "unavailable"
+                ? gt("unavailable")
                 : feed.status === "omitted"
-                  ? "omitted"
-                  : "truncated"}
+                  ? gt("omitted")
+                  : gt("truncated")}
             </span>
           ))}
         </div>
@@ -269,9 +276,12 @@ export function MomentPanel({
 
       {data !== null && data.incidents.length > 0 && (
         <div className="border border-amber-500/30 rounded-xl px-4 py-3 mb-4">
-          <p className="text-xs text-on-surface-muted mb-1">
-            Provider incident{data.incidents.length === 1 ? "" : "s"} overlapping this window:
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-muted mb-1">
+              Provider incident<Var>{data.incidents.length === 1 ? "" : "s"}</Var> overlapping
+              this window:
+            </p>
+          </T>
           <ul className="text-sm text-on-surface-secondary">
             {data.incidents.map((incident) => (
               <li key={incident.id} className="truncate">
@@ -288,7 +298,9 @@ export function MomentPanel({
                     {incident.pluginName}: {incident.title}
                   </>
                 )}
-                {!incident.resolvedAt && <span className="ml-2 text-xs text-warning">active</span>}
+                {!incident.resolvedAt && (
+                  <span className="ml-2 text-xs text-warning">{gt("active")}</span>
+                )}
               </li>
             ))}
           </ul>
@@ -296,24 +308,26 @@ export function MomentPanel({
       )}
 
       {error !== null && (
-        <div role="alert" className="mb-4 text-sm text-danger">
-          Couldn&apos;t load the moment — {error}{" "}
-          <button type="button" onClick={() => void load()} className="underline">
-            Retry
-          </button>
-        </div>
+        <T>
+          <div role="alert" className="mb-4 text-sm text-danger">
+            Couldn&apos;t load the moment — <Var>{error}</Var>{" "}
+            <button type="button" onClick={() => void load()} className="underline">
+              Retry
+            </button>
+          </div>
+        </T>
       )}
 
       <div className="border border-border rounded-xl overflow-hidden">
         {loading ? (
           <p role="status" className="px-4 py-8 text-center text-sm text-on-surface-faint">
-            Loading…
+            {gt("Loading…")}
           </p>
         ) : timeline.length === 0 ? (
           <div className="px-4 py-12 text-center">
-            <p className="text-sm text-on-surface-faint">Nothing recorded in this window.</p>
+            <p className="text-sm text-on-surface-faint">{gt("Nothing recorded in this window.")}</p>
             <p className="text-xs text-on-surface-faint mt-1">
-              Try a wider window — or breathe out, maybe nothing happened.
+              {gt("Try a wider window — or breathe out, maybe nothing happened.")}
             </p>
           </div>
         ) : (
@@ -337,9 +351,12 @@ export function MomentPanel({
                         {formatTime(item.events[0]?.timestamp ?? "")}
                       </span>
                       <span className="w-2 h-2 rounded-full shrink-0 bg-on-surface-faint" />
-                      <span className="text-sm text-on-surface-secondary truncate">
-                        {item.events.length} events on {item.resourceName ?? item.resourceId}
-                      </span>
+                      <T>
+                        <span className="text-sm text-on-surface-secondary truncate">
+                          <Var>{item.events.length}</Var> events on{" "}
+                          <Var>{item.resourceName ?? item.resourceId}</Var>
+                        </span>
+                      </T>
                       {describeIncidentBadge(
                         spansById(item.incidentIds, data?.incidents ?? []),
                       ) && (
@@ -350,7 +367,7 @@ export function MomentPanel({
                         </span>
                       )}
                       <span className="ml-auto text-xs text-on-surface-faint shrink-0">
-                        {expandedBurst === item.key ? "Collapse" : "Expand"}
+                        {expandedBurst === item.key ? gt("Collapse") : gt("Expand")}
                       </span>
                     </button>
                     {expandedBurst === item.key && (
@@ -369,10 +386,14 @@ export function MomentPanel({
       </div>
 
       {data !== null && !loading && (
-        <p className="text-xs text-on-surface-muted mt-4">
-          {new Date(data.from).toLocaleString()} — {new Date(data.to).toLocaleString()} ·{" "}
-          {data.events.length} event{data.events.length === 1 ? "" : "s"}
-        </p>
+        <T>
+          <p className="text-xs text-on-surface-muted mt-4">
+            <Var>{new Date(data.from).toLocaleString()}</Var> —{" "}
+            <Var>{new Date(data.to).toLocaleString()}</Var> ·{" "}
+            <Var>{data.events.length}</Var> event
+            <Var>{data.events.length === 1 ? "" : "s"}</Var>
+          </p>
+        </T>
       )}
     </div>
   );
