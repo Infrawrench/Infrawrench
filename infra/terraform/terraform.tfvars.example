@@ -196,7 +196,7 @@ app_env = {
   # app.config.ts. Setting it early degrades pages silently.
   PUSH_CRITICAL_ALERTS = "1"
 
-  # Chat models. The default model (Gemini 3.6 Flash) needs no key at all —
+  # Chat models. The default model (Gemini 3.7 Flash) needs no key at all —
   # it's served through Vertex AI, and the web pods authenticate with Workload
   # Identity (infra/terraform/vertex.tf). GOOGLE_CLOUD_PROJECT and
   # GOOGLE_CLOUD_LOCATION are injected automatically from project_id and

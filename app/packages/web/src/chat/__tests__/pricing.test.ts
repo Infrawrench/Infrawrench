@@ -34,8 +34,8 @@ describe("computeCostMicros", () => {
     expect(micros).toBe(37_500_000);
   });
 
-  it("prices Gemini 3.6 Flash input, output, and cached input at default markup", () => {
-    const micros = computeCostMicros("gemini-3.6-flash", {
+  it("prices Gemini 3.7 Flash input, output, and cached input at default markup", () => {
+    const micros = computeCostMicros("gemini-3.7-flash", {
       inputTokens: 1_000_000,
       outputTokens: 1_000_000,
       cacheReadTokens: 1_000_000,
@@ -46,7 +46,7 @@ describe("computeCostMicros", () => {
   });
 
   it("never charges Gemini a cache-write rate", () => {
-    const micros = computeCostMicros("gemini-3.6-flash", {
+    const micros = computeCostMicros("gemini-3.7-flash", {
       inputTokens: 0,
       outputTokens: 0,
       cacheReadTokens: 0,
@@ -63,6 +63,16 @@ describe("computeCostMicros", () => {
       cacheWriteTokens: 0,
     });
     expect(micros).toBe(7_500_000);
+  });
+
+  it("prices legacy gemini-3.6-flash conversations at the same Flash rates", () => {
+    const micros = computeCostMicros("gemini-3.6-flash", {
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
+      cacheReadTokens: 1_000_000,
+      cacheWriteTokens: 0,
+    });
+    expect(micros).toBe(13_725_000);
   });
 
   it("prices legacy opus-4-8 conversations", () => {

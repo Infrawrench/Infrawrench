@@ -51,7 +51,7 @@ import {
 import { ASK_QUESTION_TOOL_NAME, parseAskQuestionInput } from "@infrawrench/client-core";
 
 const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
-// Hard cap on thinking + response text per request. Both Opus 5 and Gemini 3.6
+// Hard cap on thinking + response text per request. Both Opus 5 and Gemini 3.7
 // Flash think by default, so this needs room for reasoning and the reply.
 const MAX_TOKENS = 32000;
 

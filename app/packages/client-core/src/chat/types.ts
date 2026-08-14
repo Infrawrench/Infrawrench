@@ -132,8 +132,8 @@ export interface ChatModelOption {
 
 export const CHAT_MODELS: ChatModelOption[] = [
   {
-    id: "gemini-3.6-flash",
-    label: "Gemini 3.6 Flash",
+    id: "gemini-3.7-flash",
+    label: "Gemini 3.7 Flash",
     description: "Fast and inexpensive — the default for most chats",
   },
   {
@@ -153,7 +153,7 @@ export const CHAT_MODELS: ChatModelOption[] = [
   },
 ];
 
-export const DEFAULT_CHAT_MODEL = "gemini-3.6-flash";
+export const DEFAULT_CHAT_MODEL = "gemini-3.7-flash";
 
 export interface SpendStatus {
   monthToDateMicros: number;

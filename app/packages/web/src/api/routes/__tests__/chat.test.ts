@@ -70,7 +70,7 @@ describe("POST /conversations", () => {
     expect(res.status).toBe(200);
     // Explicitly written, not left for the column default to decide.
     expect(inserted[0]).toMatchObject({ model: DEFAULT_CHAT_MODEL });
-    expect(inserted[0]?.["model"]).toBe("gemini-3.6-flash");
+    expect(inserted[0]?.["model"]).toBe("gemini-3.7-flash");
   });
 
   it("honours an explicit model", async () => {

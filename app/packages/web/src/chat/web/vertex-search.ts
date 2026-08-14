@@ -18,7 +18,7 @@ import { GoogleGenAI } from "@google/genai";
 import type { SearchBackend, SearchHit, SearchOutcome } from "./types";
 
 /** Retrieval model for the sub-call. Must have a row in ../pricing.ts. */
-const SEARCH_MODEL = "gemini-3.6-flash";
+const SEARCH_MODEL = "gemini-3.7-flash";
 
 const DEFAULT_LOCATION = "global";
 

@@ -116,7 +116,7 @@ Pick the model when you start a chat (the picker sits next to **New chat**), or 
 
 | Model                      | Best for                                     |
 | -------------------------- | -------------------------------------------- |
-| Gemini 3.6 Flash (default) | Most chats — fast, and the cheapest per turn |
+| Gemini 3.7 Flash (default) | Most chats — fast, and the cheapest per turn |
 | Claude Sonnet 5            | Balanced — near-Opus quality at lower cost   |
 | Claude Opus 5              | Complex, multi-step infrastructure work      |
 | Claude Haiku 4.5           | Quick lookups                                |

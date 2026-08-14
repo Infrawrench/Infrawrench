@@ -27,12 +27,13 @@ interface ModelRates {
 /** USD per million tokens, before markup. */
 const MODEL_RATES: Record<string, ModelRates> = {
   // Vertex AI standard-tier rates, which match AI Studio list for this model.
-  "gemini-3.6-flash": { input: 1.5, output: 7.5, cacheWrite: 0, cacheRead: 0.15 },
+  "gemini-3.7-flash": { input: 1.5, output: 7.5, cacheWrite: 0, cacheRead: 0.15 },
   "claude-opus-5": { input: 5.0, output: 25.0, cacheWrite: 6.25, cacheRead: 0.5 },
   "claude-sonnet-5": { input: 3.0, output: 15.0, cacheWrite: 3.75, cacheRead: 0.3 },
   "claude-haiku-4-5": { input: 1.0, output: 5.0, cacheWrite: 1.25, cacheRead: 0.1 },
   // Legacy: conversations created before the model list moved to the current
   // generation still carry these ids.
+  "gemini-3.6-flash": { input: 1.5, output: 7.5, cacheWrite: 0, cacheRead: 0.15 },
   "claude-opus-4-8": { input: 5.0, output: 25.0, cacheWrite: 6.25, cacheRead: 0.5 },
   "claude-sonnet-4-6": { input: 3.0, output: 15.0, cacheWrite: 3.75, cacheRead: 0.3 },
 };
