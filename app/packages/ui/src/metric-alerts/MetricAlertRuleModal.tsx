@@ -1,4 +1,6 @@
 import { useEffect, useId, useMemo, useState } from "react";
+import { T, Var, useGT } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 import {
   DEFAULT_METRIC_ALERT_INPUT,
   METRIC_ALERT_COMPARATORS,
@@ -37,6 +39,8 @@ export function MetricAlertRuleModal({
   onSave,
   onClose,
 }: MetricAlertRuleModalProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const uid = useId();
   const [input, setInput] = useState<MetricAlertRuleInput>(initialInput);
   const [thresholdText, setThresholdText] = useState(String(initialInput.threshold));
@@ -118,12 +122,12 @@ export function MetricAlertRuleModal({
   const save = async () => {
     const threshold = Number(thresholdText);
     if (!Number.isFinite(threshold)) {
-      setError("Enter a numeric threshold");
+      setError(gt("Enter a numeric threshold"));
       return;
     }
     const parsed = metricAlertRuleInputSchema.safeParse({ ...input, threshold });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "Invalid rule");
+      setError(parsed.error.issues[0]?.message ?? gt("Invalid rule"));
       return;
     }
     setSaving(true);
@@ -132,30 +136,31 @@ export function MetricAlertRuleModal({
       await onSave(parsed.data);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
+      setError(e instanceof Error ? e.message : gt("Failed to save"));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Modal onClose={onClose} ariaLabel="Metric alert rule">
+    <Modal onClose={onClose} ariaLabel={gt("Metric alert rule")}>
       <div className="w-[32rem] max-w-[90vw] rounded-2xl border border-border bg-surface-raised p-5 max-h-[85vh] overflow-y-auto">
-        <h2 className="text-lg font-semibold text-on-surface mb-1">Metric alert rule</h2>
+        <h2 className="text-lg font-semibold text-on-surface mb-1">{gt("Metric alert rule")}</h2>
         <p className="text-xs text-on-surface-faint mb-4">
-          Fires when a metric breaches the threshold for the whole window, on every resource the
-          selector matches — including ones created after the rule.
+          {gt(
+            "Fires when a metric breaches the threshold for the whole window, on every resource the selector matches — including ones created after the rule.",
+          )}
         </p>
 
         <div className="space-y-4">
           <div>
             <label htmlFor={`${uid}-name`} className={labelClass}>
-              Name
+              {gt("Name")}
             </label>
             <input
               id={`${uid}-name`}
               className={inputClass}
-              placeholder="e.g. High CPU on production VMs"
+              placeholder={gt("e.g. High CPU on production VMs")}
               maxLength={METRIC_ALERT_LIMITS.maxNameLength}
               value={input.name}
               onChange={(e) => set({ name: e.target.value })}
@@ -164,16 +169,16 @@ export function MetricAlertRuleModal({
 
           <div role="group" aria-labelledby={`${uid}-selector-label`}>
             <span id={`${uid}-selector-label`} className={labelClass}>
-              Resources (matched by query, not by id — all resources when empty)
+              {gt("Resources (matched by query, not by id — all resources when empty)")}
             </span>
             <div className="grid grid-cols-2 gap-3">
               <select
-                aria-label="Provider"
+                aria-label={gt("Provider")}
                 className={inputClass}
                 value={input.pluginId ?? ""}
                 onChange={(e) => set({ pluginId: e.target.value || null, resourceTypeId: null })}
               >
-                <option value="">Any provider</option>
+                <option value="">{gt("Any provider")}</option>
                 {(options?.plugins ?? []).map((p) => (
                   <option key={p.pluginId} value={p.pluginId}>
                     {p.pluginId}
@@ -181,13 +186,13 @@ export function MetricAlertRuleModal({
                 ))}
               </select>
               <select
-                aria-label="Resource type"
+                aria-label={gt("Resource type")}
                 className={inputClass}
                 value={input.resourceTypeId ?? ""}
                 disabled={!input.pluginId}
                 onChange={(e) => set({ resourceTypeId: e.target.value || null })}
               >
-                <option value="">Any type</option>
+                <option value="">{gt("Any type")}</option>
                 {typeOptions.map((t) => (
                   <option key={t} value={t}>
                     {t}
@@ -195,7 +200,7 @@ export function MetricAlertRuleModal({
                 ))}
               </select>
               <select
-                aria-label="Tag key"
+                aria-label={gt("Tag key")}
                 className={inputClass}
                 value={input.tagKey ?? ""}
                 onChange={(e) =>
@@ -205,7 +210,7 @@ export function MetricAlertRuleModal({
                   })
                 }
               >
-                <option value="">Any tag</option>
+                <option value="">{gt("Any tag")}</option>
                 {(options?.tagKeys ?? []).map((k) => (
                   <option key={k} value={k}>
                     {k}
@@ -213,9 +218,9 @@ export function MetricAlertRuleModal({
                 ))}
               </select>
               <input
-                aria-label="Tag value"
+                aria-label={gt("Tag value")}
                 className={inputClass}
-                placeholder="Any value"
+                placeholder={gt("Any value")}
                 disabled={!input.tagKey}
                 maxLength={METRIC_ALERT_LIMITS.maxTagLength}
                 value={input.tagValue ?? ""}
@@ -223,21 +228,25 @@ export function MetricAlertRuleModal({
               />
             </div>
             {preview && (
-              <p className="text-xs text-on-surface-faint mt-1.5">
-                Matches {preview.matchingResourceCount} resource
-                {preview.matchingResourceCount === 1 ? "" : "s"} right now
-                {preview.sampleResourceNames.length > 0
-                  ? ` — ${preview.sampleResourceNames.slice(0, 3).join(", ")}${
-                      preview.matchingResourceCount > 3 ? "…" : ""
-                    }`
-                  : ""}
-              </p>
+              <T>
+                <p className="text-xs text-on-surface-faint mt-1.5">
+                  Matches <Var>{preview.matchingResourceCount}</Var> resource
+                  <Var>{preview.matchingResourceCount === 1 ? "" : "s"}</Var> right now
+                  <Var>
+                    {preview.sampleResourceNames.length > 0
+                      ? ` — ${preview.sampleResourceNames.slice(0, 3).join(", ")}${
+                          preview.matchingResourceCount > 3 ? "…" : ""
+                        }`
+                      : ""}
+                  </Var>
+                </p>
+              </T>
             )}
           </div>
 
           <div>
             <label htmlFor={`${uid}-metric`} className={labelClass}>
-              Metric
+              {gt("Metric")}
             </label>
             <select
               id={`${uid}-metric`}
@@ -247,10 +256,10 @@ export function MetricAlertRuleModal({
             >
               <option value="" disabled>
                 {metricKeys === null
-                  ? "Loading metrics…"
+                  ? gt("Loading metrics…")
                   : metricKeys.length === 0
-                    ? "No metrics reported yet for this selection"
-                    : "Pick a metric"}
+                    ? gt("No metrics reported yet for this selection")
+                    : gt("Pick a metric")}
               </option>
               {/* A saved key that stopped being reported stays selectable. */}
               {input.metricKey && !selectedKey && (
@@ -258,8 +267,8 @@ export function MetricAlertRuleModal({
               )}
               {(metricKeys ?? []).map((k) => (
                 <option key={k.label} value={k.label}>
-                  {k.label}
-                  {k.unit ? ` (${k.unit})` : ""} · {k.resourceCount} resource
+                  {gtData(k.label)}
+                  {k.unit ? ` (${gtData(k.unit)})` : ""} · {k.resourceCount} {gt("resource")}
                   {k.resourceCount === 1 ? "" : "s"}
                 </option>
               ))}
@@ -269,7 +278,7 @@ export function MetricAlertRuleModal({
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label htmlFor={`${uid}-comparator`} className={labelClass}>
-                Condition
+                {gt("Condition")}
               </label>
               <select
                 id={`${uid}-comparator`}
@@ -286,7 +295,8 @@ export function MetricAlertRuleModal({
             </div>
             <div>
               <label htmlFor={`${uid}-threshold`} className={labelClass}>
-                Threshold{selectedKey?.unit ? ` (${selectedKey.unit})` : ""}
+                {gt("Threshold")}
+                {selectedKey?.unit ? ` (${gtData(selectedKey.unit)})` : ""}
               </label>
               <input
                 id={`${uid}-threshold`}
@@ -299,7 +309,7 @@ export function MetricAlertRuleModal({
             </div>
             <div>
               <label htmlFor={`${uid}-for`} className={labelClass}>
-                For (minutes)
+                {gt("For (minutes)")}
               </label>
               <input
                 id={`${uid}-for`}
@@ -326,7 +336,7 @@ export function MetricAlertRuleModal({
           <div className="grid grid-cols-2 gap-3 items-end">
             <div>
               <label htmlFor={`${uid}-cooldown`} className={labelClass}>
-                Cooldown between alerts (minutes)
+                {gt("Cooldown between alerts (minutes)")}
               </label>
               <input
                 id={`${uid}-cooldown`}
@@ -354,7 +364,7 @@ export function MetricAlertRuleModal({
                 checked={input.enabled}
                 onChange={(e) => set({ enabled: e.target.checked })}
               />
-              Enabled
+              {gt("Enabled")}
             </label>
           </div>
 
@@ -366,7 +376,7 @@ export function MetricAlertRuleModal({
               onClick={onClose}
               className="px-3 py-1.5 rounded-lg text-sm text-on-surface-secondary hover:bg-surface-sunken transition-colors"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -374,7 +384,7 @@ export function MetricAlertRuleModal({
               disabled={saving}
               className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? gt("Saving…") : gt("Save")}
             </button>
           </div>
         </div>
