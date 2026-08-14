@@ -17,7 +17,7 @@ The two answer different questions and are never merged into one number:
 
 Apply a scenario and the chart draws **both** lines. The trend stays exactly where it was, and the adjusted line sits beside it under the model's name. A projection that silently folds in somebody's assumptions is worse than no projection at all, so every surface that draws one says which model is applied and what it added.
 
-<insert [A cost graph with a solid actuals area, a dashed blue trend forecast, and a dotted amber scenario line diverging from it, with the amber "Projection includes scenario" caption visible under the title] here>
+![A cost graph with a solid actuals area, a dashed blue trend forecast, and a dotted amber scenario line diverging from it, with the amber "Projection includes scenario" caption visible under the title](https://agent-assets.infrawrench.com/docs-screenshots/features/scenario-models/chart-scenario-overlay.png)
 
 ## What a model contains
 
@@ -93,7 +93,7 @@ So the opt-in is per budget, and when it is on:
 
 A budget that opted into a model that is later deleted is not silently reverted to the trend — deleting a referenced model is refused (see below).
 
-<insert [Budget editor showing the Scenario dropdown with "Q4 plan" selected and the warning text explaining that forecast thresholds will be judged against the adjusted figure] here>
+![Budget editor showing the Scenario dropdown with "Q4 plan" selected and the warning text explaining that forecast thresholds will be judged against the adjusted figure](https://agent-assets.infrawrench.com/docs-screenshots/features/scenario-models/budget-scenario-picker.png)
 
 ## Creating and editing
 
@@ -101,11 +101,11 @@ Scenario models live on the **Costs** panel, under **Scenario models** — next 
 
 Creating and editing needs `costs:write`; reading needs `costs:read`.
 
-<insert [The Scenario models section of the Costs panel listing two models with their adjustments summarized underneath each name] here>
+![The Scenario models section of the Costs panel listing two models with their adjustments summarized underneath each name](https://agent-assets.infrawrench.com/docs-screenshots/features/scenario-models/models-section.png)
 
 Because charts, reports and budgets reference a model **by id**, editing one changes every projection built on it. The editor names the referents before you save, and calls out budgets specifically:
 
-<insert [The scenario model editor with three adjustment rows — a one-off, a recurring monthly amount, and a scoped rate change — and the amber warning naming the budgets and dashboards that reference it] here>
+![The scenario model editor with three adjustment rows — a one-off, a recurring monthly amount, and a scoped rate change — and the amber warning naming the budgets and dashboards that reference it](https://agent-assets.infrawrench.com/docs-screenshots/features/scenario-models/model-editor.png)
 
 **Deleting a model that is still referenced is refused**, with the referents listed. For a chart, deleting would silently drop the assumptions from a projection somebody is reading. For a budget it would move the forecast thresholds back to the bare trend, changing when people get paged. Detaching is a deliberate step, never a side effect of a delete.
 
@@ -115,7 +115,7 @@ Open any cost graph's editor, turn on **Forecast**, and pick a model from **Scen
 
 The selection is stored on the graph's config, which means it works everywhere a cost graph does: a dashboard card, a saved [cost report](./cost-reports.md), or the ad-hoc graphs on the Costs panel.
 
-<insert [The cost graph editor's options row with Forecast checked and the Scenario dropdown open showing the org's models] here>
+![The cost graph editor's options row with Forecast checked and the Scenario dropdown open showing the org's models](https://agent-assets.infrawrench.com/docs-screenshots/features/scenario-models/graph-editor-scenario-picker.png)
 
 ## From the CLI
 

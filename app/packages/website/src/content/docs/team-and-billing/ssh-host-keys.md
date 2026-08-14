@@ -6,7 +6,7 @@ sidebar_order: 7
 
 When you connect to an SSH server for the first time, infrawrench shows its host-key fingerprint and asks you to verify it. Confirming pins the fingerprint to your organization. Future connections to the same `host:port` are silently allowed only if the key still matches; a changed key triggers a second prompt that calls out the mismatch as a possible MITM.
 
-<insert [Trusted SSH Hosts settings page with the table of pinned hosts, fingerprints, and Revoke buttons] here>
+![Trusted SSH Hosts settings page with the table of pinned hosts, fingerprints, and Revoke buttons](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/ssh-host-keys/trusted-hosts.png)
 
 ## Where pins live
 

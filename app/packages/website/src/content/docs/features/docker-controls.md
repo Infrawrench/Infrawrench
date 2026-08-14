@@ -6,7 +6,7 @@ sidebar_order: 7
 
 The Docker plugin lists containers on any Docker host you point it at — local Unix socket (desktop only) or a remote TCP endpoint.
 
-<insert [Docker container list with start / stop / restart buttons] here>
+![Docker container list in the sidebar with the open container's Start / Stop / Restart buttons](https://agent-assets.infrawrench.com/docs-screenshots/features/docker-controls/container-actions.png)
 
 ## What you see
 

@@ -8,7 +8,7 @@ sidebar_order: 1
 
 An **organization** is a shared workspace. Accounts, resources, dashboards, SSH keys, API keys, and audit logs all live under exactly one organization. You can belong to many organizations and switch between them from the workspace picker in the top-left.
 
-<insert [Workspace switcher dropdown with two organizations listed] here>
+![Workspace switcher dropdown with two organizations listed](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/organizations-and-invites/workspace-switcher.png)
 
 ## Invite a teammate
 

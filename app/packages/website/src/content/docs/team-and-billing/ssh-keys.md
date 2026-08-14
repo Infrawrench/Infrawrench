@@ -6,7 +6,7 @@ sidebar_order: 6
 
 You can store named SSH private keys in infrawrench so the [SSH terminal](../features/ssh-terminal.md), [file browser SFTP](../features/file-browsers.md), and [SSH tunnels](../features/ssh-tunnels.md) can use them without a key picker every time.
 
-<insert [SSH keys page with a list of named keys and an Add key button] here>
+![SSH keys page with a list of named keys and the Import Key and Generate Key buttons](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/ssh-keys/ssh-keys-list.png)
 
 ## Add a key
 

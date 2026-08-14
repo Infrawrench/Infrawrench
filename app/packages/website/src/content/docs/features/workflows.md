@@ -8,7 +8,7 @@ Workflows let you script actions across every account you've connected to Infraw
 
 The classic example: grab a config file from a Cloudflare R2 bucket, parse it as JSON, and use those values to update DNS records or a database — all in a few lines, with full type-checking.
 
-<insert [Screenshot of the Workflows tab showing the Monaco editor with infra.* autocomplete open] here>
+![Screenshot of the Workflows tab showing the Monaco editor with infra.* autocomplete open](https://agent-assets.infrawrench.com/docs-screenshots/features/workflows/editor-infra-autocomplete.png)
 
 ## The `infra` object
 
@@ -386,7 +386,7 @@ if (stale.length > 0) {
 
 While the run is suspended, the request shows up as a **pending approval card on the workflow's run view** with **Approve** and **Deny** buttons, and it is announced on every channel the organization has set up (see below). Approving lets the run continue within a few seconds; the call resolves with `{ approved: true, decidedBy, decidedAt }` so you can log who signed off.
 
-<insert [Screenshot of the Workflows tab with a run suspended on an approval: the amber pending-approval card above the run log showing the request title, message, expiry time, and Approve/Deny buttons] here>
+![Screenshot of the Workflows tab with a run suspended on an approval: the amber pending-approval card above the run log showing the request title, message, expiry time, and Approve/Deny buttons](https://agent-assets.infrawrench.com/docs-screenshots/features/workflows/run-pending-approval.png)
 
 **Denial and timeout throw.** If someone denies the request — or nobody decides before the timeout (60 minutes by default, up to 24 hours) — the `waitForApproval` call throws and the run fails, unless you catch the error to take a fallback path. There is no "approve by silence": an unattended request is always treated as denied.
 
@@ -415,7 +415,7 @@ Approvals are org-level records with notifications, so they're **cloud-only**: `
 
 The card on a workflow's run view answers "what is this workflow waiting for". The person doing the approving usually has the opposite question — "what is waiting on me" — so **Settings → Approvals** lists every pending request across the organization in one place: what is being approved, which workflow and run raised it, when it was requested, when it expires, and **Approve** / **Deny** inline.
 
-<insert [Settings → Approvals page listing two pending approval requests from different workflows, each showing the request title, message, workflow name, run id, countdown to expiry, and the Approve/Deny buttons] here>
+![Settings → Approvals page listing two pending approval requests from different workflows, each showing the request title, message, workflow name, run id, countdown to expiry, and the Approve/Deny buttons](https://agent-assets.infrawrench.com/docs-screenshots/features/workflows/approvals-inbox.png)
 
 The page is visible to anyone with `workflows:read`; the Approve and Deny buttons appear only with `workflows:approve`. It refreshes itself every few seconds, and a request that someone else decides first reports the conflict rather than silently overwriting their decision.
 
@@ -490,7 +490,7 @@ Names may be identifiers such as `DEPLOY_TOKEN`, or dot paths such as `stripe.ap
 
 Secrets are reusable across workflows, while assignment is explicit per workflow. Deleting a secret removes all of its assignments. Organization config exports and generated typings include no secret values.
 
-<insert [Workflow editor Secrets section showing reusable secrets, Value set status, and assignment checkboxes] here>
+![Workflow editor Secrets section showing reusable secrets, Value set status, and assignment checkboxes](https://agent-assets.infrawrench.com/docs-screenshots/features/workflows/editor-secrets-section.png)
 
 ## Metrics
 
@@ -506,7 +506,7 @@ infra.metrics.lastRegion = "us-east";
 
 Reads come from a snapshot taken when the run starts, so they're synchronous (no `await`). Assignments are saved automatically when the run finishes — even if it later errors, so partial progress is kept. Metric values persist between runs: a nightly cron can increment a counter, and a manual run sees the latest value. The editor autocompletes `infra.metrics.` with exactly the keys you declared, each typed to its declared type.
 
-<insert [Screenshot of the workflow create form showing the metrics section with a key, label, type and unit] here>
+![Screenshot of the workflow create form showing the metrics section with a key, label, type and unit](https://agent-assets.infrawrench.com/docs-screenshots/features/workflows/metrics-section.png)
 
 ## Where your workflows live
 
@@ -525,7 +525,7 @@ Drag a workflow from the list on the left of the **Workflows** tab onto any dash
 
 A pin never crosses the local/cloud boundary: in Local mode you pin local workflows onto local dashboards, and with an organization selected you pin the org's workflows onto the org's dashboards. Because the two lists follow the same switch, whichever workflows you can see are the ones you can pin.
 
-<insert [Screenshot of a dashboard with a pinned workflow card showing metric values, a last-run line, and a Run button] here>
+![Screenshot of a dashboard with a pinned workflow card showing metric values, a last-run line, and a Run button](https://agent-assets.infrawrench.com/docs-screenshots/features/workflows/dashboard-workflow-pin.png)
 
 ## Triggers
 
@@ -555,7 +555,7 @@ Next to the expression is an optional **timezone** field taking an IANA name lik
 
 As you type, the editor validates the expression (a typo shows the parse error instead of saving something that would never fire), summarises it in plain English, and previews the **next few run times** — computed by exactly the same code the scheduler uses, so what you see is what will run. Saving never fires the workflow immediately: the first run happens at the schedule's next occurrence. The enable toggle on the workflow pauses the schedule without losing it, and each schedule fires **exactly once** per occurrence no matter how many scheduler replicas are running.
 
-<insert [Screenshot of the cron trigger settings showing the preset picker, the 5-field expression input, the timezone field, and the plain-English summary with the next three run times] here>
+![Screenshot of the cron trigger settings showing the preset picker, the 5-field expression input, the timezone field, and the plain-English summary with the next three run times](https://agent-assets.infrawrench.com/docs-screenshots/features/workflows/cron-trigger-settings.png)
 
 A workflow's schedule is also a small API surface of its own — `GET`/`PUT`/`DELETE /api/org/{orgId}/workflows/{id}/schedule` — so an SDK or script can manage when a workflow runs (or pause it) without round-tripping the whole workflow. See the [API docs](../team-and-billing/openapi.md).
 
@@ -563,7 +563,7 @@ A workflow's schedule is also a small API surface of its own — `GET`/`PUT`/`DE
 
 Git triggers use a **GitHub App** (a bot identity) rather than per-repo webhooks. In the git trigger settings, click **Connect GitHub** — you'll install the app on the repositories you want to watch in a new tab, and when the install finishes that tab returns to Infrawrench with a confirmation and the repositories appear in the repo picker. If you're a member (not an owner) of the GitHub organization, GitHub only lets you _request_ the install — Infrawrench will tell you the install is awaiting an owner's approval, and the repos show up once an owner approves it on GitHub. A separate **github-watcher** service polls each watched repo's branch head and runs the workflow on a new commit. Self-hosters configure the app with `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (PEM), and `GITHUB_APP_SLUG`, and point the app's setup URL at `/api/github/setup`.
 
-<insert [Screenshot of the git trigger settings showing Connect GitHub, the repository picker, and the branch field] here>
+![Screenshot of the git trigger settings after connecting GitHub, showing the repository picker, the branch field, and the "+ repos" link back to the GitHub App install flow](https://agent-assets.infrawrench.com/docs-screenshots/features/workflows/git-trigger-settings.png)
 
 ### Budget triggers
 
@@ -597,7 +597,7 @@ await infra.output({ budget: infra.event.budgetId, actedAt: infra.event.month })
 
 For every other trigger `infra.event` is just `{ kind: "manual" | "cron" | "git" | "api" }`, so a workflow can branch on how it was started.
 
-<insert [Screenshot of the budget trigger settings showing the budget picker, the percentage field, the spend/forecast selector, and the plain-English summary line] here>
+![Screenshot of the budget trigger settings showing the budget picker, the percentage field, the spend/forecast selector, and the plain-English summary line](https://agent-assets.infrawrench.com/docs-screenshots/features/workflows/budget-trigger-settings.png)
 
 ### Signing webhook deliveries
 
@@ -610,7 +610,7 @@ With a secret set, a delivery must prove it knows the secret or it's rejected wi
 
 Paste the same value into your provider's webhook configuration. The secret is write-only: after saving, the trigger shows **Signed ✓** and you can replace it, but the value is never displayed again. Leave it empty and the endpoint accepts unsigned deliveries on the strength of the token alone.
 
-<insert [Git trigger row with a signing secret configured, showing the "Signed ✓" state and the Replace button] here>
+![Git trigger row with a signing secret configured, showing the "Signed ✓" state and the Replace button](https://agent-assets.infrawrench.com/docs-screenshots/features/workflows/git-trigger-signed.png)
 
 ## Writing workflows with an AI client
 
@@ -694,7 +694,7 @@ A **manual run from the editor is a debug run**: as it executes, the editor **hi
 
 You can add or remove breakpoints while a run is paused. Time spent paused at a breakpoint (and `infra.prompt`, SSH, and `waitUntilReachable` waits) doesn't count against the run's execution budget.
 
-<insert [Screenshot of the Workflows editor mid-run: a line highlighted as the current line, a red breakpoint dot in the gutter, and Resume/Step/Stop buttons in the toolbar] here>
+![Screenshot of the Workflows editor mid-run: a line highlighted as the current line, a red breakpoint dot in the gutter, and Resume/Step/Stop buttons in the toolbar](https://agent-assets.infrawrench.com/docs-screenshots/features/workflows/editor-debug-paused.png)
 
 Debugging works on both the desktop app and the web app (the web run streams over a websocket). Highlighting reports each line as it runs, so very tight loops execute a bit slower while the editor is driving them; automated cron/git runs are never instrumented. Breakpoints only stop on top-level statements — lines inside a function/callback aren't paused individually.
 

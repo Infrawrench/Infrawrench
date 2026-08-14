@@ -52,7 +52,7 @@ The full explanation is on its own page: **[Kubernetes cost allocation](../featu
 
 These are apportioned estimates, not billed amounts. Do not add a Kubernetes account's spend to its parent cloud account's spend.
 
-<insert [Namespace detail view with the "Cost by workload" table listing each Deployment with its pod count, requests, the Storage / LB column, efficiency and derived daily cost] here>
+![Namespace detail view with the "Cost by workload" table listing each Deployment with its pod count, requests, the Storage / LB column, efficiency and derived daily cost](https://agent-assets.infrawrench.com/docs-screenshots/plugins/kubernetes/namespace-cost-by-workload.png)
 
 ## Efficiency report
 
@@ -60,7 +60,7 @@ Clusters and namespaces have an **Efficiency** tab: requested vs used CPU and me
 
 Workloads nothing measured read **unknown** rather than 0% and sort last. The report diagnoses rather than prescribing a request value — see [Right-sizing](../features/right-sizing.md) for why a Kubernetes recommendation is not folded into the VM Oversized list.
 
-<insert [Namespace Efficiency tab showing the summary, the by-workload table ordered by wasted cost, and the Share block with its copy button] here>
+![Namespace Efficiency tab showing the summary, the by-workload table ordered by wasted cost, and the Share block with its copy button](https://agent-assets.infrawrench.com/docs-screenshots/plugins/kubernetes/namespace-efficiency.png)
 
 ## Notable flows
 
