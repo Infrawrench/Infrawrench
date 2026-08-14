@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import {
   ENVIRONMENT_LIMITS,
   formatTimeRemaining,
@@ -37,20 +38,20 @@ function statusDotClass(status: EnvironmentInstanceStatus): string {
   }
 }
 
-function statusLabel(status: EnvironmentInstanceStatus): string {
+function statusLabel(status: EnvironmentInstanceStatus, gt: ReturnType<typeof useGT>): string {
   switch (status) {
     case "creating":
-      return "Creating";
+      return gt("Creating");
     case "active":
-      return "Running";
+      return gt("Running");
     case "partial":
-      return "Partially created";
+      return gt("Partially created");
     case "tearing-down":
-      return "Tearing down";
+      return gt("Tearing down");
     case "deleted":
-      return "Torn down";
+      return gt("Torn down");
     case "failed":
-      return "Failed";
+      return gt("Failed");
   }
 }
 
@@ -71,6 +72,7 @@ function InstanceItem({
   onTearDown(): void;
   onForget(): void;
 }) {
+  const gt = useGT();
   const live = instanceIsLive(instance);
   return (
     <li className="rounded-xl border border-border bg-surface-raised px-4 py-3">
@@ -84,19 +86,24 @@ function InstanceItem({
           <div className="flex items-center gap-2">
             <span
               className={`inline-block h-2 w-2 rounded-full ${statusDotClass(instance.status)}`}
-              title={statusLabel(instance.status)}
+              title={statusLabel(instance.status, gt)}
             />
             <span className="truncate text-sm font-medium text-on-surface">{instance.name}</span>
-            <span className="text-xs text-on-surface-faint">from {instance.templateName}</span>
+            <span className="text-xs text-on-surface-faint">
+              {gt("from {name}", { name: instance.templateName })}
+            </span>
             {instance.status === "partial" && (
-              <span className="text-xs text-warning">partially created</span>
+              <span className="text-xs text-warning">{gt("partially created")}</span>
             )}
           </div>
           <p className="truncate text-xs text-on-surface-secondary">
-            {statusLabel(instance.status)} ·{" "}
-            {instance.members.filter((m) => m.status === "created").length}/
-            {instance.members.length} resources
-            {live && ` · expires in ${formatTimeRemaining(instance.expiresAt)}`}
+            {statusLabel(instance.status, gt)} ·{" "}
+            {gt("{created}/{total} resources", {
+              created: instance.members.filter((m) => m.status === "created").length,
+              total: instance.members.length,
+            })}
+            {live &&
+              gt(" · expires in {time}", { time: formatTimeRemaining(instance.expiresAt) })}
           </p>
         </button>
         <div className="flex shrink-0 items-center gap-1.5">
@@ -107,7 +114,7 @@ function InstanceItem({
               disabled={busy}
               className="rounded-lg px-2 py-1 text-xs text-danger transition-colors hover:bg-surface-sunken disabled:opacity-50"
             >
-              {busy ? "Working…" : "Tear down"}
+              {busy ? gt("Working…") : gt("Tear down")}
             </button>
           )}
           {client.forget && !live && (
@@ -117,7 +124,7 @@ function InstanceItem({
               disabled={busy}
               className="rounded-lg px-2 py-1 text-xs text-on-surface-secondary transition-colors hover:bg-surface-sunken disabled:opacity-50"
             >
-              Forget
+              {gt("Forget")}
             </button>
           )}
         </div>
@@ -173,15 +180,24 @@ function TemplateItem({
   onInstantiate(): void;
   onDelete(): void;
 }) {
+  const gt = useGT();
   return (
     <li className="flex items-center gap-3 rounded-xl border border-border bg-surface-raised px-4 py-3">
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-on-surface">{template.name}</p>
         <p className="truncate text-xs text-on-surface-secondary">
-          {template.members.length} resource{template.members.length === 1 ? "" : "s"} ·{" "}
-          {template.parameters.length} parameter
-          {template.parameters.length === 1 ? "" : "s"}
-          {template.activeInstanceCount ? ` · ${template.activeInstanceCount} live` : ""}
+          {gt("{count} resource{plural}", {
+            count: template.members.length,
+            plural: template.members.length === 1 ? "" : "s",
+          })}{" "}
+          ·{" "}
+          {gt("{count} parameter{plural}", {
+            count: template.parameters.length,
+            plural: template.parameters.length === 1 ? "" : "s",
+          })}
+          {template.activeInstanceCount
+            ? gt(" · {count} live", { count: template.activeInstanceCount })
+            : ""}
           {template.description ? ` · ${template.description}` : ""}
         </p>
       </div>
@@ -192,7 +208,7 @@ function TemplateItem({
             onClick={onInstantiate}
             className="rounded-lg bg-surface-sunken px-2.5 py-1 text-xs text-on-surface transition-colors hover:bg-surface"
           >
-            Stamp out
+            {gt("Stamp out")}
           </button>
         )}
         {client.deleteTemplate && (
@@ -202,7 +218,7 @@ function TemplateItem({
             disabled={busy}
             className="rounded-lg px-2 py-1 text-xs text-danger transition-colors hover:bg-surface-sunken disabled:opacity-50"
           >
-            Delete
+            {gt("Delete")}
           </button>
         )}
       </div>
@@ -229,6 +245,7 @@ function LimitsSection({
   onSaved(next: EnvironmentSettings): void;
   onError(message: string): void;
 }) {
+  const gt = useGT();
   const [maxDraft, setMaxDraft] = useState(String(settings.maxTtlHours));
   const [defaultDraft, setDefaultDraft] = useState(String(settings.defaultTtlHours));
 
@@ -242,23 +259,28 @@ function LimitsSection({
       .then((next) => {
         if (next) onSaved(next);
       })
-      .catch((e: unknown) => onError(e instanceof Error ? e.message : "Could not save the limits"));
+      .catch((e: unknown) =>
+        onError(e instanceof Error ? e.message : gt("Could not save the limits")),
+      );
   };
 
   return (
     <section>
-      <h2 className="text-base font-semibold text-on-surface">Limits</h2>
+      <h2 className="text-base font-semibold text-on-surface">{gt("Limits")}</h2>
       <p className="text-xs text-on-surface-faint">
-        Environments spend real money, so they cannot be created without an expiry. This
-        organization allows at most {settings.maxTtlHours} hours, and pre-fills{" "}
-        {settings.defaultTtlHours}. The hard ceiling is {ENVIRONMENT_LIMITS.hardMaxTtlHours} hours —
-        an &ldquo;ephemeral&rdquo; environment that outlives a month is just infrastructure nobody
-        owns.
+        {gt(
+          "Environments spend real money, so they cannot be created without an expiry. This organization allows at most {max} hours, and pre-fills {def}. The hard ceiling is {hardMax} hours — an “ephemeral” environment that outlives a month is just infrastructure nobody owns.",
+          {
+            max: settings.maxTtlHours,
+            def: settings.defaultTtlHours,
+            hardMax: ENVIRONMENT_LIMITS.hardMaxTtlHours,
+          },
+        )}
       </p>
       {client.updateSettings && (
         <div className="mt-2 flex items-end gap-2">
           <label className="text-xs text-on-surface-secondary">
-            Maximum TTL (hours)
+            {gt("Maximum TTL (hours)")}
             <input
               type="number"
               min={ENVIRONMENT_LIMITS.minTtlHours}
@@ -269,7 +291,7 @@ function LimitsSection({
             />
           </label>
           <label className="text-xs text-on-surface-secondary">
-            Default TTL (hours)
+            {gt("Default TTL (hours)")}
             <input
               type="number"
               min={ENVIRONMENT_LIMITS.minTtlHours}
@@ -285,7 +307,7 @@ function LimitsSection({
             disabled={maxTtlHours === null || defaultTtlHours === null}
             className="rounded-lg bg-surface-sunken px-2.5 py-1 text-xs text-on-surface transition-colors hover:bg-surface disabled:opacity-50"
           >
-            Save limits
+            {gt("Save limits")}
           </button>
         </div>
       )}
@@ -303,6 +325,7 @@ function LimitsSection({
  * that fail.
  */
 export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
+  const gt = useGT();
   // null = loading, [] = loaded-empty.
   const [templates, setTemplates] = useState<EnvironmentTemplate[] | null>(null);
   const [instances, setInstances] = useState<EnvironmentInstance[] | null>(null);
@@ -322,10 +345,10 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
     setError(null);
     void Promise.all([
       client.listTemplates().catch(() => {
-        throw new Error("Failed to load templates");
+        throw new Error(gt("Failed to load templates"));
       }),
       client.listInstances().catch(() => {
-        throw new Error("Failed to load environments");
+        throw new Error(gt("Failed to load environments"));
       }),
     ])
       .then(([nextTemplates, nextInstances]) => {
@@ -341,7 +364,7 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
       .getSettings()
       .then(setSettings)
       .catch(() => undefined);
-  }, [client]);
+  }, [client, gt]);
 
   useEffect(() => {
     reload();
@@ -355,7 +378,10 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
   const removeTemplate = async (template: EnvironmentTemplate) => {
     if (
       !window.confirm(
-        `Delete the template "${template.name}"? Environments already stamped out of it keep running and keep their TTL.`,
+        gt(
+          'Delete the template "{name}"? Environments already stamped out of it keep running and keep their TTL.',
+          { name: template.name },
+        ),
       )
     ) {
       return;
@@ -365,7 +391,7 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
       await client.deleteTemplate?.(template.id);
       reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not delete the template");
+      setError(e instanceof Error ? e.message : gt("Could not delete the template"));
     } finally {
       setBusyId(null);
     }
@@ -374,9 +400,11 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
   const tearDown = async (instance: EnvironmentInstance) => {
     if (
       !window.confirm(
-        `Tear down "${instance.name}"? This deletes its ${instance.members.length} resource${
-          instance.members.length === 1 ? "" : "s"
-        }.`,
+        gt("Tear down \"{name}\"? This deletes its {count} resource{plural}.", {
+          name: instance.name,
+          count: instance.members.length,
+          plural: instance.members.length === 1 ? "" : "s",
+        }),
       )
     ) {
       return;
@@ -386,7 +414,7 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
       await client.teardown?.(instance.id);
       reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Teardown failed");
+      setError(e instanceof Error ? e.message : gt("Teardown failed"));
     } finally {
       setBusyId(null);
     }
@@ -398,7 +426,7 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
       await client.forget?.(instance.id);
       reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not remove the record");
+      setError(e instanceof Error ? e.message : gt("Could not remove the record"));
     } finally {
       setBusyId(null);
     }
@@ -410,7 +438,7 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
         <p className="text-sm text-danger">
           {error}{" "}
           <button type="button" onClick={reload} className="underline hover:text-danger-strong">
-            Retry
+            {gt("Retry")}
           </button>
         </p>
       )}
@@ -418,20 +446,21 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
       <section>
         <div className="mb-2 flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold text-on-surface">Environments</h2>
+            <h2 className="text-base font-semibold text-on-surface">{gt("Environments")}</h2>
             <p className="text-xs text-on-surface-faint">
-              Copies stamped out of a template. Each one carries a lease on every resource it
-              created, so it deletes itself when the countdown runs out.
+              {gt(
+                "Copies stamped out of a template. Each one carries a lease on every resource it created, so it deletes itself when the countdown runs out.",
+              )}
             </p>
           </div>
         </div>
 
         {instances === null && !error && (
-          <p className="text-sm text-on-surface-faint">Loading environments…</p>
+          <p className="text-sm text-on-surface-faint">{gt("Loading environments…")}</p>
         )}
         {instances !== null && instances.length === 0 && (
           <p className="text-sm text-on-surface-faint">
-            No environments yet. Capture a template below, then stamp one out.
+            {gt("No environments yet. Capture a template below, then stamp one out.")}
           </p>
         )}
 
@@ -456,11 +485,11 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
       <section>
         <div className="mb-2 flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold text-on-surface">Templates</h2>
+            <h2 className="text-base font-semibold text-on-surface">{gt("Templates")}</h2>
             <p className="text-xs text-on-surface-faint">
-              A parameterised description of an environment you already have, built from each
-              plugin&apos;s own create form. References between captured resources are kept as
-              references.
+              {gt(
+                "A parameterised description of an environment you already have, built from each plugin's own create form. References between captured resources are kept as references.",
+              )}
             </p>
           </div>
           {Boolean(client.createTemplate) && (
@@ -469,17 +498,17 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
               onClick={() => setCapturing(true)}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white transition-colors hover:bg-blue-500"
             >
-              Capture template
+              {gt("Capture template")}
             </button>
           )}
         </div>
 
         {templates === null && !error && (
-          <p className="text-sm text-on-surface-faint">Loading templates…</p>
+          <p className="text-sm text-on-surface-faint">{gt("Loading templates…")}</p>
         )}
         {templates !== null && templates.length === 0 && (
           <p className="text-sm text-on-surface-faint">
-            No templates yet. Capture one from an account you already have running.
+            {gt("No templates yet. Capture one from an account you already have running.")}
           </p>
         )}
 
