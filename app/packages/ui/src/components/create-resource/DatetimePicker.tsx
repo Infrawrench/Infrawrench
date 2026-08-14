@@ -1,3 +1,4 @@
+import { T, Var, useGT } from "gt-react";
 import type { DatetimeMode } from "@infrawrench/plugin-base";
 
 const INPUT_CLASSES =
@@ -44,6 +45,7 @@ export function DatetimePicker({
   mode?: DatetimeMode;
   placeholder?: string;
 }) {
+  const gt = useGT();
   const parsed = parseToDate(value, mode);
   const inputValue = parsed ? dateToInputValue(parsed, mode) : "";
 
@@ -55,12 +57,15 @@ export function DatetimePicker({
         onChange={(e) => onChange(inputValueToStored(e.target.value, mode))}
         placeholder={placeholder}
         className={INPUT_CLASSES}
-        aria-label={mode === "date" ? "Date" : "Date and time"}
+        aria-label={mode === "date" ? gt("Date") : gt("Date and time")}
       />
       {mode !== "date" && (
-        <p className="text-[11px] text-on-surface-faint">
-          Interpreted as UTC{parsed && ` · stored as ${formatStoredHint(parsed, mode)}`}
-        </p>
+        <T>
+          <p className="text-[11px] text-on-surface-faint">
+            Interpreted as UTC
+            <Var>{parsed && ` · stored as ${formatStoredHint(parsed, mode)}`}</Var>
+          </p>
+        </T>
       )}
     </div>
   );
