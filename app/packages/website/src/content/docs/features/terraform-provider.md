@@ -97,7 +97,7 @@ An API key reaches everything in the provider except two things, whatever scopes
 
 If you manage either, keep them in a separate Terraform root that a person applies with a WorkOS access token — which is the separation the restriction is arguing for anyway. The provider recognises this particular 403 and tells you which resource is affected, rather than leaving you staring at a permission error that isn't about permissions.
 
-<insert [The API keys page under Settings with the scope checkboxes visible, showing a key being created with costs:read and costs:write selected] here>
+![The Create API Key dialog under Settings → API Keys with the scope checkboxes visible, showing a key being created for Terraform](https://agent-assets.infrawrench.com/docs-screenshots/features/terraform-provider/api-key-scopes.png)
 
 ## A worked example
 

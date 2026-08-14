@@ -89,7 +89,7 @@ If one of the underlying feeds is unavailable — or you lack permission to read
 timeline says so in a small chip and shows everything else. A missing feed never blanks the
 page.
 
-<insert [An incident detail view showing the merged timeline with a note, a deploy, a probe going down and a failed Slack artefact] here>
+![An incident detail view showing the merged timeline with a note, a deploy, a probe going down and a failed Slack artefact](https://agent-assets.infrawrench.com/docs-screenshots/features/incident-mode/incident-detail-timeline.png)
 
 ## Resolving, and the postmortem
 

@@ -8,7 +8,7 @@ Credentials accumulate. A key minted for a migration two quarters ago, an SSH ke
 
 **Settings → Credential Hygiene** does the looking. Every finding is derived from data Infrawrench already holds — no provider call, no agent, nothing to enable.
 
-<insert [The Credential Hygiene settings page showing the summary card with the 90d window selected and a list of findings: one high-severity wildcard API key, two medium unused keys, and a member with unexercised permissions] here>
+![The Credential Hygiene settings page showing the summary card with the 90d window selected and a list of findings: one high-severity wildcard API key, two medium unused keys, and a member with unexercised permissions](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/credential-hygiene/findings-90d.png)
 
 ## What it looks for
 

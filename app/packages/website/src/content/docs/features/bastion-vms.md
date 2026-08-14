@@ -31,9 +31,9 @@ The backend tells the agent at connect time which destination hostnames it's all
 2. Give it a name (e.g. `prod-egress-eu-west-1`) and click **Create bastion**.
 3. Copy the `docker run` command shown in the modal. It includes a one-time enrollment token — there's no way to retrieve it later.
 
-<insert [Settings → Bastions page showing the list of registered bastions with status pills (connected / offline / awaiting first connect) and a "New Bastion" button in the top right.] here>
+![Settings → Bastions page showing the list of registered bastions with status pills (connected / offline / awaiting first connect) and a "New Bastion" button in the top right.](https://agent-assets.infrawrench.com/docs-screenshots/features/bastion-vms/bastions-list.png)
 
-<insert [Bastion-created modal showing the `docker run` command with the enrollment token, a "Copy command to clipboard" button, and a follow-up tip pointing at the account add modal.] here>
+![Bastion-created modal showing the `docker run` command with the enrollment token, a "Copy command to clipboard" button, and a follow-up tip pointing at the account add modal.](https://agent-assets.infrawrench.com/docs-screenshots/features/bastion-vms/bastion-created-modal.png)
 
 ## Start the agent
 

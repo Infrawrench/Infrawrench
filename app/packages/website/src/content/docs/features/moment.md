@@ -29,7 +29,7 @@ Every event carries a severity, and each row deep-links to its native screen —
 
 When a provider incident overlaps the window, every event that falls inside the incident's span gets a **"during DigitalOcean incident"** badge — the "is it me or is it them?" correlation applied to the whole narrative rather than one feed. Dense bursts — several changes to the same resource within minutes — collapse into one expandable group, so a flapping machine reads as one line, not thirty.
 
-<insert [Moment timeline with three change events badged "during DigitalOcean incident" and a collapsed burst row reading "5 events on api-prod-1"] here>
+![Moment timeline with three change events badged "during DigitalOcean incident" and a collapsed burst row reading "5 events on api-prod-1"](https://agent-assets.infrawrench.com/docs-screenshots/features/moment/incident-badges-burst.png)
 
 ## Permissions and partial failure
 

@@ -31,7 +31,7 @@ You never type an `org_…` or `user_…` id:
 - Membership and invitation creation offer an **organization picker** (skipped when you create from an organization's page), a **user picker** over your synced users, and a **role picker** fed live from the Authorization API — org-scoped roles when the organization is known, environment roles otherwise.
 - Leaving the role unset uses the organization's default role.
 
-<insert [Create-invitation form opened from an organization, showing the role dropdown populated with live role names] here>
+![Create-invitation form opened from an organization, showing the role picker populated with live role names](https://agent-assets.infrawrench.com/docs-screenshots/plugins/workos/create-invitation.png)
 
 ## Tips & limits
 

@@ -5,7 +5,7 @@ description: Export your organization's dashboards, workflows, budgets, graphs, 
 
 Everything you configure in Infrawrench that isn't a provider account or a live resource can be exported as a single JSON document, committed to git, reviewed like any other change, and applied back — to the same organization for disaster recovery, or to a different one to seed a staging environment, a demo, or a new client's workspace.
 
-<insert [The Config as Code settings page, with the export section's checkboxes and the import panel showing a plan] here>
+![The Config as Code settings page, with the export section's checkboxes and the import panel showing a plan](https://agent-assets.infrawrench.com/docs-screenshots/features/config-as-code/export-and-plan.png)
 
 ## What's in the document
 

@@ -33,7 +33,7 @@ A handful of routes exist only so our own clients (and third-party webhook sende
 
 They're still in the source and in the checked-in `app/packages/web/openapi.json`, tagged with an `x-internal: true` extension — the server strips those operations (and any schemas only they used) before publishing the spec. Build against them at your own risk; they can change or disappear without notice.
 
-<insert [Screenshot of /docs Scalar reference UI showing the Resources tag expanded] here>
+![Screenshot of /docs Scalar reference UI showing the Resources tag expanded](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/openapi/docs-resources-tag.png)
 
 ## SDK code samples
 
@@ -41,7 +41,7 @@ Every operation on `/docs` carries an `x-codeSamples` entry per [client SDK](./c
 
 The samples are rendered from the same intermediate representation the SDK generator consumes, so they cannot drift from the published packages: renaming a call in the generator renames it in the docs in the same commit. They exist only on the _served_ spec (`/openapi.json` and `/docs`) — the committed `app/packages/web/openapi.json` stays snippet-free so its diffs show API surface changes rather than re-rendered examples.
 
-<insert [Screenshot of a /docs operation with the client picker open, showing the nine SDK sample entries and the TypeScript sample selected] here>
+![Screenshot of a /docs operation with the client picker open, showing the nine SDK sample entries and the TypeScript sample selected](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/openapi/docs-client-picker-typescript.png)
 
 ## Authentication
 

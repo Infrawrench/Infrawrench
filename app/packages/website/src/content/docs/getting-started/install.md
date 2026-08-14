@@ -22,7 +22,7 @@ Download the build for your platform:
 - **Windows** — `.msi`
 - **Linux** — `.AppImage` or `.deb`
 
-<insert [Download page with platform buttons] here>
+![Download page with platform buttons](https://agent-assets.infrawrench.com/docs-screenshots/getting-started/install/download-modal.png)
 
 Credentials are stored in a local SQLite database, encrypted with AES-256-GCM using a key held in your OS keychain.
 

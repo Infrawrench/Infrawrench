@@ -42,7 +42,7 @@ days, narrowed to the provider and type you selected — you pick "CPU %" or "Me
 from a list (with its unit and how many resources report it), never type an internal metric
 name. If the list is empty, resources of that shape have not reported metrics yet.
 
-<insert [The rule editor modal with a provider and resource type selected, the metric dropdown open showing series labels with units and resource counts, and the "Matches N resources" selector preview underneath] here>
+![The rule editor modal with a provider and resource type selected, the "Matches 6 resources right now" selector preview, and the metric picker open showing series labels with units and resource counts](https://agent-assets.infrawrench.com/docs-screenshots/features/metric-alerts/rule-editor-metric-picker.png)
 
 ## How evaluation works
 
