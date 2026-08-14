@@ -56,6 +56,12 @@ export function getClickHouseClient(): ClickHouseClient {
     clickhouse_settings: {
       async_insert: 1,
       wait_for_async_insert: 0,
+      // Every writer sends timestamps as Date#toISOString() — 'Z'-suffixed
+      // ISO 8601, which the self-hosted default date_time_input_format='basic'
+      // rejects. ClickHouse Cloud defaults to best_effort, so this only ever
+      // bit the in-cluster deployment (and CI), where the metric writers
+      // swallowed the rejection and the pipeline read as silently empty.
+      date_time_input_format: "best_effort",
     },
   });
   return cachedClient;

@@ -49,22 +49,19 @@ vi.mock("../cost/scenario-forecast", () => ({
 const resolveBillingAdjustments = vi.fn();
 vi.mock("../cost/billing-rules", () => ({ resolveBillingAdjustments }));
 
-const tables = {
-  budgets: { __t: "budgets" as const, organizationId: "o", deletedAt: "d" },
-  budgetAlertEvents: { __t: "budgetAlertEvents" as const, id: "id" },
-};
-vi.mock("../db/schema", () => tables);
+import { fakePostgres } from "./helpers/fake-postgres";
 
-let budgetRows: unknown[] = [];
-let insertReturning: Array<{ id: string }> = [];
-const db = {
-  select: () => ({ from: () => ({ where: () => Promise.resolve(budgetRows) }) }),
-  insert: () => ({
-    values: () => ({ onConflictDoNothing: () => ({ returning: async () => insertReturning }) }),
-  }),
-  update: () => ({ set: () => ({ where: async () => undefined }) }),
-};
-vi.mock("../db/client", () => ({ db }));
+// Real Drizzle over a recording driver against the real schema — the budget
+// select, the alert-event insert and the notifiedAt update render their actual
+// SQL (and shadow-validate under test:postgres:shadow). Results are queued in
+// execution order: the budget select, then the insert's RETURNING.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
+
+function arrange(budgetRows: Array<Record<string, unknown>>) {
+  pg.queueRows(budgetRows);
+  pg.queueRows([{ id: "evt1" }]); // the alert-event insert: always a fresh crossing here
+}
 
 const routeAlert = vi.fn(async (..._args: unknown[]) => ({
   attempted: 1,
@@ -116,6 +113,8 @@ const MARKUP = {
   ],
 };
 
+// The select has no projection, so keys are in the budgets table's column
+// order — see helpers/fake-postgres.ts.
 function budget(over: Record<string, unknown> = {}) {
   return {
     id: "b1",
@@ -124,14 +123,18 @@ function budget(over: Record<string, unknown> = {}) {
     amountCents: 100_000, // $1000
     currency: "USD",
     filters: [],
-    savedFilterId: null,
-    scenarioModelId: null,
-    useAdjustedSpend: false,
-    costBasis: "cash",
     // $500. Collected month-to-date is $150, adjusted is $300 — so an `actual`
     // threshold at 50% fires on neither, which is what makes the *forecast*
     // pair below the discriminating case.
     thresholds: [{ type: "forecast", percent: 50 }],
+    costBasis: "cash",
+    savedFilterId: null,
+    scenarioModelId: null,
+    useAdjustedSpend: false,
+    createdByUserId: null,
+    deletedAt: null,
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T00:00:00.000Z",
     ...over,
   };
 }
@@ -140,8 +143,7 @@ let budgetEval: typeof import("../cost/budget-eval");
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  budgetRows = [];
-  insertReturning = [{ id: "evt1" }];
+  pg.reset();
   // The reader decides what to return from whether adjustments were passed —
   // exactly as the real one does.
   queryCosts.mockImplementation(async (_org: string, q: { adjustments?: unknown }) =>
@@ -218,7 +220,7 @@ describe("evaluateBudgetsForOrg — what pages a human", () => {
   it("does not fire on a markup the budget never opted into", async () => {
     // Collected forecast is $310, the threshold is $500. The markup would take
     // it to $620 — which must not happen for an un-opted budget.
-    budgetRows = [budget()];
+    arrange([budget()]);
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);
 
     expect(resolveBillingAdjustments).not.toHaveBeenCalled();
@@ -227,7 +229,7 @@ describe("evaluateBudgetsForOrg — what pages a human", () => {
   });
 
   it("fires for an opted-in budget and names the collected figure in the body", async () => {
-    budgetRows = [budget({ useAdjustedSpend: true })];
+    arrange([budget({ useAdjustedSpend: true })]);
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);
 
     expect(sendBudgetAlertPage).toHaveBeenCalledTimes(1);

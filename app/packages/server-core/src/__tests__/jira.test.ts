@@ -17,9 +17,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *    thing that explains a 400.
  *
  * Everything under test here is pure except the two fetch-driven cases, which
- * spy on `globalThis.fetch`. The DB is mocked so importing the module doesn't
- * try to open a connection.
+ * spy on `globalThis.fetch`. The DB is real Drizzle over a recording driver
+ * (see helpers/fake-postgres.ts), so the integration lookup renders its actual
+ * SQL against the real schema.
  */
+
+import { fakePostgres } from "./helpers/fake-postgres";
+
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
 vi.mock("../encryption", () => ({
   encrypt: async () => ({ ciphertext: "CT", iv: "IV" }),
@@ -28,36 +34,10 @@ vi.mock("../encryption", () => ({
   keyedHash: async (data: string) => `digest(${data})`,
 }));
 
-vi.mock("../db/schema", () => ({
-  jiraIntegrations: { __t: "jiraIntegrations", organizationId: "organizationId" },
-  jiraIssueLinks: { __t: "jiraIssueLinks", organizationId: "organizationId" },
-}));
-
-/** Rows the next `select().from(...)` chain resolves to. */
-let integrationRows: unknown[] = [];
-
-vi.mock("../db/client", () => {
-  const chain = () => {
-    const self: Record<string, unknown> = {};
-    for (const m of ["where", "orderBy", "limit"]) self[m] = () => self;
-    self["then"] = (resolve: (v: unknown) => unknown) =>
-      Promise.resolve(integrationRows).then(resolve);
-    return self;
-  };
-  return { db: { select: () => ({ from: () => chain() }) } };
-});
-
-vi.mock("drizzle-orm", () => ({
-  and: (...parts: unknown[]) => ({ and: parts }),
-  desc: (c: unknown) => ({ desc: c }),
-  eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
-  inArray: (a: unknown, b: unknown) => ({ inArray: [a, b] }),
-}));
-
 let fetchSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  integrationRows = [];
+  pg.reset();
   fetchSpy = vi
     .spyOn(globalThis, "fetch")
     .mockImplementation(async () => new Response("{}", { status: 200 }));
@@ -386,7 +366,9 @@ describe("verifyJiraCredentials", () => {
 
 describe("getJiraIntegration", () => {
   it("returns the redacted record, never the token", async () => {
-    integrationRows = [
+    // Keys in jira_integrations column order, values driver-shaped (timestamps
+    // as Postgres text) — see helpers/fake-postgres.ts.
+    pg.setRows([
       {
         organizationId: "org1",
         siteUrl: "https://acme.atlassian.net",
@@ -396,11 +378,14 @@ describe("getJiraIntegration", () => {
         tokenHint: "…a7f2",
         defaultProjectKey: "OPS",
         defaultIssueTypeId: "10004",
-        updatedAt: new Date("2026-08-01T00:00:00.000Z"),
+        createdByUserId: null,
+        createdAt: "2026-07-01 00:00:00.000",
+        updatedAt: "2026-08-01 00:00:00.000",
       },
-    ];
+    ]);
     const { getJiraIntegration } = await import("../jira");
     const record = await getJiraIntegration("org1");
+    expect(pg.lastQuery().sql).toContain('from "jira_integrations"');
 
     expect(record).toEqual({
       siteUrl: "https://acme.atlassian.net",

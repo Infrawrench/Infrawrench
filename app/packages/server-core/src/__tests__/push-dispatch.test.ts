@@ -1,62 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 
 /**
- * Push dispatch tests. The DB is mocked with a chainable fake: the member →
- * device → preference join resolves from a `targets` queue, device updates/
- * deletes are recorded, and `fetch` is spied on `globalThis` to fake the Expo
- * push API.
+ * Push dispatch tests. The DB is a real Drizzle over a recording driver
+ * (fake-postgres): the member → device → preference join renders its actual
+ * SQL and resolves from canned rows, device updates/deletes are read back from
+ * the recorded statements, and `fetch` is spied on `globalThis` to fake the
+ * Expo push API.
  */
 
-const tables = {
-  organizationMembers: { __t: "organizationMembers" as const, userId: "u", organizationId: "o" },
-  pushDevices: {
-    __t: "pushDevices" as const,
-    id: "id",
-    userId: "u",
-    expoPushToken: "t",
-    disabledAt: "d",
-    failureCount: "f",
-  },
-  pushPreferences: {
-    __t: "pushPreferences" as const,
-    id: "id",
-    userId: "u",
-    organizationId: "o",
-    mutedTriggers: "muted",
-  },
-};
-vi.mock("../db/schema", () => tables);
+import { fakePostgres } from "./helpers/fake-postgres";
 
-// Rows returned by the next select chain (org fan-out join or user device list).
-let targets: Array<{ id: string; expoPushToken: string }> = [];
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
-const updates: Array<{ table: string; set: Record<string, unknown> }> = [];
-const deletes: Array<{ table: string }> = [];
+// Rows returned by the select (org fan-out join or user device list). Keys in
+// projection order — see helpers/fake-postgres.ts.
+function setTargets(rows: Array<{ id: string; expoPushToken: string }>) {
+  pg.setRows(rows);
+}
 
-const db = {
-  select: () => {
-    const chain = {
-      from: () => chain,
-      innerJoin: () => chain,
-      leftJoin: () => chain,
-      where: () => Promise.resolve(targets),
-    };
-    return chain;
-  },
-  update: (table: { __t: string }) => ({
-    set: (s: Record<string, unknown>) => {
-      updates.push({ table: table.__t, set: s });
-      return { where: () => Promise.resolve() };
-    },
-  }),
-  delete: (table: { __t: string }) => ({
-    where: () => {
-      deletes.push({ table: table.__t });
-      return Promise.resolve();
-    },
-  }),
-};
-vi.mock("../db/client", () => ({ db }));
+/** The bookkeeping statements against push_devices, newest last. */
+const deviceUpdates = () => pg.queries.filter((q) => q.sql.startsWith('update "push_devices"'));
+const deviceDeletes = () =>
+  pg.queries.filter((q) => q.sql.startsWith('delete from "push_devices"'));
 
 let dispatch: typeof import("../push/dispatch");
 let fetchSpy: MockInstance<typeof fetch>;
@@ -84,9 +50,7 @@ const msg = {
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  targets = [];
-  updates.length = 0;
-  deletes.length = 0;
+  pg.reset();
   fetchSpy = vi.spyOn(globalThis, "fetch");
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   dispatch = await import("../push/dispatch");
@@ -101,14 +65,14 @@ afterEach(() => {
 
 describe("sendPushToOrg", () => {
   it("returns zeros without calling Expo when no devices match", async () => {
-    targets = [];
+    setTargets([]);
     const out = await dispatch.sendPushToOrg("org1", "syncIncidents", msg);
     expect(out).toEqual({ attempted: 0, succeeded: 0 });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("sends one message per device and resets failureCount on success", async () => {
-    targets = [device(1), device(2)];
+    setTargets([device(1), device(2)]);
     fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }, { status: "ok" }]));
     const out = await dispatch.sendPushToOrg("org1", "syncIncidents", msg);
     expect(out).toEqual({ attempted: 2, succeeded: 2 });
@@ -117,14 +81,14 @@ describe("sendPushToOrg", () => {
     expect(body).toHaveLength(2);
     expect(body[0].to).toBe("ExponentPushToken[tok1]");
     expect(body[0].data).toEqual(msg.data);
-    // Success bookkeeping resets failureCount.
-    expect(updates.some((u) => u.table === "pushDevices" && u.set["failureCount"] === 0)).toBe(
-      true,
-    );
+    // Success bookkeeping resets failureCount ("failure_count" = $1 with $1 = 0).
+    expect(
+      deviceUpdates().some((q) => q.sql.includes('"failure_count" = $') && q.params[0] === 0),
+    ).toBe(true);
   });
 
   it("sends every notification at the top delivery tier on both platforms", async () => {
-    targets = [device(1)];
+    setTargets([device(1)]);
     fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }]));
     await dispatch.sendPushToOrg("org1", "syncIncidents", msg);
     const body = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body));
@@ -141,7 +105,7 @@ describe("sendPushToOrg", () => {
   // just a feature, and both of its states are worth pinning.
   it("leaves workflow pages at time-sensitive while PUSH_CRITICAL_ALERTS is unset", async () => {
     vi.stubEnv("PUSH_CRITICAL_ALERTS", "");
-    targets = [device(1)];
+    setTargets([device(1)]);
     fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }]));
     await dispatch.sendPushToOrg("org1", "workflowPages", msg);
     const body = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body));
@@ -150,7 +114,7 @@ describe("sendPushToOrg", () => {
 
   it("sends workflow pages as critical when PUSH_CRITICAL_ALERTS=1", async () => {
     vi.stubEnv("PUSH_CRITICAL_ALERTS", "1");
-    targets = [device(1)];
+    setTargets([device(1)]);
     fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }]));
     await dispatch.sendPushToOrg("org1", "workflowPages", msg);
     const body = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body));
@@ -159,7 +123,7 @@ describe("sendPushToOrg", () => {
 
   it("keeps non-page triggers at time-sensitive even with PUSH_CRITICAL_ALERTS=1", async () => {
     vi.stubEnv("PUSH_CRITICAL_ALERTS", "1");
-    targets = [device(1)];
+    setTargets([device(1)]);
     fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }, { status: "ok" }]));
     await dispatch.sendPushToOrg("org1", "syncIncidents", msg);
     await dispatch.sendPushToOrg("org1", "budgetAlerts", msg);
@@ -170,7 +134,7 @@ describe("sendPushToOrg", () => {
   });
 
   it("dispatches the postureAlerts trigger like the other alert triggers", async () => {
-    targets = [device(1)];
+    setTargets([device(1)]);
     fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }]));
     const out = await dispatch.sendPushToOrg("org1", "postureAlerts", msg);
     expect(out).toEqual({ attempted: 1, succeeded: 1 });
@@ -179,7 +143,7 @@ describe("sendPushToOrg", () => {
   });
 
   it("dispatches the probeAlerts trigger through its preference column", async () => {
-    targets = [device(1)];
+    setTargets([device(1)]);
     fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }]));
     const out = await dispatch.sendPushToOrg("org1", "probeAlerts", msg);
     expect(out).toEqual({ attempted: 1, succeeded: 1 });
@@ -189,7 +153,7 @@ describe("sendPushToOrg", () => {
   });
 
   it("chunks requests at 100 messages", async () => {
-    targets = Array.from({ length: 150 }, (_, i) => device(i));
+    setTargets(Array.from({ length: 150 }, (_, i) => device(i)));
     fetchSpy.mockImplementation(async (_url, init) => {
       const n = JSON.parse(String((init as RequestInit).body)).length;
       return expoResponse(Array.from({ length: n }, () => ({ status: "ok" as const })));
@@ -204,7 +168,7 @@ describe("sendPushToOrg", () => {
   });
 
   it("deletes devices Expo reports as DeviceNotRegistered", async () => {
-    targets = [device(1), device(2)];
+    setTargets([device(1), device(2)]);
     fetchSpy.mockResolvedValue(
       expoResponse([
         { status: "error", details: { error: "DeviceNotRegistered" } },
@@ -213,31 +177,33 @@ describe("sendPushToOrg", () => {
     );
     const out = await dispatch.sendPushToOrg("org1", "syncIncidents", msg);
     expect(out).toEqual({ attempted: 2, succeeded: 1 });
-    expect(deletes).toEqual([{ table: "pushDevices" }]);
+    // One DELETE, naming exactly the dead device.
+    expect(deviceDeletes()).toHaveLength(1);
+    expect(deviceDeletes()[0]!.params).toEqual(["dev1"]);
   });
 
   it("increments failureCount on other ticket errors", async () => {
-    targets = [device(1)];
+    setTargets([device(1)]);
     fetchSpy.mockResolvedValue(
       expoResponse([{ status: "error", details: { error: "MessageTooBig" } }]),
     );
     const out = await dispatch.sendPushToOrg("org1", "syncIncidents", msg);
     expect(out).toEqual({ attempted: 1, succeeded: 0 });
-    expect(deletes).toHaveLength(0);
-    const failureUpdate = updates.find((u) => u.table === "pushDevices");
+    expect(deviceDeletes()).toHaveLength(0);
+    // The failure branch increments the counter in SQL rather than setting it.
+    const failureUpdate = deviceUpdates().find((q) => q.sql.includes('"failure_count" + 1'));
     expect(failureUpdate).toBeDefined();
-    expect(failureUpdate!.set["failureCount"]).toBeDefined();
   });
 
   it("treats a network failure as failed tickets and never throws", async () => {
-    targets = [device(1), device(2)];
+    setTargets([device(1), device(2)]);
     fetchSpy.mockRejectedValue(new Error("network down"));
     const out = await dispatch.sendPushToOrg("org1", "syncIncidents", msg);
     expect(out).toEqual({ attempted: 2, succeeded: 0 });
   });
 
   it("treats a non-200 Expo response as failed tickets", async () => {
-    targets = [device(1)];
+    setTargets([device(1)]);
     fetchSpy.mockResolvedValue({
       ok: false,
       status: 429,
@@ -248,17 +214,16 @@ describe("sendPushToOrg", () => {
   });
 
   it("never throws even when the DB query rejects", async () => {
-    const orig = db.select;
-    (db as { select: typeof db.select }).select = (() => {
+    const spy = vi.spyOn(pg.db, "select").mockImplementation(() => {
       throw new Error("db exploded");
-    }) as typeof db.select;
+    });
     const out = await dispatch.sendPushToOrg("org1", "syncIncidents", msg);
     expect(out).toEqual({ attempted: 0, succeeded: 0 });
-    (db as { select: typeof db.select }).select = orig;
+    spy.mockRestore();
   });
 
   it("pads missing tickets so bookkeeping stays aligned", async () => {
-    targets = [device(1), device(2)];
+    setTargets([device(1), device(2)]);
     // Expo returns only one ticket for two messages.
     fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }]));
     const out = await dispatch.sendPushToOrg("org1", "syncIncidents", msg);
@@ -268,20 +233,20 @@ describe("sendPushToOrg", () => {
 
 describe("sendTestPushToUser", () => {
   it("throws when the user has no devices", async () => {
-    targets = [];
+    setTargets([]);
     await expect(dispatch.sendTestPushToUser("u1", "org1")).rejects.toThrow(
       /No registered devices/,
     );
   });
 
   it("throws when every delivery fails", async () => {
-    targets = [device(1)];
+    setTargets([device(1)]);
     fetchSpy.mockRejectedValue(new Error("down"));
     await expect(dispatch.sendTestPushToUser("u1", "org1")).rejects.toThrow(/Test push failed/);
   });
 
   it("returns counts and sends a test payload on success", async () => {
-    targets = [device(1)];
+    setTargets([device(1)]);
     fetchSpy.mockResolvedValue(expoResponse([{ status: "ok" }]));
     const out = await dispatch.sendTestPushToUser("u1", "org1");
     expect(out).toEqual({ attempted: 1, succeeded: 1 });

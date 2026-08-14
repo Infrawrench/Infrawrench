@@ -89,6 +89,11 @@ services:
     environment:
       CLICKHOUSE_DB: infrawrench
       CLICKHOUSE_PASSWORD: infrawrench
+    ports:
+      # 8124 on the host so a natively installed ClickHouse on 8123 keeps
+      # working. Lets the real-database tests target this container:
+      #   CLICKHOUSE_METRICS_URL=http://localhost:8124 ... pnpm test:clickhouse
+      - "8124:8123"
     ulimits:
       nofile:
         soft: 262144

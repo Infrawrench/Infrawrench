@@ -42,23 +42,19 @@ vi.mock("../cost/scenario-forecast", async () => {
   return { ...actual, resolveCostScenarioModel };
 });
 
-const tables = {
-  budgets: { __t: "budgets" as const, organizationId: "o", deletedAt: "d" },
-  budgetAlertEvents: { __t: "budgetAlertEvents" as const, id: "id" },
-  costScenarioModels: { __t: "costScenarioModels" as const },
-};
-vi.mock("../db/schema", () => tables);
+import { fakePostgres } from "./helpers/fake-postgres";
 
-let budgetRows: unknown[] = [];
-let insertReturning: Array<{ id: string }> = [];
-const db = {
-  select: () => ({ from: () => ({ where: () => Promise.resolve(budgetRows) }) }),
-  insert: () => ({
-    values: () => ({ onConflictDoNothing: () => ({ returning: async () => insertReturning }) }),
-  }),
-  update: () => ({ set: () => ({ where: async () => undefined }) }),
-};
-vi.mock("../db/client", () => ({ db }));
+// Real Drizzle over a recording driver against the real schema — the budget
+// select, the alert-event insert and the notifiedAt update render their actual
+// SQL (and shadow-validate under test:postgres:shadow). Results are queued in
+// execution order: the budget select, then the insert's RETURNING.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
+
+function arrange(budgetRows: Array<Record<string, unknown>>) {
+  pg.queueRows(budgetRows);
+  pg.queueRows([{ id: "evt1" }]); // the alert-event insert: always a fresh crossing here
+}
 
 const routeAlert = vi.fn(async (..._args: unknown[]) => ({
   attempted: 1,
@@ -123,6 +119,8 @@ const model = {
   updatedAt: "2026-07-01T00:00:00.000Z",
 };
 
+// The select has no projection, so keys are in the budgets table's column
+// order — see helpers/fake-postgres.ts.
 function budget(over: Record<string, unknown> = {}) {
   return {
     id: "b1",
@@ -131,12 +129,17 @@ function budget(over: Record<string, unknown> = {}) {
     amountCents: 100_000, // $1000
     currency: "USD",
     filters: [],
-    savedFilterId: null,
-    scenarioModelId: null,
-    costBasis: "cash",
     // 50% of $1000 is $500. The bare trend lands at $310 for the month, so this
     // fires only if the scenario's $500 is folded in.
     thresholds: [{ type: "forecast", percent: 50 }],
+    costBasis: "cash",
+    savedFilterId: null,
+    scenarioModelId: null,
+    useAdjustedSpend: false,
+    createdByUserId: null,
+    deletedAt: null,
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T00:00:00.000Z",
     ...over,
   };
 }
@@ -145,8 +148,7 @@ let budgetEval: typeof import("../cost/budget-eval");
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  budgetRows = [];
-  insertReturning = [{ id: "evt1" }];
+  pg.reset();
   queryCosts.mockResolvedValue(flatSpend());
   resolveCostScenarioModel.mockResolvedValue(model);
   budgetEval = await import("../cost/budget-eval");
@@ -205,7 +207,7 @@ describe("budgetMonthStatus — the scenario opt-in", () => {
 
 describe("evaluateBudgetsForOrg — which thresholds a scenario can move", () => {
   it("leaves a forecast threshold on the bare trend when the budget did not opt in", async () => {
-    budgetRows = [budget()];
+    arrange([budget()]);
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);
     // $310 forecast against a $500 threshold: nothing fires, exactly as before
     // scenarios existed — and no model was consulted.
@@ -214,7 +216,7 @@ describe("evaluateBudgetsForOrg — which thresholds a scenario can move", () =>
   });
 
   it("fires on the adjusted forecast for a budget that opted in, and names the model", async () => {
-    budgetRows = [budget({ scenarioModelId: "model-1" })];
+    arrange([budget({ scenarioModelId: "model-1" })]);
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);
 
     expect(routeAlert).toHaveBeenCalledTimes(1);
@@ -228,9 +230,9 @@ describe("evaluateBudgetsForOrg — which thresholds a scenario can move", () =>
   it("never lets a scenario move an `actual` threshold", async () => {
     // $500 of actual spend would be needed; only $150 has been recorded, and
     // the scenario's $500 is in the future where actuals cannot see it.
-    budgetRows = [
+    arrange([
       budget({ scenarioModelId: "model-1", thresholds: [{ type: "actual", percent: 50 }] }),
-    ];
+    ]);
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);
     expect(routeAlert).not.toHaveBeenCalled();
   });

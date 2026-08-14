@@ -6,30 +6,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * never bills. These pin the skip conditions and the exact wire format.
  */
 
-// Sequential select results: [org row], then [subscription row].
-let selectResults: Array<Array<Record<string, unknown>>> = [];
-const updates: Array<Record<string, unknown>> = [];
-const db = {
-  select: () => ({
-    from: () => ({
-      where: () => ({
-        limit: () => Promise.resolve(selectResults.shift() ?? []),
-      }),
-    }),
-  }),
-  update: () => ({
-    set: (values: Record<string, unknown>) => ({
-      where: () => {
-        updates.push(values);
-        return Promise.resolve();
-      },
-    }),
-  }),
-};
-vi.mock("../db/client", () => ({ db }));
-vi.mock("../db/deployment-schema", () => ({ deploymentRuns: { id: "id" } }));
-vi.mock("../db/core-schema", () => ({ organizations: { id: "id", complimentary: "c" } }));
-vi.mock("../db/schema", () => ({ subscriptions: { organizationId: "o", stripeCustomerId: "s" } }));
+import { fakePostgres } from "./helpers/fake-postgres";
+
+// Real Drizzle over a recording driver against the real schema — the org and
+// subscription lookups and the marker update render their actual SQL (and
+// shadow-validate under test:postgres:shadow). Sequential results are queued:
+// [org row], then [subscription row].
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
+
+/** The marker updates issued, as (params) of the rendered UPDATE statement. */
+const updates = () => pg.queries.filter((q) => q.sql.startsWith('update "deployment_runs"'));
 
 const fetchMock = vi.fn();
 
@@ -40,8 +27,9 @@ beforeEach(async () => {
   fetchMock.mockResolvedValue({ ok: true, status: 200 });
   process.env["INFRAWRENCH_STRIPE_BUILD_METER_EVENT"] = "hosted_build_seconds";
   process.env["STRIPE_SECRET_KEY"] = "sk_test_x";
-  selectResults = [[{ complimentary: false }], [{ stripeCustomerId: "cus_123" }]];
-  updates.length = 0;
+  pg.reset();
+  pg.queueRows([{ complimentary: false }]);
+  pg.queueRows([{ stripeCustomerId: "cus_123" }]);
   mod = await import("../billing/build-meter");
 });
 
@@ -77,23 +65,30 @@ describe("reportHostedBuildToMeter", () => {
 
   it("marks the run reported, so a replay job can find the unreported ones", async () => {
     await report();
-    expect(updates).toEqual([{ meterEventId: "deploy-run-1" }]);
+    expect(updates()).toHaveLength(1);
+    // set "meter_event_id" = $1 where "id" = $2
+    expect(updates()[0]!.params).toEqual(["deploy-run-1", "run-1"]);
   });
 
   it("never bills a complimentary org", async () => {
-    selectResults = [[{ complimentary: true }]];
+    pg.reset();
+    pg.queueRows([{ complimentary: true }]);
     await report();
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(updates).toEqual([]);
+    expect(updates()).toEqual([]);
   });
 
   it("does nothing without a Stripe customer, meter name, or key", async () => {
-    selectResults = [[{ complimentary: false }], []];
+    pg.reset();
+    pg.queueRows([{ complimentary: false }]);
+    pg.queueRows([]);
     await report();
     expect(fetchMock).not.toHaveBeenCalled();
 
     delete process.env["INFRAWRENCH_STRIPE_BUILD_METER_EVENT"];
-    selectResults = [[{ complimentary: false }], [{ stripeCustomerId: "cus_123" }]];
+    pg.reset();
+    pg.queueRows([{ complimentary: false }]);
+    pg.queueRows([{ stripeCustomerId: "cus_123" }]);
     await report();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -107,6 +102,6 @@ describe("reportHostedBuildToMeter", () => {
     // The caller catches; what matters is the row stays replayable.
     fetchMock.mockResolvedValue({ ok: false, status: 429 });
     await expect(report()).rejects.toThrow("429");
-    expect(updates).toEqual([]);
+    expect(updates()).toEqual([]);
   });
 });

@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * host-services builds plugin HostServices from the driver maps, plus a
  * secrets service (DB + encryption) and an HTTP service that routes through a
  * bastion dispatcher, node:https (for caCert), or global fetch. We mock the
- * driver maps, DB, encryption, undici and the bastion registry.
+ * driver maps, encryption, undici and the bastion registry; the DB is real
+ * Drizzle over a recording driver (helpers/fake-postgres.ts).
  */
 
 // --- driver maps -----------------------------------------------------------
@@ -25,28 +26,43 @@ vi.mock("../drivers", () => ({
 }));
 
 // --- DB --------------------------------------------------------------------
-const secretRows: unknown[] = [];
-const accountRows: unknown[] = [];
-const insertOnConflictDoUpdate = vi.fn(async () => undefined);
-const dbInsert = vi.fn(() => ({
-  values: () => ({ onConflictDoUpdate: insertOnConflictDoUpdate }),
-}));
-const dbSelect = vi.fn((proj?: Record<string, unknown>) => ({
-  from: (table: { __t: string }) => ({
-    where: () => ({
-      limit: () => Promise.resolve(table.__t === "accounts" ? accountRows : secretRows),
-    }),
-  }),
-}));
-vi.mock("../db/client", () => ({ db: { select: dbSelect, insert: dbInsert } }));
-vi.mock("../db/schema", () => ({
-  accounts: { __t: "accounts", id: "id", bastionId: "bastionId" },
-  secretFieldStates: {
-    __t: "secretFieldStates",
-    resourceId: "resourceId",
-    fieldKey: "fieldKey",
-  },
-}));
+// Real Drizzle over a recording driver against the real schema — the secret
+// and bastion lookups render their actual SQL (and shadow-validate under
+// test:postgres:shadow). See helpers/fake-postgres.ts.
+import { fakePostgres } from "./helpers/fake-postgres";
+
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
+
+/**
+ * A full `secret_field_states` row in column order, driver-shaped. The
+ * getPlaintext lookup is a bare `select()`, so the fake decodes rows
+ * positionally against the table's column order.
+ */
+function secretRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "sfs-1",
+    resourceId: "r1",
+    fieldKey: "f1",
+    resolutionKind: "literal",
+    encryptedValue: null,
+    valueIv: null,
+    sourcePluginId: null,
+    sourceResourceTypeId: null,
+    sourceResourceId: null,
+    sourceAccountId: null,
+    sourceOutputKey: null,
+    cachedEncryptedValue: null,
+    cachedValueIv: null,
+    cachedAt: null,
+    createdAt: "2026-08-01 00:00:00.000",
+    updatedAt: "2026-08-01 00:00:00.000",
+    ...over,
+  };
+}
+
+/** The account→bastion lookups issued. */
+const accountSelects = () => pg.queries.filter((q) => q.sql.includes('from "accounts"'));
 
 // --- encryption ------------------------------------------------------------
 const decrypt = vi.fn(async (ct: string) => {
@@ -132,8 +148,7 @@ let hs: typeof import("../host-services");
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  secretRows.length = 0;
-  accountRows.length = 0;
+  pg.reset();
   getDispatcherFor.mockReturnValue(null);
   httpsState.opts = {};
   httpState.opts = {};
@@ -255,19 +270,17 @@ describe("buildPluginHostServices — driver selection", () => {
   });
 
   it("looks up the bastion via accountId when bastionId not provided", async () => {
-    accountRows.push({ bastionId: "bx" });
+    pg.setRows([{ bastionId: "bx" }]);
     await hs.buildPluginHostServices({} as never, {}, { accountId: "acc1" });
-    expect(dbSelect).toHaveBeenCalled();
+    expect(accountSelects()).toHaveLength(1);
+    // account id, and the parameterized limit 1.
+    expect(accountSelects()[0]!.params).toEqual(["acc1", 1]);
   });
 
   it("skips the DB round-trip when bastionId is given explicitly", async () => {
     await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
     // accounts select for bastion lookup should not run
-    const fromCalls = dbSelect.mock.results.map(
-      (r) => r.value as { from: (t: { __t: string }) => unknown },
-    ).length;
-    void fromCalls;
-    expect(true).toBe(true);
+    expect(accountSelects()).toEqual([]);
   });
 });
 
@@ -284,19 +297,19 @@ describe("secrets.getPlaintext", () => {
   });
 
   it("returns null when the row is not a literal", async () => {
-    secretRows.push({ resolutionKind: "output-ref", encryptedValue: "x", valueIv: "y" });
+    pg.setRows([secretRow({ resolutionKind: "output-ref", encryptedValue: "x", valueIv: "y" })]);
     const svc = await getSecretService();
     expect(await svc.getPlaintext("r1", "f1")).toBeNull();
   });
 
   it("returns null when encrypted value/iv missing", async () => {
-    secretRows.push({ resolutionKind: "literal", encryptedValue: null, valueIv: null });
+    pg.setRows([secretRow({ resolutionKind: "literal", encryptedValue: null, valueIv: null })]);
     const svc = await getSecretService();
     expect(await svc.getPlaintext("r1", "f1")).toBeNull();
   });
 
   it("decrypts a literal value with the right AAD", async () => {
-    secretRows.push({ resolutionKind: "literal", encryptedValue: "ENC", valueIv: "IV" });
+    pg.setRows([secretRow({ resolutionKind: "literal", encryptedValue: "ENC", valueIv: "IV" })]);
     const svc = await getSecretService();
     const out = await svc.getPlaintext("r1", "f1");
     expect(out).toBe("plaintext-secret");
@@ -304,7 +317,7 @@ describe("secrets.getPlaintext", () => {
   });
 
   it("returns null and logs when decryption throws", async () => {
-    secretRows.push({ resolutionKind: "literal", encryptedValue: "THROW", valueIv: "IV" });
+    pg.setRows([secretRow({ resolutionKind: "literal", encryptedValue: "THROW", valueIv: "IV" })]);
     const svc = await getSecretService();
     expect(await svc.getPlaintext("r1", "f1")).toBeNull();
     expect(console.error).toHaveBeenCalled();
@@ -316,8 +329,13 @@ describe("secrets.setPlaintext", () => {
     const out = await hs.buildPluginHostServices({} as never, {});
     await out!.secrets!.setPlaintext!("r1", "f1", "supersecret");
     expect(encrypt).toHaveBeenCalledWith("supersecret", "secretField:r1:f1:value");
-    expect(dbInsert).toHaveBeenCalled();
-    expect(insertOnConflictDoUpdate).toHaveBeenCalled();
+    const upsert = pg.lastQuery();
+    expect(upsert.sql).toContain('insert into "secret_field_states"');
+    expect(upsert.sql).toContain("on conflict");
+    expect(upsert.sql).toContain("do update set");
+    // The literal's ciphertext/iv land in both the insert and the update arm.
+    expect(upsert.params).toContain("CT");
+    expect(upsert.params).toContain("IV");
   });
 });
 

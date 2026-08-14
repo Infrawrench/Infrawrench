@@ -1,39 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const mockSelect = vi.fn();
-const mockInsert = vi.fn();
-const mockUpdate = vi.fn();
-const mockDelete = vi.fn();
-const mockExecute = vi.fn();
-const mockTransaction = vi.fn();
+import { fakePostgres } from "./helpers/fake-postgres";
 
-vi.mock("../db/client", () => ({
-  db: {
-    select: (...a: unknown[]) => mockSelect(...a),
-    insert: (...a: unknown[]) => mockInsert(...a),
-    update: (...a: unknown[]) => mockUpdate(...a),
-    delete: (...a: unknown[]) => mockDelete(...a),
-    transaction: (...a: unknown[]) => mockTransaction(...a),
-  },
-}));
-vi.mock("../db/schema", () => ({
-  chatUsage: { organizationId: "org", costMicros: "cost", createdAt: "ts" },
-  workflowAiUsage: {
-    id: "id",
-    organizationId: "org",
-    costMicros: "cost",
-    createdAt: "ts",
-  },
-  aiSpendReservations: {
-    id: "id",
-    organizationId: "org",
-    estimatedCostMicros: "est",
-    expiresAt: "expires",
-    createdAt: "ts",
-  },
-  organizations: { id: "id", chatMonthlyCapMicros: "cap", complimentary: "complimentary" },
-  subscriptions: { organizationId: "org", stripeCustomerId: "cust", status: "status" },
-}));
+// Real Drizzle over a recording driver against the real schema — every select,
+// insert, update and delete below renders its actual SQL (and shadow-validates
+// under test:postgres:shadow). Sequential results are queued per statement in
+// execution order; `db.transaction` is shimmed flat, so the advisory lock and
+// the purge inside `reserveAiSpend` consume queue slots too.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
 // Prepaid capacity is a third way to be paid here, queried from its own table.
 const mockActiveCapacitySeats = vi.fn<() => Promise<number>>();
@@ -52,9 +27,13 @@ const {
   AI_SPEND_RESERVATION_TTL_MS,
 } = await import("../billing/ai-usage");
 
+/** The statements issued against one table, filtered by SQL prefix. */
+const queriesOn = (prefix: string) => pg.queries.filter((q) => q.sql.startsWith(prefix));
+
 describe("getAiSpendStatus", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pg.reset();
     // No prepaid capacity unless a test says otherwise.
     mockActiveCapacitySeats.mockResolvedValue(0);
   });
@@ -71,24 +50,11 @@ describe("getAiSpendStatus", () => {
     subStatus: string | null = "active",
     complimentary = false,
   ) {
-    const orgLimit = vi.fn().mockResolvedValue([{ cap, complimentary }]);
-    const orgWhere = vi.fn().mockReturnValue({ limit: orgLimit });
-    const orgFrom = vi.fn().mockReturnValue({ where: orgWhere });
-    const subLimit = vi.fn().mockResolvedValue(subStatus ? [{ status: subStatus }] : []);
-    const subWhere = vi.fn().mockReturnValue({ limit: subLimit });
-    const subFrom = vi.fn().mockReturnValue({ where: subWhere });
-    const chatWhere = vi.fn().mockResolvedValue([{ total: chatTotal }]);
-    const chatFrom = vi.fn().mockReturnValue({ where: chatWhere });
-    const wfWhere = vi.fn().mockResolvedValue([{ total: workflowTotal }]);
-    const wfFrom = vi.fn().mockReturnValue({ where: wfWhere });
-    const resWhere = vi.fn().mockResolvedValue([{ total: reservationTotal }]);
-    const resFrom = vi.fn().mockReturnValue({ where: resWhere });
-    mockSelect
-      .mockReturnValueOnce({ from: orgFrom })
-      .mockReturnValueOnce({ from: subFrom })
-      .mockReturnValueOnce({ from: chatFrom })
-      .mockReturnValueOnce({ from: wfFrom })
-      .mockReturnValueOnce({ from: resFrom });
+    pg.queueRows([{ cap, complimentary }]);
+    pg.queueRows(subStatus ? [{ status: subStatus }] : []);
+    pg.queueRows([{ total: chatTotal }]);
+    pg.queueRows([{ total: workflowTotal }]);
+    pg.queueRows([{ total: reservationTotal }]);
   }
 
   it("reports month-to-date and cap", async () => {
@@ -192,13 +158,12 @@ describe("getAiSpendStatus", () => {
 describe("recordWorkflowAiUsage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pg.reset();
     delete process.env["INFRAWRENCH_STRIPE_CHAT_METER_EVENT"];
     delete process.env["STRIPE_SECRET_KEY"];
   });
 
   it("inserts a usage row and returns the marked-up cost", async () => {
-    const values = vi.fn().mockResolvedValue(undefined);
-    mockInsert.mockReturnValue({ values });
     // Sonnet 5: $3/MTok input × 1.5 markup = $4.50
     const cost = await recordWorkflowAiUsage({
       organizationId: "o1",
@@ -208,20 +173,24 @@ describe("recordWorkflowAiUsage", () => {
       usage: { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
     });
     expect(cost).toBe(4_500_000);
-    expect(values).toHaveBeenCalledWith(
-      expect.objectContaining({
-        organizationId: "o1",
-        workflowId: "wf1",
-        runId: "run1",
-        model: "claude-sonnet-5",
-        costMicros: 4_500_000,
-      }),
-    );
+    const insert = queriesOn('insert into "workflow_ai_usage"')[0];
+    expect(insert).toBeDefined();
+    // id, org, workflow, run, model, tokens ×4, costMicros — insertion order.
+    expect(insert!.params).toEqual([
+      expect.stringMatching(/^[0-9a-f-]{36}$/i),
+      "o1",
+      "wf1",
+      "run1",
+      "claude-sonnet-5",
+      1_000_000,
+      0,
+      0,
+      0,
+      4_500_000,
+    ]);
   });
 
   it("skips Stripe entirely when the meter is not configured", async () => {
-    const values = vi.fn().mockResolvedValue(undefined);
-    mockInsert.mockReturnValue({ values });
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
     await recordWorkflowAiUsage({
@@ -232,7 +201,7 @@ describe("recordWorkflowAiUsage", () => {
     });
     await new Promise((r) => setTimeout(r, 0));
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(mockSelect).not.toHaveBeenCalled();
+    expect(queriesOn("select")).toEqual([]);
     vi.unstubAllGlobals();
   });
 });
@@ -240,116 +209,85 @@ describe("recordWorkflowAiUsage", () => {
 describe("reserve / release AI spend", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pg.reset();
     mockActiveCapacitySeats.mockResolvedValue(0);
     delete process.env["INFRAWRENCH_STRIPE_CHAT_METER_EVENT"];
     delete process.env["STRIPE_SECRET_KEY"];
-    mockExecute.mockResolvedValue(undefined);
-    const deleteWhere = vi.fn().mockResolvedValue(undefined);
-    mockDelete.mockReturnValue({ where: deleteWhere });
   });
 
+  /**
+   * Queue every statement `reserveAiSpend` issues inside its (flattened)
+   * transaction, in order: the advisory lock, the expired-reservation purge,
+   * then the five spend-status selects.
+   */
   function queueSpendSelects(
     cap: number | null,
     chatTotal: string,
     workflowTotal = "0",
     reservationTotal = "0",
   ) {
-    const orgLimit = vi.fn().mockResolvedValue([{ cap, complimentary: false }]);
-    const orgWhere = vi.fn().mockReturnValue({ limit: orgLimit });
-    const orgFrom = vi.fn().mockReturnValue({ where: orgWhere });
-    const subLimit = vi.fn().mockResolvedValue([{ status: "active" }]);
-    const subWhere = vi.fn().mockReturnValue({ limit: subLimit });
-    const subFrom = vi.fn().mockReturnValue({ where: subWhere });
-    const chatWhere = vi.fn().mockResolvedValue([{ total: chatTotal }]);
-    const chatFrom = vi.fn().mockReturnValue({ where: chatWhere });
-    const wfWhere = vi.fn().mockResolvedValue([{ total: workflowTotal }]);
-    const wfFrom = vi.fn().mockReturnValue({ where: wfWhere });
-    const resWhere = vi.fn().mockResolvedValue([{ total: reservationTotal }]);
-    const resFrom = vi.fn().mockReturnValue({ where: resWhere });
-    mockSelect
-      .mockReturnValueOnce({ from: orgFrom })
-      .mockReturnValueOnce({ from: subFrom })
-      .mockReturnValueOnce({ from: chatFrom })
-      .mockReturnValueOnce({ from: wfFrom })
-      .mockReturnValueOnce({ from: resFrom });
+    pg.queueRows([]); // SELECT pg_advisory_xact_lock(...)
+    pg.queueRows([]); // delete expired reservations
+    pg.queueRows([{ cap, complimentary: false }]);
+    pg.queueRows([{ status: "active" }]);
+    pg.queueRows([{ total: chatTotal }]);
+    pg.queueRows([{ total: workflowTotal }]);
+    pg.queueRows([{ total: reservationTotal }]);
   }
 
   it("reserves estimated spend under a transaction when under the cap", async () => {
-    const values = vi.fn().mockResolvedValue(undefined);
-    mockInsert.mockReturnValue({ values });
-    mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
-      queueSpendSelects(1_000_000, "100000");
-      await fn({
-        execute: mockExecute,
-        select: (...a: unknown[]) => mockSelect(...a),
-        insert: (...a: unknown[]) => mockInsert(...a),
-        delete: (...a: unknown[]) => mockDelete(...a),
-      });
-    });
+    queueSpendSelects(1_000_000, "100000");
 
     const id = await reserveAiSpend("o1", 50_000);
 
     expect(id).toMatch(/^[0-9a-f-]{36}$/i);
-    expect(mockExecute).toHaveBeenCalled();
-    expect(mockDelete).toHaveBeenCalled(); // expired-reservation purge
-    expect(values).toHaveBeenCalledWith(
-      expect.objectContaining({
-        organizationId: "o1",
-        estimatedCostMicros: 50_000,
-        expiresAt: expect.any(Date),
-      }),
-    );
-    const inserted = values.mock.calls[0]?.[0] as { expiresAt: Date };
-    expect(inserted.expiresAt.getTime()).toBeGreaterThan(
+    // The org-scoped advisory lock came first…
+    expect(pg.queries[0]!.sql).toContain("pg_advisory_xact_lock");
+    expect(pg.queries[0]!.params).toEqual(["ai_spend:o1"]);
+    // …then the expired-reservation purge.
+    expect(queriesOn('delete from "ai_spend_reservations"')).toHaveLength(1);
+    const insert = queriesOn('insert into "ai_spend_reservations"')[0];
+    expect(insert).toBeDefined();
+    // id, org, estimate, expiresAt — insertion order.
+    const [rowId, orgId, estimate, expiresAt] = insert!.params;
+    expect(rowId).toBe(id);
+    expect(orgId).toBe("o1");
+    expect(estimate).toBe(50_000);
+    expect(new Date(expiresAt as string).getTime()).toBeGreaterThan(
       Date.now() + AI_SPEND_RESERVATION_TTL_MS - 5_000,
     );
   });
 
   it("throws AiSpendCapExceededError when the org is already at its cap", async () => {
-    mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
-      queueSpendSelects(100_000, "100000");
-      await fn({
-        execute: mockExecute,
-        select: (...a: unknown[]) => mockSelect(...a),
-        insert: (...a: unknown[]) => mockInsert(...a),
-        delete: (...a: unknown[]) => mockDelete(...a),
-      });
-    });
+    queueSpendSelects(100_000, "100000");
 
     await expect(reserveAiSpend("o1", 1)).rejects.toBeInstanceOf(AiSpendCapExceededError);
-    expect(mockInsert).not.toHaveBeenCalled();
+    expect(queriesOn("insert")).toEqual([]);
   });
 
   it("refuses a reservation whose estimate alone would cross the cap", async () => {
     // Settled spend is still under the line; admitting the estimate would push past it.
-    mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
-      queueSpendSelects(1_000_000, "900000");
-      await fn({
-        execute: mockExecute,
-        select: (...a: unknown[]) => mockSelect(...a),
-        insert: (...a: unknown[]) => mockInsert(...a),
-        delete: (...a: unknown[]) => mockDelete(...a),
-      });
-    });
+    queueSpendSelects(1_000_000, "900000");
 
     await expect(reserveAiSpend("o1", 200_000)).rejects.toBeInstanceOf(AiSpendCapExceededError);
-    expect(mockInsert).not.toHaveBeenCalled();
+    expect(queriesOn("insert")).toEqual([]);
   });
 
   it("releases a reservation by id", async () => {
-    const where = vi.fn().mockResolvedValue(undefined);
-    mockDelete.mockReturnValue({ where });
     await releaseAiSpendReservation("res-1");
-    expect(mockDelete).toHaveBeenCalled();
-    expect(where).toHaveBeenCalled();
+    const del = queriesOn('delete from "ai_spend_reservations"')[0];
+    expect(del).toBeDefined();
+    expect(del!.params).toEqual(["res-1"]);
   });
 
   it("refreshes a reservation's expiry", async () => {
-    const where = vi.fn().mockResolvedValue(undefined);
-    const set = vi.fn().mockReturnValue({ where });
-    mockUpdate.mockReturnValue({ set });
     await touchAiSpendReservation("res-1");
-    expect(set).toHaveBeenCalledWith(expect.objectContaining({ expiresAt: expect.any(Date) }));
+    const update = queriesOn('update "ai_spend_reservations"')[0];
+    expect(update).toBeDefined();
+    // set expiresAt = $1 where id = $2
+    const [expiresAt, id] = update!.params;
+    expect(Number.isNaN(new Date(expiresAt as string).getTime())).toBe(false);
+    expect(id).toBe("res-1");
   });
 
   it("estimates tokens from character length", () => {

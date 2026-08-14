@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
 
+import { fakePostgres } from "./helpers/fake-postgres";
+
 /**
  * Slack transport tests. Two halves:
  *
@@ -11,7 +13,10 @@ import { createHmac } from "node:crypto";
  *    by stored row id (routing itself is `alerts/route.ts`' job now), and that
  *    alert text is escaped before it reaches Slack's mrkdwn parser.
  *
- * The DB is mocked with a chainable fake; `fetch` is spied on `globalThis`.
+ * The DB is real Drizzle over a recording driver (helpers/fake-postgres.ts);
+ * a fan-out issues the channel-resolution join first and the installation load
+ * second, so results are queued FIFO in that order. `fetch` is spied on
+ * `globalThis`.
  */
 
 vi.mock("../encryption", () => ({
@@ -20,62 +25,47 @@ vi.mock("../encryption", () => ({
   buildAad: (...parts: string[]) => parts.join(":"),
 }));
 
-const tables = {
-  slackInstallations: {
-    __t: "slackInstallations" as const,
-    id: "id",
-    organizationId: "organizationId",
-    deletedAt: "deletedAt",
-  },
-  slackChannels: {
-    __t: "slackChannels" as const,
-    id: "id",
-    organizationId: "organizationId",
-    installationId: "installationId",
-    channelId: "channelId",
-    channelName: "channelName",
-    isPrivate: "isPrivate",
-  },
-};
-vi.mock("../db/schema", () => tables);
-
-/** Rows the next `select().from(<table>)` chain resolves to. */
-let installationRows: unknown[] = [];
-let channelRows: unknown[] = [];
-
-vi.mock("../db/client", () => {
-  const chain = (rows: () => unknown[]) => {
-    const self: Record<string, unknown> = {};
-    for (const m of ["where", "innerJoin", "leftJoin", "orderBy", "limit"]) {
-      self[m] = () => self;
-    }
-    self["then"] = (resolve: (v: unknown) => unknown) => Promise.resolve(rows()).then(resolve);
-    return self;
-  };
-  return {
-    db: {
-      select: () => ({
-        from: (t: { __t: string }) =>
-          chain(() => (t.__t === "slackInstallations" ? installationRows : channelRows)),
-      }),
-    },
-  };
-});
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
 const ORG = "org1";
 
 /** One live installation whose token decrypts to `xoxb-1`. */
 function installation(overrides: Record<string, unknown> = {}) {
+  // Keys in slack_installations column order — see helpers/fake-postgres.ts.
   return {
     id: "inst1",
     organizationId: ORG,
     teamId: "T1",
     teamName: "Acme",
+    botUserId: "U1",
+    scopes: null,
     encryptedBotToken: "ENC",
     botTokenIv: "IV",
+    installedByUserId: null,
     deletedAt: null,
+    createdAt: "2026-01-01 00:00:00",
+    updatedAt: "2026-01-01 00:00:00",
     ...overrides,
   };
+}
+
+/** Queue the `resolveSlackChannels` join result. Keys in projection order. */
+function queueChannels(
+  rows: Array<{ channelId: string; channelName: string; installationId: string }>,
+) {
+  pg.queueRows(
+    rows.map((r) => ({
+      channelId: r.channelId,
+      channelName: r.channelName,
+      installationId: r.installationId,
+    })),
+  );
+}
+
+/** Queue the org's live-installation load (`select().from(slackInstallations)`). */
+function queueInstallations(rows: Array<Record<string, unknown>>) {
+  pg.queueRows(rows);
 }
 
 let fetchSpy: ReturnType<typeof vi.spyOn>;
@@ -90,8 +80,7 @@ function jsonResponse(body: unknown): Response {
 beforeEach(() => {
   process.env["SLACK_CLIENT_ID"] = "cid";
   process.env["SLACK_CLIENT_SECRET"] = "csecret";
-  installationRows = [];
-  channelRows = [];
+  pg.reset();
   // A fresh Response per call — a body can only be read once, so a shared one
   // would make every call after the first look like a failure.
   fetchSpy = vi
@@ -173,8 +162,7 @@ describe("sendSlackToChannels", () => {
   });
 
   it("is a no-op when the named rows resolve to nothing", async () => {
-    installationRows = [installation()];
-    channelRows = [];
+    queueChannels([]); // the join resolves nothing; the install load never runs
     const { sendSlackToChannels } = await import("../slack");
     expect(await sendSlackToChannels(ORG, ["row1"], alert)).toEqual({
       attempted: 0,
@@ -189,8 +177,7 @@ describe("sendSlackToChannels", () => {
     // the query. Worth its own case: a rule whose Slack destinations were all
     // removed must not fall through to "every channel in the org", which is
     // what an unguarded `inArray(…, [])` would risk.
-    installationRows = [installation()];
-    channelRows = [{ id: "row1", channelId: "C1", channelName: "alerts", installationId: "inst1" }];
+    queueChannels([{ channelId: "C1", channelName: "alerts", installationId: "inst1" }]);
     const { sendSlackToChannels } = await import("../slack");
     expect(await sendSlackToChannels(ORG, [], alert)).toEqual({
       attempted: 0,
@@ -198,22 +185,27 @@ describe("sendSlackToChannels", () => {
       failed: 0,
     });
     expect(fetchSpy).not.toHaveBeenCalled();
+    // "Without querying" is now literal: the queued rows were never consumed.
+    expect(pg.queries).toEqual([]);
   });
 
   it("posts to every named channel", async () => {
-    installationRows = [installation()];
-    // Ids match the ones requested below, so the fixture reads as the result of
-    // the `inArray(slackChannels.id, rowIds)` filter rather than as every row
-    // in the org. (The db fake ignores predicates; the filter itself is the
-    // query's job, covered by the route tests.)
-    channelRows = [
-      { id: "row1", channelId: "C1", channelName: "alerts", installationId: "inst1" },
-      { id: "row2", channelId: "C2", channelName: "oncall", installationId: "inst1" },
-    ];
+    // The fixture reads as the result of the `inArray(slackChannels.id, rowIds)`
+    // filter rather than as every row in the org. (The recording driver ignores
+    // predicates; the filter itself is the query's job, covered by the route
+    // tests — but the rendered SQL below pins that the filter is issued.)
+    queueChannels([
+      { channelId: "C1", channelName: "alerts", installationId: "inst1" },
+      { channelId: "C2", channelName: "oncall", installationId: "inst1" },
+    ]);
+    queueInstallations([installation()]);
     const { sendSlackToChannels } = await import("../slack");
     const result = await sendSlackToChannels(ORG, ["row1", "row2"], alert);
     expect(result).toEqual({ attempted: 2, succeeded: 2, failed: 0 });
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    expect(pg.queries[0]!.sql).toContain('from "slack_channels"');
+    expect(pg.queries[0]!.params).toEqual([ORG, "row1", "row2"]);
 
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://slack.com/api/chat.postMessage");
@@ -222,8 +214,8 @@ describe("sendSlackToChannels", () => {
   });
 
   it("counts an ok:false envelope as a failure", async () => {
-    installationRows = [installation()];
-    channelRows = [{ channelId: "C1", channelName: "secret", installationId: "inst1" }];
+    queueChannels([{ channelId: "C1", channelName: "secret", installationId: "inst1" }]);
+    queueInstallations([installation()]);
     fetchSpy.mockImplementation(async () => jsonResponse({ ok: false, error: "not_in_channel" }));
     const { sendSlackToChannels } = await import("../slack");
     expect(await sendSlackToChannels(ORG, ["row1"], alert)).toEqual({
@@ -234,8 +226,8 @@ describe("sendSlackToChannels", () => {
   });
 
   it("escapes mrkdwn delimiters in alert text", async () => {
-    installationRows = [installation()];
-    channelRows = [{ channelId: "C1", channelName: "alerts", installationId: "inst1" }];
+    queueChannels([{ channelId: "C1", channelName: "alerts", installationId: "inst1" }]);
+    queueInstallations([installation()]);
     const { sendSlackToChannels } = await import("../slack");
     await sendSlackToChannels(ORG, ["row1"], {
       title: "5 > 3",
@@ -253,8 +245,8 @@ describe("sendSlackToChannels", () => {
   });
 
   it("never throws when a transport error escapes", async () => {
-    installationRows = [installation()];
-    channelRows = [{ channelId: "C1", channelName: "alerts", installationId: "inst1" }];
+    queueChannels([{ channelId: "C1", channelName: "alerts", installationId: "inst1" }]);
+    queueInstallations([installation()]);
     fetchSpy.mockRejectedValue(new Error("network down"));
     const { sendSlackToChannels } = await import("../slack");
     expect(await sendSlackToChannels(ORG, ["row1"], alert)).toEqual({
@@ -267,8 +259,8 @@ describe("sendSlackToChannels", () => {
   it("skips a channel whose install has been disconnected", async () => {
     // resolveSlackChannels joins on a live install, but the token map is built
     // separately — a row that survives the join without a token must not post.
-    installationRows = [];
-    channelRows = [{ channelId: "C1", channelName: "alerts", installationId: "gone" }];
+    queueChannels([{ channelId: "C1", channelName: "alerts", installationId: "gone" }]);
+    queueInstallations([]);
     const { sendSlackToChannels } = await import("../slack");
     expect(await sendSlackToChannels(ORG, ["row1"], alert)).toEqual({
       attempted: 1,
@@ -280,10 +272,6 @@ describe("sendSlackToChannels", () => {
 });
 
 describe("listSlackChannels", () => {
-  beforeEach(() => {
-    installationRows = [installation()];
-  });
-
   /**
    * Slack's reference says `conversations.list` accepts `application/json`, but
    * it does not honour arguments sent that way: it answers `ok: true` with
@@ -292,6 +280,7 @@ describe("listSlackChannels", () => {
    * encoding is pinned here rather than left to whoever edits slackCall next.
    */
   it("asks for private channels form-encoded, because JSON is silently ignored", async () => {
+    queueInstallations([installation()]);
     fetchSpy.mockImplementation(async () =>
       jsonResponse({
         ok: true,
@@ -321,6 +310,7 @@ describe("listSlackChannels", () => {
   });
 
   it("drops archived channels and follows the cursor", async () => {
+    queueInstallations([installation()]);
     let call = 0;
     fetchSpy.mockImplementation(async () => {
       call += 1;
@@ -344,9 +334,8 @@ describe("listSlackChannels", () => {
   });
 
   it("still posts messages as JSON, which chat.postMessage does honour", async () => {
-    channelRows = [
-      { channelId: "C1", channelName: "alerts", installationId: "inst1", workflowPages: true },
-    ];
+    queueChannels([{ channelId: "C1", channelName: "alerts", installationId: "inst1" }]);
+    queueInstallations([installation()]);
     const { sendSlackToChannels } = await import("../slack");
     await sendSlackToChannels(ORG, ["row1"], { title: "t", body: "b" });
     const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
@@ -537,8 +526,8 @@ describe("slack link tokens", () => {
  */
 describe("sendSlackToChannelsTracked", () => {
   it("renders buttons and returns the posted message refs", async () => {
-    installationRows = [installation()];
-    channelRows = [{ channelId: "C1", channelName: "approvals", installationId: "inst1" }];
+    queueChannels([{ channelId: "C1", channelName: "approvals", installationId: "inst1" }]);
+    queueInstallations([installation()]);
     fetchSpy.mockImplementation(async () =>
       jsonResponse({ ok: true, ts: "1722700000.000100", channel: "C1" }),
     );
@@ -577,8 +566,8 @@ describe("sendSlackToChannelsTracked", () => {
   });
 
   it("keeps sendSlackToChannels' shape for untracked callers", async () => {
-    installationRows = [installation()];
-    channelRows = [{ channelId: "C1", channelName: "alerts", installationId: "inst1" }];
+    queueChannels([{ channelId: "C1", channelName: "alerts", installationId: "inst1" }]);
+    queueInstallations([installation()]);
     const { sendSlackToChannels } = await import("../slack");
     expect(await sendSlackToChannels(ORG, ["row1"], { title: "t", body: "b" })).toEqual({
       attempted: 1,

@@ -7,58 +7,37 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * that retires every recorded copy of a request.
  */
 
-vi.mock("../db/schema", () => ({
-  slackApprovalMessages: {
-    __t: "slackApprovalMessages",
-    organizationId: "organizationId",
-    kind: "kind",
-    approvalId: "approvalId",
-  },
-  workflowApprovals: {
-    __t: "workflowApprovals",
-    id: "id",
-    status: "status",
-    decidedByName: "decidedByName",
-  },
-  chatPendingActions: { __t: "chatPendingActions", id: "id", status: "status" },
-}));
+import { fakePostgres } from "./helpers/fake-postgres";
 
-let messageRows: unknown[] = [];
-/** The approval rows the post-insert reconciliation reads back. */
-const approvalRows: Record<string, unknown[]> = {};
-const insertedValues: unknown[][] = [];
+// Real Drizzle over a recording driver against the real schema — the
+// recorded-copy insert and the status/message selects render their actual SQL
+// (and shadow-validate under test:postgres:shadow). Each test queues its
+// results in execution order: the insert (result ignored), the approval-status
+// read, then — only when the status came back decided — the message read-back.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
-vi.mock("../db/client", () => {
-  const chain = (rows: () => unknown[]) => {
-    const self: Record<string, unknown> = {};
-    self["where"] = () => self;
-    self["limit"] = () => Promise.resolve(rows());
-    self["then"] = (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
-      Promise.resolve(rows()).then(res, rej);
-    return self;
-  };
+/** The recorded-copy INSERT statements. */
+const inserts = () =>
+  pg.queries.filter((q) => q.sql.startsWith('insert into "slack_approval_messages"'));
+
+/**
+ * A recorded copy as the unprojected select returns it — keys in
+ * slack_approval_messages column order (see helpers/fake-postgres.ts).
+ */
+function messageRow(over: Partial<Record<string, unknown>> = {}) {
   return {
-    db: {
-      select: () => ({
-        from: (table: { __t: string }) =>
-          chain(() =>
-            table.__t === "slackApprovalMessages" ? messageRows : (approvalRows[table.__t] ?? []),
-          ),
-      }),
-      insert: () => ({
-        values: (v: unknown[]) => {
-          insertedValues.push(v);
-          return Promise.resolve();
-        },
-      }),
-    },
+    id: "sam-1",
+    organizationId: "org-1",
+    kind: "workflow",
+    approvalId: "ap-1",
+    installationId: "inst1",
+    channelId: "C1",
+    messageTs: "1.1",
+    createdAt: "2026-08-01T00:00:00.000Z",
+    ...over,
   };
-});
-
-vi.mock("drizzle-orm", () => ({
-  and: (...a: unknown[]) => ({ and: a }),
-  eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
-}));
+}
 
 const loadOrgSlackTokens = vi.fn();
 const updateSlackMessage = vi.fn();
@@ -70,21 +49,17 @@ vi.mock("../slack", () => ({
   postSlackThreadReply: (...a: unknown[]) => postSlackThreadReply(...a),
 }));
 
-import {
+// Dynamic so the mocked `db/client` above is wired before the module loads.
+const {
   parseSlackApprovalButtonValue,
   recordSlackApprovalMessages,
   slackApprovalButtons,
   updateSlackApprovalMessages,
-} from "../slack-approvals";
+} = await import("../slack-approvals");
 
 beforeEach(() => {
   vi.clearAllMocks();
-  messageRows = [];
-  for (const key of Object.keys(approvalRows)) delete approvalRows[key];
-  // Default: the approval is still open, so recording does not reconcile.
-  approvalRows["workflowApprovals"] = [{ status: "pending", decidedByName: null }];
-  approvalRows["chatPendingActions"] = [{ status: "pending" }];
-  insertedValues.length = 0;
+  pg.reset();
   loadOrgSlackTokens.mockResolvedValue(new Map([["inst1", "xoxb-1"]]));
   updateSlackMessage.mockResolvedValue(undefined);
   postSlackThreadReply.mockResolvedValue(undefined);
@@ -123,10 +98,12 @@ describe("recordSlackApprovalMessages", () => {
 
   it("skips the insert entirely when nothing was delivered", async () => {
     await recordSlackApprovalMessages("org-1", "workflow", "ap-1", [], RENDERED);
-    expect(insertedValues).toHaveLength(0);
+    expect(inserts()).toHaveLength(0);
   });
 
   it("stores one row per delivered message", async () => {
+    pg.queueRows([]); // the insert itself
+    pg.queueRows([{ status: "pending" }]); // the action is still open: no reconcile
     await recordSlackApprovalMessages(
       "org-1",
       "chat",
@@ -137,17 +114,19 @@ describe("recordSlackApprovalMessages", () => {
       ],
       RENDERED,
     );
-    expect(insertedValues[0]).toHaveLength(2);
-    expect(insertedValues[0]![0]).toMatchObject({
-      organizationId: "org-1",
-      kind: "chat",
-      approvalId: "pa-1",
-      channelId: "C1",
-      messageTs: "1.1",
-    });
+    // One INSERT with two value tuples of 7 bound values each (id, org, kind,
+    // approvalId, installationId, channelId, messageTs; createdAt defaults).
+    expect(inserts()).toHaveLength(1);
+    const { params } = inserts()[0]!;
+    expect(params).toHaveLength(14);
+    expect(params.slice(1, 7)).toEqual(["org-1", "chat", "pa-1", "inst1", "C1", "1.1"]);
+    expect(params.slice(8, 14)).toEqual(["org-1", "chat", "pa-1", "inst1", "C2", "2.2"]);
   });
 
   it("leaves an open approval's fresh copies alone", async () => {
+    pg.queueRows([]); // the insert
+    // Keys in projection order: status, decidedByName.
+    pg.queueRows([{ status: "pending", decidedByName: null }]);
     await recordSlackApprovalMessages(
       "org-1",
       "workflow",
@@ -162,8 +141,9 @@ describe("recordSlackApprovalMessages", () => {
     // The race: a decision lands while the Slack post is in flight, so its
     // updateSlackApprovalMessages ran before these rows existed. Recording
     // must notice the settled state and retire the fresh copies itself.
-    approvalRows["workflowApprovals"] = [{ status: "approved", decidedByName: "Astrid" }];
-    messageRows = [{ installationId: "inst1", channelId: "C1", messageTs: "1.1" }];
+    pg.queueRows([]); // the insert
+    pg.queueRows([{ status: "approved", decidedByName: "Astrid" }]);
+    pg.queueRows([messageRow()]); // the recorded copies the retire pass reads back
     await recordSlackApprovalMessages(
       "org-1",
       "workflow",
@@ -177,8 +157,9 @@ describe("recordSlackApprovalMessages", () => {
   });
 
   it("converges a chat action that was rejected mid-post to the denied form", async () => {
-    approvalRows["chatPendingActions"] = [{ status: "rejected" }];
-    messageRows = [{ installationId: "inst1", channelId: "C1", messageTs: "1.1" }];
+    pg.queueRows([]); // the insert
+    pg.queueRows([{ status: "rejected" }]);
+    pg.queueRows([messageRow({ kind: "chat", approvalId: "pa-1" })]);
     await recordSlackApprovalMessages(
       "org-1",
       "chat",
@@ -193,7 +174,8 @@ describe("recordSlackApprovalMessages", () => {
   it("treats a claimed-but-still-executing chat action as open", async () => {
     // `approved` means a decider claimed it and execution is in flight; the
     // post-execution noteDecided call retires the copies once it settles.
-    approvalRows["chatPendingActions"] = [{ status: "approved" }];
+    pg.queueRows([]); // the insert
+    pg.queueRows([{ status: "approved" }]);
     await recordSlackApprovalMessages(
       "org-1",
       "chat",
@@ -215,10 +197,7 @@ describe("updateSlackApprovalMessages", () => {
   };
 
   it("rewrites every recorded copy without buttons and threads the outcome", async () => {
-    messageRows = [
-      { installationId: "inst1", channelId: "C1", messageTs: "1.1" },
-      { installationId: "inst1", channelId: "C2", messageTs: "2.2" },
-    ];
+    pg.setRows([messageRow(), messageRow({ id: "sam-2", channelId: "C2", messageTs: "2.2" })]);
     await updateSlackApprovalMessages("org-1", "workflow", "ap-1", OUTCOME);
 
     expect(updateSlackMessage).toHaveBeenCalledTimes(2);
@@ -243,13 +222,13 @@ describe("updateSlackApprovalMessages", () => {
   });
 
   it("skips copies whose install has been disconnected", async () => {
-    messageRows = [{ installationId: "gone", channelId: "C1", messageTs: "1.1" }];
+    pg.setRows([messageRow({ installationId: "gone" })]);
     await updateSlackApprovalMessages("org-1", "workflow", "ap-1", OUTCOME);
     expect(updateSlackMessage).not.toHaveBeenCalled();
   });
 
   it("never throws when Slack errors — the decision is already landed", async () => {
-    messageRows = [{ installationId: "inst1", channelId: "C1", messageTs: "1.1" }];
+    pg.setRows([messageRow()]);
     updateSlackMessage.mockRejectedValue(new Error("channel_not_found"));
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     await expect(
@@ -260,7 +239,7 @@ describe("updateSlackApprovalMessages", () => {
   });
 
   it("says who denied when the decision was a denial from the web", async () => {
-    messageRows = [{ installationId: "inst1", channelId: "C1", messageTs: "1.1" }];
+    pg.setRows([messageRow({ kind: "chat", approvalId: "pa-1" })]);
     await updateSlackApprovalMessages("org-1", "chat", "pa-1", {
       ...OUTCOME,
       decision: "denied",
@@ -271,7 +250,7 @@ describe("updateSlackApprovalMessages", () => {
   });
 
   it("renders a timeout as expired with no decider", async () => {
-    messageRows = [{ installationId: "inst1", channelId: "C1", messageTs: "1.1" }];
+    pg.setRows([messageRow()]);
     await updateSlackApprovalMessages("org-1", "workflow", "ap-1", {
       ...OUTCOME,
       decision: "expired",
@@ -283,7 +262,7 @@ describe("updateSlackApprovalMessages", () => {
   });
 
   it("names the late decider when an approval landed after the timeout", async () => {
-    messageRows = [{ installationId: "inst1", channelId: "C1", messageTs: "1.1" }];
+    pg.setRows([messageRow()]);
     await updateSlackApprovalMessages("org-1", "workflow", "ap-1", {
       ...OUTCOME,
       decision: "expired",

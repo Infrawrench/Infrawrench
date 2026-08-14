@@ -17,44 +17,36 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *  - a transport outage cannot fail the run that is waiting.
  */
 
-vi.mock("../db/schema", () => ({
-  workflowApprovals: { __t: "workflowApprovals", id: "id", status: "status" },
-  workflows: { __t: "workflows", id: "id", name: "name" },
-}));
+import { fakePostgres } from "./helpers/fake-postgres";
 
-/** The row the poll loop reads back. */
-let approvalRow: Record<string, unknown> | undefined;
+// Real Drizzle over a recording driver against the real schema — the approval
+// insert and the poll loop's read-back render their actual SQL (and
+// shadow-validate under test:postgres:shadow). Every test decides on the first
+// poll, so the default rows are the approved row the loop reads back.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
-vi.mock("../db/client", () => {
-  const selectChain = () => {
-    const self: Record<string, unknown> = {};
-    for (const m of ["from", "where", "leftJoin", "orderBy"]) self[m] = () => self;
-    self["limit"] = () => Promise.resolve(approvalRow ? [approvalRow] : []);
-    return self;
-  };
-  const updateChain = () => {
-    const self: Record<string, unknown> = {};
-    self["set"] = () => self;
-    // Awaitable directly, and RETURNING-capable for expirePending's claim
-    // (no rows: the expiry never wins in these tests — a decision landed).
-    self["where"] = () =>
-      Object.assign(Promise.resolve(undefined), { returning: () => Promise.resolve([]) });
-    return self;
-  };
+/**
+ * The row the poll loop reads back — keys in workflow_approvals column order,
+ * values driver-shaped (timestamps as Postgres text). See
+ * helpers/fake-postgres.ts.
+ */
+function approvedRow(): Record<string, unknown> {
   return {
-    db: {
-      select: () => selectChain(),
-      insert: () => ({ values: () => Promise.resolve(undefined) }),
-      update: () => updateChain(),
-    },
+    id: "appr-1",
+    organizationId: ORG,
+    workflowId: "wf1",
+    runId: "run-7",
+    title: "prod-deploy",
+    message: "Roll the API to v42?",
+    status: "approved",
+    expiresAt: "2026-08-14 12:00:00.000",
+    decidedAt: "2026-08-14 11:00:00.000",
+    decidedByUserId: "u1",
+    decidedByName: "Astrid",
+    createdAt: "2026-08-14 10:00:00.000",
   };
-});
-
-vi.mock("drizzle-orm", () => ({
-  and: (...parts: unknown[]) => ({ and: parts }),
-  desc: (c: unknown) => ({ desc: c }),
-  eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
-}));
+}
 
 const sendOneShotPage = vi.fn();
 const recordSlackApprovalMessages = vi.fn();
@@ -139,7 +131,7 @@ function unroutedResult() {
   });
 }
 
-import { requestApprovalAndWait } from "../workflows/approvals";
+const { requestApprovalAndWait } = await import("../workflows/approvals");
 
 const ORG = "org1";
 
@@ -155,7 +147,8 @@ const SPEC = { message: "Roll the API to v42?", timeoutMinutes: 30 };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  approvalRow = { status: "approved", decidedByName: "Astrid", decidedAt: new Date() };
+  pg.reset();
+  pg.setRows([approvedRow()]);
   routeAlert.mockResolvedValue(routed());
   sendOneShotPage.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
   workflowPageCooldownStore.mockReturnValue(pageStore);

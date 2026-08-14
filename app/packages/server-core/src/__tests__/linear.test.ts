@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { fakePostgres } from "./helpers/fake-postgres";
+
 /**
  * Linear transport tests. The things that carry real risk here:
  *
@@ -18,8 +20,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *  - **redaction**, since the API key must never appear in anything a route
  *    can return.
  *
- * The DB is mocked so importing the module doesn't open a connection, same as
- * jira.test.ts.
+ * The DB is real Drizzle over a recording driver (`fake-postgres.ts`) against
+ * the real schema, so the integration lookup renders its actual SQL, same as
+ * org-accounts.test.ts.
  */
 
 vi.mock("../encryption", () => ({
@@ -29,31 +32,8 @@ vi.mock("../encryption", () => ({
   keyedHash: async (data: string) => `digest(${data})`,
 }));
 
-vi.mock("../db/schema", () => ({
-  linearIntegrations: { __t: "linearIntegrations", organizationId: "organizationId" },
-  linearIssueLinks: { __t: "linearIssueLinks", organizationId: "organizationId" },
-}));
-
-/** Rows the next `select().from(...)` chain resolves to. */
-let integrationRows: unknown[] = [];
-
-vi.mock("../db/client", () => {
-  const chain = () => {
-    const self: Record<string, unknown> = {};
-    for (const m of ["where", "orderBy", "limit"]) self[m] = () => self;
-    self["then"] = (resolve: (v: unknown) => unknown) =>
-      Promise.resolve(integrationRows).then(resolve);
-    return self;
-  };
-  return { db: { select: () => ({ from: () => chain() }) } };
-});
-
-vi.mock("drizzle-orm", () => ({
-  and: (...parts: unknown[]) => ({ and: parts }),
-  desc: (c: unknown) => ({ desc: c }),
-  eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
-  inArray: (a: unknown, b: unknown) => ({ inArray: [a, b] }),
-}));
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
 let fetchSpy: ReturnType<typeof vi.spyOn>;
 
@@ -61,6 +41,8 @@ function graphqlResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify({ data }), { status });
 }
 
+// Keys in the `linear_integrations` column order, values driver-shaped
+// (timestamps as ISO strings) — see helpers/fake-postgres.ts.
 const STORED_ROW = {
   organizationId: "org1",
   encryptedApiKey: "CT",
@@ -68,12 +50,12 @@ const STORED_ROW = {
   keyHint: "…a7f2",
   defaultTeamId: "team-1",
   createdByUserId: null,
-  createdAt: new Date("2026-08-01T00:00:00.000Z"),
-  updatedAt: new Date("2026-08-01T00:00:00.000Z"),
+  createdAt: "2026-08-01T00:00:00.000",
+  updatedAt: "2026-08-01T00:00:00.000",
 };
 
 beforeEach(() => {
-  integrationRows = [];
+  pg.reset();
   fetchSpy = vi
     .spyOn(globalThis, "fetch")
     .mockImplementation(async () => graphqlResponse({ viewer: {} }));
@@ -172,7 +154,7 @@ describe("verifyLinearCredentials", () => {
 
 describe("listLinearTeams", () => {
   it("returns id/key/name for the picker and drops malformed nodes", async () => {
-    integrationRows = [STORED_ROW];
+    pg.setRows([STORED_ROW]);
     fetchSpy.mockImplementation(async () =>
       graphqlResponse({
         teams: {
@@ -197,7 +179,7 @@ describe("listLinearTeams", () => {
 
 describe("createLinearIssue", () => {
   it("sends teamId/title/description in the issueCreate input and returns identifier + url", async () => {
-    integrationRows = [STORED_ROW];
+    pg.setRows([STORED_ROW]);
     fetchSpy.mockImplementation(async () =>
       graphqlResponse({
         issueCreate: {
@@ -242,7 +224,7 @@ describe("createLinearIssue", () => {
 
   /** Absent means absent: no `description: null`, no empty labelIds array. */
   it("omits optional fields rather than sending empty values", async () => {
-    integrationRows = [STORED_ROW];
+    pg.setRows([STORED_ROW]);
     fetchSpy.mockImplementation(async () =>
       graphqlResponse({
         issueCreate: { success: true, issue: { id: "i1", identifier: "ENG-1", url: "https://x" } },
@@ -261,7 +243,7 @@ describe("createLinearIssue", () => {
   });
 
   it("truncates the title to the 255-character cap", async () => {
-    integrationRows = [STORED_ROW];
+    pg.setRows([STORED_ROW]);
     fetchSpy.mockImplementation(async () =>
       graphqlResponse({
         issueCreate: { success: true, issue: { id: "i1", identifier: "ENG-1", url: "https://x" } },
@@ -278,7 +260,7 @@ describe("createLinearIssue", () => {
   });
 
   it("fails loudly when success is false or the issue is missing", async () => {
-    integrationRows = [STORED_ROW];
+    pg.setRows([STORED_ROW]);
     fetchSpy.mockImplementation(async () => graphqlResponse({ issueCreate: { success: false } }));
 
     const { createLinearIssue } = await import("../linear");
@@ -301,7 +283,7 @@ describe("createLinearIssue", () => {
 
 describe("getLinearIntegration", () => {
   it("returns the redacted record, never the key", async () => {
-    integrationRows = [STORED_ROW];
+    pg.setRows([STORED_ROW]);
     const { getLinearIntegration } = await import("../linear");
     const record = await getLinearIntegration("org1");
 

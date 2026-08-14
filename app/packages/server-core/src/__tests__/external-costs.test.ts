@@ -8,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * data — and what keeps two sources from overwriting each other.
  */
 
+import { fakePostgres } from "./helpers/fake-postgres";
+
 const insertCostRows = vi.fn(async (_rows: Array<Record<string, unknown>>) => undefined);
 const hashTags = vi.fn((tags: Record<string, string> | undefined) => JSON.stringify(tags ?? {}));
 vi.mock("../clickhouse/cost-writers", () => ({ insertCostRows, hashTags }));
@@ -15,19 +17,15 @@ vi.mock("../clickhouse/cost-writers", () => ({ insertCostRows, hashTags }));
 const isClickHouseConfigured = vi.fn(() => true);
 vi.mock("../clickhouse/client", () => ({ isClickHouseConfigured }));
 
-vi.mock("../db/schema", () => ({
-  accounts: {
-    __t: "accounts",
-    id: "id",
-    organizationId: "organization_id",
-    deletedAt: "deleted_at",
-  },
-}));
+// Real Drizzle over a recording driver: the org-membership check renders its
+// actual SQL (and shadow-validates under test:postgres:shadow).
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
-/** Account rows the org-membership check finds. */
-let knownAccounts: Array<{ id: string }> = [];
-const db = { select: () => ({ from: () => ({ where: () => Promise.resolve(knownAccounts) }) }) };
-vi.mock("../db/client", () => ({ db }));
+/** Account rows the org-membership check finds. Keys in projection order. */
+function knownAccounts(rows: Array<{ id: string }>) {
+  pg.setRows(rows);
+}
 
 let mod: typeof import("../cost/external-costs");
 
@@ -48,7 +46,7 @@ function inserted(): Array<Record<string, unknown>> {
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  knownAccounts = [];
+  pg.reset();
   isClickHouseConfigured.mockReturnValue(true);
   mod = await import("../cost/external-costs");
 });
@@ -74,7 +72,7 @@ describe("writeExternalCostRows", () => {
   });
 
   it("attributes a row to a connected account when asked", async () => {
-    knownAccounts = [{ id: "acc1" }];
+    knownAccounts([{ id: "acc1" }]);
     await write([{ ...ROW, accountId: "acc1" }]);
     expect(inserted()[0]).toMatchObject({ account_id: "acc1", plugin_id: "external" });
     // Still tagged — this is what keeps the key disjoint from AWS's own rows.
@@ -82,7 +80,7 @@ describe("writeExternalCostRows", () => {
   });
 
   it("keeps two sources on disjoint keys for the same account and day", async () => {
-    knownAccounts = [{ id: "acc1" }];
+    knownAccounts([{ id: "acc1" }]);
     await write([{ ...ROW, accountId: "acc1" }], "source-a");
     const first = inserted()[0];
     insertCostRows.mockClear();
@@ -92,7 +90,7 @@ describe("writeExternalCostRows", () => {
   });
 
   it("rejects an accountId from outside the organization without writing anything", async () => {
-    knownAccounts = [];
+    knownAccounts([]);
     await expect(write([{ ...ROW, accountId: "someone-elses" }])).rejects.toThrow(
       /not an account in this organization/,
     );

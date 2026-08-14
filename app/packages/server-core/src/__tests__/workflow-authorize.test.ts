@@ -15,23 +15,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * the matcher would assert only that the map was consulted.
  */
 
+import { fakePostgres } from "./helpers/fake-postgres";
+
 const resolveEffectivePermissions = vi.fn();
 vi.mock("../permissions", () => ({
   resolveEffectivePermissions: (...a: unknown[]) => resolveEffectivePermissions(...a),
 }));
 
-vi.mock("../db/schema", () => ({
-  workflows: { id: "id", createdByUserId: "created_by_user_id" },
-}));
+// Real Drizzle over a recording driver: the author-lookup select renders its
+// actual SQL (and shadow-validates under test:postgres:shadow). Row keys are in
+// projection order — see helpers/fake-postgres.ts.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
 /** The `workflows` row `buildWorkflowAuthorizer` falls back to for author lookup. */
-let workflowRow: Array<{ createdByUserId: string | null }> = [{ createdByUserId: "author-1" }];
-const db = {
-  select: () => ({
-    from: () => ({ where: () => ({ limit: () => Promise.resolve(workflowRow) }) }),
-  }),
-};
-vi.mock("../db/client", () => ({ db }));
+function workflowRow(rows: Array<{ createdByUserId: string | null }>) {
+  pg.setRows(rows);
+}
 
 const { buildWorkflowAuthorizer, WORKFLOW_OPERATION_PERMISSIONS } =
   await import("../workflows/authorize");
@@ -55,7 +55,8 @@ function grant(permissions: string[]) {
 describe("buildWorkflowAuthorizer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    workflowRow = [{ createdByUserId: "author-1" }];
+    pg.reset();
+    workflowRow([{ createdByUserId: "author-1" }]);
   });
 
   it("refuses the operations a member's role does not grant", async () => {
@@ -131,7 +132,7 @@ describe("buildWorkflowAuthorizer", () => {
     // A workflow whose author left the org must not keep running with their
     // access. Denying is loud (the run fails on the first privileged call)
     // rather than silent, which is the point.
-    workflowRow = [{ createdByUserId: null }];
+    workflowRow([{ createdByUserId: null }]);
     const authorize = await buildWorkflowAuthorizer("org-1", "wf-1");
     expect(resolveEffectivePermissions).not.toHaveBeenCalled();
     expect(() => authorize("resource.list")).toThrow(/resources:read/);

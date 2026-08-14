@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { alertReachedImpl, routed } from "./helpers/route-alert";
+import { fakePostgres } from "./helpers/fake-postgres";
 
 /**
  * The security alert window, which now covers **two** feeds: posture checks and
@@ -13,72 +14,18 @@ import { alertReachedImpl, routed } from "./helpers/route-alert";
  * it as quiet would suppress both the retry and every access finding for 24
  * hours while a broken feed sat indistinguishable from a clean org.
  *
- * The DB is a chainable fake, the shape `expiry-alerts.test.ts` uses:
- * `selectDistinct` resolves to `dueRows` (the due-org query), `insert` (the
- * claim) resolves to `claimResult`, `update` records the release.
+ * The DB is real Drizzle over a recording driver against the real schema, the
+ * shape `expiry-alerts.test.ts` uses — the due-org query, the claim upsert and
+ * the release update render their actual SQL (and shadow-validate under
+ * test:postgres:shadow). Sequential results are queued: [due orgs], then [the
+ * claim's RETURNING].
  */
 
-vi.mock("../db/schema", () => ({
-  accounts: {
-    __t: "accounts",
-    organizationId: "organizationId",
-    deletedAt: "deletedAt",
-  },
-  orgPostureSettings: {
-    __t: "orgPostureSettings",
-    organizationId: "organizationId",
-    enabled: "enabled",
-    lastNotifiedAt: "lastNotifiedAt",
-    updatedAt: "updatedAt",
-  },
-}));
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
-/** Rows the due-org query resolves to. */
-let dueRows: unknown[] = [];
-/** What the claim's `returning()` yields — a non-empty array means claimed. */
-let claimResult: unknown[] = [];
-/** `set(...)` arguments of every update, i.e. the releases. */
-let releases: unknown[] = [];
-
-vi.mock("../db/client", () => {
-  const distinctChain = () => {
-    const self: Record<string, unknown> = {};
-    for (const m of ["leftJoin", "where", "orderBy"]) self[m] = () => self;
-    self["limit"] = () => Promise.resolve(dueRows);
-    return self;
-  };
-  const insertChain = () => {
-    const self: Record<string, unknown> = {};
-    for (const m of ["values", "onConflictDoUpdate"]) self[m] = () => self;
-    self["returning"] = () => Promise.resolve(claimResult);
-    return self;
-  };
-  const updateChain = () => {
-    const self: Record<string, unknown> = {};
-    self["set"] = (s: unknown) => {
-      releases.push(s);
-      return self;
-    };
-    self["where"] = () => Promise.resolve(undefined);
-    return self;
-  };
-  return {
-    db: {
-      selectDistinct: () => ({ from: () => distinctChain() }),
-      insert: () => insertChain(),
-      update: () => updateChain(),
-    },
-  };
-});
-
-vi.mock("drizzle-orm", () => ({
-  and: (...parts: unknown[]) => ({ and: parts }),
-  eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
-  isNull: (c: unknown) => ({ isNull: c }),
-  lte: (a: unknown, b: unknown) => ({ lte: [a, b] }),
-  or: (...parts: unknown[]) => ({ or: parts }),
-  sql: Object.assign((..._a: unknown[]) => ({ sql: true }), { raw: () => ({ sql: true }) }),
-}));
+/** The release updates issued against the settings table, i.e. the rollbacks. */
+const releases = () => pg.queries.filter((q) => q.sql.startsWith('update "org_posture_settings"'));
 
 const getPostureSettings = vi.fn();
 vi.mock("../posture/settings", () => ({
@@ -101,8 +48,8 @@ vi.mock("../alerts/route", () => ({
   alertReached: alertReachedImpl,
 }));
 
-import { runPostureAlerts } from "../posture/alerts";
-import { ACCESS_REVIEW_UNAVAILABLE_NOTE } from "../access-review/summary";
+const { runPostureAlerts } = await import("../posture/alerts");
+const { ACCESS_REVIEW_UNAVAILABLE_NOTE } = await import("../access-review/summary");
 
 const ORG = "org1";
 const NOW = new Date("2026-08-11T10:00:00.000Z");
@@ -186,9 +133,9 @@ function hushErrors() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  dueRows = [{ organizationId: ORG }];
-  claimResult = [{ organizationId: ORG }];
-  releases = [];
+  pg.reset();
+  pg.queueRows([{ organizationId: ORG }]); // the due-org query
+  pg.queueRows([{ organizationId: ORG }]); // the claim's RETURNING — claim won
   getPostureSettings.mockResolvedValue({
     organizationId: ORG,
     enabled: true,
@@ -206,7 +153,7 @@ describe("the quiet-scan rule", () => {
     expect(result.outcomes[ORG]).toEqual({ status: "quiet" });
     expect(result.scanned).toBe(1);
     expect(routeAlert).not.toHaveBeenCalled();
-    expect(releases).toEqual([]);
+    expect(releases()).toEqual([]);
   });
 });
 
@@ -228,7 +175,10 @@ describe("a failed access review is not a quiet scan", () => {
     // The claim was taken, so the org counts as scanned…
     expect(result.scanned).toBe(1);
     // …but it is handed straight back, so the next tick retries.
-    expect(releases).toEqual([{ lastNotifiedAt: null }]);
+    // set "last_notified_at" = $1 (back to never-notified) where the org
+    // still carries this claim's own instant.
+    expect(releases()).toHaveLength(1);
+    expect(releases()[0]!.params).toEqual([null, ORG, NOW.toISOString()]);
     expect(routeAlert).not.toHaveBeenCalled();
     spy.mockRestore();
   });
@@ -245,7 +195,8 @@ describe("a failed access review is not a quiet scan", () => {
 
     await runPostureAlerts({ limit: 4 }, NOW);
 
-    expect(releases).toEqual([{ lastNotifiedAt: prior }]);
+    expect(releases()).toHaveLength(1);
+    expect(releases()[0]!.params).toEqual([prior.toISOString(), ORG, NOW.toISOString()]);
     spy.mockRestore();
   });
 });

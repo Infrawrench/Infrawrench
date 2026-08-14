@@ -12,40 +12,38 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * exactly why it is asserted rather than assumed.
  */
 
-vi.mock("../db/schema", () => ({
-  businessMetrics: {
-    __t: "business_metrics",
-    id: "id",
-    key: "key",
-    organizationId: "organization_id",
-    deletedAt: "deleted_at",
-  },
-  businessMetricValues: {
-    __t: "business_metric_values",
-    metricId: "metric_id",
-    day: "day",
-    value: "value",
-  },
-}));
+import { fakePostgres } from "./helpers/fake-postgres";
 
-/** The last `.values(...)` payload and the conflict clause it was given. */
-let inserted: Array<Record<string, unknown>> = [];
-let conflict: Record<string, unknown> | null = null;
+// Real Drizzle over a recording driver against the real schema: the upsert
+// renders its actual SQL — conflict clause included — and shadow-validates
+// under test:postgres:shadow.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
-const db = {
-  insert: () => ({
-    values: (rows: Array<Record<string, unknown>>) => {
-      inserted = rows;
-      return {
-        onConflictDoUpdate: (clause: Record<string, unknown>) => {
-          conflict = clause;
-          return Promise.resolve(undefined);
-        },
-      };
-    },
-  }),
-};
-vi.mock("../db/client", () => ({ db }));
+/** The rendered upsert, if one was issued. */
+function upsert() {
+  return pg.queries.find((q) => q.sql.startsWith('insert into "business_metric_values"'));
+}
+
+/**
+ * The value tuples of the upsert, sliced out of the positional params. Each row
+ * binds 8 params in column order (id, organization_id, metric_id, day, value,
+ * source, updated_by_user_id, updated_at — created_at renders as `default`);
+ * the trailing param is the conflict clause's updated_at.
+ */
+function inserted(): Array<Record<string, unknown>> {
+  const q = upsert();
+  if (!q) return [];
+  const rows: Array<Record<string, unknown>> = [];
+  for (let i = 0; i + 8 <= q.params.length; i += 8) {
+    const [, organizationId, metricId, day, value, source, updatedByUserId] = q.params.slice(
+      i,
+      i + 8,
+    );
+    rows.push({ organizationId, metricId, day, value, source, updatedByUserId });
+  }
+  return rows;
+}
 
 let mod: typeof import("../cost/metric-ingest");
 
@@ -65,8 +63,7 @@ async function write(values: unknown[], maxValues = 100) {
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  inserted = [];
-  conflict = null;
+  pg.reset();
   mod = await import("../cost/metric-ingest");
 });
 
@@ -80,8 +77,8 @@ describe("ingestMetricValues — restatement", () => {
     // The conflict target *is* the restatement guarantee: without it the write
     // would append a second row for the same day and every reader would see the
     // number twice.
-    expect(conflict?.["target"]).toEqual(["metric_id", "day"]);
-    expect(conflict?.["set"]).toMatchObject({ value: expect.anything() });
+    expect(upsert()?.sql).toContain('on conflict ("metric_id","day") do update set');
+    expect(upsert()?.sql).toContain('"value" = excluded.value');
   });
 
   it("collapses a duplicated day within one batch, last write winning", async () => {
@@ -94,8 +91,8 @@ describe("ingestMetricValues — restatement", () => {
       { date: "2026-07-01", value: 99 },
     ]);
     expect(result.written).toBe(2);
-    expect(inserted).toHaveLength(2);
-    expect(inserted.find((r) => r["day"] === "2026-07-01")?.["value"]).toBe(99);
+    expect(inserted()).toHaveLength(2);
+    expect(inserted().find((r) => r["day"] === "2026-07-01")?.["value"]).toBe(99);
   });
 
   it("counts restatements as written — the caller did report those days", async () => {
@@ -108,7 +105,7 @@ describe("ingestMetricValues — restatement", () => {
 
   it("stamps the source and the acting user on every row", async () => {
     await write([{ date: "2026-07-01", value: 1 }]);
-    expect(inserted[0]).toMatchObject({
+    expect(inserted()[0]).toMatchObject({
       organizationId: "org1",
       metricId: "metric1",
       source: "api",
@@ -126,7 +123,7 @@ describe("ingestMetricValues — validation", () => {
       ]),
     ).rejects.toThrow(/value 1 has an invalid date/);
     // Half a month restated is worse than a rejected batch.
-    expect(inserted).toEqual([]);
+    expect(pg.queries).toHaveLength(0);
   });
 
   it("rejects a date that is not a real calendar day", async () => {
@@ -163,6 +160,6 @@ describe("ingestMetricValues — validation", () => {
   it("writes nothing for an empty batch rather than issuing an empty insert", async () => {
     const result = await write([]);
     expect(result.written).toBe(0);
-    expect(inserted).toEqual([]);
+    expect(pg.queries).toHaveLength(0);
   });
 });

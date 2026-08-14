@@ -2,28 +2,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { NetworkFlowFetchRange, NetworkFlowRecord } from "@infrawrench/plugin-base";
 
+import { fakePostgres } from "./helpers/fake-postgres";
+
+// Real Drizzle over a recording driver: the watermark select and the per-day
+// watermark update render their actual SQL (and shadow-validate under
+// test:postgres:shadow). No account has a stored watermark in these tests, so
+// the default empty result serves the select.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
+
 /**
  * What the collector wrote, in the two places a day leaves a mark: the
  * watermark that says the day will never be asked for again, and the rows.
+ * Watermarks are read back from the recorded UPDATE statements.
  */
-const watermarks: unknown[] = [];
+const watermarks = () =>
+  pg.queries
+    .filter((q) => q.sql.startsWith('update "account_network_flow_polls"'))
+    .map((q) => ({ collectedThrough: q.params[0] }));
 const inserted: unknown[][] = [];
-let stored: { collectedThrough: string | null }[] = [];
-
-vi.mock("../db/client", () => ({
-  db: {
-    select: () => ({
-      from: () => ({ where: () => ({ limit: async () => stored }) }),
-    }),
-    update: () => ({
-      set: (values: Record<string, unknown>) => ({
-        where: async () => {
-          watermarks.push(values);
-        },
-      }),
-    }),
-  },
-}));
 
 vi.mock("../clickhouse/network-flow-writers", () => ({
   insertNetworkFlowRows: async (rows: unknown[]) => {
@@ -57,8 +54,10 @@ vi.mock("../sync-resources", () => ({
   }),
 }));
 
-import { collectAccountNetworkFlows } from "../network-flow/collect";
 import type { NetworkFlowLeaseGate } from "../network-flow/lease";
+
+// Dynamic so the mocked `db/client` above is wired before the module loads.
+const { collectAccountNetworkFlows } = await import("../network-flow/collect");
 
 /** Three whole closed days are due: 08-08, 08-09, 08-10. */
 const NOW = new Date("2026-08-11T09:00:00.000Z");
@@ -103,9 +102,8 @@ function leaseStub(checkpoint: () => Promise<boolean> | boolean): {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  watermarks.length = 0;
+  pg.reset();
   inserted.length = 0;
-  stored = [];
 });
 
 /*
@@ -164,7 +162,7 @@ describe("collectAccountNetworkFlows under a lease that runs out", () => {
     expect(result.daysCollected).toBe(1);
     // The first day is banked, the interrupted one is not, and the third was
     // never started — so the next pass picks up from 08-09.
-    expect(watermarks).toEqual([{ collectedThrough: DAYS[0] }]);
+    expect(watermarks()).toEqual([{ collectedThrough: DAYS[0] }]);
     expect(inserted).toHaveLength(1);
     expect(fetchNetworkFlows).toHaveBeenCalledTimes(2);
   });
@@ -189,7 +187,7 @@ describe("collectAccountNetworkFlows under a lease that runs out", () => {
     });
 
     expect(result.daysCollected).toBe(1);
-    expect(watermarks).toEqual([{ collectedThrough: DAYS[0] }]);
+    expect(watermarks()).toEqual([{ collectedThrough: DAYS[0] }]);
     expect(inserted).toHaveLength(1);
   });
 
@@ -208,7 +206,7 @@ describe("collectAccountNetworkFlows under a lease that runs out", () => {
 
     expect(result.daysCollected).toBe(1);
     expect(fetchNetworkFlows).toHaveBeenCalledTimes(1);
-    expect(watermarks).toEqual([{ collectedThrough: DAYS[0] }]);
+    expect(watermarks()).toEqual([{ collectedThrough: DAYS[0] }]);
   });
 
   // A failure that is not the lease is still a failure, and must still reach
@@ -222,6 +220,6 @@ describe("collectAccountNetworkFlows under a lease that runs out", () => {
     await expect(
       collectAccountNetworkFlows("acct-1", "org-1", { now: NOW, lease: lease.gate }),
     ).rejects.toThrow("AccessDenied");
-    expect(watermarks).toEqual([]);
+    expect(watermarks()).toEqual([]);
   });
 });

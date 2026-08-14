@@ -7,77 +7,26 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * "still granting" filter that every seat check depends on.
  */
 
-let selectResult: Array<Record<string, unknown>> = [];
-const inserted: Array<Record<string, unknown>> = [];
-const updated: Array<Record<string, unknown>> = [];
-/** Rows the next insert pretends to have written; empty models a conflict. */
-let insertReturns: Array<{ id: string }> = [{ id: "slot-1" }];
-let updateReturns: Array<{ id: string }> = [];
-/** The last where() argument, so filter construction can be asserted on. */
-let lastSelectWhere: unknown;
+import { fakePostgres } from "./helpers/fake-postgres";
 
-const db = {
-  select: () => ({
-    from: () => ({
-      where: (cond: unknown) => {
-        lastSelectWhere = cond;
-        return Promise.resolve(selectResult);
-      },
-      orderBy: () => Promise.resolve(selectResult),
-    }),
-  }),
-  insert: () => ({
-    values: (values: Record<string, unknown>) => {
-      inserted.push(values);
-      return {
-        onConflictDoNothing: () => ({
-          returning: () => Promise.resolve(insertReturns),
-        }),
-      };
-    },
-  }),
-  update: () => ({
-    set: (values: Record<string, unknown>) => {
-      updated.push(values);
-      return { where: () => ({ returning: () => Promise.resolve(updateReturns) }) };
-    },
-  }),
-};
-vi.mock("../db/client", () => ({ db }));
-vi.mock("../db/schema", () => ({
-  capacitySlots: {
-    organizationId: "organization_id",
-    quantity: "quantity",
-    status: "status",
-    stripeCheckoutSessionId: "stripe_checkout_session_id",
-    stripePaymentIntentId: "stripe_payment_intent_id",
-    expiresAt: "expires_at",
-    startsAt: "starts_at",
-    termMonths: "term_months",
-    amountPaidCents: "amount_paid_cents",
-    id: "id",
-  },
-}));
-// Comparators are recorded rather than executed: the point is that timestamps go
-// through gt()/eq() (drizzle serializes them) and never a raw sql`` fragment
-// with an interpolated Date, which postgres.js rejects as a bind parameter.
-vi.mock("drizzle-orm", () => ({
-  and: (...parts: unknown[]) => ({ and: parts }),
-  desc: (c: unknown) => ({ desc: c }),
-  eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
-  gt: (a: unknown, b: unknown) => ({ gt: [a, b] }),
-  sql: Object.assign((..._a: unknown[]) => ({ sql: true }), { raw: () => ({ sql: true }) }),
-}));
+// Real Drizzle over a recording driver against the real schema: every chain
+// renders its actual SQL (and shadow-validates under test:postgres:shadow).
+// Rows fed in are what each statement returns — for the insert/update chains
+// that is the `returning({ id })` result, where empty models a conflict (or a
+// payment intent that bought nothing).
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
+
+/** The insert's params, positional in the rendered statement's column order. */
+const insertParams = () =>
+  pg.queries.find((q) => q.sql.startsWith('insert into "capacity_slots"'))?.params ?? [];
 
 const mod = await import("../billing/capacity-slots");
 
 beforeEach(() => {
-  selectResult = [];
-  inserted.length = 0;
-  updated.length = 0;
-  insertReturns = [{ id: "slot-1" }];
-  updateReturns = [];
-  lastSelectWhere = undefined;
+  pg.reset();
+  // The purchase tests' default: the insert reports one written row.
+  pg.setRows([{ id: "slot-1" }]);
 });
 
 describe("capacitySlotExpiry", () => {
@@ -114,31 +63,32 @@ describe("capacitySlotExpiry", () => {
 
 describe("activeCapacitySeats", () => {
   it("is 0 for an org that has never bought a slot", async () => {
-    selectResult = [{ seats: 0 }];
+    pg.setRows([{ seats: 0 }]);
     expect(await mod.activeCapacitySeats("org-1")).toBe(0);
   });
 
   it("is 0 when the aggregate comes back empty", async () => {
-    selectResult = [];
+    pg.setRows([]);
     expect(await mod.activeCapacitySeats("org-1")).toBe(0);
   });
 
   it("coerces the driver's numeric sum, which can arrive as a string", async () => {
-    selectResult = [{ seats: "5" }];
+    pg.setRows([{ seats: "5" }]);
     expect(await mod.activeCapacitySeats("org-1")).toBe(5);
   });
 
   it("filters on org, active status, and an unexpired term", async () => {
-    selectResult = [{ seats: 3 }];
+    pg.setRows([{ seats: 3 }]);
     await mod.activeCapacitySeats("org-1");
-    const cond = lastSelectWhere as { and: unknown[] };
-    expect(cond.and).toHaveLength(3);
-    expect(cond.and[0]).toEqual({ eq: ["organization_id", "org-1"] });
-    expect(cond.and[1]).toEqual({ eq: ["status", "active"] });
-    // A Date through gt(), not interpolated into raw SQL.
-    const [column, cutoff] = (cond.and[2] as { gt: [string, Date] }).gt;
-    expect(column).toBe("expires_at");
-    expect(cutoff).toBeInstanceOf(Date);
+    const { sql, params } = pg.lastQuery();
+    expect(sql).toContain('"organization_id" = $1');
+    expect(sql).toContain('"status" = $2');
+    // The cutoff arrives as a bound timestamp, not interpolated into raw SQL —
+    // interpolating a Date hands postgres.js a bind parameter it rejects.
+    expect(sql).toContain('"expires_at" > $3');
+    expect(params[0]).toBe("org-1");
+    expect(params[1]).toBe("active");
+    expect(Number.isNaN(new Date(params[2] as string).getTime())).toBe(false);
   });
 });
 
@@ -156,47 +106,47 @@ describe("recordCapacitySlotPurchase", () => {
     const { granted, expiresAt } = await mod.recordCapacitySlotPurchase(input);
     expect(granted).toBe(true);
     expect(expiresAt.toISOString()).toBe("2028-08-06T00:00:00.000Z");
-    expect(inserted[0]).toMatchObject({
-      organizationId: "org-1",
-      quantity: 2,
-      status: "active",
-      stripeCheckoutSessionId: "cs_1",
-      stripePaymentIntentId: "pi_1",
-      amountPaidCents: 40000,
-      termMonths: 24,
-    });
+    expect(pg.lastQuery().sql).toContain('on conflict ("stripe_checkout_session_id") do nothing');
+    // (id, organization_id, quantity, status, session, payment intent,
+    //  amount paid, term months, starts_at, expires_at)
+    expect(insertParams().slice(1, 8)).toEqual(["org-1", 2, "active", "cs_1", "pi_1", 40000, 24]);
   });
 
   it("reports granted: false when the session was already recorded", async () => {
     // The redelivery case: Stripe sends the same event twice and the unique
     // index turns the second insert into a no-op. Granting twice here would
     // hand out paid seats for free.
-    insertReturns = [];
+    pg.setRows([]);
     const { granted } = await mod.recordCapacitySlotPurchase(input);
     expect(granted).toBe(false);
   });
 
   it("clamps a malformed quantity up to one seat", async () => {
     await mod.recordCapacitySlotPurchase({ ...input, quantity: 0 });
-    expect(inserted[0]?.["quantity"]).toBe(1);
+    expect(insertParams()[2]).toBe(1);
   });
 
   it("truncates a fractional quantity", async () => {
     await mod.recordCapacitySlotPurchase({ ...input, quantity: 2.7 });
-    expect(inserted[0]?.["quantity"]).toBe(2);
+    expect(insertParams()[2]).toBe(2);
   });
 });
 
 describe("refundCapacitySlots", () => {
   it("returns how many purchases it voided", async () => {
-    updateReturns = [{ id: "slot-1" }, { id: "slot-2" }];
+    pg.setRows([{ id: "slot-1" }, { id: "slot-2" }]);
     expect(await mod.refundCapacitySlots("pi_1")).toBe(2);
     // Marked, not deleted: capacity stops but the purchase history stands.
-    expect(updated[0]).toMatchObject({ status: "refunded" });
+    // set "status" = $1, "updated_at" = $2 where intent = $3 and status = $4
+    const update = pg.lastQuery();
+    expect(update.sql.startsWith('update "capacity_slots"')).toBe(true);
+    expect(update.params[0]).toBe("refunded");
+    expect(update.params[2]).toBe("pi_1");
+    expect(update.params[3]).toBe("active");
   });
 
   it("is 0 when the payment intent bought no capacity", async () => {
-    updateReturns = [];
+    pg.setRows([]);
     expect(await mod.refundCapacitySlots("pi_unrelated")).toBe(0);
   });
 });

@@ -136,3 +136,90 @@ jobs:
         run: pnpm --filter @infrawrench/web db:migrate
         env:
           DATABASE_URL: postgres://infrawrench:infrawrench@localhost:5432/infrawrench
+
+  db-tests:
+    name: Database tests
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    services:
+      postgres:
+        # Match docker-compose.dev.yml (Postgres 16). Multi-arch image works on
+        # ubuntu-24.04-arm. pgcrypto (used by migration 0010) is built in.
+        image: postgres:16
+        env:
+          POSTGRES_USER: infrawrench
+          POSTGRES_PASSWORD: infrawrench
+          POSTGRES_DB: infrawrench
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U infrawrench -d infrawrench"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v6
+
+      # Not a service container: those start before checkout, and ClickHouse
+      # needs the repo's listen.xml (the image's default "::" listen leaves it
+      # not listening at all on IPv6-less Docker networks — see
+      # docker-compose.dev.yml).
+      - name: Start ClickHouse
+        run: |
+          docker run -d --name clickhouse -p 8123:8123 \
+            -e CLICKHOUSE_DB=infrawrench \
+            -e CLICKHOUSE_PASSWORD=infrawrench \
+            -v "$PWD/infra/docker/clickhouse/listen.xml:/etc/clickhouse-server/config.d/zz-listen.xml:ro" \
+            clickhouse/clickhouse-server:24.8-alpine
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .turbo
+            node_modules
+          key: ${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      - name: Apply drizzle migrations
+        run: pnpm --filter @infrawrench/web db:migrate
+        env:
+          DATABASE_URL: postgres://infrawrench:infrawrench@localhost:5432/infrawrench
+
+      - name: Wait for ClickHouse
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8123/ping && exit 0
+            sleep 2
+          done
+          docker logs clickhouse
+          exit 1
+
+      - name: Run database tests
+        run: pnpm test:db
+        env:
+          DATABASE_URL: postgres://infrawrench:infrawrench@localhost:5432/infrawrench
+          CLICKHOUSE_METRICS_URL: http://localhost:8123
+          CLICKHOUSE_METRICS_USER: default
+          CLICKHOUSE_METRICS_PASSWORD: infrawrench
+          CLICKHOUSE_METRICS_DATABASE: infrawrench
+
+      - name: Shadow-run the mocked ClickHouse suites
+        run: pnpm test:clickhouse:shadow
+        env:
+          CLICKHOUSE_METRICS_URL: http://localhost:8123
+          CLICKHOUSE_METRICS_USER: default
+          CLICKHOUSE_METRICS_PASSWORD: infrawrench
+          CLICKHOUSE_METRICS_DATABASE: infrawrench
+
+      - name: Shadow-run the mocked Postgres suites
+        run: pnpm test:postgres:shadow
+        env:
+          DATABASE_URL: postgres://infrawrench:infrawrench@localhost:5432/infrawrench

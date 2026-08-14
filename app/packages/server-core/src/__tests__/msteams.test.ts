@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { fakePostgres } from "./helpers/fake-postgres";
+
 /**
  * Microsoft Teams transport tests. The interesting behavior is in three places:
  *
@@ -12,7 +14,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *  - the 429 retry, because Microsoft throttles a webhook above 4 req/s and a
  *    dropped page is worse than a slow one.
  *
- * The DB is mocked with a chainable fake; `fetch` is spied on `globalThis`.
+ * The DB is real Drizzle over a recording driver (`fake-postgres.ts`) against
+ * the real schema, so the webhook reads render their actual SQL; `fetch` is
+ * spied on `globalThis`.
  */
 
 vi.mock("../encryption", () => ({
@@ -25,48 +29,13 @@ vi.mock("../encryption", () => ({
   keyedHash: async (data: string) => `digest(${data})`,
 }));
 
-const tables = {
-  msteamsWebhooks: {
-    __t: "msteamsWebhooks" as const,
-    id: "id",
-    organizationId: "organizationId",
-    label: "label",
-  },
-};
-vi.mock("../db/schema", () => tables);
-
-/** Rows the next `select().from(...)` chain resolves to. */
-let webhookRows: unknown[] = [];
-/** When set, the next select rejects with it instead of resolving. */
-let queryError: Error | null = null;
-/** The `where(...)` argument of the most recent select, for trigger assertions. */
-let lastWhere: unknown;
-
-vi.mock("../db/client", () => {
-  const chain = () => {
-    const self: Record<string, unknown> = {};
-    for (const m of ["innerJoin", "leftJoin", "orderBy", "limit"]) self[m] = () => self;
-    self["where"] = (w: unknown) => {
-      lastWhere = w;
-      return self;
-    };
-    self["then"] = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-      queryError
-        ? Promise.resolve().then(() => reject?.(queryError))
-        : Promise.resolve(webhookRows).then(resolve);
-    return self;
-  };
-  return { db: { select: () => ({ from: () => chain() }) } };
-});
-
-vi.mock("drizzle-orm", () => ({
-  and: (...parts: unknown[]) => ({ and: parts }),
-  eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
-  inArray: (col: unknown, values: unknown) => ({ inArray: [col, values] }),
-}));
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
 const ORG = "org1";
 
+// Keys in the `msteams_webhooks` column order, values driver-shaped — see
+// helpers/fake-postgres.ts.
 function webhook(overrides: Record<string, unknown> = {}) {
   return {
     id: "wh1",
@@ -74,7 +43,12 @@ function webhook(overrides: Record<string, unknown> = {}) {
     label: "#alerts",
     encryptedUrl: "ENC",
     urlIv: "IV",
+    urlDigest: "digest(url)",
+    urlHost: "acme.webhook.office.com",
     urlHint: "acme.webhook.office.com · …/def",
+    createdByUserId: null,
+    createdAt: "2026-08-01T00:00:00.000",
+    updatedAt: "2026-08-01T00:00:00.000",
     ...overrides,
   };
 }
@@ -82,9 +56,7 @@ function webhook(overrides: Record<string, unknown> = {}) {
 let fetchSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  webhookRows = [];
-  queryError = null;
-  lastWhere = undefined;
+  pg.reset();
   fetchSpy = vi
     .spyOn(globalThis, "fetch")
     .mockImplementation(async () => new Response("", { status: 200 }));
@@ -166,17 +138,16 @@ describe("fan-out", () => {
     // addressed by stored row id and the org scoping is what stops one org
     // routing an alert into another's channel.
     const { sendMsTeamsToWebhooks } = await import("../msteams");
-    webhookRows = [webhook()];
+    pg.setRows([webhook()]);
     await sendMsTeamsToWebhooks(ORG, ["row1", "row2"], { title: "t", body: "b" });
-    const where = JSON.stringify(lastWhere);
-    expect(where).toContain("row1");
-    expect(where).toContain("row2");
-    expect(where).toContain(ORG);
+    expect(pg.lastQuery().sql).toContain('from "msteams_webhooks"');
+    // The org scoping and both requested ids, as rendered parameters.
+    expect(pg.lastQuery().params).toEqual([ORG, "row1", "row2"]);
   });
 
   it("posts an Adaptive Card in a message envelope", async () => {
     const { sendMsTeamsToWebhooks } = await import("../msteams");
-    webhookRows = [webhook()];
+    pg.setRows([webhook()]);
     const res = await sendMsTeamsToWebhooks(ORG, ["row1"], {
       title: "Budget at 90%",
       body: "prod is over",
@@ -205,7 +176,7 @@ describe("fan-out", () => {
 
   it("omits the action when there is no deep link", async () => {
     const { sendMsTeamsToWebhooks } = await import("../msteams");
-    webhookRows = [webhook()];
+    pg.setRows([webhook()]);
     await sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" });
     const payload = JSON.parse((fetchSpy.mock.calls[0] as [string, RequestInit])[1].body as string);
     expect(payload.attachments[0].content.actions).toBeUndefined();
@@ -217,7 +188,7 @@ describe("fan-out", () => {
    */
   it("escapes markdown in alert text", async () => {
     const { sendMsTeamsToWebhooks } = await import("../msteams");
-    webhookRows = [webhook()];
+    pg.setRows([webhook()]);
     await sendMsTeamsToWebhooks(ORG, ["row1"], {
       title: "t",
       body: "unexpected [token] in *config*_v2",
@@ -230,7 +201,7 @@ describe("fan-out", () => {
 
   it("counts a failed webhook without throwing", async () => {
     const { sendMsTeamsToWebhooks } = await import("../msteams");
-    webhookRows = [webhook()];
+    pg.setRows([webhook()]);
     fetchSpy.mockResolvedValue(new Response("Flow not found", { status: 404 }));
     const res = await sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" });
     expect(res).toEqual({ attempted: 1, succeeded: 0, failed: 1 });
@@ -238,7 +209,7 @@ describe("fan-out", () => {
 
   it("keeps delivering when one webhook of several fails", async () => {
     const { sendMsTeamsToWebhooks } = await import("../msteams");
-    webhookRows = [webhook({ id: "a" }), webhook({ id: "b" })];
+    pg.setRows([webhook({ id: "a" }), webhook({ id: "b" })]);
     fetchSpy
       .mockResolvedValueOnce(new Response("nope", { status: 500 }))
       .mockResolvedValueOnce(new Response("", { status: 200 }));
@@ -246,12 +217,12 @@ describe("fan-out", () => {
     // fan-out it is meant to be.
     const res = await sendMsTeamsToWebhooks(ORG, ["a", "b"], { title: "t", body: "b" });
     expect(res).toEqual({ attempted: 2, succeeded: 1, failed: 1 });
-    expect(lastWhere).toMatchObject({ and: [{}, { inArray: [expect.anything(), ["a", "b"]] }] });
+    expect(pg.lastQuery().params).toEqual([ORG, "a", "b"]);
   });
 
   it("skips a row whose URL cannot be decrypted", async () => {
     const { sendMsTeamsToWebhooks } = await import("../msteams");
-    webhookRows = [webhook({ encryptedUrl: "THROW" })];
+    pg.setRows([webhook({ encryptedUrl: "THROW" })]);
     const res = await sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" });
     expect(res).toEqual({ attempted: 0, succeeded: 0, failed: 0 });
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -259,7 +230,7 @@ describe("fan-out", () => {
 
   it("counts a rejected post as a failure instead of throwing", async () => {
     const { sendMsTeamsToWebhooks } = await import("../msteams");
-    webhookRows = [webhook()];
+    pg.setRows([webhook()]);
     fetchSpy.mockRejectedValue(new Error("network down"));
     await expect(sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" })).resolves.toEqual({
       attempted: 1,
@@ -273,7 +244,9 @@ describe("fan-out", () => {
     // database failure must return NO_DELIVERY rather than propagate into the
     // poller that raised the alert.
     const { sendMsTeamsToWebhooks } = await import("../msteams");
-    queryError = new Error("connection refused");
+    // A row the recording driver cannot decode makes the select itself reject
+    // — the closest a canned driver gets to "connection refused".
+    pg.queueRows([null as never]);
     await expect(sendMsTeamsToWebhooks(ORG, ["row1"], { title: "t", body: "b" })).resolves.toEqual({
       attempted: 0,
       succeeded: 0,
@@ -288,7 +261,7 @@ describe("throttling", () => {
     vi.useFakeTimers();
     try {
       const { sendMsTeamsToWebhooks } = await import("../msteams");
-      webhookRows = [webhook()];
+      pg.setRows([webhook()]);
       fetchSpy
         .mockResolvedValueOnce(new Response("", { status: 429, headers: { "retry-after": "1" } }))
         .mockResolvedValueOnce(new Response("", { status: 200 }));
@@ -306,7 +279,7 @@ describe("throttling", () => {
     vi.useFakeTimers();
     try {
       const { sendMsTeamsToWebhooks } = await import("../msteams");
-      webhookRows = [webhook()];
+      pg.setRows([webhook()]);
       fetchSpy.mockResolvedValue(
         new Response("", { status: 429, headers: { "retry-after": "1" } }),
       );
@@ -329,14 +302,14 @@ describe("sendMsTeamsTest", () => {
 
   it("surfaces the webhook's error, labelled, when every send fails", async () => {
     const { sendMsTeamsTest } = await import("../msteams");
-    webhookRows = [webhook({ label: "#ops" })];
+    pg.setRows([webhook({ label: "#ops" })]);
     fetchSpy.mockResolvedValue(new Response("Flow not found", { status: 404 }));
     await expect(sendMsTeamsTest(ORG)).rejects.toThrow(/#ops: HTTP 404 — Flow not found/);
   });
 
   it("ignores trigger opt-ins and reports a summary", async () => {
     const { sendMsTeamsTest } = await import("../msteams");
-    webhookRows = [webhook({ id: "a" }), webhook({ id: "b" })];
+    pg.setRows([webhook({ id: "a" }), webhook({ id: "b" })]);
     await expect(sendMsTeamsTest(ORG)).resolves.toEqual({
       webhookCount: 2,
       attempted: 2,
