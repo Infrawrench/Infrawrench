@@ -37,9 +37,10 @@
         "src/routeTree.gen.ts",
         "src/routes/**/*.{ts,tsx}",
         "src/**/*.test.{ts,tsx}",
-        "scripts/**/*.ts"
+        "scripts/**/*.ts",
+        "scripts/**/*.mjs"
       ],
-      "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts"],
+      "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "scripts/**/*.mjs"],
       "ignoreDependencies": ["tailwindcss", "@kubernetes/client-node", "cloudflare", "dockerode"]
     },
     "app/packages/desktop": {

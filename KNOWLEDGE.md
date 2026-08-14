@@ -3416,7 +3416,15 @@ The extraction globs in both `gt.config.json`s exclude `**/*.test.*` and `__test
 
 ### Workflows
 
-- **Translating new strings**: `pnpm --filter @infrawrench/web translate` (which regenerates the plugin-strings manifest first) and `…/desktop translate` run `gt translate`, which rewrites `src/_gt/*.json`; commit the result. Needs `GT_API_KEY` (gtx-api-…) + `GT_PROJECT_ID` (`npx gt auth`). Builds are otherwise fully offline — nothing breaks if the catalogs lag behind the source strings. Note the catalog is ~3.3k strings, most of it plugin metadata — the first real `gt translate` run prices accordingly.
+- **Filling the catalogs** is a local workflow, not a `gt translate` one. The catalogs were authored offline and `gt translate` would re-translate all ~3.3k strings if run (see "Why the cloud is not in the loop" below). The cycle after changing UI strings or plugin metadata is:
+  1. `pnpm --filter @infrawrench/web generate:plugin-strings` if plugin metadata changed.
+  2. `pnpm --filter @infrawrench/web translations:status` — extracts with the CLI's own parser and prints per-app, per-locale missing/orphaned counts. `--emit-batches <dir>` writes the untranslated sources as `{i, s}` batches plus a `-hashes.json` to key results back.
+  3. Translate the batches (the original run used one Sonnet subagent per 470-string batch against a per-locale rule file — ICU placeholders preserved, no `{}`/`<>` introduced, brand names and backticked code untouched), then validate mechanically (entry count, ICU-variable parity, forbidden characters, empty values) before merging into the catalogs by hash.
+  4. Re-run `translations:status`; everything should read "up to date". Commit the catalogs.
+
+  The reproducible record of the original full run — batches, outputs, per-locale rules, extractor and validator — is in `~/gt-translation-work/` on the machine that did it, described in that directory's HANDOFF.md.
+
+- **Why the cloud is not in the loop**: `gt translate` on a `gt`-format project has no local incremental mode. It re-extracts every marked string and sends the whole set; its dedupe is server-side, keyed by hashes these hand-authored catalogs were never uploaded under, so a first run translates (and bills for) all ~3.3k. `gt upload` cannot register them either — `aggregateFiles` returns an empty list when `gt` is the only entry in `files`. `gt generate` is the supported "I handle my own translations" command: it prunes orphaned hashes, but backfills missing ones with English source text, which hides what is still untranslated. Adopting the cloud later costs exactly one full paid run, after which its dedupe does make subsequent runs incremental.
 - **Live dev translation** (optional): set `VITE_GT_PROJECT_ID` + `VITE_GT_DEV_API_KEY` (gtx-dev-…, never a production key) and untranslated strings are machine-translated in the browser during `pnpm dev`. Documented in `web/.env.example`; these are client build-time vars, deliberately **not** in the terraform `app_env` map.
 - **Adding a locale**: add it to both `gt.config.json` files, create empty `src/_gt/<locale>.json` stubs (`{}`) in both apps, run translate, and update the docs page (`website/src/content/docs/features/interface-language.md`).
 
