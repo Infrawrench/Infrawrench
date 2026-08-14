@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useGT } from "gt-react";
 import { useUIStore } from "@infrawrench/ui";
 import { EnvironmentsPanel, type EnvironmentsClient } from "@infrawrench/ui/environments";
 import { createDesktopEnvironmentsClient } from "@/lib/environments-client";
@@ -18,6 +19,7 @@ interface DesktopEnvironmentsPanelProps {
  * down by the cloud lease pass; there is nothing local to render.
  */
 export function DesktopEnvironmentsPanel({ openResource }: DesktopEnvironmentsPanelProps) {
+  const gt = useGT();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const client = useMemo<EnvironmentsClient>(
     () => ({ ...createDesktopEnvironmentsClient(), openResource }),
@@ -27,7 +29,7 @@ export function DesktopEnvironmentsPanel({ openResource }: DesktopEnvironmentsPa
   if (!activeCloudOrgId) {
     return (
       <div className="p-6 text-sm text-on-surface-faint">
-        Ephemeral environments require cloud mode — sign in to sync.
+        {gt("Ephemeral environments require cloud mode — sign in to sync.")}
       </div>
     );
   }
