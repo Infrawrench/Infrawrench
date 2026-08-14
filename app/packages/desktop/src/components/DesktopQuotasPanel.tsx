@@ -27,7 +27,7 @@ export function DesktopQuotasPanel() {
     } catch (err) {
       setError(err instanceof Error ? err.message : gt("Request failed"));
     }
-  }, [activeCloudOrgId, gt]);
+  }, [activeCloudOrgId]);
 
   useEffect(() => {
     setData(null);

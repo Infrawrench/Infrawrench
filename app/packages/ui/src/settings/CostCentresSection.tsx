@@ -53,7 +53,7 @@ export function CostCentresSection() {
     } finally {
       setLoading(false);
     }
-  }, [api, orgId, gt]);
+  }, [api, orgId]);
 
   useEffect(() => {
     void load();

@@ -59,7 +59,7 @@ export function DockerSetupModal({
         toast.error(gt("Couldn't load SSH keys: {message}", { message: formatErrorMessage(err) })),
       )
       .finally(() => setLoadingKeys(false));
-  }, [gt]);
+  }, []);
 
   function appendLog(msg: string) {
     setLog((prev) => [...prev, msg]);

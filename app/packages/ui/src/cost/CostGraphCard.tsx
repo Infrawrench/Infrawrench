@@ -147,7 +147,7 @@ function SpendGraphCard({
     return () => {
       cancelled = true;
     };
-  }, [api, request, config.chartType, config.binning, gt]);
+  }, [api, request, config.chartType, config.binning]);
 
   const loadAnnotations = api.listCostAnnotations;
   const refreshAnnotations = useCallback(async () => {
@@ -270,7 +270,7 @@ function SpendGraphCard({
       parts.push(gt("projection includes scenario {name}", { name: scenario.modelName }));
     }
     return parts.join(", ");
-  }, [title, total, deltaPct, markers, scenario, gt]);
+  }, [title, total, deltaPct, markers, scenario]);
 
   const tooltipStyle = {
     backgroundColor: chart.tooltipBg,

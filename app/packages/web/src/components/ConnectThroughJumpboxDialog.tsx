@@ -60,7 +60,7 @@ export function ConnectThroughJumpboxDialog({
       .catch((e: unknown) =>
         setAccountsError(e instanceof Error ? e.message : gt("Failed to load accounts")),
       );
-  }, [orgId, gt]);
+  }, [orgId]);
 
   if (showAddAccount) {
     const chosenHost = useAddress === "private" && privateHost ? privateHost : publicHost;

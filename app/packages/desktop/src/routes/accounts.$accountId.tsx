@@ -292,7 +292,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     }
     window.addEventListener("iw:sidebar-secret-drop", handler);
     return () => window.removeEventListener("iw:sidebar-secret-drop", handler);
-  }, [categories, kubeconfigTypeIds, account, gt]);
+  }, [categories, kubeconfigTypeIds, account]);
 
   useEffect(() => {
     function handler(e: Event) {
@@ -324,7 +324,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     }
     window.addEventListener("iw:resource-attach", handler);
     return () => window.removeEventListener("iw:resource-attach", handler);
-  }, [accountId, gt]);
+  }, [accountId]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -545,7 +545,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [accountId, loadVersion, gt]);
+  }, [accountId, loadVersion]);
 
   async function togglePin(resource: ResourceInstance, typeId: string) {
     if (activeCloudOrgId) {

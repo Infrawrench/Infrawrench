@@ -1,9 +1,11 @@
+import { useGT } from "gt-react";
 import {
   dependencyEdgeLabel,
   type DependencyGraphNode,
   type DependencyNeighbor,
   type ResourceDependencies,
 } from "@infrawrench/client-core";
+import { useDataString } from "../../i18n/data-strings.js";
 
 interface ResourceDependenciesPanelProps {
   dependencies: ResourceDependencies;
@@ -22,20 +24,21 @@ export function ResourceDependenciesPanel({
   dependencies,
   onOpenResource,
 }: ResourceDependenciesPanelProps) {
+  const gt = useGT();
   return (
     <div className="p-6 grid gap-6 md:grid-cols-2 items-start">
       <NeighborList
-        title="Depends on"
-        hint="Resources this one points at"
+        title={gt("Depends on")}
+        hint={gt("Resources this one points at")}
         neighbors={dependencies.dependsOn}
-        emptyText="Nothing in this resource's fields or outputs points at another resource."
+        emptyText={gt("Nothing in this resource's fields or outputs points at another resource.")}
         onOpenResource={onOpenResource}
       />
       <NeighborList
-        title="Depended on by"
-        hint="Resources pointing at this one"
+        title={gt("Depended on by")}
+        hint={gt("Resources pointing at this one")}
         neighbors={dependencies.dependedOnBy}
-        emptyText="No other resource points at this one."
+        emptyText={gt("No other resource points at this one.")}
         onOpenResource={onOpenResource}
       />
     </div>
@@ -55,6 +58,7 @@ function NeighborList({
   emptyText: string;
   onOpenResource: (node: DependencyGraphNode) => void;
 }) {
+  const gtData = useDataString();
   return (
     <section aria-label={title}>
       <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
@@ -87,7 +91,7 @@ function NeighborList({
                     {neighbor.node.displayName}
                   </span>
                   <span className="block text-xs text-on-surface-muted truncate">
-                    {neighbor.node.resourceTypeLabel} · {neighbor.node.accountName}
+                    {gtData(neighbor.node.resourceTypeLabel)} · {neighbor.node.accountName}
                   </span>
                 </span>
                 <span className="text-xs text-on-surface-faint font-mono flex-shrink-0">

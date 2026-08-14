@@ -77,7 +77,7 @@ export function PublishPanel({ capability, onPublish }: Props) {
       }
     }
     return null;
-  }, [body, bodyFormat, extras, extraFields, gt]);
+  }, [body, bodyFormat, extras, extraFields]);
 
   const send = useCallback(async () => {
     if (sending || disabled) return;
@@ -121,7 +121,7 @@ export function PublishPanel({ capability, onPublish }: Props) {
     } finally {
       setSending(false);
     }
-  }, [sending, disabled, validate, body, extras, onPublish, gt]);
+  }, [sending, disabled, validate, body, extras, onPublish]);
 
   const setExtra = useCallback((key: string, value: string | Record<string, string>) => {
     setExtras((prev) => ({ ...prev, [key]: value }));

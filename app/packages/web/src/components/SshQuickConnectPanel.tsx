@@ -64,7 +64,7 @@ export function SshQuickConnectPanel({
         toast.error(gt("Couldn't load SSH keys: {message}", { message: formatErrorMessage(err) })),
       )
       .finally(() => setLoading(false));
-  }, [orgId, preferredSshKeyId, preferredSshKeyName, gt]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [orgId, preferredSshKeyId, preferredSshKeyName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleConnect = useCallback(() => {
     if (!selectedKeyId) return;

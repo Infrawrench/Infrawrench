@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { T, useGT } from "gt-react";
 import {
   RESOURCES_CHANGED_EVENT,
   BackupsSection,
@@ -29,6 +30,7 @@ interface DesktopBackupsPanelProps {
  * explicit "sign in" message rather than an empty table.
  */
 export function DesktopBackupsPanel({ openResource }: DesktopBackupsPanelProps) {
+  const gt = useGT();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const [data, setData] = useState<BackupCoverageResponse | null>(null);
   const [policies, setPolicies] = useState<BackupPolicy[] | null>(null);
@@ -90,7 +92,7 @@ export function DesktopBackupsPanel({ openResource }: DesktopBackupsPanelProps) 
         })
         .catch((e: unknown) => {
           if (!cancelled && request === latestRequest)
-            setError(e instanceof Error ? e.message : "Failed to load the backup coverage");
+            setError(e instanceof Error ? e.message : gt("Failed to load the backup coverage"));
         });
     }
     load();
@@ -105,12 +107,14 @@ export function DesktopBackupsPanel({ openResource }: DesktopBackupsPanelProps) 
   if (!activeCloudOrgId) {
     return (
       <div className="flex-1 overflow-auto p-6">
-        <h1 className="text-xl font-semibold mb-1">Backups</h1>
-        <p className="text-sm text-on-surface-muted">
-          Backup coverage is a cloud feature. Sign in to an organization to see which of its
-          resources are actually recoverable, and to set the recovery objectives they are judged
-          against.
-        </p>
+        <h1 className="text-xl font-semibold mb-1">{gt("Backups")}</h1>
+        <T>
+          <p className="text-sm text-on-surface-muted">
+            Backup coverage is a cloud feature. Sign in to an organization to see which of its
+            resources are actually recoverable, and to set the recovery objectives they are judged
+            against.
+          </p>
+        </T>
       </div>
     );
   }

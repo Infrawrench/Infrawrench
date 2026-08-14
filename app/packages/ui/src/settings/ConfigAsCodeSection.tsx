@@ -239,7 +239,7 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
       throw new Error(gt("Expected a config document object at the top level."));
     }
     return parsed;
-  }, [text, gt]);
+  }, [text]);
 
   async function preview() {
     setBusy(true);

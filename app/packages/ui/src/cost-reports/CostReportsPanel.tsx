@@ -283,7 +283,7 @@ export function CostReportsPanel({
       });
     }
     return targets;
-  }, [moving, folderTree, folders, gt]);
+  }, [moving, folderTree, folders]);
 
   return (
     <div className="h-full overflow-y-auto">

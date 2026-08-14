@@ -173,10 +173,13 @@ export function CaptureTemplateModal({
                     <span className="text-on-surface">{member.sourceName}</span>{" "}
                     <span className="text-on-surface-faint">
                       · {member.pluginId}/{member.resourceTypeId} ·{" "}
-                      {Object.keys(member.fields).length} fields
+                      {gt("{count} fields", { count: Object.keys(member.fields).length })}
                     </span>
                     {member.parentMember && (
-                      <span className="text-on-surface-faint"> · inside {member.parentMember}</span>
+                      <span className="text-on-surface-faint">
+                        {" "}
+                        · {gt("inside {parent}", { parent: member.parentMember })}
+                      </span>
                     )}
                   </li>
                 ))}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import {
   castOutputThrough,
   castResumeIndex,
@@ -41,6 +42,7 @@ export function RecordingPlayer({
   mount: MountPlaybackTerminal;
   autoPlay?: boolean;
 }) {
+  const gt = useGT();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<PlaybackTerminal | null>(null);
 
@@ -190,7 +192,7 @@ export function RecordingPlayer({
           disabled={!ready}
           className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors min-w-[5.5rem]"
         >
-          {playing ? "Pause" : atEnd ? "Replay" : "Play"}
+          {playing ? gt("Pause") : atEnd ? gt("Replay") : gt("Play")}
         </button>
 
         <input
@@ -204,7 +206,7 @@ export function RecordingPlayer({
             seekTo(Number(e.target.value));
           }}
           disabled={!ready || duration === 0}
-          aria-label="Playback position"
+          aria-label={gt("Playback position")}
           className="flex-1 accent-blue-500"
         />
 
@@ -212,7 +214,7 @@ export function RecordingPlayer({
           {formatPlaybackClock(position)} / {formatPlaybackClock(duration)}
         </span>
 
-        <div className="flex items-center gap-1" role="group" aria-label="Playback speed">
+        <div className="flex items-center gap-1" role="group" aria-label={gt("Playback speed")}>
           {PLAYBACK_SPEEDS.map((s) => (
             <button
               key={s}

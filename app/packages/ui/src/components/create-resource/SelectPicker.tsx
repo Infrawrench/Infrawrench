@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useGT } from "gt-react";
 
 export function SelectPicker({
   options,
@@ -9,6 +10,7 @@ export function SelectPicker({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const gt = useGT();
   const [search, setSearch] = useState("");
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -26,10 +28,10 @@ export function SelectPicker({
       <div className="px-3 py-2 border-b border-border-strong bg-surface-overlay/50 flex items-center gap-2">
         <input
           type="text"
-          aria-label="Search options"
+          aria-label={gt("Search options")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search options…"
+          placeholder={gt("Search options…")}
           className="flex-1 bg-transparent text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none"
         />
         {selected && !search && (
@@ -39,7 +41,7 @@ export function SelectPicker({
       <div
         className="max-h-56 overflow-y-auto p-3 bg-surface-raised/30"
         role="listbox"
-        aria-label="Options"
+        aria-label={gt("Options")}
       >
         <div className="grid grid-cols-2 gap-2">
           {filtered.map((opt) => {
@@ -72,7 +74,7 @@ export function SelectPicker({
           })}
         </div>
         {filtered.length === 0 && (
-          <p className="px-1 py-2 text-xs text-on-surface-faint">No matches</p>
+          <p className="px-1 py-2 text-xs text-on-surface-faint">{gt("No matches")}</p>
         )}
       </div>
     </div>

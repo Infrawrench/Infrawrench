@@ -310,7 +310,11 @@ function CoverageRow({
         {row.backupCount}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap text-right text-xs tabular-nums text-on-surface-tertiary">
-        {row.rpoHours != null ? formatHours(row.rpoHours) : row.backupCount > 0 ? "unknown" : "—"}
+        {row.rpoHours != null
+          ? formatHours(row.rpoHours)
+          : row.backupCount > 0
+            ? gt("unknown")
+            : "—"}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap text-right text-xs tabular-nums text-on-surface-tertiary">
         {row.retentionDays != null ? `${row.retentionDays}d` : "—"}
@@ -656,7 +660,7 @@ export function BackupsSection({
 
           <div
             role="tablist"
-            aria-label="Backup views"
+            aria-label={gt("Backup views")}
             className="mb-4 flex rounded-lg border border-border overflow-hidden text-xs w-fit"
           >
             {(

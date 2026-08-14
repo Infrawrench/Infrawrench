@@ -124,7 +124,7 @@ export function CostExportsSection() {
       setError(e instanceof Error ? e.message : gt("Failed to load cost exports"));
       setExports([]);
     }
-  }, [api, orgId, gt]);
+  }, [api, orgId]);
 
   useEffect(() => {
     void load();

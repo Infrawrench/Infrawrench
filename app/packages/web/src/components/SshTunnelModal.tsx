@@ -66,7 +66,7 @@ export function SshTunnelModal({
         toast.error(gt("Couldn't load SSH keys: {message}", { message: formatErrorMessage(err) })),
       )
       .finally(() => setLoadingKeys(false));
-  }, [gt]);
+  }, []);
 
   async function onConfirm() {
     if (!selectedKeyId) {

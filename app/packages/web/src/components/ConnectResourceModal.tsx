@@ -169,7 +169,7 @@ export function ConnectResourceModal({
     return () => {
       cancelled = true;
     };
-  }, [orgId, source, targetAccountId, targetPluginId, sshHost, templatesKey, gt]);
+  }, [orgId, source, targetAccountId, targetPluginId, sshHost, templatesKey]);
 
   useEffect(() => {
     if (mode !== "env-deploy") return;
@@ -181,7 +181,7 @@ export function ConnectResourceModal({
       .catch((err) =>
         toast.error(gt("Couldn't load SSH keys: {error}", { error: formatErrorMessage(err) })),
       );
-  }, [mode, orgId, gt]);
+  }, [mode, orgId]);
 
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
 
@@ -260,7 +260,6 @@ export function ConnectResourceModal({
     filePath,
     append,
     onConnected,
-    gt,
   ]);
 
   const canSwitchMode = supportsSecretImport && !!sshHost;

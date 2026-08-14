@@ -363,7 +363,7 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
           : gt("Could not start recording."),
       );
     }
-  }, [attach, gt]);
+  }, [attach]);
 
   const stopRecording = useCallback(() => {
     const rec = recorderRef.current;

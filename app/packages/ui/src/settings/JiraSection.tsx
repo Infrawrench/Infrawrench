@@ -7,6 +7,7 @@ import type {
   JiraProject,
   JiraVerifyResult,
 } from "@infrawrench/client-core";
+import { useDataString } from "../i18n/data-strings.js";
 import { useSettingsHost } from "./host.js";
 
 /**
@@ -57,7 +58,7 @@ export function JiraSection() {
     } finally {
       setLoading(false);
     }
-  }, [api, orgId, gt]);
+  }, [api, orgId]);
 
   useEffect(() => {
     void load();
@@ -211,7 +212,7 @@ export function JiraSection() {
                   value={siteUrl}
                   disabled={!canWrite}
                   onChange={(e) => setSiteUrl(e.target.value)}
-                  placeholder="https://your-site.atlassian.net"
+                  placeholder={gt("https://your-site.atlassian.net")}
                   className={inputClass}
                 />
               </label>
@@ -224,7 +225,7 @@ export function JiraSection() {
                   value={accountEmail}
                   disabled={!canWrite}
                   onChange={(e) => setAccountEmail(e.target.value)}
-                  placeholder="ops@your-company.com"
+                  placeholder={gt("ops@your-company.com")}
                   className={inputClass}
                 />
               </label>
@@ -361,6 +362,7 @@ function FiledIssuesList({
   openExternal: (url: string) => void;
 }) {
   const gt = useGT();
+  const gtData = useDataString();
   return (
     <section className="space-y-3">
       <h2 className="text-sm font-semibold">{gt("Filed issues")}</h2>
@@ -386,7 +388,7 @@ function FiledIssuesList({
                 {link.issueKey}
               </button>
               <span className="text-xs text-on-surface-muted">
-                {link.sourceKind.replace(/_/g, " ")}
+                {gtData(link.sourceKind.replace(/_/g, " "))}
               </span>
               <span className="flex-1 truncate text-xs text-on-surface-tertiary">
                 {link.sourceId}

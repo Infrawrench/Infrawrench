@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import type { ChatMessage, ChatPanelCapability, ChatStreamEvent } from "@infrawrench/plugin-base";
 
 interface Props {
@@ -30,6 +31,7 @@ interface Turn {
 }
 
 export function ChatPanel({ capability, onStream }: Props) {
+  const gt = useGT();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -198,7 +200,7 @@ export function ChatPanel({ capability, onStream }: Props) {
               onClick={stop}
               className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
             >
-              Stop
+              {gt("Stop")}
             </button>
           )}
           {turns.length > 0 && !streaming && (
@@ -207,7 +209,7 @@ export function ChatPanel({ capability, onStream }: Props) {
               onClick={reset}
               className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
             >
-              New chat
+              {gt("New chat")}
             </button>
           )}
         </div>
@@ -237,11 +239,11 @@ export function ChatPanel({ capability, onStream }: Props) {
           <div className="flex items-end gap-2">
             <textarea
               ref={textareaRef}
-              aria-label="Message"
+              aria-label={gt("Message")}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={capability.inputPlaceholder ?? "Send a message…"}
+              placeholder={capability.inputPlaceholder ?? gt("Send a message…")}
               rows={1}
               className="flex-1 resize-none bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent-blue placeholder:text-on-surface-faint"
             />
@@ -251,12 +253,12 @@ export function ChatPanel({ capability, onStream }: Props) {
               disabled={!input.trim() || streaming}
               className="px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-md hover:bg-accent-blue/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
             >
-              {streaming ? "…" : "Send"}
+              {streaming ? "…" : gt("Send")}
             </button>
           </div>
         )}
         <div className="text-[11px] text-on-surface-faint mt-1 px-1">
-          {streaming ? "Streaming…" : "Cmd/Ctrl + Enter to send"}
+          {streaming ? gt("Streaming…") : gt("Cmd/Ctrl + Enter to send")}
         </div>
       </div>
     </div>
@@ -264,6 +266,7 @@ export function ChatPanel({ capability, onStream }: Props) {
 }
 
 function ChatTurn({ turn }: { turn: Turn }) {
+  const gt = useGT();
   const isUser = turn.role === "user";
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -276,21 +279,25 @@ function ChatTurn({ turn }: { turn: Turn }) {
       >
         {turn.error ? (
           <div className="text-danger font-mono text-xs">
-            <div className="font-semibold mb-1">Error</div>
+            <div className="font-semibold mb-1">{gt("Error")}</div>
             {turn.error}
           </div>
         ) : turn.content ? (
           turn.content
         ) : turn.pending ? (
-          <span className="text-on-surface-faint italic">Thinking…</span>
+          <span className="text-on-surface-faint italic">{gt("Thinking…")}</span>
         ) : (
-          <span className="text-on-surface-faint italic">(empty response)</span>
+          <span className="text-on-surface-faint italic">{gt("(empty response)")}</span>
         )}
         {turn.usage && !turn.pending && (
           <div className="text-[10px] text-on-surface-faint mt-1 font-mono">
             {[
-              turn.usage.inputTokens != null ? `${turn.usage.inputTokens} in` : null,
-              turn.usage.outputTokens != null ? `${turn.usage.outputTokens} out` : null,
+              turn.usage.inputTokens != null
+                ? gt("{count} in", { count: turn.usage.inputTokens })
+                : null,
+              turn.usage.outputTokens != null
+                ? gt("{count} out", { count: turn.usage.outputTokens })
+                : null,
             ]
               .filter(Boolean)
               .join(" · ")}

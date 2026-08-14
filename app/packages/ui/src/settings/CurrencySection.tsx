@@ -51,7 +51,7 @@ export function CurrencySection() {
     } finally {
       setLoading(false);
     }
-  }, [api, orgId, gt]);
+  }, [api, orgId]);
 
   useEffect(() => {
     void load();

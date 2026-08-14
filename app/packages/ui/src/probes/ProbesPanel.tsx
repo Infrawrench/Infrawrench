@@ -91,7 +91,7 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
       .listProbes()
       .then(setProbes)
       .catch((e) => setError(e instanceof Error ? e.message : gt("Failed to load probes")));
-  }, [client, gt]);
+  }, [client]);
 
   useEffect(() => {
     reload();

@@ -42,7 +42,7 @@ export function ResourceChangesPanel({ orgId, resourceId }: ResourceChangesPanel
     return () => {
       cancelled = true;
     };
-  }, [orgId, resourceId, reloadKey, gt]);
+  }, [orgId, resourceId, reloadKey]);
 
   if (error) {
     return <p className="p-6 text-sm text-danger">{error}</p>;

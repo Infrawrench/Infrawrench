@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useGT } from "gt-react";
+import { T, useGT } from "gt-react";
 
 import { Modal } from "../components/Modal.js";
 import { COST_DIMENSION_LABELS, type CostReport } from "../cost/config.js";
@@ -66,13 +66,15 @@ export function CostReportPickerModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel="Add a saved cost report">
+    <Modal onClose={onClose} ariaLabel={gt("Add a saved cost report")}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[420px] p-6">
-        <h2 className="text-base font-semibold text-on-surface mb-1">Add a saved report</h2>
-        <p className="text-xs text-on-surface-faint mb-4">
-          Shows a card for a report you already have. Editing the report later updates every
-          dashboard showing it; removing this card leaves the report alone.
-        </p>
+        <h2 className="text-base font-semibold text-on-surface mb-1">{gt("Add a saved report")}</h2>
+        <T>
+          <p className="text-xs text-on-surface-faint mb-4">
+            Shows a card for a report you already have. Editing the report later updates every
+            dashboard showing it; removing this card leaves the report alone.
+          </p>
+        </T>
 
         {error !== null && (
           <div role="alert" className="mb-3 text-sm text-danger">
@@ -82,15 +84,17 @@ export function CostReportPickerModal({
 
         {reports === null && error === null && (
           <p role="status" className="text-sm text-on-surface-faint">
-            Loading reports…
+            {gt("Loading reports…")}
           </p>
         )}
 
         {reports !== null && available.length === 0 && (
           <p className="text-sm text-on-surface-faint">
             {reports.length === 0
-              ? "This org has no saved reports yet. Add a cost graph instead, or save one from the Reports page."
-              : "Every report is already on this dashboard."}
+              ? gt(
+                  "This org has no saved reports yet. Add a cost graph instead, or save one from the Reports page.",
+                )
+              : gt("Every report is already on this dashboard.")}
           </p>
         )}
 
@@ -104,7 +108,9 @@ export function CostReportPickerModal({
                 className="w-full text-left rounded-lg px-3 py-2 hover:bg-surface-sunken disabled:opacity-50 flex items-center justify-between gap-3"
               >
                 <span className="truncate text-sm text-on-surface">{r.name}</span>
-                <span className="shrink-0 text-xs text-on-surface-faint">{describe(r)}</span>
+                <span className="shrink-0 text-xs text-on-surface-faint">
+                  {describe(r, gt, gtData)}
+                </span>
               </button>
             </li>
           ))}
@@ -116,7 +122,7 @@ export function CostReportPickerModal({
             onClick={onClose}
             className="rounded-lg border border-border px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
         </div>
       </div>

@@ -107,7 +107,7 @@ export function UnitCostCard({
     return () => {
       cancelled = true;
     };
-  }, [run, metricId, request, gt]);
+  }, [run, metricId, request]);
 
   const mode = response?.mode ?? config.unitCostMode ?? "unit_cost";
   const caveat = response ? describeUnitCostCaveats(response) : null;
@@ -268,7 +268,7 @@ export function UnitCostCard({
     );
     if (reasons.size === 0) return null;
     return [...reasons].map((r) => gtData(UNIT_COST_GAP_REASON_LABELS[r])).join("; ");
-  }, [response, gtData]);
+  }, [response]);
 
   return (
     <div className="group relative rounded-2xl border border-border bg-surface-raised hover:border-border-strong transition-colors flex flex-col overflow-hidden min-h-[18rem]">

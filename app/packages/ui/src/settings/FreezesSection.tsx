@@ -54,7 +54,7 @@ export function FreezesSection() {
     } finally {
       setLoading(false);
     }
-  }, [api, orgId, gt]);
+  }, [api, orgId]);
 
   useEffect(() => {
     void load();

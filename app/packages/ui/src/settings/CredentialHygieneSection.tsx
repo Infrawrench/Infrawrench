@@ -57,7 +57,7 @@ export function CredentialHygieneSection() {
     } finally {
       setLoading(false);
     }
-  }, [api, orgId, windowDays, gt]);
+  }, [api, orgId, windowDays]);
 
   useEffect(() => {
     if (!canRead) return;

@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useGT } from "gt-react";
 import {
   Area,
   Bar,
@@ -96,6 +97,7 @@ function pivot(spec: Extract<ChartSpec, { type: "line" | "area" | "stacked_bar" 
 }
 
 export function CustomGraphChart({ spec }: { spec: ChartSpec }) {
+  const gt = useGT();
   const chart = useChartTheme();
   const colorFor = (index: number, override?: string): string =>
     override ?? chart.colors[index % chart.colors.length] ?? "#6b7280";
@@ -152,7 +154,7 @@ export function CustomGraphChart({ spec }: { spec: ChartSpec }) {
           </tbody>
         </table>
         {spec.rows.length === 0 && (
-          <div className="text-sm text-on-surface-faint text-center py-6">No rows</div>
+          <div className="text-sm text-on-surface-faint text-center py-6">{gt("No rows")}</div>
         )}
       </div>
     );
@@ -200,7 +202,7 @@ export function CustomGraphChart({ spec }: { spec: ChartSpec }) {
   if (rows.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-sm text-on-surface-faint">
-        No data
+        {gt("No data")}
       </div>
     );
   }

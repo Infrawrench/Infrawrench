@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { T, Var, t, useGT } from "gt-react";
+import { T, Var, msg, useGT, useMessages } from "gt-react";
 import { useDataString } from "../i18n/data-strings.js";
 import {
   COST_BASES,
@@ -134,8 +134,14 @@ export function CostBasisField({
   );
 }
 
-/** Why the basis select is disabled — one sentence, same words everywhere. */
-export const COST_BASIS_UNAVAILABLE_HINT = t(
+/**
+ * Why the basis select is disabled — one sentence, same words everywhere.
+ *
+ * msg() rather than t(): this is module scope, where t() is forbidden (it has
+ * no request/render context to resolve against). Render it through
+ * `useMessages()`, as both call sites do.
+ */
+export const COST_BASIS_UNAVAILABLE_HINT = msg(
   "No connected provider reports amortized cost, so every amount here is what was charged.",
 );
 
@@ -636,6 +642,7 @@ export function CostGraphConfigModal({
 }: CostGraphConfigModalProps) {
   const gt = useGT();
   const gtData = useDataString();
+  const m = useMessages();
   const uid = useId();
   const [title, setTitle] = useState(initialTitle);
   const [config, setConfig] = useState<CostGraphConfig>(initialConfig);
@@ -823,7 +830,7 @@ export function CostGraphConfigModal({
               value={config.costBasis}
               onChange={(costBasis) => set({ costBasis })}
               available={basis.available}
-              hint={COST_BASIS_UNAVAILABLE_HINT}
+              hint={m(COST_BASIS_UNAVAILABLE_HINT)}
             />
           </div>
 

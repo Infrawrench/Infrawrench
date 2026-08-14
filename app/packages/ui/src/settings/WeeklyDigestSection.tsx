@@ -130,7 +130,7 @@ export function WeeklyDigestSection() {
     return () => {
       cancelled = true;
     };
-  }, [api, orgId, reloadNonce, gt]);
+  }, [api, orgId, reloadNonce]);
 
   const save = useCallback(
     async (patch: DigestSettingsPatch) => {

@@ -287,7 +287,7 @@ export function ResourcePanel({
       window.removeEventListener(INVOKE_PLUGIN_ACTION_EVENT, handlePluginAction);
       window.removeEventListener(PROMPT_NOSQL_COMMAND_EVENT, handlePromptNoSqlCommand);
     };
-  }, [detailUrl, orgId, pluginId, resourceId, resourceTypeId, accountId, parent, gt]);
+  }, [detailUrl, orgId, pluginId, resourceId, resourceTypeId, accountId, parent]);
 
   if (error) {
     return (

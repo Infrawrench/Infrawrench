@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useGT } from "gt-react";
 import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   DndShell,
@@ -62,6 +63,7 @@ function isPublicRoute(pathname: string): boolean {
 }
 
 function RootLayout() {
+  const gt = useGT();
   const [authChecked, setAuthChecked] = useState(false);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -123,7 +125,7 @@ function RootLayout() {
 
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-on-surface-tertiary">
-        <div className="animate-pulse text-sm">Loading…</div>
+        <div className="animate-pulse text-sm">{gt("Loading…")}</div>
       </div>
     );
   }
@@ -142,7 +144,7 @@ function RootLayout() {
   if (!pathname.startsWith("/org/")) {
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-on-surface-tertiary">
-        <div className="animate-pulse text-sm">Loading…</div>
+        <div className="animate-pulse text-sm">{gt("Loading…")}</div>
       </div>
     );
   }
@@ -151,6 +153,7 @@ function RootLayout() {
 }
 
 function AuthenticatedShell() {
+  const gt = useGT();
   const [tunnelAttach, setTunnelAttach] = useState<TunnelAttachState | null>(null);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -293,7 +296,9 @@ function AuthenticatedShell() {
       });
       dispatchResourcesChanged();
     } catch (e) {
-      window.alert(`Attach failed: ${e instanceof Error ? e.message : String(e)}`);
+      window.alert(
+        gt("Attach failed: {error}", { error: e instanceof Error ? e.message : String(e) }),
+      );
     }
   }
 
@@ -323,7 +328,9 @@ function AuthenticatedShell() {
       });
     } catch (e) {
       window.alert(
-        `Couldn't start SSH tunnel setup: ${e instanceof Error ? e.message : String(e)}`,
+        gt("Couldn't start SSH tunnel setup: {error}", {
+          error: e instanceof Error ? e.message : String(e),
+        }),
       );
     }
   }
@@ -343,7 +350,7 @@ function AuthenticatedShell() {
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:px-3 focus:py-1.5 focus:rounded focus:bg-surface-overlay focus:text-on-surface focus:border focus:border-border-strong focus:shadow-lg"
         >
-          Skip to content
+          {gt("Skip to content")}
         </a>
         <GlobalTabBar
           tabs={workspaceTabs}

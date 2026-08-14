@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { T, Var, useGT } from "gt-react";
+import { T, Var, useGT, useMessages } from "gt-react";
 import {
   budgetInputSchema,
   type BudgetInput,
@@ -31,6 +31,7 @@ export interface BudgetConfigModalProps {
 
 export function BudgetConfigModal({ initialInput, api, onSave, onClose }: BudgetConfigModalProps) {
   const gt = useGT();
+  const m = useMessages();
   const uid = useId();
   const [input, setInput] = useState<BudgetInput>(initialInput);
   const [amountText, setAmountText] = useState(() => (initialInput.amountCents / 100).toString());
@@ -138,7 +139,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
             value={input.costBasis}
             onChange={(costBasis) => set({ costBasis })}
             available={basis.available}
-            hint={COST_BASIS_UNAVAILABLE_HINT}
+            hint={m(COST_BASIS_UNAVAILABLE_HINT)}
           />
 
           <div role="group" aria-labelledby={`${uid}-scope-label`}>

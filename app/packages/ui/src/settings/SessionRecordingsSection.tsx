@@ -55,7 +55,7 @@ export function SessionRecordingsSection() {
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Could not load recording settings"));
     }
-  }, [api, base, gt]);
+  }, [api, base]);
 
   const loadRecordings = useCallback(async () => {
     try {
@@ -64,7 +64,7 @@ export function SessionRecordingsSection() {
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Could not load recordings"));
     }
-  }, [api, base, statusFilter, gt]);
+  }, [api, base, statusFilter]);
 
   useEffect(() => {
     if (!canRead) return;
@@ -389,7 +389,7 @@ function RecordingViewer({
     return () => {
       cancelled = true;
     };
-  }, [castUrl, fetchText, gt]);
+  }, [castUrl, fetchText]);
 
   const downloadUrl = useMemo(() => `${castUrl}?download=1`, [castUrl]);
 

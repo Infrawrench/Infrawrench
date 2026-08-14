@@ -228,7 +228,7 @@ export function FileIssueModal({
 
         <div className="space-y-3">
           {trackers.length > 1 && (
-            <div role="radiogroup" aria-label="Tracker" className="flex gap-2">
+            <div role="radiogroup" aria-label={gt("Tracker")} className="flex gap-2">
               {trackers.map((t) => (
                 <button
                   key={t}

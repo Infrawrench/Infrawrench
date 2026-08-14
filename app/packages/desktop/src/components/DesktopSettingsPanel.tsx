@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useGT, useMessages } from "gt-react";
+import { T, useGT, useMessages } from "gt-react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   SETTINGS_SECTIONS,
@@ -28,10 +28,12 @@ export function DesktopSettingsPanel({ section }: { section: string }) {
   if (!activeCloudOrgId) {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
-        <p className="text-sm text-on-surface-muted max-w-sm text-center">
-          Organization settings live in Infrawrench Cloud. Sign in and pick an organization to
-          manage its team, keys, alerts and billing from here.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-muted max-w-sm text-center">
+            Organization settings live in Infrawrench Cloud. Sign in and pick an organization to
+            manage its team, keys, alerts and billing from here.
+          </p>
+        </T>
       </div>
     );
   }

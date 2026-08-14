@@ -81,7 +81,7 @@ export function BillingRulesSection() {
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Failed to load billing rules"));
     }
-  }, [api, orgId, gt]);
+  }, [api, orgId]);
 
   useEffect(() => {
     if (!canRead) return;

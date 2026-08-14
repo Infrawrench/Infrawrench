@@ -115,7 +115,7 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
         // History is supplementary; a failure here must not block deploying.
       });
     void refreshTriggers();
-  }, [client, initialRepo, refreshTriggers, gt]);
+  }, [client, initialRepo, refreshTriggers]);
 
   /** Picking a repo seeds its default branch and clears anything downstream. */
   const chooseRepo = (fullName: string) => {

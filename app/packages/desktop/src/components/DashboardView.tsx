@@ -912,7 +912,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       // which is indistinguishable from a slow network.
       toast.error(gt("Couldn't load budgets"), { description: formatErrorMessage(e) });
     }
-  }, [gt]);
+  }, []);
 
   async function removeWidget(widgetId: string) {
     const orgId = useUIStore.getState().activeCloudOrgId;
@@ -995,7 +995,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       // as the report having been deleted rather than as a failed fetch.
       toast.error(gt("Couldn't load cost reports"), { description: formatErrorMessage(e) });
     }
-  }, [gt]);
+  }, []);
 
   /** Show a saved cost report on this dashboard. */
   async function addReportWidget(report: CostReport) {

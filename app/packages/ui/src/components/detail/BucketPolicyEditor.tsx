@@ -365,10 +365,12 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
                       key={i}
                       className="border border-border/60 rounded p-2 bg-surface-overlay/40"
                     >
-                      <div className="text-on-surface-faint text-[10px] font-mono mb-1">
-                        Statement #{i + 1}
-                        {stmt.Sid ? ` · ${stmt.Sid}` : ""}
-                      </div>
+                      <T>
+                        <div className="text-on-surface-faint text-[10px] font-mono mb-1">
+                          Statement #<Var>{i + 1}</Var>
+                          {stmt.Sid ? <Var>{` · ${stmt.Sid}`}</Var> : ""}
+                        </div>
+                      </T>
                       <SummaryText
                         text={summarizeStatement(stmt, capability.bucketName)}
                         denyish={stmt.Effect === "Deny"}

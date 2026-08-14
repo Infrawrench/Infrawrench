@@ -91,7 +91,8 @@ for (const root of ROOTS) {
       // gt("…") / t`…` / msg("…") arguments are marked.
       const isMarkedCall =
         node.type === "CallExpression" &&
-        ((node.callee?.type === "Identifier" && ["gt", "t", "msg", "m"].includes(node.callee.name)) ||
+        ((node.callee?.type === "Identifier" &&
+          ["gt", "t", "msg", "m"].includes(node.callee.name)) ||
           (node.callee?.type === "MemberExpression" && node.callee.property?.name === "rich"));
       if (isMarkedCall) stack.push("call");
 

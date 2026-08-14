@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { T, Var, useGT } from "gt-react";
 import type {
   ResourceInstance,
   DetailViewSchema,
@@ -143,6 +144,7 @@ export function ResourcePanel({
   titleOverride,
 }: ResourcePanelProps) {
   const tabId = useTabId();
+  const gt = useGT();
   const decodedResourceId = decodeURIComponent(resourceId);
   const currentView = locationHash.replace(/^#/, "");
   const isSshView = currentView === "ssh";
@@ -188,7 +190,7 @@ export function ResourcePanel({
   const [editableFields, setEditableFields] = useState<FieldDefinition[]>([]);
   const [credentialFormats, setCredentialFormats] = useState<CredentialFormat[]>([]);
   const [showExportCredential, setShowExportCredential] = useState(false);
-  const [resourceTypeLabel, setResourceTypeLabel] = useState<string>("Resource");
+  const [resourceTypeLabel, setResourceTypeLabel] = useState<string>(gt("Resource"));
 
   // One estimator for both surfaces that quote a monthly figure — the detail
   // header's standing estimate and the edit modal's change delta — so the two
@@ -401,7 +403,9 @@ export function ResourcePanel({
       if (!session) {
         setAgentLaunchDefaults({});
         setAgentLaunchError(
-          "This agent session no longer exists. You can still connect to the VM manually below.",
+          gt(
+            "This agent session no longer exists. You can still connect to the VM manually below.",
+          ),
         );
         setResolvedAgentLaunchLookupKey(agentLaunchLookupKey);
         return;
@@ -432,7 +436,10 @@ export function ResourcePanel({
       if (!cancelled) {
         setAgentLaunchDefaults({});
         setAgentLaunchError(
-          `Couldn't prepare the agent SSH session: ${formatErrorMessage(err)}. You can still connect to the VM manually below.`,
+          gt(
+            "Couldn't prepare the agent SSH session: {error}. You can still connect to the VM manually below.",
+            { error: formatErrorMessage(err) },
+          ),
         );
         setResolvedAgentLaunchLookupKey(agentLaunchLookupKey);
       }
@@ -529,7 +536,7 @@ export function ResourcePanel({
         } else {
           const client = clientRef.current;
           if (!client?.invokeAction) {
-            throw new Error("Plugin does not support custom actions");
+            throw new Error(gt("Plugin does not support custom actions"));
           }
           await client.invokeAction(
             res.resourceTypeId,
@@ -543,7 +550,7 @@ export function ResourcePanel({
         }
         dispatchRefreshResource();
       } catch (err) {
-        window.alert(err instanceof Error ? err.message : "Action failed");
+        window.alert(err instanceof Error ? err.message : gt("Action failed"));
       }
     }
     window.addEventListener(INVOKE_PLUGIN_ACTION_EVENT, handler);
@@ -556,19 +563,19 @@ export function ResourcePanel({
       if (!detail) return;
       const reroll = peerParentRerollRef.current;
       if (!reroll) {
-        toast.error("Reroll has no upstream parent to delegate to.");
+        toast.error(gt("Reroll has no upstream parent to delegate to."));
         return;
       }
       const message =
         detail.confirmMessage ??
-        "Reset the upstream credential? This may invalidate cached connections.";
+        gt("Reset the upstream credential? This may invalidate cached connections.");
       if (!window.confirm(message)) return;
       try {
         await reroll(detail.outputKey);
-        toast.success("Upstream credential rerolled.");
+        toast.success(gt("Upstream credential rerolled."));
         dispatchRefreshResource();
       } catch (err) {
-        toast.error(`Reroll failed: ${formatErrorMessage(err)}`);
+        toast.error(gt("Reroll failed: {error}", { error: formatErrorMessage(err) }));
       }
     }
     window.addEventListener(REROLL_PARENT_OUTPUT_EVENT, handler);
@@ -579,7 +586,7 @@ export function ResourcePanel({
     async (command: string, args: (string | number)[]): Promise<unknown> => {
       const cloud = cloudCtxRef.current;
       const res = resource;
-      if (!res) throw new Error("Resource not loaded");
+      if (!res) throw new Error(gt("Resource not loaded"));
       if (cloud) {
         return runCloudNoSqlCommand(cloud.orgId, {
           pluginId: cloud.pluginId,
@@ -593,7 +600,7 @@ export function ResourcePanel({
       }
       const client = clientRef.current;
       if (!client?.executeNoSqlCommand) {
-        throw new Error("Plugin does not support NoSQL commands");
+        throw new Error(gt("Plugin does not support NoSQL commands"));
       }
       return client.executeNoSqlCommand(
         res.resourceTypeId,
@@ -603,7 +610,7 @@ export function ResourcePanel({
         args,
       );
     },
-    [accountId, decodedResourceId, resource],
+    [accountId, decodedResourceId, resource, gt],
   );
 
   // Modal state for prompt-nosql-command. Electron renderer doesn't
@@ -867,12 +874,12 @@ export function ResourcePanel({
   ) {
     if (!resource) return;
     if (selection.kind !== "literal") {
-      toast.error("This field only accepts a literal value.");
+      toast.error(gt("This field only accepts a literal value."));
       return;
     }
     const client = clientRef.current;
     if (!client) {
-      toast.error("Plugin client not ready.");
+      toast.error(gt("Plugin client not ready."));
       return;
     }
     try {
@@ -889,15 +896,15 @@ export function ResourcePanel({
         );
       }
       await persistPlaintextSecret(resource.id, fieldKey, selection.value);
-      toast.success(`${fieldKey} updated.`);
+      toast.success(gt("{field} updated.", { field: fieldKey }));
       dispatchRefreshResource();
     } catch (err) {
-      toast.error(`Reroll failed: ${formatErrorMessage(err)}`);
+      toast.error(gt("Reroll failed: {error}", { error: formatErrorMessage(err) }));
     }
   }
 
   async function handleUpdate(changedFields: Record<string, string>): Promise<void> {
-    if (!resource) throw new Error("Resource not loaded");
+    if (!resource) throw new Error(gt("Resource not loaded"));
     const cloud = cloudCtxRef.current;
     if (cloud) {
       const { updateCloudResource } = await import("../lib/cloud-api");
@@ -909,12 +916,12 @@ export function ResourcePanel({
         fields: changedFields,
         ...(cloud.parentResourceId ? { parentResourceId: cloud.parentResourceId } : {}),
       });
-      toast.success(`${resourceTypeLabel} updated.`);
+      toast.success(gt("{label} updated.", { label: resourceTypeLabel }));
       dispatchRefreshResource();
       return;
     }
     const client = clientRef.current;
-    if (!client?.updateResource) throw new Error("Plugin does not support updates");
+    if (!client?.updateResource) throw new Error(gt("Plugin does not support updates"));
     const updated = await client.updateResource(
       resource.resourceTypeId,
       resource.id,
@@ -937,7 +944,7 @@ export function ResourcePanel({
         JSON.stringify(updated.resolvedOutputs ?? {}),
       ],
     );
-    toast.success(`${resourceTypeLabel} updated.`);
+    toast.success(gt("{label} updated.", { label: resourceTypeLabel }));
     dispatchRefreshResource();
   }
 
@@ -964,7 +971,7 @@ export function ResourcePanel({
       return;
     }
     const client = clientRef.current;
-    if (!client?.deleteResource) throw new Error("Plugin does not support deletion");
+    if (!client?.deleteResource) throw new Error(gt("Plugin does not support deletion"));
     await client.deleteResource(resource.resourceTypeId, resource.id, accountId);
     const db = await getDb();
     await db.execute("DELETE FROM dashboard_pins WHERE resource_id = $1", [resource.id]);
@@ -997,7 +1004,7 @@ export function ResourcePanel({
       );
     } else {
       const client = await createPluginClient(child.accountId || accountId, child.pluginId);
-      if (!client.deleteResource) throw new Error("Plugin does not support deletion");
+      if (!client.deleteResource) throw new Error(gt("Plugin does not support deletion"));
       await client.deleteResource(child.resourceTypeId, child.id, child.accountId || accountId);
       const db = await getDb();
       await db.execute("DELETE FROM resources WHERE id = $1", [child.id]);
@@ -1023,7 +1030,7 @@ export function ResourcePanel({
       });
     } else {
       const client = await createPluginClient(child.accountId || accountId, child.pluginId);
-      if (!client.updateResource) throw new Error("Plugin does not support updates");
+      if (!client.updateResource) throw new Error(gt("Plugin does not support updates"));
       const updated = await client.updateResource(
         child.resourceTypeId,
         child.id,
@@ -1054,7 +1061,7 @@ export function ResourcePanel({
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-on-surface-muted text-sm animate-pulse">
-        Loading…
+        {gt("Loading…")}
       </div>
     );
   }
@@ -1292,7 +1299,11 @@ export function ResourcePanel({
 
       {!isSshView && !isSftpView && !hasSqlEditor && pgError && (
         <div className="shrink-0 px-4 py-2 border-t border-border bg-surface">
-          <span className="text-xs text-danger font-mono">SQL connection failed: {pgError}</span>
+          <T>
+            <span className="text-xs text-danger font-mono">
+              SQL connection failed: <Var>{pgError}</Var>
+            </span>
+          </T>
         </div>
       )}
 

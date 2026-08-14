@@ -265,7 +265,7 @@ export function KvBrowserView({
                 <p className="text-xs">{gt('Use "+ Add key" to create one.')}</p>
               </div>
             ) : (
-              <div role="listbox" aria-label="KV keys" className="py-1">
+              <div role="listbox" aria-label={gt("KV keys")} className="py-1">
                 {items.map((item) => {
                   const isActive = selectedKey === item.name;
                   return (

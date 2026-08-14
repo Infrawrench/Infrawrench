@@ -75,7 +75,7 @@ export function InstantiateModal({
   const [error, setError] = useState<string | null>(null);
 
   const ttlProblem =
-    ttlHours === null ? "A time-to-live is required." : validateTtlHours(ttlHours, settings);
+    ttlHours === null ? gt("A time-to-live is required.") : validateTtlHours(ttlHours, settings);
   const parameterProblem = validateParameterValues(template, values);
 
   const presets = useMemo(
@@ -118,7 +118,7 @@ export function InstantiateModal({
       });
       if (instance) onCreated(instance);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create the environment");
+      setError(e instanceof Error ? e.message : gt("Could not create the environment"));
     } finally {
       setBusy(false);
     }
@@ -127,27 +127,37 @@ export function InstantiateModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-xl border border-border bg-surface-raised p-5">
-        <h3 className="text-base font-semibold text-on-surface">
-          Stamp out &ldquo;{template.name}&rdquo;
-        </h3>
+        <T>
+          <h3 className="text-base font-semibold text-on-surface">
+            Stamp out &ldquo;
+            <Var>{template.name}</Var>&rdquo;
+          </h3>
+        </T>
         <p className="mt-1 text-xs text-on-surface-faint">
-          {template.members.length} resource{template.members.length === 1 ? "" : "s"}, created in
-          dependency order and named with this environment&apos;s prefix.
+          {gt(
+            "{count} resource{suffix}, created in dependency order and named with this environment's prefix.",
+            {
+              count: template.members.length,
+              suffix: template.members.length === 1 ? "" : "s",
+            },
+          )}
         </p>
 
         <label className="mt-4 block text-xs text-on-surface-secondary">
-          Environment name
+          {gt("Environment name")}
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="pr-482"
+            placeholder={gt("pr-482")}
             className="mt-1 w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface"
           />
         </label>
 
         <div className="mt-4">
           <span className="text-xs text-on-surface-secondary">
-            Time to live — required, at most {settings.maxTtlHours}h
+            {gt("Time to live — required, at most {maxTtlHours}h", {
+              maxTtlHours: settings.maxTtlHours,
+            })}
           </span>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             {presets.map((preset) => (
@@ -171,9 +181,9 @@ export function InstantiateModal({
               value={ttlHours ?? ""}
               onChange={(e) => setTtlHours(parseTtlDraft(e.target.value))}
               className="w-20 rounded-lg border border-border bg-surface px-2 py-1 text-xs text-on-surface"
-              aria-label="Time to live in hours"
+              aria-label={gt("Time to live in hours")}
             />
-            <span className="text-xs text-on-surface-faint">hours</span>
+            <span className="text-xs text-on-surface-faint">{gt("hours")}</span>
           </div>
           {ttlProblem && <p className="mt-1 text-xs text-danger">{ttlProblem}</p>}
         </div>
@@ -182,7 +192,7 @@ export function InstantiateModal({
           <div className="mt-4 space-y-3">
             {template.parameters.map((parameter) => (
               <label key={parameter.key} className="block text-xs text-on-surface-secondary">
-                {parameter.label}
+                {gtData(parameter.label)}
                 {parameter.type === "select" ? (
                   <select
                     value={values[parameter.key] ?? ""}
@@ -193,7 +203,7 @@ export function InstantiateModal({
                   >
                     {(parameter.options ?? []).map((option) => (
                       <option key={option.id} value={option.id}>
-                        {option.label}
+                        {gtData(option.label)}
                       </option>
                     ))}
                   </select>
@@ -214,46 +224,53 @@ export function InstantiateModal({
         )}
 
         <label className="mt-4 block text-xs text-on-surface-secondary">
-          Note (optional)
+          {gt("Note (optional)")}
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Reviewing #482"
+            placeholder={gt("Reviewing #482")}
             className="mt-1 w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface"
           />
         </label>
 
         <div className="mt-4 rounded-lg border border-border bg-surface px-3 py-2">
-          <span className="text-xs text-on-surface-secondary">Estimated cost</span>
+          <span className="text-xs text-on-surface-secondary">{gt("Estimated cost")}</span>
           {estimate === undefined && (
-            <p className="text-sm text-on-surface-faint">Pricing this environment…</p>
+            <p className="text-sm text-on-surface-faint">{gt("Pricing this environment…")}</p>
           )}
           {estimate === null && (
             <p className="text-sm text-on-surface-faint">
-              This environment could not be priced — that is not the same as free.
+              {gt("This environment could not be priced — that is not the same as free.")}
             </p>
           )}
           {estimate && (
             <p className="text-sm text-on-surface">
               {estimate.monthlyAmount === null || estimate.currency === null
-                ? "Could not be priced"
-                : `${estimate.partial ? "At least " : ""}${formatMoney(
-                    estimate.monthlyAmount,
-                    estimate.currency,
-                  )}/month`}
+                ? gt("Could not be priced")
+                : estimate.partial
+                  ? gt("At least {amount}/month", {
+                      amount: formatMoney(estimate.monthlyAmount, estimate.currency),
+                    })
+                  : gt("{amount}/month", {
+                      amount: formatMoney(estimate.monthlyAmount, estimate.currency),
+                    })}
               {estimate.unpricedCount > 0 && (
                 <span className="text-on-surface-faint">
-                  {" "}
-                  · {estimate.unpricedCount} resource
-                  {estimate.unpricedCount === 1 ? "" : "s"} unpriced
+                  {gt(" · {count} resource{suffix} unpriced", {
+                    count: estimate.unpricedCount,
+                    suffix: estimate.unpricedCount === 1 ? "" : "s",
+                  })}
                 </span>
               )}
             </p>
           )}
           {estimate && estimate.monthlyAmount !== null && ttlHours !== null && (
             <p className="text-xs text-on-surface-faint">
-              Charged only while it lives — {ttlHours}h is about{" "}
-              {((estimate.monthlyAmount * ttlHours) / 730).toFixed(2)} {estimate.currency}.
+              {gt("Charged only while it lives — {hours}h is about {amount} {currency}.", {
+                hours: ttlHours,
+                amount: ((estimate.monthlyAmount * ttlHours) / 730).toFixed(2),
+                currency: estimate.currency,
+              })}
             </p>
           )}
         </div>
@@ -266,7 +283,7 @@ export function InstantiateModal({
             onClick={onClose}
             className="rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary transition-colors hover:bg-surface-sunken"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -276,7 +293,7 @@ export function InstantiateModal({
             }
             className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
           >
-            {busy ? "Creating…" : "Create environment"}
+            {busy ? gt("Creating…") : gt("Create environment")}
           </button>
         </div>
       </div>

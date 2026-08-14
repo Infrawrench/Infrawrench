@@ -77,7 +77,7 @@ function IndexPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeWorkspaceTabId, gt, navigate, tabsHydrated, workspaceTabs]);
+  }, [activeWorkspaceTabId, navigate, tabsHydrated, workspaceTabs]);
 
   if (error) {
     return (

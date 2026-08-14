@@ -112,7 +112,7 @@ export function SecretExportModal({
     return () => {
       cancelled = true;
     };
-  }, [source, targetPluginId, targetCredentials, gt]);
+  }, [source, targetPluginId, targetCredentials]);
 
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
 
@@ -199,7 +199,6 @@ export function SecretExportModal({
     source,
     effectiveTypeId,
     onCreated,
-    gt,
   ]);
 
   const entryCount = selectedTemplate?.entries.length ?? 0;

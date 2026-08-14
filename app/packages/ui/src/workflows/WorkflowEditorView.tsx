@@ -132,7 +132,7 @@ export function WorkflowEditorView({
       });
     }
     decorationsRef.current = editor.deltaDecorations(decorationsRef.current, decorations);
-  }, [breakpoints, currentLine, pausedLine, gt]);
+  }, [breakpoints, currentLine, pausedLine]);
 
   const handleMount = useCallback<OnMount>(
     (editor, monaco) => {

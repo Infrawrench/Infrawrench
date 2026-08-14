@@ -31,7 +31,7 @@ function InviteAcceptPage() {
       .then(setInvite)
       .catch((e) => setError(e instanceof Error ? e.message : gt("Invitation not found")))
       .finally(() => setLoading(false));
-  }, [token, gt]);
+  }, [token]);
 
   async function handleAccept() {
     setAccepting(true);

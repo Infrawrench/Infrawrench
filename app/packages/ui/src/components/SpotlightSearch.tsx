@@ -110,7 +110,7 @@ export function SpotlightSearch({
     return () => {
       cancelled = true;
     };
-  }, [query, loadResults, gt]);
+  }, [query, loadResults]);
 
   // Client-side filtering (desktop pattern)
   useEffect(() => {

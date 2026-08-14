@@ -151,7 +151,7 @@ export function EditResourceModal({
     } finally {
       setSaving(false);
     }
-  }, [changed, gt, hasChanges, isValid, onClose, onSubmit, saving]);
+  }, [changed, hasChanges, isValid, onClose, onSubmit, saving]);
 
   return (
     <Modal onClose={onClose} ariaLabel={gt("Edit {name}", { name: displayName })}>

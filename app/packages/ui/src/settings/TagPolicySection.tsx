@@ -73,7 +73,7 @@ export function TagPolicySection() {
     } finally {
       setLoading(false);
     }
-  }, [api, orgId, gt]);
+  }, [api, orgId]);
 
   useEffect(() => {
     void load();
@@ -338,7 +338,7 @@ function AllocationSection({
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Failed to load cost centres"));
     }
-  }, [api, orgId, gt]);
+  }, [api, orgId]);
 
   useEffect(() => {
     void load();

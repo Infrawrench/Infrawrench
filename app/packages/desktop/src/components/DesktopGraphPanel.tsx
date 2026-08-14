@@ -56,7 +56,7 @@ export function DesktopGraphPanel({ openResource }: DesktopGraphPanelProps) {
       cancelled = true;
       window.removeEventListener(RESOURCES_CHANGED_EVENT, load);
     };
-  }, [activeCloudOrgId, reloadKey, gt]);
+  }, [activeCloudOrgId, reloadKey]);
 
   if (error && !data) {
     return (

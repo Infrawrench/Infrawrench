@@ -38,5 +38,5 @@ export function useGithubInstallResultToast(): void {
         });
         break;
     }
-  }, [gt]);
+  }, []);
 }

@@ -50,7 +50,7 @@ export function ProviderIncidentChangesSection({
   if (relevant.length === 0) return null;
 
   return (
-    <section aria-label="Provider incidents" className="mb-6">
+    <section aria-label={gt("Provider incidents")} className="mb-6">
       <h2 className="text-sm font-semibold mb-1">{gt("Is it you, or is it them?")}</h2>
       <p className="text-xs text-on-surface-muted mb-3">
         {gt(

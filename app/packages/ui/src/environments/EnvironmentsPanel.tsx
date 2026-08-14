@@ -363,7 +363,7 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
       .getSettings()
       .then(setSettings)
       .catch(() => undefined);
-  }, [client, gt]);
+  }, [client]);
 
   useEffect(() => {
     reload();

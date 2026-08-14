@@ -90,7 +90,7 @@ export function MetricPingModal({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accountId, pluginId, resourceId, resourceTypeId, gt]);
+  }, [accountId, pluginId, resourceId, resourceTypeId]);
 
   async function handleSave() {
     setError(null);

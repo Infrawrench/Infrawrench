@@ -287,7 +287,7 @@ function RecipientsPanel({
             aria-label={gt("Name")}
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="On-call"
+            placeholder={gt("On-call")}
             className={inputClass}
           />
         </Field>

@@ -236,7 +236,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey, activeCloudOrgId, gt]);
+  }, [refreshKey, activeCloudOrgId]);
 
   async function loadAccountResources(account: Account, background = false) {
     const id = account.id;
@@ -530,7 +530,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     }
     window.addEventListener("iw:sidebar-secret-drop", handler);
     return () => window.removeEventListener("iw:sidebar-secret-drop", handler);
-  }, [groups, secretImportPluginIds, accountResources, kubeconfigTypeIds, gt]);
+  }, [groups, secretImportPluginIds, accountResources, kubeconfigTypeIds]);
 
   useEffect(() => {
     if (!contextMenu) return;

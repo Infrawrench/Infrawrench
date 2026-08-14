@@ -8,6 +8,7 @@ import {
   type SleepScheduleTiming,
 } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
+import { useDataString } from "../i18n/data-strings.js";
 import type { SchedulePreview, SchedulesClient, SleepSchedule } from "./types.js";
 
 const inputClass =
@@ -91,6 +92,7 @@ export function ScheduleEditorModal({
   onClose,
 }: ScheduleEditorModalProps) {
   const gt = useGT();
+  const gtData = useDataString();
   const [timing, setTiming] = useState<SleepScheduleTiming>(() =>
     existing
       ? {
@@ -203,7 +205,7 @@ export function ScheduleEditorModal({
                         : "border-border bg-surface-sunken text-on-surface-tertiary hover:border-border-strong"
                     }`}
                   >
-                    {label}
+                    {gtData(label)}
                   </button>
                 );
               })}
@@ -264,7 +266,7 @@ export function ScheduleEditorModal({
                 className={inputClass}
                 value={timing.timezone}
                 onChange={(e) => setTiming((p) => ({ ...p, timezone: e.target.value }))}
-                placeholder="Europe/London"
+                placeholder={gt("Europe/London")}
               />
             )}
           </div>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { T, t, useGT } from "gt-react";
+import { T, msg, useGT, useMessages } from "gt-react";
 import {
   formatIncidentDuration,
   isIncidentArtifactFailure,
@@ -25,11 +25,13 @@ export interface IncidentsPanelProps {
   initialSeed?: IncidentSeed | undefined;
 }
 
+// msg() rather than t(): module scope has no render context for t() to
+// resolve against. The labels are decoded with useMessages() at the tab strip.
 const STATUS_FILTERS: Array<{ id: IncidentStatus | "all"; label: string }> = [
-  { id: "all", label: t("All") },
-  { id: "open", label: t("Open") },
-  { id: "mitigated", label: t("Mitigated") },
-  { id: "resolved", label: t("Resolved") },
+  { id: "all", label: msg("All") },
+  { id: "open", label: msg("Open") },
+  { id: "mitigated", label: msg("Mitigated") },
+  { id: "resolved", label: msg("Resolved") },
 ];
 
 function severityTone(severity: string): string {
@@ -87,6 +89,7 @@ export function IncidentsPanel({
   initialSeed,
 }: IncidentsPanelProps) {
   const gt = useGT();
+  const m = useMessages();
   const gtData = useDataString();
   // null = loading, [] = loaded-empty.
   const [incidents, setIncidents] = useState<Incident[] | null>(null);
@@ -473,7 +476,7 @@ export function IncidentsPanel({
                 : "bg-surface-sunken text-on-surface-secondary hover:bg-surface"
             }`}
           >
-            {option.label}
+            {m(option.label)}
           </button>
         ))}
       </div>

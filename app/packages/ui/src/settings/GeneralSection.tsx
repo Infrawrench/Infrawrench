@@ -28,7 +28,7 @@ export function GeneralSection() {
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Failed to load your profile"));
     }
-  }, [api, gt]);
+  }, [api]);
 
   useEffect(() => {
     void loadProfile();
@@ -523,7 +523,7 @@ function TwoFactorCard() {
                   {factor.totpUser ?? gt("Authenticator app")}
                 </p>
                 <p className="text-xs text-on-surface-muted">
-                  {factor.type.toUpperCase()} · added{" "}
+                  {factor.type.toUpperCase()} · {gt("added")}{" "}
                   {new Date(factor.createdAt).toLocaleDateString()}
                 </p>
               </div>
@@ -796,8 +796,8 @@ function SessionsCard() {
                   )}
                 </p>
                 <p className="text-xs text-on-surface-muted truncate">
-                  {session.ipAddress ?? gt("Unknown IP")} · {formatAuthMethod(session.authMethod)} ·
-                  started {new Date(session.createdAt).toLocaleString()}
+                  {session.ipAddress ?? gt("Unknown IP")} · {formatAuthMethod(session.authMethod)} ·{" "}
+                  {gt("started")} {new Date(session.createdAt).toLocaleString()}
                 </p>
               </div>
               {!session.current && (
@@ -866,17 +866,21 @@ function DeleteAccountCard({ email }: { email: string }) {
 
       {preview && blocked && (
         <div className="mb-3 rounded-lg border border-border bg-surface-overlay p-3">
-          <p className="text-xs text-on-surface-secondary mb-2">
-            You are the only owner of{" "}
-            {preview.blockers.length === 1 ? "an organization" : "these organizations"} that other
-            people belong to. Promote another owner in <strong>Settings → Team</strong>, then come
-            back.
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-secondary mb-2">
+              You are the only owner of{" "}
+              <Var>
+                {preview.blockers.length === 1 ? gt("an organization") : gt("these organizations")}
+              </Var>{" "}
+              that other people belong to. Promote another owner in <strong>Settings → Team</strong>
+              , then come back.
+            </p>
+          </T>
           <ul className="text-xs text-on-surface-tertiary space-y-1">
             {preview.blockers.map((b) => (
               <li key={b.id}>
                 <span className="text-on-surface-secondary">{b.name}</span> — {b.memberCount}{" "}
-                members
+                {gt("members")}
               </li>
             ))}
           </ul>
@@ -885,15 +889,19 @@ function DeleteAccountCard({ email }: { email: string }) {
 
       {preview && !blocked && preview.organizationsToDelete.length > 0 && (
         <div className="mb-3 rounded-lg border border-border bg-surface-overlay p-3">
-          <p className="text-xs text-on-surface-secondary mb-2">
-            You are the only member of{" "}
-            {preview.organizationsToDelete.length === 1
-              ? "this organization, so it"
-              : "these organizations, so they"}{" "}
-            will be deleted too, along with everything in{" "}
-            {preview.organizationsToDelete.length === 1 ? "it" : "them"}. Any active subscription is
-            cancelled.
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-secondary mb-2">
+              You are the only member of{" "}
+              <Var>
+                {preview.organizationsToDelete.length === 1
+                  ? gt("this organization, so it")
+                  : gt("these organizations, so they")}
+              </Var>{" "}
+              will be deleted too, along with everything in{" "}
+              <Var>{preview.organizationsToDelete.length === 1 ? gt("it") : gt("them")}</Var>. Any
+              active subscription is cancelled.
+            </p>
+          </T>
           <ul className="text-xs text-on-surface-tertiary space-y-1">
             {preview.organizationsToDelete.map((o) => (
               <li key={o.id}>{o.name}</li>

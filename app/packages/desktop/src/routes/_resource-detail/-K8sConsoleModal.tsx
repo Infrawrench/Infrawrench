@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { K8sExecPanel } from "../../components/K8sExecPanel";
 
@@ -16,6 +17,7 @@ export function K8sConsoleModal({
   parentResourceId,
   onClose,
 }: K8sConsoleModalProps) {
+  const gt = useGT();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Mouse-only click-away backdrop; keyboard users close via the × button. No Escape
@@ -23,12 +25,14 @@ export function K8sConsoleModal({
       <div aria-hidden="true" className="absolute inset-0 bg-black/70" onClick={onClose} />
       <div className="relative w-[min(1100px,92vw)] h-[min(720px,82vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-on-surface">Console: {resource.displayName}</h2>
+          <h2 className="text-sm font-semibold text-on-surface">
+            {gt("Console: {name}", { name: resource.displayName })}
+          </h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label={`Close console for ${resource.displayName}`}
-            title={`Close console for ${resource.displayName}`}
+            aria-label={gt("Close console for {name}", { name: resource.displayName })}
+            title={gt("Close console for {name}", { name: resource.displayName })}
             className="text-on-surface-muted hover:text-on-surface-secondary text-xl leading-none"
           >
             ×

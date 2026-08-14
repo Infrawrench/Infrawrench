@@ -254,7 +254,7 @@ export function DashboardView({
         description: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [orgId, gt]);
+  }, [orgId]);
 
   const hasBudgetWidgets = widgets.some((w) => w.kind === "budget");
   useEffect(() => {
@@ -278,7 +278,7 @@ export function DashboardView({
         description: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [loadAllReports, gt]);
+  }, [loadAllReports]);
 
   const hasReportWidgets = widgets.some((w) => w.kind === "cost_report");
   useEffect(() => {

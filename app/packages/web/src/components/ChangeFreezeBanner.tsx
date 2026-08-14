@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useGT } from "gt-react";
 import { apiGet } from "@/lib/api";
 import { CHANGE_FREEZE_CHANGED_EVENT } from "@/lib/change-freeze-events";
 
@@ -13,15 +14,17 @@ export interface ActiveChangeFreeze {
 
 const POLL_INTERVAL_MS = 60_000;
 
-function formatEnd(endsAt: string | null): string {
-  if (!endsAt) return "until ended by an admin";
+function formatEnd(gt: ReturnType<typeof useGT>, endsAt: string | null): string {
+  if (!endsAt) return gt("until ended by an admin");
   const date = new Date(endsAt);
-  return `until ${date.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })}`;
+  return gt("until {date}", {
+    date: date.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }),
+  });
 }
 
 /**
@@ -31,6 +34,7 @@ function formatEnd(endsAt: string | null): string {
  * is the client-side pre-warning.
  */
 export function ChangeFreezeBanner({ orgId }: { orgId: string }) {
+  const gt = useGT();
   const [freeze, setFreeze] = useState<ActiveChangeFreeze | null>(null);
 
   const refresh = useCallback(async () => {
@@ -63,9 +67,9 @@ export function ChangeFreezeBanner({ orgId }: { orgId: string }) {
       <span aria-hidden className="font-semibold">
         ❄
       </span>
-      <span className="font-medium">Change freeze: {freeze.name}</span>
+      <span className="font-medium">{gt("Change freeze: {name}", { name: freeze.name })}</span>
       <span className="text-warning/80">
-        Destructive actions are blocked {formatEnd(freeze.endsAt)}.
+        {gt("Destructive actions are blocked {end}.", { end: formatEnd(gt, freeze.endsAt) })}
         {freeze.reason ? ` ${freeze.reason}` : ""}
       </span>
       <Link
@@ -73,7 +77,7 @@ export function ChangeFreezeBanner({ orgId }: { orgId: string }) {
         params={{ orgId }}
         className="ml-auto underline underline-offset-2 hover:opacity-80 whitespace-nowrap"
       >
-        Manage
+        {gt("Manage")}
       </Link>
     </div>
   );

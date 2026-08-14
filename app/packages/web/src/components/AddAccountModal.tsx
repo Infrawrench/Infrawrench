@@ -58,7 +58,7 @@ export function AddAccountModal({
           description: e instanceof Error ? e.message : String(e),
         });
       });
-  }, [orgId, gt]);
+  }, [orgId]);
 
   useEffect(() => {
     apiGet<AccountListItem[]>(`/api/org/${orgId}/accounts`)
@@ -73,7 +73,7 @@ export function AddAccountModal({
           description: e instanceof Error ? e.message : String(e),
         });
       });
-  }, [orgId, gt]);
+  }, [orgId]);
 
   const saveAccount = useCallback(
     async (

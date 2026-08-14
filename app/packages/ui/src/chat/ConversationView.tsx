@@ -422,7 +422,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
               value={conversation.model}
               onChange={(e) => void handleModelChange(e.target.value)}
               disabled={streaming.active}
-              aria-label="Model"
+              aria-label={gt("Model")}
               className="bg-surface-overlay border border-border rounded-md px-2 py-1 text-xs text-on-surface-secondary focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
             >
               {CHAT_MODELS.map((m) => (

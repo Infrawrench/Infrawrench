@@ -111,7 +111,7 @@ export function CustomGraphPickerModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel="Add a custom graph">
+    <Modal onClose={onClose} ariaLabel={gt("Add a custom graph")}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[440px] p-6">
         <h2 className="text-base font-semibold text-on-surface mb-1">{gt("Add a custom graph")}</h2>
         <T>
@@ -182,7 +182,7 @@ export function CustomGraphPickerModal({
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-on-surface-faint mb-4">No custom graphs yet.</p>
+          <p className="text-sm text-on-surface-faint mb-4">{gt("No custom graphs yet.")}</p>
         )}
 
         {paidPlanNotice ? (
@@ -197,8 +197,8 @@ export function CustomGraphPickerModal({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") void createNew();
                 }}
-                placeholder="New graph name"
-                aria-label="New graph name"
+                placeholder={gt("New graph name")}
+                aria-label={gt("New graph name")}
                 disabled={busy}
                 className="flex-1 bg-surface-sunken border border-border rounded-md px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-border-strong"
               />
@@ -208,7 +208,7 @@ export function CustomGraphPickerModal({
                 disabled={busy || !name.trim()}
                 className="rounded-md border border-border px-3 py-1.5 text-sm text-on-surface-secondary hover:bg-surface-sunken disabled:opacity-50"
               >
-                Create
+                {gt("Create")}
               </button>
             </div>
           )

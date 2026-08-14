@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { sshOpenTunnel } from "../lib/ssh-tunnel";
@@ -33,6 +34,7 @@ export function SshTunnelModal({
   onClose,
   onTunnelEstablished,
 }: SshTunnelModalProps) {
+  const gt = useGT();
   const [sshUser, setSshUser] = useState(defaultUsername ?? "root");
   const [sshPort, setSshPort] = useState(22);
   const [privateKey, setPrivateKey] = useState("");
@@ -49,20 +51,20 @@ export function SshTunnelModal({
   async function onConfirm() {
     const isCloudKey = keySource?.type === "cloud";
     if (!isCloudKey && !privateKey.trim()) {
-      setError("Select an SSH key first");
+      setError(gt("Select an SSH key first"));
       return;
     }
     if (!keySource) {
-      setError("Select an SSH key first");
+      setError(gt("Select an SSH key first"));
       return;
     }
     if (service === "custom" && !customPort) {
-      setError("Remote port is required");
+      setError(gt("Remote port is required"));
       return;
     }
     const pluginId = preset.pluginId;
     if (!pluginId) {
-      setError("Select a service type");
+      setError(gt("Select a service type"));
       return;
     }
 
@@ -145,13 +147,20 @@ export function SshTunnelModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel="Connect to service via SSH">
+    <Modal onClose={onClose} ariaLabel={gt("Connect to service via SSH")}>
       <div className="bg-surface-raised border border-border-strong rounded-2xl shadow-2xl w-[480px] max-h-[90vh] overflow-auto">
         <div className="p-6 border-b border-border">
-          <h2 className="text-base font-semibold text-on-surface">Connect to service via SSH</h2>
-          <p className="text-xs text-on-surface-muted mt-1">
-            SSH host: <span className="text-on-surface-secondary font-mono">{sshHost}</span>
-          </p>
+          <h2 className="text-base font-semibold text-on-surface">
+            {gt("Connect to service via SSH")}
+          </h2>
+          <T>
+            <p className="text-xs text-on-surface-muted mt-1">
+              SSH host:{" "}
+              <Var>
+                <span className="text-on-surface-secondary font-mono">{sshHost}</span>
+              </Var>
+            </p>
+          </T>
         </div>
 
         <div className="p-6 space-y-4">
@@ -168,7 +177,7 @@ export function SshTunnelModal({
               htmlFor="ssh-tunnel-ssh-port"
               className="text-xs text-on-surface-muted w-20 shrink-0"
             >
-              SSH Port
+              {gt("SSH Port")}
             </label>
             <input
               id="ssh-tunnel-ssh-port"
@@ -182,7 +191,7 @@ export function SshTunnelModal({
 
           {/* Service selector */}
           <div>
-            <span className="block text-xs text-on-surface-muted mb-2">Target Service</span>
+            <span className="block text-xs text-on-surface-muted mb-2">{gt("Target Service")}</span>
             <div className="grid grid-cols-3 gap-2">
               {(
                 Object.entries(SSH_TUNNEL_PRESETS) as [
@@ -216,7 +225,7 @@ export function SshTunnelModal({
                 htmlFor="ssh-tunnel-remote-port"
                 className="text-xs text-on-surface-muted w-20 shrink-0"
               >
-                Remote Port
+                {gt("Remote Port")}
               </label>
               <input
                 id="ssh-tunnel-remote-port"
@@ -245,7 +254,7 @@ export function SshTunnelModal({
             disabled={connecting}
             className="px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -255,7 +264,7 @@ export function SshTunnelModal({
             }
             className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"
           >
-            {connecting ? "Connecting..." : "Connect"}
+            {connecting ? gt("Connecting...") : gt("Connect")}
           </button>
         </div>
       </div>

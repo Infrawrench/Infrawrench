@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { T, useGT } from "gt-react";
 import type { AlertTrigger, PushDeviceSummary, PushPreferences } from "@infrawrench/client-core";
 import {
   PUSHABLE_TRIGGERS,
@@ -7,6 +8,7 @@ import {
   withPushTrigger,
 } from "@infrawrench/client-core";
 import { useSettingsHost } from "../host.js";
+import { useDataString } from "../../i18n/data-strings.js";
 
 /**
  * The caller's own mobile push setup: per-org trigger toggles, registered
@@ -20,6 +22,8 @@ export function PushPreferencesSection({
   orgId: string;
   embedded?: boolean;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const { api } = useSettingsHost();
   const [prefs, setPrefs] = useState<PushPreferences | null>(null);
   const [devices, setDevices] = useState<PushDeviceSummary[]>([]);
@@ -48,7 +52,7 @@ export function PushPreferencesSection({
         }
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load push settings");
+          setError(e instanceof Error ? e.message : gt("Failed to load push settings"));
         }
       }
     })();
@@ -65,7 +69,7 @@ export function PushPreferencesSection({
       await api.put(`/api/org/${orgId}/push/preferences`, next);
     } catch (e) {
       setPrefs(prefs);
-      setError(e instanceof Error ? e.message : "Failed to save preferences");
+      setError(e instanceof Error ? e.message : gt("Failed to save preferences"));
     }
   }
 
@@ -83,10 +87,13 @@ export function PushPreferencesSection({
       );
       setTestMessage({
         kind: "ok",
-        text: `Delivered ${r.succeeded}/${r.attempted} test notification(s).`,
+        text: gt("Delivered {succeeded}/{attempted} test notification(s).", {
+          succeeded: r.succeeded,
+          attempted: r.attempted,
+        }),
       });
     } catch (e) {
-      setTestMessage({ kind: "error", text: e instanceof Error ? e.message : "Test failed" });
+      setTestMessage({ kind: "error", text: e instanceof Error ? e.message : gt("Test failed") });
     } finally {
       setTestBusy(false);
     }
@@ -103,7 +110,7 @@ export function PushPreferencesSection({
     return shell(
       <>
         <h2 className="text-sm font-semibold text-on-surface-secondary">
-          Your mobile notifications
+          {gt("Your mobile notifications")}
         </h2>
         <p className="text-xs text-danger mt-2">{error}</p>
       </>,
@@ -114,17 +121,25 @@ export function PushPreferencesSection({
 
   return shell(
     <>
-      <h2 className="text-sm font-semibold text-on-surface-secondary">Your mobile notifications</h2>
-      <p className="text-xs text-on-surface-muted">
-        Push notifications go to the Infrawrench mobile app. Sign in on your phone to register a
-        device; these toggles apply to this organization only.
-      </p>
+      <h2 className="text-sm font-semibold text-on-surface-secondary">
+        {gt("Your mobile notifications")}
+      </h2>
+      <T>
+        <p className="text-xs text-on-surface-muted">
+          Push notifications go to the Infrawrench mobile app. Sign in on your phone to register a
+          device; these toggles apply to this organization only.
+        </p>
+      </T>
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-on-surface-secondary">
         {PUSHABLE_TRIGGERS.map((trigger) => {
           const def = alertTriggerDef(trigger);
           return (
-            <label key={trigger} className="flex items-center gap-2" title={def.description}>
+            <label
+              key={trigger}
+              className="flex items-center gap-2"
+              title={gtData(def.description)}
+            >
               <input
                 type="checkbox"
                 checked={pushTriggerEnabled(prefs, trigger)}
@@ -134,7 +149,7 @@ export function PushPreferencesSection({
                   })
                 }
               />
-              <span>{def.label}</span>
+              <span>{gtData(def.label)}</span>
             </label>
           );
         })}
@@ -142,7 +157,7 @@ export function PushPreferencesSection({
 
       {devices.length === 0 ? (
         <p className="text-sm text-on-surface-muted">
-          No devices registered. Sign in on the mobile app to enroll this account.
+          {gt("No devices registered. Sign in on the mobile app to enroll this account.")}
         </p>
       ) : (
         <ul className="divide-y divide-border/50">
@@ -150,11 +165,14 @@ export function PushPreferencesSection({
             <li key={d.id} className="flex items-center justify-between py-2 text-sm">
               <div>
                 <p className="text-on-surface-secondary">
-                  {d.deviceName ?? (d.platform === "ios" ? "iPhone" : "Android device")}
-                  {d.disabled && <span className="text-danger ml-2 text-xs">(disabled)</span>}
+                  {d.deviceName ?? (d.platform === "ios" ? "iPhone" : gt("Android device"))}
+                  {d.disabled && (
+                    <span className="text-danger ml-2 text-xs">{gt("(disabled)")}</span>
+                  )}
                 </p>
                 <p className="text-xs text-on-surface-tertiary">
-                  {d.platform} · last seen {new Date(d.lastSeenAt).toLocaleDateString()}
+                  {d.platform} ·{" "}
+                  {gt("last seen {date}", { date: new Date(d.lastSeenAt).toLocaleDateString() })}
                 </p>
               </div>
               <button
@@ -162,7 +180,7 @@ export function PushPreferencesSection({
                 onClick={() => void handleRemoveDevice(d.id)}
                 className="text-xs text-danger hover:text-danger-strong"
               >
-                Remove
+                {gt("Remove")}
               </button>
             </li>
           ))}
@@ -179,10 +197,10 @@ export function PushPreferencesSection({
           type="button"
           onClick={() => void handleTest()}
           disabled={testBusy || devices.length === 0}
-          title={devices.length === 0 ? "Register a device on the mobile app first" : undefined}
+          title={devices.length === 0 ? gt("Register a device on the mobile app first") : undefined}
           className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
         >
-          {testBusy ? "Sending..." : "Send test push"}
+          {testBusy ? gt("Sending...") : gt("Send test push")}
         </button>
       </div>
     </>,
@@ -206,6 +224,8 @@ export function PushRosterSection({
   orgId: string;
   embedded?: boolean;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const { api } = useSettingsHost();
   const [rows, setRows] = useState<PushRecipientRow[] | null>(null);
   const [forbidden, setForbidden] = useState(false);
@@ -222,29 +242,36 @@ export function PushRosterSection({
 
   const body = (
     <>
-      <h2 className="text-sm font-semibold text-on-surface-secondary">Members receiving push</h2>
+      <h2 className="text-sm font-semibold text-on-surface-secondary">
+        {gt("Members receiving push")}
+      </h2>
       {rows.length === 0 ? (
         <p className="text-sm text-on-surface-muted">
-          No members have registered a mobile device yet.
+          {gt("No members have registered a mobile device yet.")}
         </p>
       ) : (
         <ul className="divide-y divide-border/50">
-          {rows.map((r) => (
-            <li key={r.userId} className="py-2 text-sm">
-              <p className="text-on-surface-secondary">{r.displayName ?? r.email}</p>
-              <p className="text-xs text-on-surface-tertiary">
-                {r.devices.length} device(s) ·{" "}
-                {/* Naming what is *muted* rather than what is on: the list is
-                    almost always shorter, and "muted: drift" reads as the
-                    exception it is where eleven trigger names read as noise. */}
-                {r.mutedTriggers.length === 0
-                  ? "all triggers on"
-                  : r.mutedTriggers.length === PUSHABLE_TRIGGERS.length
-                    ? "all triggers off"
-                    : `muted: ${r.mutedTriggers.map((t) => alertTriggerDef(t).label.toLowerCase()).join(", ")}`}
-              </p>
-            </li>
-          ))}
+          {rows.map((r) => {
+            const mutedList = r.mutedTriggers
+              .map((t) => gtData(alertTriggerDef(t).label).toLowerCase())
+              .join(", ");
+            return (
+              <li key={r.userId} className="py-2 text-sm">
+                <p className="text-on-surface-secondary">{r.displayName ?? r.email}</p>
+                <p className="text-xs text-on-surface-tertiary">
+                  {gt("{count} device(s)", { count: r.devices.length })} ·{" "}
+                  {/* Naming what is *muted* rather than what is on: the list is
+                      almost always shorter, and "muted: drift" reads as the
+                      exception it is where eleven trigger names read as noise. */}
+                  {r.mutedTriggers.length === 0
+                    ? gt("all triggers on")
+                    : r.mutedTriggers.length === PUSHABLE_TRIGGERS.length
+                      ? gt("all triggers off")
+                      : gt("muted: {list}", { list: mutedList })}
+                </p>
+              </li>
+            );
+          })}
         </ul>
       )}
     </>

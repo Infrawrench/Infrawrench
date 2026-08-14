@@ -77,7 +77,7 @@ function SharedConsoleJoinPage() {
         setPhase("error");
       }
     })();
-  }, [token, gt]);
+  }, [token]);
 
   const join = useCallback(async () => {
     if (!orgId || !preview) return;
@@ -96,7 +96,7 @@ function SharedConsoleJoinPage() {
       setError(err instanceof Error ? err.message : gt("Could not join that session."));
       setPhase("preview");
     }
-  }, [orgId, preview, token, gt]);
+  }, [orgId, preview, token]);
 
   if (phase === "joined" && joined && wsToken && orgId) {
     return (

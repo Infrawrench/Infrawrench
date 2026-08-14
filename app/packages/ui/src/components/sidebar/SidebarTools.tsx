@@ -158,7 +158,7 @@ export function SidebarToolsLauncher({
           }
           className="flex-1 bg-transparent text-on-surface placeholder:text-on-surface-faint text-sm focus:outline-none"
         />
-        <kbd className="text-xs text-on-surface-faint flex-shrink-0">esc</kbd>
+        <kbd className="text-xs text-on-surface-faint flex-shrink-0">{gt("esc")}</kbd>
       </div>
 
       <div role="status" aria-live="polite" className="sr-only">
@@ -217,7 +217,7 @@ export function SidebarToolsLauncher({
         <div className="px-4 py-2 border-t border-border flex items-center gap-4 text-xs text-on-surface-faint">
           <span>&uarr;&darr;&larr;&rarr; {gt("navigate")}</span>
           <span>&#8629; {gt("open")}</span>
-          <span>esc close</span>
+          <span>{gt("esc close")}</span>
         </div>
       )}
     </dialog>
