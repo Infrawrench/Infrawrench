@@ -1,4 +1,5 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
+import { T, Var, useGT, t } from "gt-react";
 import {
   ACCESS_REVIEW_SEVERITIES,
   ACCESS_REVIEW_SEVERITY_LABELS,
@@ -11,6 +12,7 @@ import {
   type AccessReviewSeverity,
   type DismissedAccessFinding,
 } from "@infrawrench/client-core";
+import { useDataString } from "../i18n/data-strings.js";
 
 export interface AccessReviewSectionProps {
   /**
@@ -74,10 +76,10 @@ const ACTIVITY_CLASSES: Record<AccessPrincipal["activity"], string> = {
  * exists to avoid giving.
  */
 function activityLabel(principal: AccessPrincipal): string {
-  if (principal.activity === "unknown") return "Unknown";
-  if (principal.daysSinceLastUsed === null) return "Unknown";
-  if (principal.daysSinceLastUsed <= 0) return "Today";
-  return `${principal.daysSinceLastUsed}d ago`;
+  if (principal.activity === "unknown") return t("Unknown");
+  if (principal.daysSinceLastUsed === null) return t("Unknown");
+  if (principal.daysSinceLastUsed <= 0) return t("Today");
+  return t("{days}d ago", { days: principal.daysSinceLastUsed });
 }
 
 interface FindingGroup {
@@ -142,12 +144,14 @@ function rowKeyHandler(open: () => void) {
 }
 
 function SummaryChips({ data }: { data: AccessReviewResponse }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const principals = data.principals.length;
   return (
     <div className="flex flex-wrap items-center gap-2 mb-4">
       <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-on-surface-secondary">
         <span className="tabular-nums">{principals}</span>
-        {principals === 1 ? "principal" : "principals"}
+        {principals === 1 ? gt("principal") : gt("principals")}
       </span>
       {ACCESS_REVIEW_SEVERITIES.map((severity) => (
         <span
@@ -155,13 +159,13 @@ function SummaryChips({ data }: { data: AccessReviewResponse }) {
           className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${SEVERITY_BADGE_CLASSES[severity]}`}
         >
           <span className="tabular-nums">{data.counts[severity]}</span>
-          {ACCESS_REVIEW_SEVERITY_LABELS[severity]}
+          {gtData(ACCESS_REVIEW_SEVERITY_LABELS[severity])}
         </span>
       ))}
       {data.dismissedCount > 0 && (
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
           <span className="tabular-nums">{data.dismissedCount}</span>
-          Dismissed
+          {gt("Dismissed")}
         </span>
       )}
     </div>
@@ -195,6 +199,8 @@ function ActiveFindingRow({
   /** Present only when the type declares a revoke action and the host wired one. */
   onRevoke?: (() => void) | undefined;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const p = finding.principal;
   const open = onOpenResource ? () => onOpenResource(p) : undefined;
   return (
@@ -209,12 +215,14 @@ function ActiveFindingRow({
       <td className="px-4 py-2.5 whitespace-nowrap align-top font-medium text-on-surface">
         {p.displayName}
         {p.parent && (
-          <span className="block text-xs font-normal text-on-surface-faint">via {p.parent}</span>
+          <span className="block text-xs font-normal text-on-surface-faint">
+            {gt("via {parent}", { parent: p.parent })}
+          </span>
         )}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap align-top">
         <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
-          {PRINCIPAL_ROLE_LABELS[p.role]}
+          {gtData(PRINCIPAL_ROLE_LABELS[p.role])}
         </span>
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-on-surface-tertiary">
@@ -227,7 +235,11 @@ function ActiveFindingRow({
         {activityLabel(p)}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-on-surface-tertiary">
-        {p.owner ? p.owner.displayName : <span className="text-on-surface-faint">Unowned</span>}
+        {p.owner ? (
+          p.owner.displayName
+        ) : (
+          <span className="text-on-surface-faint">{gt("Unowned")}</span>
+        )}
       </td>
       <td className="px-3 py-2.5 w-full align-top text-on-surface-secondary">
         <span className="font-medium text-on-surface">{finding.title}</span>
@@ -244,8 +256,11 @@ function ActiveFindingRow({
               value={reason}
               onChange={(e) => onReasonChange(e.target.value)}
               maxLength={500}
-              placeholder="Why is this acceptable? (optional)"
-              aria-label={`Reason for dismissing ${finding.title} on ${p.displayName}`}
+              placeholder={gt("Why is this acceptable? (optional)")}
+              aria-label={gt("Reason for dismissing {title} on {name}", {
+                title: finding.title,
+                name: p.displayName,
+              })}
               className="min-w-56 flex-1 rounded-lg border border-border bg-surface-raised px-2 py-1 text-xs text-on-surface"
             />
             <button
@@ -254,14 +269,14 @@ function ActiveFindingRow({
               onClick={onConfirm}
               className="rounded-lg border border-border px-2 py-1 text-xs text-on-surface hover:bg-surface-overlay disabled:opacity-50"
             >
-              {pending ? "Dismissing…" : "Confirm"}
+              {pending ? gt("Dismissing…") : gt("Confirm")}
             </button>
             <button
               type="button"
               onClick={onCancel}
               className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
           </span>
         )}
@@ -270,7 +285,7 @@ function ActiveFindingRow({
         <span
           className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${SEVERITY_BADGE_CLASSES[finding.severity]}`}
         >
-          {ACCESS_REVIEW_SEVERITY_LABELS[finding.severity]}
+          {gtData(ACCESS_REVIEW_SEVERITY_LABELS[finding.severity])}
         </span>
       </td>
       <td
@@ -289,7 +304,7 @@ function ActiveFindingRow({
             onClick={onRevoke}
             className="mr-3 text-xs text-danger hover:text-danger-strong disabled:opacity-50"
           >
-            Revoke
+            {gt("Revoke")}
           </button>
         )}
         {onToggleReason && (
@@ -299,7 +314,7 @@ function ActiveFindingRow({
             onClick={onToggleReason}
             className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-50"
           >
-            Dismiss
+            {gt("Dismiss")}
           </button>
         )}
       </td>
@@ -316,6 +331,8 @@ function DismissedFindingRow({
   finding: DismissedAccessFinding;
   onRestore?: (() => void) | undefined;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const p = finding.principal;
   const open = onOpenResource ? () => onOpenResource(p) : undefined;
   return (
@@ -337,14 +354,16 @@ function DismissedFindingRow({
       <td className="px-3 py-2.5 w-full align-top text-on-surface-tertiary">
         <span className="font-medium">{finding.title}</span>
         <span className="block text-xs text-on-surface-faint">
-          Dismissed {formatDismissedAt(finding.dismissal.dismissedAt)}
-          {finding.dismissal.dismissedBy ? ` by ${finding.dismissal.dismissedBy}` : ""}
+          {gt("Dismissed {date}", { date: formatDismissedAt(finding.dismissal.dismissedAt) })}
+          {finding.dismissal.dismissedBy
+            ? ` ${gt("by {name}", { name: finding.dismissal.dismissedBy })}`
+            : ""}
           {finding.dismissal.reason ? ` — ${finding.dismissal.reason}` : ""}
         </span>
       </td>
       <td className="px-4 py-2.5 whitespace-nowrap align-top text-right">
         <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-on-surface-tertiary">
-          {ACCESS_REVIEW_SEVERITY_LABELS[finding.severity]}
+          {gtData(ACCESS_REVIEW_SEVERITY_LABELS[finding.severity])}
         </span>
       </td>
       {onRestore && (
@@ -358,7 +377,7 @@ function DismissedFindingRow({
             }}
             className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-50"
           >
-            {pending ? "Restoring…" : "Restore"}
+            {pending ? gt("Restoring…") : gt("Restore")}
           </button>
         </td>
       )}
@@ -374,18 +393,20 @@ function PrincipalTable({
   principals: AccessPrincipal[];
   onOpenResource?: ((principal: AccessPrincipal) => void) | undefined;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   return (
     <div className="border border-border rounded-xl overflow-hidden">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs text-on-surface-faint">
-            <th className="px-4 py-2 font-medium">Principal</th>
-            <th className="px-3 py-2 font-medium">Kind</th>
-            <th className="px-3 py-2 font-medium">Account</th>
-            <th className="px-3 py-2 font-medium">Last used</th>
-            <th className="px-3 py-2 font-medium">Age</th>
-            <th className="px-3 py-2 font-medium">Admin</th>
-            <th className="px-3 py-2 font-medium">Owner</th>
+            <th className="px-4 py-2 font-medium">{gt("Principal")}</th>
+            <th className="px-3 py-2 font-medium">{gt("Kind")}</th>
+            <th className="px-3 py-2 font-medium">{gt("Account")}</th>
+            <th className="px-3 py-2 font-medium">{gt("Last used")}</th>
+            <th className="px-3 py-2 font-medium">{gt("Age")}</th>
+            <th className="px-3 py-2 font-medium">{gt("Admin")}</th>
+            <th className="px-3 py-2 font-medium">{gt("Owner")}</th>
           </tr>
         </thead>
         <tbody>
@@ -405,12 +426,12 @@ function PrincipalTable({
                   {p.displayName}
                   {p.parent && (
                     <span className="block text-xs font-normal text-on-surface-faint">
-                      via {p.parent}
+                      {gt("via {parent}", { parent: p.parent })}
                     </span>
                   )}
                 </td>
                 <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-on-surface-tertiary">
-                  {PRINCIPAL_ROLE_LABELS[p.role]}
+                  {gtData(PRINCIPAL_ROLE_LABELS[p.role])}
                   <span className="block text-on-surface-faint">{p.resourceTypeName}</span>
                 </td>
                 <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-on-surface-tertiary">
@@ -424,25 +445,25 @@ function PrincipalTable({
                 </td>
                 <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-on-surface-tertiary">
                   {p.ageDays === null ? (
-                    <span className="text-on-surface-faint">Unknown</span>
+                    <span className="text-on-surface-faint">{gt("Unknown")}</span>
                   ) : (
-                    `${p.ageDays}d`
+                    gt("{days}d", { days: p.ageDays })
                   )}
                 </td>
                 <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs">
                   {p.admin === null ? (
-                    <span className="text-on-surface-faint">Unknown</span>
+                    <span className="text-on-surface-faint">{gt("Unknown")}</span>
                   ) : p.admin ? (
-                    <span className="text-severe">Yes</span>
+                    <span className="text-severe">{gt("Yes")}</span>
                   ) : (
-                    <span className="text-on-surface-tertiary">No</span>
+                    <span className="text-on-surface-tertiary">{gt("No")}</span>
                   )}
                 </td>
                 <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-on-surface-tertiary">
                   {p.owner ? (
                     p.owner.displayName
                   ) : (
-                    <span className="text-on-surface-faint">Unowned</span>
+                    <span className="text-on-surface-faint">{gt("Unowned")}</span>
                   )}
                 </td>
               </tr>
@@ -482,6 +503,8 @@ export function AccessReviewSection({
   onRevoke,
   onExport,
 }: AccessReviewSectionProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [view, setView] = useState<View>("findings");
   const [groupBy, setGroupBy] = useState<"severity" | "account" | "role">("severity");
   /** Key of the finding whose reason box is open, if any. */
@@ -515,17 +538,16 @@ export function AccessReviewSection({
 
   return (
     <div className="flex-1 overflow-auto p-6">
-      <h1 className="text-xl font-semibold mb-1">Access review</h1>
+      <h1 className="text-xl font-semibold mb-1">{gt("Access review")}</h1>
       <p className="text-sm text-on-surface-muted mb-4">
-        Every principal inside your connected clouds — IAM users and roles, service accounts, app
-        registrations, groups, role bindings and long-lived keys — read from the state your accounts
-        last synced. This is not your Infrawrench team&apos;s roles, and not the credentials
-        Infrawrench stores on your behalf.
+        {gt(
+          "Every principal inside your connected clouds — IAM users and roles, service accounts, app registrations, groups, role bindings and long-lived keys — read from the state your accounts last synced. This is not your Infrawrench team's roles, and not the credentials Infrawrench stores on your behalf.",
+        )}
       </p>
 
       <div className="flex flex-wrap items-center gap-3 mb-4 text-xs">
-        <div role="group" aria-label="Staleness window" className="flex items-center gap-1">
-          <span className="text-on-surface-faint mr-1">Unused for</span>
+        <div role="group" aria-label={gt("Staleness window")} className="flex items-center gap-1">
+          <span className="text-on-surface-faint mr-1">{gt("Unused for")}</span>
           <div className="flex rounded-lg border border-border overflow-hidden">
             {ACCESS_REVIEW_STALE_DAY_OPTIONS.map((days) => (
               <button
@@ -539,14 +561,18 @@ export function AccessReviewSection({
                     : "text-on-surface-tertiary hover:text-on-surface-secondary"
                 }`}
               >
-                {days}d
+                {gt("{days}d", { days })}
               </button>
             ))}
           </div>
         </div>
         {onExport && (
-          <div role="group" aria-label="Export the review" className="flex items-center gap-1">
-            <span className="text-on-surface-faint mr-1">Export</span>
+          <div
+            role="group"
+            aria-label={gt("Export the review")}
+            className="flex items-center gap-1"
+          >
+            <span className="text-on-surface-faint mr-1">{gt("Export")}</span>
             <div className="flex rounded-lg border border-border overflow-hidden">
               <button
                 type="button"
@@ -569,22 +595,22 @@ export function AccessReviewSection({
 
       {error != null && data === null && (
         <div role="alert" className="text-sm text-danger">
-          Couldn&apos;t load the access review — {error}{" "}
+          {gt("Couldn't load the access review — {error}", { error })}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
-              Retry
+              {gt("Retry")}
             </button>
           )}
         </div>
       )}
       {data === null && error == null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Reviewing synced principals…
+          {gt("Reviewing synced principals…")}
         </p>
       )}
       {error != null && data !== null && (
         <p role="alert" className="mb-4 text-xs text-danger">
-          Couldn&apos;t refresh — showing the last loaded review. {error}
+          {gt("Couldn't refresh — showing the last loaded review. {error}", { error })}
         </p>
       )}
 
@@ -600,15 +626,14 @@ export function AccessReviewSection({
 
           {data.principals.length === 0 ? (
             <p className="text-sm text-on-surface-faint">
-              No principals synced. This page fills in when a connected provider syncs an identity
-              type — IAM users and roles, service accounts, app registrations, directory users,
-              memberships or long-lived API keys. An empty list means none of your accounts have
-              synced one, not that you have none.
+              {gt(
+                "No principals synced. This page fills in when a connected provider syncs an identity type — IAM users and roles, service accounts, app registrations, directory users, memberships or long-lived API keys. An empty list means none of your accounts have synced one, not that you have none.",
+              )}
             </p>
           ) : (
             <>
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4 text-xs">
-                <div role="group" aria-label="View" className="flex items-center gap-1">
+                <div role="group" aria-label={gt("View")} className="flex items-center gap-1">
                   <div className="flex rounded-lg border border-border overflow-hidden">
                     <button
                       type="button"
@@ -620,7 +645,7 @@ export function AccessReviewSection({
                           : "text-on-surface-tertiary hover:text-on-surface-secondary"
                       }`}
                     >
-                      Findings ({data.totalCount})
+                      {gt("Findings ({count})", { count: data.totalCount })}
                     </button>
                     <button
                       type="button"
@@ -632,23 +657,23 @@ export function AccessReviewSection({
                           : "text-on-surface-tertiary hover:text-on-surface-secondary"
                       }`}
                     >
-                      All principals ({data.principals.length})
+                      {gt("All principals ({count})", { count: data.principals.length })}
                     </button>
                   </div>
                 </div>
                 {view === "findings" && data.findings.length > 0 && (
                   <div
                     role="group"
-                    aria-label="Group findings by"
+                    aria-label={gt("Group findings by")}
                     className="flex items-center gap-1"
                   >
-                    <span className="text-on-surface-faint mr-1">Group by</span>
+                    <span className="text-on-surface-faint mr-1">{gt("Group by")}</span>
                     <div className="flex rounded-lg border border-border overflow-hidden">
                       {(
                         [
-                          { key: "severity", label: "Severity" },
-                          { key: "account", label: "Account" },
-                          { key: "role", label: "Kind" },
+                          { key: "severity", label: gt("Severity") },
+                          { key: "account", label: gt("Account") },
+                          { key: "role", label: gt("Kind") },
                         ] as const
                       ).map((option) => (
                         <button
@@ -675,8 +700,10 @@ export function AccessReviewSection({
               ) : data.findings.length === 0 ? (
                 <p className="text-sm text-on-surface-faint">
                   {data.dismissedCount > 0
-                    ? "No open findings — everything currently flagged has been accepted. The dismissed list is below."
-                    : "No open findings across your synced principals."}
+                    ? gt(
+                        "No open findings — everything currently flagged has been accepted. The dismissed list is below.",
+                      )
+                    : gt("No open findings across your synced principals.")}
                 </p>
               ) : (
                 <div className="flex flex-col gap-4">
@@ -684,7 +711,7 @@ export function AccessReviewSection({
                     <div key={group.key} className="flex flex-col gap-2">
                       <div className="flex items-baseline justify-between gap-3">
                         <h2 className="text-sm font-medium text-on-surface">
-                          {group.title}
+                          {gtData(group.title)}
                           {group.subtitle && (
                             <span className="ml-2 font-normal text-on-surface-tertiary">
                               {group.subtitle}
@@ -692,7 +719,8 @@ export function AccessReviewSection({
                           )}
                         </h2>
                         <span className="text-xs text-on-surface-faint">
-                          {group.findings.length} finding{group.findings.length === 1 ? "" : "s"}
+                          {group.findings.length} {gt("finding")}
+                          {group.findings.length === 1 ? "" : gt("s")}
                         </span>
                       </div>
                       <div className="border border-border rounded-xl overflow-hidden">
@@ -754,11 +782,12 @@ export function AccessReviewSection({
                 aria-expanded={showDismissed}
                 className="text-sm font-medium text-on-surface-secondary hover:text-on-surface"
               >
-                {showDismissed ? "▾" : "▸"} Dismissed ({dismissed.length})
+                {showDismissed ? "▾" : "▸"} {gt("Dismissed ({count})", { count: dismissed.length })}
               </button>
               <p className="mt-1 text-xs text-on-surface-faint">
-                Accepted risks. Still evaluated on every review, but kept off the list above and out
-                of the security alerts until restored. They stay in the exported evidence file.
+                {gt(
+                  "Accepted risks. Still evaluated on every review, but kept off the list above and out of the security alerts until restored. They stay in the exported evidence file.",
+                )}
               </p>
               {showDismissed && (
                 <div className="mt-3 border border-border rounded-xl overflow-hidden">
@@ -786,15 +815,17 @@ export function AccessReviewSection({
 
           {data.principals.length > 0 && (
             <p className="mt-4 text-xs text-on-surface-faint">
-              Computed from already-synced fields — nothing here contacts a provider.{" "}
+              {gt("Computed from already-synced fields — nothing here contacts a provider.")}{" "}
               {data.unknownActivityCount > 0 && (
-                <>
-                  {data.unknownActivityCount} of {data.principals.length} principals report no
-                  last-use date at all; they are shown as <em>Unknown</em> and are never counted as
-                  unused.{" "}
-                </>
+                <T>
+                  <>
+                    <Var>{data.unknownActivityCount}</Var> of <Var>{data.principals.length}</Var>{" "}
+                    principals report no last-use date at all; they are shown as <em>Unknown</em>{" "}
+                    and are never counted as unused.{" "}
+                  </>
+                </T>
               )}
-              Critical and high findings ride the posture alert, under the same switch.
+              {gt("Critical and high findings ride the posture alert, under the same switch.")}
             </p>
           )}
         </>
