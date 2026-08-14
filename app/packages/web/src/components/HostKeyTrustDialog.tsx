@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import { Modal, formatErrorMessage } from "@infrawrench/ui";
 import { trustHostKey, type HostKeyTrustPayload } from "@/lib/host-key-trust";
 
@@ -23,6 +24,7 @@ export function HostKeyTrustDialog({
   onAccepted,
   onCanceled,
 }: HostKeyTrustDialogProps) {
+  const gt = useGT();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [current, setCurrent] = useState<HostKeyTrustPayload>(payload);
@@ -107,13 +109,13 @@ export function HostKeyTrustDialog({
 
           {current.storedFingerprint && (
             <FingerprintRow
-              label="Previously trusted"
+              label={gt("Previously trusted")}
               value={current.storedFingerprint}
               tone="muted"
             />
           )}
           <FingerprintRow
-            label={current.storedFingerprint ? "Now presented" : "Presented fingerprint"}
+            label={current.storedFingerprint ? gt("Now presented") : gt("Presented fingerprint")}
             value={current.presentedFingerprint}
             tone={isMismatch ? "danger" : "neutral"}
           />
@@ -132,7 +134,7 @@ export function HostKeyTrustDialog({
             disabled={submitting}
             className="px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors disabled:opacity-50"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -143,10 +145,10 @@ export function HostKeyTrustDialog({
             }`}
           >
             {submitting
-              ? "Trusting..."
+              ? gt("Trusting...")
               : isMismatch
-                ? "Replace key and continue"
-                : "Trust this key and continue"}
+                ? gt("Replace key and continue")
+                : gt("Trust this key and continue")}
           </button>
         </div>
       </div>
@@ -163,6 +165,7 @@ function FingerprintRow({
   value: string;
   tone: "neutral" | "danger" | "muted";
 }) {
+  const gt = useGT();
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -191,7 +194,7 @@ function FingerprintRow({
           onClick={() => void copy()}
           className="text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
         >
-          {copied ? "Copied" : "Copy"}
+          {copied ? gt("Copied") : gt("Copy")}
         </button>
       </div>
       <div
