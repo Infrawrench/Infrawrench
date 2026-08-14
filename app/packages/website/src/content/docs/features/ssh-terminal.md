@@ -6,7 +6,7 @@ sidebar_order: 3
 
 Any resource that represents a VM — EC2 instance, GCP instance, DigitalOcean Droplet, Hetzner server, Scaleway instance, Fly machine, generic SSH host — has an **SSH** button on its detail page. Clicking it opens a terminal right inside the app (xterm.js).
 
-<insert [Resource page with SSH button, and a terminal panel open beside it] here>
+![The Droplet's resource tab and its SSH tab side by side in the tab strip, with a live terminal session open on api-prod-1](https://agent-assets.infrawrench.com/docs-screenshots/features/ssh-terminal/live-session.png)
 
 ## Picking a key
 
@@ -60,7 +60,7 @@ The SSH view has a **Forward SSH agent** checkbox above the terminal. When enabl
 - **Cloud audit trail.** In cloud/web mode, each forwarded sign-request the proxy performs on your behalf is recorded in the [audit log](../team-and-billing/audit-log.md). Look for action `ssh.agent.session_opened` (one per session) and `ssh.agent.sign` / `ssh.agent.sign_failed` (one per remote SSH challenge). Metadata includes the SSH key id, the target host, and the username used.
 - **Security:** a compromised remote can use the forwarded key against any other host that accepts it. Only enable for hosts you trust. The blast radius is one key — the one you logged in with — not your entire keyring.
 
-<insert [SSH view toolbar showing the "Forward SSH agent" checkbox above the terminal] here>
+![SSH view toolbar showing the "Forward SSH agent" checkbox above the key picker the terminal opens from](https://agent-assets.infrawrench.com/docs-screenshots/features/ssh-terminal/agent-forward-toolbar.png)
 
 ## Security notes
 

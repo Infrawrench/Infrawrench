@@ -10,7 +10,7 @@ Pick a set of SSH-capable hosts, type one command, and Infrawrench runs it on al
 
 Open it from **Fan-out** in the sidebar, on web and on desktop.
 
-<insert [The Fan-out screen with a host list filtered to one provider, several hosts checked, and a command typed in the box] here>
+![The Fan-out screen with a host list filtered to one provider, several hosts checked, and a command typed in the box](https://agent-assets.infrawrench.com/docs-screenshots/features/ssh-fanout/compose-filtered-hosts.png)
 
 ## Picking hosts
 
@@ -41,7 +41,7 @@ Results are grouped by output, not listed per host:
 
 Exit codes are part of the grouping, so hosts that printed the same text but exited non-zero form their own group rather than hiding inside the majority. Each host chip shows its exit code when it is not zero, and **Show output** expands any group's full text.
 
-<insert [Results view with a majority group of 29 hosts collapsed and one outlier host showing a red/green kernel-version diff] here>
+![Results view with a majority group of 29 hosts collapsed and one outlier host showing a red/green kernel-version diff](https://agent-assets.infrawrench.com/docs-screenshots/features/ssh-fanout/results-majority-and-outlier.png)
 
 ## Saved snippets
 

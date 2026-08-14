@@ -6,7 +6,7 @@ sidebar_order: 7
 
 Debugging production is usually a two-person job and almost never a two-terminal one. **Shared consoles** let you take a session you already have open and put someone else on it: they see the same terminal, live, and you can hand them the keyboard when it is easier for them to type than to dictate.
 
-<insert [The web SSH terminal with the Share panel open: the invite link field, the participant list showing one driver and one observer with their role badges, and the Revoke share button] here>
+![The web SSH terminal with the Share panel open: the invite link field, the participant list showing one driver and one observer with their role badges, and the Revoke share button](https://agent-assets.infrawrench.com/docs-screenshots/features/shared-consoles/share-panel.png)
 
 ## Sharing a session
 
@@ -23,7 +23,7 @@ You get an invite link. Send it however you would normally send a link to a coll
 
 The link opens a join screen that names the host, the person sharing, and whether you would be able to type, before you commit to anything. You always join as an **observer**.
 
-<insert [The shared-console join screen showing the host and username, who is sharing, and the "Join as observer" button] here>
+![The shared-console join screen showing the host and username, who is sharing, and the "Join as observer" button](https://agent-assets.infrawrench.com/docs-screenshots/features/shared-consoles/join-screen.png)
 
 Once you are in you see the terminal live. If handover is enabled you can click **Ask for keyboard**; the driver and the sharer see the request and either can grant it. Nothing happens until one of them does — asking is not taking.
 

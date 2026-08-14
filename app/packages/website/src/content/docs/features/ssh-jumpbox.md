@@ -34,7 +34,7 @@ Any cloud VM with an SSH endpoint (EC2 instance, GCE instance, Droplet, Hetzner 
 
 On confirm, it opens the standard SSH-plugin **Add account** form pre-filled with host (the chosen IP), port, username, and the selected jumpbox. Add the private key, save, and a new SSH-target resource appears in the sidebar — already wired to dial through the chosen jumpbox.
 
-<insert [EC2 instance detail page with the "Connect through jumpbox…" button highlighted, and the two-step picker dialog open over it] here>
+![EC2 instance detail page with the "Connect through jumpbox…" button in the action row, and the picker dialog open over it](https://agent-assets.infrawrench.com/docs-screenshots/features/ssh-jumpbox/connect-through-jumpbox-dialog.png)
 
 ## Public vs private address
 

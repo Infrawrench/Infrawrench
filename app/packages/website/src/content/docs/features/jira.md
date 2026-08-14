@@ -55,7 +55,7 @@ Press **Verify** and Infrawrench makes one authenticated call to Jira and tells 
 account answered. Do this before you rely on it — a mistyped email or a revoked token
 otherwise stays invisible until the first time somebody tries to file something.
 
-<insert [Settings → Jira with the site URL, account email and API token fields filled in, and a green "Connected to Jira as ..." confirmation under the Verify button] here>
+![Settings → Jira with the site URL, account email and API token fields filled in, and a green "Connected to Jira as Acme Ops Bot." confirmation shown after pressing Verify](https://agent-assets.infrawrench.com/docs-screenshots/features/jira/settings-connected-verified.png)
 
 The token is encrypted before it is stored and is never sent back to any client — the settings
 page shows only the last few characters of it. Leaving the token field blank when you save
@@ -100,7 +100,7 @@ are kept, so a reconnection picks up where you left off.
 
 Settings → Jira also lists everything filed from this organization, newest first.
 
-<insert [Settings → Jira "Filed issues" list showing several rows with issue keys, source kinds like "cost anomaly" and "posture finding", and dates] here>
+![Settings → Jira "Filed issues" list showing several rows with issue keys, source kinds like "cost anomaly" and "posture finding", and dates](https://agent-assets.infrawrench.com/docs-screenshots/features/jira/settings-filed-issues.png)
 
 ## Desktop and mobile
 

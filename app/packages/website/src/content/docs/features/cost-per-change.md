@@ -11,7 +11,7 @@ against the window **after**, and reports the difference as a **run-rate delta**
 not money in total. A total would describe two spans of time. A rate describes what the estate now
 costs to own, which is the thing a change actually altered.
 
-<insert [The Changes page with cost-impact lines under several rows — one showing a large positive delta with high confidence, one showing a saving, and one row with no cost line at all] here>
+![The Changes page with cost-impact lines under several rows — one showing a large positive delta with high confidence, one showing a saving, and one row with no cost line at all](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-per-change/changes-feed-cost-lines.png)
 
 ## Reading the line
 
@@ -102,7 +102,7 @@ If you need a clean read, look for a change with no overlaps and a full window.
 A deploy usually touches more than one resource, so its cost impact is a **per-resource breakdown**
 that sums to the total.
 
-<insert [The Deploy tab's run history with one run expanded to show its per-resource cost breakdown and the total line above it] here>
+![The Deploy tab's run history with one run expanded to show its per-resource cost breakdown and the total line above it](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-per-change/deploy-run-breakdown.png)
 
 Two things about that total:
 
