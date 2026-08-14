@@ -51,9 +51,9 @@ Changing a control, pressing a declared button, or the `refreshSeconds` timer el
 
 On a dashboard, choose **+ → Custom graph**, then either pick an existing graph or name a new one — a new graph opens in the script editor, seeded with a working example. The editor type-checks against the `graph` API and previews the saved script live, controls included.
 
-<insert [Dashboard with a custom graph card showing a chart, a Range select, and a checkbox, with the "+" add menu open showing the Custom graph entry] here>
+![Dashboard with a custom graph card showing a chart, a Range select, and a checkbox, with the "+" add menu open showing the Custom graph entry](https://agent-assets.infrawrench.com/docs-screenshots/features/custom-graphs/dashboard-card-add-menu.png)
 
-<insert [The custom graph script editor: Monaco on the left with graph API autocomplete, live preview pane on the right showing the rendered chart and its controls] here>
+![The custom graph script editor: Monaco on the left with graph API autocomplete, live preview pane on the right showing the rendered chart and its controls](https://agent-assets.infrawrench.com/docs-screenshots/features/custom-graphs/script-editor-preview.png)
 
 The same graph can sit on any number of dashboards; removing a card leaves the graph itself alone, and deleting a graph removes every card showing it. The picker doubles as the management surface — hover a row to edit a graph's script or delete it outright, including graphs that currently sit on no dashboard at all.
 

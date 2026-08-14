@@ -62,7 +62,7 @@ Opening the confirmation dialog starts the check; the dialog does not wait for i
 
 Resource detail pages carry a **Blast radius** tab with the full report: every dependant listed and linked, every reference named, traffic itemized, and the coverage notes spelled out. This is the one to read _before_ you open the delete dialog — when you are planning a decommission rather than confirming one.
 
-<insert [A resource detail page with the Blast radius tab open, showing the "Resources that depend on this" list with direct/hops badges, the "Things that point at it" list with a customer-visible chip, and the "What wasn't checked" section] here>
+![A resource detail page with the Blast radius tab open, showing the "Resources that depend on this" list with direct/hops badges, the "Things that point at it" list with a customer-visible chip, and the "What wasn't checked" section](https://agent-assets.infrawrench.com/docs-screenshots/features/blast-radius/blast-radius-tab.png)
 
 ### From the command line
 

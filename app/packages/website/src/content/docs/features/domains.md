@@ -27,7 +27,7 @@ Open **Domains** from the sidebar on web or desktop, or run `infrawrench dns`.
 
 The zone domain and the record name are buttons: activating one opens the underlying resource, which is where the edit or delete actually happens. They are ordinary tab stops, so the table is navigable from the keyboard alone.
 
-<insert [Domains screen showing the zones roll-up above the records table, with one record marked Dangling and its explanation visible] here>
+![Domains screen showing the zones roll-up above the records table, with one record marked Dangling and its explanation visible](https://agent-assets.infrawrench.com/docs-screenshots/features/domains/domains-overview.png)
 
 ## Which providers
 

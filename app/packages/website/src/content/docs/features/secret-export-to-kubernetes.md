@@ -16,7 +16,7 @@ This is the flagship cross-plugin flow. You have an RDS database, or an S3 bucke
 4. Pick a namespace and (optionally) rename keys.
 5. Click **Create secret**.
 
-<insert [Secret export dialog with DB_HOST, DB_USER, DB_PASSWORD keys and namespace picker] here>
+![Secret export dialog with DB_HOST, DB_USER, DB_PASSWORD keys and namespace picker](https://agent-assets.infrawrench.com/docs-screenshots/features/secret-export-to-kubernetes/create-secret-dialog.png)
 
 ## Which resources support it
 

@@ -6,7 +6,7 @@ sidebar_order: 6
 
 Several plugins expose a file-browser panel on any resource that holds files. It appears as a **Files** tab on bucket and storage-account resources, alongside Overview and any provider-specific editors (e.g. Bucket Policy on S3-compatible buckets).
 
-<insert [File browser tab open showing folder tree and file grid] here>
+![File browser tab open showing the bucket path bar with folders and files listed](https://agent-assets.infrawrench.com/docs-screenshots/features/file-browsers/s3-files-tab.png)
 
 ## Supported backends
 

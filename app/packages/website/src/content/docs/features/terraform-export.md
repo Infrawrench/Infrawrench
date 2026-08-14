@@ -6,7 +6,7 @@ sidebar_order: 6
 
 Terraform export turns the resources Infrawrench already knows about into a Terraform configuration you can adopt with `terraform import`. It works entirely from stored state — no extra provider API calls, no credentials involved — and it never inlines a secret: API tokens and account IDs are emitted as `var.*` input variables that you fill in locally.
 
-<insert [Export to Terraform modal on a Hetzner server showing the generated HCL, the resource count line, and the Copy HCL / Download main.tf buttons] here>
+![Export to Terraform modal on a Hetzner server showing the generated HCL, the resource count line, and the Copy HCL / Download main.tf buttons](https://agent-assets.infrawrench.com/docs-screenshots/features/terraform-export/hetzner-server-modal.png)
 
 ## Where to find it
 
@@ -25,7 +25,7 @@ One HCL document containing:
 
 Resources that have no mapping yet are listed clearly — in the modal's amber panel, on stderr in the CLI, and in the `unsupported` array of the API response — with the reason, so nothing is dropped silently.
 
-<insert [Account page export modal for a mixed account showing the amber "resources have no Terraform mapping yet" panel above the generated HCL] here>
+![Account page export modal for a mixed account showing the amber "resources have no Terraform mapping yet" panel above the generated HCL](https://agent-assets.infrawrench.com/docs-screenshots/features/terraform-export/account-unsupported-panel.png)
 
 ## Supported providers
 
