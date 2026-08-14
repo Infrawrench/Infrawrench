@@ -1,9 +1,12 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    // Real-database integration tests live in src/__tests__/db and run via
+    // vitest.db.config.ts (`pnpm test:db`), never in the plain unit run.
+    exclude: [...configDefaults.exclude, "src/__tests__/db/**"],
     /*
      * Several suites here `await import(...)` inside the test body or a
      * beforeEach — the only way to load a module after `vi.doMock`, and the

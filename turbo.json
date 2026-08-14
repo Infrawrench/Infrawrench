@@ -19,6 +19,34 @@
       "dependsOn": ["^build"],
       "outputs": ["coverage/**"]
     },
+    "test:db": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "CLICKHOUSE_METRICS_URL",
+        "CLICKHOUSE_METRICS_USER",
+        "CLICKHOUSE_METRICS_PASSWORD",
+        "CLICKHOUSE_METRICS_DATABASE",
+        "CLICKHOUSE_METRICS_REPLICATED"
+      ]
+    },
+    "test:postgres": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "passThroughEnv": ["DATABASE_URL"]
+    },
+    "test:clickhouse": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "passThroughEnv": [
+        "CLICKHOUSE_METRICS_URL",
+        "CLICKHOUSE_METRICS_USER",
+        "CLICKHOUSE_METRICS_PASSWORD",
+        "CLICKHOUSE_METRICS_DATABASE",
+        "CLICKHOUSE_METRICS_REPLICATED"
+      ]
+    },
     "lint": {
       "outputs": []
     },

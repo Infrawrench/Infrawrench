@@ -196,7 +196,10 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.ts",
+    "test:postgres": "vitest run --config vitest.db.config.ts src/__tests__/db/postgres",
+    "test:clickhouse": "vitest run --config vitest.db.config.ts src/__tests__/db/clickhouse"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
