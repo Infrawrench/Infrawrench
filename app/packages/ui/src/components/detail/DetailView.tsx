@@ -20,6 +20,7 @@ import type {
   TranscribeAudioPayload,
   TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
+import { useGT } from "gt-react";
 import { formatMonthlyEstimate } from "@infrawrench/client-core";
 import { MetricChart } from "../charts/MetricChart.js";
 import { CostEstimateChip } from "../CostEstimateChip.js";
@@ -303,6 +304,7 @@ export function DetailView({
   dependencies,
   onOpenDependency,
 }: DetailViewProps) {
+  const gt = useGT();
   const { rerollingField, closeReroll } = useUIStore();
   const hasSqlEditor = !!schema.sqlEditor && !!onRunQuery;
   const hasManifestEditor = !!schema.manifestEditor && !!onGetManifest;
@@ -509,7 +511,7 @@ export function DetailView({
                 onClick={onOpenConsole}
                 className="px-3 py-1.5 text-xs font-medium rounded-lg bg-surface-overlay hover:bg-surface-sunken text-on-surface-secondary transition-colors"
               >
-                Console
+                {gt("Console")}
               </button>
             )}
             {(() => {
@@ -530,7 +532,7 @@ export function DetailView({
         {hasTabs && (
           <div
             role="tablist"
-            aria-label="Resource sections"
+            aria-label={gt("Resource sections")}
             aria-orientation="horizontal"
             className="flex gap-0 px-6 -mb-px overflow-x-auto"
           >
@@ -552,112 +554,112 @@ export function DetailView({
                     onClick={() => setActiveTab("overview")}
                     logoSvg={pluginLogoSvg}
                   >
-                    Overview
+                    {gt("Overview")}
                   </TabButton>
                 );
               }
               if (key === "files") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("files")}>
-                    Files
+                    {gt("Files")}
                   </TabButton>
                 );
               }
               if (key === "sql") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("sql")}>
-                    SQL Editor
+                    {gt("SQL Editor")}
                   </TabButton>
                 );
               }
               if (key === "manifest") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("manifest")}>
-                    {schema.manifestEditor?.resourceKind ?? "Manifest"}
+                    {schema.manifestEditor?.resourceKind ?? gt("Manifest")}
                   </TabButton>
                 );
               }
               if (key === "settings") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("settings")}>
-                    {schema.settingsEditor?.tabLabel ?? "Settings"}
+                    {schema.settingsEditor?.tabLabel ?? gt("Settings")}
                   </TabButton>
                 );
               }
               if (key === "bucket-policy") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("bucket-policy")}>
-                    Bucket Policy
+                    {gt("Bucket Policy")}
                   </TabButton>
                 );
               }
               if (key === "describe") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("describe")}>
-                    Describe
+                    {gt("Describe")}
                   </TabButton>
                 );
               }
               if (key === "logs") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("logs")}>
-                    Logs
+                    {gt("Logs")}
                   </TabButton>
                 );
               }
               if (key === "metrics") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("metrics")}>
-                    Metrics
+                    {gt("Metrics")}
                   </TabButton>
                 );
               }
               if (key === "changes") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("changes")}>
-                    Changes
+                    {gt("Changes")}
                   </TabButton>
                 );
               }
               if (key === "schedule") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("schedule")}>
-                    Schedule
+                    {gt("Schedule")}
                   </TabButton>
                 );
               }
               if (key === "lease") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("lease")}>
-                    Lease
+                    {gt("Lease")}
                   </TabButton>
                 );
               }
               if (key === "ownership") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("ownership")}>
-                    Ownership
+                    {gt("Ownership")}
                   </TabButton>
                 );
               }
               if (key === "blast-radius") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("blast-radius")}>
-                    Blast radius
+                    {gt("Blast radius")}
                   </TabButton>
                 );
               }
               if (key === "artifacts") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("artifacts")}>
-                    Artifacts
+                    {gt("Artifacts")}
                   </TabButton>
                 );
               }
               if (key === "kv-browser") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("kv-browser")}>
-                    Keys
+                    {gt("Keys")}
                   </TabButton>
                 );
               }
@@ -668,42 +670,42 @@ export function DetailView({
                     {...tabProps}
                     onClick={() => setActiveTab("secret-versions")}
                   >
-                    Versions
+                    {gt("Versions")}
                   </TabButton>
                 );
               }
               if (key === "nosql-browser") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("nosql-browser")}>
-                    Documents
+                    {gt("Documents")}
                   </TabButton>
                 );
               }
               if (key === "chat") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("chat")}>
-                    {schema.chatPanel?.tabLabel ?? "Playground"}
+                    {schema.chatPanel?.tabLabel ?? gt("Playground")}
                   </TabButton>
                 );
               }
               if (key === "publish") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("publish")}>
-                    {schema.publishPanel?.tabLabel ?? "Publish"}
+                    {schema.publishPanel?.tabLabel ?? gt("Publish")}
                   </TabButton>
                 );
               }
               if (key === "speech") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("speech")}>
-                    {schema.speechPanel?.tabLabel ?? "Speech"}
+                    {schema.speechPanel?.tabLabel ?? gt("Speech")}
                   </TabButton>
                 );
               }
               if (key === "dependencies") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("dependencies")}>
-                    Dependencies
+                    {gt("Dependencies")}
                   </TabButton>
                 );
               }
@@ -757,7 +759,7 @@ export function DetailView({
           {schema.children && schema.children.length > 0 && (
             <div>
               <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted mb-3">
-                Children
+                {gt("Children")}
               </h3>
               <div className="flex flex-wrap gap-2">
                 {schema.children.map((child) => (
@@ -882,11 +884,11 @@ export function DetailView({
         >
           {metricSeriesEmpty ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-sm text-on-surface-muted">
-              <p>No metric data yet.</p>
+              <p>{gt("No metric data yet.")}</p>
               <p className="text-xs text-on-surface-faint max-w-md text-center">
-                Brand-new resources usually take a few minutes to show up here. Some series (memory,
-                disk, load, filesystem on Droplets) also require the provider's metrics agent to be
-                installed on the host.
+                {gt(
+                  "Brand-new resources usually take a few minutes to show up here. Some series (memory, disk, load, filesystem on Droplets) also require the provider's metrics agent to be installed on the host.",
+                )}
               </p>
             </div>
           ) : (
@@ -899,7 +901,9 @@ export function DetailView({
                   series: [series],
                   ...(schema.metricsCapability?.defaultTimeRangeMs
                     ? {
-                        timeRangeLabel: `Last ${Math.round(schema.metricsCapability.defaultTimeRangeMs / 60000)} min`,
+                        timeRangeLabel: gt("Last {minutes} min", {
+                          minutes: Math.round(schema.metricsCapability.defaultTimeRangeMs / 60000),
+                        }),
                       }
                     : {}),
                 }}
@@ -1115,14 +1119,14 @@ export function DetailView({
           >
             {pane.loading ? (
               <div className="flex items-center justify-center py-16 text-on-surface-muted text-sm animate-pulse">
-                Loading {pane.tabLabel.toLowerCase()}…
+                {gt("Loading {label}…", { label: pane.tabLabel.toLowerCase() })}
               </div>
             ) : renderPeerPane ? (
               renderPeerPane(pane, i)
             ) : (
               <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-raised/50 px-4 py-3 text-sm text-on-surface-tertiary">
                 {pane.schema.status && <StatusDotNodeRenderer node={pane.schema.status} />}
-                <span>No renderer</span>
+                <span>{gt("No renderer")}</span>
               </div>
             )}
           </div>
@@ -1161,6 +1165,7 @@ function AutoChildGroup({
   onChildClick?: (child: ChildResource) => void;
   renderChildResource?: (child: ChildResource, group: ChildResourceGroup) => React.ReactNode;
 }) {
+  const gt = useGT();
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
@@ -1173,13 +1178,13 @@ function AutoChildGroup({
             onClick={() => onChildCreate(group)}
             className="text-xs text-on-surface-faint hover:text-accent transition-colors"
           >
-            + Create {group.displayName}
+            {gt("+ Create {name}", { name: group.displayName })}
           </button>
         )}
       </div>
       {group.resources.length === 0 ? (
         <p className="text-xs text-on-surface-faint">
-          No {group.pluralDisplayName.toLowerCase()} yet.
+          {gt("No {name} yet.", { name: group.pluralDisplayName.toLowerCase() })}
         </p>
       ) : (
         <div className="flex flex-wrap gap-2">
@@ -1278,6 +1283,7 @@ function SchemaChildPill({ child }: { child: DashboardCardSchema }) {
 
 /** One `childGroups` entry: heading, optional create button, and its pills. */
 function SchemaChildGroup({ group }: { group: ChildGroupSchema }) {
+  const gt = useGT();
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
@@ -1290,12 +1296,12 @@ function SchemaChildGroup({ group }: { group: ChildGroupSchema }) {
             onClick={() => dispatchPillAction(group.createAction!)}
             className="text-xs text-on-surface-faint hover:text-accent transition-colors"
           >
-            {group.createLabel ?? "+ Create"}
+            {group.createLabel ?? gt("+ Create")}
           </button>
         )}
       </div>
       {group.items.length === 0 ? (
-        <p className="text-xs text-on-surface-faint">{group.emptyText ?? "No items yet."}</p>
+        <p className="text-xs text-on-surface-faint">{group.emptyText ?? gt("No items yet.")}</p>
       ) : (
         <div className="flex flex-wrap gap-2">
           {group.items.map((child) => (
