@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useGT } from "gt-react";
 import { useNavigate } from "@tanstack/react-router";
 import { ChatListView, ConversationView, useUIStore, type ChatClient } from "@infrawrench/ui";
 import { createDesktopChatClient } from "@/lib/cloud-chat";
@@ -26,6 +27,7 @@ interface Props {
  * local-only mode there is no server-side agent to talk to.
  */
 export function CloudChatPanel({ conversationId }: Props) {
+  const gt = useGT();
   const navigate = useNavigate();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const client = useMemo(
@@ -37,8 +39,9 @@ export function CloudChatPanel({ conversationId }: Props) {
     return (
       <div className="h-full flex items-center justify-center p-6">
         <p className="text-sm text-on-surface-muted max-w-sm text-center">
-          Chat runs through Infrawrench Cloud. Sign in and select an organization to ask the agent
-          about your infrastructure.
+          {gt(
+            "Chat runs through Infrawrench Cloud. Sign in and select an organization to ask the agent about your infrastructure.",
+          )}
         </p>
       </div>
     );
