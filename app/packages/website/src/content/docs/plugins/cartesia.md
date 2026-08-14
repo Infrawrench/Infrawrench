@@ -30,7 +30,7 @@ Two things to know before you read the numbers.
 
 **The amounts are converted from credits, so they are an estimate, not an invoice figure.** Cartesia meters in credits (roughly one credit per character of speech, more per second of audio) and publishes no price per credit and no overage rate — the only public prices are the plan bundles. Infrawrench converts at the cheapest published bundle rate, the Scale plan's $299 per 8 M credits, which is the same rate for every account. If you are on a smaller plan your real cost per credit is higher and the figure here reads low; if you are on a negotiated Enterprise contract it is not modelled at all. Plan-included credits are not subtracted either, so usage inside your monthly allowance still shows as spend. Treat it as the value of what you consumed, and reconcile against Cartesia's own billing before you invoice anyone for it. Budgets and anomaly alerts work off it all the same — it is a faithful picture of consumption trends, just not of your bill.
 
-<insert [Costs page filtered to a Cartesia account, showing the per-capability breakdown and the estimated-amounts notice] here>
+![Costs page filtered to a Cartesia account, showing the per-capability breakdown and the estimated-amounts notice](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cartesia/cost-graph.png)
 
 ## The Speech tab
 

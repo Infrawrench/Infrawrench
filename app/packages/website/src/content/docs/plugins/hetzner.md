@@ -40,7 +40,7 @@ So infrawrench estimates instead: it lists everything in the project and prices 
 
 Nothing extra to set up — the same project API token you already added is all it needs.
 
-<insert [Costs panel for a Hetzner account, with the estimated-costs notice visible above the chart and the service breakdown showing Server, Volume and Traffic] here>
+![Costs panel for a Hetzner account, with the estimated-costs notice visible above the chart and the service breakdown showing Server, Volume and Traffic](https://agent-assets.infrawrench.com/docs-screenshots/plugins/hetzner/cost-graph.png)
 
 ### What gets priced
 

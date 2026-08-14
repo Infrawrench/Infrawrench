@@ -105,7 +105,7 @@ Three of those are worth a sentence:
 - **`Fee` is filed as a commitment fee** even though AWS also uses it for the occasional non-reservation subscription. AWS documents it as the upfront fee for an All Upfront or Partial Upfront RI, and that purchase is the single largest one-day charge most accounts ever see; hiding it under "Other" to protect against the rare subscription is the worse trade.
 - **AWS's discount families read as "Other"**, deliberately. An Enterprise Discount Program or private-rate discount is not a credit, and filing it as one would make a negotiated rate indistinguishable from spending promotional balance. Infrawrench has no charge type for a negotiated discount, so it says so rather than guessing.
 
-<insert [Cost graph for an AWS account grouped by Charge type, showing a usage band with smaller commitment fee, tax and credit bands stacked on it] here>
+![Cost graph for an AWS account grouped by Charge type, showing a usage band with smaller commitment fee, tax and credit bands stacked on it](https://agent-assets.infrawrench.com/docs-screenshots/plugins/aws/cost-graph.png)
 
 ### Amortized cost
 
