@@ -210,3 +210,11 @@ jobs:
           CLICKHOUSE_METRICS_USER: default
           CLICKHOUSE_METRICS_PASSWORD: infrawrench
           CLICKHOUSE_METRICS_DATABASE: infrawrench
+
+      - name: Shadow-run the mocked ClickHouse suites
+        run: pnpm test:clickhouse:shadow
+        env:
+          CLICKHOUSE_METRICS_URL: http://localhost:8123
+          CLICKHOUSE_METRICS_USER: default
+          CLICKHOUSE_METRICS_PASSWORD: infrawrench
+          CLICKHOUSE_METRICS_DATABASE: infrawrench

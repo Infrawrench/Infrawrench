@@ -10,6 +10,7 @@
     "test:db": "turbo test:db",
     "test:postgres": "turbo test:postgres",
     "test:clickhouse": "turbo test:clickhouse",
+    "test:clickhouse:shadow": "turbo test:clickhouse:shadow",
     "lint": "turbo lint",
     "clean": "turbo clean && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +",
     "format": "prettier --write .",

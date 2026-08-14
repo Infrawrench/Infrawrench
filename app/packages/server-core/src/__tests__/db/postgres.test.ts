@@ -84,16 +84,24 @@ describe.skipIf(!connectionString)("postgres against a real server", () => {
   it("enforces unique indexes", async () => {
     const org = testOrg();
     // The violation aborts (and thereby rolls back) the whole transaction.
-    await expect(
-      db!.transaction(async (tx) => {
+    const failure: unknown = await db!
+      .transaction(async (tx) => {
         await tx.insert(schema.organizations).values(org);
         for (const id of [`test-snip-${randomUUID()}`, `test-snip-${randomUUID()}`]) {
           await tx
             .insert(schema.sshSnippets)
             .values({ id, organizationId: org.id, name: "dup", command: "uptime" });
         }
-      }),
-    ).rejects.toThrow(/ssh_snippets_org_name_unique/);
+      })
+      .then(
+        () => null,
+        (err: unknown) => err,
+      );
+    // Drizzle wraps the server error ("Failed query: …"), with the Postgres
+    // error on the cause chain — the constraint name lives there.
+    const messages: string[] = [];
+    for (let err = failure; err instanceof Error; err = err.cause) messages.push(err.message);
+    expect(messages.join("\n")).toMatch(/ssh_snippets_org_name_unique/);
   });
 
   it("cascades organization deletion to owned rows", async () => {
