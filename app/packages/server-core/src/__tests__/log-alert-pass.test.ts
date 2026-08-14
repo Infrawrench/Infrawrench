@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { alertReachedImpl, routed, unroutedResult } from "./helpers/route-alert";
+import { fakePostgres } from "./helpers/fake-postgres";
 
 // --- capture vars, reset per test -----------------------------------------
 
+/** Rows the raw claim UPDATE returns — snake_case, passed through unmapped. */
 let claimRows: Array<{ id: string; claim_token: string }> = [];
 let queryRow: Record<string, unknown> | undefined;
-let resourceRows: Array<{ id: string; displayName: string; deletedAt: Date | null }> = [];
-const completionWrites: Array<Record<string, unknown>> = [];
-let completionMatches = true;
+/** Rows the stream-name lookup returns, in its projection order. */
+let resourceRows: Array<{ id: string; displayName: string; deletedAt: string | null }> = [];
 
 const getLogs = vi.fn();
 const peerGetLogs = vi.fn();
@@ -16,57 +17,28 @@ const getClientForResource = vi.fn();
 
 // --- module mocks (before the SUT import) ----------------------------------
 
-vi.mock("../db/client", () => {
-  // `db.select()` serves two call sites: the query-row refetch (select().
-  // from(logWorkspaceQueries)...limit(1)) and the stream-name lookup
-  // (select({...}).from(resources).where(...)). Distinguish by the table.
-  const select = (_shape?: unknown) => ({
-    from: (table: { __t?: string }) => {
-      if (table.__t === "resources") {
-        return { where: () => Promise.resolve(resourceRows) };
-      }
-      return {
-        where: () => ({ limit: () => Promise.resolve(queryRow ? [queryRow] : []) }),
-      };
-    },
-  });
-  return {
-    db: {
-      execute: () => Promise.resolve(claimRows),
-      select,
-      update: () => ({
-        set: (values: Record<string, unknown>) => ({
-          where: () => {
-            completionWrites.push(values);
-            return {
-              returning: () => Promise.resolve(completionMatches ? [{ id: "q1" }] : []),
-            };
-          },
-        }),
-      }),
-    },
-  };
-});
+// Real Drizzle over a recording driver against the real schema — the claim,
+// the post-claim refetch, the stream-name lookup and the completion write all
+// render their actual SQL (and shadow-validate under test:postgres:shadow).
+// `runPass` queues each query's rows FIFO in execution order.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
-vi.mock("../db/schema", () => ({
-  logWorkspaceQueries: { __t: "logWorkspaceQueries", id: "id", nextEvalAt: "nextEvalAt" },
-  resources: {
-    __t: "resources",
-    id: "id",
-    displayName: "displayName",
-    deletedAt: "deletedAt",
-    organizationId: "organizationId",
-  },
-}));
-
-vi.mock("drizzle-orm", () => ({
-  and: (...parts: unknown[]) => ({ and: parts }),
-  eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
-  inArray: (a: unknown, b: unknown) => ({ inArray: [a, b] }),
-  sql: Object.assign((..._a: unknown[]) => ({ sql: true }), {
-    raw: () => ({ sql: true }),
-  }),
-}));
+/**
+ * The completion UPDATEs, decoded back to `{column: param}` from the rendered
+ * set-clause. Columns render in table order and the WHERE's params follow the
+ * set params, so slicing at ` where ` keeps the mapping exact. Timestamps come
+ * back as the ISO strings the driver would send.
+ */
+function completionWrites(): Array<Record<string, unknown>> {
+  return pg.queries
+    .filter((q) => q.sql.startsWith('update "log_workspace_queries"'))
+    .map((q) => {
+      const setClause = q.sql.slice(0, q.sql.indexOf(" where "));
+      const cols = [...setClause.matchAll(/"([a-z_]+)" = \$/g)].map((m) => m[1]!);
+      return Object.fromEntries(cols.map((c, i) => [c, q.params[i]]));
+    });
+}
 
 vi.mock("../org-accounts", () => ({
   getOrgAccountClient: (...a: unknown[]) => getOrgAccountClient(...a),
@@ -92,13 +64,18 @@ vi.mock("../alerts/route", () => ({
   alertReached: alertReachedImpl,
 }));
 
-import { runLogAlertPass } from "../log-workspaces/pass";
+const { runLogAlertPass } = await import("../log-workspaces/pass");
 import { LOG_WORKSPACE_LIMITS } from "@infrawrench/client-core";
 
 // --- fixtures ---------------------------------------------------------------
 
 const NOW = Date.parse("2026-08-03T10:00:00.000Z");
 
+/** A timestamp in the text form the Postgres driver hands back. */
+const pgTs = (d: Date) => d.toISOString().replace("T", " ").replace("Z", "");
+
+// Keys in log_workspace_queries column order, values driver-shaped — see
+// helpers/fake-postgres.ts.
 function baseRow(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: "q1",
@@ -114,17 +91,33 @@ function baseRow(over: Record<string, unknown> = {}): Record<string, unknown> {
     ],
     search: "error",
     alertEnabled: true,
-    nextEvalAt: new Date(NOW),
+    nextEvalAt: pgTs(new Date(NOW)),
     lastEvalAt: null,
     lastMatchAt: null,
     lastAlertedAt: null,
     lastEvalError: null,
     lastMatchSample: null,
     createdByUserId: null,
-    createdAt: new Date(NOW - 1000),
-    updatedAt: new Date(NOW - 1000),
+    createdAt: pgTs(new Date(NOW - 1000)),
+    updatedAt: pgTs(new Date(NOW - 1000)),
     ...over,
   };
+}
+
+/**
+ * Queue one pass's DB responses in execution order, then run it: the claim,
+ * the post-claim refetch, the stream-name lookup (skipped with
+ * `names: false` for rows whose guards fire before it), and the completion
+ * UPDATE's RETURNING row (the claim token still held).
+ */
+async function runPass(opts: { names?: boolean } = {}) {
+  pg.queueRows(claimRows);
+  if (claimRows.length > 0) {
+    pg.queueRows(queryRow ? [queryRow] : []);
+    if (opts.names !== false) pg.queueRows(resourceRows);
+    pg.queueRows([{ id: "q1" }]);
+  }
+  return runLogAlertPass({ now: NOW });
 }
 
 function hushLogs() {
@@ -139,8 +132,7 @@ beforeEach(() => {
   claimRows = [{ id: "q1", claim_token: "2026-08-03 10:10:00" }];
   queryRow = baseRow();
   resourceRows = [{ id: "res-1", displayName: "api-pod", deletedAt: null }];
-  completionWrites.length = 0;
-  completionMatches = true;
+  pg.reset();
   getLogs.mockReset().mockResolvedValue({
     text: "ok line\nERROR boom\n",
     containers: ["app"],
@@ -160,7 +152,7 @@ beforeEach(() => {
 
 describe("runLogAlertPass — match and dispatch", () => {
   it("fetches a bounded tail, dispatches on match and stamps lastAlertedAt", async () => {
-    const result = await runLogAlertPass({ now: NOW });
+    const result = await runPass();
     expect(result).toEqual({ claimed: 1, evaluated: 1, matched: 1, notified: 1, failed: 0 });
 
     expect(getLogs).toHaveBeenCalledWith("k8s-pod", "res-1", "acc-1", {
@@ -186,13 +178,13 @@ describe("runLogAlertPass — match and dispatch", () => {
       matchCount: 1,
     });
 
-    const completion = completionWrites.at(-1)!;
-    expect(completion["lastAlertedAt"]).toEqual(new Date(NOW));
-    expect(completion["lastMatchAt"]).toEqual(new Date(NOW));
-    expect(completion["lastMatchSample"]).toBe("ERROR boom");
-    expect(completion["lastEvalError"]).toBeNull();
-    expect(completion["nextEvalAt"]).toEqual(
-      new Date(NOW + LOG_WORKSPACE_LIMITS.alertEvalIntervalMs),
+    const completion = completionWrites().at(-1)!;
+    expect(completion["last_alerted_at"]).toBe(new Date(NOW).toISOString());
+    expect(completion["last_match_at"]).toBe(new Date(NOW).toISOString());
+    expect(completion["last_match_sample"]).toBe("ERROR boom");
+    expect(completion["last_eval_error"]).toBeNull();
+    expect(completion["next_eval_at"]).toBe(
+      new Date(NOW + LOG_WORKSPACE_LIMITS.alertEvalIntervalMs).toISOString(),
     );
   });
 
@@ -208,7 +200,7 @@ describe("runLogAlertPass — match and dispatch", () => {
         },
       ],
     });
-    await runLogAlertPass({ now: NOW });
+    await runPass();
     expect(getLogs).toHaveBeenCalledWith("k8s-pod", "res-1", "acc-1", {
       tailLines: LOG_WORKSPACE_LIMITS.alertTailLines,
       container: "sidecar",
@@ -217,32 +209,32 @@ describe("runLogAlertPass — match and dispatch", () => {
 
   it("does not stamp lastAlertedAt when no channel delivered", async () => {
     routeAlert.mockResolvedValue(unroutedResult());
-    const result = await runLogAlertPass({ now: NOW });
+    const result = await runPass();
     expect(result.notified).toBe(0);
-    const completion = completionWrites.at(-1)!;
-    expect(completion["lastAlertedAt"]).toBeUndefined();
-    expect(completion["lastMatchAt"]).toEqual(new Date(NOW));
+    const completion = completionWrites().at(-1)!;
+    expect(completion["last_alerted_at"]).toBeUndefined();
+    expect(completion["last_match_at"]).toBe(new Date(NOW).toISOString());
   });
 });
 
 describe("runLogAlertPass — cooldown", () => {
   it("suppresses dispatch inside the cooldown window but still records the match", async () => {
     queryRow = baseRow({
-      lastAlertedAt: new Date(NOW - LOG_WORKSPACE_LIMITS.alertCooldownMs + 60_000),
+      lastAlertedAt: pgTs(new Date(NOW - LOG_WORKSPACE_LIMITS.alertCooldownMs + 60_000)),
     });
-    const result = await runLogAlertPass({ now: NOW });
+    const result = await runPass();
     expect(result).toEqual({ claimed: 1, evaluated: 1, matched: 1, notified: 0, failed: 0 });
     expect(routeAlert).not.toHaveBeenCalled();
-    const completion = completionWrites.at(-1)!;
-    expect(completion["lastMatchAt"]).toEqual(new Date(NOW));
-    expect(completion["lastAlertedAt"]).toBeUndefined();
+    const completion = completionWrites().at(-1)!;
+    expect(completion["last_match_at"]).toBe(new Date(NOW).toISOString());
+    expect(completion["last_alerted_at"]).toBeUndefined();
   });
 
   it("dispatches again once the cooldown has elapsed", async () => {
     queryRow = baseRow({
-      lastAlertedAt: new Date(NOW - LOG_WORKSPACE_LIMITS.alertCooldownMs - 1),
+      lastAlertedAt: pgTs(new Date(NOW - LOG_WORKSPACE_LIMITS.alertCooldownMs - 1)),
     });
-    const result = await runLogAlertPass({ now: NOW });
+    const result = await runPass();
     expect(result.notified).toBe(1);
     expect(routeAlert).toHaveBeenCalledTimes(1);
   });
@@ -251,12 +243,12 @@ describe("runLogAlertPass — cooldown", () => {
 describe("runLogAlertPass — no match", () => {
   it("records the evaluation without dispatching", async () => {
     getLogs.mockResolvedValue({ text: "all good\n", containers: [], activeContainer: "" });
-    const result = await runLogAlertPass({ now: NOW });
+    const result = await runPass();
     expect(result).toEqual({ claimed: 1, evaluated: 1, matched: 0, notified: 0, failed: 0 });
     expect(routeAlert).not.toHaveBeenCalled();
-    const completion = completionWrites.at(-1)!;
-    expect(completion["lastEvalAt"]).toEqual(new Date(NOW));
-    expect(completion["lastMatchAt"]).toBeUndefined();
+    const completion = completionWrites().at(-1)!;
+    expect(completion["last_eval_at"]).toBe(new Date(NOW).toISOString());
+    expect(completion["last_match_at"]).toBeUndefined();
   });
 });
 
@@ -272,7 +264,7 @@ describe("runLogAlertPass — sidecar streams", () => {
   it("resolves the client through the peer path and anchors names on the parent", async () => {
     queryRow = baseRow({ resources: [sidecarSelector] });
     resourceRows = [{ id: "parent-1", displayName: "prod-cluster", deletedAt: null }];
-    const result = await runLogAlertPass({ now: NOW });
+    const result = await runPass();
     expect(result).toEqual({ claimed: 1, evaluated: 1, matched: 1, notified: 1, failed: 0 });
 
     expect(getOrgAccountClient).not.toHaveBeenCalled();
@@ -287,22 +279,24 @@ describe("runLogAlertPass — sidecar streams", () => {
 
   it("reports a gone parent instead of evaluating", async () => {
     queryRow = baseRow({ resources: [sidecarSelector] });
-    resourceRows = [{ id: "parent-1", displayName: "prod-cluster", deletedAt: new Date(NOW) }];
-    const result = await runLogAlertPass({ now: NOW });
+    resourceRows = [
+      { id: "parent-1", displayName: "prod-cluster", deletedAt: pgTs(new Date(NOW)) },
+    ];
+    const result = await runPass();
     expect(result.failed).toBe(1);
     expect(getClientForResource).not.toHaveBeenCalled();
-    const completion = completionWrites.at(-1)!;
-    expect(completion["lastEvalError"]).toContain("Parent resource parent-1 is no longer synced");
+    const completion = completionWrites().at(-1)!;
+    expect(completion["last_eval_error"]).toContain("Parent resource parent-1 is no longer synced");
   });
 
   it("reports a vanished peer integration as the stream's error", async () => {
     queryRow = baseRow({ resources: [sidecarSelector] });
     resourceRows = [{ id: "parent-1", displayName: "prod-cluster", deletedAt: null }];
     getClientForResource.mockResolvedValue(null);
-    const result = await runLogAlertPass({ now: NOW });
+    const result = await runPass();
     expect(result.failed).toBe(1);
-    const completion = completionWrites.at(-1)!;
-    expect(completion["lastEvalError"]).toContain("no longer exposes a kubernetes sidecar");
+    const completion = completionWrites().at(-1)!;
+    expect(completion["last_eval_error"]).toContain("no longer exposes a kubernetes sidecar");
   });
 
   it("caches one peer client per parent across a query's streams", async () => {
@@ -313,7 +307,7 @@ describe("runLogAlertPass — sidecar streams", () => {
       ],
     });
     resourceRows = [{ id: "parent-1", displayName: "prod-cluster", deletedAt: null }];
-    await runLogAlertPass({ now: NOW });
+    await runPass();
     expect(getClientForResource).toHaveBeenCalledTimes(1);
     expect(peerGetLogs).toHaveBeenCalledTimes(2);
   });
@@ -322,19 +316,20 @@ describe("runLogAlertPass — sidecar streams", () => {
 describe("runLogAlertPass — guard rails", () => {
   it("records an error instead of alerting for an empty (match-all) expression", async () => {
     queryRow = baseRow({ search: "   " });
-    const result = await runLogAlertPass({ now: NOW });
+    // The compile guard fires before the stream-name lookup runs.
+    const result = await runPass({ names: false });
     expect(result.failed).toBe(1);
     expect(getLogs).not.toHaveBeenCalled();
     expect(routeAlert).not.toHaveBeenCalled();
-    expect(completionWrites.at(-1)!["lastEvalError"]).toMatch(/non-empty search/);
+    expect(completionWrites().at(-1)!["last_eval_error"]).toMatch(/non-empty search/);
   });
 
   it("records an invalid regex instead of alerting", async () => {
     queryRow = baseRow({ search: "/[unclosed/" });
-    const result = await runLogAlertPass({ now: NOW });
+    const result = await runPass({ names: false });
     expect(result.failed).toBe(1);
     expect(getLogs).not.toHaveBeenCalled();
-    expect(completionWrites.at(-1)!["lastEvalError"]).toMatch(/Invalid regex/);
+    expect(completionWrites().at(-1)!["last_eval_error"]).toMatch(/Invalid regex/);
   });
 
   it("aggregates per-stream failures into lastEvalError without blocking others", async () => {
@@ -354,29 +349,31 @@ describe("runLogAlertPass — guard rails", () => {
         },
       ],
     });
-    const result = await runLogAlertPass({ now: NOW });
+    const result = await runPass();
     // res-1 still matched and notified; res-gone is reported.
     expect(result).toEqual({ claimed: 1, evaluated: 1, matched: 1, notified: 1, failed: 1 });
-    expect(String(completionWrites.at(-1)!["lastEvalError"])).toMatch(/no longer synced/);
+    expect(String(completionWrites().at(-1)!["last_eval_error"])).toMatch(/no longer synced/);
   });
 
   it("reports a plugin that no longer supports logs", async () => {
     getOrgAccountClient.mockResolvedValue({ client: {} });
-    const result = await runLogAlertPass({ now: NOW });
+    const result = await runPass();
     expect(result.failed).toBe(1);
-    expect(String(completionWrites.at(-1)!["lastEvalError"])).toMatch(/no longer supports logs/);
+    expect(String(completionWrites().at(-1)!["last_eval_error"])).toMatch(
+      /no longer supports logs/,
+    );
   });
 
   it("skips rows whose alert was turned off after the claim", async () => {
     queryRow = baseRow({ alertEnabled: false });
-    const result = await runLogAlertPass({ now: NOW });
+    const result = await runPass({ names: false });
     expect(result).toEqual({ claimed: 1, evaluated: 0, matched: 0, notified: 0, failed: 0 });
     expect(getLogs).not.toHaveBeenCalled();
   });
 
   it("does nothing when no queries are due", async () => {
     claimRows = [];
-    const result = await runLogAlertPass({ now: NOW });
+    const result = await runPass();
     expect(result).toEqual({ claimed: 0, evaluated: 0, matched: 0, notified: 0, failed: 0 });
   });
 });

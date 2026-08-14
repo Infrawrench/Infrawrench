@@ -14,19 +14,13 @@ vi.mock("../clickhouse/cost-writers", () => ({ insertCostRows, hashTags }));
 const isClickHouseConfigured = vi.fn(() => true);
 vi.mock("../clickhouse/client", () => ({ isClickHouseConfigured }));
 
-vi.mock("../db/schema", () => ({
-  accounts: {
-    __t: "accounts",
-    id: "id",
-    organizationId: "organization_id",
-    deletedAt: "deleted_at",
-  },
-}));
+import { fakePostgres } from "./helpers/fake-postgres";
 
-/** Account rows the org-membership check finds. */
-let knownAccounts: Array<{ id: string }> = [];
-const db = { select: () => ({ from: () => ({ where: () => Promise.resolve(knownAccounts) }) }) };
-vi.mock("../db/client", () => ({ db }));
+// Real Drizzle over a recording driver against the real schema — the
+// org-membership check renders its actual SQL (and shadow-validates under
+// test:postgres:shadow). `pg.setRows` feeds the account rows it finds.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
 let mod: typeof import("../cost/workflow-costs");
 
@@ -48,7 +42,7 @@ function inserted(): Array<Record<string, unknown>> {
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  knownAccounts = [];
+  pg.reset();
   isClickHouseConfigured.mockReturnValue(true);
   mod = await import("../cost/workflow-costs");
 });
@@ -74,15 +68,18 @@ describe("writeWorkflowCostRows", () => {
   });
 
   it("attributes a row to a connected account when asked", async () => {
-    knownAccounts = [{ id: "acc1" }];
+    pg.setRows([{ id: "acc1" }]);
     await write([{ ...ROW, accountId: "acc1" }]);
     expect(inserted()[0]).toMatchObject({ account_id: "acc1", plugin_id: "workflow" });
+    // The membership check ran against accounts, scoped to the org.
+    expect(pg.lastQuery().sql).toContain('from "accounts"');
+    expect(pg.lastQuery().params).toEqual(["org1", "acc1"]);
     // Still tagged — this is what keeps the key disjoint from AWS's own rows.
     expect(inserted()[0]?.["tags"]).toMatchObject({ "infrawrench:workflow": "wf1" });
   });
 
   it("rejects an accountId from outside the organization without writing anything", async () => {
-    knownAccounts = [];
+    // default empty result: the membership check finds no account
     await expect(write([{ ...ROW, accountId: "someone-elses" }])).rejects.toThrow(
       /not an account in this organization/,
     );

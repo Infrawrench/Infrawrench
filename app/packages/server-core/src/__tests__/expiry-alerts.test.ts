@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { alertReachedImpl, routed, unroutedResult } from "./helpers/route-alert";
+import { fakePostgres } from "./helpers/fake-postgres";
 
 /**
  * Expiry alert orchestration. The message rendering is covered by
@@ -9,84 +10,17 @@ import { alertReachedImpl, routed, unroutedResult } from "./helpers/route-alert"
  * scan", not "last message"), while a scan whose message reached nobody — or
  * that threw — is rolled back so the next tick retries.
  *
- * The DB is a chainable fake: `selectDistinct` resolves to `dueRows` (the
- * due-org query), `insert` (the claim) resolves to `claimResult`, `update`
- * records the release.
+ * The DB is real Drizzle over a recording driver against the real schema —
+ * the due-org query, the claim upsert and the release update render their
+ * actual SQL (and shadow-validate under test:postgres:shadow). Sequential
+ * results are queued: [due orgs], then [the claim's RETURNING].
  */
 
-vi.mock("../db/schema", () => ({
-  accounts: {
-    __t: "accounts",
-    organizationId: "organizationId",
-    deletedAt: "deletedAt",
-  },
-  orgExpirySettings: {
-    __t: "orgExpirySettings",
-    organizationId: "organizationId",
-    enabled: "enabled",
-    leadDays: "leadDays",
-    lastNotifiedAt: "lastNotifiedAt",
-  },
-}));
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
-/** Rows the due-org query resolves to. */
-let dueRows: unknown[] = [];
-/** When set, the due-org query rejects with this. */
-let dueError: Error | null = null;
-/** `limit(n)` argument of the due-org query. */
-let lastLimit: number | undefined;
-/** What the claim's `returning()` yields — a non-empty array means claimed. */
-let claimResult: unknown[] = [];
-/** `set(...)` arguments of every update, i.e. the releases. */
-let releases: unknown[] = [];
-/** `where(...)` arguments of every release, for asserting claim ownership. */
-let releaseWheres: unknown[] = [];
-
-vi.mock("../db/client", () => {
-  const distinctChain = () => {
-    const self: Record<string, unknown> = {};
-    for (const m of ["leftJoin", "where", "orderBy"]) self[m] = () => self;
-    self["limit"] = (n: number) => {
-      lastLimit = n;
-      return dueError ? Promise.reject(dueError) : Promise.resolve(dueRows);
-    };
-    return self;
-  };
-  const insertChain = () => {
-    const self: Record<string, unknown> = {};
-    for (const m of ["values", "onConflictDoUpdate"]) self[m] = () => self;
-    self["returning"] = () => Promise.resolve(claimResult);
-    return self;
-  };
-  const updateChain = () => {
-    const self: Record<string, unknown> = {};
-    self["set"] = (s: unknown) => {
-      releases.push(s);
-      return self;
-    };
-    self["where"] = (w: unknown) => {
-      releaseWheres.push(w);
-      return Promise.resolve(undefined);
-    };
-    return self;
-  };
-  return {
-    db: {
-      selectDistinct: () => ({ from: () => distinctChain() }),
-      insert: () => insertChain(),
-      update: () => updateChain(),
-    },
-  };
-});
-
-vi.mock("drizzle-orm", () => ({
-  and: (...parts: unknown[]) => ({ and: parts }),
-  eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
-  isNull: (c: unknown) => ({ isNull: c }),
-  lte: (a: unknown, b: unknown) => ({ lte: [a, b] }),
-  or: (...parts: unknown[]) => ({ or: parts }),
-  sql: Object.assign((..._a: unknown[]) => ({ sql: true }), { raw: () => ({ sql: true }) }),
-}));
+/** The release updates issued against the settings table, i.e. the rollbacks. */
+const releases = () => pg.queries.filter((q) => q.sql.startsWith('update "org_expiry_settings"'));
 
 const getExpirySettings = vi.fn();
 vi.mock("../expiry/settings", () => ({
@@ -113,7 +47,7 @@ vi.mock("../alerts/route", () => ({
   alertReached: alertReachedImpl,
 }));
 
-import { EXPIRY_NOTIFY_COOLDOWN_MS, runExpiryAlerts } from "../expiry/alerts";
+const { EXPIRY_NOTIFY_COOLDOWN_MS, runExpiryAlerts } = await import("../expiry/alerts");
 
 const ORG = "org1";
 const NOW = new Date("2026-08-01T10:00:00.000Z");
@@ -168,12 +102,9 @@ function hushErrors() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  dueRows = [{ organizationId: ORG }];
-  dueError = null;
-  lastLimit = undefined;
-  claimResult = [{ organizationId: ORG }];
-  releases = [];
-  releaseWheres = [];
+  pg.reset();
+  pg.queueRows([{ organizationId: ORG }]); // the due-org query
+  pg.queueRows([{ organizationId: ORG }]); // the claim's RETURNING — claim won
   getExpirySettings.mockResolvedValue(settings());
   listExpiring.mockResolvedValue(feed([feedItem()]));
   routeAlert.mockResolvedValue(routed());
@@ -183,11 +114,16 @@ beforeEach(() => {
 describe("the due batch", () => {
   it("passes the caller's limit through to the due-org query", async () => {
     await runExpiryAlerts({ limit: 4 }, NOW);
-    expect(lastLimit).toBe(4);
+    // The parameterized LIMIT is the statement's last parameter.
+    expect(pg.queries[0]!.sql).toContain("limit");
+    expect(pg.queries[0]!.params.at(-1)).toBe(4);
   });
 
   it("survives the due query failing, without throwing into the poller", async () => {
-    dueError = new Error("db is down");
+    // A row the recording driver cannot decode makes the due query itself
+    // reject — the closest a canned driver gets to "db is down".
+    pg.reset();
+    pg.queueRows([null as never]);
     const spy = hushErrors();
     expect(await runExpiryAlerts({ limit: 4 }, NOW)).toEqual({
       scanned: 0,
@@ -213,11 +149,13 @@ describe("cooldown claim", () => {
   });
 
   it("stays silent when another replica already holds the window", async () => {
-    claimResult = [];
+    pg.reset();
+    pg.queueRows([{ organizationId: ORG }]);
+    pg.queueRows([]); // the claim's RETURNING — another replica holds it
     const result = await runExpiryAlerts({ limit: 4 }, NOW);
     expect(result.outcomes[ORG]).toEqual({ status: "cooling-down" });
     expect(listExpiring).not.toHaveBeenCalled();
-    expect(releases).toEqual([]);
+    expect(releases()).toEqual([]);
   });
 
   it("skips an org whose row was disabled between the due query and the scan", async () => {
@@ -243,7 +181,7 @@ describe("the quiet-scan rule", () => {
     expect(result.scanned).toBe(1);
     expect(result.sent).toBe(0);
     expect(routeAlert).not.toHaveBeenCalled();
-    expect(releases).toEqual([]);
+    expect(releases()).toEqual([]);
   });
 
   it("does not alert on items beyond the lead time", async () => {
@@ -260,7 +198,10 @@ describe("release semantics", () => {
     routeAlert.mockResolvedValue(unroutedResult());
     const result = await runExpiryAlerts({ limit: 4 }, NOW);
     expect(result.outcomes[ORG]).toEqual({ status: "undelivered", deadlines: 1 });
-    expect(releases).toEqual([{ lastNotifiedAt: PRIOR }]);
+    expect(releases()).toHaveLength(1);
+    // set "last_notified_at" = $1 (the prior stamp, restored) where the org
+    // still carries this claim's own instant.
+    expect(releases()[0]!.params).toEqual([PRIOR.toISOString(), ORG, NOW.toISOString()]);
   });
 
   it("releases when the feed throws, so the day is not silently spent", async () => {
@@ -274,7 +215,8 @@ describe("release semantics", () => {
       claimed: true,
       released: true,
     });
-    expect(releases).toEqual([{ lastNotifiedAt: PRIOR }]);
+    expect(releases()).toHaveLength(1);
+    expect(releases()[0]!.params).toEqual([PRIOR.toISOString(), ORG, NOW.toISOString()]);
     spy.mockRestore();
   });
 
@@ -283,10 +225,11 @@ describe("release semantics", () => {
     listExpiring.mockRejectedValue(new Error("feed exploded"));
     const spy = hushErrors();
     await runExpiryAlerts({ limit: 4 }, NOW);
-    expect(releaseWheres).toHaveLength(1);
-    // The claim instant appearing in the predicate is what distinguishes an
-    // owned rollback from a blind one.
-    expect(JSON.stringify(releaseWheres[0])).toContain(NOW.toISOString());
+    expect(releases()).toHaveLength(1);
+    // The claim instant appearing in the WHERE parameters is what
+    // distinguishes an owned rollback from a blind one.
+    expect(releases()[0]!.sql).toContain('"last_notified_at" = ');
+    expect(releases()[0]!.params.slice(1)).toContain(NOW.toISOString());
     spy.mockRestore();
   });
 
@@ -302,7 +245,7 @@ describe("release semantics", () => {
     const spy = hushErrors();
     const result = await runExpiryAlerts({ limit: 4 }, NOW);
     expect(result.outcomes[ORG]).toMatchObject({ status: "sent" });
-    expect(releases).toEqual([]);
+    expect(releases()).toEqual([]);
     spy.mockRestore();
   });
 
@@ -311,7 +254,7 @@ describe("release semantics", () => {
     listExpiring.mockRejectedValue(new Error("feed exploded"));
     const spy = hushErrors();
     await runExpiryAlerts({ limit: 4 }, NOW);
-    expect(releases).toHaveLength(1);
+    expect(releases()).toHaveLength(1);
     spy.mockRestore();
   });
 
@@ -326,7 +269,7 @@ describe("release semantics", () => {
       released: false,
     });
     expect(result.scanned).toBe(0);
-    expect(releases).toEqual([]);
+    expect(releases()).toEqual([]);
     spy.mockRestore();
   });
 });

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AlertEvent } from "../alerts/route";
 import { alertReachedImpl, routed } from "./helpers/route-alert";
+import { fakePostgres } from "./helpers/fake-postgres";
 
 /**
  * Unit-cost regression evaluation tests that exercise the *pipeline*, not the
@@ -43,53 +44,36 @@ vi.mock("../slack", () => ({
 }));
 vi.mock("../msteams", () => ({ sendMsTeamsToWebhooks }));
 
-const BUSINESS_METRICS = { id: "id", organizationId: "organization_id", createdAt: "created_at" };
-const REGRESSION_EVENTS = { id: "id" };
-vi.mock("../db/schema", () => ({
-  businessMetrics: BUSINESS_METRICS,
-  unitCostRegressionEvents: REGRESSION_EVENTS,
-}));
+// Real Drizzle over a recording driver against the real schema — every
+// statement renders its actual SQL (and shadow-validates under
+// test:postgres:shadow). `prime()` below queues each pass's rows FIFO.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
+/** Rows the metric-list select returns (keys in projection order). */
 let metricRows: Array<Record<string, unknown>> = [];
+/** Whether the fire-once insert finds a free slot. */
 let insertWins = true;
+/** Count the cooldown probe reports. */
 let notifiedInCooldown = 0;
-let inserts: Array<Record<string, unknown>> = [];
-let stamped = 0;
 
-const db = {
-  select: (cols?: Record<string, unknown>) => ({
-    from: (table: unknown) => {
-      // The cooldown probe selects a count; the metric list selects columns.
-      if (cols && "n" in cols) {
-        return { where: () => Promise.resolve([{ n: notifiedInCooldown }]) };
-      }
-      const chain = {
-        where: () => chain,
-        orderBy: () => chain,
-        limit: () => Promise.resolve(table === BUSINESS_METRICS ? metricRows : []),
-        then: (resolve: (v: unknown) => void) => resolve(metricRows),
-      };
-      return chain;
-    },
-  }),
-  insert: () => ({
-    values: (values: Record<string, unknown>) => {
-      inserts.push(values);
-      return {
-        onConflictDoNothing: () => ({
-          returning: () => Promise.resolve(insertWins ? [{ id: `ev${inserts.length}` }] : []),
-        }),
-      };
-    },
-  }),
-  update: () => ({
-    set: (patch: Record<string, unknown>) => {
-      if (patch["notifiedAt"] instanceof Date) stamped += 1;
-      return { where: () => Promise.resolve() };
-    },
-  }),
-};
-vi.mock("../db/client", () => ({ db }));
+/** The regression-event inserts issued this pass. */
+const inserts = () =>
+  pg.queries.filter((q) => q.sql.startsWith('insert into "unit_cost_regression_events"'));
+/** The notified-at stamps issued this pass. */
+const stamps = () =>
+  pg.queries.filter((q) => q.sql.startsWith('update "unit_cost_regression_events"'));
+
+/**
+ * Prime the recording driver for one pass, in execution order: the metric
+ * list, then — where a finding lands — the insert claim's RETURNING and the
+ * cooldown count. Entries a pass never reaches stay queued, harmlessly.
+ */
+function prime() {
+  pg.queueRows(metricRows);
+  pg.queueRows(insertWins ? [{ id: "ev1" }] : []);
+  pg.queueRows([{ n: notifiedInCooldown }]);
+}
 
 const routeAlert = vi.fn(async (_event: AlertEvent) => routed());
 vi.mock("../alerts/route", () => ({
@@ -151,6 +135,7 @@ function costs(previousPerDay: number, currentPerDay: number) {
 beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
+  pg.reset();
   metricRows = [
     {
       id: "metric1",
@@ -164,8 +149,6 @@ beforeEach(async () => {
   ];
   insertWins = true;
   notifiedInCooldown = 0;
-  inserts = [];
-  stamped = 0;
   getOrgEfficiencySettings.mockResolvedValue({ ...SETTINGS });
   getOrgCurrencySettings.mockResolvedValue({ displayCurrency: null });
   listOrgExchangeRates.mockResolvedValue([]);
@@ -180,6 +163,7 @@ beforeEach(async () => {
 
 describe("evaluateUnitCostRegressionsForOrg — routing", () => {
   it("raises through the alert routing layer, never a transport", async () => {
+    prime();
     await evaluate("org1", NOW, true);
 
     expect(routeAlert).toHaveBeenCalledTimes(1);
@@ -190,6 +174,7 @@ describe("evaluateUnitCostRegressionsForOrg — routing", () => {
   });
 
   it("names the metric, the move, and what to look at", async () => {
+    prime();
     await evaluate("org1", NOW, true);
     const event = routeAlert.mock.calls[0]![0];
 
@@ -209,27 +194,35 @@ describe("evaluateUnitCostRegressionsForOrg — routing", () => {
   });
 
   it("stamps the row once a delivery reached (or was held for) somebody", async () => {
+    prime();
     await evaluate("org1", NOW, true);
-    expect(stamped).toBe(1);
+    expect(stamps()).toHaveLength(1);
+    expect(stamps()[0]!.sql).toContain('"notified_at"');
   });
 });
 
 describe("evaluateUnitCostRegressionsForOrg — dedup", () => {
   it("keys the row on the current window's last day", async () => {
+    prime();
     await evaluate("org1", NOW, true);
-    expect(inserts[0]).toMatchObject({
-      metricId: "metric1",
-      currency: "USD",
-      windowFrom: "2026-07-28",
-      windowTo: "2026-08-10",
-      previousFrom: "2026-07-14",
-      previousTo: "2026-07-27",
-      changePercent: 40,
-    });
+    expect(inserts()).toHaveLength(1);
+    // (id, organizationId), metricId, currency, windowFrom, windowTo,
+    // previousFrom, previousTo — the rendered statement's column order.
+    expect(inserts()[0]!.params.slice(2, 8)).toEqual([
+      "metric1",
+      "USD",
+      "2026-07-28",
+      "2026-08-10",
+      "2026-07-14",
+      "2026-07-27",
+    ]);
+    // changePercent, after the two unit costs.
+    expect(inserts()[0]!.params[10]).toBe(40);
   });
 
   it("notifies nobody when this window already fired", async () => {
     insertWins = false;
+    prime();
     await evaluate("org1", NOW, true);
     expect(routeAlert).not.toHaveBeenCalled();
   });
@@ -239,8 +232,9 @@ describe("evaluateUnitCostRegressionsForOrg — dedup", () => {
     // every morning — the cooldown is what stops fourteen alerts about one
     // level shift.
     notifiedInCooldown = 1;
+    prime();
     await evaluate("org1", NOW, true);
-    expect(inserts).toHaveLength(1);
+    expect(inserts()).toHaveLength(1);
     expect(routeAlert).not.toHaveBeenCalled();
   });
 });
@@ -250,9 +244,10 @@ describe("evaluateUnitCostRegressionsForOrg — gaps and history", () => {
     getMetricValues.mockResolvedValue(
       [...PREVIOUS_DAYS.slice(0, 4), ...CURRENT_DAYS].map((day) => ({ day, value: 100 })),
     );
+    prime();
     await evaluate("org1", NOW, true);
     expect(routeAlert).not.toHaveBeenCalled();
-    expect(inserts).toHaveLength(0);
+    expect(inserts()).toHaveLength(0);
   });
 
   it("never fires from spend on days the metric was not reported", async () => {
@@ -263,6 +258,7 @@ describe("evaluateUnitCostRegressionsForOrg — gaps and history", () => {
     getMetricValues.mockResolvedValue(
       [...PREVIOUS_DAYS, ...CURRENT_DAYS.slice(0, 10)].map((day) => ({ day, value: 100 })),
     );
+    prime();
     await evaluate("org1", NOW, true);
     expect(routeAlert).not.toHaveBeenCalled();
   });
@@ -273,6 +269,7 @@ describe("evaluateUnitCostRegressionsForOrg — gaps and history", () => {
       ...PREVIOUS_DAYS.map((day) => ({ day, value: 100 })),
       ...CURRENT_DAYS.map((day) => ({ day, value: 300 })),
     ]);
+    prime();
     await evaluate("org1", NOW, true);
     expect(routeAlert).not.toHaveBeenCalled();
   });
@@ -281,6 +278,7 @@ describe("evaluateUnitCostRegressionsForOrg — gaps and history", () => {
 describe("evaluateUnitCostRegressionsForOrg — guards", () => {
   it("does nothing when the detector is off", async () => {
     getOrgEfficiencySettings.mockResolvedValue({ ...SETTINGS, unitCostRegressionEnabled: false });
+    prime();
     await evaluate("org1", NOW, true);
     expect(queryCosts).not.toHaveBeenCalled();
   });
@@ -292,6 +290,7 @@ describe("evaluateUnitCostRegressionsForOrg — guards", () => {
     resolveSavedCostFilters.mockRejectedValue(
       new SavedCostFilterResolutionError("filter was deleted"),
     );
+    prime();
     await evaluate("org1", NOW, true);
     expect(queryCosts).not.toHaveBeenCalled();
     expect(routeAlert).not.toHaveBeenCalled();
@@ -299,6 +298,7 @@ describe("evaluateUnitCostRegressionsForOrg — guards", () => {
 
   it("swallows a failed metric rather than breaking the poller", async () => {
     queryCosts.mockRejectedValue(new Error("clickhouse down"));
+    prime();
     await expect(evaluate("org1", NOW, true)).resolves.toBeUndefined();
     expect(routeAlert).not.toHaveBeenCalled();
   });

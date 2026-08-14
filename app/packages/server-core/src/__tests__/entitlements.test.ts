@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const mockSelect = vi.fn();
-vi.mock("../db/client", () => ({ db: { select: (...a: unknown[]) => mockSelect(...a) } }));
+import { fakePostgres } from "./helpers/fake-postgres";
+
+// Real Drizzle over a recording driver: the org and subscription lookups render
+// their actual SQL (and shadow-validate under test:postgres:shadow).
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
 // Prepaid capacity queries its own table, so it is stubbed rather than queued
 // into selectSequence — these tests are about which source wins.
@@ -12,13 +16,9 @@ vi.mock("../billing/capacity-slots", () => ({
 
 const { planAccess, requirePaidPlan, PlanRequiredError } = await import("../entitlements");
 
-/** Queue one select chain per query, in call order: the org row, then subs. */
-function selectSequence(...rowSets: unknown[][]) {
-  for (const rows of rowSets) {
-    const where = vi.fn().mockResolvedValue(rows);
-    const from = vi.fn().mockReturnValue({ where });
-    mockSelect.mockReturnValueOnce({ from });
-  }
+/** Queue one query's rows, in call order: the org row, then subs. Keys in projection order. */
+function selectSequence(...rowSets: Array<Array<Record<string, unknown>>>) {
+  for (const rows of rowSets) pg.queueRows(rows);
 }
 
 const orgRow = (complimentary: boolean) => [{ complimentary }];
@@ -30,6 +30,7 @@ const sub = (status: string, stripeSubscriptionId: string | null = "sub_live") =
 describe("planAccess", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pg.reset();
     // No prepaid capacity unless a test says otherwise.
     mockActiveCapacitySeats.mockResolvedValue(0);
   });
@@ -37,7 +38,8 @@ describe("planAccess", () => {
   it("grants complimentary orgs without consulting subscriptions", async () => {
     selectSequence(orgRow(true));
     expect(await planAccess("org-1")).toEqual({ paid: true, reason: "complimentary" });
-    expect(mockSelect).toHaveBeenCalledTimes(1);
+    expect(pg.queries).toHaveLength(1);
+    expect(pg.lastQuery().sql).toContain('from "organizations"');
   });
 
   it("denies with reason none when there are no subscription rows", async () => {
@@ -166,6 +168,7 @@ describe("planAccess", () => {
 describe("requirePaidPlan", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pg.reset();
     // No prepaid capacity unless a test says otherwise.
     mockActiveCapacitySeats.mockResolvedValue(0);
   });

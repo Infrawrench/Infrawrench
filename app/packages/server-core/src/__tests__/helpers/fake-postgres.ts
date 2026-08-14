@@ -11,8 +11,29 @@
  * mocks (the real schema is the point), and feed results with
  * {@link FakePostgres.setRows} / {@link FakePostgres.queueRows}. As in the
  * ClickHouse fake, row objects must list their keys in projection order.
- * Note the pg-proxy driver does not support `db.transaction` — suites built
- * around transactions keep their stubs for now.
+ * Hard-won details, learned across the ~40 suites already migrated:
+ *
+ * - Import the module under test with a top-level `await import(...)` after
+ *   the mocks. A static import hoists above `const pg = fakePostgres()` and
+ *   the `vi.mock` factory hits the TDZ.
+ * - `timestamp` (without timezone) columns decode driver strings via
+ *   `new Date(value + "+0000")`, so a `Z`-suffixed ISO string SILENTLY
+ *   becomes Invalid Date. Use `"2026-08-01 00:00:00.000"`-shaped strings, or
+ *   a `Date` object (non-strings pass through untouched).
+ * - Every statement consumes one FIFO slot — interleaved inserts/updates need
+ *   `queueRows([])` padding before the read that wants rows. `insert/update
+ *   … returning(…)` decodes positionally like a select (method "all"); plain
+ *   writes and raw `db.execute` return rows as-is (method "execute").
+ * - There is no rejection hook; a test that needs one query to fail can queue
+ *   `[null as never]` ("all" decode throws on it) or `vi.spyOn(pg.db,
+ *   "select")` for a call.
+ *
+ * `db.transaction` is shimmed flat (pg-proxy's own throws): the callback runs
+ * against this same recording db, with no BEGIN/COMMIT captured — the shape
+ * every hand stub faked too. Statements inside record and shadow-validate
+ * individually. Transaction *semantics* (rollback on throw, savepoints,
+ * `tx.rollback()`) are not modelled; the real-server postgres.test.ts suite
+ * is where those are exercised.
  *
  * ## Shadow mode (`INFRAWRENCH_SHADOW_POSTGRES=1`)
  *
@@ -100,6 +121,11 @@ export function fakePostgres(): FakePostgres {
     },
     { schema },
   );
+
+  // Flat transaction shim — see the module comment.
+  Object.assign(db, {
+    transaction: (fn: (tx: typeof db) => Promise<unknown>) => fn(db),
+  });
 
   return {
     db,

@@ -11,8 +11,13 @@ import { alertReachedImpl, routed, unroutedResult } from "./helpers/route-alert"
  * exactly what a `baseline.length` guard cannot see, and what let every key of
  * a brand-new org alert as a new spend source on day one.
  *
- * ClickHouse and Postgres are mocked at their module boundaries, matching
- * `budget-eval.test.ts`.
+ * ClickHouse is mocked at its module boundary, matching `budget-eval.test.ts`.
+ * Postgres is real Drizzle over a recording driver (helpers/fake-postgres.ts):
+ * a pass issues the settings select, then one upsert per finding, then per
+ * pending anomaly a hints update (when there are hints), the cooldown count and
+ * the notifiedAt stamp, and finally the SMS claim's read + conditional update —
+ * results are queued FIFO in that order (`queuePass` / `queueSmsClaim` below).
+ * What the pass wrote is read back from the captured SQL.
  */
 
 const queryCosts = vi.fn();
@@ -25,105 +30,104 @@ vi.mock("../twilio-pager", () => ({ sendOneShotPage }));
 
 /**
  * Root-cause hints are mocked at the module boundary: their queries have
- * their own suite (`anomaly-hints.test.ts`), and the fake db below only
- * understands the evaluator's own query shapes. Default: no hints, which is
- * also what a real failure degrades to.
+ * their own suite (`anomaly-hints.test.ts`), and the recording driver below is
+ * choreographed for the evaluator's own query shapes. Default: no hints, which
+ * is also what a real failure degrades to.
  */
 const buildAnomalyHints = vi.fn(async (): Promise<string[]> => []);
 vi.mock("../cost/anomaly-hints", () => ({ buildAnomalyHints }));
 
-const ORG_COST_ANOMALY_SETTINGS = {
-  organizationId: "organization_id",
-  sigmas: "sigmas",
-  minDeltaCents: "min_delta_cents",
-  newSourceMinCents: "new_source_min_cents",
-  smsAlerts: "sms_alerts",
-  smsLastPagedAt: "sms_last_paged_at",
-};
+import { fakePostgres } from "./helpers/fake-postgres";
 
-vi.mock("../db/schema", () => ({
-  costAnomalies: {
-    id: "id",
-    organizationId: "organization_id",
-    day: "day",
-    dimension: "dimension",
-    dimensionKey: "dimension_key",
-    currency: "currency",
-    notifiedAt: "notified_at",
-  },
-  orgCostAnomalySettings: ORG_COST_ANOMALY_SETTINGS,
-}));
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
-/** Every row `detectForDimension` upserted, in order. */
-let inserted: Array<Record<string, unknown>> = [];
+const snakeToCamel = (s: string) => s.replace(/_([a-z])/g, (_, ch: string) => ch.toUpperCase());
 
 /**
- * The `set` payload of every upsert conflict, in order — what a re-judged day
+ * Every row `detectForDimension` upserted, in order — decoded from each
+ * rendered `insert into "cost_anomalies"` statement's column list and params.
+ */
+function inserted(): Array<Record<string, unknown>> {
+  return pg.queries
+    .filter((q) => q.sql.startsWith('insert into "cost_anomalies"'))
+    .map((q) => {
+      const cols = /\(([^)]+)\)\s+values/i
+        .exec(q.sql)![1]!
+        .split(",")
+        .map((c) => snakeToCamel(c.trim().replace(/"/g, "")));
+      return Object.fromEntries(cols.map((c, i) => [c, q.params[i]]));
+    });
+}
+
+/**
+ * The column names of every upsert conflict's `set` — what a re-judged day
  * actually overwrites. It exists so a test can prove what is *not* in it.
  */
-let conflictSets: Array<Record<string, unknown>> = [];
+function conflictSets(): string[][] {
+  return pg.queries
+    .filter((q) => q.sql.startsWith('insert into "cost_anomalies"'))
+    .map((q) =>
+      /do update set (.+?) returning/i
+        .exec(q.sql)![1]!
+        .split(",")
+        .map((assign) => snakeToCamel(assign.trim().split(" ")[0]!.replace(/"/g, ""))),
+    );
+}
 
 /**
  * The org's `org_cost_anomaly_settings` row, or `null` for an org that has
  * never opened the form (which reads as the shipped defaults — SMS off).
+ * Queued at the top of each pass by {@link queuePass}.
  */
 let settingsRow: Record<string, unknown> | null = null;
 
 /** How many anomaly rows were stamped with `notifiedAt` this pass. */
-let stampedCount = 0;
+const stampedCount = () =>
+  pg.queries.filter(
+    (q) => q.sql.startsWith('update "cost_anomalies"') && q.sql.includes('"notified_at"'),
+  ).length;
 
 /** Every `hints` array written onto an anomaly row this pass. */
-let hintWrites: string[][] = [];
+const hintWrites = () =>
+  pg.queries
+    .filter((q) => q.sql.startsWith('update "cost_anomalies"') && q.sql.includes('"hints"'))
+    .map((q) => (typeof q.params[0] === "string" ? JSON.parse(q.params[0]) : q.params[0]));
 
-/** Whether the conditional UPDATE that claims the SMS window finds a row. */
-let smsWindowFree = true;
+/** Every `sms_last_paged_at` the claim protocol wrote, so releases are visible. */
+const smsClaimWrites = () =>
+  pg.queries
+    .filter((q) => q.sql.startsWith('update "org_cost_anomaly_settings"'))
+    .map((q) => {
+      const m = /set "sms_last_paged_at" = (\$\d+|null)/.exec(q.sql);
+      if (!m) throw new Error(`unexpected settings update: ${q.sql}`);
+      return m[1] === "null" || q.params[0] == null ? null : new Date(String(q.params[0]));
+    });
 
-/** Every UPDATE ... RETURNING the claim issued, so releases are visible. */
-let smsClaimWrites: Array<Date | null> = [];
+/**
+ * Queue one pass's reads up to the notify loop: the settings row, then one
+ * upsert RETURNING per finding (id + a null `notifiedAt`, i.e. undelivered).
+ */
+function queuePass(anomalies: number) {
+  pg.queueRows(settingsRow ? [settingsRow] : []);
+  for (let i = 0; i < anomalies; i += 1) {
+    pg.queueRows([{ id: `anom${i + 1}`, notifiedAt: null }]);
+  }
+}
 
-const db = {
-  select: () => ({
-    from: (table: unknown) => ({
-      where: () =>
-        Promise.resolve(
-          table === ORG_COST_ANOMALY_SETTINGS ? (settingsRow ? [settingsRow] : []) : [{ n: 0 }],
-        ),
-    }),
-  }),
-  insert: () => ({
-    values: (v: Record<string, unknown>) => {
-      inserted.push(v);
-      return {
-        onConflictDoUpdate: (cfg: { set: Record<string, unknown> }) => {
-          conflictSets.push(cfg.set);
-          return {
-            returning: () => Promise.resolve([{ id: `anom${inserted.length}`, notifiedAt: null }]),
-          };
-        },
-      };
-    },
-  }),
-  update: (table: unknown) => ({
-    set: (patch: Record<string, unknown>) => {
-      if (table === ORG_COST_ANOMALY_SETTINGS) {
-        smsClaimWrites.push((patch["smsLastPagedAt"] as Date | null) ?? null);
-        const claimed = smsWindowFree;
-        // A claim is one conditional UPDATE: it either matches the row or it
-        // doesn't. The release that follows a failed send is unconditional in
-        // this fake — what matters to a caller is that it was attempted.
-        return {
-          where: () => ({
-            returning: () => Promise.resolve(claimed ? [{ organizationId: "org" }] : []),
-          }),
-        };
-      }
-      if (patch["notifiedAt"] instanceof Date) stampedCount += 1;
-      if (Array.isArray(patch["hints"])) hintWrites.push(patch["hints"] as string[]);
-      return { where: () => Promise.resolve() };
-    },
-  }),
-};
-vi.mock("../db/client", () => ({ db }));
+/**
+ * Queue the rest of a pass whose SMS claim must succeed: the per-anomaly
+ * notify-loop statements (each delivered anomaly issues its cooldown count and
+ * its notifiedAt stamp, plus a hints update when hints were built), then the
+ * claim's prior read and the conditional UPDATE — which either matches the row
+ * or it doesn't. A test whose window is already spent simply skips this helper
+ * and lets the claim resolve to the empty default.
+ */
+function queueSmsClaim(anomalies: number, { hintsPerAnomaly = 0 } = {}) {
+  for (let i = 0; i < anomalies * (2 + hintsPerAnomaly); i += 1) pg.queueRows([]);
+  pg.queueRows([]); // the claim's prior read
+  pg.queueRows([{ organizationId: "org" }]); // the conditional claim matches
+}
 
 /**
  * All three transports sit behind `routeAlert` now, so that is the single seam
@@ -175,13 +179,8 @@ function providerCosts(groups: unknown[]) {
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  inserted = [];
-  conflictSets = [];
-  stampedCount = 0;
-  hintWrites = [];
+  pg.reset();
   buildAnomalyHints.mockResolvedValue([]);
-  smsClaimWrites = [];
-  smsWindowFree = true;
   settingsRow = null;
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   queryCosts.mockResolvedValue([]);
@@ -209,7 +208,7 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
 
     await anomalyEval.detectCostAnomaliesForOrg("org-young", NOW, OPTS, true);
 
-    expect(inserted).toEqual([]);
+    expect(inserted()).toEqual([]);
     expect(routeAlert).not.toHaveBeenCalled();
   });
 
@@ -221,7 +220,7 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
 
     await anomalyEval.detectCostAnomaliesForOrg("org-day-one", NOW, OPTS, true);
 
-    expect(inserted).toEqual([]);
+    expect(inserted()).toEqual([]);
     expect(routeAlert).not.toHaveBeenCalled();
   });
 
@@ -231,11 +230,12 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
     // *org's* coverage may silence a finding.
     getCostCoverage.mockResolvedValue(coverage("2026-01-01"));
     providerCosts([{ key: "gcp", currency: "USD", points: [{ bucket: YESTERDAY, amount: 5000 }] }]);
+    queuePass(1);
 
     await anomalyEval.detectCostAnomaliesForOrg("org-established", NOW, OPTS, true);
 
-    expect(inserted).toHaveLength(1);
-    expect(inserted[0]).toMatchObject({
+    expect(inserted()).toHaveLength(1);
+    expect(inserted()[0]).toMatchObject({
       day: YESTERDAY,
       kind: "new_source",
       dimension: "provider",
@@ -255,17 +255,18 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
     // 2026-07-07 → 2026-07-14 is 7 whole days of coverage: the boundary.
     getCostCoverage.mockResolvedValue(coverage("2026-07-07"));
     providerCosts([group]);
+    queuePass(1);
     await anomalyEval.detectCostAnomaliesForOrg("org-at-boundary", NOW, OPTS, true);
-    expect(inserted).toHaveLength(1);
-    expect(inserted[0]).toMatchObject({ kind: "new_source", day: YESTERDAY });
+    expect(inserted()).toHaveLength(1);
+    expect(inserted()[0]).toMatchObject({ kind: "new_source", day: YESTERDAY });
 
-    inserted = [];
+    pg.reset();
 
     // One day less, and the org is still too young to make the claim.
     getCostCoverage.mockResolvedValue(coverage("2026-07-08"));
     providerCosts([group]);
     await anomalyEval.detectCostAnomaliesForOrg("org-under-boundary", NOW, OPTS, true);
-    expect(inserted).toEqual([]);
+    expect(inserted()).toEqual([]);
   });
 
   it("measures coverage from the org's earliest account, not its newest", async () => {
@@ -273,11 +274,12 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
     // not be silenced by that account's own short history.
     getCostCoverage.mockResolvedValue(coverage("2026-01-01", YESTERDAY));
     providerCosts([{ key: "gcp", currency: "USD", points: [{ bucket: YESTERDAY, amount: 5000 }] }]);
+    queuePass(1);
 
     await anomalyEval.detectCostAnomaliesForOrg("org-multi-account", NOW, OPTS, true);
 
-    expect(inserted).toHaveLength(1);
-    expect(inserted[0]).toMatchObject({ kind: "new_source" });
+    expect(inserted()).toHaveLength(1);
+    expect(inserted()[0]).toMatchObject({ kind: "new_source" });
   });
 
   it("reads coverage once per pass, not once per dimension or key", async () => {
@@ -286,11 +288,12 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
       { key: "gcp", currency: "USD", points: [{ bucket: YESTERDAY, amount: 5000 }] },
       { key: "fly", currency: "USD", points: [{ bucket: YESTERDAY, amount: 6000 }] },
     ]);
+    queuePass(2);
 
     await anomalyEval.detectCostAnomaliesForOrg("org-one-read", NOW, OPTS, true);
 
     expect(getCostCoverage).toHaveBeenCalledTimes(1);
-    expect(inserted).toHaveLength(2);
+    expect(inserted()).toHaveLength(2);
   });
 
   it("keeps detecting spikes when the coverage read fails, and never throws", async () => {
@@ -305,13 +308,14 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
         ],
       },
     ]);
+    queuePass(1);
 
     await expect(
       anomalyEval.detectCostAnomaliesForOrg("org-coverage-fails", NOW, OPTS, true),
     ).resolves.toBeUndefined();
 
-    expect(inserted).toHaveLength(1);
-    expect(inserted[0]).toMatchObject({ kind: "spike", day: YESTERDAY });
+    expect(inserted()).toHaveLength(1);
+    expect(inserted()[0]).toMatchObject({ kind: "spike", day: YESTERDAY });
   });
 
   it("does not let a young org's spike detection break either", async () => {
@@ -331,7 +335,7 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
 
     await anomalyEval.detectCostAnomaliesForOrg("org-young-spike", NOW, OPTS, true);
 
-    expect(inserted).toEqual([]);
+    expect(inserted()).toEqual([]);
   });
 });
 
@@ -340,18 +344,24 @@ describe("detectCostAnomaliesForOrg — new-source guard against collection cove
  * that flags a provider plus every service under it must produce one text.
  *
  * `anomaly-sms.ts` runs for real here (including the cooldown claim, against
- * the fake db above); only `sendOneShotPage` is mocked, so what is asserted is
- * what Twilio would have been handed.
+ * the recording driver above); only `sendOneShotPage` is mocked, so what is
+ * asserted is what Twilio would have been handed.
  */
 describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
-  /** A settings row with the SMS opt-in set. Numbers are the shipped defaults. */
+  /** A settings row with the SMS opt-in set. Numbers are the shipped defaults;
+   *  keys in `org_cost_anomaly_settings` column order. */
   function settings(smsAlerts: "off" | "new_source" | "all", smsLastPagedAt: Date | null = null) {
     settingsRow = {
+      organizationId: "org",
       sigmas: 3,
       minDeltaCents: 1000,
       newSourceMinCents: 2500,
       smsAlerts,
-      smsLastPagedAt,
+      smsLastPagedAt: smsLastPagedAt
+        ? smsLastPagedAt.toISOString().replace("T", " ").replace("Z", "")
+        : null,
+      createdAt: "2026-01-01 00:00:00",
+      updatedAt: "2026-01-01 00:00:00",
     };
   }
 
@@ -371,10 +381,12 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
     settings("all");
     sendOneShotPage.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
     manyNewSources(12);
+    queuePass(12);
+    queueSmsClaim(12);
 
     await anomalyEval.detectCostAnomaliesForOrg("org-flood", NOW, OPTS, true);
 
-    expect(inserted).toHaveLength(12);
+    expect(inserted()).toHaveLength(12);
     expect(sendOneShotPage).toHaveBeenCalledTimes(1);
   });
 
@@ -382,6 +394,8 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
     settings("all");
     sendOneShotPage.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
     manyNewSources(12);
+    queuePass(12);
+    queueSmsClaim(12);
 
     await anomalyEval.detectCostAnomaliesForOrg("org-overflow", NOW, OPTS, true);
 
@@ -399,22 +413,24 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
     // every org is in the day this shipped, including the ones that already
     // have Twilio configured for budget alerts.
     manyNewSources(3);
+    queuePass(3);
 
     await anomalyEval.detectCostAnomaliesForOrg("org-default", NOW, OPTS, true);
 
-    expect(inserted).toHaveLength(3);
+    expect(inserted()).toHaveLength(3);
     expect(sendOneShotPage).not.toHaveBeenCalled();
-    expect(smsClaimWrites).toEqual([]);
+    expect(smsClaimWrites()).toEqual([]);
   });
 
   it("sends nothing when the toggle is off, and never claims the window", async () => {
     settings("off");
     manyNewSources(3);
+    queuePass(3);
 
     await anomalyEval.detectCostAnomaliesForOrg("org-off", NOW, OPTS, true);
 
     expect(sendOneShotPage).not.toHaveBeenCalled();
-    expect(smsClaimWrites).toEqual([]);
+    expect(smsClaimWrites()).toEqual([]);
   });
 
   it("texts only about new sources when that is what was asked for", async () => {
@@ -434,10 +450,12 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
       // …and something that appeared from nothing.
       { key: "gcp", currency: "USD", points: [{ bucket: YESTERDAY, amount: 5000 }] },
     ]);
+    queuePass(2);
+    queueSmsClaim(2);
 
     await anomalyEval.detectCostAnomaliesForOrg("org-new-only", NOW, OPTS, true);
 
-    expect(inserted).toHaveLength(2);
+    expect(inserted()).toHaveLength(2);
     const [, body] = sendOneShotPage.mock.calls[0]! as unknown as [string, string];
     expect(body).toContain("gcp");
     expect(body).not.toContain("aws");
@@ -457,22 +475,25 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
         ],
       },
     ]);
+    queuePass(1);
 
     await anomalyEval.detectCostAnomaliesForOrg("org-spike-only", NOW, OPTS, true);
 
-    expect(inserted).toHaveLength(1);
+    expect(inserted()).toHaveLength(1);
     expect(sendOneShotPage).not.toHaveBeenCalled();
   });
 
   it("skips the text while the org's six-hour window is still spent", async () => {
     settings("all", new Date(NOW.getTime() - 60 * 60 * 1000));
-    smsWindowFree = false;
+    // The claim's conditional UPDATE resolves to the empty default: it matched
+    // no row, exactly what a spent window answers.
     manyNewSources(4);
+    queuePass(4);
 
     await anomalyEval.detectCostAnomaliesForOrg("org-cooling", NOW, OPTS, true);
 
     // The anomalies are still stored and still fanned out elsewhere.
-    expect(inserted).toHaveLength(4);
+    expect(inserted()).toHaveLength(4);
     expect(sendOneShotPage).not.toHaveBeenCalled();
   });
 
@@ -480,12 +501,14 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
     settings("all", null);
     sendOneShotPage.mockResolvedValue({ attempted: 2, succeeded: 0, failed: 2 });
     manyNewSources(2);
+    queuePass(2);
+    queueSmsClaim(2);
 
     await anomalyEval.detectCostAnomaliesForOrg("org-undelivered", NOW, OPTS, true);
 
     // Claimed with `now`, then restored to the prior value — an outage must not
     // buy six hours of silence.
-    expect(smsClaimWrites).toEqual([NOW, null]);
+    expect(smsClaimWrites()).toEqual([NOW, null]);
   });
 
   it("stamps notifiedAt for an org whose only transport is SMS", async () => {
@@ -494,10 +517,12 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
     settings("all");
     sendOneShotPage.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
     manyNewSources(3);
+    queuePass(3);
+    queueSmsClaim(3);
 
     await anomalyEval.detectCostAnomaliesForOrg("org-sms-only", NOW, OPTS, true);
 
-    expect(stampedCount).toBe(3);
+    expect(stampedCount()).toBe(3);
   });
 
   it("does not double-stamp what push already delivered", async () => {
@@ -505,10 +530,12 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
     routeAlert.mockResolvedValue(routed());
     sendOneShotPage.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
     manyNewSources(3);
+    queuePass(3);
+    queueSmsClaim(3);
 
     await anomalyEval.detectCostAnomaliesForOrg("org-both", NOW, OPTS, true);
 
-    expect(stampedCount).toBe(3);
+    expect(stampedCount()).toBe(3);
   });
 
   it("keeps the SMS free of hints — its length budget is spent on the anomalies", async () => {
@@ -516,6 +543,8 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
     buildAnomalyHints.mockResolvedValue(["47 gce-instance resources appeared"]);
     sendOneShotPage.mockResolvedValue({ attempted: 1, succeeded: 1, failed: 0 });
     manyNewSources(2);
+    queuePass(2);
+    queueSmsClaim(2, { hintsPerAnomaly: 1 });
 
     await anomalyEval.detectCostAnomaliesForOrg("org-sms-no-hints", NOW, OPTS, true);
 
@@ -528,13 +557,15 @@ describe("detectCostAnomaliesForOrg — batched SMS paging", () => {
     routeAlert.mockResolvedValue(routed());
     sendOneShotPage.mockRejectedValue(new Error("twilio down"));
     manyNewSources(3);
+    queuePass(3);
+    queueSmsClaim(3);
 
     await expect(
       anomalyEval.detectCostAnomaliesForOrg("org-twilio-throws", NOW, OPTS, true),
     ).resolves.toBeUndefined();
 
-    expect(inserted).toHaveLength(3);
-    expect(stampedCount).toBe(3);
+    expect(inserted()).toHaveLength(3);
+    expect(stampedCount()).toBe(3);
   });
 });
 
@@ -551,6 +582,7 @@ describe("detectCostAnomaliesForOrg — root-cause hints", () => {
   function oneNewSource() {
     getCostCoverage.mockResolvedValue(coverage("2026-01-01"));
     providerCosts([{ key: "gcp", currency: "USD", points: [{ bucket: YESTERDAY, amount: 5000 }] }]);
+    queuePass(1);
   }
 
   it("stores the hints on the anomaly row and asks with the anomaly's own scope", async () => {
@@ -564,7 +596,7 @@ describe("detectCostAnomaliesForOrg — root-cause hints", () => {
       dimension: "provider",
       dimensionKey: "gcp",
     });
-    expect(hintWrites).toEqual([HINTS]);
+    expect(hintWrites()).toEqual([HINTS]);
   });
 
   it("appends every hint to the Slack and Teams bodies", async () => {
@@ -599,7 +631,7 @@ describe("detectCostAnomaliesForOrg — root-cause hints", () => {
 
     await anomalyEval.detectCostAnomaliesForOrg("org-hints-none", NOW, OPTS, true);
 
-    expect(hintWrites).toEqual([]);
+    expect(hintWrites()).toEqual([]);
     const [event] = routeAlert.mock.calls[0]! as unknown as [{ body: string }];
     expect(event.body).not.toContain("Around then:");
   });
@@ -616,7 +648,7 @@ describe("detectCostAnomaliesForOrg — root-cause hints", () => {
     ).resolves.toBeUndefined();
 
     expect(routeAlert).toHaveBeenCalledTimes(1);
-    expect(stampedCount).toBe(1);
+    expect(stampedCount()).toBe(1);
   });
 });
 
@@ -633,13 +665,14 @@ describe("detectCostAnomaliesForOrg — an explained anomaly is not a suppressed
   it("re-judging a day overwrites only the measurements, never the explanation", async () => {
     getCostCoverage.mockResolvedValue(coverage("2026-01-01"));
     providerCosts([{ key: "gcp", currency: "USD", points: [{ bucket: YESTERDAY, amount: 5000 }] }]);
+    queuePass(1);
 
     await anomalyEval.detectCostAnomaliesForOrg("org-reupsert", NOW, OPTS, true);
 
     // A day is re-examined for three passes as its data lands, and each pass
     // upserts. The conflict payload is the whole blast radius of that.
-    expect(conflictSets).toHaveLength(1);
-    expect(Object.keys(conflictSets[0]!).sort()).toEqual([
+    expect(conflictSets()).toHaveLength(1);
+    expect(conflictSets()[0]!.sort()).toEqual([
       "actualAmountCents",
       "baselineAmountCents",
       "kind",
@@ -658,10 +691,13 @@ describe("detectCostAnomaliesForOrg — an explained anomaly is not a suppressed
       if (p.bucket === "2026-07-12" || p.bucket === YESTERDAY) p.amount = 9000;
     }
     providerCosts([{ key: "aws", currency: "USD", points }]);
+    queuePass(2);
 
     await anomalyEval.detectCostAnomaliesForOrg("org-repeat", NOW, OPTS, true);
 
-    expect(inserted.map((r) => r["day"])).toEqual(["2026-07-12", YESTERDAY]);
-    for (const row of inserted) expect(row).toMatchObject({ kind: "spike", dimensionKey: "aws" });
+    expect(inserted().map((r) => r["day"])).toEqual(["2026-07-12", YESTERDAY]);
+    for (const row of inserted()) {
+      expect(row).toMatchObject({ kind: "spike", dimensionKey: "aws" });
+    }
   });
 });

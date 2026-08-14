@@ -10,6 +10,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  * unacceptable file that *we* broke, which invites them to retry it unchanged.
  */
 
+import { fakePostgres } from "./helpers/fake-postgres";
+
 const mockParse = vi.fn();
 vi.mock("@infrawrench/client-core", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
@@ -19,7 +21,10 @@ vi.mock("@infrawrench/client-core", async (importOriginal) => {
   };
 });
 
-vi.mock("../db/client", () => ({ db: { select: vi.fn(), insert: vi.fn(), transaction: vi.fn() } }));
+// Real Drizzle over a recording driver. Every path exercised here fails before
+// persistence, so no statement should ever be issued.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
 const { saveIacState, IacInputError } = await import("../iac/store");
 const { TerraformStateParseError } = await import("@infrawrench/client-core");
@@ -39,6 +44,7 @@ async function rejection(): Promise<unknown> {
 describe("saveIacState parse-failure translation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pg.reset();
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 

@@ -7,35 +7,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * not the plumbing.
  */
 
+import { fakePostgres } from "./helpers/fake-postgres";
+
 const runOrgWorkflow = vi.fn(async () => ({ runId: "r1", result: {} }));
 vi.mock("../workflows/runner", () => ({ runOrgWorkflow }));
 
-vi.mock("../db/schema", () => ({
-  workflows: {
-    __t: "workflows" as const,
-    id: "id",
-    organizationId: "organization_id",
-    enabled: "enabled",
-    deletedAt: "deleted_at",
-    trigger: "trigger",
-    budgetLastFiredKey: "budget_last_fired_key",
-  },
-}));
+// Real Drizzle over a recording driver: the conditional claim UPDATE renders
+// its actual SQL (and shadow-validates under test:postgres:shadow). Its rows
+// are the `returning({ id })` result; [] means someone else won.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
-/** Rows the conditional claim UPDATE returns; [] means someone else won. */
-let claimReturning: Array<{ id: string }> = [{ id: "wf1" }];
-const claims: Array<Record<string, unknown>> = [];
-
-const db = {
-  select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
-  update: () => ({
-    set: (s: Record<string, unknown>) => {
-      claims.push(s);
-      return { where: () => ({ returning: () => Promise.resolve(claimReturning) }) };
-    },
-  }),
-};
-vi.mock("../db/client", () => ({ db }));
+/** The claim UPDATEs issued. Params: [key, updatedAt, workflowId, key again]. */
+const claims = () => pg.queries.filter((q) => q.sql.startsWith('update "workflows"'));
 
 let mod: typeof import("../workflows/budget-triggers");
 
@@ -59,8 +43,8 @@ async function fire(
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  claims.length = 0;
-  claimReturning = [{ id: "wf1" }];
+  pg.reset();
+  pg.setRows([{ id: "wf1" }]);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   mod = await import("../workflows/budget-triggers");
 });
@@ -111,7 +95,7 @@ describe("fireBudgetTriggerWorkflows", () => {
   it("compares against the forecast when asked", async () => {
     await fire({ budgetId: "b1", metric: "forecast" }, july);
     expect(runOrgWorkflow).toHaveBeenCalledTimes(1);
-    expect(claims[0]?.["budgetLastFiredKey"]).toBe("2026-07:forecast:100");
+    expect(claims()[0]?.params[0]).toBe("2026-07:forecast:100");
   });
 
   it("skips a null forecast rather than treating it as zero", async () => {
@@ -124,11 +108,16 @@ describe("fireBudgetTriggerWorkflows", () => {
 
   it("keys the claim by month, measure and percent", async () => {
     await fire({ budgetId: "b1", percent: 50 }, july);
-    expect(claims[0]?.["budgetLastFiredKey"]).toBe("2026-07:actual:50");
+    const claim = claims()[0]!;
+    // set "budget_last_fired_key" = $1 ... where id = $3 and key IS DISTINCT FROM $4
+    expect(claim.sql).toContain('"budget_last_fired_key" IS DISTINCT FROM');
+    expect(claim.params[0]).toBe("2026-07:actual:50");
+    expect(claim.params[2]).toBe("wf1");
+    expect(claim.params[3]).toBe("2026-07:actual:50");
   });
 
   it("does not run when another replica already claimed the crossing", async () => {
-    claimReturning = [];
+    pg.setRows([]);
     await fire({ budgetId: "b1", percent: 50 }, july);
     expect(runOrgWorkflow).not.toHaveBeenCalled();
   });

@@ -13,34 +13,34 @@ vi.mock("../twilio-pager", () => ({ sendBudgetAlertPage }));
 const queryCosts = vi.fn();
 vi.mock("../clickhouse/cost-readers", () => ({ queryCosts }));
 
-const tables = {
-  budgets: { __t: "budgets" as const, organizationId: "o", deletedAt: "d" },
-  budgetAlertEvents: { __t: "budgetAlertEvents" as const, id: "id" },
-};
-vi.mock("../db/schema", () => tables);
+import { fakePostgres } from "./helpers/fake-postgres";
 
-let budgetRows: unknown[] = [];
-// Result of the alert-event insert; [{id}] = fresh crossing, [] = dupe.
-let insertReturning: Array<{ id: string }> = [];
-const updates: Array<{ table: string; set: Record<string, unknown> }> = [];
+// Real Drizzle over a recording driver against the real schema — the budget
+// select, the alert-event insert and the notifiedAt update render their actual
+// SQL (and shadow-validate under test:postgres:shadow). Results are queued in
+// execution order via `arrange` below.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
-const db = {
-  select: () => ({ from: () => ({ where: () => Promise.resolve(budgetRows) }) }),
-  insert: (table: { __t: string }) => ({
-    values: () => ({
-      onConflictDoNothing: () => ({
-        returning: () => Promise.resolve(insertReturning),
-      }),
-    }),
-  }),
-  update: (table: { __t: string }) => ({
-    set: (s: Record<string, unknown>) => {
-      updates.push({ table: table.__t, set: s });
-      return { where: () => Promise.resolve() };
-    },
-  }),
-};
-vi.mock("../db/client", () => ({ db }));
+/**
+ * Queue one evaluation pass's query results in execution order: the budget
+ * select, the (real) budget-trigger-workflow lookup, the (real) org currency
+ * settings lookup, then the alert-event insert's RETURNING —
+ * [{id}] = fresh crossing, [] = dupe.
+ */
+function arrange(
+  budgetRows: Array<Record<string, unknown>>,
+  insertReturning: Array<{ id: string }>,
+) {
+  pg.queueRows(budgetRows);
+  pg.queueRows([]); // budget-trigger workflows: none
+  pg.queueRows([]); // org currency settings: no display currency
+  pg.queueRows(insertReturning);
+}
+
+/** The notifiedAt bookkeeping, read back from the recorded UPDATE statements. */
+const notifiedUpdates = () =>
+  pg.queries.filter((q) => q.sql.startsWith('update "budget_alert_events"'));
 
 /**
  * All three transports sit behind `routeAlert` now, so that is the single seam
@@ -94,6 +94,8 @@ let budgetEval: typeof import("../cost/budget-eval");
 
 const NOW = new Date("2026-07-15T12:00:00Z");
 
+// The select has no projection, so keys are in the budgets table's column
+// order — see helpers/fake-postgres.ts.
 function budget(over: Partial<Record<string, unknown>> = {}) {
   return {
     id: "b1",
@@ -103,15 +105,21 @@ function budget(over: Partial<Record<string, unknown>> = {}) {
     currency: "USD",
     filters: [],
     thresholds: [{ type: "actual", percent: 50 }],
+    costBasis: "cash",
+    savedFilterId: null,
+    scenarioModelId: null,
+    useAdjustedSpend: false,
+    createdByUserId: null,
+    deletedAt: null,
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T00:00:00.000Z",
     ...over,
   };
 }
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  budgetRows = [];
-  insertReturning = [];
-  updates.length = 0;
+  pg.reset();
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   // $600 on July 1st — over a 50% threshold of a $1000 budget.
   queryCosts.mockResolvedValue([
@@ -126,8 +134,7 @@ afterEach(() => {
 
 describe("evaluateBudgetsForOrg — notification fan-out", () => {
   it("sends push with the budget deep-link payload on a fresh crossing", async () => {
-    budgetRows = [budget()];
-    insertReturning = [{ id: "evt1" }];
+    arrange([budget()], [{ id: "evt1" }]);
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);
     expect(routeAlert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -143,53 +150,44 @@ describe("evaluateBudgetsForOrg — notification fan-out", () => {
   });
 
   it("sets notifiedAt when only push succeeds", async () => {
-    budgetRows = [budget()];
-    insertReturning = [{ id: "evt1" }];
+    arrange([budget()], [{ id: "evt1" }]);
     sendBudgetAlertPage.mockResolvedValueOnce(false);
     routeAlert.mockResolvedValueOnce(routed());
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);
-    expect(updates.some((u) => u.table === "budgetAlertEvents" && "notifiedAt" in u.set)).toBe(
-      true,
-    );
+    expect(notifiedUpdates().some((q) => q.sql.includes('"notified_at"'))).toBe(true);
   });
 
   it("sets notifiedAt when only Twilio succeeds", async () => {
-    budgetRows = [budget()];
-    insertReturning = [{ id: "evt1" }];
+    arrange([budget()], [{ id: "evt1" }]);
     sendBudgetAlertPage.mockResolvedValueOnce(true);
     routeAlert.mockResolvedValueOnce(unroutedResult());
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);
-    expect(updates.some((u) => u.table === "budgetAlertEvents")).toBe(true);
+    expect(notifiedUpdates().length).toBeGreaterThan(0);
   });
 
   it("sets notifiedAt when quiet hours hold the alert rather than sending it", async () => {
     // A held alert has not gone out yet but will, so the crossing counts as
     // notified — leaving `notifiedAt` unset would re-fire it next pass and
     // deliver twice.
-    budgetRows = [budget()];
-    insertReturning = [{ id: "evt1" }];
+    arrange([budget()], [{ id: "evt1" }]);
     sendBudgetAlertPage.mockResolvedValueOnce(false);
     routeAlert.mockResolvedValueOnce(
       routed({ succeeded: 0, byTransport: { push: 0, slack: 0, msTeams: 0 }, held: 1 }),
     );
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);
-    expect(updates.some((u) => u.table === "budgetAlertEvents" && "notifiedAt" in u.set)).toBe(
-      true,
-    );
+    expect(notifiedUpdates().some((q) => q.sql.includes('"notified_at"'))).toBe(true);
   });
 
   it("does not set notifiedAt when every channel fails", async () => {
-    budgetRows = [budget()];
-    insertReturning = [{ id: "evt1" }];
+    arrange([budget()], [{ id: "evt1" }]);
     sendBudgetAlertPage.mockResolvedValueOnce(false);
     routeAlert.mockResolvedValueOnce(unroutedResult());
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);
-    expect(updates).toHaveLength(0);
+    expect(notifiedUpdates()).toHaveLength(0);
   });
 
   it("skips notification entirely on a duplicate crossing (same month)", async () => {
-    budgetRows = [budget()];
-    insertReturning = []; // onConflictDoNothing hit the unique index
+    arrange([budget()], []); // onConflictDoNothing hit the unique index
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);
     expect(sendBudgetAlertPage).not.toHaveBeenCalled();
     expect(routeAlert).not.toHaveBeenCalled();
@@ -199,13 +197,13 @@ describe("evaluateBudgetsForOrg — notification fan-out", () => {
     queryCosts.mockResolvedValue([
       { currency: "USD", points: [{ bucket: "2026-07-01", amount: 100 }] },
     ]);
-    budgetRows = [budget()];
+    arrange([budget()], []);
     await budgetEval.evaluateBudgetsForOrg("org1", NOW);
     expect(routeAlert).not.toHaveBeenCalled();
   });
 
   it("never throws when evaluation of one budget fails", async () => {
-    budgetRows = [budget()];
+    arrange([budget()], []);
     queryCosts.mockRejectedValue(new Error("clickhouse down"));
     await expect(budgetEval.evaluateBudgetsForOrg("org1", NOW)).resolves.toBeUndefined();
   });

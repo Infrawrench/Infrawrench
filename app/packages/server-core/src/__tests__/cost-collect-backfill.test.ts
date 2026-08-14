@@ -6,8 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * in production — the account looks healthy and simply never fetches the days
  * it skipped — so the flag write is pinned here.
  *
- * Everything external is mocked: the DB (recording `update().set()` payloads),
- * the account/plugin/client loader, and the ClickHouse writers.
+ * Everything external is mocked or faked: the DB (real Drizzle over a
+ * recording driver, so the flag UPDATE renders its actual SQL), the
+ * account/plugin/client loader, and the ClickHouse writers.
  *
  * "Today" is frozen mid-month so a short history window stays inside one
  * calendar month. Without that, near the 1st the same windows span two months
@@ -15,23 +16,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * `rowCount` becomes 2 and these assertions flake.
  */
 
-const updates: Array<Record<string, unknown>> = [];
-const db = {
-  update: vi.fn(() => ({
-    set: (s: Record<string, unknown>) => {
-      updates.push(s);
-      return { where: () => Promise.resolve() };
-    },
-  })),
-};
-vi.mock("../db/client", () => ({ db }));
-vi.mock("../db/schema", () => ({ accounts: { id: "id" } }));
-// Partial: the ClickHouse schema is built with `sql` at module load, so a
-// wholesale mock of drizzle-orm takes the whole import graph down with it.
-vi.mock("drizzle-orm", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("drizzle-orm")>()),
-  eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
-}));
+import { fakePostgres } from "./helpers/fake-postgres";
+
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
+
+/** The flag writes issued, as the rendered UPDATE statements against accounts. */
+const updates = () => pg.queries.filter((q) => q.sql.startsWith('update "accounts"'));
 
 const insertCostRows = vi.fn(async () => undefined);
 vi.mock("../clickhouse/cost-writers", () => ({
@@ -59,7 +50,7 @@ function setup(costBackfilledAt: Date | null) {
 }
 
 beforeEach(() => {
-  updates.length = 0;
+  pg.reset();
   vi.clearAllMocks();
   vi.useFakeTimers();
   // Mid-month so maxHistoryDays=10 and restatementDays=5 never cross a month
@@ -79,8 +70,10 @@ describe("collectAccountCosts backfill flag", () => {
     const result = await collectAccountCosts("acc-1", "org-1");
 
     expect(result).toMatchObject({ backfilled: true, rowCount: 1 });
-    expect(updates).toHaveLength(1);
-    expect(updates[0]).toHaveProperty("costBackfilledAt");
+    expect(updates()).toHaveLength(1);
+    expect(updates()[0]!.sql).toContain('"cost_backfilled_at"');
+    // set cost_backfilled_at = $1, updated_at = $2 where id = $3
+    expect(updates()[0]!.params[2]).toBe("acc-1");
   });
 
   it("leaves the flag unset when the first backfill returns nothing", async () => {
@@ -92,7 +85,7 @@ describe("collectAccountCosts backfill flag", () => {
     // The account stays in backfill mode, so the history it is waiting on is
     // still fetched once the provider starts reporting it.
     expect(result).toMatchObject({ backfilled: false, rowCount: 0 });
-    expect(updates).toEqual([]);
+    expect(updates()).toEqual([]);
     expect(insertCostRows).not.toHaveBeenCalled();
   });
 
@@ -103,6 +96,6 @@ describe("collectAccountCosts backfill flag", () => {
     const result = await collectAccountCosts("acc-1", "org-1");
 
     expect(result).toMatchObject({ backfilled: false, rowCount: 1 });
-    expect(updates).toEqual([]);
+    expect(updates()).toEqual([]);
   });
 });

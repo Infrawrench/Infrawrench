@@ -11,8 +11,12 @@ import type { IacStateSummary } from "@infrawrench/client-core";
  * for, because that is the whole of the bug.
  */
 
-const mockSelect = vi.fn();
-vi.mock("../db/client", () => ({ db: { select: (...a: unknown[]) => mockSelect(...a) } }));
+import { fakePostgres } from "./helpers/fake-postgres";
+
+// Real Drizzle over a recording driver: the resource lookup renders its actual
+// SQL against the real schema (and shadow-validates under test:postgres:shadow).
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
 const mockGetLatestIacState = vi.fn();
 const mockLoadIacStateResources = vi.fn();
@@ -28,14 +32,13 @@ vi.mock("../ownership/store", () => ({ lookupResourceOwners: () => Promise.resol
 
 const { getIacResourceStatus, resetIacTypeMapCache } = await import("../iac/service");
 
-/** One `db.select().from().where().limit()` chain returning `rows`. */
-function selectReturns(rows: unknown[]) {
-  const limit = vi.fn().mockResolvedValue(rows);
-  const where = vi.fn().mockReturnValue({ limit });
-  const from = vi.fn().mockReturnValue({ where });
-  mockSelect.mockReturnValueOnce({ from });
+/** The resource-lookup select returns `rows` (keys in projection order). */
+function selectReturns(rows: Array<Record<string, unknown>>) {
+  pg.queueRows(rows);
 }
 
+// Keys in the projection order of getIacResourceStatus's select — see
+// helpers/fake-postgres.ts.
 const resourceRow = {
   id: "res-1",
   pluginId: "demo",
@@ -72,6 +75,7 @@ const state = (over: Partial<IacStateSummary>): IacStateSummary =>
 describe("getIacResourceStatus scope selection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pg.reset();
     resetIacTypeMapCache();
     mockLoadIacStateResources.mockResolvedValue([]);
   });

@@ -1,67 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { fakePostgres } from "./helpers/fake-postgres";
+
 /**
  * The three rules that make break-glass safe are the point of this suite:
  * you cannot approve your own request, you cannot grant what you do not hold,
  * and the window is evaluated rather than swept. Everything else here is
  * plumbing.
  *
- * The Drizzle chains are scripted the same way the resolver suite does it:
- * `.where()` is a thenable that also carries `.limit()`, and each terminal
- * await pulls the next queued result.
+ * The DB is real Drizzle over a recording driver against the real schema, so
+ * every statement renders its actual SQL (and shadow-validates under
+ * test:postgres:shadow). Each query's rows are queued FIFO in execution order
+ * — a select's rows first, then the insert/update RETURNING.
  */
-const selectResults: unknown[][] = [];
-const returningResults: unknown[][] = [];
-let lastUpdateSet: Record<string, unknown> | undefined;
-let lastInsertValues: Record<string, unknown> | undefined;
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
-function nextRows(queue: unknown[][]): unknown[] {
-  return queue.shift() ?? [];
-}
-
-function whereThenable() {
-  const rows = nextRows(selectResults);
-  const p = Promise.resolve(rows) as Promise<unknown[]> & {
-    limit: (n: number) => Promise<unknown[]>;
-  };
-  p.limit = () => Promise.resolve(rows);
-  return p;
-}
-
-const dbSelect = vi.fn(() => ({
-  from: () => ({ where: () => whereThenable() }),
-}));
-
-const dbInsert = vi.fn(() => ({
-  values: (v: Record<string, unknown>) => {
-    lastInsertValues = v;
-    return { returning: async () => nextRows(returningResults) };
-  },
-}));
-
-const dbUpdate = vi.fn(() => ({
-  set: (v: Record<string, unknown>) => {
-    lastUpdateSet = v;
-    return { where: () => ({ returning: async () => nextRows(returningResults) }) };
-  },
-}));
-
-vi.mock("../db/client", () => ({
-  db: { select: dbSelect, insert: dbInsert, update: dbUpdate },
-}));
-vi.mock("../db/schema", () => ({
-  accessRequests: {
-    id: "ar.id",
-    organizationId: "ar.organizationId",
-    userId: "ar.userId",
-    status: "ar.status",
-    revokedAt: "ar.revokedAt",
-    grantExpiresAt: "ar.grantExpiresAt",
-    expiresAt: "ar.expiresAt",
-    createdAt: "ar.createdAt",
-  },
-  users: { id: "u.id", email: "u.email", displayName: "u.displayName" },
-}));
+/** Every insert / update statement issued, for the not-written assertions. */
+const inserts = () => pg.queries.filter((q) => q.sql.startsWith("insert"));
+const updates = () => pg.queries.filter((q) => q.sql.startsWith("update"));
 
 const fanOut = vi.fn(async () => undefined);
 vi.mock("../approvals/notify", () => ({
@@ -75,7 +32,12 @@ vi.mock("../slack-approvals", () => ({
 
 let breakGlass: typeof import("../access/break-glass");
 
-/** A stored row with sensible defaults; override what a test cares about. */
+/**
+ * A stored row with sensible defaults; override what a test cares about.
+ * Keys are in the `access_requests` column order (see helpers/fake-postgres.ts
+ * — rows decode positionally). Date values pass through the column mapping
+ * unchanged, exactly as the real driver's parsed dates would.
+ */
 function row(overrides: Record<string, unknown> = {}) {
   const now = Date.now();
   return {
@@ -104,10 +66,7 @@ function row(overrides: Record<string, unknown> = {}) {
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  selectResults.length = 0;
-  returningResults.length = 0;
-  lastUpdateSet = undefined;
-  lastInsertValues = undefined;
+  pg.reset();
   breakGlass = await import("../access/break-glass");
 });
 
@@ -126,7 +85,7 @@ describe("createAccessRequest", () => {
       ["resources:read", "resources:write"],
     );
     expect(result.outcome).toBe("already_held");
-    expect(dbInsert).not.toHaveBeenCalled();
+    expect(inserts()).toEqual([]);
   });
 
   it("rejects a reason too short to be auditable", async () => {
@@ -158,8 +117,8 @@ describe("createAccessRequest", () => {
   });
 
   it("dedupes permissions and notifies once the row is written", async () => {
-    selectResults.push([{ email: "dana@example.com", displayName: "Dana" }]); // name lookup
-    returningResults.push([row({ permissions: ["resources:delete"] })]);
+    pg.queueRows([{ email: "dana@example.com", displayName: "Dana" }]); // name lookup
+    pg.queueRows([row({ permissions: ["resources:delete"] })]);
 
     const result = await breakGlass.createAccessRequest(
       {
@@ -173,7 +132,9 @@ describe("createAccessRequest", () => {
     );
 
     expect(result.outcome).toBe("created");
-    expect(lastInsertValues?.["permissions"]).toEqual(["resources:delete"]);
+    // The jsonb parameter in the rendered INSERT carries the deduped set.
+    expect(inserts()).toHaveLength(1);
+    expect(inserts()[0]!.params).toContain(JSON.stringify(["resources:delete"]));
     expect(fanOut).toHaveBeenCalledTimes(1);
   });
 });
@@ -186,39 +147,39 @@ describe("decideAccessRequest", () => {
   };
 
   it("refuses to let the requester decide their own request", async () => {
-    selectResults.push([row({ userId: "approver" })]);
+    pg.queueRows([row({ userId: "approver" })]);
     const result = await breakGlass.decideAccessRequest("org1", "req-1", "approved", decider);
     expect(result.outcome).toBe("self_approval");
-    expect(dbUpdate).not.toHaveBeenCalled();
+    expect(updates()).toEqual([]);
   });
 
   it("refuses self-decision on a denial too", async () => {
     // Withdrawal is its own operation with its own audit action; routing it
     // through the approval path would blur "nobody would approve this" into
     // "they changed their mind".
-    selectResults.push([row({ userId: "approver" })]);
+    pg.queueRows([row({ userId: "approver" })]);
     const result = await breakGlass.decideAccessRequest("org1", "req-1", "denied", decider);
     expect(result.outcome).toBe("self_approval");
   });
 
   it("refuses to grant a permission the approver does not hold", async () => {
-    selectResults.push([row({ permissions: ["billing:write"] })]);
+    pg.queueRows([row({ permissions: ["billing:write"] })]);
     const result = await breakGlass.decideAccessRequest("org1", "req-1", "approved", decider);
     expect(result).toMatchObject({ outcome: "exceeds_approver", missing: ["billing:write"] });
-    expect(dbUpdate).not.toHaveBeenCalled();
+    expect(updates()).toEqual([]);
   });
 
   it("allows denying a request aimed higher than the approver", async () => {
     // Refusing this would strand over-ambitious requests forever.
-    selectResults.push([row({ permissions: ["billing:write"] })]);
-    returningResults.push([row({ status: "denied", permissions: ["billing:write"] })]);
+    pg.queueRows([row({ permissions: ["billing:write"] })]);
+    pg.queueRows([row({ status: "denied", permissions: ["billing:write"] })]);
     const result = await breakGlass.decideAccessRequest("org1", "req-1", "denied", decider);
     expect(result.outcome).toBe("decided");
   });
 
   it("opens the grant window on approval", async () => {
-    selectResults.push([row()]);
-    returningResults.push([
+    pg.queueRows([row()]);
+    pg.queueRows([
       row({
         status: "approved",
         grantedAt: new Date(),
@@ -228,37 +189,42 @@ describe("decideAccessRequest", () => {
 
     const result = await breakGlass.decideAccessRequest("org1", "req-1", "approved", decider);
     expect(result.outcome).toBe("decided");
-    expect(lastUpdateSet?.["grantedAt"]).toBeInstanceOf(Date);
-    const granted = lastUpdateSet?.["grantedAt"] as Date;
-    const expires = lastUpdateSet?.["grantExpiresAt"] as Date;
+    const update = updates()[0]!;
+    // set "status" = $1, "decided_at" = $2, "decided_by_user_id" = $3,
+    // "decided_by_name" = $4, "decision_note" = $5, "granted_at" = $6,
+    // "grant_expires_at" = $7 — timestamps render as ISO parameters. (The SET
+    // clause is the assertion target; RETURNING names every column.)
+    expect(update.sql.split(" where ")[0]).toContain('"granted_at"');
+    const granted = new Date(update.params[5] as string);
+    const expires = new Date(update.params[6] as string);
     expect(expires.getTime() - granted.getTime()).toBe(60 * 60_000);
   });
 
   it("does not open a window on denial", async () => {
-    selectResults.push([row()]);
-    returningResults.push([row({ status: "denied" })]);
+    pg.queueRows([row()]);
+    pg.queueRows([row({ status: "denied" })]);
     await breakGlass.decideAccessRequest("org1", "req-1", "denied", decider);
-    expect(lastUpdateSet).not.toHaveProperty("grantedAt");
+    expect(updates()[0]!.sql.split(" where ")[0]).not.toContain('"granted_at"');
   });
 
   it("treats a decision after the request timed out as a conflict", async () => {
     // The request was already dead. Pretending otherwise would open a window
     // nobody agreed to.
-    selectResults.push([row({ expiresAt: new Date(Date.now() - 60_000) })]);
-    returningResults.push([row({ status: "expired" })]); // the expiry UPDATE
+    pg.queueRows([row({ expiresAt: new Date(Date.now() - 60_000) })]);
+    pg.queueRows([row({ status: "expired" })]); // the expiry UPDATE
     const result = await breakGlass.decideAccessRequest("org1", "req-1", "approved", decider);
     expect(result.outcome).toBe("conflict");
   });
 
   it("reports a conflict when someone else decided first", async () => {
-    selectResults.push([row()]);
-    returningResults.push([]); // the conditional UPDATE matched nothing
+    pg.queueRows([row()]);
+    pg.queueRows([]); // the conditional UPDATE matched nothing
     const result = await breakGlass.decideAccessRequest("org1", "req-1", "approved", decider);
     expect(result.outcome).toBe("conflict");
   });
 
   it("is not found when the row belongs to another org", async () => {
-    selectResults.push([]);
+    pg.queueRows([]);
     const result = await breakGlass.decideAccessRequest("org1", "req-1", "approved", decider);
     expect(result.outcome).toBe("not_found");
   });
@@ -267,7 +233,7 @@ describe("decideAccessRequest", () => {
 describe("activeElevations", () => {
   it("returns a grant inside its window", async () => {
     const now = new Date();
-    selectResults.push([
+    pg.queueRows([
       row({
         status: "approved",
         grantedAt: new Date(now.getTime() - 60_000),
@@ -281,7 +247,7 @@ describe("activeElevations", () => {
 
   it("ignores a revoked grant even inside its window", async () => {
     const now = new Date();
-    selectResults.push([
+    pg.queueRows([
       row({
         status: "approved",
         grantedAt: new Date(now.getTime() - 60_000),
@@ -296,7 +262,7 @@ describe("activeElevations", () => {
     // The window is evaluated, never swept — a grant stops applying the instant
     // it lapses rather than whenever a job next runs.
     const now = new Date();
-    selectResults.push([
+    pg.queueRows([
       row({
         status: "approved",
         grantedAt: new Date(now.getTime() - 120_000),
@@ -308,10 +274,10 @@ describe("activeElevations", () => {
 
   it("fails closed when the read throws", async () => {
     // Granting authority on a database hiccup is the one outcome this feature
-    // must never produce.
-    dbSelect.mockImplementationOnce(() => {
-      throw new Error("connection reset");
-    });
+    // must never produce. A row the recording driver cannot decode makes the
+    // select itself reject — the closest a canned driver gets to a lost
+    // connection.
+    pg.queueRows([null as never]);
     expect(await breakGlass.activeElevations("org1", "requester")).toEqual([]);
   });
 });
@@ -319,14 +285,14 @@ describe("activeElevations", () => {
 describe("revokeAccessGrant", () => {
   it("ends a live grant", async () => {
     const now = Date.now();
-    selectResults.push([
+    pg.queueRows([
       row({
         status: "approved",
         grantedAt: new Date(now - 60_000),
         grantExpiresAt: new Date(now + 60_000),
       }),
     ]);
-    returningResults.push([
+    pg.queueRows([
       row({
         status: "approved",
         grantedAt: new Date(now - 60_000),
@@ -339,21 +305,21 @@ describe("revokeAccessGrant", () => {
   });
 
   it("refuses to revoke something that is not live", async () => {
-    selectResults.push([row({ status: "denied" })]);
+    pg.queueRows([row({ status: "denied" })]);
     const result = await breakGlass.revokeAccessGrant("org1", "req-1", { userId: "approver" });
     expect(result.outcome).toBe("not_active");
   });
 
   it("reports not_active when another revoker won the race", async () => {
     const now = Date.now();
-    selectResults.push([
+    pg.queueRows([
       row({
         status: "approved",
         grantedAt: new Date(now - 60_000),
         grantExpiresAt: new Date(now + 60_000),
       }),
     ]);
-    returningResults.push([]); // conditional UPDATE matched nothing
+    pg.queueRows([]); // conditional UPDATE matched nothing
     const result = await breakGlass.revokeAccessGrant("org1", "req-1", { userId: "approver" });
     expect(result.outcome).toBe("not_active");
   });
@@ -361,15 +327,18 @@ describe("revokeAccessGrant", () => {
 
 describe("withdrawAccessRequest", () => {
   it("lets the requester call off their own pending request", async () => {
-    selectResults.push([{ id: "req-1", userId: "requester" }]);
-    returningResults.push([{ id: "req-1" }]);
+    pg.queueRows([{ id: "req-1", userId: "requester" }]);
+    pg.queueRows([{ id: "req-1" }]);
     const result = await breakGlass.withdrawAccessRequest("org1", "req-1", "requester");
     expect(result.outcome).toBe("withdrawn");
-    expect(lastUpdateSet?.["decisionNote"]).toMatch(/withdrawn/i);
+    // The decision-note parameter of the rendered UPDATE names the withdrawal.
+    expect(updates()[0]!.params.some((p) => typeof p === "string" && /withdrawn/i.test(p))).toBe(
+      true,
+    );
   });
 
   it("hides someone else's request behind a 404 rather than a 403", async () => {
-    selectResults.push([{ id: "req-1", userId: "someone-else" }]);
+    pg.queueRows([{ id: "req-1", userId: "someone-else" }]);
     const result = await breakGlass.withdrawAccessRequest("org1", "req-1", "requester");
     expect(result.outcome).toBe("not_found");
   });

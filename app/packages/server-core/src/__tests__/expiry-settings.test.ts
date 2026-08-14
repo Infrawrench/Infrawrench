@@ -9,78 +9,50 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * close a quiet period mid-window.
  */
 
-vi.mock("../db/schema", () => ({
-  orgExpirySettings: {
-    __t: "orgExpirySettings",
-    organizationId: "organizationId",
-    enabled: "enabled",
-    leadDays: "leadDays",
-    lastNotifiedAt: "lastNotifiedAt",
-  },
-}));
+import { fakePostgres } from "./helpers/fake-postgres";
 
-/** Rows the settings select resolves to. */
-let settingsRows: unknown[] = [];
-/** `values(...)` argument of the most recent upsert. */
-let lastValues: Record<string, unknown> | undefined;
-/** `set` of the most recent `onConflictDoUpdate`. */
-let lastConflictSet: Record<string, unknown> | undefined;
+// Real Drizzle over a recording driver against the real schema: the select and
+// the upsert render their actual SQL (and shadow-validate under
+// test:postgres:shadow). An update issues two queries in order — the
+// current-row select, then the upsert's `returning()` — so results are queued.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
-vi.mock("../db/client", () => {
-  const selectChain = () => {
-    const self: Record<string, unknown> = {};
-    for (const m of ["where"]) self[m] = () => self;
-    self["limit"] = () => Promise.resolve(settingsRows);
-    return self;
-  };
-  const insertChain = () => {
-    const self: Record<string, unknown> = {};
-    self["values"] = (v: Record<string, unknown>) => {
-      lastValues = v;
-      return self;
-    };
-    self["onConflictDoUpdate"] = (arg: { set: Record<string, unknown> }) => {
-      lastConflictSet = arg.set;
-      return self;
-    };
-    self["returning"] = () =>
-      Promise.resolve([
-        {
-          organizationId: lastValues?.["organizationId"],
-          enabled: lastValues?.["enabled"],
-          leadDays: lastValues?.["leadDays"],
-          lastNotifiedAt: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ]);
-    return self;
-  };
-  return {
-    db: {
-      select: () => ({ from: () => selectChain() }),
-      insert: () => insertChain(),
-    },
-  };
-});
-
-vi.mock("drizzle-orm", () => ({
-  eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
-}));
-
-import {
-  EXPIRY_ALERT_LIMITS,
-  defaultExpirySettings,
-  getExpirySettings,
-  updateExpirySettings,
-} from "../expiry/settings";
+const { EXPIRY_ALERT_LIMITS, defaultExpirySettings, getExpirySettings, updateExpirySettings } =
+  await import("../expiry/settings");
 
 const ORG = "org1";
 
+/**
+ * A stored `org_expiry_settings` row, keys in the table's column order and
+ * timestamps driver-shaped (postgres-js "YYYY-MM-DD HH:MM:SS.mmm", read as UTC
+ * by the column mapping).
+ */
+function settingsRow(over: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
+  return {
+    organizationId: ORG,
+    enabled: true,
+    leadDays: 60,
+    lastNotifiedAt: null,
+    createdAt: "2026-08-01 00:00:00.000",
+    updatedAt: "2026-08-01 00:00:00.000",
+    ...over,
+  };
+}
+
+/** Queue one update's two queries: the current-row select, then the upsert. */
+function queueUpdate(current: Array<Record<string, unknown>>, saved: Record<string, unknown>) {
+  pg.queueRows(current);
+  pg.queueRows([saved]);
+}
+
+/** The rendered upsert, if one was issued. */
+function upsert() {
+  return pg.queries.find((q) => q.sql.startsWith('insert into "org_expiry_settings"'));
+}
+
 beforeEach(() => {
-  settingsRows = [];
-  lastValues = undefined;
-  lastConflictSet = undefined;
+  pg.reset();
 });
 
 describe("getExpirySettings", () => {
@@ -95,16 +67,9 @@ describe("getExpirySettings", () => {
 
   it("prefers the stored row when one exists", async () => {
     const notified = new Date("2026-07-30T00:00:00.000Z");
-    settingsRows = [
-      {
-        organizationId: ORG,
-        enabled: false,
-        leadDays: 14,
-        lastNotifiedAt: notified,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    ];
+    pg.setRows([
+      settingsRow({ enabled: false, leadDays: 14, lastNotifiedAt: "2026-07-30 00:00:00.000" }),
+    ]);
     expect(await getExpirySettings(ORG)).toEqual({
       organizationId: ORG,
       enabled: false,
@@ -116,20 +81,30 @@ describe("getExpirySettings", () => {
 
 describe("updateExpirySettings — bounds", () => {
   it("accepts the full valid range", async () => {
+    queueUpdate([], settingsRow({ leadDays: 1 }));
     expect((await updateExpirySettings(ORG, { leadDays: 1 })).leadDays).toBe(1);
+    // lead_days in the values tuple — the clamp passed the value through.
+    expect(upsert()?.params[2]).toBe(1);
+
+    pg.reset();
+    queueUpdate([], settingsRow({ leadDays: 365 }));
     expect((await updateExpirySettings(ORG, { leadDays: 365 })).leadDays).toBe(365);
+    expect(upsert()?.params[2]).toBe(365);
   });
 
   it("rejects a lead of zero — it would silence the radar", async () => {
     await expect(updateExpirySettings(ORG, { leadDays: 0 })).rejects.toThrow(/between 1 and 365/);
+    expect(upsert()).toBeUndefined();
   });
 
   it("rejects a lead past a year", async () => {
     await expect(updateExpirySettings(ORG, { leadDays: 366 })).rejects.toThrow(/between 1 and 365/);
+    expect(upsert()).toBeUndefined();
   });
 
   it("rejects fractional days", async () => {
     await expect(updateExpirySettings(ORG, { leadDays: 30.5 })).rejects.toThrow(/whole number/);
+    expect(upsert()).toBeUndefined();
   });
 
   it("publishes the bounds it enforces", () => {
@@ -139,25 +114,30 @@ describe("updateExpirySettings — bounds", () => {
 
 describe("updateExpirySettings — merge and claim safety", () => {
   it("keeps unspecified fields at their current values", async () => {
-    settingsRows = [
-      {
-        organizationId: ORG,
-        enabled: false,
-        leadDays: 30,
-        lastNotifiedAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    ];
+    queueUpdate(
+      [settingsRow({ enabled: false, leadDays: 30 })],
+      settingsRow({ enabled: false, leadDays: 90 }),
+    );
     const saved = await updateExpirySettings(ORG, { leadDays: 90 });
     expect(saved.enabled).toBe(false);
     expect(saved.leadDays).toBe(90);
+    // The merge is what the write carries: (organization_id, enabled,
+    // lead_days) in the values tuple, then the conflict SET repeats both.
+    expect(upsert()?.params.slice(0, 5)).toEqual([ORG, false, 90, false, 90]);
   });
 
   it("never writes lastNotifiedAt — that column is the poller's claim", async () => {
+    queueUpdate([], settingsRow({ enabled: false, leadDays: 30 }));
     await updateExpirySettings(ORG, { enabled: false, leadDays: 30 });
-    expect(lastValues).not.toHaveProperty("lastNotifiedAt");
-    expect(lastConflictSet).not.toHaveProperty("lastNotifiedAt");
+    const insert = upsert()!;
+    // The values tuple leaves last_notified_at (and the timestamps) to their
+    // column defaults, and the conflict SET never names it.
+    expect(insert.sql).toContain("values ($1, $2, $3, default, default, default)");
+    const setClause = insert.sql.slice(
+      insert.sql.indexOf("do update set"),
+      insert.sql.indexOf(" returning "),
+    );
+    expect(setClause).not.toContain('"last_notified_at"');
   });
 
   it("defaults match the shipped contract", () => {

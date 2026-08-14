@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AlertEvent } from "../alerts/route";
 import { alertReachedImpl, routed } from "./helpers/route-alert";
+import { fakePostgres } from "./helpers/fake-postgres";
 
 /**
  * Commitment alert evaluation tests that exercise the *pipeline*, not the
@@ -49,45 +50,36 @@ vi.mock("../slack", () => ({
 }));
 vi.mock("../msteams", () => ({ sendMsTeamsToWebhooks }));
 
-const ACCOUNTS = { id: "id", displayName: "display_name", pluginId: "plugin_id" };
-const ACCOUNT_COMMITMENTS = { organizationId: "organization_id", accountId: "account_id" };
-const EXPIRY_EVENTS = { id: "expiry_id" };
-const IDLE_EVENTS = { id: "idle_id" };
+// Real Drizzle over a recording driver against the real schema — every
+// statement renders its actual SQL (and shadow-validates under
+// test:postgres:shadow). `prime()` below queues each pass's rows FIFO.
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
-vi.mock("../db/schema", () => ({
-  accounts: ACCOUNTS,
-  accountCommitments: ACCOUNT_COMMITMENTS,
-  commitmentExpiryEvents: EXPIRY_EVENTS,
-  commitmentIdleEvents: IDLE_EVENTS,
-}));
-
-/** Rows the fake db hands back for each table. */
+/** Rows the account list select returns (keys in projection order). */
 let accountRows: Array<Record<string, unknown>> = [];
+/** Rows the holdings select returns (keys in the table's column order). */
 let holdingRows: Array<Record<string, unknown>> = [];
 /** Whether the once-per-period insert finds a free slot. */
 let insertWins = true;
-/** Every row inserted this pass, tagged with which table took it. */
-let inserts: Array<{ table: unknown; values: Record<string, unknown> }> = [];
 
-const db = {
-  select: (_cols?: unknown) => ({
-    from: (table: unknown) => ({
-      where: () => Promise.resolve(table === ACCOUNTS ? accountRows : holdingRows),
-    }),
-  }),
-  insert: (table: unknown) => ({
-    values: (values: Record<string, unknown>) => {
-      inserts.push({ table, values });
-      return {
-        onConflictDoNothing: () => ({
-          returning: () => Promise.resolve(insertWins ? [{ id: `ev${inserts.length}` }] : []),
-        }),
-      };
-    },
-  }),
-  update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
-};
-vi.mock("../db/client", () => ({ db }));
+/** The event inserts issued this pass, split by detector. */
+const expiryInserts = () =>
+  pg.queries.filter((q) => q.sql.startsWith('insert into "commitment_expiry_events"'));
+const idleInserts = () =>
+  pg.queries.filter((q) => q.sql.startsWith('insert into "commitment_idle_events"'));
+
+/**
+ * Prime the recording driver for one pass, in execution order: the account
+ * list, then the holdings. The fire-once inserts' RETURNING is served by the
+ * default rows — every claim lands (or none does, when `insertWins` is off) —
+ * and the notified-at updates ignore their rows.
+ */
+function prime() {
+  pg.queueRows(accountRows);
+  pg.queueRows(holdingRows);
+  pg.setRows(insertWins ? [{ id: "ev1" }] : []);
+}
 
 const routeAlert = vi.fn(async (_event: AlertEvent) => routed());
 vi.mock("../alerts/route", () => ({
@@ -124,8 +116,16 @@ function windowDays(): Set<string> {
   return days;
 }
 
+/**
+ * A collected holding — keys in the `account_commitments` column order (the
+ * full-row select decodes positionally; see helpers/fake-postgres.ts). Date
+ * values pass through the column mapping unchanged, exactly as the real
+ * driver's parsed dates would.
+ */
 function holding(over: Record<string, unknown> = {}) {
   return {
+    id: "ac1",
+    organizationId: "org1",
     accountId: "acct1",
     pluginId: "aws",
     commitmentId: "sp-1",
@@ -133,12 +133,21 @@ function holding(over: Record<string, unknown> = {}) {
     description: "1-yr Compute Savings Plan",
     scope: null,
     region: "eu-west-1",
-    state: "active",
     startDate: new Date("2026-01-01T00:00:00Z"),
     endDate: new Date("2026-09-09T00:00:00Z"), // 30 days out
+    termDays: null,
+    paymentOption: null,
     currency: "USD",
+    upfrontAmount: null,
+    recurringAmount: null,
+    recurringPeriod: null,
     hourlyCommitmentAmount: 1,
     unitCommitments: null,
+    state: "active",
+    providerUtilization: null,
+    lastSeenAt: new Date("2026-08-10T00:00:00Z"),
+    createdAt: new Date("2026-08-10T00:00:00Z"),
+    updatedAt: new Date("2026-08-10T00:00:00Z"),
     ...over,
   };
 }
@@ -150,10 +159,10 @@ function triggersRouted(): string[] {
 beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
+  pg.reset();
   accountRows = [{ id: "acct1", displayName: "prod", pluginId: "aws" }];
   holdingRows = [holding()];
   insertWins = true;
-  inserts = [];
   // Both capabilities declared: the plugin lists commitments *and* stamps
   // charge types, which is what makes derived utilization legal.
   loadPlugins.mockResolvedValue([
@@ -178,6 +187,7 @@ beforeEach(async () => {
 
 describe("evaluateCommitmentAlertsForOrg — routing", () => {
   it("raises both kinds through the alert routing layer, never a transport", async () => {
+    prime();
     await evaluate("org1", NOW, true);
 
     expect(triggersRouted().sort()).toEqual(["commitmentExpiryAlerts", "commitmentIdleAlerts"]);
@@ -190,6 +200,7 @@ describe("evaluateCommitmentAlertsForOrg — routing", () => {
   });
 
   it("carries the deep-link payload and the routable facts", async () => {
+    prime();
     await evaluate("org1", NOW, true);
     const expiry = routeAlert.mock.calls
       .map((c) => c[0])
@@ -208,6 +219,7 @@ describe("evaluateCommitmentAlertsForOrg — routing", () => {
   });
 
   it("names the thing, the number, and what to do", async () => {
+    prime();
     await evaluate("org1", NOW, true);
     const idle = routeAlert.mock.calls
       .map((c) => c[0])
@@ -222,6 +234,7 @@ describe("evaluateCommitmentAlertsForOrg — routing", () => {
   it("marks an idle commitment info rather than warning", async () => {
     // Nothing is breaking; it is money already spent, restated monthly. An
     // org that sleeps through `info` should keep sleeping through it.
+    prime();
     await evaluate("org1", NOW, true);
     const idle = routeAlert.mock.calls
       .map((c) => c[0])
@@ -234,24 +247,30 @@ describe("evaluateCommitmentAlertsForOrg — routing", () => {
 describe("evaluateCommitmentAlertsForOrg — fire once", () => {
   it("notifies nobody when the events row already exists", async () => {
     insertWins = false;
+    prime();
     await evaluate("org1", NOW, true);
     // Both detectors still ran and both still tried to record — they just
     // lost the race with their own earlier pass.
-    expect(inserts.length).toBe(2);
+    expect(expiryInserts().length + idleInserts().length).toBe(2);
     expect(routeAlert).not.toHaveBeenCalled();
   });
 
   it("keys the expiry row on the term end, so an extension re-warns", async () => {
+    prime();
     await evaluate("org1", NOW, true);
-    const expiryRow = inserts.find((i) => i.table === EXPIRY_EVENTS)!.values;
-    expect(expiryRow["termEndDay"]).toBe("2026-09-09");
-    expect(expiryRow["horizonDays"]).toBe(30);
+    // (id, organizationId, accountId, commitmentId), termEndDay, horizonDays —
+    // the rendered statement's column order.
+    expect(expiryInserts()).toHaveLength(1);
+    expect(expiryInserts()[0]!.params[4]).toBe("2026-09-09");
+    expect(expiryInserts()[0]!.params[5]).toBe(30);
   });
 
   it("keys the idle row on the calendar month, not the sliding window", async () => {
+    prime();
     await evaluate("org1", NOW, true);
-    const idleRow = inserts.find((i) => i.table === IDLE_EVENTS)!.values;
-    expect(idleRow["periodKey"]).toBe("2026-08");
+    // (id, organizationId, accountId, commitmentId), periodKey.
+    expect(idleInserts()).toHaveLength(1);
+    expect(idleInserts()[0]!.params[4]).toBe("2026-08");
   });
 });
 
@@ -260,6 +279,7 @@ describe("evaluateCommitmentAlertsForOrg — unmeasurable utilization", () => {
     getAccountDataDays.mockResolvedValue(new Map());
     getCommitmentDeliveredTotals.mockResolvedValue([]);
 
+    prime();
     await evaluate("org1", NOW, true);
 
     // A term end is a term end whether or not any cost row landed.
@@ -274,6 +294,7 @@ describe("evaluateCommitmentAlertsForOrg — unmeasurable utilization", () => {
     ]);
     getCommitmentDeliveredTotals.mockResolvedValue([]);
 
+    prime();
     await evaluate("org1", NOW, true);
 
     expect(triggersRouted()).toEqual(["commitmentExpiryAlerts"]);
@@ -289,6 +310,7 @@ describe("evaluateCommitmentAlertsForOrg — unmeasurable utilization", () => {
     ];
     getCommitmentDeliveredTotals.mockResolvedValue([]);
 
+    prime();
     await evaluate("org1", NOW, true);
 
     expect(triggersRouted()).toEqual(["commitmentExpiryAlerts"]);
@@ -302,6 +324,7 @@ describe("evaluateCommitmentAlertsForOrg — the org's settings", () => {
       commitmentExpiryEnabled: false,
       commitmentIdleEnabled: false,
     });
+    prime();
     await evaluate("org1", NOW, true);
     expect(routeAlert).not.toHaveBeenCalled();
     expect(getAccountDataDays).not.toHaveBeenCalled();
@@ -309,12 +332,14 @@ describe("evaluateCommitmentAlertsForOrg — the org's settings", () => {
 
   it("runs only the enabled half", async () => {
     getOrgEfficiencySettings.mockResolvedValue({ ...SETTINGS, commitmentIdleEnabled: false });
+    prime();
     await evaluate("org1", NOW, true);
     expect(triggersRouted()).toEqual(["commitmentExpiryAlerts"]);
   });
 
   it("swallows a failed pass rather than breaking the poller", async () => {
     getCommitmentDeliveredTotals.mockRejectedValue(new Error("clickhouse down"));
+    prime();
     await expect(evaluate("org1", NOW, true)).resolves.toBeUndefined();
     expect(routeAlert).not.toHaveBeenCalled();
   });

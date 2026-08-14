@@ -1,59 +1,63 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { fakePostgres } from "./helpers/fake-postgres";
+
 /**
- * The resolver builds Drizzle queries shaped like:
- *   db.select(...).from(...).where(...)               -> Promise<rows>
- *   db.select(...).from(...).where(...).limit(n)       -> Promise<rows>
- *   db.insert(t).values(v).onConflictDoNothing()       -> Promise
- *   db.update(t).set(v).where(w)                        -> Promise
- *
- * We make `.where()` a thenable that ALSO exposes `.limit()`, so both shapes
- * work. Each terminal awaited query pulls the next queued result so tests can
- * script a precise sequence of DB responses.
+ * Real Drizzle over a recording driver against the real schema (see
+ * helpers/fake-postgres.ts). Each test queues its precise sequence of DB
+ * responses with `pg.queueRows` — one queue entry per query, in execution
+ * order, keys in the query's projection order (or the table's column order for
+ * bare `select()`).
  */
-const selectResults: unknown[][] = [];
-let lastInsertValues: unknown = undefined;
-const insertOnConflictDoNothing = vi.fn(async () => undefined);
-const updateWhere = vi.fn(async () => undefined);
-let updateSetArg: unknown = undefined;
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
-function nextSelectRows(): unknown[] {
-  return selectResults.shift() ?? [];
-}
-
-function makeWhereThenable() {
-  const rowsForThis = nextSelectRows();
-  // A promise that resolves to the rows, but also carries `.limit()`.
-  const p = Promise.resolve(rowsForThis) as Promise<unknown[]> & {
-    limit: (n: number) => Promise<unknown[]>;
+/** A full `roles` row in column order, driver-shaped. */
+function roleRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "r-x",
+    organizationId: "org1",
+    name: "Role",
+    description: null,
+    isSystem: false,
+    systemKey: null,
+    permissions: [],
+    createdAt: "2026-08-01 00:00:00.000",
+    updatedAt: "2026-08-01 00:00:00.000",
+    ...over,
   };
-  p.limit = () => Promise.resolve(rowsForThis);
-  return p;
 }
 
-const dbSelect = vi.fn(() => ({
-  from: () => ({
-    where: () => makeWhereThenable(),
-  }),
-}));
+/**
+ * The columns `ensureSystemRoles`' INSERT provides values for, in the order
+ * the real dialect renders them (table column order; `created_at`/`updated_at`
+ * fall back to their defaults and carry no parameter).
+ */
+const INSERTED_ROLE_COLUMNS = [
+  "id",
+  "organizationId",
+  "name",
+  "description",
+  "isSystem",
+  "systemKey",
+  "permissions",
+] as const;
 
-const dbInsert = vi.fn(() => ({
-  values: (v: unknown) => {
-    lastInsertValues = v;
-    return { onConflictDoNothing: insertOnConflictDoNothing };
-  },
-}));
+/** The rows of the `roles` INSERT, reconstructed from its positional params. */
+function insertedRoles(): Array<Record<string, unknown>> | null {
+  const q = pg.queries.find((x) => x.sql.startsWith('insert into "roles"'));
+  if (!q) return null;
+  const rows: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < q.params.length; i += INSERTED_ROLE_COLUMNS.length) {
+    const chunk = q.params.slice(i, i + INSERTED_ROLE_COLUMNS.length);
+    rows.push(Object.fromEntries(INSERTED_ROLE_COLUMNS.map((k, j) => [k, chunk[j]])));
+  }
+  return rows;
+}
 
-const dbUpdate = vi.fn(() => ({
-  set: (v: unknown) => {
-    updateSetArg = v;
-    return { where: updateWhere };
-  },
-}));
-
-vi.mock("../db/client", () => ({
-  db: { select: dbSelect, insert: dbInsert, update: dbUpdate },
-}));
+/** The membership UPDATEs issued, as their rendered positional params. */
+const membershipUpdates = () =>
+  pg.queries.filter((q) => q.sql.startsWith('update "organization_members"'));
 
 /**
  * Break-glass grants are resolved alongside the role, but they have their own
@@ -64,33 +68,13 @@ const mockActiveElevations = vi.fn(async () => [] as unknown[]);
 vi.mock("../access/break-glass", () => ({
   activeElevations: (...a: unknown[]) => mockActiveElevations(...(a as [])),
 }));
-vi.mock("../db/schema", () => ({
-  organizationMembers: {
-    id: "om.id",
-    userId: "om.userId",
-    organizationId: "om.organizationId",
-    roleId: "om.roleId",
-    role: "om.role",
-  },
-  roles: {
-    id: "r.id",
-    organizationId: "r.organizationId",
-    name: "r.name",
-    description: "r.description",
-    isSystem: "r.isSystem",
-    systemKey: "r.systemKey",
-    permissions: "r.permissions",
-  },
-}));
 
 let resolver: typeof import("../permissions/resolver");
 let systemRoles: typeof import("../permissions/system-roles");
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  selectResults.length = 0;
-  lastInsertValues = undefined;
-  updateSetArg = undefined;
+  pg.reset();
   mockActiveElevations.mockResolvedValue([]);
   resolver = await import("../permissions/resolver");
   systemRoles = await import("../permissions/system-roles");
@@ -98,33 +82,40 @@ beforeEach(async () => {
 
 describe("ensureSystemRoles", () => {
   it("inserts the three system roles when none exist", async () => {
-    selectResults.push([]); // existing systemKeys: none
+    pg.queueRows([]); // existing systemKeys: none
     await resolver.ensureSystemRoles("org1");
-    expect(dbInsert).toHaveBeenCalledTimes(1);
-    const inserted = lastInsertValues as Array<{ systemKey: string; organizationId: string }>;
-    expect(inserted.map((r) => r.systemKey).sort()).toEqual(["admin", "member", "owner"]);
-    expect(inserted.every((r) => r.organizationId === "org1")).toBe(true);
-    expect(insertOnConflictDoNothing).toHaveBeenCalled();
+    const inserted = insertedRoles();
+    expect(inserted).not.toBeNull();
+    expect(inserted!.map((r) => r.systemKey).sort()).toEqual(["admin", "member", "owner"]);
+    expect(inserted!.every((r) => r.organizationId === "org1")).toBe(true);
+    expect(pg.lastQuery().sql).toContain("on conflict do nothing");
   });
 
   it("only inserts the missing keys", async () => {
-    selectResults.push([{ systemKey: "owner" }, { systemKey: "admin" }]);
+    pg.queueRows([{ systemKey: "owner" }, { systemKey: "admin" }]);
     await resolver.ensureSystemRoles("org1");
-    const inserted = lastInsertValues as Array<{ systemKey: string }>;
-    expect(inserted.map((r) => r.systemKey)).toEqual(["member"]);
+    expect(insertedRoles()!.map((r) => r.systemKey)).toEqual(["member"]);
   });
 
   it("does not insert when all keys are present", async () => {
-    selectResults.push([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]);
+    pg.queueRows([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]);
     await resolver.ensureSystemRoles("org1");
-    expect(dbInsert).not.toHaveBeenCalled();
+    expect(insertedRoles()).toBeNull();
   });
 });
 
 describe("getSystemRole", () => {
   it("returns the row enriched with in-code permissions", async () => {
-    selectResults.push([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]); // ensure
-    selectResults.push([{ id: "r-owner", name: "Owner", description: "desc" }]); // the role lookup
+    pg.queueRows([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]); // ensure
+    pg.queueRows([
+      roleRow({
+        id: "r-owner",
+        name: "Owner",
+        description: "desc",
+        isSystem: true,
+        systemKey: "owner",
+      }),
+    ]); // the role lookup
     const role = await resolver.getSystemRole("org1", "owner");
     expect(role.id).toBe("r-owner");
     expect(role.isSystem).toBe(true);
@@ -133,8 +124,8 @@ describe("getSystemRole", () => {
   });
 
   it("throws when the system role row is missing", async () => {
-    selectResults.push([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]); // ensure
-    selectResults.push([]); // missing role
+    pg.queueRows([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]); // ensure
+    pg.queueRows([]); // missing role
     await expect(resolver.getSystemRole("org1", "admin")).rejects.toThrow(/missing/);
   });
 });
@@ -150,7 +141,7 @@ describe("resolveEffectivePermissions — apiKey", () => {
       role: null,
       elevations: [],
     });
-    expect(dbSelect).not.toHaveBeenCalled();
+    expect(pg.queries).toEqual([]);
     // A key must never pick up its owner's break-glass grant: the elevation
     // was handed to a person for a bounded window on a stated reason, and a
     // key they minted last quarter is neither.
@@ -160,7 +151,7 @@ describe("resolveEffectivePermissions — apiKey", () => {
 
 describe("resolveEffectivePermissions — user", () => {
   it("returns empty when there is no membership", async () => {
-    selectResults.push([]); // membership lookup -> none
+    pg.queueRows([]); // membership lookup -> none
     const out = await resolver.resolveEffectivePermissions("org1", {
       kind: "user",
       userId: "u1",
@@ -169,16 +160,9 @@ describe("resolveEffectivePermissions — user", () => {
   });
 
   it("resolves a custom (non-system) role's stored permissions", async () => {
-    selectResults.push([{ roleId: "r-custom", legacyRole: null }]); // membership
-    selectResults.push([
-      {
-        id: "r-custom",
-        name: "Custom",
-        description: null,
-        isSystem: false,
-        systemKey: null,
-        permissions: ["accounts:read", "team:read"],
-      },
+    pg.queueRows([{ roleId: "r-custom", legacyRole: null }]); // membership
+    pg.queueRows([
+      roleRow({ id: "r-custom", name: "Custom", permissions: ["accounts:read", "team:read"] }),
     ]);
     const out = await resolver.resolveEffectivePermissions("org1", {
       kind: "user",
@@ -200,18 +184,15 @@ describe("resolveEffectivePermissions — user", () => {
    * `infra.waitForApproval(...)`" has to be expressible.
    */
   it("does not grant workflows:approve to a role that grants dashboards:write", async () => {
-    selectResults.push([{ roleId: "r-authors", legacyRole: null }]); // membership
-    selectResults.push([
-      {
+    pg.queueRows([{ roleId: "r-authors", legacyRole: null }]); // membership
+    pg.queueRows([
+      roleRow({
         id: "r-authors",
         name: "Workflow authors",
-        description: null,
-        isSystem: false,
-        systemKey: null,
         // Deliberately withholds approve while granting everything around it.
         permissions: ["dashboards:read", "dashboards:write", "workflows:read", "workflows:write"],
-        updatedAt: new Date("2020-01-01T00:00:00Z"), // long "before" any cutover
-      },
+        updatedAt: "2020-01-01 00:00:00.000", // long "before" any cutover
+      }),
     ]);
     const out = await resolver.resolveEffectivePermissions("org1", {
       kind: "user",
@@ -228,16 +209,16 @@ describe("resolveEffectivePermissions — user", () => {
   });
 
   it("uses in-code permissions for a system role (ignoring stale stored perms)", async () => {
-    selectResults.push([{ roleId: "r-owner", legacyRole: null }]); // membership
-    selectResults.push([
-      {
+    pg.queueRows([{ roleId: "r-owner", legacyRole: null }]); // membership
+    pg.queueRows([
+      roleRow({
         id: "r-owner",
         name: "Owner",
         description: "d",
         isSystem: true,
         systemKey: "owner",
         permissions: ["STALE"], // should be ignored
-      },
+      }),
     ]);
     const out = await resolver.resolveEffectivePermissions("org1", {
       kind: "user",
@@ -249,16 +230,15 @@ describe("resolveEffectivePermissions — user", () => {
   });
 
   it("treats a row flagged isSystem with an unknown systemKey as a custom role", async () => {
-    selectResults.push([{ roleId: "r-x", legacyRole: null }]); // membership
-    selectResults.push([
-      {
+    pg.queueRows([{ roleId: "r-x", legacyRole: null }]); // membership
+    pg.queueRows([
+      roleRow({
         id: "r-x",
         name: "Weird",
-        description: null,
         isSystem: true,
         systemKey: "bogus",
         permissions: ["audit:read"],
-      },
+      }),
     ]);
     const out = await resolver.resolveEffectivePermissions("org1", {
       kind: "user",
@@ -270,17 +250,8 @@ describe("resolveEffectivePermissions — user", () => {
   });
 
   it("defaults null stored permissions to an empty array for a custom role", async () => {
-    selectResults.push([{ roleId: "r-empty", legacyRole: null }]);
-    selectResults.push([
-      {
-        id: "r-empty",
-        name: "Empty",
-        description: null,
-        isSystem: false,
-        systemKey: null,
-        permissions: null,
-      },
-    ]);
+    pg.queueRows([{ roleId: "r-empty", legacyRole: null }]);
+    pg.queueRows([roleRow({ id: "r-empty", name: "Empty", permissions: null })]);
     const out = await resolver.resolveEffectivePermissions("org1", {
       kind: "user",
       userId: "u1",
@@ -289,10 +260,18 @@ describe("resolveEffectivePermissions — user", () => {
   });
 
   it("falls back to the legacy text role when roleId points at a deleted row", async () => {
-    selectResults.push([{ roleId: "gone", legacyRole: "admin" }]); // membership
-    selectResults.push([]); // roleId lookup -> deleted
-    selectResults.push([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]); // ensureSystemRoles inside getSystemRole
-    selectResults.push([{ id: "r-admin", name: "Admin", description: "d" }]); // system role row
+    pg.queueRows([{ roleId: "gone", legacyRole: "admin" }]); // membership
+    pg.queueRows([]); // roleId lookup -> deleted
+    pg.queueRows([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]); // ensureSystemRoles inside getSystemRole
+    pg.queueRows([
+      roleRow({
+        id: "r-admin",
+        name: "Admin",
+        description: "d",
+        isSystem: true,
+        systemKey: "admin",
+      }),
+    ]); // system role row
     const out = await resolver.resolveEffectivePermissions("org1", {
       kind: "user",
       userId: "u1",
@@ -302,9 +281,11 @@ describe("resolveEffectivePermissions — user", () => {
   });
 
   it("falls back to the legacy text role when there is no roleId at all", async () => {
-    selectResults.push([{ roleId: null, legacyRole: "member" }]); // membership
-    selectResults.push([{ systemKey: "member" }, { systemKey: "owner" }, { systemKey: "admin" }]); // ensure
-    selectResults.push([{ id: "r-member", name: "Member", description: null }]);
+    pg.queueRows([{ roleId: null, legacyRole: "member" }]); // membership
+    pg.queueRows([{ systemKey: "member" }, { systemKey: "owner" }, { systemKey: "admin" }]); // ensure
+    pg.queueRows([
+      roleRow({ id: "r-member", name: "Member", isSystem: true, systemKey: "member" }),
+    ]);
     const out = await resolver.resolveEffectivePermissions("org1", {
       kind: "user",
       userId: "u1",
@@ -314,7 +295,7 @@ describe("resolveEffectivePermissions — user", () => {
   });
 
   it("returns empty when there is neither a usable roleId nor a known legacy role", async () => {
-    selectResults.push([{ roleId: null, legacyRole: "garbage" }]); // membership
+    pg.queueRows([{ roleId: null, legacyRole: "garbage" }]); // membership
     const out = await resolver.resolveEffectivePermissions("org1", {
       kind: "user",
       userId: "u1",
@@ -323,18 +304,8 @@ describe("resolveEffectivePermissions — user", () => {
   });
 
   it("unions a live break-glass grant into the effective permissions", async () => {
-    selectResults.push([{ roleId: "r-custom", legacyRole: null }]); // membership
-    selectResults.push([
-      {
-        id: "r-custom",
-        organizationId: "org1",
-        name: "Reader",
-        description: null,
-        isSystem: false,
-        systemKey: null,
-        permissions: ["resources:read"],
-      },
-    ]);
+    pg.queueRows([{ roleId: "r-custom", legacyRole: null }]); // membership
+    pg.queueRows([roleRow({ id: "r-custom", name: "Reader", permissions: ["resources:read"] })]);
     mockActiveElevations.mockResolvedValue([
       {
         requestId: "req-1",
@@ -355,18 +326,8 @@ describe("resolveEffectivePermissions — user", () => {
   });
 
   it("does not duplicate a granted permission the role already carries", async () => {
-    selectResults.push([{ roleId: "r-custom", legacyRole: null }]);
-    selectResults.push([
-      {
-        id: "r-custom",
-        organizationId: "org1",
-        name: "Reader",
-        description: null,
-        isSystem: false,
-        systemKey: null,
-        permissions: ["resources:read"],
-      },
-    ]);
+    pg.queueRows([{ roleId: "r-custom", legacyRole: null }]);
+    pg.queueRows([roleRow({ id: "r-custom", name: "Reader", permissions: ["resources:read"] })]);
     mockActiveElevations.mockResolvedValue([
       {
         requestId: "req-1",
@@ -383,7 +344,7 @@ describe("resolveEffectivePermissions — user", () => {
   it("ignores a grant when the membership is gone", async () => {
     // A grant is scoped to a membership. Honouring one after the member was
     // removed would be a way for them to keep access.
-    selectResults.push([]); // membership lookup -> none
+    pg.queueRows([]); // membership lookup -> none
     mockActiveElevations.mockResolvedValue([
       {
         requestId: "req-1",
@@ -397,9 +358,11 @@ describe("resolveEffectivePermissions — user", () => {
   });
 
   it("skips the elevation read entirely when the caller opts out", async () => {
-    selectResults.push([{ roleId: null, legacyRole: "member" }]);
-    selectResults.push([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]);
-    selectResults.push([{ id: "r-member", name: "Member", description: null }]);
+    pg.queueRows([{ roleId: null, legacyRole: "member" }]);
+    pg.queueRows([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]);
+    pg.queueRows([
+      roleRow({ id: "r-member", name: "Member", isSystem: true, systemKey: "member" }),
+    ]);
 
     const out = await resolver.resolveEffectivePermissions(
       "org1",
@@ -415,74 +378,77 @@ describe("resolveEffectivePermissions — user", () => {
 
 describe("backfillMembershipRole", () => {
   it("returns null when there is no membership", async () => {
-    selectResults.push([]); // membership
+    pg.queueRows([]); // membership
     const out = await resolver.backfillMembershipRole("org1", "u1");
     expect(out).toBeNull();
   });
 
   it("returns the existing role (system) without writing when roleId resolves", async () => {
-    selectResults.push([{ id: "m1", roleId: "r-owner", legacyRole: null }]); // membership
-    selectResults.push([
-      {
+    pg.queueRows([{ id: "m1", roleId: "r-owner", legacyRole: null }]); // membership
+    pg.queueRows([
+      roleRow({
         id: "r-owner",
         name: "Owner",
         description: "d",
         isSystem: true,
         systemKey: "owner",
         permissions: ["STALE"],
-      },
+      }),
     ]);
     const out = await resolver.backfillMembershipRole("org1", "u1");
     expect(out?.systemKey).toBe("owner");
     expect(out?.permissions).toEqual(systemRoles.systemRolePermissions("owner"));
-    expect(dbUpdate).not.toHaveBeenCalled();
+    expect(membershipUpdates()).toEqual([]);
   });
 
   it("returns an existing custom role's stored perms without writing", async () => {
-    selectResults.push([{ id: "m1", roleId: "r-c", legacyRole: null }]);
-    selectResults.push([
-      {
-        id: "r-c",
-        name: "Custom",
-        description: null,
-        isSystem: false,
-        systemKey: null,
-        permissions: ["accounts:read"],
-      },
-    ]);
+    pg.queueRows([{ id: "m1", roleId: "r-c", legacyRole: null }]);
+    pg.queueRows([roleRow({ id: "r-c", name: "Custom", permissions: ["accounts:read"] })]);
     const out = await resolver.backfillMembershipRole("org1", "u1");
     expect(out?.isSystem).toBe(false);
     expect(out?.permissions).toEqual(["accounts:read"]);
-    expect(dbUpdate).not.toHaveBeenCalled();
+    expect(membershipUpdates()).toEqual([]);
   });
 
   it("assigns the legacy-derived system role and writes roleId when no roleId is set", async () => {
-    selectResults.push([{ id: "m1", roleId: null, legacyRole: "admin" }]); // membership
-    selectResults.push([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]); // ensure (inside getSystemRole)
-    selectResults.push([{ id: "r-admin", name: "Admin", description: "d" }]); // system role row
+    pg.queueRows([{ id: "m1", roleId: null, legacyRole: "admin" }]); // membership
+    pg.queueRows([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]); // ensure (inside getSystemRole)
+    pg.queueRows([
+      roleRow({
+        id: "r-admin",
+        name: "Admin",
+        description: "d",
+        isSystem: true,
+        systemKey: "admin",
+      }),
+    ]); // system role row
     const out = await resolver.backfillMembershipRole("org1", "u1");
     expect(out?.systemKey).toBe("admin");
-    expect(dbUpdate).toHaveBeenCalledTimes(1);
-    expect(updateSetArg).toEqual({ roleId: "r-admin" });
-    expect(updateWhere).toHaveBeenCalled();
+    expect(membershipUpdates()).toHaveLength(1);
+    // set "role_id" = $1 where "id" = $2
+    expect(membershipUpdates()[0]!.params).toEqual(["r-admin", "m1"]);
   });
 
   it("defaults to the member system role when the legacy role is unknown", async () => {
-    selectResults.push([{ id: "m1", roleId: null, legacyRole: "nonsense" }]); // membership
-    selectResults.push([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]); // ensure
-    selectResults.push([{ id: "r-member", name: "Member", description: null }]); // system row
+    pg.queueRows([{ id: "m1", roleId: null, legacyRole: "nonsense" }]); // membership
+    pg.queueRows([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]); // ensure
+    pg.queueRows([
+      roleRow({ id: "r-member", name: "Member", isSystem: true, systemKey: "member" }),
+    ]); // system row
     const out = await resolver.backfillMembershipRole("org1", "u1");
     expect(out?.systemKey).toBe("member");
-    expect(updateSetArg).toEqual({ roleId: "r-member" });
+    expect(membershipUpdates()[0]!.params).toEqual(["r-member", "m1"]);
   });
 
   it("falls through to assignment when roleId points at a deleted row", async () => {
-    selectResults.push([{ id: "m1", roleId: "gone", legacyRole: "member" }]); // membership
-    selectResults.push([]); // roleId lookup -> deleted
-    selectResults.push([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]); // ensure
-    selectResults.push([{ id: "r-member", name: "Member", description: null }]);
+    pg.queueRows([{ id: "m1", roleId: "gone", legacyRole: "member" }]); // membership
+    pg.queueRows([]); // roleId lookup -> deleted
+    pg.queueRows([{ systemKey: "owner" }, { systemKey: "admin" }, { systemKey: "member" }]); // ensure
+    pg.queueRows([
+      roleRow({ id: "r-member", name: "Member", isSystem: true, systemKey: "member" }),
+    ]);
     const out = await resolver.backfillMembershipRole("org1", "u1");
     expect(out?.systemKey).toBe("member");
-    expect(dbUpdate).toHaveBeenCalled();
+    expect(membershipUpdates()).toHaveLength(1);
   });
 });

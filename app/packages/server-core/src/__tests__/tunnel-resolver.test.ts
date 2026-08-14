@@ -1,19 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "node:crypto";
 
+import { fakePostgres } from "./helpers/fake-postgres";
+
 process.env["ENCRYPTION_MASTER_KEY"] = randomBytes(32).toString("base64");
 
-// --- mock the DB client (importing the real one throws without DATABASE_URL) ---
-const selectResult: { rows: unknown[] } = { rows: [] };
-const dbSelect = vi.fn(() => ({
-  from: () => ({
-    where: () => ({
-      limit: () => Promise.resolve(selectResult.rows),
-    }),
-  }),
-}));
-vi.mock("../db/client", () => ({ db: { select: dbSelect } }));
-vi.mock("../db/schema", () => ({ sshTunnelConfigs: { accountId: "accountId" } }));
+// Real Drizzle over a recording driver against the real schema — the
+// ssh_tunnel_configs lookup renders its actual SQL (and shadow-validates
+// under test:postgres:shadow). Every test either finds an existing tunnel
+// (no query) or gets the default empty result (no config row).
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
 // --- mock ssh-tunnel-core (real module pulls in ssh2 which breaks ESM import) ---
 const findTunnel = vi.fn();
@@ -28,7 +25,7 @@ let rewriteConnectionForTunnel: typeof import("../tunnel-resolver").rewriteConne
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  selectResult.rows = [];
+  pg.reset();
   const mod = await import("../tunnel-resolver");
   rewriteCredentialsThroughTunnel = mod.rewriteCredentialsThroughTunnel;
   rewriteConnectionForTunnel = mod.rewriteConnectionForTunnel;
@@ -41,9 +38,12 @@ afterEach(() => {
 describe("rewriteConnectionForTunnel", () => {
   it("returns the original string when no tunnel exists (existing + no config)", async () => {
     findTunnel.mockReturnValue(null);
-    selectResult.rows = []; // no ssh_tunnel_configs row
+    // default empty result: no ssh_tunnel_configs row
     const out = await rewriteConnectionForTunnel("acct1", "postgres://u:p@db.example.com:5432/app");
     expect(out).toBe("postgres://u:p@db.example.com:5432/app");
+    expect(pg.lastQuery().sql).toContain('from "ssh_tunnel_configs"');
+    // accountId, and the parameterized limit 1.
+    expect(pg.lastQuery().params).toEqual(["acct1", 1]);
   });
 
   it("rewrites a URL connection string to 127.0.0.1:<localPort> when an existing tunnel is found", async () => {
@@ -86,7 +86,7 @@ describe("rewriteConnectionForTunnel", () => {
 describe("rewriteCredentialsThroughTunnel", () => {
   it("is a no-op when no tunnel is configured", async () => {
     findTunnel.mockReturnValue(null);
-    selectResult.rows = [];
+    // default empty result: no ssh_tunnel_configs row
     const creds = { url: "redis://host:6379", other: "x:1" };
     await rewriteCredentialsThroughTunnel("acct1", creds);
     expect(creds).toEqual({ url: "redis://host:6379", other: "x:1" });
