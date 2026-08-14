@@ -16,7 +16,7 @@ A **business metric** is the missing half: a number only you know — active cus
 2. Report a value for each day, from a workflow, over the API, or by hand.
 3. On any cost graph, choose **Divide by a business metric**.
 
-<insert [Costs panel Unit costs section listing two business metrics, one showing "412 days reported" and one showing "never reported" in amber] here>
+![Costs panel Unit costs section listing two business metrics, one showing "412 days reported" and one showing "never reported" in amber](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/metrics-list.png)
 
 ## Declare a metric
 
@@ -31,7 +31,7 @@ A **business metric** is the missing half: a number only you know — active cus
 | **Currency**   | Revenue metrics only, and required for them — margin subtracts spend from revenue, which is only defined in one currency.     |
 | **Cost scope** | Which spend this metric divides. Empty means all of it.                                                                       |
 
-<insert [New business metric modal with name, key, unit, kind and the cost scope filter editor visible] here>
+![New business metric modal with name, key, unit, kind and the cost scope filter editor visible](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/new-metric-modal.png)
 
 ### Cost scope is part of what the metric means
 
@@ -69,7 +69,7 @@ Needs `costs:write`. The endpoint accepts the metric's key or its id.
 
 **Values** on a metric's row opens the reported days and lets you type one in. This is mostly for confirming the metric is wired up at all, and for correcting a bad number — send the day again with the right value.
 
-<insert [Values modal for a business metric showing recent days with an api/workflow source column and the add-a-day form at the top] here>
+![Values modal for a business metric showing recent days with an api/workflow source column and the add-a-day form at the top](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/values-modal.png)
 
 ## Draw it
 
@@ -80,9 +80,9 @@ Four options stop applying, and the editor says so:
 - **Group by** and **Top groups** — a per-group ratio needs a per-group denominator. Dividing each service's spend by the whole customer count gives five numbers that do not sum to the real one.
 - **Compare** and **Forecast** — projecting a ratio means projecting two independent series and dividing, which is a different thing from projecting one.
 
-<insert [Cost graph config modal with the "Divide by a business metric" picker set to Active customers and the explanatory note beneath it] here>
+![Cost graph config modal with the "Divide by a business metric" picker set to Active customers and the explanatory note beneath it](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/divide-by-metric.png)
 
-<insert [A unit-cost line chart showing cost per customer over 30 days with a visible break in the line where two days were not reported] here>
+![A unit-cost line chart showing cost per customer over 30 days with a visible break in the line where two days were not reported](https://agent-assets.infrawrench.com/docs-screenshots/features/unit-costs/unit-cost-chart.png)
 
 ## Gaps are gaps, never zero
 

@@ -10,7 +10,7 @@ An export is a saved query, a schedule, and a destination. On its cadence, Infra
 
 > **Cloud only.** Exports run on Infrawrench Cloud's background pollers, against the cloud cost store. The desktop app can create and run them while signed into a cloud org, but local-only mode has no cost history to export.
 
-<insert [Settings → Cost Exports with two exports listed: one succeeded showing object and row counts, one failed showing a red "S3 PUT failed (403): Access Denied" line] here>
+![Settings → Cost Exports with two exports listed: one succeeded showing object and row counts, one failed showing a red "S3 PUT failed (403): Access Denied" line](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-exports/settings-list.png)
 
 ## Read this first: providers restate spend
 

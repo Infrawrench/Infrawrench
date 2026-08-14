@@ -8,7 +8,7 @@ Reserved instances, savings plans and committed-use discounts are the largest si
 
 The **Commitments** section on the Costs panel makes the holdings first-class: every reservation, savings plan and committed-use discount your connected accounts hold, collected daily from the provider's own management APIs.
 
-<insert [The Commitments section on the Costs panel showing a coverage range line ("62%–78% of USD usage covered"), a table of holdings with utilization percentages and one "expired" row, and a savings planner recommendation beneath] here>
+![The Commitments section on the Costs panel showing a coverage range line ("62%–78% of USD usage covered"), a table of holdings with utilization percentages and one "expired" row, and a savings planner recommendation beneath](https://agent-assets.infrawrench.com/docs-screenshots/features/commitments/commitments-section.png)
 
 ## What's collected
 

@@ -165,9 +165,9 @@ All three live in the **Commitment & unit-cost alerts** section of the Costs pan
 anomaly and change-alert sections, on both web and desktop. The list shows what fired, when,
 what it was about, and the money involved. "Tune alerts" opens the thresholds for all three.
 
-<insert [Costs panel Commitment & unit-cost alerts section showing a mixed list of firings — one commitment expiry with its on-demand exposure, one idle commitment with its wasted amount, one unit-cost regression with its before → after figures] here>
+![Costs panel Commitment & unit-cost alerts section showing a mixed list of firings — one commitment expiry with its on-demand exposure, one idle commitment with its wasted amount, one unit-cost regression with its before → after figures](https://agent-assets.infrawrench.com/docs-screenshots/features/commitment-and-unit-cost-alerts/mixed-firings.png)
 
-<insert [The Tune alerts panel expanded, showing all three groups: expiry horizons (60, 30, 7) with the already-expired checkbox, the idle thresholds (70%, 30-day window, 14 measured days, $50 waste floor), and the unit-cost thresholds (20%, 14-day windows, 10 reported days, $100 spend floor)] here>
+![The Tune alerts panel expanded, showing all three groups: expiry horizons (60, 30, 7) with the already-expired checkbox, the idle thresholds (70%, 30-day window, 14 measured days, $50 waste floor), and the unit-cost thresholds (20%, 14-day windows, 10 reported days, $100 spend floor)](https://agent-assets.infrawrench.com/docs-screenshots/features/commitment-and-unit-cost-alerts/tune-alerts.png)
 
 The defaults are chosen to work with no setup: an organization that never opens this panel gets
 all three detectors at the values described above.

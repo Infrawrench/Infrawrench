@@ -98,7 +98,7 @@ thresholds or the SMS setting: they are organization-wide settings that change w
 alerts look like, and the control you actually want on a phone — turning the notifications off
 for yourself — is the "Cost anomalies" toggle in the app's notification settings.
 
-<insert [Costs panel Anomalies section with the tuning panel expanded, showing the Sensitivity, Spike floor, and New-source floor inputs with their default values, and the "Text the on-call list" dropdown set to Never] here>
+![Costs panel Anomalies section with the tuning panel expanded, showing the Sensitivity, Spike floor, and New-source floor inputs with their default values, and the "Text the on-call list" dropdown set to Never](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/tuning-defaults.png)
 
 ## Deduplication and cooldown
 
@@ -144,7 +144,7 @@ They are hints, not verdicts: the queries find correlation in time, scoped to yo
 provider where possible), and an empty list just means nothing notable was recorded in that
 window.
 
-<insert [Costs panel Anomalies list showing a spike row with two root-cause hints beneath it — a "12 gce-instance resources appeared" line and a workflow-run line with the actor's name] here>
+![Costs panel Anomalies list showing a spike row with two root-cause hints beneath it — a "12 gce-instance resources appeared" line and a workflow-run line with the actor's name](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/spike-root-cause-hints.png)
 
 <insert [Slack anomaly alert message whose body ends with an "Around then:" line listing the same root-cause hints] here>
 
@@ -155,7 +155,7 @@ the day, what spiked, the actual spend, the baseline it was measured against, an
 percentage change. New spend sources carry a **New source** badge, and show `none` for the
 baseline and `new` for the change — a key with no prior spend has no percentage to be up by.
 
-<insert [Costs panel showing the Anomalies section with a mix of rows — a spike with a red percentage change, and a new spend source with its New source badge, "none" baseline, and "new" change] here>
+![Costs panel showing the Anomalies section with a mix of rows — a spike with a red percentage change, and a new spend source with its New source badge, "none" baseline, and "new" change](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/mixed-rows.png)
 
 The **mobile app** shows the same list on its **Costs** tab, under the month-to-date chart and
 your budgets, with the same distinction between the two kinds. Tapping a cost anomaly push
@@ -242,7 +242,7 @@ Texts need paging enabled for the organization with Twilio credentials and a fro
 **Settings → Notifications**, and at least one recipient opted into SMS. If none of that is set
 up, the tuning panel says so rather than accepting the setting and silently delivering nothing.
 
-<insert [Tuning panel with "Text the on-call list" set to "Every anomaly" on an org with no Twilio credentials, showing the amber warning that the organization can't receive SMS yet] here>
+![Tuning panel with "Text the on-call list" set to "Every anomaly" on an org with no Twilio credentials, showing the amber warning that the organization can't receive SMS yet](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/sms-warning.png)
 
 ## API
 
@@ -349,11 +349,11 @@ Explaining is a web and desktop action. The mobile app shows an explained anomal
 and the sentence — but does not compose one: the note it creates lands on charts you are not
 looking at from a phone, and the answer is what mobile owes you at 7am.
 
-<insert [Costs panel Anomalies section with one row marked Explained showing its inline explanation, the "1 unexplained" count next to the section heading, and the Explain link on an unexplained row] here>
+![Costs panel Anomalies section with one row marked Explained showing its inline explanation, the "1 unexplained" count next to the section heading, and the Explain link on an unexplained row](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/explained-row.png)
 
-<insert [The Explain composer open over the Anomalies list, showing the read-only day/service/spend facts, the note box prefilled with "Amazon EC2 spend +173% — ", and a root-cause hint offered as a one-click suggestion] here>
+![The Explain composer open over the Anomalies list, showing the read-only day/service/spend facts, the note box prefilled with "Amazon EC2 spend +173% — ", and a root-cause hint offered as a one-click suggestion](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/explain-composer.png)
 
-<insert [A cost chart with an annotation marker on the anomalous day, its popover open showing the explanation text and the "Explains a detected anomaly" line] here>
+![A cost chart with an annotation marker on the anomalous day, its popover open showing the explanation text and the "Explains a detected anomaly" line](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-anomaly-alerts/annotation-chart.png)
 
 ## Filing an anomaly as an issue
 

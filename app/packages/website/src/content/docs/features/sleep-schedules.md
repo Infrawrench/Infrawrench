@@ -29,7 +29,7 @@ Note that a stopped resource isn't always a free resource: DigitalOcean and Hetz
 
 Open an eligible resource and switch to its **Schedule** tab. Pick the working days, the off time, the on time, and the IANA timezone — the editor previews the next few transitions so you can sanity-check the zone, and quotes the projected monthly saving computed from the resource's trailing 30-day spend and the fraction of the week it would be off.
 
-<insert [Screenshot of the Schedule tab on an EC2 instance's detail page showing the editor modal with Mon–Fri selected, off 19:00 / on 08:00, Europe/London, and the projected monthly saving quote] here>
+![Screenshot of the Schedule tab on an EC2 instance's detail page showing the editor modal with Mon–Fri selected, off 19:00 / on 08:00, Europe/London, and the projected monthly saving quote](https://agent-assets.infrawrench.com/docs-screenshots/features/sleep-schedules/schedule-tab-editor.png)
 
 One schedule per resource. Times are wall-clock in the chosen zone and stay correct across daylight-saving transitions.
 

@@ -32,7 +32,7 @@ For each pair of endpoints, per day:
 | What did it cost?                      | Bytes × the published rate for that boundary, in the rate card's currency                  |
 | How much of the total is explained?    | A coverage percentage, with the unexplained parts named rather than hidden                 |
 
-<insert [The Network costs section on the Costs panel, showing the coverage line, the by-boundary breakdown, and the top flows list with a cross-zone pair at the top] here>
+![The Network costs section on the Costs panel, showing the coverage line, the by-boundary breakdown, and the top flows list with a cross-zone pair at the top](https://agent-assets.infrawrench.com/docs-screenshots/features/network-costs/section-with-data.png)
 
 ## What it cannot tell you
 
@@ -77,7 +77,7 @@ Enabling and disabling are both recorded in the [audit log](../team-and-billing/
 
 Once on, collection runs once a day and reads only **closed** UTC days, so the first flows appear within about 24 hours. The screen shows how much log data the last collection scanned.
 
-<insert [The Network costs section with the "Collect network flows" switch on and the note about queries being billed to your cloud account] here>
+![The Network costs section with the "Collect network flows" switch on and the note about queries being billed to your cloud account](https://agent-assets.infrawrench.com/docs-screenshots/features/network-costs/collect-switch-on.png)
 
 ## How to read the screen
 

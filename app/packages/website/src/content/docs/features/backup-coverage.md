@@ -18,7 +18,7 @@ Open it from the sidebar. It has three views:
   old that protection is, and which policy applies.
 - **Policies** — the recovery objectives everything else is measured against.
 
-<insert [The Backups workspace tab on the Gaps view, showing the three summary cards (Worst RPO, Unprotected, Orphaned backups) above a table of findings with mixed severities] here>
+![The Backups workspace tab on the Gaps view, showing the three summary cards (Worst RPO, Unprotected, Orphaned backups) above a table of findings with mixed severities](https://agent-assets.infrawrench.com/docs-screenshots/features/backup-coverage/gaps-view.png)
 
 ## Where the answers come from
 
@@ -103,7 +103,7 @@ carry a trailing-30-day figure so you can decide with a number rather than a
 hunch. Where it is not, the finding says so — the cost reads as unknown, never
 as zero.
 
-<insert [The Gaps view filtered to Orphaned snapshot, showing several rows with sizes and monthly costs] here>
+![The Gaps view filtered to Orphaned snapshot, showing several rows with sizes and monthly costs](https://agent-assets.infrawrench.com/docs-screenshots/features/backup-coverage/gaps-orphaned-filter.png)
 
 ## Policies
 
@@ -134,7 +134,7 @@ permission. Everyone who can read your resources can read the coverage — a
 member can see that a database is unprotected, and deliberately cannot relax
 the target that says so.
 
-<insert [The Policies view with two policies listed — one selecting production-tagged databases with a 6 hour RPO, one applying to everything with a 24 hour RPO] here>
+![The Policies view with two policies listed — one selecting production-tagged databases with a 6 hour RPO, one applying to everything with a 24 hour RPO](https://agent-assets.infrawrench.com/docs-screenshots/features/backup-coverage/policies-view.png)
 
 ## Where else it shows up
 
