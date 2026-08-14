@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatChangeValue } from "@infrawrench/client-core";
+import { T, Var, useGT } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 import type {
   EnvironmentDiffAccount,
   EnvironmentDiffClient,
@@ -83,6 +85,7 @@ export function EnvironmentDiffSection({
   onSelectionChange,
   onOpenResource,
 }: EnvironmentDiffSectionProps) {
+  const gt = useGT();
   const [accounts, setAccounts] = useState<EnvironmentDiffAccount[] | null>(null);
   const [accountsError, setAccountsError] = useState<string | null>(null);
   const [a, setA] = useState(initialA ?? "");
@@ -174,11 +177,11 @@ export function EnvironmentDiffSection({
 
   return (
     <div className="flex-1 overflow-auto p-6">
-      <h1 className="text-xl font-semibold mb-1">Environment diff</h1>
+      <h1 className="text-xl font-semibold mb-1">{gt("Environment diff")}</h1>
       <p className="text-sm text-on-surface-muted mb-6">
-        Two accounts of the same provider, compared over the state they last synced — what exists in
-        one and not the other, how the counts differ, and where corresponding resources disagree on
-        a setting. The answer to &ldquo;why does staging work and prod doesn&apos;t&rdquo;.
+        {gt(
+          "Two accounts of the same provider, compared over the state they last synced — what exists in one and not the other, how the counts differ, and where corresponding resources disagree on a setting. The answer to “why does staging work and prod doesn’t”.",
+        )}
       </p>
 
       <AccountPairPickers
@@ -193,15 +196,19 @@ export function EnvironmentDiffSection({
 
       {accountsError != null && (
         <p role="alert" className="mb-4 text-sm text-danger">
-          Couldn&apos;t load the accounts — {accountsError}
+          <T>
+            Couldn&apos;t load the accounts — <Var>{accountsError}</Var>
+          </T>
         </p>
       )}
 
       {(!a || !b) && accountsError == null && (
         <p className="text-sm text-on-surface-faint">
           {accounts !== null && accounts.length < 2
-            ? "An environment diff needs two accounts of the same provider. Add a second account to compare."
-            : "Pick two accounts of the same provider to compare."}
+            ? gt(
+                "An environment diff needs two accounts of the same provider. Add a second account to compare.",
+              )
+            : gt("Pick two accounts of the same provider to compare.")}
         </p>
       )}
 
@@ -209,14 +216,14 @@ export function EnvironmentDiffSection({
         <div role="alert" className="text-sm text-danger">
           {error}{" "}
           <button type="button" onClick={retry} className="underline">
-            Retry
+            {gt("Retry")}
           </button>
         </div>
       )}
 
       {loading && data === null && error == null && a && b && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Comparing…
+          {gt("Comparing…")}
         </p>
       )}
 
@@ -244,10 +251,11 @@ function AccountPairPickers({
   onSelect: (next: { a: string; b: string }) => void;
   onIncludeIdentityFieldsChange: (value: boolean) => void;
 }) {
+  const gt = useGT();
   return (
     <div className="flex flex-wrap items-end gap-3 mb-6">
       <label className="flex flex-col gap-1 text-xs">
-        <span className="text-on-surface-faint">Baseline (A)</span>
+        <span className="text-on-surface-faint">{gt("Baseline (A)")}</span>
         <select
           value={a}
           onChange={(e) => {
@@ -264,7 +272,7 @@ function AccountPairPickers({
           }}
           className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm min-w-48"
         >
-          <option value="">Choose an account…</option>
+          <option value="">{gt("Choose an account…")}</option>
           {(accounts ?? []).map((account) => (
             <option key={account.id} value={account.id}>
               {account.displayName}
@@ -272,16 +280,16 @@ function AccountPairPickers({
           ))}
         </select>
       </label>
-      <span className="pb-2 text-on-surface-faint text-sm">vs</span>
+      <span className="pb-2 text-on-surface-faint text-sm">{gt("vs")}</span>
       <label className="flex flex-col gap-1 text-xs">
-        <span className="text-on-surface-faint">Compared (B)</span>
+        <span className="text-on-surface-faint">{gt("Compared (B)")}</span>
         <select
           value={b}
           onChange={(e) => onSelect({ a, b: e.target.value })}
           disabled={!a}
           className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm min-w-48 disabled:opacity-50"
         >
-          <option value="">Choose an account…</option>
+          <option value="">{gt("Choose an account…")}</option>
           {optionsB.map((account) => (
             <option key={account.id} value={account.id}>
               {account.displayName}
@@ -295,7 +303,7 @@ function AccountPairPickers({
           checked={includeIdentityFields}
           onChange={(e) => onIncludeIdentityFieldsChange(e.target.checked)}
         />
-        Show ids, addresses &amp; timestamps
+        {gt("Show ids, addresses & timestamps")}
       </label>
     </div>
   );
@@ -310,32 +318,64 @@ function EnvironmentDiffResults({
   nameOf: (id: string) => string;
   onOpenResource?: ((target: EnvironmentDiffResourceTarget) => void) | undefined;
 }) {
+  const gt = useGT();
   const groups = useMemo(() => groupByType(data.entries), [data.entries]);
+
+  const suppressedText = data.includeIdentityFields
+    ? gt("Ids, addresses and timestamps are being compared, so most rows will differ.")
+    : gt(
+        "{count} id, address and timestamp difference{plural} hidden — every resource has different ones.",
+        {
+          count: data.totals.suppressedFieldChanges,
+          plural: data.totals.suppressedFieldChanges === 1 ? "" : "s",
+        },
+      );
 
   return (
     <>
       <div className="flex flex-wrap items-center gap-2 mb-5">
         <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-amber-500/10 text-series-3">
-          <span className="tabular-nums">{data.totals.onlyInA}</span> only in{" "}
-          {nameOf(data.a.accountId)}
+          <T>
+            <span className="tabular-nums">
+              <Var>{data.totals.onlyInA}</Var>
+            </span>{" "}
+            only in <Var>{nameOf(data.a.accountId)}</Var>
+          </T>
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-sky-500/10 text-series-1">
-          <span className="tabular-nums">{data.totals.onlyInB}</span> only in{" "}
-          {nameOf(data.b.accountId)}
+          <T>
+            <span className="tabular-nums">
+              <Var>{data.totals.onlyInB}</Var>
+            </span>{" "}
+            only in <Var>{nameOf(data.b.accountId)}</Var>
+          </T>
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-violet-500/10 text-series-8">
-          <span className="tabular-nums">{data.totals.changed}</span> differ
+          <T>
+            <span className="tabular-nums">
+              <Var>{data.totals.changed}</Var>
+            </span>{" "}
+            differ
+          </T>
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-surface-overlay text-on-surface-tertiary">
-          <span className="tabular-nums">{data.totals.identical}</span> identical
+          <T>
+            <span className="tabular-nums">
+              <Var>{data.totals.identical}</Var>
+            </span>{" "}
+            identical
+          </T>
         </span>
       </div>
 
       {data.unavailableTypes.length > 0 && (
         <p role="alert" className="mb-4 text-xs text-warning">
-          Couldn&apos;t list {data.unavailableTypes.map((t) => t.resourceTypeName).join(", ")} —
-          excluded from the comparison rather than reported as missing. (
-          {data.unavailableTypes[0]?.message})
+          <T>
+            Couldn&apos;t list{" "}
+            <Var>{data.unavailableTypes.map((t) => t.resourceTypeName).join(", ")}</Var> — excluded
+            from the comparison rather than reported as missing. (
+            <Var>{data.unavailableTypes[0]?.message}</Var>)
+          </T>
         </p>
       )}
 
@@ -343,8 +383,10 @@ function EnvironmentDiffResults({
 
       {data.entries.length === 0 ? (
         <p className="text-sm text-on-surface-faint">
-          The two inventories match. Every resource in {data.a.accountName} has a counterpart in{" "}
-          {data.b.accountName} with the same settings.
+          <T>
+            The two inventories match. Every resource in <Var>{data.a.accountName}</Var> has a
+            counterpart in <Var>{data.b.accountName}</Var> with the same settings.
+          </T>
         </p>
       ) : (
         <div className="flex flex-col gap-4">
@@ -360,28 +402,26 @@ function EnvironmentDiffResults({
       )}
 
       <p className="mt-4 text-xs text-on-surface-faint">
-        Resources are paired by type and by name with environment words removed, so{" "}
-        <code>api-staging</code> lines up with <code>api-prod</code>.{" "}
-        {data.includeIdentityFields
-          ? "Ids, addresses and timestamps are being compared, so most rows will differ."
-          : `${data.totals.suppressedFieldChanges} id, address and timestamp difference${
-              data.totals.suppressedFieldChanges === 1 ? "" : "s"
-            } hidden — every resource has different ones.`}{" "}
-        Nothing here contacts a provider; the comparison reads the last sync.
+        <T>
+          Resources are paired by type and by name with environment words removed, so{" "}
+          <code>api-staging</code> lines up with <code>api-prod</code>. <Var>{suppressedText}</Var>{" "}
+          Nothing here contacts a provider; the comparison reads the last sync.
+        </T>
       </p>
     </>
   );
 }
 
 function TypeSummaryTable({ data }: { data: EnvironmentDiffResponse }) {
+  const gt = useGT();
   return (
     <div className="border border-border rounded-xl overflow-hidden mb-6">
       <table className="w-full text-sm">
-        <caption className="sr-only">Resource counts by type</caption>
+        <caption className="sr-only">{gt("Resource counts by type")}</caption>
         <thead>
           <tr className="border-b border-border text-xs text-on-surface-faint">
             <th scope="col" className="px-4 py-2 text-left font-normal">
-              Resource type
+              {gt("Resource type")}
             </th>
             <th scope="col" className="px-3 py-2 text-right font-normal">
               {data.a.accountName}
@@ -390,10 +430,10 @@ function TypeSummaryTable({ data }: { data: EnvironmentDiffResponse }) {
               {data.b.accountName}
             </th>
             <th scope="col" className="px-3 py-2 text-right font-normal">
-              Delta
+              {gt("Delta")}
             </th>
             <th scope="col" className="px-4 py-2 text-right font-normal">
-              Differences
+              {gt("Differences")}
             </th>
           </tr>
         </thead>
@@ -404,8 +444,12 @@ function TypeSummaryTable({ data }: { data: EnvironmentDiffResponse }) {
                 {type.resourceTypeName}
                 {type.missingFrom && (
                   <span className="ml-2 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-warning">
-                    missing from{" "}
-                    {type.missingFrom === "a" ? data.a.accountName : data.b.accountName}
+                    <T>
+                      missing from{" "}
+                      <Var>
+                        {type.missingFrom === "a" ? data.a.accountName : data.b.accountName}
+                      </Var>
+                    </T>
                   </span>
                 )}
               </td>
@@ -430,7 +474,7 @@ function TypeSummaryTable({ data }: { data: EnvironmentDiffResponse }) {
           {data.types.length === 0 && (
             <tr>
               <td colSpan={5} className="px-4 py-3 text-on-surface-faint">
-                Neither account has any synced resources.
+                {gt("Neither account has any synced resources.")}
               </td>
             </tr>
           )}
@@ -449,12 +493,17 @@ function EntryTypeGroup({
   data: EnvironmentDiffResponse;
   onOpenResource?: ((target: EnvironmentDiffResourceTarget) => void) | undefined;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="text-sm font-medium text-on-surface">{group.resourceTypeName}</h2>
         <span className="text-xs text-on-surface-faint">
-          {group.entries.length} difference{group.entries.length === 1 ? "" : "s"}
+          {gt("{count} difference{plural}", {
+            count: group.entries.length,
+            plural: group.entries.length === 1 ? "" : "s",
+          })}
         </span>
       </div>
       <div className="border border-border rounded-xl overflow-hidden">
@@ -466,7 +515,7 @@ function EntryTypeGroup({
                   <span
                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE_CLASSES[entry.status]}`}
                   >
-                    {STATUS_LABELS[entry.status]}
+                    {gtData(STATUS_LABELS[entry.status])}
                   </span>
                 </td>
                 <td className="px-3 py-2.5 align-top">
@@ -491,8 +540,8 @@ function EntryTypeGroup({
                   {entry.changes.length === 0 ? (
                     <span className="text-xs text-on-surface-faint">
                       {entry.status === "only-in-a"
-                        ? `No counterpart in ${data.b.accountName}`
-                        : `No counterpart in ${data.a.accountName}`}
+                        ? gt("No counterpart in {account}", { account: data.b.accountName })
+                        : gt("No counterpart in {account}", { account: data.a.accountName })}
                     </span>
                   ) : (
                     <div className="flex flex-col gap-1">
@@ -506,8 +555,10 @@ function EntryTypeGroup({
                       ))}
                       {entry.suppressedCount > 0 && (
                         <span className="text-[11px] text-on-surface-faint">
-                          + {entry.suppressedCount} id/address/timestamp difference
-                          {entry.suppressedCount === 1 ? "" : "s"} hidden
+                          {gt("+ {count} id/address/timestamp difference{plural} hidden", {
+                            count: entry.suppressedCount,
+                            plural: entry.suppressedCount === 1 ? "" : "s",
+                          })}
                         </span>
                       )}
                     </div>
@@ -535,8 +586,13 @@ function ResourceName({
   fallback: string;
   onOpenResource?: ((target: EnvironmentDiffResourceTarget) => void) | undefined;
 }) {
+  const gt = useGT();
   if (!resource) {
-    return <span className="text-xs text-on-surface-faint">— not in {fallback}</span>;
+    return (
+      <span className="text-xs text-on-surface-faint">
+        {gt("— not in {account}", { account: fallback })}
+      </span>
+    );
   }
   if (!onOpenResource) {
     return <span className="whitespace-nowrap text-on-surface">{resource.displayName}</span>;

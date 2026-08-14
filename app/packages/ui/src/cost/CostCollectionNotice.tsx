@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import {
   emptyCostAccounts,
   estimatedCostAccounts,
@@ -37,6 +38,7 @@ export interface CostCollectionNoticeProps {
  * Renders nothing when every cost-capable account is collecting real data.
  */
 export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectionNoticeProps) {
+  const gt = useGT();
   const failing = failingCostAccounts(statuses);
   const empty = emptyCostAccounts(statuses);
   const estimated = estimatedCostAccounts(statuses);
@@ -51,8 +53,8 @@ export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectio
         >
           <p className="font-medium text-warning">
             {failing.length === 1
-              ? `Cost collection is failing for ${failing[0]!.displayName}`
-              : `Cost collection is failing for ${failing.length} accounts`}
+              ? gt("Cost collection is failing for {name}", { name: failing[0]!.displayName })
+              : gt("Cost collection is failing for {count} accounts", { count: failing.length })}
           </p>
           <ul className="mt-1 space-y-1.5">
             {failing.map((s) => (
@@ -87,7 +89,9 @@ export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectio
             ))}
           </ul>
           <p className="mt-1.5 text-xs text-on-surface-faint">
-            Collection retries on its own — fix the cause and the next run backfills the gap.
+            {gt(
+              "Collection retries on its own — fix the cause and the next run backfills the gap.",
+            )}
           </p>
         </div>
       )}
@@ -99,8 +103,8 @@ export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectio
         >
           <p className="font-medium text-on-surface">
             {empty.length === 1
-              ? `No spend data yet for ${empty[0]!.displayName}`
-              : `No spend data yet for ${empty.length} accounts`}
+              ? gt("No spend data yet for {name}", { name: empty[0]!.displayName })
+              : gt("No spend data yet for {count} accounts", { count: empty.length })}
           </p>
           {empty.length > 1 && (
             <ul className="mt-1 space-y-1.5">
@@ -112,8 +116,9 @@ export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectio
             </ul>
           )}
           <p className="mt-1.5 text-xs text-on-surface-faint">
-            Collection ran without error — the provider just hasn&apos;t reported any spend. A
-            billing export enabled in the last day or two often has no rows to return yet.
+            {gt(
+              "Collection ran without error — the provider just hasn't reported any spend. A billing export enabled in the last day or two often has no rows to return yet.",
+            )}
           </p>
         </div>
       )}
@@ -125,8 +130,8 @@ export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectio
         >
           <p className="font-medium text-on-surface">
             {estimated.length === 1
-              ? `Spend for ${estimated[0]!.displayName} is estimated`
-              : `Spend for ${estimated.length} accounts is estimated`}
+              ? gt("Spend for {name} is estimated", { name: estimated[0]!.displayName })
+              : gt("Spend for {count} accounts is estimated", { count: estimated.length })}
           </p>
           {estimated.length > 1 && (
             <ul className="mt-1 space-y-1.5">
@@ -138,11 +143,15 @@ export function CostCollectionNotice({ statuses, onOpenExternal }: CostCollectio
             </ul>
           )}
           <p className="mt-1.5 text-xs text-on-surface-faint">
-            {estimated.length === 1 ? "This provider publishes" : "These providers publish"} no
-            billing API, so the amounts are what your current resources list for rather than what
-            you were billed. Expect it to run low: anything deleted part-way through the period is
-            no longer there to price, every rate is list rather than negotiated, and credits, tax
-            and refunds never appear.
+            {gt(
+              "{subject} no billing API, so the amounts are what your current resources list for rather than what you were billed. Expect it to run low: anything deleted part-way through the period is no longer there to price, every rate is list rather than negotiated, and credits, tax and refunds never appear.",
+              {
+                subject:
+                  estimated.length === 1
+                    ? gt("This provider publishes")
+                    : gt("These providers publish"),
+              },
+            )}
           </p>
         </div>
       )}

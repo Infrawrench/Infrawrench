@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useGT } from "gt-react";
 import {
   POSTURE_CATEGORY_LABELS,
   POSTURE_SEVERITIES,
@@ -10,6 +11,7 @@ import {
   type PostureSeverity,
 } from "@infrawrench/client-core";
 
+import { useDataString } from "../i18n/data-strings.js";
 import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
 
 export interface PostureSectionProps {
@@ -42,11 +44,14 @@ export interface PostureSectionProps {
 
 type GroupBy = "severity" | "category" | "account";
 
-const GROUP_OPTIONS: Array<{ key: GroupBy; label: string }> = [
-  { key: "severity", label: "Severity" },
-  { key: "category", label: "Category" },
-  { key: "account", label: "Account" },
-];
+function useGroupOptions(): Array<{ key: GroupBy; label: string }> {
+  const gt = useGT();
+  return [
+    { key: "severity", label: gt("Severity") },
+    { key: "category", label: gt("Category") },
+    { key: "account", label: gt("Account") },
+  ];
+}
 
 /** Pill tones per bucket, matching the ExpirySection translucent-badge recipe. */
 const SEVERITY_BADGE_CLASSES: Record<PostureSeverity, string> = {
@@ -64,7 +69,11 @@ interface PostureGroup {
   findings: PostureFinding[];
 }
 
-function buildGroups(findings: PostureFinding[], groupBy: GroupBy): PostureGroup[] {
+function buildGroups(
+  findings: PostureFinding[],
+  groupBy: GroupBy,
+  gtData: ReturnType<typeof useDataString>,
+): PostureGroup[] {
   const groups = new Map<string, PostureGroup>();
   // Findings arrive pre-sorted (worst first, then account, then name), so
   // insertion order already ranks category/account groups by their worst
@@ -75,10 +84,10 @@ function buildGroups(findings: PostureFinding[], groupBy: GroupBy): PostureGroup
     let subtitle: string | null = null;
     if (groupBy === "severity") {
       key = finding.severity;
-      title = POSTURE_SEVERITY_LABELS[finding.severity];
+      title = gtData(POSTURE_SEVERITY_LABELS[finding.severity]);
     } else if (groupBy === "category") {
       key = finding.category;
-      title = POSTURE_CATEGORY_LABELS[finding.category];
+      title = gtData(POSTURE_CATEGORY_LABELS[finding.category]);
     } else {
       key = finding.accountId;
       title = finding.accountName;
@@ -133,6 +142,8 @@ function OpenResourceName({
 
 /** The severity tally, plus a dismissed count so "clean" reads differently from "silenced". */
 function SeverityChips({ data }: { data: PostureListResponse }) {
+  const gt = useGT();
+  const gtData = useDataString();
   return (
     <div className="flex flex-wrap items-center gap-2 mb-4">
       {POSTURE_SEVERITIES.map((severity) => (
@@ -141,13 +152,13 @@ function SeverityChips({ data }: { data: PostureListResponse }) {
           className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${SEVERITY_BADGE_CLASSES[severity]}`}
         >
           <span className="tabular-nums">{data.counts[severity]}</span>
-          {POSTURE_SEVERITY_LABELS[severity]}
+          {gtData(POSTURE_SEVERITY_LABELS[severity])}
         </span>
       ))}
       {data.dismissedCount > 0 && (
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
           <span className="tabular-nums">{data.dismissedCount}</span>
-          Dismissed
+          {gt("Dismissed")}
         </span>
       )}
     </div>
@@ -184,6 +195,8 @@ function ActiveFindingRow({
   onConfirm,
   onCancel,
 }: ActiveFindingRowProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   return (
     <tr className="border-b border-border last:border-b-0 hover:bg-surface-raised">
       <td className="px-4 py-2.5 whitespace-nowrap align-top font-medium text-on-surface">
@@ -215,8 +228,11 @@ function ActiveFindingRow({
               value={reason}
               onChange={(e) => onReasonChange(e.target.value)}
               maxLength={500}
-              placeholder="Why is this acceptable? (optional)"
-              aria-label={`Reason for dismissing ${finding.title} on ${finding.displayName}`}
+              placeholder={gt("Why is this acceptable? (optional)")}
+              aria-label={gt("Reason for dismissing {title} on {name}", {
+                title: finding.title,
+                name: finding.displayName,
+              })}
               className="min-w-56 flex-1 rounded-lg border border-border bg-surface-raised px-2 py-1 text-xs text-on-surface"
             />
             <button
@@ -225,14 +241,14 @@ function ActiveFindingRow({
               onClick={onConfirm}
               className="rounded-lg border border-border px-2 py-1 text-xs text-on-surface hover:bg-surface-overlay disabled:opacity-50"
             >
-              {pending ? "Dismissing…" : "Confirm"}
+              {pending ? gt("Dismissing…") : gt("Confirm")}
             </button>
             <button
               type="button"
               onClick={onCancel}
               className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
           </span>
         )}
@@ -241,7 +257,7 @@ function ActiveFindingRow({
         <span
           className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${SEVERITY_BADGE_CLASSES[finding.severity]}`}
         >
-          {POSTURE_SEVERITY_LABELS[finding.severity]}
+          {gtData(POSTURE_SEVERITY_LABELS[finding.severity])}
         </span>
       </td>
       {onToggleReason && (
@@ -252,7 +268,7 @@ function ActiveFindingRow({
             onClick={onToggleReason}
             className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-50"
           >
-            Dismiss
+            {gt("Dismiss")}
           </button>
         </td>
       )}
@@ -265,17 +281,17 @@ function ActiveFindingRow({
           draft={{
             title: `${finding.title} — ${finding.displayName}`,
             details: [
-              { label: "Resource", value: finding.displayName },
-              { label: "Type", value: finding.resourceTypeName },
-              { label: "Provider", value: finding.pluginName },
-              { label: "Account", value: finding.accountName },
-              { label: "Provider id", value: finding.externalId },
-              { label: "Rule", value: finding.ruleId },
+              { label: gt("Resource"), value: finding.displayName },
+              { label: gt("Type"), value: finding.resourceTypeName },
+              { label: gt("Provider"), value: finding.pluginName },
+              { label: gt("Account"), value: finding.accountName },
+              { label: gt("Provider id"), value: finding.externalId },
+              { label: gt("Rule"), value: finding.ruleId },
               {
-                label: "Severity",
-                value: POSTURE_SEVERITY_LABELS[finding.severity],
+                label: gt("Severity"),
+                value: gtData(POSTURE_SEVERITY_LABELS[finding.severity]),
               },
-              { label: "Category", value: finding.category },
+              { label: gt("Category"), value: finding.category },
             ],
             note: finding.reason,
           }}
@@ -296,6 +312,8 @@ function DismissedFindingRow({
   /** Omitted, the row is listed but not undoable. */
   onRestore?: (() => void) | undefined;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   return (
     <tr className="border-b border-border last:border-b-0 hover:bg-surface-raised">
       <td className="px-4 py-2.5 whitespace-nowrap align-top font-medium text-on-surface-secondary">
@@ -312,14 +330,16 @@ function DismissedFindingRow({
       <td className="px-3 py-2.5 w-full align-top text-on-surface-tertiary">
         <span className="font-medium">{finding.title}</span>
         <span className="block text-xs text-on-surface-faint">
-          Dismissed {formatDismissedAt(finding.dismissal.dismissedAt)}
-          {finding.dismissal.dismissedBy ? ` by ${finding.dismissal.dismissedBy}` : ""}
+          {gt("Dismissed {date}", { date: formatDismissedAt(finding.dismissal.dismissedAt) })}
+          {finding.dismissal.dismissedBy
+            ? gt(" by {who}", { who: finding.dismissal.dismissedBy })
+            : ""}
           {finding.dismissal.reason ? ` — ${finding.dismissal.reason}` : ""}
         </span>
       </td>
       <td className="px-4 py-2.5 whitespace-nowrap align-top text-right">
         <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-on-surface-tertiary">
-          {POSTURE_SEVERITY_LABELS[finding.severity]}
+          {gtData(POSTURE_SEVERITY_LABELS[finding.severity])}
         </span>
       </td>
       {onRestore && (
@@ -330,7 +350,7 @@ function DismissedFindingRow({
             onClick={onRestore}
             className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-50"
           >
-            {pending ? "Restoring…" : "Restore"}
+            {pending ? gt("Restoring…") : gt("Restore")}
           </button>
         </td>
       )}
@@ -357,6 +377,9 @@ export function PostureSection({
   onDismiss,
   onRestore,
 }: PostureSectionProps) {
+  const gt = useGT();
+  const gtData = useDataString();
+  const groupOptions = useGroupOptions();
   const [groupBy, setGroupBy] = useState<GroupBy>("severity");
   /** Key of the finding whose reason box is open, if any. */
   const [dismissing, setDismissing] = useState<string | null>(null);
@@ -366,7 +389,10 @@ export function PostureSection({
   const [actionError, setActionError] = useState<string | null>(null);
   const [showDismissed, setShowDismissed] = useState(false);
 
-  const groups = useMemo(() => (data ? buildGroups(data.findings, groupBy) : []), [data, groupBy]);
+  const groups = useMemo(
+    () => (data ? buildGroups(data.findings, groupBy, gtData) : []),
+    [data, groupBy, gtData],
+  );
 
   const isPending = (finding: PostureFinding) => pending.includes(postureFindingKey(finding));
 
@@ -389,31 +415,31 @@ export function PostureSection({
 
   return (
     <div className="flex-1 overflow-auto p-6">
-      <h1 className="text-xl font-semibold mb-1">Posture</h1>
+      <h1 className="text-xl font-semibold mb-1">{gt("Posture")}</h1>
       <p className="text-sm text-on-surface-muted mb-6">
-        Security checks your plugins declare, evaluated across every provider — public buckets,
-        world-open firewall rules, unencrypted disks, stale credentials — read from the state your
-        accounts last synced.
+        {gt(
+          "Security checks your plugins declare, evaluated across every provider — public buckets, world-open firewall rules, unencrypted disks, stale credentials — read from the state your accounts last synced.",
+        )}
       </p>
 
       {error != null && data === null && (
         <div role="alert" className="text-sm text-danger">
-          Couldn&apos;t load the posture findings — {error}{" "}
+          {gt("Couldn't load the posture findings — {error}", { error })}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
-              Retry
+              {gt("Retry")}
             </button>
           )}
         </div>
       )}
       {data === null && error == null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Scanning synced resources…
+          {gt("Scanning synced resources…")}
         </p>
       )}
       {error != null && data !== null && (
         <p role="alert" className="mb-4 text-xs text-danger">
-          Couldn&apos;t refresh — showing the last loaded findings. {error}
+          {gt("Couldn't refresh — showing the last loaded findings. {error}", { error })}
         </p>
       )}
 
@@ -430,20 +456,24 @@ export function PostureSection({
           {data.findings.length === 0 ? (
             <p className="text-sm text-on-surface-faint">
               {data.dismissedCount > 0
-                ? "No open findings — everything currently flagged has been dismissed as an accepted risk. The dismissed list is below."
-                : "No findings. Checks appear when a plugin declares posture rules over fields its listers sync — a bucket's public-access setting, a firewall's source ranges, a disk's encryption flag — so an empty list means nothing declared is flagged."}
+                ? gt(
+                    "No open findings — everything currently flagged has been dismissed as an accepted risk. The dismissed list is below.",
+                  )
+                : gt(
+                    "No findings. Checks appear when a plugin declares posture rules over fields its listers sync — a bucket's public-access setting, a firewall's source ranges, a disk's encryption flag — so an empty list means nothing declared is flagged.",
+                  )}
             </p>
           ) : (
             <>
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div
                   role="group"
-                  aria-label="Group findings by"
+                  aria-label={gt("Group findings by")}
                   className="flex items-center gap-1 text-xs"
                 >
-                  <span className="text-on-surface-faint mr-1">Group by</span>
+                  <span className="text-on-surface-faint mr-1">{gt("Group by")}</span>
                   <div className="flex rounded-lg border border-border overflow-hidden">
-                    {GROUP_OPTIONS.map((option) => (
+                    {groupOptions.map((option) => (
                       <button
                         key={option.key}
                         type="button"
@@ -475,7 +505,9 @@ export function PostureSection({
                         )}
                       </h2>
                       <span className="text-xs text-on-surface-faint">
-                        {group.findings.length} finding{group.findings.length === 1 ? "" : "s"}
+                        {group.findings.length === 1
+                          ? gt("{count} finding", { count: group.findings.length })
+                          : gt("{count} findings", { count: group.findings.length })}
                       </span>
                     </div>
                     <div className="border border-border rounded-xl overflow-hidden">
@@ -529,11 +561,12 @@ export function PostureSection({
                 aria-expanded={showDismissed}
                 className="text-sm font-medium text-on-surface-secondary hover:text-on-surface"
               >
-                {showDismissed ? "▾" : "▸"} Dismissed ({dismissed.length})
+                {showDismissed ? "▾" : "▸"} {gt("Dismissed ({count})", { count: dismissed.length })}
               </button>
               <p className="mt-1 text-xs text-on-surface-faint">
-                Accepted risks. Still evaluated on every scan, but kept off the list above and out
-                of the posture alerts until restored.
+                {gt(
+                  "Accepted risks. Still evaluated on every scan, but kept off the list above and out of the posture alerts until restored.",
+                )}
               </p>
               {showDismissed && (
                 <div className="mt-3 border border-border rounded-xl overflow-hidden">
@@ -561,9 +594,9 @@ export function PostureSection({
 
           {(data.findings.length > 0 || dismissed.length > 0) && (
             <p className="mt-4 text-xs text-on-surface-faint">
-              Findings come from declarative rules your plugins ship, evaluated over already-synced
-              fields — nothing here contacts a provider. Critical and high findings feed the posture
-              alerts.
+              {gt(
+                "Findings come from declarative rules your plugins ship, evaluated over already-synced fields — nothing here contacts a provider. Critical and high findings feed the posture alerts.",
+              )}
             </p>
           )}
         </>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import {
   AddAccountModal as SharedAddAccountModal,
   toast,
@@ -34,6 +35,7 @@ export function AddAccountModal({
   prefilledCredentials,
   prefilledDisplayName,
 }: Props) {
+  const gt = useGT();
   const orgId = useOrgId();
   const [bastions, setBastions] = useState<BastionOption[]>([]);
   const [accounts, setAccounts] = useState<AccountReferenceOption[]>([]);
@@ -52,11 +54,11 @@ export function AddAccountModal({
       .catch((e: unknown) => {
         // A failed load must not render as "no bastions" — the picker would
         // silently offer only direct connections.
-        toast.error("Failed to load bastions", {
+        toast.error(gt("Failed to load bastions"), {
           description: e instanceof Error ? e.message : String(e),
         });
       });
-  }, [orgId]);
+  }, [orgId, gt]);
 
   useEffect(() => {
     apiGet<AccountListItem[]>(`/api/org/${orgId}/accounts`)
@@ -67,11 +69,11 @@ export function AddAccountModal({
       )
       .catch((e: unknown) => {
         // Same as bastions: don't render a failed load as "no accounts".
-        toast.error("Failed to load accounts", {
+        toast.error(gt("Failed to load accounts"), {
           description: e instanceof Error ? e.message : String(e),
         });
       });
-  }, [orgId]);
+  }, [orgId, gt]);
 
   const saveAccount = useCallback(
     async (
@@ -87,12 +89,12 @@ export function AddAccountModal({
         bastionId,
       });
       if (result?.syncError) {
-        toast.warning("Account created but initial sync failed", {
+        toast.warning(gt("Account created but initial sync failed"), {
           description: result.syncError.message,
         });
       }
     },
-    [orgId],
+    [orgId, gt],
   );
 
   const runPreflight = useCallback(

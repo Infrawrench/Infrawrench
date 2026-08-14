@@ -207,7 +207,11 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
               )}
             </>
           ) : (
-            <>{gt("A page picks from your {count} probes and gives them public names.", { count: probes.length })}</>
+            <>
+              {gt("A page picks from your {count} probes and gives them public names.", {
+                count: probes.length,
+              })}
+            </>
           )}
         </p>
       )}
@@ -276,7 +280,9 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
               )}
             </div>
             <p className="text-xs text-on-surface-faint">
-              {gt("The link is the only thing protecting this page. Anyone who has it can read it.")}
+              {gt(
+                "The link is the only thing protecting this page. Anyone who has it can read it.",
+              )}
             </p>
 
             <div className="flex flex-wrap items-center gap-2">

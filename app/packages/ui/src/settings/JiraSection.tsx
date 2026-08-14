@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import type {
   JiraIntegration,
   JiraIssueLink,
@@ -18,6 +19,7 @@ import { useSettingsHost } from "./host.js";
  * nothing to tell us before then.
  */
 export function JiraSection() {
+  const gt = useGT();
   const { orgId, api, has, openExternal } = useSettingsHost();
   const canWrite = has("jira:write");
 
@@ -51,11 +53,11 @@ export function JiraSection() {
         setDefaultIssueTypeId(res.integration.defaultIssueTypeId ?? "");
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load the Jira connection");
+      setError(e instanceof Error ? e.message : gt("Failed to load the Jira connection"));
     } finally {
       setLoading(false);
     }
-  }, [api, orgId]);
+  }, [api, orgId, gt]);
 
   useEffect(() => {
     void load();
@@ -102,9 +104,9 @@ export function JiraSection() {
       });
       setIntegration(saved);
       setApiToken("");
-      setNotice("Jira connection saved.");
+      setNotice(gt("Jira connection saved."));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save the Jira connection");
+      setError(e instanceof Error ? e.message : gt("Failed to save the Jira connection"));
     } finally {
       setSaving(false);
     }
@@ -119,16 +121,16 @@ export function JiraSection() {
       // check a token before committing it; otherwise re-test the stored ones.
       const body = siteUrl && accountEmail && apiToken ? { siteUrl, accountEmail, apiToken } : {};
       const res = await api.post<JiraVerifyResult>(`/api/org/${orgId}/jira/verify`, body);
-      setNotice(`Connected to Jira as ${res.displayName || res.accountId}.`);
+      setNotice(gt("Connected to Jira as {name}.", { name: res.displayName || res.accountId }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not verify the Jira credentials");
+      setError(e instanceof Error ? e.message : gt("Could not verify the Jira credentials"));
     } finally {
       setVerifying(false);
     }
   }
 
   async function disconnect() {
-    if (!window.confirm("Disconnect Jira? Issues already filed keep their links.")) return;
+    if (!window.confirm(gt("Disconnect Jira? Issues already filed keep their links."))) return;
     setError(null);
     setNotice(null);
     try {
@@ -137,9 +139,9 @@ export function JiraSection() {
       setApiToken("");
       setDefaultProjectKey("");
       setDefaultIssueTypeId("");
-      setNotice("Jira disconnected.");
+      setNotice(gt("Jira disconnected."));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to disconnect Jira");
+      setError(e instanceof Error ? e.message : gt("Failed to disconnect Jira"));
     }
   }
 
@@ -150,12 +152,21 @@ export function JiraSection() {
     <div>
       <div className="mb-6">
         <h1 className="text-xl font-semibold">Jira</h1>
-        <p className="text-sm text-on-surface-muted mt-1">
-          File findings — cost anomalies, orphaned and oversized resources, posture findings,
-          expiring credentials, and failed probes — as Jira issues, and keep the issue link on the
-          finding. Connect one Jira Cloud site per organization. Filing needs{" "}
-          <code>jira:write</code>; seeing what has already been filed needs <code>jira:read</code>.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-muted mt-1">
+            File findings — cost anomalies, orphaned and oversized resources, posture findings,
+            expiring credentials, and failed probes — as Jira issues, and keep the issue link on the
+            finding. Connect one Jira Cloud site per organization. Filing needs{" "}
+            <Var>
+              <code>jira:write</code>
+            </Var>
+            ; seeing what has already been filed needs{" "}
+            <Var>
+              <code>jira:read</code>
+            </Var>
+            .
+          </p>
+        </T>
       </div>
 
       {error && (
@@ -170,27 +181,31 @@ export function JiraSection() {
       )}
 
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
       ) : (
         <div className="space-y-8">
           <section className="border border-border rounded-xl p-4 space-y-3 bg-surface-raised/50">
-            <h2 className="text-sm font-semibold">Connection</h2>
-            <p className="text-xs text-on-surface-muted">
-              Create an API token on your Atlassian account, then paste it here with the email you
-              sign in with. The token is encrypted and never shown again — the field stays blank on
-              return, and leaving it blank keeps the stored token.{" "}
-              <button
-                type="button"
-                onClick={() => openExternal("https://id.atlassian.com/manage-profile/security")}
-                className="text-info hover:text-info-strong"
-              >
-                Create an API token
-              </button>
-            </p>
+            <h2 className="text-sm font-semibold">{gt("Connection")}</h2>
+            <T>
+              <p className="text-xs text-on-surface-muted">
+                Create an API token on your Atlassian account, then paste it here with the email you
+                sign in with. The token is encrypted and never shown again — the field stays blank
+                on return, and leaving it blank keeps the stored token.{" "}
+                <button
+                  type="button"
+                  onClick={() => openExternal("https://id.atlassian.com/manage-profile/security")}
+                  className="text-info hover:text-info-strong"
+                >
+                  Create an API token
+                </button>
+              </p>
+            </T>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
-                <span className="block text-xs text-on-surface-tertiary mb-1">Site URL</span>
+                <span className="block text-xs text-on-surface-tertiary mb-1">
+                  {gt("Site URL")}
+                </span>
                 <input
                   type="text"
                   value={siteUrl}
@@ -201,7 +216,9 @@ export function JiraSection() {
                 />
               </label>
               <label className="block">
-                <span className="block text-xs text-on-surface-tertiary mb-1">Account email</span>
+                <span className="block text-xs text-on-surface-tertiary mb-1">
+                  {gt("Account email")}
+                </span>
                 <input
                   type="email"
                   value={accountEmail}
@@ -213,11 +230,11 @@ export function JiraSection() {
               </label>
               <label className="block sm:col-span-2">
                 <span className="block text-xs text-on-surface-tertiary mb-1">
-                  API token
+                  {gt("API token")}
                   {integration && (
                     <span className="text-on-surface-muted">
                       {" "}
-                      — stored: {integration.tokenHint}
+                      {gt("— stored: {hint}", { hint: integration.tokenHint })}
                     </span>
                   )}
                 </span>
@@ -227,8 +244,10 @@ export function JiraSection() {
                   disabled={!canWrite}
                   onChange={(e) => setApiToken(e.target.value)}
                   autoComplete="new-password"
-                  placeholder={integration ? "Leave blank to keep the stored token" : "API token"}
-                  aria-label="API token"
+                  placeholder={
+                    integration ? gt("Leave blank to keep the stored token") : gt("API token")
+                  }
+                  aria-label={gt("API token")}
                   className={inputClass}
                 />
               </label>
@@ -236,15 +255,16 @@ export function JiraSection() {
           </section>
 
           <section className="border border-border rounded-xl p-4 space-y-3 bg-surface-raised/50">
-            <h2 className="text-sm font-semibold">Defaults</h2>
+            <h2 className="text-sm font-semibold">{gt("Defaults")}</h2>
             <p className="text-xs text-on-surface-muted">
-              What the &ldquo;File a Jira issue&rdquo; window opens preselected. Both lists come
-              from Jira, so there is no key or id to look up.
-              {!integration && " Save the connection first to load them."}
+              {gt(
+                "What the “File a Jira issue” window opens preselected. Both lists come from Jira, so there is no key or id to look up.",
+              )}
+              {!integration && ` ${gt("Save the connection first to load them.")}`}
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
-                <span className="block text-xs text-on-surface-tertiary mb-1">Project</span>
+                <span className="block text-xs text-on-surface-tertiary mb-1">{gt("Project")}</span>
                 <select
                   value={defaultProjectKey}
                   disabled={!canWrite || projects.length === 0}
@@ -256,7 +276,7 @@ export function JiraSection() {
                   }}
                   className={inputClass}
                 >
-                  <option value="">No default</option>
+                  <option value="">{gt("No default")}</option>
                   {projects.map((p) => (
                     <option key={p.id} value={p.key}>
                       {p.name} ({p.key})
@@ -265,14 +285,16 @@ export function JiraSection() {
                 </select>
               </label>
               <label className="block">
-                <span className="block text-xs text-on-surface-tertiary mb-1">Issue type</span>
+                <span className="block text-xs text-on-surface-tertiary mb-1">
+                  {gt("Issue type")}
+                </span>
                 <select
                   value={defaultIssueTypeId}
                   disabled={!canWrite || issueTypes.length === 0}
                   onChange={(e) => setDefaultIssueTypeId(e.target.value)}
                   className={inputClass}
                 >
-                  <option value="">No default</option>
+                  <option value="">{gt("No default")}</option>
                   {issueTypes.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name}
@@ -291,7 +313,7 @@ export function JiraSection() {
                 disabled={saving || !siteUrl || !accountEmail}
                 className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
               >
-                {saving ? "Saving…" : integration ? "Save changes" : "Connect Jira"}
+                {saving ? gt("Saving…") : integration ? gt("Save changes") : gt("Connect Jira")}
               </button>
               <button
                 type="button"
@@ -299,7 +321,7 @@ export function JiraSection() {
                 disabled={verifying || (!integration && !(siteUrl && accountEmail && apiToken))}
                 className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
               >
-                {verifying ? "Checking…" : "Verify"}
+                {verifying ? gt("Checking…") : gt("Verify")}
               </button>
               {integration && (
                 <button
@@ -307,7 +329,7 @@ export function JiraSection() {
                   onClick={() => void disconnect()}
                   className="px-3 py-1.5 text-sm font-medium text-danger hover:text-danger-strong"
                 >
-                  Disconnect
+                  {gt("Disconnect")}
                 </button>
               )}
             </div>
@@ -338,15 +360,19 @@ function FiledIssuesList({
   links: JiraIssueLink[];
   openExternal: (url: string) => void;
 }) {
+  const gt = useGT();
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold">Filed issues</h2>
+      <h2 className="text-sm font-semibold">{gt("Filed issues")}</h2>
       {!connected ? (
-        <p className="text-sm text-on-surface-muted">Connect Jira to start filing findings.</p>
+        <p className="text-sm text-on-surface-muted">
+          {gt("Connect Jira to start filing findings.")}
+        </p>
       ) : links.length === 0 ? (
         <p className="text-sm text-on-surface-muted">
-          Nothing filed yet. The &ldquo;File a Jira issue&rdquo; button appears on cost anomalies,
-          savings findings, and posture findings.
+          {gt(
+            "Nothing filed yet. The “File a Jira issue” button appears on cost anomalies, savings findings, and posture findings.",
+          )}
         </p>
       ) : (
         <ul className="border border-border rounded-xl divide-y divide-border/50">

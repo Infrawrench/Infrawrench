@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useGT } from "gt-react";
 
 import { Modal } from "../components/Modal.js";
 import { COST_DIMENSION_LABELS, type CostReport } from "../cost/config.js";
+import { useDataString } from "../i18n/data-strings.js";
 
 export interface CostReportPickerModalProps {
   /** Every report in the org; those already on this dashboard are filtered out. */
@@ -13,12 +15,14 @@ export interface CostReportPickerModalProps {
 }
 
 /** "Stacked bar · by Service" — enough to tell two saved reports apart. */
-function describe(report: CostReport): string {
-  const groupBy =
-    report.config.groupBy === "none"
-      ? "ungrouped"
-      : `by ${COST_DIMENSION_LABELS[report.config.groupBy]}`;
-  return groupBy;
+function describe(
+  report: CostReport,
+  gt: ReturnType<typeof useGT>,
+  gtData: ReturnType<typeof useDataString>,
+): string {
+  return report.config.groupBy === "none"
+    ? gt("ungrouped")
+    : gt("by {dimension}", { dimension: gtData(COST_DIMENSION_LABELS[report.config.groupBy]) });
 }
 
 /**
@@ -34,6 +38,8 @@ export function CostReportPickerModal({
   onPick,
   onClose,
 }: CostReportPickerModalProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [reports, setReports] = useState<CostReport[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

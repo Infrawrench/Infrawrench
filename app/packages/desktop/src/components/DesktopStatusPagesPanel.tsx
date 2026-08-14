@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useGT } from "gt-react";
 import { useNavigate } from "@tanstack/react-router";
 import { StatusPagesPanel, useUIStore } from "@infrawrench/ui";
 import { createDesktopStatusPagesClient } from "@/lib/status-pages-client";
@@ -6,6 +7,7 @@ import { navigateToWorkspaceTarget, probesTabTarget } from "@/lib/workspace-tabs
 
 /** Standalone workspace tool for configuring public status pages. */
 export function DesktopStatusPagesPanel() {
+  const gt = useGT();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const navigate = useNavigate();
   const client = useMemo(() => createDesktopStatusPagesClient(), []);
@@ -13,7 +15,7 @@ export function DesktopStatusPagesPanel() {
   if (!activeCloudOrgId) {
     return (
       <div className="p-6 text-sm text-on-surface-faint">
-        Status pages require cloud mode — sign in to sync.
+        {gt("Status pages require cloud mode — sign in to sync.")}
       </div>
     );
   }
@@ -24,7 +26,7 @@ export function DesktopStatusPagesPanel() {
         key={activeCloudOrgId}
         client={client}
         onOpenProbes={() =>
-          void navigateToWorkspaceTarget(navigate, probesTabTarget(), { label: "Probes" })
+          void navigateToWorkspaceTarget(navigate, probesTabTarget(), { label: gt("Probes") })
         }
       />
     </div>

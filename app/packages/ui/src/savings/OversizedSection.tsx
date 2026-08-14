@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { T, Var, t, useGT } from "gt-react";
 import { formatMoney } from "@infrawrench/client-core";
 import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
 import type { OversizedResource, RightsizingClient, RightsizingListResponse } from "./types.js";
@@ -27,15 +28,24 @@ function sizeCaption(size: OversizedResource["currentSize"]): string {
  */
 export function describeResizeConfirm(r: OversizedResource): string {
   const lines = [
-    `Resize ${r.displayName} from ${sizeCaption(r.currentSize)} to ${sizeCaption(r.recommendedSize)}?`,
+    t("Resize {name} from {from} to {to}?", {
+      name: r.displayName,
+      from: sizeCaption(r.currentSize),
+      to: sizeCaption(r.recommendedSize),
+    }),
     "",
-    `p95 CPU over the last 14 days: ${r.cpuP95}% (≈${r.projectedCpuP95}% on the new size).`,
+    t("p95 CPU over the last 14 days: {cpu}% (≈{projected}% on the new size).", {
+      cpu: r.cpuP95,
+      projected: r.projectedCpuP95,
+    }),
     r.memoryMeasured && r.memoryP95 !== null
-      ? `p95 memory: ${r.memoryP95}%.`
-      : "Memory usage is not measured for this resource — confirm the smaller size's RAM fits before applying.",
+      ? t("p95 memory: {mem}%.", { mem: r.memoryP95 })
+      : t(
+          "Memory usage is not measured for this resource — confirm the smaller size's RAM fits before applying.",
+        ),
     r.monthlySaving !== null
-      ? `Estimated saving: ${formatMoney(r.monthlySaving, r.currency)}/mo.`
-      : "No price could be quoted for this change.",
+      ? t("Estimated saving: {amount}/mo.", { amount: formatMoney(r.monthlySaving, r.currency) })
+      : t("No price could be quoted for this change."),
   ];
   if (r.resizeNote) lines.push("", r.resizeNote);
   return lines.join("\n");
@@ -49,6 +59,7 @@ export function describeResizeConfirm(r: OversizedResource): string {
  * shows whatever 4xx the server returns rather than pretending).
  */
 export function OversizedSection({ client, onOpenResource }: OversizedSectionProps) {
+  const gt = useGT();
   const [data, setData] = useState<RightsizingListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Per-row in-flight set — one slow resize must not re-enable (or disable)
@@ -110,40 +121,41 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
     <section className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-on-surface">Oversized</h2>
-          <p className="mt-1 text-xs text-on-surface-secondary">
-            Machines whose p95 utilisation over the last {data?.windowDays ?? 14} days sits well
-            under their size, with the smallest size that still leaves headroom.
-          </p>
+          <h2 className="text-sm font-semibold text-on-surface">{gt("Oversized")}</h2>
+          <T>
+            <p className="mt-1 text-xs text-on-surface-secondary">
+              Machines whose p95 utilisation over the last <Var>{data?.windowDays ?? 14}</Var> days
+              sits well under their size, with the smallest size that still leaves headroom.
+            </p>
+          </T>
         </div>
         <button
           type="button"
           onClick={() => void refresh(true)}
           className="shrink-0 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
         >
-          Refresh
+          {gt("Refresh")}
         </button>
       </div>
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          Couldn&apos;t compute right-sizing — {error}{" "}
+          {gt("Couldn't compute right-sizing —")} {error}{" "}
           <button type="button" onClick={() => void refresh(true)} className="underline">
-            Retry
+            {gt("Retry")}
           </button>
         </div>
       )}
       {data === null && error === null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Reading stored metrics and size catalogs…
+          {gt("Reading stored metrics and size catalogs…")}
         </p>
       )}
       {data !== null && data.accounts.length === 0 && (
         <p className="text-sm text-on-surface-faint">
-          Nothing looks oversized. A machine is flagged when two weeks of stored metrics put its p95
-          CPU (and memory, where measured) well under its size — so an empty list means your fleet
-          fits, or the metrics to prove otherwise aren&apos;t collected yet (metrics are stored for
-          resources pinned to a dashboard).
+          {gt(
+            "Nothing looks oversized. A machine is flagged when two weeks of stored metrics put its p95 CPU (and memory, where measured) well under its size — so an empty list means your fleet fits, or the metrics to prove otherwise aren't collected yet (metrics are stored for resources pinned to a dashboard).",
+          )}
         </p>
       )}
 
@@ -154,7 +166,9 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
               {group.accountName}
               <span className="ml-2 font-normal text-on-surface-tertiary">{group.pluginName}</span>
             </h3>
-            <span className="text-xs text-on-surface-faint">{group.resources.length} flagged</span>
+            <span className="text-xs text-on-surface-faint">
+              {gt("{count} flagged", { count: group.resources.length })}
+            </span>
           </div>
           <div className="border border-border rounded-xl overflow-hidden">
             <table className="w-full text-sm">
@@ -183,11 +197,11 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
                       <span className="text-on-surface">{r.recommendedSize.label}</span>
                     </td>
                     <td className="px-3 py-2.5 w-full text-on-surface-secondary">
-                      p95 CPU {r.cpuP95}%
+                      {gt("p95 CPU {cpu}%", { cpu: r.cpuP95 })}
                       {r.memoryMeasured && r.memoryP95 !== null ? (
-                        <> · p95 memory {r.memoryP95}%</>
+                        <> · {gt("p95 memory {pct}%", { pct: r.memoryP95 })}</>
                       ) : (
-                        <> · memory not measured</>
+                        <> · {gt("memory not measured")}</>
                       )}
                       {rowErrors[r.id] && (
                         <div role="alert" className="mt-1 text-xs text-danger">
@@ -208,7 +222,7 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
                     <td className="px-4 py-2.5 whitespace-nowrap text-right">
                       {applied[r.id] ? (
                         <span className="text-xs text-on-surface-faint">
-                          Applied {applied[r.id]}
+                          {gt("Applied {size}", { size: applied[r.id] })}
                         </span>
                       ) : (
                         <button
@@ -217,7 +231,7 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
                           onClick={() => void apply(r, group.accountId)}
                           className="rounded-lg border border-border bg-surface-raised px-3 py-1 text-xs text-on-surface hover:border-border-strong disabled:opacity-50"
                         >
-                          {applying.has(r.id) ? "Applying…" : "Apply resize"}
+                          {applying.has(r.id) ? gt("Applying…") : gt("Apply resize")}
                         </button>
                       )}
                     </td>
@@ -226,31 +240,37 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
                         sourceKind="oversized"
                         sourceId={r.id}
                         draft={{
-                          title: `Right-size ${r.displayName} from ${r.currentSize.label} to ${r.recommendedSize.label}`,
+                          title: gt("Right-size {name} from {from} to {to}", {
+                            name: r.displayName,
+                            from: r.currentSize.label,
+                            to: r.recommendedSize.label,
+                          }),
                           details: [
-                            { label: "Resource", value: r.displayName },
-                            { label: "Type", value: r.resourceTypeName },
-                            { label: "Provider", value: group.pluginName },
-                            { label: "Account", value: group.accountName },
-                            { label: "Current size", value: r.currentSize.label },
-                            { label: "Recommended size", value: r.recommendedSize.label },
-                            { label: "p95 CPU", value: `${r.cpuP95}%` },
+                            { label: gt("Resource"), value: r.displayName },
+                            { label: gt("Type"), value: r.resourceTypeName },
+                            { label: gt("Provider"), value: group.pluginName },
+                            { label: gt("Account"), value: group.accountName },
+                            { label: gt("Current size"), value: r.currentSize.label },
+                            { label: gt("Recommended size"), value: r.recommendedSize.label },
+                            { label: gt("p95 CPU"), value: `${r.cpuP95}%` },
                             {
-                              label: "p95 memory",
+                              label: gt("p95 memory"),
                               value:
                                 r.memoryMeasured && r.memoryP95 !== null
                                   ? `${r.memoryP95}%`
-                                  : "not measured",
+                                  : gt("not measured"),
                             },
                             {
-                              label: "Estimated saving",
+                              label: gt("Estimated saving"),
                               value:
                                 r.monthlySaving !== null
                                   ? `${formatMoney(r.monthlySaving, r.currency)}/mo`
                                   : undefined,
                             },
                           ],
-                          note: "Infrawrench can apply this resize from the Savings view once the change is approved.",
+                          note: gt(
+                            "Infrawrench can apply this resize from the Savings view once the change is approved.",
+                          ),
                         }}
                       />
                     </td>
@@ -264,9 +284,9 @@ export function OversizedSection({ client, onOpenResource }: OversizedSectionPro
 
       {data !== null && data.accounts.length > 0 && (
         <p className="text-xs text-on-surface-faint">
-          Savings are quoted from each provider&apos;s live size catalog. Applying a resize goes
-          through the normal resource update — change freezes and audit logging apply — and most
-          providers require the machine to be stopped first (the row says so before you confirm).
+          {gt(
+            "Savings are quoted from each provider's live size catalog. Applying a resize goes through the normal resource update — change freezes and audit logging apply — and most providers require the machine to be stopped first (the row says so before you confirm).",
+          )}
         </p>
       )}
     </section>

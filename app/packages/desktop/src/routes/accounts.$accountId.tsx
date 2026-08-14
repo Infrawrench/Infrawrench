@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useGT } from "gt-react";
 import { invoke } from "../lib/invoke";
 import type { ResourceInstance, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import {
@@ -17,6 +18,7 @@ import {
   type DraggableResource,
   formatErrorMessage,
   toast,
+  useDataString,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
@@ -76,6 +78,8 @@ interface AccountPanelProps {
 }
 
 export function AccountPanel({ accountId }: AccountPanelProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const tabId = useTabId();
   const navigate = useNavigate();
   const bumpAccounts = useUIStore((s) => s.bumpAccounts);
@@ -280,7 +284,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           });
         } catch (err) {
           console.error("Failed to resolve kubeconfig for secret drop:", err);
-          toast.error("Couldn't resolve kubeconfig", {
+          toast.error(gt("Couldn't resolve kubeconfig"), {
             description: err instanceof Error ? err.message : String(err),
           });
         }
@@ -288,7 +292,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     }
     window.addEventListener("iw:sidebar-secret-drop", handler);
     return () => window.removeEventListener("iw:sidebar-secret-drop", handler);
-  }, [categories, kubeconfigTypeIds, account]);
+  }, [categories, kubeconfigTypeIds, account, gt]);
 
   useEffect(() => {
     function handler(e: Event) {
@@ -300,7 +304,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         try {
           const client = await createPluginClient(accountId, source.pluginId);
           if (!client.attachResource) {
-            throw new Error("Plugin does not support attach");
+            throw new Error(gt("Plugin does not support attach"));
           }
           await client.attachResource(
             source.resourceTypeId,
@@ -312,7 +316,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           dispatchResourcesChanged();
         } catch (err) {
           console.error("Failed to attach resource:", err);
-          toast.error("Attach failed", {
+          toast.error(gt("Attach failed"), {
             description: err instanceof Error ? err.message : String(err),
           });
         }
@@ -320,7 +324,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     }
     window.addEventListener("iw:resource-attach", handler);
     return () => window.removeEventListener("iw:resource-attach", handler);
-  }, [accountId]);
+  }, [accountId, gt]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -349,7 +353,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
 
         if (orgId) {
           const detail = await getCloudAccountDetail(orgId, accountId);
-          if (!detail) throw new Error("Account not found");
+          if (!detail) throw new Error(gt("Account not found"));
           const accountLike: AccountRow = {
             id: detail.account.id,
             plugin_id: detail.account.pluginId,
@@ -443,7 +447,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           [accountId],
         );
         const row = rows[0];
-        if (!row) throw new Error("Account not found");
+        if (!row) throw new Error(gt("Account not found"));
         if (!cancelled) {
           setAccount(row);
           if (tabId) useUIStore.getState().setWorkspaceTabTitle(tabId, row.display_name);
@@ -454,7 +458,8 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         });
 
         const loaded = await getPlugin(row.plugin_id);
-        if (!loaded) throw new Error(`Plugin "${row.plugin_id}" not loaded`);
+        if (!loaded)
+          throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId: row.plugin_id }));
         const { plugin } = loaded;
         if (!cancelled) setPreflightSupported(Boolean(plugin.manifest.preflight));
         const services = buildPluginHostServices(plugin.manifest, credentials);
@@ -540,7 +545,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [accountId, loadVersion]);
+  }, [accountId, loadVersion, gt]);
 
   async function togglePin(resource: ResourceInstance, typeId: string) {
     if (activeCloudOrgId) {
@@ -562,15 +567,15 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           const dashboards = await listCloudDashboards(activeCloudOrgId);
           let home = dashboards.find((d) => d.isDefault);
           if (!home) {
-            const created = await createCloudDashboard(activeCloudOrgId, "Home");
-            if (!created) throw new Error("Failed to create Home dashboard");
+            const created = await createCloudDashboard(activeCloudOrgId, gt("Home"));
+            if (!created) throw new Error(gt("Failed to create Home dashboard"));
             home = { ...created, isDefault: true };
           }
           await pinCloudResource(activeCloudOrgId, home.id, resource.id);
           setPinned((prev) => new Set(prev).add(resource.id));
         }
       } catch (err) {
-        toast.error(`Couldn't update pin: ${formatErrorMessage(err)}`);
+        toast.error(gt("Couldn't update pin: {message}", { message: formatErrorMessage(err) }));
       }
       return;
     }
@@ -610,7 +615,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         dashId = crypto.randomUUID();
         await db.execute("INSERT INTO dashboards (id, name, is_default) VALUES ($1, $2, 1)", [
           dashId,
-          "Home",
+          gt("Home"),
         ]);
       }
 
@@ -666,7 +671,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
       bumpAccounts();
       setIsEditing(false);
     } catch (e) {
-      toast.error(`Couldn't rename account: ${formatErrorMessage(e)}`);
+      toast.error(gt("Couldn't rename account: {message}", { message: formatErrorMessage(e) }));
     } finally {
       setIsSaving(false);
     }
@@ -676,7 +681,8 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     if (!account) return;
     try {
       const loaded = await getPlugin(account.plugin_id);
-      if (!loaded) throw new Error(`Plugin "${account.plugin_id}" not loaded`);
+      if (!loaded)
+        throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId: account.plugin_id }));
       const manifest = loaded.plugin.manifest;
       const current = activeCloudOrgId
         ? await invoke<Record<string, string>>("cloud_get_account_credentials", {
@@ -706,7 +712,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         current,
       });
     } catch (err) {
-      toast.error(`Couldn't open credentials: ${formatErrorMessage(err)}`);
+      toast.error(gt("Couldn't open credentials: {message}", { message: formatErrorMessage(err) }));
     }
   }
 
@@ -715,10 +721,12 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     try {
       const loaded = await getPlugin(account.plugin_id);
       const declaration = loaded?.plugin.manifest.preflight;
-      if (!declaration) throw new Error("This plugin doesn't support credential checks yet");
+      if (!declaration) throw new Error(gt("This plugin doesn't support credential checks yet"));
       setPreflightDeclaration(declaration);
     } catch (err) {
-      toast.error(`Couldn't open credential check: ${formatErrorMessage(err)}`);
+      toast.error(
+        gt("Couldn't open credential check: {message}", { message: formatErrorMessage(err) }),
+      );
     }
   }
 
@@ -736,7 +744,8 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         })
       : await invoke<Record<string, string>>("account_get_credentials", { accountId });
     const loaded = await getPlugin(account!.plugin_id);
-    if (!loaded) throw new Error(`Plugin "${account!.plugin_id}" not loaded`);
+    if (!loaded)
+      throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId: account!.plugin_id }));
     const services = buildPluginHostServices(loaded.plugin.manifest, credentials);
     const client = loaded.plugin.createClient(credentials, services);
     return runAccountPreflight(loaded.plugin, client);
@@ -745,7 +754,11 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   async function fetchPolicyTemplateForAccount(capabilityIds: string[]) {
     const loaded = await getPlugin(account!.plugin_id);
     if (!loaded?.plugin.policyTemplate) {
-      throw new Error(`Plugin "${account!.plugin_id}" does not provide a policy template`);
+      throw new Error(
+        gt('Plugin "{pluginId}" does not provide a policy template', {
+          pluginId: account!.plugin_id,
+        }),
+      );
     }
     return loaded.plugin.policyTemplate(capabilityIds);
   }
@@ -756,7 +769,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     } else {
       await invoke<void>("account_save_credentials", { accountId, credentials });
     }
-    toast.success("Credentials updated");
+    toast.success(gt("Credentials updated"));
     backgroundLoadRef.current = true;
     setLoadVersion((v) => v + 1);
     // Resource detail tabs and the sidebar bind credentials at mount-time, so
@@ -806,7 +819,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
             : "flex items-center justify-center h-full text-on-surface-faint text-sm"
         }
       >
-        Loading…
+        {gt("Loading…")}
       </div>
     );
   }
@@ -847,7 +860,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
                 ref={renameInputRef}
                 type="text"
                 value={editName}
-                aria-label="Account name"
+                aria-label={gt("Account name")}
                 onChange={(e) => setEditName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleRename();
@@ -865,7 +878,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
                 disabled={isSaving}
                 className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
               >
-                Save
+                {gt("Save")}
               </button>
               <button
                 type="button"
@@ -876,7 +889,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
                 disabled={isSaving}
                 className="px-2 py-1 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded"
               >
-                Cancel
+                {gt("Cancel")}
               </button>
             </div>
           ) : (
@@ -892,14 +905,14 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
                 onClick={() => setIsEditing(true)}
                 className="text-xs text-on-surface-faint hover:text-on-surface transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
               >
-                Rename
+                {gt("Rename")}
               </button>
               <button
                 type="button"
                 onClick={() => void openEditCredentials()}
                 className="text-xs text-on-surface-faint hover:text-on-surface transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
               >
-                Update credentials
+                {gt("Update credentials")}
               </button>
               {preflightSupported && (
                 <button
@@ -907,7 +920,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
                   onClick={() => void openPreflight()}
                   className="text-xs text-on-surface-faint hover:text-on-surface transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
                 >
-                  Check credentials
+                  {gt("Check credentials")}
                 </button>
               )}
             </>
@@ -917,7 +930,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
             onClick={() => setConfirmDelete(true)}
             className="text-xs text-on-surface-faint hover:text-danger transition-colors px-2 py-1 rounded hover:bg-red-500/10"
           >
-            Remove
+            {gt("Remove")}
           </button>
         </div>
       </div>
@@ -981,7 +994,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
             className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-border-strong text-on-surface-faint hover:border-blue-600 hover:text-accent transition-colors text-sm"
           >
             <span className="text-base leading-none">+</span>
-            <span>Create {typeDef.displayName}</span>
+            <span>{gt("Create {type}", { type: gtData(typeDef.displayName) })}</span>
           </button>
         )}
       />
@@ -1050,7 +1063,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
               }}
             >
               <span>⇢</span>
-              Connect to service via SSH…
+              {gt("Connect to service via SSH…")}
             </button>
           )}
           {contextMenu.sshHost && (
@@ -1069,7 +1082,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
               }}
             >
               <span>🐳</span>
-              Setup Docker on VM…
+              {gt("Setup Docker on VM…")}
             </button>
           )}
           {contextMenu.pingTarget && (
@@ -1083,7 +1096,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
               }}
             >
               <span>🔔</span>
-              Add or remove metric ping…
+              {gt("Add or remove metric ping…")}
             </button>
           )}
         </div>

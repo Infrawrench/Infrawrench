@@ -98,8 +98,8 @@ export function HostKeyTrustDialog({
               <T>
                 <p className="text-xs text-on-surface-tertiary">
                   You haven't connected to this host before. Confirm that the fingerprint below
-                  matches what you expect (for example, the value printed by your cloud provider
-                  or shown when you ran
+                  matches what you expect (for example, the value printed by your cloud provider or
+                  shown when you ran
                   <span className="font-mono"> ssh-keygen -lf </span>
                   on the host).
                 </p>

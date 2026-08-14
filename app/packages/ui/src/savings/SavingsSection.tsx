@@ -270,8 +270,8 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
               <strong className="font-medium text-on-surface">
                 <Var>{data.unownedCount}</Var> of <Var>{data.totalCount}</Var>
               </strong>{" "}
-              has no recorded owner — nobody to ask before deleting, and nobody an alert can
-              reach. Open a resource and set an owner on its{" "}
+              has no recorded owner — nobody to ask before deleting, and nobody an alert can reach.
+              Open a resource and set an owner on its{" "}
               <span className="text-on-surface">Ownership</span> tab.
             </p>
           </T>
@@ -281,8 +281,8 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
               <strong className="font-medium text-on-surface">
                 <Var>{data.unownedCount}</Var> of <Var>{data.totalCount}</Var>
               </strong>{" "}
-              have no recorded owner — nobody to ask before deleting, and nobody an alert can
-              reach. Open a resource and set an owner on its{" "}
+              have no recorded owner — nobody to ask before deleting, and nobody an alert can reach.
+              Open a resource and set an owner on its{" "}
               <span className="text-on-surface">Ownership</span> tab.
             </p>
           </T>
@@ -293,16 +293,16 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
           {showCost ? (
             <T>
               <>
-                Cost figures are best-effort, matched from collected per-resource billing rows
-                over the last <Var>{data.costWindowDays}</Var> days; most providers don&apos;t
-                report cost at resource granularity.
+                Cost figures are best-effort, matched from collected per-resource billing rows over
+                the last <Var>{data.costWindowDays}</Var> days; most providers don&apos;t report
+                cost at resource granularity.
               </>
             </T>
           ) : (
             <T>
               <>
-                No cost figures here: spend is collected by Infrawrench Cloud, and this workspace
-                is local. The flags themselves never depend on billing data.
+                No cost figures here: spend is collected by Infrawrench Cloud, and this workspace is
+                local. The flags themselves never depend on billing data.
               </>
             </T>
           )}{" "}

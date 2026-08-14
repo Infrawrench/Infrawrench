@@ -117,7 +117,9 @@ export function SidebarDashboards() {
       const created =
         await getDesktopChatClient(activeCloudOrgId).createConversation(DEFAULT_CHAT_MODEL);
       emitChatConversationsChanged();
-      void navigateToWorkspaceTarget(navigate, chatTabTarget(created.id), { label: "New chat" });
+      void navigateToWorkspaceTarget(navigate, chatTabTarget(created.id), {
+        label: gt("New chat"),
+      });
     } catch (err) {
       console.error("[sidebar-chat] Failed to create chat:", err);
     }
@@ -204,44 +206,44 @@ export function SidebarDashboards() {
   const navTools: SidebarToolDef[] = [
     {
       key: "agents",
-      label: "Agents",
+      label: gt("Agents"),
       icon: <span className="font-mono text-[11px]">&gt;_</span>,
       onClick: () =>
-        void navigateToWorkspaceTarget(navigate, agentsTabTarget(), { label: "Agents" }),
+        void navigateToWorkspaceTarget(navigate, agentsTabTarget(), { label: gt("Agents") }),
     },
     {
       key: "workflows",
-      label: "Workflows",
+      label: gt("Workflows"),
       icon: <WorkflowIcon />,
       onClick: () =>
-        void navigateToWorkspaceTarget(navigate, workflowsTabTarget(), { label: "Workflows" }),
+        void navigateToWorkspaceTarget(navigate, workflowsTabTarget(), { label: gt("Workflows") }),
     },
     {
       key: "deploy",
-      label: "Deploy",
+      label: gt("Deploy"),
       icon: <DeployIcon />,
       onClick: () =>
-        void navigateToWorkspaceTarget(navigate, deploymentsTabTarget(), { label: "Deploy" }),
+        void navigateToWorkspaceTarget(navigate, deploymentsTabTarget(), { label: gt("Deploy") }),
     },
     ...(activeCloudOrgId
       ? [
           {
             key: "costs",
-            label: "Costs",
+            label: gt("Costs"),
             icon: <CostsIcon />,
             onClick: () =>
-              void navigateToWorkspaceTarget(navigate, costsTabTarget(), { label: "Costs" }),
+              void navigateToWorkspaceTarget(navigate, costsTabTarget(), { label: gt("Costs") }),
           },
           // Cloud-only for the same reason as Costs: a report is an org row
           // over server-collected spend, so local mode has nothing to save or
           // draw. A workspace tab, like Costs.
           {
             key: "cost-reports",
-            label: "Reports",
+            label: gt("Reports"),
             icon: <CostReportsIcon />,
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, costReportsTabTarget(), {
-                label: "Reports",
+                label: gt("Reports"),
               }),
           },
           // Cloud-only for the same reason as Costs: an invoice bills for
@@ -249,11 +251,11 @@ export function SidebarDashboards() {
           // customers nor the data. A workspace tab, like Costs and Reports.
           {
             key: "invoices",
-            label: "Invoices",
+            label: gt("Invoices"),
             icon: <InvoicesIcon />,
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, invoicesTabTarget(), {
-                label: "Invoices",
+                label: gt("Invoices"),
               }),
           },
           // Cloud-only for the same reason as Costs: rules are evaluated by
@@ -261,7 +263,7 @@ export function SidebarDashboards() {
           // tab — same as web, a plain route.
           {
             key: "metric-alerts",
-            label: "Alerts",
+            label: gt("Alerts"),
             icon: <MetricAlertIcon />,
             onClick: () => void navigate({ to: "/metric-alerts" }),
           },
@@ -270,7 +272,7 @@ export function SidebarDashboards() {
           // Not a workspace tab — same as web, a plain route.
           {
             key: "changes",
-            label: "Changes",
+            label: gt("Changes"),
             icon: <ChangesIcon />,
             onClick: () => void navigate({ to: "/changes" }),
           },
@@ -281,11 +283,11 @@ export function SidebarDashboards() {
           // A workspace-tab kind, so the strip stays in sync with the panel.
           {
             key: "access-review",
-            label: "Access review",
+            label: gt("Access review"),
             icon: <AccessReviewIcon />,
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, accessReviewTabTarget(), {
-                label: "Access review",
+                label: gt("Access review"),
               }),
           },
           // Cloud-only: reconciliation classifies the org's *synced*
@@ -293,22 +295,22 @@ export function SidebarDashboards() {
           // has no synced inventory.
           {
             key: "iac",
-            label: "IaC",
+            label: gt("IaC"),
             icon: <IacIcon />,
             onClick: () =>
-              void navigateToWorkspaceTarget(navigate, iacTabTarget(), { label: "IaC" }),
+              void navigateToWorkspaceTarget(navigate, iacTabTarget(), { label: gt("IaC") }),
           },
           // Cloud-only like Changes: probes run in the cloud poller through
           // the egress proxy, and results live in the cloud metric store.
           {
             key: "probes",
-            label: "Probes",
+            label: gt("Probes"),
             icon: <ProbesIcon />,
             onClick: () => void navigate({ to: "/probes" }),
           },
           {
             key: "status-pages",
-            label: "Status pages",
+            label: gt("Status pages"),
             icon: <StatusPagesIcon />,
             onClick: () => void navigate({ to: "/status-pages" }),
           },
@@ -317,7 +319,7 @@ export function SidebarDashboards() {
           // runs, and the trend needs history only the cloud stores.
           {
             key: "quotas",
-            label: "Quotas",
+            label: gt("Quotas"),
             icon: <QuotasIcon />,
             onClick: () => void navigate({ to: "/quotas" }),
           },
@@ -325,7 +327,7 @@ export function SidebarDashboards() {
           // org-scoped and declaring one composes cloud features.
           {
             key: "incidents",
-            label: "Incidents",
+            label: gt("Incidents"),
             icon: <IncidentsIcon />,
             onClick: () => void navigate({ to: "/incidents" }),
           },
@@ -334,11 +336,11 @@ export function SidebarDashboards() {
           // pass. There is no local half to render.
           {
             key: "environments",
-            label: "Environments",
+            label: gt("Environments"),
             icon: <EnvironmentsIcon />,
             onClick: () =>
               void navigateToWorkspaceTarget(navigate, environmentsTabTarget(), {
-                label: "Environments",
+                label: gt("Environments"),
               }),
           },
         ]
@@ -347,16 +349,17 @@ export function SidebarDashboards() {
     // so unlike Costs the tile shows in both modes.
     {
       key: "graph",
-      label: "Graph",
+      label: gt("Graph"),
       icon: <GraphIcon />,
-      onClick: () => void navigateToWorkspaceTarget(navigate, graphTabTarget(), { label: "Graph" }),
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, graphTabTarget(), { label: gt("Graph") }),
     },
     // Expiring also has a local half — the feed is computed from stored state
     // and the locally loaded plugins' expiry declarations. Not a workspace
     // tab — same as web and Changes, a plain route.
     {
       key: "expiring",
-      label: "Expiring",
+      label: gt("Expiring"),
       icon: <ExpiryIcon />,
       onClick: () => void navigate({ to: "/expiring" }),
     },
@@ -365,7 +368,7 @@ export function SidebarDashboards() {
     // same as Expiring.
     {
       key: "posture",
-      label: "Posture",
+      label: gt("Posture"),
       icon: <PostureIcon />,
       onClick: () => void navigate({ to: "/posture" }),
     },
@@ -375,36 +378,39 @@ export function SidebarDashboards() {
     // stays in sync with the active panel.
     {
       key: "backups",
-      label: "Backups",
+      label: gt("Backups"),
       icon: <BackupsIcon />,
       onClick: () =>
-        void navigateToWorkspaceTarget(navigate, backupsTabTarget(), { label: "Backups" }),
+        void navigateToWorkspaceTarget(navigate, backupsTabTarget(), { label: gt("Backups") }),
     },
     // Domains also has a local half — the inventory is computed from stored
     // state and the locally loaded plugins' DNS declarations. A workspace-tab
     // kind (same as Logs), so the strip stays in sync with the active panel.
     {
       key: "dns",
-      label: "Domains",
+      label: gt("Domains"),
       icon: <DomainsIcon />,
-      onClick: () => void navigateToWorkspaceTarget(navigate, dnsTabTarget(), { label: "Domains" }),
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, dnsTabTarget(), { label: gt("Domains") }),
     },
     // Env diff also has a local half — local mode enumerates both accounts
     // through the plugin, since the local workspace has no synced store to
     // read. Workspace-tab kind so a/b selection survives restart.
     {
       key: "environment-diff",
-      label: "Env diff",
+      label: gt("Env diff"),
       icon: <EnvironmentDiffIcon />,
       onClick: () =>
-        void navigateToWorkspaceTarget(navigate, environmentDiffTabTarget(), { label: "Env diff" }),
+        void navigateToWorkspaceTarget(navigate, environmentDiffTabTarget(), {
+          label: gt("Env diff"),
+        }),
     },
     // Fan-out SSH has a local half — local SSH accounts exec through the
     // machine's own ssh machinery — so, like Graph, it shows in both modes.
     // A plain route, same as web.
     {
       key: "ssh-fanout",
-      label: "Fan-out",
+      label: gt("Fan-out"),
       icon: <FanoutIcon />,
       onClick: () => void navigate({ to: "/ssh-fanout" }),
     },
@@ -413,9 +419,10 @@ export function SidebarDashboards() {
     // and alerting are the cloud-only part, hidden by the panel locally).
     {
       key: "logs",
-      label: "Logs",
+      label: gt("Logs"),
       icon: <LogsIcon />,
-      onClick: () => void navigateToWorkspaceTarget(navigate, logsTabTarget(), { label: "Logs" }),
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, logsTabTarget(), { label: gt("Logs") }),
     },
   ];
 
@@ -431,8 +438,8 @@ export function SidebarDashboards() {
         <button
           type="button"
           onClick={() => setAddingNew(true)}
-          title="New dashboard"
-          aria-label="Create new dashboard"
+          title={gt("New dashboard")}
+          aria-label={gt("Create new dashboard")}
           className="text-on-surface-faint hover:text-on-surface-secondary text-sm leading-none size-5 flex items-center justify-center rounded hover:bg-surface-overlay transition-colors"
         >
           +
@@ -494,10 +501,10 @@ export function SidebarDashboards() {
         <div className="mx-2 px-3 py-1.5">
           <input
             ref={newInputRef}
-            aria-label="New dashboard name"
+            aria-label={gt("New dashboard name")}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Dashboard name…"
+            placeholder={gt("Dashboard name…")}
             onBlur={() => void handleCreateDashboard()}
             onKeyDown={(e) => {
               if (e.key === "Enter") void handleCreateDashboard();
@@ -518,7 +525,7 @@ export function SidebarDashboards() {
             <button
               type="button"
               onClick={() =>
-                void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: "Chat" })
+                void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: gt("Chat") })
               }
               className="text-xs font-medium text-on-surface-muted uppercase tracking-wide hover:text-on-surface-secondary transition-colors"
             >
@@ -527,8 +534,8 @@ export function SidebarDashboards() {
             <button
               type="button"
               onClick={() => void handleNewChat()}
-              title="New chat"
-              aria-label="Start new chat"
+              title={gt("New chat")}
+              aria-label={gt("Start new chat")}
               className="text-on-surface-faint hover:text-on-surface-secondary text-sm leading-none size-5 flex items-center justify-center rounded hover:bg-surface-overlay transition-colors"
             >
               +
@@ -562,8 +569,8 @@ export function SidebarDashboards() {
                 <button
                   type="button"
                   onClick={() => void handleArchiveChat(chat.id)}
-                  title="Archive chat"
-                  aria-label="Archive chat"
+                  title={gt("Archive chat")}
+                  aria-label={gt("Archive chat")}
                   className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-danger text-xs px-2 py-1.5 transition-opacity"
                 >
                   ×
@@ -576,11 +583,11 @@ export function SidebarDashboards() {
             <button
               type="button"
               onClick={() =>
-                void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: "Chat" })
+                void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: gt("Chat") })
               }
               className="mx-2 px-3 py-1 text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
             >
-              All chats…
+              {gt("All chats…")}
             </button>
           )}
         </div>

@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect, lazy, Suspense } from "react";
+import { useGT } from "gt-react";
 import type { OnMount } from "@monaco-editor/react";
 import type { ManifestEditorCapability } from "@infrawrench/plugin-base";
 
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export function ManifestEditorView({ capability, onGetManifest, onApplyManifest }: Props) {
+  const gt = useGT();
   const [manifest, setManifest] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +52,7 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
       // Cmd/Ctrl+S to apply
       editor.addAction({
         id: "apply-manifest",
-        label: "Apply Manifest",
+        label: gt("Apply Manifest"),
         keybindings: [
           // Monaco.KeyMod.CtrlCmd | Monaco.KeyCode.KeyS
           2048 | 49, // CtrlCmd + S
@@ -62,7 +64,7 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
         },
       });
     },
-    [applying, capability.readOnly, onApplyManifest],
+    [applying, capability.readOnly, onApplyManifest, gt],
   );
 
   async function handleApply() {
@@ -90,12 +92,12 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
   }
 
   const readOnly = capability.readOnly ?? !onApplyManifest;
-  const kindLabel = capability.resourceKind ?? "Manifest";
+  const kindLabel = capability.resourceKind ?? gt("Manifest");
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-        Loading {kindLabel.toLowerCase()} manifest…
+        {gt("Loading {kind} manifest…", { kind: kindLabel.toLowerCase() })}
       </div>
     );
   }
@@ -109,7 +111,7 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
           onClick={() => void fetchManifest()}
           className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
         >
-          Retry
+          {gt("Retry")}
         </button>
       </div>
     );
@@ -124,12 +126,14 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
         </span>
         {readOnly && (
           <span className="text-xs text-on-surface-faint bg-surface-overlay rounded px-1.5 py-0.5">
-            Read-only
+            {gt("Read-only")}
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
-          {dirty && !readOnly && <span className="text-xs text-warning">Unsaved changes</span>}
-          {applySuccess && <span className="text-xs text-success">Applied</span>}
+          {dirty && !readOnly && (
+            <span className="text-xs text-warning">{gt("Unsaved changes")}</span>
+          )}
+          {applySuccess && <span className="text-xs text-success">{gt("Applied")}</span>}
           {applyError && (
             <span className="text-xs text-danger max-w-xs truncate" title={applyError}>
               {applyError}
@@ -141,7 +145,7 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
             disabled={applying}
             className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors disabled:opacity-50"
           >
-            Reload
+            {gt("Reload")}
           </button>
           {!readOnly && (
             <button
@@ -150,7 +154,7 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
               disabled={applying || !dirty}
               className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-md transition-colors whitespace-nowrap"
             >
-              {applying ? "Applying..." : "Apply  \u2318S"}
+              {applying ? gt("Applying...") : gt("Apply  {shortcut}", { shortcut: "⌘S" })}
             </button>
           )}
         </div>
@@ -158,7 +162,9 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
 
       {/* Monaco Editor */}
       <div className="flex-1 min-h-0">
-        <Suspense fallback={<p className="text-xs text-on-surface-faint p-3">Loading editor…</p>}>
+        <Suspense
+          fallback={<p className="text-xs text-on-surface-faint p-3">{gt("Loading editor…")}</p>}
+        >
           <Editor
             defaultLanguage={capability.language}
             defaultValue={manifest ?? ""}

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useGT } from "gt-react";
 
 import {
   COST_ANNOTATION_LIMITS,
@@ -50,6 +51,7 @@ export function CostAnnotationModal({
   onDelete,
   onClose,
 }: CostAnnotationModalProps) {
+  const gt = useGT();
   const [startDate, setStartDate] = useState(annotation?.startDate ?? defaultStartDate);
   const [spans, setSpans] = useState(Boolean(annotation?.endDate));
   const [endDate, setEndDate] = useState(annotation?.endDate ?? defaultStartDate);
@@ -81,13 +83,15 @@ export function CostAnnotationModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel={annotation ? "Edit annotation" : "Add annotation"}>
+    <Modal onClose={onClose} ariaLabel={annotation ? gt("Edit annotation") : gt("Add annotation")}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[440px] p-6">
         <h2 className="text-base font-semibold text-on-surface mb-1">
-          {annotation ? "Edit annotation" : "Add annotation"}
+          {annotation ? gt("Edit annotation") : gt("Add annotation")}
         </h2>
         <p className="text-xs text-on-surface-faint mb-4">
-          A dated note drawn over the chart. It never changes the numbers — it explains them.
+          {gt(
+            "A dated note drawn over the chart. It never changes the numbers — it explains them.",
+          )}
         </p>
 
         {error !== null && (
@@ -99,7 +103,7 @@ export function CostAnnotationModal({
         <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1">
             <span className="text-xs text-on-surface-secondary">
-              {spans ? "First day" : "Date"}
+              {spans ? gt("First day") : gt("Date")}
             </span>
             <input
               type="date"
@@ -117,12 +121,12 @@ export function CostAnnotationModal({
               className="size-3.5"
             />
             {/* A deploy is a moment; a migration is a week. */}
-            Spans several days
+            {gt("Spans several days")}
           </label>
 
           {spans && (
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-on-surface-secondary">Last day</span>
+              <span className="text-xs text-on-surface-secondary">{gt("Last day")}</span>
               <input
                 type="date"
                 value={endDate}
@@ -134,20 +138,20 @@ export function CostAnnotationModal({
           )}
 
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-on-surface-secondary">Note</span>
+            <span className="text-xs text-on-surface-secondary">{gt("Note")}</span>
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
               rows={3}
               maxLength={COST_ANNOTATION_LIMITS.maxTextLength}
-              placeholder="Migrated the API fleet to Graviton"
+              placeholder={gt("Migrated the API fleet to Graviton")}
               className="rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface"
             />
           </label>
 
           {reportId && (
             <fieldset className="flex flex-col gap-1">
-              <legend className="text-xs text-on-surface-secondary mb-1">Shown on</legend>
+              <legend className="text-xs text-on-surface-secondary mb-1">{gt("Shown on")}</legend>
               <label className="flex items-center gap-2 text-sm text-on-surface">
                 <input
                   type="radio"
@@ -155,7 +159,7 @@ export function CostAnnotationModal({
                   checked={!scoped}
                   onChange={() => setScoped(false)}
                 />
-                Every cost chart
+                {gt("Every cost chart")}
               </label>
               <label className="flex items-center gap-2 text-sm text-on-surface">
                 <input
@@ -165,7 +169,7 @@ export function CostAnnotationModal({
                   onChange={() => setScoped(true)}
                 />
                 <span className="truncate">
-                  {reportName ? `Only ${reportName}` : "Only this report"}
+                  {reportName ? gt("Only {name}", { name: reportName }) : gt("Only this report")}
                 </span>
               </label>
               {/*
@@ -174,7 +178,7 @@ export function CostAnnotationModal({
                 filing it under one report leaves the rest unexplained.
               */}
               <p className="text-[11px] text-on-surface-faint mt-0.5">
-                Org-wide notes appear on every cost chart, including dashboard cards.
+                {gt("Org-wide notes appear on every cost chart, including dashboard cards.")}
               </p>
             </fieldset>
           )}
@@ -191,7 +195,7 @@ export function CostAnnotationModal({
                 onClick={() => void run(onDelete)}
                 className="text-xs text-on-surface-faint hover:text-danger underline disabled:opacity-50"
               >
-                Delete
+                {gt("Delete")}
               </button>
             )}
           </div>
@@ -201,7 +205,7 @@ export function CostAnnotationModal({
               onClick={onClose}
               className="rounded-lg border border-border px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -209,7 +213,7 @@ export function CostAnnotationModal({
               onClick={() => void run(() => onSave({ ...input, text: text.trim() }))}
               className="rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm text-white transition-colors disabled:opacity-50"
             >
-              Save
+              {gt("Save")}
             </button>
           </div>
         </div>

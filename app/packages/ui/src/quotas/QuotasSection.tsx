@@ -146,7 +146,9 @@ function UtilizationBar({ row, threshold }: { row: QuotaRow; threshold: number }
     <div
       className="relative h-2 w-full min-w-24 overflow-hidden rounded-full bg-surface-overlay"
       role="img"
-      aria-label={gt("{value} of the limit used", { value: formatQuotaUtilization(row.utilization) })}
+      aria-label={gt("{value} of the limit used", {
+        value: formatQuotaUtilization(row.utilization),
+      })}
     >
       <div
         className={`h-full rounded-full ${SEVERITY_BAR_CLASSES[row.severity]}`}
@@ -231,9 +233,9 @@ function CoverageNotes({
       {partial.length > 0 && (
         <T>
           <p className="text-on-surface-faint">
-            <Var>{partial.map((a) => a.accountName).join(", ")}</Var> report a representative
-            subset of their provider&apos;s quotas, not all of them — an absent row means
-            unmeasured, not headroom.
+            <Var>{partial.map((a) => a.accountName).join(", ")}</Var> report a representative subset
+            of their provider&apos;s quotas, not all of them — an absent row means unmeasured, not
+            headroom.
           </p>
         </T>
       )}
@@ -488,7 +490,9 @@ export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSe
                                       }}
                                       className="text-[11px] text-on-surface-tertiary underline hover:text-on-surface-secondary"
                                     >
-                                      {row.adjustable === true ? gt("Request increase") : gt("Docs")}
+                                      {row.adjustable === true
+                                        ? gt("Request increase")
+                                        : gt("Docs")}
                                     </button>
                                   ) : null}
                                 </td>
@@ -506,10 +510,10 @@ export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSe
                 <p className="mt-4 text-xs text-on-surface-faint">
                   Readings are collected from your providers&apos; quota APIs a few times a day, so
                   the figures are as fresh as the last pass. The trend is a least-squares fit over
-                  the last 14 days and only reports an exhaustion date inside 30 days — beyond
-                  that a line through provisioning history says nothing useful. The marker on each
-                  bar is your organization&apos;s{" "}
-                  <Var>{formatQuotaUtilization(data.threshold)}</Var> alert threshold.
+                  the last 14 days and only reports an exhaustion date inside 30 days — beyond that
+                  a line through provisioning history says nothing useful. The marker on each bar is
+                  your organization&apos;s <Var>{formatQuotaUtilization(data.threshold)}</Var> alert
+                  threshold.
                 </p>
               </T>
             </>

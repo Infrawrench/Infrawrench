@@ -132,9 +132,7 @@ function RunRow({
         </Td>
         <Td>
           {run.gitSha ? (
-            <span
-              title={run.dirty ? gt("Built from a tree with uncommitted changes") : undefined}
-            >
+            <span title={run.dirty ? gt("Built from a tree with uncommitted changes") : undefined}>
               {run.gitSha.slice(0, 7)}
               {run.dirty && <span className="text-warning"> ·dirty</span>}
             </span>

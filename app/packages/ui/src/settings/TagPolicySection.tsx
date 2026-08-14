@@ -105,10 +105,10 @@ export function TagPolicySection() {
         <T>
           <p className="text-sm text-on-surface-muted mt-1">
             Require every resource to carry tags like <code>owner</code> and <code>env</code>.
-            Compliance is scored per account, untagged spend shows up on the Costs page, and —
-            when enforcement is on — creating a resource without the required tags is rejected.
-            Holders of <code>tag-policy:override</code> can override; blocks and overrides are
-            recorded in the audit log.
+            Compliance is scored per account, untagged spend shows up on the Costs page, and — when
+            enforcement is on — creating a resource without the required tags is rejected. Holders
+            of <code>tag-policy:override</code> can override; blocks and overrides are recorded in
+            the audit log.
           </p>
         </T>
       </div>
@@ -395,12 +395,11 @@ function AllocationSection({
       <h2 className="text-sm font-semibold">{gt("Cost centres & showback")}</h2>
       <T>
         <p className="text-xs text-on-surface-muted">
-          Map spend to cost centres for showback. Rules match on tag, account, provider, or
-          service and evaluate top-down — the first match wins, so every cost row is allocated
-          exactly once; unmatched spend reports as &ldquo;Unallocated&rdquo; on the Costs page.
-          Centres nest, and a rule may target a parent or a child freely: at the same priority the
-          more deeply nested centre claims the row, and the parent still counts it in its subtree
-          total.
+          Map spend to cost centres for showback. Rules match on tag, account, provider, or service
+          and evaluate top-down — the first match wins, so every cost row is allocated exactly once;
+          unmatched spend reports as &ldquo;Unallocated&rdquo; on the Costs page. Centres nest, and
+          a rule may target a parent or a child freely: at the same priority the more deeply nested
+          centre claims the row, and the parent still counts it in its subtree total.
         </p>
       </T>
 

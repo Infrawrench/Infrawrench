@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useGT } from "gt-react";
 
 import { CostAnnotationModal } from "../cost/CostAnnotationModal.js";
 import {
@@ -32,6 +33,7 @@ export function CostAnnotationsSection({
   reportName,
   client,
 }: CostAnnotationsSectionProps) {
+  const gt = useGT();
   const load = client.listCostAnnotations;
   const [annotations, setAnnotations] = useState<CostAnnotation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +63,7 @@ export function CostAnnotationsSection({
     <section className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-faint">
-          Annotations
+          {gt("Annotations")}
         </h3>
         {canWrite && (
           <button
@@ -69,26 +71,27 @@ export function CostAnnotationsSection({
             onClick={() => setEditing({ annotation: null })}
             className="text-xs text-on-surface-faint underline hover:text-on-surface-secondary"
           >
-            Add annotation
+            {gt("Add annotation")}
           </button>
         )}
       </div>
 
       {error !== null ? (
         <div role="alert" className="text-xs text-danger">
-          Couldn&rsquo;t load annotations — {error}{" "}
+          {gt("Couldn’t load annotations — {error}", { error })}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
-            Retry
+            {gt("Retry")}
           </button>
         </div>
       ) : annotations === null ? (
         <p role="status" className="text-xs text-on-surface-faint">
-          Loading annotations…
+          {gt("Loading annotations…")}
         </p>
       ) : annotations.length === 0 ? (
         <p className="text-xs text-on-surface-faint">
-          No annotations yet. A note dated to the day something happened is what turns a step in
-          this chart back into an explanation six weeks from now.
+          {gt(
+            "No annotations yet. A note dated to the day something happened is what turns a step in this chart back into an explanation six weeks from now.",
+          )}
         </p>
       ) : (
         <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
@@ -105,7 +108,7 @@ export function CostAnnotationsSection({
                   */}
                   {describeCostAnnotationScope(annotation)}
                   {/* Where this note came from, when it wasn't written by hand. */}
-                  {annotation.costAnomalyId ? " · Explains a detected anomaly" : ""}
+                  {annotation.costAnomalyId ? gt(" · Explains a detected anomaly") : ""}
                 </p>
               </div>
               {canWrite && (
@@ -114,7 +117,7 @@ export function CostAnnotationsSection({
                   onClick={() => setEditing({ annotation })}
                   className="shrink-0 text-xs text-on-surface-faint underline hover:text-on-surface-secondary"
                 >
-                  Edit
+                  {gt("Edit")}
                 </button>
               )}
             </li>

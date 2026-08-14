@@ -17,6 +17,7 @@
  */
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 
 import {
   currentDriver,
@@ -38,6 +39,7 @@ type Phase = "resolving" | "preview" | "joining" | "joined" | "error";
 function SharedConsoleJoinPage() {
   const { token } = Route.useParams();
   const navigate = useNavigate();
+  const gt = useGT();
   const [phase, setPhase] = useState<Phase>("resolving");
   const [orgId, setOrgId] = useState<string | null>(null);
   const [preview, setPreview] = useState<SharedConsoleInvitePreview | null>(null);
@@ -68,14 +70,14 @@ function SharedConsoleJoinPage() {
             // the search itself.
           }
         }
-        setError("That link is not valid, or the session it points at has ended.");
+        setError(gt("That link is not valid, or the session it points at has ended."));
         setPhase("error");
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not check that link.");
+        setError(err instanceof Error ? err.message : gt("Could not check that link."));
         setPhase("error");
       }
     })();
-  }, [token]);
+  }, [token, gt]);
 
   const join = useCallback(async () => {
     if (!orgId || !preview) return;
@@ -91,10 +93,10 @@ function SharedConsoleJoinPage() {
       setWsToken(ws.token);
       setPhase("joined");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not join that session.");
+      setError(err instanceof Error ? err.message : gt("Could not join that session."));
       setPhase("preview");
     }
-  }, [orgId, preview, token]);
+  }, [orgId, preview, token, gt]);
 
   if (phase === "joined" && joined && wsToken && orgId) {
     return (
@@ -117,26 +119,35 @@ function SharedConsoleJoinPage() {
     <div className="flex h-screen items-center justify-center bg-surface px-4">
       <div className="w-full max-w-md border border-border rounded-xl p-6 space-y-4">
         {phase === "resolving" ? (
-          <p className="text-sm text-on-surface-tertiary animate-pulse">Checking that link…</p>
+          <p className="text-sm text-on-surface-tertiary animate-pulse">
+            {gt("Checking that link…")}
+          </p>
         ) : phase === "error" || !preview ? (
           <>
-            <h1 className="text-base font-semibold text-on-surface">Link not valid</h1>
+            <h1 className="text-base font-semibold text-on-surface">{gt("Link not valid")}</h1>
             <p className="text-sm text-on-surface-tertiary">{error}</p>
           </>
         ) : (
           <>
-            <h1 className="text-base font-semibold text-on-surface">Join a shared terminal</h1>
+            <h1 className="text-base font-semibold text-on-surface">
+              {gt("Join a shared terminal")}
+            </h1>
             <SessionSummary share={preview.share} participants={[]} />
-            <p className="text-xs text-on-surface-tertiary leading-relaxed">
-              You will see everything happening in this session live. You start as an{" "}
-              <strong>observer</strong> — your keystrokes are dropped by the server, not merely
-              hidden here —{" "}
-              {preview.share.allowHandover
-                ? "and the person sharing can hand you the keyboard."
-                : "and this session was shared read-only, so the keyboard cannot move."}{" "}
-              Your join, and anything you do afterwards, is written to this organization's audit log
-              {preview.share.recordingId ? " and to the session recording" : ""}.
-            </p>
+            <T>
+              <p className="text-xs text-on-surface-tertiary leading-relaxed">
+                You will see everything happening in this session live. You start as an{" "}
+                <strong>observer</strong> — your keystrokes are dropped by the server, not merely
+                hidden here —{" "}
+                <Var>
+                  {preview.share.allowHandover
+                    ? gt("and the person sharing can hand you the keyboard.")
+                    : gt("and this session was shared read-only, so the keyboard cannot move.")}
+                </Var>{" "}
+                Your join, and anything you do afterwards, is written to this organization's audit
+                log
+                <Var>{preview.share.recordingId ? gt(" and to the session recording") : ""}</Var>.
+              </p>
+            </T>
             {error && (
               <p className="text-xs text-danger border border-red-500/30 bg-red-500/10 rounded-lg p-2">
                 {error}
@@ -150,14 +161,14 @@ function SharedConsoleJoinPage() {
                 className="w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
               >
                 {phase === "joining"
-                  ? "Joining…"
+                  ? gt("Joining…")
                   : preview.rejoin
-                    ? "Rejoin this session"
-                    : "Join as observer"}
+                    ? gt("Rejoin this session")
+                    : gt("Join as observer")}
               </button>
             ) : (
               <p className="text-sm text-warning border border-amber-500/30 bg-amber-500/10 rounded-lg p-3">
-                {preview.error ?? "You cannot join this session."}
+                {preview.error ?? gt("You cannot join this session.")}
               </p>
             )}
           </>
@@ -174,6 +185,7 @@ export function SessionSummary({
   share: SharedConsoleSummary;
   participants: SharedConsoleParticipant[];
 }) {
+  const gt = useGT();
   const driver = currentDriver(participants);
   return (
     <div className="border border-border rounded-lg p-3 space-y-1 text-sm">
@@ -182,11 +194,11 @@ export function SessionSummary({
         {share.port !== 22 ? `:${share.port}` : ""}
       </div>
       <div className="text-xs text-on-surface-tertiary">
-        shared by {share.ownerName ?? "a colleague"}
-        {driver ? ` · ${driver.userName ?? driver.userId} is driving` : ""}
+        {gt("shared by {name}", { name: share.ownerName ?? gt("a colleague") })}
+        {driver ? gt(" · {name} is driving", { name: driver.userName ?? driver.userId }) : ""}
       </div>
       {!share.allowHandover && (
-        <div className="text-xs text-on-surface-tertiary">read-only share</div>
+        <div className="text-xs text-on-surface-tertiary">{gt("read-only share")}</div>
       )}
     </div>
   );

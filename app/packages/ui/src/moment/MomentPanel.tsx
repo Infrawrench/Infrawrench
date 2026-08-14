@@ -278,8 +278,8 @@ export function MomentPanel({
         <div className="border border-amber-500/30 rounded-xl px-4 py-3 mb-4">
           <T>
             <p className="text-xs text-on-surface-muted mb-1">
-              Provider incident<Var>{data.incidents.length === 1 ? "" : "s"}</Var> overlapping
-              this window:
+              Provider incident<Var>{data.incidents.length === 1 ? "" : "s"}</Var> overlapping this
+              window:
             </p>
           </T>
           <ul className="text-sm text-on-surface-secondary">
@@ -325,7 +325,9 @@ export function MomentPanel({
           </p>
         ) : timeline.length === 0 ? (
           <div className="px-4 py-12 text-center">
-            <p className="text-sm text-on-surface-faint">{gt("Nothing recorded in this window.")}</p>
+            <p className="text-sm text-on-surface-faint">
+              {gt("Nothing recorded in this window.")}
+            </p>
             <p className="text-xs text-on-surface-faint mt-1">
               {gt("Try a wider window — or breathe out, maybe nothing happened.")}
             </p>
@@ -389,8 +391,7 @@ export function MomentPanel({
         <T>
           <p className="text-xs text-on-surface-muted mt-4">
             <Var>{new Date(data.from).toLocaleString()}</Var> —{" "}
-            <Var>{new Date(data.to).toLocaleString()}</Var> ·{" "}
-            <Var>{data.events.length}</Var> event
+            <Var>{new Date(data.to).toLocaleString()}</Var> · <Var>{data.events.length}</Var> event
             <Var>{data.events.length === 1 ? "" : "s"}</Var>
           </p>
         </T>

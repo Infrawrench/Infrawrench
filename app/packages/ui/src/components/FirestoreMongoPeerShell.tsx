@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { T, useGT } from "gt-react";
 
 export interface MongoPeerAccount {
   id: string;
@@ -41,10 +42,12 @@ export function FirestoreMongoPeerShell({
   onUnlink,
   children,
 }: FirestoreMongoPeerShellProps) {
+  const gt = useGT();
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center text-on-surface-faint text-sm">
-        Loading MongoDB accounts…
+        {gt("Loading MongoDB accounts…")}
       </div>
     );
   }
@@ -54,17 +57,19 @@ export function FirestoreMongoPeerShell({
       <div className="flex-1 flex items-center justify-center p-6 border-t border-border">
         <div className="max-w-md w-full">
           <div className="text-sm text-on-surface-secondary mb-3 font-medium">
-            Link a MongoDB account to browse this Enterprise database
+            {gt("Link a MongoDB account to browse this Enterprise database")}
           </div>
-          <div className="text-xs text-on-surface-muted mb-4">
-            Firestore Enterprise databases with MongoDB compatibility are accessed over the MongoDB
-            wire protocol. Pick an account with a connection string pointing at this Firestore
-            database.
-          </div>
+          <T>
+            <div className="text-xs text-on-surface-muted mb-4">
+              Firestore Enterprise databases with MongoDB compatibility are accessed over the
+              MongoDB wire protocol. Pick an account with a connection string pointing at this
+              Firestore database.
+            </div>
+          </T>
           {error && <div className="text-xs text-danger mb-2">{error}</div>}
           {accounts.length === 0 ? (
             <div className="text-xs text-on-surface-muted">
-              No MongoDB accounts. Add one from the sidebar first.
+              {gt("No MongoDB accounts. Add one from the sidebar first.")}
             </div>
           ) : (
             <div className="space-y-2">
@@ -88,7 +93,7 @@ export function FirestoreMongoPeerShell({
   if (pendingConnection) {
     return (
       <div className="flex-1 flex items-center justify-center text-on-surface-faint text-sm">
-        {error ?? "Loading connection..."}
+        {error ?? gt("Loading connection...")}
       </div>
     );
   }
@@ -99,7 +104,7 @@ export function FirestoreMongoPeerShell({
     <div className="flex flex-col flex-1 overflow-hidden border-t border-border">
       <div className="flex items-center gap-2 px-3 py-1.5 bg-surface/80 border-b border-border/60">
         <span className="text-xs text-on-surface-muted">
-          Linked:{" "}
+          {gt("Linked:")}{" "}
           <span className="text-on-surface-secondary">
             {linkedAccount?.displayName ?? linkedAccountId}
           </span>
@@ -110,7 +115,7 @@ export function FirestoreMongoPeerShell({
           onClick={onUnlink}
           className="text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
         >
-          Unlink
+          {gt("Unlink")}
         </button>
       </div>
       {children}

@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useGT } from "gt-react";
 import {
   DroppableDashboardArea,
   SortableDashboardCard,
@@ -11,6 +12,7 @@ import {
   moveDashboardCard,
   orderDashboardCards,
   useUIStore,
+  useDataString,
   type DashboardCardKind,
   formatErrorMessage,
   extractHostLabel,
@@ -124,6 +126,8 @@ export function DashboardView({
   workflowPins: initialWorkflowPins,
   widgets: initialWidgets,
 }: DashboardViewProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const navigate = useNavigate();
   const orgId = useOrgId();
   const [pins, setPins] = useState(initialPins);
@@ -232,11 +236,11 @@ export function DashboardView({
         const res = await fetch(`/api/org/${orgId}/custom-graphs/typings`, {
           credentials: "include",
         });
-        if (!res.ok) throw new Error("Failed to load graph typings");
+        if (!res.ok) throw new Error(gt("Failed to load graph typings"));
         return res.text();
       },
     }),
-    [orgId],
+    [orgId, gt],
   );
 
   const refetchBudgets = useCallback(async () => {
@@ -246,11 +250,11 @@ export function DashboardView({
     } catch (e) {
       // Budget cards render blank without their row, so a swallow here looks
       // exactly like "this budget has no data".
-      toast.error("Couldn't load budgets", {
+      toast.error(gt("Couldn't load budgets"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [orgId]);
+  }, [orgId, gt]);
 
   const hasBudgetWidgets = widgets.some((w) => w.kind === "budget");
   useEffect(() => {
@@ -270,11 +274,11 @@ export function DashboardView({
     } catch (e) {
       // A report card with no row renders as "unavailable", which is
       // indistinguishable from the report actually being gone — so say so.
-      toast.error("Couldn't load cost reports", {
+      toast.error(gt("Couldn't load cost reports"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [loadAllReports]);
+  }, [loadAllReports, gt]);
 
   const hasReportWidgets = widgets.some((w) => w.kind === "cost_report");
   useEffect(() => {
@@ -308,7 +312,7 @@ export function DashboardView({
       await apiDelete(`/api/org/${orgId}/dashboards/widgets/${widgetId}`);
       setWidgets((prev) => prev.filter((w) => w.id !== widgetId));
     } catch (e) {
-      toast.error("Couldn't remove widget", {
+      toast.error(gt("Couldn't remove widget"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -410,7 +414,7 @@ export function DashboardView({
       await apiPost(`/api/org/${orgId}/dashboards/workflow-unpin`, { dashboardId, workflowId });
       setWorkflowPins((prev) => prev.filter((p) => p.workflowId !== workflowId));
     } catch (e) {
-      toast.error("Couldn't unpin workflow", {
+      toast.error(gt("Couldn't unpin workflow"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -421,7 +425,7 @@ export function DashboardView({
       await apiPost(`/api/org/${orgId}/workflows/${workflowId}/run`, {});
       await refetchWorkflowPins();
     } catch (e) {
-      toast.error("Workflow run failed", {
+      toast.error(gt("Workflow run failed"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -467,21 +471,21 @@ export function DashboardView({
       setPins((prev) => prev.filter((p) => p.pinId !== pinId));
     } catch (e) {
       console.error("Failed to unpin:", e);
-      toast.error("Couldn't unpin", {
+      toast.error(gt("Couldn't unpin"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
   }
 
   async function saveName(name: string) {
-    const trimmed = name.trim() || "Dashboard";
+    const trimmed = name.trim() || gt("Dashboard");
     setDashboardName(trimmed);
     setEditingName(false);
     try {
       await apiPost(`/api/org/${orgId}/dashboards/${dashboardId}/rename`, { name: trimmed });
     } catch (e) {
       console.error("Failed to rename:", e);
-      toast.error("Couldn't rename dashboard", {
+      toast.error(gt("Couldn't rename dashboard"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -494,7 +498,7 @@ export function DashboardView({
       void navigate({ to: "/org/$orgId", params: { orgId } });
     } catch (e) {
       console.error("Failed to delete:", e);
-      toast.error("Couldn't delete dashboard", {
+      toast.error(gt("Couldn't delete dashboard"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -508,7 +512,7 @@ export function DashboardView({
           {editingName ? (
             <input
               ref={(el) => el?.focus()}
-              aria-label="Dashboard name"
+              aria-label={gt("Dashboard name")}
               defaultValue={dashboardName}
               onBlur={(e) => void saveName(e.target.value)}
               onKeyDown={(e) => {
@@ -522,17 +526,17 @@ export function DashboardView({
               <h1
                 className="text-2xl font-semibold text-on-surface cursor-default hover:text-white"
                 onDoubleClick={() => setEditingName(true)}
-                title="Double-click to rename"
+                title={gt("Double-click to rename")}
               >
                 {dashboardName}
               </h1>
               <button
                 type="button"
                 onClick={() => setEditingName(true)}
-                aria-label="Rename dashboard"
+                aria-label={gt("Rename dashboard")}
                 className="text-xs text-on-surface-faint hover:text-on-surface-muted transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
               >
-                Rename
+                {gt("Rename")}
               </button>
             </div>
           )}
@@ -542,10 +546,10 @@ export function DashboardView({
           <button
             type="button"
             onClick={() => void deleteDashboard()}
-            title="Delete dashboard"
+            title={gt("Delete dashboard")}
             className="text-xs text-on-surface-faint hover:text-danger transition-colors px-2 py-1 rounded hover:bg-red-500/10"
           >
-            Delete
+            {gt("Delete")}
           </button>
         )}
       </div>
@@ -562,8 +566,10 @@ export function DashboardView({
                 className="w-full flex flex-col items-center justify-center h-64 rounded-2xl border-2 border-dashed border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted transition-colors"
               >
                 <span className="text-3xl mb-3">&#8862;</span>
-                <p className="text-sm">Click to add to this dashboard</p>
-                <p className="text-xs mt-1 opacity-60">or drag a resource or workflow here</p>
+                <p className="text-sm">{gt("Click to add to this dashboard")}</p>
+                <p className="text-xs mt-1 opacity-60">
+                  {gt("or drag a resource or workflow here")}
+                </p>
               </button>
               {addMenuOpen && (
                 <DashboardAddMenu
@@ -699,7 +705,7 @@ export function DashboardView({
                     className="w-full h-full rounded-2xl border-2 border-dashed border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted flex flex-col items-center justify-center gap-1.5 transition-colors"
                   >
                     <span className="text-2xl">+</span>
-                    <span className="text-xs">Add</span>
+                    <span className="text-xs">{gt("Add")}</span>
                   </button>
                   {addMenuOpen && (
                     <DashboardAddMenu
@@ -872,6 +878,8 @@ function PinCard({
   onUnpin: () => void;
   onOpen: (detail: PinDetail) => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [store, setStore] = useState<{
     forKey: string;
     detail: PinDetail | null;
@@ -940,8 +948,8 @@ function PinCard({
           }
         }}
         disabled={unpinning}
-        title="Remove from dashboard"
-        aria-label="Remove from dashboard"
+        title={gt("Remove from dashboard")}
+        aria-label={gt("Remove from dashboard")}
         className="absolute top-2 right-2 size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-all opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-xs flex items-center justify-center z-10"
       >
         &#10005;
@@ -962,7 +970,7 @@ function PinCard({
           ) : (
             <span className="text-xs text-on-surface-faint font-mono">{detail.pluginId}</span>
           )}
-          <span className="text-xs text-on-surface-muted">{detail.pluginDisplayName}</span>
+          <span className="text-xs text-on-surface-muted">{gtData(detail.pluginDisplayName)}</span>
         </div>
 
         <div>
@@ -979,14 +987,17 @@ function PinCard({
 }
 
 function ConnectionFooter({ status }: { status: ProbeStatus }) {
+  const gt = useGT();
   if (status.phase === "error") {
     return (
       <div
         className="px-5 py-3 border-t border-border flex items-center gap-2"
         title={status.error}
       >
-        <img className="size-1.5 rounded-full bg-red-500 flex-shrink-0" alt="Error" />
-        <span className="text-xs text-danger truncate">{status.error ?? "Connection failed"}</span>
+        <img className="size-1.5 rounded-full bg-red-500 flex-shrink-0" alt={gt("Error")} />
+        <span className="text-xs text-danger truncate">
+          {status.error ?? gt("Connection failed")}
+        </span>
       </div>
     );
   }
@@ -994,8 +1005,8 @@ function ConnectionFooter({ status }: { status: ProbeStatus }) {
   return (
     <div className="px-5 py-3 border-t border-border space-y-1">
       <div className="flex items-center gap-1.5 mb-1">
-        <img className="size-1.5 rounded-full bg-blue-400 flex-shrink-0" alt="Connected" />
-        <span className="text-xs text-on-surface-faint">Connected</span>
+        <img className="size-1.5 rounded-full bg-blue-400 flex-shrink-0" alt={gt("Connected")} />
+        <span className="text-xs text-on-surface-faint">{gt("Connected")}</span>
       </div>
       {status.stats?.map((stat) => {
         const color =

@@ -128,17 +128,11 @@ export function BillingSection() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-sm font-medium text-on-surface-secondary">
-              {complimentary
-                ? gt("Complimentary Plan")
-                : isFree
-                  ? gt("Free Plan")
-                  : gt("Pro Plan")}
+              {complimentary ? gt("Complimentary Plan") : isFree ? gt("Free Plan") : gt("Pro Plan")}
             </h2>
             <p className="text-xs text-on-surface-muted mt-1">
               {complimentary
-                ? gt(
-                    "All Pro features included, on the house — this organization is never billed",
-                  )
+                ? gt("All Pro features included, on the house — this organization is never billed")
                 : isFree
                   ? gt("1 user, 3 accounts, no audit trail")
                   : gt("{count} seat{plural} — {summary}", {

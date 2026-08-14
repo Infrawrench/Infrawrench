@@ -415,7 +415,9 @@ function SavedFilterPicker({
               type="button"
               onClick={() => onSavedFilterChange(undefined)}
               className="text-on-surface-faint hover:text-on-surface-secondary"
-              title={gt("Remove the saved filter from this config (the filter itself is untouched)")}
+              title={gt(
+                "Remove the saved filter from this config (the filter itself is untouched)",
+              )}
               aria-label={gt("Remove saved filter")}
             >
               ✕
@@ -425,7 +427,9 @@ function SavedFilterPicker({
       )}
       {savedFilterId && Array.isArray(saved) && !applied && (
         <p className="text-xs text-warning">
-          {gt("This saved filter no longer resolves — queries will fail until it is removed here or restored.")}
+          {gt(
+            "This saved filter no longer resolves — queries will fail until it is removed here or restored.",
+          )}
         </p>
       )}
       <div className="flex items-center gap-3">

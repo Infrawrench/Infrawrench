@@ -10,6 +10,7 @@
  * viewer's permissions. The server enforces both regardless.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { T, useGT } from "gt-react";
 
 import { ApprovalCard } from "./ApprovalCard.js";
 import type { ApprovalsClient, WorkflowApprovalRow } from "./types.js";
@@ -35,6 +36,7 @@ export function ApprovalsInbox({
   onOpenWorkflow,
   pollMs = DEFAULT_POLL_MS,
 }: ApprovalsInboxProps) {
+  const gt = useGT();
   const [approvals, setApprovals] = useState<WorkflowApprovalRow[]>([]);
   const [loading, setLoading] = useState(true);
   // Two slots, because the refresh that follows a decision must not wipe the
@@ -55,7 +57,7 @@ export function ApprovalsInbox({
       loadedOnce.current = true;
     } catch (e) {
       if (!loadedOnce.current) {
-        setLoadError(e instanceof Error ? e.message : "Failed to load approval requests");
+        setLoadError(e instanceof Error ? e.message : gt("Failed to load approval requests"));
       }
     } finally {
       setLoading(false);
@@ -79,7 +81,7 @@ export function ApprovalsInbox({
         setApprovals((rows) => rows.filter((r) => r.id !== approvalId));
       } catch (e) {
         // 409 means someone else got there first; re-listing shows the truth.
-        setDecideError(e instanceof Error ? e.message : "Failed to record the decision");
+        setDecideError(e instanceof Error ? e.message : gt("Failed to record the decision"));
       } finally {
         setDecidingId(null);
         void refresh();
@@ -98,12 +100,14 @@ export function ApprovalsInbox({
         </div>
       )}
       {loading && approvals.length === 0 ? (
-        <p className="px-3 py-3 text-xs opacity-60">Loading…</p>
+        <p className="px-3 py-3 text-xs opacity-60">{gt("Loading…")}</p>
       ) : approvals.length === 0 ? (
-        <p className="px-3 py-3 text-xs opacity-60">
-          Nothing waiting. Requests appear here while a workflow run is suspended on{" "}
-          <code>infra.waitForApproval(...)</code>.
-        </p>
+        <T>
+          <p className="px-3 py-3 text-xs opacity-60">
+            Nothing waiting. Requests appear here while a workflow run is suspended on{" "}
+            <code>infra.waitForApproval(...)</code>.
+          </p>
+        </T>
       ) : (
         <div className="border-t border-amber-400/30 bg-amber-400/5 overflow-auto">
           {approvals.map((a) => (

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { T, useGT } from "gt-react";
 import { useSettingsHost, type SettingsApi } from "./host.js";
 
 interface ChangeFreeze {
@@ -33,6 +34,7 @@ function formatDateTime(iso: string | null): string {
 }
 
 export function FreezesSection() {
+  const gt = useGT();
   const { orgId, api, has, onChangeFreezesChanged } = useSettingsHost();
   const canWrite = has("freezes:write");
   const notifyChanged = () => onChangeFreezesChanged?.();
@@ -48,11 +50,11 @@ export function FreezesSection() {
     try {
       setFreezes(await api.get<ChangeFreeze[]>(`/api/org/${orgId}/change-freezes`));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load freeze windows");
+      setError(e instanceof Error ? e.message : gt("Failed to load freeze windows"));
     } finally {
       setLoading(false);
     }
-  }, [api, orgId]);
+  }, [api, orgId, gt]);
 
   useEffect(() => {
     void load();
@@ -66,7 +68,7 @@ export function FreezesSection() {
       notifyChanged();
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to end freeze");
+      setError(e instanceof Error ? e.message : gt("Failed to end freeze"));
     } finally {
       setBusyId(null);
     }
@@ -80,7 +82,7 @@ export function FreezesSection() {
       notifyChanged();
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete freeze");
+      setError(e instanceof Error ? e.message : gt("Failed to delete freeze"));
     } finally {
       setBusyId(null);
     }
@@ -92,13 +94,15 @@ export function FreezesSection() {
     <div>
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Change Freezes</h1>
-          <p className="text-sm text-on-surface-muted mt-1">
-            While a freeze is in effect, destructive actions — deleting resources, destructive
-            plugin actions, destroying secret versions, rolling back deployments — are blocked for
-            everyone. Admins can override individual actions; blocks and overrides are recorded in
-            the audit log.
-          </p>
+          <h1 className="text-xl font-semibold">{gt("Change Freezes")}</h1>
+          <T>
+            <p className="text-sm text-on-surface-muted mt-1">
+              While a freeze is in effect, destructive actions — deleting resources, destructive
+              plugin actions, destroying secret versions, rolling back deployments — are blocked for
+              everyone. Admins can override individual actions; blocks and overrides are recorded in
+              the audit log.
+            </p>
+          </T>
         </div>
         {canWrite && (
           <button
@@ -106,7 +110,7 @@ export function FreezesSection() {
             onClick={() => setShowCreate((v) => !v)}
             className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors whitespace-nowrap"
           >
-            {showCreate ? "Cancel" : "Declare freeze"}
+            {showCreate ? gt("Cancel") : gt("Declare freeze")}
           </button>
         )}
       </div>
@@ -130,32 +134,34 @@ export function FreezesSection() {
       )}
 
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
       ) : freezes.length === 0 ? (
-        <p className="text-sm text-on-surface-muted">
-          No freeze windows yet. Declare one before a holiday weekend, a big launch, or an incident
-          review to keep destructive changes out of production.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-muted">
+            No freeze windows yet. Declare one before a holiday weekend, a big launch, or an
+            incident review to keep destructive changes out of production.
+          </p>
+        </T>
       ) : (
         <div className="border border-border rounded-xl overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-border text-xs text-on-surface-muted">
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Name
+                  {gt("Name")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Status
+                  {gt("Status")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Starts
+                  {gt("Starts")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Ends
+                  {gt("Ends")}
                 </th>
                 {canWrite && (
                   <th scope="col" className="text-right px-4 py-2 font-medium">
-                    Actions
+                    {gt("Actions")}
                   </th>
                 )}
               </tr>
@@ -178,15 +184,15 @@ export function FreezesSection() {
                     <td className="px-4 py-2 text-xs">
                       {inEffect ? (
                         <span className="inline-block px-2 py-0.5 rounded-full bg-amber-500/15 text-warning font-medium">
-                          In effect
+                          {gt("In effect")}
                         </span>
                       ) : scheduled ? (
                         <span className="inline-block px-2 py-0.5 rounded-full bg-blue-500/15 text-info font-medium">
-                          Scheduled
+                          {gt("Scheduled")}
                         </span>
                       ) : (
                         <span className="inline-block px-2 py-0.5 rounded-full bg-surface-overlay text-on-surface-muted">
-                          Ended
+                          {gt("Ended")}
                         </span>
                       )}
                     </td>
@@ -194,7 +200,7 @@ export function FreezesSection() {
                       {formatDateTime(freeze.startsAt)}
                     </td>
                     <td className="px-4 py-2 text-xs text-on-surface-tertiary">
-                      {freeze.endsAt ? formatDateTime(freeze.endsAt) : "Open-ended"}
+                      {freeze.endsAt ? formatDateTime(freeze.endsAt) : gt("Open-ended")}
                     </td>
                     {canWrite && (
                       <td className="px-4 py-2 text-right">
@@ -206,7 +212,7 @@ export function FreezesSection() {
                               disabled={busyId === freeze.id}
                               className="text-xs text-warning hover:opacity-80 disabled:opacity-50"
                             >
-                              {busyId === freeze.id ? "Ending…" : "End now"}
+                              {busyId === freeze.id ? gt("Ending…") : gt("End now")}
                             </button>
                           )}
                           {!inEffect && !scheduled && (
@@ -216,7 +222,7 @@ export function FreezesSection() {
                               disabled={busyId === freeze.id}
                               className="text-xs text-danger hover:text-danger-strong disabled:opacity-50"
                             >
-                              Delete
+                              {gt("Delete")}
                             </button>
                           )}
                         </div>
@@ -242,6 +248,7 @@ function CreateFreezeForm({
   orgId: string;
   onCreated: () => void;
 }) {
+  const gt = useGT();
   const [name, setName] = useState("");
   const [reason, setReason] = useState("");
   const [startsAt, setStartsAt] = useState("");
@@ -251,7 +258,7 @@ function CreateFreezeForm({
 
   async function submit() {
     if (!name.trim()) {
-      setError("Name is required");
+      setError(gt("Name is required"));
       return;
     }
     setSubmitting(true);
@@ -265,7 +272,7 @@ function CreateFreezeForm({
       });
       onCreated();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to declare freeze");
+      setError(e instanceof Error ? e.message : gt("Failed to declare freeze"));
     } finally {
       setSubmitting(false);
     }
@@ -275,27 +282,29 @@ function CreateFreezeForm({
     <div className="mb-6 border border-border rounded-xl p-4 space-y-3 bg-surface-raised/50">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label className="block">
-          <span className="text-xs text-on-surface-muted">Name</span>
+          <span className="text-xs text-on-surface-muted">{gt("Name")}</span>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Holiday freeze"
+            placeholder={gt("Holiday freeze")}
             className="mt-1 w-full px-3 py-1.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-border-strong"
           />
         </label>
         <label className="block">
-          <span className="text-xs text-on-surface-muted">Reason (optional)</span>
+          <span className="text-xs text-on-surface-muted">{gt("Reason (optional)")}</span>
           <input
             type="text"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="No production changes over the holidays."
+            placeholder={gt("No production changes over the holidays.")}
             className="mt-1 w-full px-3 py-1.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-border-strong"
           />
         </label>
         <label className="block">
-          <span className="text-xs text-on-surface-muted">Starts (optional — defaults to now)</span>
+          <span className="text-xs text-on-surface-muted">
+            {gt("Starts (optional — defaults to now)")}
+          </span>
           <input
             type="datetime-local"
             value={startsAt}
@@ -304,7 +313,9 @@ function CreateFreezeForm({
           />
         </label>
         <label className="block">
-          <span className="text-xs text-on-surface-muted">Ends (optional — open-ended)</span>
+          <span className="text-xs text-on-surface-muted">
+            {gt("Ends (optional — open-ended)")}
+          </span>
           <input
             type="datetime-local"
             value={endsAt}
@@ -321,7 +332,7 @@ function CreateFreezeForm({
           disabled={submitting}
           className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
         >
-          {submitting ? "Declaring…" : "Declare freeze"}
+          {submitting ? gt("Declaring…") : gt("Declare freeze")}
         </button>
       </div>
     </div>

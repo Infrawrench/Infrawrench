@@ -7,6 +7,8 @@ import {
   type NetworkFlowScopeSummary,
 } from "@infrawrench/client-core";
 import { useEffect, useState } from "react";
+import { T, Var, useGT } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 
 import { formatMoney } from "./transform.js";
 import type { CostsClient } from "./types.js";
@@ -42,52 +44,75 @@ function endpointName(endpoint: NetworkFlowPairView["source"]): string {
  * this is a measurement and not a confidence score.
  */
 function CoverageLine({ feed }: { feed: NetworkFlowFeed }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const coverage = attributionCoverage(feed.totals);
   const priced = feed.scopes.filter((s) => s.estimatedCost > 0);
   const leader = priced[0];
   return (
     <div className="border border-border rounded-xl p-3 space-y-1">
-      <p className="text-sm text-on-surface-secondary">
-        <span className="font-semibold">
-          {formatMoney(feed.totals.estimatedCost, feed.totals.currency)}
-        </span>{" "}
-        estimated over {formatFlowBytes(feed.totals.bytes)} between {feed.range.from} and{" "}
-        {feed.range.to}
-        {leader ? (
-          <>
-            {" "}
-            — mostly{" "}
-            <span className="font-medium">
-              {NETWORK_FLOW_SCOPE_LABELS[leader.scope]} {leader.direction}
+      <T>
+        <p className="text-sm text-on-surface-secondary">
+          <Var>
+            <span className="font-semibold">
+              {formatMoney(feed.totals.estimatedCost, feed.totals.currency)}
             </span>
-          </>
-        ) : null}
-        .
-      </p>
-      <p className="text-xs text-on-surface-muted">
-        {Math.round(coverage * 100)}% of those bytes are attributed to a pair.{" "}
-        {feed.totals.unattributedBytes > 0 && (
-          <>{formatFlowBytes(feed.totals.unattributedBytes)} could not be tied to a workload. </>
-        )}
-        {feed.totals.truncatedBytes > 0 && (
-          <>{formatFlowBytes(feed.totals.truncatedBytes)} fell below the stored top-pair cap. </>
-        )}
-        Neither is spread across the rows below.
-      </p>
+          </Var>{" "}
+          estimated over <Var>{formatFlowBytes(feed.totals.bytes)}</Var> between{" "}
+          <Var>{feed.range.from}</Var> and <Var>{feed.range.to}</Var>
+          {leader ? (
+            <>
+              {" "}
+              — mostly{" "}
+              <Var>
+                <span className="font-medium">
+                  {gtData(NETWORK_FLOW_SCOPE_LABELS[leader.scope])}{" "}
+                  {leader.direction === "egress" ? gt("egress") : gt("ingress")}
+                </span>
+              </Var>
+            </>
+          ) : null}
+          .
+        </p>
+      </T>
+      <T>
+        <p className="text-xs text-on-surface-muted">
+          <Var>{Math.round(coverage * 100)}</Var>% of those bytes are attributed to a pair.{" "}
+          {feed.totals.unattributedBytes > 0 && (
+            <>
+              <Var>{formatFlowBytes(feed.totals.unattributedBytes)}</Var> could not be tied to a
+              workload.{" "}
+            </>
+          )}
+          {feed.totals.truncatedBytes > 0 && (
+            <>
+              <Var>{formatFlowBytes(feed.totals.truncatedBytes)}</Var> fell below the stored
+              top-pair cap.{" "}
+            </>
+          )}
+          Neither is spread across the rows below.
+        </p>
+      </T>
     </div>
   );
 }
 
 function ScopeRow({ summary }: { summary: NetworkFlowScopeSummary }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const tone = SCOPE_TONE[summary.scope] ?? SCOPE_TONE["unknown"]!;
   return (
     <li className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
       <span className="flex items-center gap-2 min-w-0">
         <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${tone}`}>
-          {NETWORK_FLOW_SCOPE_LABELS[summary.scope]}
+          {gtData(NETWORK_FLOW_SCOPE_LABELS[summary.scope])}
         </span>
-        <span className="text-xs text-on-surface-muted">{summary.direction}</span>
-        {summary.leftCloud && <span className="text-xs text-on-surface-muted">left the cloud</span>}
+        <span className="text-xs text-on-surface-muted">
+          {summary.direction === "egress" ? gt("egress") : gt("ingress")}
+        </span>
+        {summary.leftCloud && (
+          <span className="text-xs text-on-surface-muted">{gt("left the cloud")}</span>
+        )}
       </span>
       <span className="flex items-center gap-4 shrink-0">
         <span className="text-xs text-on-surface-muted">{formatFlowBytes(summary.bytes)}</span>
@@ -98,6 +123,8 @@ function ScopeRow({ summary }: { summary: NetworkFlowScopeSummary }) {
 }
 
 function PairRow({ pair }: { pair: NetworkFlowPairView }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const tone = SCOPE_TONE[pair.scope] ?? SCOPE_TONE["unknown"]!;
   return (
     <li className="px-3 py-2 text-sm space-y-1">
@@ -113,14 +140,17 @@ function PairRow({ pair }: { pair: NetworkFlowPairView }) {
       </div>
       <div className="flex items-center gap-2 text-xs text-on-surface-muted">
         <span className={`px-1.5 py-0.5 rounded font-medium ${tone}`}>
-          {NETWORK_FLOW_SCOPE_LABELS[pair.scope]}
+          {gtData(NETWORK_FLOW_SCOPE_LABELS[pair.scope])}
         </span>
         <span>{formatFlowBytes(pair.bytes)}</span>
         <span>
-          over {pair.days} day{pair.days === 1 ? "" : "s"}
+          {gt("over {days} day{plural}", {
+            days: pair.days,
+            plural: pair.days === 1 ? "" : "s",
+          })}
         </span>
         {pair.attribution === "unattributed" && (
-          <span className="text-warning">peer not identified</span>
+          <span className="text-warning">{gt("peer not identified")}</span>
         )}
       </div>
     </li>
@@ -147,6 +177,7 @@ function CollectionSwitch({
   client: CostsClient;
   onChanged: (enabled: boolean) => void;
 }) {
+  const gt = useGT();
   const update = client.updateNetworkFlowSettings;
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -154,7 +185,7 @@ function CollectionSwitch({
   if (!update) {
     return feed.enabled ? null : (
       <p className="text-xs text-on-surface-muted">
-        Collection is off. An organization admin can turn it on.
+        {gt("Collection is off. An organization admin can turn it on.")}
       </p>
     );
   }
@@ -182,11 +213,12 @@ function CollectionSwitch({
             })();
           }}
         />
-        Collect network flows
+        {gt("Collect network flows")}
       </label>
       <p className="text-xs text-on-surface-muted">
-        Runs one query a day against your provider&apos;s flow logs. Your provider bills those
-        queries to your own cloud account by the gigabyte scanned.
+        {gt(
+          "Runs one query a day against your provider's flow logs. Your provider bills those queries to your own cloud account by the gigabyte scanned.",
+        )}
       </p>
       {saveError && <p className="text-xs text-danger">{saveError}</p>}
     </div>
@@ -205,14 +237,15 @@ function CollectionSwitch({
  * user's network made out of a gap in ours.
  */
 function EmptyState({ feed }: { feed: NetworkFlowFeed }) {
+  const gt = useGT();
   if (!feed.enabled) {
     return (
       <div className="border border-border rounded-xl p-3 space-y-1">
-        <p className="text-sm text-on-surface-secondary">Flow collection is off.</p>
+        <p className="text-sm text-on-surface-secondary">{gt("Flow collection is off.")}</p>
         <p className="text-xs text-on-surface-muted">
-          Turning it on lets Infrawrench query your provider&apos;s flow logs once a day. Those
-          queries are billed to your own cloud account by the gigabyte scanned, so nothing runs
-          until an admin enables it in Settings.
+          {gt(
+            "Turning it on lets Infrawrench query your provider's flow logs once a day. Those queries are billed to your own cloud account by the gigabyte scanned, so nothing runs until an admin enables it in Settings.",
+          )}
         </p>
       </div>
     );
@@ -223,12 +256,12 @@ function EmptyState({ feed }: { feed: NetworkFlowFeed }) {
     return (
       <div className="border border-border rounded-xl p-3 space-y-1">
         <p className="text-sm text-on-surface-secondary">
-          None of your connected providers can report network flows.
+          {gt("None of your connected providers can report network flows.")}
         </p>
         <p className="text-xs text-on-surface-muted">
-          Flow attribution is available for AWS accounts with VPC Flow Logs delivering to CloudWatch
-          Logs in a custom record format. Other providers are not shown as zero here, because that
-          would be a claim about their traffic rather than about our coverage.
+          {gt(
+            "Flow attribution is available for AWS accounts with VPC Flow Logs delivering to CloudWatch Logs in a custom record format. Other providers are not shown as zero here, because that would be a claim about their traffic rather than about our coverage.",
+          )}
         </p>
       </div>
     );
@@ -241,7 +274,7 @@ function EmptyState({ feed }: { feed: NetworkFlowFeed }) {
 
   return (
     <div className="border border-border rounded-xl p-3 space-y-2">
-      <p className="text-sm text-on-surface-secondary">Nothing collected yet.</p>
+      <p className="text-sm text-on-surface-secondary">{gt("Nothing collected yet.")}</p>
       {failing.map((account) => (
         <p key={account.accountId} className="text-xs text-danger">
           {account.displayName}: {account.lastError}
@@ -254,7 +287,7 @@ function EmptyState({ feed }: { feed: NetworkFlowFeed }) {
                 target="_blank"
                 rel="noreferrer"
               >
-                How to fix
+                {gt("How to fix")}
               </a>
             </>
           )}
@@ -267,8 +300,9 @@ function EmptyState({ feed }: { feed: NetworkFlowFeed }) {
       ))}
       {failing.length === 0 && blocked.length === 0 && (
         <p className="text-xs text-on-surface-muted">
-          Collection runs once a day and only reads closed days, so the first flows appear within
-          about 24 hours of enabling it.
+          {gt(
+            "Collection runs once a day and only reads closed days, so the first flows appear within about 24 hours of enabling it.",
+          )}
         </p>
       )}
     </div>
@@ -287,6 +321,7 @@ export interface NetworkFlowSectionProps {
  * the same rule every other optional section on this panel follows.
  */
 export function NetworkFlowSection({ client }: NetworkFlowSectionProps) {
+  const gt = useGT();
   const [feed, setFeed] = useState<NetworkFlowFeed | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -323,14 +358,22 @@ export function NetworkFlowSection({ client }: NetworkFlowSectionProps) {
   return (
     <section className="space-y-3">
       <div>
-        <h2 className="text-sm font-semibold text-on-surface-secondary">Network costs</h2>
-        <p className="text-xs text-on-surface-muted mt-1">
-          Egress and cross-zone traffic by source and destination pair. Every figure is an{" "}
-          <strong>estimate</strong>: bytes come from flow logs
-          {sampled ? " (which sample)" : ""} and are priced at published list rates
-          {asOf ? ` as of ${asOf}` : ""}, with no free tier, volume tier or negotiated discount
-          applied. Use the ranking; it will not reconcile to the invoice line.
-        </p>
+        <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Network costs")}</h2>
+        <T>
+          <p className="text-xs text-on-surface-muted mt-1">
+            Egress and cross-zone traffic by source and destination pair. Every figure is an{" "}
+            <strong>estimate</strong>: bytes come from flow logs
+            {sampled && <> (which sample)</>} and are priced at published list rates
+            {asOf && (
+              <>
+                {" "}
+                as of <Var>{asOf}</Var>
+              </>
+            )}
+            , with no free tier, volume tier or negotiated discount applied. Use the ranking; it
+            will not reconcile to the invoice line.
+          </p>
+        </T>
       </div>
 
       {error && <p className="text-sm text-danger">{error}</p>}
@@ -351,7 +394,7 @@ export function NetworkFlowSection({ client }: NetworkFlowSectionProps) {
 
           <div className="space-y-2">
             <h3 className="text-xs font-semibold text-on-surface-secondary">
-              Where it goes — by boundary
+              {gt("Where it goes — by boundary")}
             </h3>
             <ul className="border border-border rounded-xl divide-y divide-border overflow-hidden">
               {feed.scopes.map((summary) => (
@@ -363,7 +406,7 @@ export function NetworkFlowSection({ client }: NetworkFlowSectionProps) {
           {feed.topFlows.length > 0 && (
             <div className="space-y-2">
               <h3 className="text-xs font-semibold text-on-surface-secondary">
-                Top flows by estimated cost
+                {gt("Top flows by estimated cost")}
               </h3>
               <ul className="border border-border rounded-xl divide-y divide-border overflow-hidden">
                 {feed.topFlows.slice(0, PAIRS_SHOWN).map((pair) => (
@@ -375,27 +418,33 @@ export function NetworkFlowSection({ client }: NetworkFlowSectionProps) {
               </ul>
               {feed.topFlows.length > PAIRS_SHOWN && (
                 <p className="text-xs text-on-surface-muted">
-                  {feed.topFlows.length - PAIRS_SHOWN} more pair
-                  {feed.topFlows.length - PAIRS_SHOWN === 1 ? "" : "s"} not shown.
+                  {gt("{count} more pair{plural} not shown.", {
+                    count: feed.topFlows.length - PAIRS_SHOWN,
+                    plural: feed.topFlows.length - PAIRS_SHOWN === 1 ? "" : "s",
+                  })}
                 </p>
               )}
             </div>
           )}
 
           {billable && (
-            <p className="text-xs text-on-surface-muted">
-              Collecting these flows runs queries your provider bills to your own cloud account.
-              {feed.accounts.some((a) => a.lastQueryBytesScanned !== null) && (
-                <>
-                  {" "}
-                  Last collection scanned{" "}
-                  {formatFlowBytes(
-                    feed.accounts.reduce((sum, a) => sum + (a.lastQueryBytesScanned ?? 0), 0),
-                  )}{" "}
-                  of log data.
-                </>
-              )}
-            </p>
+            <T>
+              <p className="text-xs text-on-surface-muted">
+                Collecting these flows runs queries your provider bills to your own cloud account.
+                {feed.accounts.some((a) => a.lastQueryBytesScanned !== null) && (
+                  <>
+                    {" "}
+                    Last collection scanned{" "}
+                    <Var>
+                      {formatFlowBytes(
+                        feed.accounts.reduce((sum, a) => sum + (a.lastQueryBytesScanned ?? 0), 0),
+                      )}
+                    </Var>{" "}
+                    of log data.
+                  </>
+                )}
+              </p>
+            </T>
           )}
         </>
       )}

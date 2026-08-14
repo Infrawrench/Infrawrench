@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { T, Var, useGT } from "gt-react";
 import { encodeOutputRef, parseOutputRef } from "@infrawrench/plugin-base";
 
 export interface ResourcePickerOption {
@@ -27,6 +28,7 @@ export function ResourcePicker({
   onChange: (v: string) => void;
   referenceMode?: boolean;
 }) {
+  const gt = useGT();
   const [search, setSearch] = useState("");
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -58,7 +60,9 @@ export function ResourcePicker({
     : resources.find((r) => r.outputValue === value);
 
   if (resources.length === 0) {
-    return <p className="text-sm text-on-surface-faint py-1">No compatible resources found.</p>;
+    return (
+      <p className="text-sm text-on-surface-faint py-1">{gt("No compatible resources found.")}</p>
+    );
   }
 
   return (
@@ -67,14 +71,14 @@ export function ResourcePicker({
         <div className="px-3 py-2 border-b border-border-strong bg-surface-overlay/50">
           <input
             type="text"
-            aria-label="Search resources"
+            aria-label={gt("Search resources")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search resources..."
+            placeholder={gt("Search resources...")}
             className="w-full bg-transparent text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none"
           />
         </div>
-        <div className="max-h-52 overflow-y-auto" role="listbox" aria-label="Resources">
+        <div className="max-h-52 overflow-y-auto" role="listbox" aria-label={gt("Resources")}>
           {filtered.map((r) => (
             <button
               key={r.id}
@@ -99,13 +103,20 @@ export function ResourcePicker({
               </span>
             </button>
           ))}
-          {filtered.length === 0 && <p className="p-3 text-xs text-on-surface-faint">No matches</p>}
+          {filtered.length === 0 && (
+            <p className="p-3 text-xs text-on-surface-faint">{gt("No matches")}</p>
+          )}
         </div>
       </div>
       {selectedResource && (
-        <p className="text-xs text-on-surface-faint">
-          Selected: <code className="text-accent">{selectedResource.outputValue}</code>
-        </p>
+        <T>
+          <p className="text-xs text-on-surface-faint">
+            Selected:{" "}
+            <Var>
+              <code className="text-accent">{selectedResource.outputValue}</code>
+            </Var>
+          </p>
+        </T>
       )}
     </div>
   );

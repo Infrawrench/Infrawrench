@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { T, Var, useGT } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 import {
   getVisibleAccountCategories,
   pickDefaultAccountSectionId,
@@ -16,7 +18,10 @@ export type {
   SectionTypeDef,
 } from "./AccountResourceSections.types.js";
 
-export function AccountResourceSections<T extends SectionTypeDef, R extends SectionResource>({
+export function AccountResourceSections<
+  TTypeDef extends SectionTypeDef,
+  R extends SectionResource,
+>({
   categories,
   renderResource,
   renderCreateButton,
@@ -24,7 +29,9 @@ export function AccountResourceSections<T extends SectionTypeDef, R extends Sect
   onSearchQueryChange,
   activeSectionId: controlledActiveSectionId,
   onActiveSectionIdChange,
-}: AccountResourceSectionsProps<T, R>) {
+}: AccountResourceSectionsProps<TTypeDef, R>) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [internalSearchQuery, setInternalSearchQuery] = useState("");
   const [internalActiveSectionId, setInternalActiveSectionId] = useState<string | null>(null);
   const initializedSectionRef = useRef(false);
@@ -83,8 +90,8 @@ export function AccountResourceSections<T extends SectionTypeDef, R extends Sect
         <input
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="Search sections or resources..."
-          aria-label="Search sections or resources"
+          placeholder={gt("Search sections or resources...")}
+          aria-label={gt("Search sections or resources")}
           className="w-full md:max-w-sm bg-surface-raised border border-border rounded-md px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-muted focus:outline-none focus:border-blue-500"
         />
         {visibleCategories.length > 0 && (
@@ -100,7 +107,7 @@ export function AccountResourceSections<T extends SectionTypeDef, R extends Sect
                     : "border-border text-on-surface-tertiary hover:border-border-strong hover:text-on-surface-secondary"
                 }`}
               >
-                {cat.typeDef.pluralDisplayName}
+                {gtData(cat.typeDef.pluralDisplayName)}
                 {cat.resources.length > 0 && (
                   <span className="ml-1 text-[11px] text-on-surface-muted">
                     ({cat.resources.length})
@@ -116,7 +123,7 @@ export function AccountResourceSections<T extends SectionTypeDef, R extends Sect
       {activeCategory && (
         <div key={activeCategory.typeDef.id} className="mb-8">
           <h2 className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide mb-3">
-            {activeCategory.typeDef.pluralDisplayName}
+            {gtData(activeCategory.typeDef.pluralDisplayName)}
           </h2>
 
           {activeCategory.loading ? (
@@ -148,9 +155,9 @@ export function AccountResourceSections<T extends SectionTypeDef, R extends Sect
           (c) => !c.loading && c.resources.length === 0 && !c.typeDef.supportsCreate,
         ) && (
           <div className="text-center py-12">
-            <p className="text-on-surface-muted text-sm">No resources synced yet.</p>
+            <p className="text-on-surface-muted text-sm">{gt("No resources synced yet.")}</p>
             <p className="text-on-surface-faint text-xs mt-1">
-              Resources will appear after the first sync.
+              {gt("Resources will appear after the first sync.")}
             </p>
           </div>
         )}
@@ -158,7 +165,9 @@ export function AccountResourceSections<T extends SectionTypeDef, R extends Sect
       {visibleCategories.length === 0 && normalizedQuery.length > 0 && (
         <div className="py-8">
           <p className="text-sm text-on-surface-muted">
-            No sections or resources match &ldquo;{searchQuery.trim()}&rdquo;.
+            <T>
+              No sections or resources match &ldquo;<Var>{searchQuery.trim()}</Var>&rdquo;.
+            </T>
           </p>
         </div>
       )}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 
 import {
   COST_ANNOTATION_LIMITS,
@@ -9,6 +10,7 @@ import {
 } from "@infrawrench/client-core";
 import { formatMoney } from "./transform.js";
 import { Modal } from "../components/Modal.js";
+import { useDataString } from "../i18n/data-strings.js";
 import type { CostAnomaly } from "./types.js";
 
 export interface CostAnomalyExplainModalProps {
@@ -53,6 +55,8 @@ export function CostAnomalyExplainModal({
   onSave,
   onClose,
 }: CostAnomalyExplainModalProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const existing = anomaly.acknowledgement?.explanation ?? null;
   const [text, setText] = useState(existing ?? costAnomalyExplanationPrefill(anomaly));
   const [busy, setBusy] = useState(false);
@@ -89,16 +93,22 @@ export function CostAnomalyExplainModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel={rewording ? "Edit explanation" : "Explain this anomaly"}>
+    <Modal
+      onClose={onClose}
+      ariaLabel={rewording ? gt("Edit explanation") : gt("Explain this anomaly")}
+    >
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[460px] p-6">
         <h2 className="text-base font-semibold text-on-surface mb-1">
-          {rewording ? "Edit explanation" : "Explain this anomaly"}
+          {rewording ? gt("Edit explanation") : gt("Explain this anomaly")}
         </h2>
-        <p className="text-xs text-on-surface-faint mb-4">
-          What this was, in a sentence. It is saved on the finding and drawn as a note on{" "}
-          <strong className="font-medium">every cost chart</strong> covering{" "}
-          {formatDay(anomaly.day)}, so the next person to look at that step already has the answer.
-        </p>
+        <T>
+          <p className="text-xs text-on-surface-faint mb-4">
+            What this was, in a sentence. It is saved on the finding and drawn as a note on{" "}
+            <strong className="font-medium">every cost chart</strong> covering{" "}
+            <Var>{formatDay(anomaly.day)}</Var>, so the next person to look at that step already has
+            the answer.
+          </p>
+        </T>
 
         {error !== null && (
           <div role="alert" className="mb-3 text-sm text-danger">
@@ -109,34 +119,35 @@ export function CostAnomalyExplainModal({
         {/* The facts, restated so nobody has to hold the row in their head
             while writing about it. */}
         <dl className="mb-4 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-lg border border-border bg-surface-sunken px-3 py-2 text-xs">
-          <dt className="text-on-surface-faint">Day</dt>
+          <dt className="text-on-surface-faint">{gt("Day")}</dt>
           <dd className="text-on-surface">{formatDay(anomaly.day)}</dd>
           <dt className="text-on-surface-faint">
-            {COST_ANOMALY_DIMENSION_LABELS[anomaly.dimension]}
+            {gtData(COST_ANOMALY_DIMENSION_LABELS[anomaly.dimension])}
           </dt>
           <dd className="text-on-surface">{anomaly.dimensionKey}</dd>
-          <dt className="text-on-surface-faint">Spend</dt>
+          <dt className="text-on-surface-faint">{gt("Spend")}</dt>
           <dd className="text-on-surface">
             {formatMoney(anomaly.actualCents / 100, anomaly.currency)}{" "}
             <span className="text-on-surface-faint">
               {isNew
-                ? "· no prior spend at all"
-                : `· against ${formatMoney(anomaly.baselineCents / 100, anomaly.currency)}/day${
-                    delta ? ` · ${delta}` : ""
-                  }`}
+                ? gt("· no prior spend at all")
+                : gt("· against {baseline}/day{delta}", {
+                    baseline: formatMoney(anomaly.baselineCents / 100, anomaly.currency),
+                    delta: delta ? ` · ${delta}` : "",
+                  })}
             </span>
           </dd>
         </dl>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-on-surface-secondary">What happened</span>
+          <span className="text-xs text-on-surface-secondary">{gt("What happened")}</span>
           <textarea
             ref={textRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={3}
             maxLength={COST_ANNOTATION_LIMITS.maxTextLength}
-            placeholder="Migrated the API fleet to Graviton"
+            placeholder={gt("Migrated the API fleet to Graviton")}
             className="rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface"
           />
         </label>
@@ -144,7 +155,7 @@ export function CostAnomalyExplainModal({
         {hints.length > 0 && (
           <div className="mt-2 flex flex-col gap-1">
             <span className="text-[11px] text-on-surface-faint">
-              Detection found these around then — click to use one:
+              {gt("Detection found these around then — click to use one:")}
             </span>
             <div className="flex flex-wrap gap-1">
               {hints.map((hint) => (
@@ -165,8 +176,10 @@ export function CostAnomalyExplainModal({
 
         <p className="mt-3 text-[11px] text-on-surface-faint">
           {rewording
-            ? "This rewords the note already on the charts rather than adding a second one."
-            : "Explaining doesn’t stop detection — if this spikes again, it will be found again."}
+            ? gt("This rewords the note already on the charts rather than adding a second one.")
+            : gt(
+                "Explaining doesn’t stop detection — if this spikes again, it will be found again.",
+              )}
         </p>
 
         <div className="mt-5 flex items-center justify-end gap-2">
@@ -175,7 +188,7 @@ export function CostAnomalyExplainModal({
             onClick={onClose}
             className="rounded-lg border border-border px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -183,7 +196,7 @@ export function CostAnomalyExplainModal({
             onClick={() => void save()}
             className="rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm text-white transition-colors disabled:opacity-50"
           >
-            {busy ? "Saving…" : rewording ? "Save" : "Explain"}
+            {busy ? gt("Saving…") : rewording ? gt("Save") : gt("Explain")}
           </button>
         </div>
       </div>

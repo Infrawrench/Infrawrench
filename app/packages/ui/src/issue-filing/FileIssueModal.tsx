@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import type {
   CreateJiraIssueResult,
   CreateLinearIssueResult,
@@ -49,6 +50,7 @@ export function FileIssueModal({
   trackers,
   onClose,
 }: FileIssueModalProps) {
+  const gt = useGT();
   const filing = useIssueFiling();
   const [tracker, setTracker] = useState<IssueTracker | undefined>(
     trackers.length === 1 ? trackers[0] : undefined,
@@ -196,14 +198,14 @@ export function FileIssueModal({
 
   const heading =
     tracker === "jira"
-      ? "File a Jira issue"
+      ? gt("File a Jira issue")
       : tracker === "linear"
-        ? "File a Linear issue"
-        : "File an issue";
+        ? gt("File a Linear issue")
+        : gt("File an issue");
   const destination =
     tracker === "jira"
-      ? (filing.jiraIntegration?.siteUrl ?? "your Jira site")
-      : "your Linear workspace";
+      ? (filing.jiraIntegration?.siteUrl ?? gt("your Jira site"))
+      : gt("your Linear workspace");
 
   return (
     <Modal onClose={onClose} ariaLabel={heading}>
@@ -211,8 +213,11 @@ export function FileIssueModal({
         <h2 className="text-base font-semibold text-on-surface mb-1">{heading}</h2>
         <p className="text-xs text-on-surface-faint mb-4">
           {tracker
-            ? `Creates an issue in ${destination} and keeps the link on this finding, so it will show as filed instead of offering this button again.`
-            : "Both trackers are connected — pick where this finding should be tracked."}
+            ? gt(
+                "Creates an issue in {destination} and keeps the link on this finding, so it will show as filed instead of offering this button again.",
+                { destination },
+              )
+            : gt("Both trackers are connected — pick where this finding should be tracked.")}
         </p>
 
         {error !== null && (
@@ -250,14 +255,16 @@ export function FileIssueModal({
           {tracker === "jira" && (
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
-                <span className="block text-xs text-on-surface-tertiary mb-1">Project</span>
+                <span className="block text-xs text-on-surface-tertiary mb-1">{gt("Project")}</span>
                 <select
                   value={projectKey}
                   disabled={busy || projects === null}
                   onChange={(e) => setProjectKey(e.target.value)}
                   className={inputClass}
                 >
-                  <option value="">{projects === null ? "Loading…" : "Select a project"}</option>
+                  <option value="">
+                    {projects === null ? gt("Loading…") : gt("Select a project")}
+                  </option>
                   {(projects ?? []).map((p) => (
                     <option key={p.id} value={p.key}>
                       {p.name} ({p.key})
@@ -266,7 +273,9 @@ export function FileIssueModal({
                 </select>
               </label>
               <label className="block">
-                <span className="block text-xs text-on-surface-tertiary mb-1">Issue type</span>
+                <span className="block text-xs text-on-surface-tertiary mb-1">
+                  {gt("Issue type")}
+                </span>
                 <select
                   value={issueTypeId}
                   disabled={busy || !projectKey || issueTypes === null}
@@ -275,10 +284,10 @@ export function FileIssueModal({
                 >
                   <option value="">
                     {!projectKey
-                      ? "Pick a project first"
+                      ? gt("Pick a project first")
                       : issueTypes === null
-                        ? "Loading…"
-                        : "Select a type"}
+                        ? gt("Loading…")
+                        : gt("Select a type")}
                   </option>
                   {(issueTypes ?? []).map((t) => (
                     <option key={t.id} value={t.id}>
@@ -292,14 +301,14 @@ export function FileIssueModal({
 
           {tracker === "linear" && (
             <label className="block">
-              <span className="block text-xs text-on-surface-tertiary mb-1">Team</span>
+              <span className="block text-xs text-on-surface-tertiary mb-1">{gt("Team")}</span>
               <select
                 value={teamId}
                 disabled={busy || teams === null}
                 onChange={(e) => setTeamId(e.target.value)}
                 className={inputClass}
               >
-                <option value="">{teams === null ? "Loading…" : "Select a team"}</option>
+                <option value="">{teams === null ? gt("Loading…") : gt("Select a team")}</option>
                 {(teams ?? []).map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name} ({t.key})
@@ -313,7 +322,7 @@ export function FileIssueModal({
             <>
               <label className="block">
                 <span className="block text-xs text-on-surface-tertiary mb-1">
-                  {tracker === "jira" ? "Summary" : "Title"}
+                  {tracker === "jira" ? gt("Summary") : gt("Title")}
                 </span>
                 <input
                   type="text"
@@ -326,7 +335,9 @@ export function FileIssueModal({
               </label>
 
               <label className="block">
-                <span className="block text-xs text-on-surface-tertiary mb-1">Description</span>
+                <span className="block text-xs text-on-surface-tertiary mb-1">
+                  {gt("Description")}
+                </span>
                 <textarea
                   value={description}
                   disabled={busy}
@@ -337,7 +348,9 @@ export function FileIssueModal({
               </label>
 
               {tracker === "jira" && draft.labels.length > 0 && (
-                <p className="text-xs text-on-surface-muted">Labels: {draft.labels.join(", ")}</p>
+                <p className="text-xs text-on-surface-muted">
+                  {gt("Labels: {labels}", { labels: draft.labels.join(", ") })}
+                </p>
               )}
             </>
           )}
@@ -350,7 +363,7 @@ export function FileIssueModal({
             disabled={busy}
             className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -358,7 +371,7 @@ export function FileIssueModal({
             disabled={busy || !ready}
             className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
           >
-            {busy ? "Filing…" : "Create issue"}
+            {busy ? gt("Filing…") : gt("Create issue")}
           </button>
         </div>
       </div>

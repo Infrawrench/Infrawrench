@@ -109,8 +109,8 @@ export function CurrencySection() {
         <T>
           <p className="text-sm text-on-surface-muted mt-1">
             Spend is collected and stored in the currency each provider bills in, and is never
-            merged &mdash; that stays the default. Set a display currency here and Infrawrench
-            will convert the others into it, using only the exchange rates you state below.{" "}
+            merged &mdash; that stays the default. Set a display currency here and Infrawrench will
+            convert the others into it, using only the exchange rates you state below.{" "}
             <strong className="text-on-surface-secondary">We never fetch live rates.</strong> A
             finance team reconciles against the rate their accounting system booked the period at,
             not today&rsquo;s market quote, so the rates have to be yours. Converted figures are
@@ -187,10 +187,10 @@ export function CurrencySection() {
             <T>
               <p className="text-xs text-on-surface-muted">
                 One rate per currency pair per effective date. A day&rsquo;s spend converts at the
-                rate with the latest effective date on or before that day, so restating a rate
-                does not rewrite periods you have already closed. Rates are used in one hop only
-                &mdash; Infrawrench never inverts a rate or chains two through a third currency,
-                because either would produce a number you never stated.
+                rate with the latest effective date on or before that day, so restating a rate does
+                not rewrite periods you have already closed. Rates are used in one hop only &mdash;
+                Infrawrench never inverts a rate or chains two through a third currency, because
+                either would produce a number you never stated.
               </p>
             </T>
 

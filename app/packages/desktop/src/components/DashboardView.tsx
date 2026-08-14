@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { T, Var, useGT } from "gt-react";
 import { SpotlightSearch } from "./SpotlightSearch";
 import { invoke } from "../lib/invoke";
 import { useDroppable } from "@dnd-kit/core";
@@ -122,6 +123,7 @@ interface DashboardViewProps {
 }
 
 export function DashboardView({ dashboardId }: DashboardViewProps) {
+  const gt = useGT();
   const navigate = useNavigate();
   const [pinned, setPinned] = useState<PinnedRow[]>([]);
   const [workflowPins, setWorkflowPins] = useState<WorkflowPin[]>([]);
@@ -785,7 +787,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   }
 
   async function saveName(name: string) {
-    const trimmed = name.trim() || "Dashboard";
+    const trimmed = name.trim() || gt("Dashboard");
     setDashboardName(trimmed);
     setEditingName(false);
     if (activeCloudOrgId) {
@@ -839,7 +841,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     () => ({
       queryCosts: (req) => {
         const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error("Cost graphs require cloud mode"));
+        if (!orgId) return Promise.reject(new Error(gt("Cost graphs require cloud mode")));
         return queryCloudCosts(orgId, req);
       },
       loadDimensionValues: (dimension, tagKey) => {
@@ -861,21 +863,21 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       },
       createCostAnnotation: (input) => {
         const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error("Annotations require cloud mode"));
+        if (!orgId) return Promise.reject(new Error(gt("Annotations require cloud mode")));
         return createCloudCostAnnotation(orgId, input);
       },
       updateCostAnnotation: (annotationId, input) => {
         const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error("Annotations require cloud mode"));
+        if (!orgId) return Promise.reject(new Error(gt("Annotations require cloud mode")));
         return updateCloudCostAnnotation(orgId, annotationId, input);
       },
       deleteCostAnnotation: (annotationId) => {
         const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error("Annotations require cloud mode"));
+        if (!orgId) return Promise.reject(new Error(gt("Annotations require cloud mode")));
         return deleteCloudCostAnnotation(orgId, annotationId);
       },
     }),
-    [],
+    [gt],
   );
 
   // Keyed to the active org so an org switch rebuilds it (and with it, every
@@ -908,9 +910,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     } catch (e) {
       // Without their row a budget card sits on its loading skeleton forever,
       // which is indistinguishable from a slow network.
-      toast.error("Couldn't load budgets", { description: formatErrorMessage(e) });
+      toast.error(gt("Couldn't load budgets"), { description: formatErrorMessage(e) });
     }
-  }, []);
+  }, [gt]);
 
   async function removeWidget(widgetId: string) {
     const orgId = useUIStore.getState().activeCloudOrgId;
@@ -991,9 +993,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     } catch (e) {
       // Without its row a report card can only say "unavailable", which reads
       // as the report having been deleted rather than as a failed fetch.
-      toast.error("Couldn't load cost reports", { description: formatErrorMessage(e) });
+      toast.error(gt("Couldn't load cost reports"), { description: formatErrorMessage(e) });
     }
-  }, []);
+  }, [gt]);
 
   /** Show a saved cost report on this dashboard. */
   async function addReportWidget(report: CostReport) {
@@ -1026,7 +1028,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-        Loading…
+        {gt("Loading…")}
       </div>
     );
   }
@@ -1034,7 +1036,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   if (notFound) {
     return (
       <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-        Dashboard not found.
+        {gt("Dashboard not found.")}
       </div>
     );
   }
@@ -1042,7 +1044,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   if (loadError !== null) {
     return (
       <div className="flex items-center justify-center h-full text-danger text-sm">
-        Failed to load the dashboard: {loadError}
+        {gt("Failed to load the dashboard: {error}", { error: loadError })}
       </div>
     );
   }
@@ -1057,7 +1059,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           {editingName ? (
             <input
               ref={nameInputRef}
-              aria-label="Dashboard name"
+              aria-label={gt("Dashboard name")}
               defaultValue={dashboardName}
               onBlur={(e) => void saveName(e.target.value)}
               onKeyDown={(e) => {
@@ -1070,7 +1072,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             <h1
               className="text-2xl font-semibold text-on-surface cursor-default hover:text-white"
               onDoubleClick={() => setEditingName(true)}
-              title="Double-click to rename"
+              title={gt("Double-click to rename")}
             >
               {dashboardName}
             </h1>
@@ -1081,10 +1083,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           <button
             type="button"
             onClick={() => void deleteDashboard()}
-            title="Delete dashboard"
+            title={gt("Delete dashboard")}
             className="text-xs text-on-surface-faint hover:text-danger transition-colors px-2 py-1 rounded hover:bg-red-500/10"
           >
-            Delete
+            {gt("Delete")}
           </button>
         )}
       </div>
@@ -1105,9 +1107,11 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             >
               <span className="text-3xl mb-3">⊞</span>
               <p className="text-sm">
-                {activeCloudOrgId ? "Click to add to this dashboard" : "Click to add a resource"}
+                {activeCloudOrgId
+                  ? gt("Click to add to this dashboard")
+                  : gt("Click to add a resource")}
               </p>
-              <p className="text-xs mt-1 opacity-60">or drag a resource or workflow here</p>
+              <p className="text-xs mt-1 opacity-60">{gt("or drag a resource or workflow here")}</p>
             </button>
             {addMenuOpen && (
               <DashboardAddMenu
@@ -1183,7 +1187,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                       initialData={card.workflowPin.data}
                       onOpen={() =>
                         void navigateToWorkspaceTarget(navigate, workflowsTabTarget(), {
-                          label: "Workflows",
+                          label: gt("Workflows"),
                         })
                       }
                       onUnpin={() => void unpinPinnedWorkflow(card.workflowPin.workflowId)}
@@ -1206,7 +1210,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                       // everywhere else it appears is visible.
                       onOpenReport={(reportId) =>
                         void navigateToWorkspaceTarget(navigate, costReportsTabTarget(reportId), {
-                          label: "Reports",
+                          label: gt("Reports"),
                         })
                       }
                       onRemove={() => void removeWidget(card.widget.id)}
@@ -1228,8 +1232,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                       // switch in flight). Without this branch the widget
                       // would fall through and render as a budget card.
                       <div className="rounded-2xl border border-border bg-surface-raised flex items-center justify-center min-h-[10rem] px-4 text-sm text-on-surface-faint text-center">
-                        {card.widget.title || "Custom graph"} — sign in to Infrawrench Cloud to
-                        render this graph
+                        <T>
+                          <Var>{card.widget.title || gt("Custom graph")}</Var> — sign in to
+                          Infrawrench Cloud to render this graph
+                        </T>
                       </div>
                     )
                   ) : (
@@ -1251,7 +1257,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                   className={`w-full h-full rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 transition-colors ${isOver ? "border-blue-500 text-accent bg-accent-muted" : "border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted"}`}
                 >
                   <span className="text-2xl">+</span>
-                  <span className="text-xs">{activeCloudOrgId ? "Add" : "Add resource"}</span>
+                  <span className="text-xs">
+                    {activeCloudOrgId ? gt("Add") : gt("Add resource")}
+                  </span>
                 </button>
                 {addMenuOpen && (
                   <DashboardAddMenu

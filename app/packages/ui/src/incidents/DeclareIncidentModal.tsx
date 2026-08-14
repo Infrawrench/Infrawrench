@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useGT } from "gt-react";
 import {
   DEFAULT_INCIDENT_SEVERITY,
   INCIDENT_LIMITS,
@@ -9,6 +10,7 @@ import {
   type StatusPage,
 } from "@infrawrench/client-core";
 import type { IncidentSeed, IncidentsClient } from "./types.js";
+import { useDataString } from "../i18n/data-strings.js";
 
 export interface DeclareIncidentModalProps {
   client: IncidentsClient;
@@ -37,6 +39,8 @@ export function DeclareIncidentModal({
   onDeclared,
   onClose,
 }: DeclareIncidentModalProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const defaults = useMemo(() => defaultIncidentActions(), []);
   const [title, setTitle] = useState(seed?.title ?? "");
   const [severity, setSeverity] = useState<IncidentSeverity>(
@@ -70,7 +74,7 @@ export function DeclareIncidentModal({
     if (!client.declareIncident) return;
     const trimmed = title.trim();
     if (!trimmed) {
-      setError("An incident needs a title.");
+      setError(gt("An incident needs a title."));
       return;
     }
     setSaving(true);
@@ -92,7 +96,7 @@ export function DeclareIncidentModal({
       });
       onDeclared(incident);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to declare the incident");
+      setError(e instanceof Error ? e.message : gt("Failed to declare the incident"));
       setSaving(false);
     }
   };
@@ -102,26 +106,27 @@ export function DeclareIncidentModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Declare an incident"
+      aria-label={gt("Declare an incident")}
     >
       <div className="w-full max-w-lg rounded-2xl border border-border bg-surface-raised p-5 shadow-xl max-h-[90vh] overflow-y-auto">
-        <h2 className="text-base font-semibold text-on-surface">Declare an incident</h2>
+        <h2 className="text-base font-semibold text-on-surface">{gt("Declare an incident")}</h2>
         <p className="mt-1 text-xs text-on-surface-faint">
-          Records the incident first, then does whatever you tick below. If one of those fails, the
-          incident still stands and the failure is shown against it.
+          {gt(
+            "Records the incident first, then does whatever you tick below. If one of those fails, the incident still stands and the failure is shown against it.",
+          )}
         </p>
 
         <div className="mt-4 space-y-4">
           <label className="block">
             <span className="text-xs font-medium text-on-surface-secondary">
-              What is happening?
+              {gt("What is happening?")}
             </span>
             <input
               type="text"
               value={title}
               maxLength={INCIDENT_LIMITS.maxTitleLength}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Checkout is returning 500s"
+              placeholder={gt("Checkout is returning 500s")}
               className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-on-surface"
               // Autofocus is right here specifically: this modal is opened by
               // somebody who already knows what they are typing.
@@ -130,14 +135,16 @@ export function DeclareIncidentModal({
           </label>
 
           <fieldset>
-            <legend className="text-xs font-medium text-on-surface-secondary">Severity</legend>
+            <legend className="text-xs font-medium text-on-surface-secondary">
+              {gt("Severity")}
+            </legend>
             <div className="mt-1 flex flex-wrap gap-2">
               {INCIDENT_SEVERITIES.map((option) => (
                 <button
                   key={option.id}
                   type="button"
                   onClick={() => setSeverity(option.id)}
-                  title={option.description}
+                  title={gtData(option.description)}
                   aria-pressed={severity === option.id}
                   className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
                     severity === option.id
@@ -145,7 +152,7 @@ export function DeclareIncidentModal({
                       : "bg-surface-sunken text-on-surface-secondary hover:bg-surface"
                   }`}
                 >
-                  {option.label}
+                  {gtData(option.label)}
                 </button>
               ))}
             </div>
@@ -153,21 +160,23 @@ export function DeclareIncidentModal({
 
           <label className="block">
             <span className="text-xs font-medium text-on-surface-secondary">
-              Summary <span className="text-on-surface-faint">(optional)</span>
+              {gt("Summary")} <span className="text-on-surface-faint">{gt("(optional)")}</span>
             </span>
             <textarea
               value={summary}
               rows={2}
               maxLength={INCIDENT_LIMITS.maxSummaryLength}
               onChange={(e) => setSummary(e.target.value)}
-              placeholder="What you know so far. Goes to Slack and, if you publish, to the status page."
+              placeholder={gt(
+                "What you know so far. Goes to Slack and, if you publish, to the status page.",
+              )}
               className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-on-surface"
             />
           </label>
 
           <fieldset className="rounded-xl border border-border p-3">
             <legend className="px-1 text-xs font-medium text-on-surface-secondary">
-              And do this
+              {gt("And do this")}
             </legend>
             <label className="flex items-start gap-2 py-1">
               <input
@@ -177,9 +186,11 @@ export function DeclareIncidentModal({
                 className="mt-0.5"
               />
               <span className="text-sm text-on-surface">
-                Announce it
+                {gt("Announce it")}
                 <span className="block text-xs text-on-surface-faint">
-                  Through your alert routing rules, so it lands wherever your alerts already do.
+                  {gt(
+                    "Through your alert routing rules, so it lands wherever your alerts already do.",
+                  )}
                 </span>
               </span>
             </label>
@@ -191,9 +202,11 @@ export function DeclareIncidentModal({
                 className="mt-0.5"
               />
               <span className="text-sm text-on-surface">
-                Pin the moment
+                {gt("Pin the moment")}
                 <span className="block text-xs text-on-surface-faint">
-                  Remembers when this started so "what changed around then" stays one click away.
+                  {gt(
+                    'Remembers when this started so "what changed around then" stays one click away.',
+                  )}
                 </span>
               </span>
             </label>
@@ -205,10 +218,11 @@ export function DeclareIncidentModal({
                 className="mt-0.5"
               />
               <span className="text-sm text-on-surface">
-                Freeze changes
+                {gt("Freeze changes")}
                 <span className="block text-xs text-on-surface-faint">
-                  Blocks destructive actions org-wide until this incident resolves. Needs the
-                  change-freeze permission.
+                  {gt(
+                    "Blocks destructive actions org-wide until this incident resolves. Needs the change-freeze permission.",
+                  )}
                 </span>
               </span>
             </label>
@@ -217,7 +231,7 @@ export function DeclareIncidentModal({
               <div className="pt-2">
                 <label className="block">
                   <span className="text-xs font-medium text-on-surface-secondary">
-                    Tell the public
+                    {gt("Tell the public")}
                   </span>
                   <select
                     value={statusPageId}
@@ -227,11 +241,11 @@ export function DeclareIncidentModal({
                     }}
                     className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-on-surface"
                   >
-                    <option value="">Don't post publicly</option>
+                    <option value="">{gt("Don't post publicly")}</option>
                     {pages.map((page) => (
                       <option key={page.id} value={page.id}>
-                        {page.title}
-                        {page.published ? "" : " (unpublished)"}
+                        {gtData(page.title)}
+                        {page.published ? "" : ` ${gt("(unpublished)")}`}
                       </option>
                     ))}
                   </select>
@@ -239,7 +253,7 @@ export function DeclareIncidentModal({
                 {selectedPage && selectedPage.components.length > 0 && (
                   <div className="mt-2">
                     <p className="text-xs text-on-surface-faint">
-                      Affected components — leave all unticked to report the whole page.
+                      {gt("Affected components — leave all unticked to report the whole page.")}
                     </p>
                     <div className="mt-1 flex flex-wrap gap-2">
                       {selectedPage.components.map((component) => {
@@ -262,7 +276,7 @@ export function DeclareIncidentModal({
                                 : "bg-surface-sunken text-on-surface-secondary hover:bg-surface"
                             }`}
                           >
-                            {component.label ?? component.probeName ?? "Component"}
+                            {gtData(component.label ?? component.probeName ?? gt("Component"))}
                           </button>
                         );
                       })}
@@ -282,7 +296,7 @@ export function DeclareIncidentModal({
             onClick={onClose}
             className="px-3 py-1.5 rounded-lg text-sm text-on-surface-secondary hover:bg-surface-sunken transition-colors"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -290,7 +304,7 @@ export function DeclareIncidentModal({
             disabled={saving || !title.trim()}
             className="px-3 py-1.5 rounded-lg text-sm bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white transition-colors"
           >
-            {saving ? "Declaring…" : "Declare"}
+            {saving ? gt("Declaring…") : gt("Declare")}
           </button>
         </div>
       </div>

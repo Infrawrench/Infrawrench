@@ -16,7 +16,8 @@
     "generate:sdk": "tsx --import @infrawrench/server-core/env-loader scripts/generate-sdk.ts",
     "test": "vitest run",
     "generate:plugin-strings": "tsx scripts/generate-plugin-strings.ts",
-    "translations:status": "node scripts/translation-status.mjs"
+    "translations:status": "node scripts/translation-status.mjs",
+    "translations:audit": "node scripts/translation-audit.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
@@ -62,6 +63,7 @@
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
+    "@babel/parser": "^7.29.8",
     "@generaltranslation/compiler": "^1.3.37",
     "@modelcontextprotocol/client": "^2.0.0",
     "@tailwindcss/vite": "^4.3.3",

@@ -68,7 +68,8 @@ function describeScope(
     const dimensionLabel = gtData(
       (COST_DIMENSION_LABELS[alert.groupBy] ?? alert.groupBy).toLowerCase(),
     );
-    const tagKey = alert.groupBy === "tag" && alert.groupByTagKey ? ` (${alert.groupByTagKey})` : "";
+    const tagKey =
+      alert.groupBy === "tag" && alert.groupByTagKey ? ` (${alert.groupByTagKey})` : "";
     parts.push(gt("each {dimensionLabel}{tagKey}", { dimensionLabel, tagKey }));
   }
   parts.push(
@@ -90,9 +91,14 @@ function describeThreshold(alert: CostAlert, gt: ReturnType<typeof useGT>): stri
   if (alert.thresholdAmountCents !== null) {
     parts.push(gt("≥ {amount}", { amount: formatMoney(alert.thresholdAmountCents / 100, "USD") }));
   }
-  const condition = parts.length === 2 ? gt("{a} and {b}", { a: parts[0], b: parts[1] }) : (parts[0] ?? "");
+  const condition =
+    parts.length === 2 ? gt("{a} and {b}", { a: parts[0], b: parts[1] }) : (parts[0] ?? "");
   const direction =
-    alert.direction === "both" ? gt("either way") : alert.direction === "increase" ? gt("up") : gt("down");
+    alert.direction === "both"
+      ? gt("either way")
+      : alert.direction === "increase"
+        ? gt("up")
+        : gt("down");
   return gt("{condition} {direction}", { condition, direction });
 }
 

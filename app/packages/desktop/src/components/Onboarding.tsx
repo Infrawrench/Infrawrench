@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Modal } from "@infrawrench/ui";
+import { useGT } from "gt-react";
+import { Modal, useDataString } from "@infrawrench/ui";
 import { getCloudAuthStatus, getCloudOrgs, startCloudAuth, type CloudOrg } from "../lib/cloud-api";
 import { invoke } from "../lib/invoke";
 import { CLOUD_URL } from "../../env";
@@ -84,6 +85,8 @@ function PerkIcon({ d }: { d: string }) {
  * the app is fully usable locally without an account.
  */
 export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [step, setStep] = useState<Step>("welcome");
   const [orgs, setOrgs] = useState<CloudOrg[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -123,7 +126,7 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
                 .then(() => setStep("pick-org"))
                 .catch((e) => {
                   console.error("[onboarding] failed to load orgs:", e);
-                  setError("Signed in, but loading your organizations failed. Try again.");
+                  setError(gt("Signed in, but loading your organizations failed. Try again."));
                   setStep("welcome");
                 });
             })
@@ -131,13 +134,13 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
         }, 2000);
         timeoutRef.current = setTimeout(() => {
           stopPolling();
-          setError("Sign-in timed out. Finish signing in in your browser, then try again.");
+          setError(gt("Sign-in timed out. Finish signing in in your browser, then try again."));
           setStep("welcome");
         }, 120_000);
       })
       .catch((e) => {
         console.error("[onboarding] failed to start sign-in:", e);
-        setError("Couldn't open the sign-in page. Check your connection and try again.");
+        setError(gt("Couldn't open the sign-in page. Check your connection and try again."));
         setStep("welcome");
       });
   }
@@ -162,7 +165,7 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
   // No `onClose`: the flow ends by picking an org or choosing local-only, so
   // Escape and backdrop clicks must not leave the app in a half-onboarded state.
   return (
-    <Modal ariaLabel="Welcome to Infrawrench" fullScreen>
+    <Modal ariaLabel={gt("Welcome to Infrawrench")} fullScreen>
       <div className="h-full w-full bg-surface flex flex-col select-none">
         {/* Keep the window draggable while the overlay covers the title bar. */}
         <div
@@ -172,10 +175,13 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
         <div className="flex-1 overflow-y-auto flex items-center justify-center px-6 py-8">
           {step === "welcome" && (
             <div className="w-full max-w-lg">
-              <h1 className="text-xl font-semibold text-on-surface">Welcome to Infrawrench</h1>
+              <h1 className="text-xl font-semibold text-on-surface">
+                {gt("Welcome to Infrawrench")}
+              </h1>
               <p className="mt-1.5 text-sm text-on-surface-tertiary">
-                All your infrastructure in one place. Sign in to Infrawrench Cloud to get the most
-                out of it:
+                {gt(
+                  "All your infrastructure in one place. Sign in to Infrawrench Cloud to get the most out of it:",
+                )}
               </p>
 
               <ul className="mt-6 flex flex-col gap-4">
@@ -184,9 +190,11 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
                     <div className="mt-0.5 flex-shrink-0">{perk.icon}</div>
                     <div>
                       <div className="text-sm font-medium text-on-surface-secondary">
-                        {perk.title}
+                        {gtData(perk.title)}
                       </div>
-                      <div className="text-xs text-on-surface-muted mt-0.5">{perk.description}</div>
+                      <div className="text-xs text-on-surface-muted mt-0.5">
+                        {gtData(perk.description)}
+                      </div>
                     </div>
                   </li>
                 ))}
@@ -205,18 +213,20 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
                   onClick={handleSignIn}
                   className="w-full px-4 py-2.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
                 >
-                  Sign in to Infrawrench Cloud
+                  {gt("Sign in to Infrawrench Cloud")}
                 </button>
                 <button
                   type="button"
                   onClick={() => finish(null)}
                   className="w-full px-4 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
                 >
-                  Continue without an account
+                  {gt("Continue without an account")}
                 </button>
               </div>
               <p className="mt-4 text-[11px] text-on-surface-faint text-center">
-                Infrawrench works fully offline too — you can sign in any time from the sidebar.
+                {gt(
+                  "Infrawrench works fully offline too — you can sign in any time from the sidebar.",
+                )}
               </p>
             </div>
           )}
@@ -228,18 +238,19 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
                 aria-hidden="true"
               />
               <h1 className="mt-5 text-base font-semibold text-on-surface">
-                Waiting for your browser…
+                {gt("Waiting for your browser…")}
               </h1>
               <p className="mt-1.5 text-xs text-on-surface-muted">
-                Finish signing in in the browser window we just opened. This screen updates
-                automatically.
+                {gt(
+                  "Finish signing in in the browser window we just opened. This screen updates automatically.",
+                )}
               </p>
               <button
                 type="button"
                 onClick={handleCancelSignIn}
                 className="mt-6 px-4 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
               >
-                Cancel
+                {gt("Cancel")}
               </button>
             </div>
           )}
@@ -247,12 +258,14 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
           {step === "pick-org" && (
             <div className="w-full max-w-md">
               <h1 className="text-xl font-semibold text-on-surface">
-                {orgs.length > 0 ? "Choose an organization" : "You're signed in"}
+                {orgs.length > 0 ? gt("Choose an organization") : gt("You're signed in")}
               </h1>
               <p className="mt-1.5 text-sm text-on-surface-tertiary">
                 {orgs.length > 0
-                  ? "Pick where you want to start. You can switch any time from the sidebar."
-                  : "You're not in an organization yet. Create one on the web, then pick it up here."}
+                  ? gt("Pick where you want to start. You can switch any time from the sidebar.")
+                  : gt(
+                      "You're not in an organization yet. Create one on the web, then pick it up here.",
+                    )}
               </p>
 
               {orgs.length > 0 ? (
@@ -266,7 +279,7 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
                         className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-surface-raised border border-border-strong hover:border-accent hover:bg-surface-overlay transition-colors text-left"
                       >
                         <span className="text-sm font-medium text-on-surface-secondary truncate">
-                          {org.displayName}
+                          {gtData(org.displayName)}
                         </span>
                         <span className="ml-3 flex-shrink-0 text-[11px] text-on-surface-faint uppercase tracking-wide">
                           {org.role}
@@ -285,7 +298,7 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
                     }
                     className="w-full px-4 py-2.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
                   >
-                    Create an organization
+                    {gt("Create an organization")}
                   </button>
                   <button
                     type="button"
@@ -293,7 +306,7 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
                     disabled={refreshingOrgs}
                     className="w-full px-4 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors disabled:opacity-50"
                   >
-                    {refreshingOrgs ? "Checking…" : "I created one — check again"}
+                    {refreshingOrgs ? gt("Checking…") : gt("I created one — check again")}
                   </button>
                 </div>
               )}
@@ -303,7 +316,7 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
                 onClick={() => finish(null)}
                 className="mt-4 w-full px-4 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
               >
-                Use locally for now
+                {gt("Use locally for now")}
               </button>
             </div>
           )}

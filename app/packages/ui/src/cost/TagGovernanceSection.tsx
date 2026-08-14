@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 
 import { formatMoney, taggedSpendPercent } from "@infrawrench/client-core";
 import type {
@@ -23,6 +24,7 @@ function formatTotals(totals: Record<string, number>): string {
  * three read calls, desktop included.
  */
 export function TagGovernanceSection({ client }: { client: CostsClient }) {
+  const gt = useGT();
   const [compliance, setCompliance] = useState<TagComplianceReport | null>(null);
   const [untagged, setUntagged] = useState<UntaggedSpendReport | null>(null);
   const [showback, setShowback] = useState<ShowbackReport | null>(null);
@@ -60,9 +62,9 @@ export function TagGovernanceSection({ client }: { client: CostsClient }) {
   if (error === null && compliance === null) {
     return (
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-on-surface">Tags &amp; allocation</h2>
+        <h2 className="text-sm font-semibold text-on-surface">{gt("Tags & allocation")}</h2>
         <p role="status" className="text-sm text-on-surface-faint">
-          Loading tag governance…
+          {gt("Loading tag governance…")}
         </p>
       </section>
     );
@@ -70,48 +72,58 @@ export function TagGovernanceSection({ client }: { client: CostsClient }) {
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold text-on-surface">Tags &amp; allocation</h2>
+      <h2 className="text-sm font-semibold text-on-surface">{gt("Tags & allocation")}</h2>
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          Couldn&rsquo;t load tag governance — {error}
+          {gt("Couldn’t load tag governance — {error}", { error })}
         </div>
       )}
 
       {error === null && !hasPolicy && !hasShowback && (
-        <p className="text-sm text-on-surface-faint">
-          No tag policy or cost centres configured. An org admin can require tags like{" "}
-          <code className="text-on-surface-secondary">owner</code> and{" "}
-          <code className="text-on-surface-secondary">env</code> on every resource under Settings →
-          Tag Policy, and build the cost centre tree spend is allocated to under Settings → Cost
-          Centres.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-faint">
+            No tag policy or cost centres configured. An org admin can require tags like{" "}
+            <code className="text-on-surface-secondary">owner</code> and{" "}
+            <code className="text-on-surface-secondary">env</code> on every resource under Settings
+            → Tag Policy, and build the cost centre tree spend is allocated to under Settings → Cost
+            Centres.
+          </p>
+        </T>
       )}
 
       {hasPolicy && untagged && (
         <div className="rounded-xl border border-border bg-surface-raised p-4 flex flex-col gap-2">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-medium text-on-surface">Untagged spend</h3>
+            <h3 className="text-sm font-medium text-on-surface">{gt("Untagged spend")}</h3>
             <span className="text-xs text-on-surface-faint">
-              last 30 days · requires {untagged.requiredKeys.join(", ")}
+              {gt("last 30 days · requires {keys}", {
+                keys: untagged.requiredKeys.join(", "),
+              })}
             </span>
           </div>
           {untagged.currencies.length === 0 && (
-            <p className="text-sm text-on-surface-faint">No spend collected in this period.</p>
+            <p className="text-sm text-on-surface-faint">
+              {gt("No spend collected in this period.")}
+            </p>
           )}
           {untagged.currencies.map((currency) => {
             const pct = taggedSpendPercent(untagged, currency);
             return (
               <div key={currency} className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="text-on-surface">
-                  {formatMoney(untagged.untaggedTotals[currency] ?? 0, currency)}{" "}
-                  <span className="text-on-surface-faint">
-                    of {formatMoney(untagged.totals[currency] ?? 0, currency)} missing a required
-                    tag
+                <T>
+                  <span className="text-on-surface">
+                    <Var>{formatMoney(untagged.untaggedTotals[currency] ?? 0, currency)}</Var>{" "}
+                    <span className="text-on-surface-faint">
+                      of <Var>{formatMoney(untagged.totals[currency] ?? 0, currency)}</Var> missing
+                      a required tag
+                    </span>
                   </span>
-                </span>
+                </T>
                 {pct !== null && (
-                  <span className="text-xs text-on-surface-secondary">{pct}% fully tagged</span>
+                  <span className="text-xs text-on-surface-secondary">
+                    {gt("{pct}% fully tagged", { pct })}
+                  </span>
                 )}
               </div>
             );
@@ -137,9 +149,9 @@ export function TagGovernanceSection({ client }: { client: CostsClient }) {
 
       {hasPolicy && compliance && (
         <div className="rounded-xl border border-border bg-surface-raised p-4 flex flex-col gap-2">
-          <h3 className="text-sm font-medium text-on-surface">Tag compliance by account</h3>
+          <h3 className="text-sm font-medium text-on-surface">{gt("Tag compliance by account")}</h3>
           {compliance.accounts.length === 0 && (
-            <p className="text-sm text-on-surface-faint">No accounts connected.</p>
+            <p className="text-sm text-on-surface-faint">{gt("No accounts connected.")}</p>
           )}
           <ul className="flex flex-col gap-1.5">
             {compliance.accounts.map((account) => (
@@ -148,9 +160,9 @@ export function TagGovernanceSection({ client }: { client: CostsClient }) {
                 {account.score === null ? (
                   <span
                     className="text-xs text-on-surface-faint"
-                    title="No resource on this account exposes a tags/labels field"
+                    title={gt("No resource on this account exposes a tags/labels field")}
                   >
-                    no taggable resources
+                    {gt("no taggable resources")}
                   </span>
                 ) : (
                   <>
@@ -180,8 +192,8 @@ export function TagGovernanceSection({ client }: { client: CostsClient }) {
       {hasShowback && showback && (
         <div className="rounded-xl border border-border bg-surface-raised p-4 flex flex-col gap-2">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-medium text-on-surface">Showback by cost centre</h3>
-            <span className="text-xs text-on-surface-faint">last 30 days</span>
+            <h3 className="text-sm font-medium text-on-surface">{gt("Showback by cost centre")}</h3>
+            <span className="text-xs text-on-surface-faint">{gt("last 30 days")}</span>
           </div>
           <ul className="flex flex-col gap-1.5">
             {showback.centres.map((centre) => {
@@ -218,7 +230,7 @@ export function TagGovernanceSection({ client }: { client: CostsClient }) {
                     {formatTotals(primary)}
                     {hasChildren && (
                       <span className="block text-xs text-on-surface-faint">
-                        own {formatTotals(centre.totals)}
+                        {gt("own {total}", { total: formatTotals(centre.totals) })}
                       </span>
                     )}
                   </span>

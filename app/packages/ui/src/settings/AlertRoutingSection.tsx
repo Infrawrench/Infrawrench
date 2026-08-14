@@ -22,6 +22,7 @@
  *   "Start from the default" button is a shortcut rather than a gate.
  */
 import { useEffect, useMemo, useState } from "react";
+import { useGT } from "gt-react";
 import {
   ALERT_TRIGGERS,
   SEVERITY_LABELS,
@@ -37,6 +38,7 @@ import {
   type QuietHours,
 } from "@infrawrench/client-core";
 
+import { useDataString } from "../i18n/data-strings.js";
 import { useSettingsHost } from "./host.js";
 
 /* -------------------------------------------------------------------------- */
@@ -71,15 +73,20 @@ function localTimezone(): string {
   }
 }
 
-const WEEKDAYS = [
-  { iso: 1, label: "Mon" },
-  { iso: 2, label: "Tue" },
-  { iso: 3, label: "Wed" },
-  { iso: 4, label: "Thu" },
-  { iso: 5, label: "Fri" },
-  { iso: 6, label: "Sat" },
-  { iso: 7, label: "Sun" },
-];
+const WEEKDAY_ISOS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+function useWeekdayLabels(): Record<(typeof WEEKDAY_ISOS)[number], string> {
+  const gt = useGT();
+  return {
+    1: gt("Mon"),
+    2: gt("Tue"),
+    3: gt("Wed"),
+    4: gt("Thu"),
+    5: gt("Fri"),
+    6: gt("Sat"),
+    7: gt("Sun"),
+  };
+}
 
 /* -------------------------------------------------------------------------- */
 /* Destinations                                                               */
@@ -90,17 +97,21 @@ interface DestinationCatalog {
   msTeamsWebhooks: AlertRulesResponse["msTeamsWebhooks"];
 }
 
-function destinationLabel(d: AlertDestination, catalog: DestinationCatalog): string {
+function destinationLabel(
+  d: AlertDestination,
+  catalog: DestinationCatalog,
+  gt: ReturnType<typeof useGT>,
+): string {
   switch (d.kind) {
     case "push":
-      return "Mobile push";
+      return gt("Mobile push");
     case "slack": {
       const ch = catalog.slackChannels.find((c) => c.id === d.channelId);
-      return ch ? `#${ch.name}` : "#(removed channel)";
+      return ch ? gt("#{name}", { name: ch.name }) : gt("#(removed channel)");
     }
     case "msteams": {
       const hook = catalog.msTeamsWebhooks.find((w) => w.id === d.webhookId);
-      return hook ? hook.label : "(removed Teams channel)";
+      return hook ? hook.label : gt("(removed Teams channel)");
     }
   }
 }
@@ -116,6 +127,7 @@ function DestinationPicker({
   onChange: (next: AlertDestination[]) => void;
   emptyLabel: string;
 }) {
+  const gt = useGT();
   const has = (d: AlertDestination): boolean =>
     value.some((v) =>
       v.kind !== d.kind
@@ -152,7 +164,7 @@ function DestinationPicker({
         {options.map((d) => (
           <label key={destKey(d)} className="flex items-center gap-1.5 whitespace-nowrap">
             <input type="checkbox" checked={has(d)} onChange={(e) => toggle(d, e.target.checked)} />
-            <span>{destinationLabel(d, catalog)}</span>
+            <span>{destinationLabel(d, catalog, gt)}</span>
           </label>
         ))}
       </div>
@@ -198,16 +210,30 @@ function newCondition(field: AlertCondition["field"]): AlertCondition {
   }
 }
 
-const CONDITION_LABELS: Record<AlertCondition["field"], string> = {
-  trigger: "Trigger",
-  severity: "Severity",
-  accountId: "Account",
-  pluginId: "Provider",
-  resourceTypeId: "Resource type",
-  amountCents: "Amount",
-  key: "Name",
-  text: "Message text",
-};
+const CONDITION_FIELDS: Array<AlertCondition["field"]> = [
+  "trigger",
+  "severity",
+  "accountId",
+  "pluginId",
+  "resourceTypeId",
+  "amountCents",
+  "key",
+  "text",
+];
+
+function useConditionLabels(): Record<AlertCondition["field"], string> {
+  const gt = useGT();
+  return {
+    trigger: gt("Trigger"),
+    severity: gt("Severity"),
+    accountId: gt("Account"),
+    pluginId: gt("Provider"),
+    resourceTypeId: gt("Resource type"),
+    amountCents: gt("Amount"),
+    key: gt("Name"),
+    text: gt("Message text"),
+  };
+}
 
 function ConditionRow({
   condition,
@@ -220,6 +246,9 @@ function ConditionRow({
   onChange: (next: AlertCondition) => void;
   onRemove: () => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
+  const conditionLabels = useConditionLabels();
   const providers = useMemo(
     () => [...new Set(data.accounts.map((a) => a.pluginId))].sort(),
     [data.accounts],
@@ -230,7 +259,7 @@ function ConditionRow({
   // wrapping them, so a screen reader has nothing to tie the two together
   // without these — and "at least / exactly" on its own says nothing about what
   // is being compared.
-  const fieldLabel = CONDITION_LABELS[condition.field];
+  const fieldLabel = conditionLabels[condition.field];
 
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -240,12 +269,12 @@ function ConditionRow({
         <>
           <select
             className={INPUT}
-            aria-label={`${fieldLabel} comparison`}
+            aria-label={gt("{field} comparison", { field: fieldLabel })}
             value={condition.op}
             onChange={(e) => onChange({ ...condition, op: e.target.value as "gte" | "eq" })}
           >
-            <option value="gte">at least</option>
-            <option value="eq">exactly</option>
+            <option value="gte">{gt("at least")}</option>
+            <option value="eq">{gt("exactly")}</option>
           </select>
           <select
             className={INPUT}
@@ -255,7 +284,7 @@ function ConditionRow({
           >
             {(Object.keys(SEVERITY_LABELS) as AlertSeverity[]).map((s) => (
               <option key={s} value={s}>
-                {SEVERITY_LABELS[s]}
+                {gtData(SEVERITY_LABELS[s])}
               </option>
             ))}
           </select>
@@ -264,12 +293,12 @@ function ConditionRow({
         <>
           <select
             className={INPUT}
-            aria-label={`${fieldLabel} comparison`}
+            aria-label={gt("{field} comparison", { field: fieldLabel })}
             value={condition.op}
             onChange={(e) => onChange({ ...condition, op: e.target.value as "gte" | "lt" })}
           >
-            <option value="gte">at least</option>
-            <option value="lt">under</option>
+            <option value="gte">{gt("at least")}</option>
+            <option value="lt">{gt("under")}</option>
           </select>
           <span className="text-on-surface-faint">$</span>
           <AmountInput
@@ -282,7 +311,7 @@ function ConditionRow({
         <>
           <select
             className={INPUT}
-            aria-label={`${fieldLabel} comparison`}
+            aria-label={gt("{field} comparison", { field: fieldLabel })}
             value={condition.op}
             onChange={(e) => {
               // Narrowed per field rather than shared: `key` also accepts an
@@ -297,15 +326,17 @@ function ConditionRow({
               );
             }}
           >
-            <option value="contains">contains</option>
-            <option value="notContains">does not contain</option>
-            {condition.field === "key" && <option value="eq">is exactly</option>}
+            <option value="contains">{gt("contains")}</option>
+            <option value="notContains">{gt("does not contain")}</option>
+            {condition.field === "key" && <option value="eq">{gt("is exactly")}</option>}
           </select>
           <input
             className={`${INPUT} flex-1 min-w-40`}
-            aria-label={`${fieldLabel} to match`}
+            aria-label={gt("{field} to match", { field: fieldLabel })}
             value={condition.value}
-            placeholder={condition.field === "key" ? "service or rule name" : "text in the alert"}
+            placeholder={
+              condition.field === "key" ? gt("service or rule name") : gt("text in the alert")
+            }
             onChange={(e) => onChange({ ...condition, value: e.target.value })}
           />
         </>
@@ -313,19 +344,19 @@ function ConditionRow({
         <>
           <select
             className={INPUT}
-            aria-label={`${fieldLabel} comparison`}
+            aria-label={gt("{field} comparison", { field: fieldLabel })}
             value={condition.op}
             onChange={(e) => onChange({ ...condition, op: e.target.value as "in" | "notIn" })}
           >
-            <option value="in">is one of</option>
-            <option value="notIn">is not one of</option>
+            <option value="in">{gt("is one of")}</option>
+            <option value="notIn">{gt("is not one of")}</option>
           </select>
           <MultiSelect
             label={fieldLabel}
             values={condition.values}
             options={
               condition.field === "trigger"
-                ? ALERT_TRIGGERS.map((t) => ({ value: t.id as string, label: t.label }))
+                ? ALERT_TRIGGERS.map((t) => ({ value: t.id as string, label: gtData(t.label) }))
                 : condition.field === "accountId"
                   ? data.accounts.map((a) => ({ value: a.id, label: a.displayName }))
                   : condition.field === "pluginId"
@@ -341,10 +372,10 @@ function ConditionRow({
       <button
         type="button"
         onClick={onRemove}
-        aria-label={`Remove the ${fieldLabel} condition`}
+        aria-label={gt("Remove the {field} condition", { field: fieldLabel })}
         className="ml-auto text-xs text-danger hover:text-danger-strong"
       >
-        Remove
+        {gt("Remove")}
       </button>
     </div>
   );
@@ -370,6 +401,7 @@ function AmountInput({
   label: string;
   onChange: (cents: number) => void;
 }) {
+  const gt = useGT();
   const [text, setText] = useState<string | null>(null);
 
   return (
@@ -378,7 +410,7 @@ function AmountInput({
       type="number"
       min={0}
       step="0.01"
-      aria-label={`${label} in dollars`}
+      aria-label={gt("{field} in dollars", { field: label })}
       value={text ?? (cents / 100).toString()}
       onChange={(e) => {
         setText(e.target.value);
@@ -408,6 +440,7 @@ function MultiSelect({
   freeText?: boolean;
   onChange: (next: string[]) => void;
 }) {
+  const gt = useGT();
   // A Set rather than `values.includes` in the map below: the checkbox list can
   // run to every trigger or every account, and `includes` rescans the selection
   // for each one.
@@ -417,9 +450,9 @@ function MultiSelect({
     return (
       <input
         className={`${INPUT} flex-1 min-w-40`}
-        aria-label={`${label} ids, comma-separated`}
+        aria-label={gt("{field} ids, comma-separated", { field: label })}
         value={values.join(", ")}
-        placeholder="comma-separated ids"
+        placeholder={gt("comma-separated ids")}
         onChange={(e) =>
           onChange(
             e.target.value
@@ -466,23 +499,26 @@ function QuietHoursEditor({
   value: QuietHours;
   onChange: (next: QuietHours) => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
+  const weekdayLabels = useWeekdayLabels();
   const wraps = value.endMinute < value.startMinute;
   return (
     <div className="space-y-2 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-on-surface-tertiary">Hold alerts between</span>
+        <span className="text-on-surface-tertiary">{gt("Hold alerts between")}</span>
         <input
           className={INPUT}
           type="time"
-          aria-label="Quiet hours start"
+          aria-label={gt("Quiet hours start")}
           value={minutesToTime(value.startMinute)}
           onChange={(e) => onChange({ ...value, startMinute: timeToMinutes(e.target.value) })}
         />
-        <span className="text-on-surface-tertiary">and</span>
+        <span className="text-on-surface-tertiary">{gt("and")}</span>
         <input
           className={INPUT}
           type="time"
-          aria-label="Quiet hours end"
+          aria-label={gt("Quiet hours end")}
           value={minutesToTime(value.endMinute)}
           onChange={(e) => onChange({ ...value, endMinute: timeToMinutes(e.target.value) })}
         />
@@ -490,45 +526,47 @@ function QuietHoursEditor({
             disappears the moment anything is typed. */}
         <input
           className={`${INPUT} w-52`}
-          aria-label="Quiet hours timezone"
+          aria-label={gt("Quiet hours timezone")}
           value={value.timezone}
           placeholder="Europe/Berlin"
           onChange={(e) => onChange({ ...value, timezone: e.target.value.trim() })}
         />
-        {wraps && <span className="text-xs text-on-surface-faint">(overnight)</span>}
+        {wraps && <span className="text-xs text-on-surface-faint">{gt("(overnight)")}</span>}
       </div>
 
       <div
         role="group"
-        aria-label="Days the quiet-hours window applies on"
+        aria-label={gt("Days the quiet-hours window applies on")}
         className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-on-surface-tertiary"
       >
-        <span>On</span>
-        {WEEKDAYS.map((d) => (
-          <label key={d.iso} className="flex items-center gap-1.5">
+        <span>{gt("On")}</span>
+        {WEEKDAY_ISOS.map((iso) => (
+          <label key={iso} className="flex items-center gap-1.5">
             <input
               type="checkbox"
-              checked={value.days.length === 0 || value.days.includes(d.iso)}
+              checked={value.days.length === 0 || value.days.includes(iso)}
               onChange={(e) => {
                 // An empty list means "every day"; the first time somebody
                 // unticks a day it has to become an explicit six-day list
                 // rather than a five-item one, or unticking Saturday would
                 // silently also untick everything else.
-                const base = value.days.length === 0 ? WEEKDAYS.map((w) => w.iso) : value.days;
+                const base = value.days.length === 0 ? [...WEEKDAY_ISOS] : value.days;
                 const next = e.target.checked
-                  ? [...new Set([...base, d.iso])].sort()
-                  : base.filter((x) => x !== d.iso);
+                  ? [...new Set([...base, iso])].sort()
+                  : base.filter((x) => x !== iso);
                 onChange({ ...value, days: next.length === 7 ? [] : next });
               }}
             />
-            <span>{d.label}</span>
+            <span>{weekdayLabels[iso]}</span>
           </label>
         ))}
-        {value.days.length === 0 && <span className="text-on-surface-faint">(every day)</span>}
+        {value.days.length === 0 && (
+          <span className="text-on-surface-faint">{gt("(every day)")}</span>
+        )}
       </div>
 
       <label className="flex flex-wrap items-center gap-2 text-xs text-on-surface-tertiary">
-        <span>Send anyway when severity is at least</span>
+        <span>{gt("Send anyway when severity is at least")}</span>
         <select
           className={INPUT}
           value={value.urgentOverride ?? ""}
@@ -539,17 +577,17 @@ function QuietHoursEditor({
             })
           }
         >
-          <option value="">never — hold everything</option>
+          <option value="">{gt("never — hold everything")}</option>
           {(Object.keys(SEVERITY_LABELS) as AlertSeverity[]).map((s) => (
             <option key={s} value={s}>
-              {SEVERITY_LABELS[s]}
+              {gtData(SEVERITY_LABELS[s])}
             </option>
           ))}
         </select>
       </label>
 
       <p className="text-xs text-on-surface-faint">
-        Held alerts are queued, not dropped — they arrive when the window closes.
+        {gt("Held alerts are queued, not dropped — they arrive when the window closes.")}
       </p>
     </div>
   );
@@ -564,29 +602,31 @@ function EscalationEditor({
   catalog: DestinationCatalog;
   onChange: (next: EscalationPolicy) => void;
 }) {
+  const gt = useGT();
   return (
     <div className="space-y-2 text-sm">
       <label className="flex flex-wrap items-center gap-2">
-        <span className="text-on-surface-tertiary">If nobody acknowledges within</span>
+        <span className="text-on-surface-tertiary">{gt("If nobody acknowledges within")}</span>
         <input
           className={`${INPUT} w-20`}
           type="number"
           min={1}
-          aria-label="Minutes to wait before escalating"
+          aria-label={gt("Minutes to wait before escalating")}
           value={value.afterMinutes}
           onChange={(e) => onChange({ ...value, afterMinutes: Number(e.target.value) || 1 })}
         />
-        <span className="text-on-surface-tertiary">minutes, also notify:</span>
+        <span className="text-on-surface-tertiary">{gt("minutes, also notify:")}</span>
       </label>
       <DestinationPicker
         value={value.destinations}
         catalog={catalog}
         onChange={(destinations) => onChange({ ...value, destinations })}
-        emptyLabel="Connect a Slack or Teams channel to escalate to."
+        emptyLabel={gt("Connect a Slack or Teams channel to escalate to.")}
       />
       <p className="text-xs text-on-surface-faint">
-        Acknowledge from the button on the Slack message. Alerts sent only to Teams or push have no
-        way to be acknowledged, so they will always escalate.
+        {gt(
+          "Acknowledge from the button on the Slack message. Alerts sent only to Teams or push have no way to be acknowledged, so they will always escalate.",
+        )}
       </p>
     </div>
   );
@@ -613,6 +653,8 @@ function RuleCard({
   onRemove: () => void;
   onMove: (delta: number) => void;
 }) {
+  const gt = useGT();
+  const conditionLabels = useConditionLabels();
   const [addField, setAddField] = useState<AlertCondition["field"]>("trigger");
   const problem = validateAlertRule(rule);
 
@@ -622,9 +664,9 @@ function RuleCard({
         <span className="text-xs text-on-surface-faint w-6 shrink-0">{index + 1}</span>
         <input
           className={`${INPUT} flex-1 min-w-48 font-medium`}
-          aria-label={`Name of rule ${index + 1}`}
+          aria-label={gt("Name of rule {n}", { n: index + 1 })}
           value={rule.name}
-          placeholder="Rule name"
+          placeholder={gt("Rule name")}
           onChange={(e) => onChange({ ...rule, name: e.target.value })}
         />
         <label className="flex items-center gap-1.5 text-xs text-on-surface-tertiary">
@@ -633,7 +675,7 @@ function RuleCard({
             checked={rule.enabled}
             onChange={(e) => onChange({ ...rule, enabled: e.target.checked })}
           />
-          <span>Enabled</span>
+          <span>{gt("Enabled")}</span>
         </label>
         <div className="flex items-center gap-1">
           <button
@@ -641,7 +683,7 @@ function RuleCard({
             disabled={index === 0}
             onClick={() => onMove(-1)}
             className="px-1.5 text-xs text-on-surface-tertiary disabled:opacity-30"
-            aria-label={`Move rule ${index + 1} up`}
+            aria-label={gt("Move rule {n} up", { n: index + 1 })}
           >
             ↑
           </button>
@@ -650,7 +692,7 @@ function RuleCard({
             disabled={index === total - 1}
             onClick={() => onMove(1)}
             className="px-1.5 text-xs text-on-surface-tertiary disabled:opacity-30"
-            aria-label={`Move rule ${index + 1} down`}
+            aria-label={gt("Move rule {n} down", { n: index + 1 })}
           >
             ↓
           </button>
@@ -658,20 +700,24 @@ function RuleCard({
         <button
           type="button"
           onClick={onRemove}
-          aria-label={`Delete rule ${index + 1}${rule.name ? `, ${rule.name}` : ""}`}
+          aria-label={
+            rule.name
+              ? gt("Delete rule {n}, {name}", { n: index + 1, name: rule.name })
+              : gt("Delete rule {n}", { n: index + 1 })
+          }
           className="text-xs text-danger hover:text-danger-strong"
         >
-          Delete
+          {gt("Delete")}
         </button>
       </div>
 
       <div className="space-y-2">
         <p className="text-xs font-semibold text-on-surface-tertiary uppercase tracking-wide">
-          When
+          {gt("When")}
         </p>
         {rule.conditions.length === 0 ? (
           <p className="text-xs text-on-surface-faint">
-            No conditions — this rule matches every alert.
+            {gt("No conditions — this rule matches every alert.")}
           </p>
         ) : (
           rule.conditions.map((condition, i) => (
@@ -694,13 +740,13 @@ function RuleCard({
         <div className="flex items-center gap-2">
           <select
             className={INPUT}
-            aria-label="Condition to add"
+            aria-label={gt("Condition to add")}
             value={addField}
             onChange={(e) => setAddField(e.target.value as AlertCondition["field"])}
           >
-            {(Object.keys(CONDITION_LABELS) as Array<AlertCondition["field"]>).map((f) => (
+            {CONDITION_FIELDS.map((f) => (
               <option key={f} value={f}>
-                {CONDITION_LABELS[f]}
+                {conditionLabels[f]}
               </option>
             ))}
           </select>
@@ -711,26 +757,27 @@ function RuleCard({
             }
             className="text-xs text-info hover:text-info-strong"
           >
-            Add condition
+            {gt("Add condition")}
           </button>
-          <span className="text-xs text-on-surface-faint">all conditions must match</span>
+          <span className="text-xs text-on-surface-faint">{gt("all conditions must match")}</span>
         </div>
       </div>
 
       <div className="space-y-2">
         <p className="text-xs font-semibold text-on-surface-tertiary uppercase tracking-wide">
-          Send to
+          {gt("Send to")}
         </p>
         <DestinationPicker
           value={rule.destinations}
           catalog={data}
           onChange={(destinations) => onChange({ ...rule, destinations })}
-          emptyLabel="Connect a Slack or Teams channel below to route alerts to it."
+          emptyLabel={gt("Connect a Slack or Teams channel below to route alerts to it.")}
         />
         {rule.destinations.length === 0 && (
           <p className="text-xs text-warning">
-            No destinations — this rule swallows matching alerts and stops the rules below it from
-            seeing them.
+            {gt(
+              "No destinations — this rule swallows matching alerts and stops the rules below it from seeing them.",
+            )}
           </p>
         )}
       </div>
@@ -741,12 +788,14 @@ function RuleCard({
           checked={!rule.continueOnMatch}
           onChange={(e) => onChange({ ...rule, continueOnMatch: !e.target.checked })}
         />
-        <span>Stop here — don&apos;t evaluate the rules below this one</span>
+        <span>{gt("Stop here — don't evaluate the rules below this one")}</span>
       </label>
 
       <details className="text-sm">
         <summary className="cursor-pointer text-xs text-on-surface-tertiary">
-          Quiet hours {rule.quietHours ? "· on" : "· off"}
+          {gt("Quiet hours {state}", {
+            state: rule.quietHours ? gt("· on") : gt("· off"),
+          })}
         </summary>
         <div className="mt-2 pl-3 border-l border-border/60">
           <label className="flex items-center gap-2 text-xs text-on-surface-tertiary mb-2">
@@ -768,7 +817,7 @@ function RuleCard({
                 })
               }
             />
-            <span>Hold matching alerts during a window</span>
+            <span>{gt("Hold matching alerts during a window")}</span>
           </label>
           {rule.quietHours && (
             <QuietHoursEditor
@@ -781,7 +830,11 @@ function RuleCard({
 
       <details className="text-sm">
         <summary className="cursor-pointer text-xs text-on-surface-tertiary">
-          Escalation {rule.escalation ? `· after ${rule.escalation.afterMinutes} min` : "· off"}
+          {gt("Escalation {state}", {
+            state: rule.escalation
+              ? gt("· after {n} min", { n: rule.escalation.afterMinutes })
+              : gt("· off"),
+          })}
         </summary>
         <div className="mt-2 pl-3 border-l border-border/60">
           <label className="flex items-center gap-2 text-xs text-on-surface-tertiary mb-2">
@@ -795,7 +848,7 @@ function RuleCard({
                 })
               }
             />
-            <span>Escalate if nobody acknowledges</span>
+            <span>{gt("Escalate if nobody acknowledges")}</span>
           </label>
           {rule.escalation && (
             <EscalationEditor
@@ -847,6 +900,7 @@ function blankRule(position: number): AlertRule {
 }
 
 export function AlertRoutingSection({ orgId }: { orgId: string }) {
+  const gt = useGT();
   const { api } = useSettingsHost();
   // The effects below depend on `apiGet`, not on `api`. The host's `api`
   // container is rebuilt whenever the host value is (a permission refresh does
@@ -906,7 +960,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
       setDirty(false);
       setReloadNonce((n) => n + 1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save rules");
+      setError(e instanceof Error ? e.message : gt("Failed to save rules"));
     } finally {
       setSaving(false);
     }
@@ -919,7 +973,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
       await api.post(`/api/org/${orgId}/alert-rules/adopt-defaults`);
       setReloadNonce((n) => n + 1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save rules");
+      setError(e instanceof Error ? e.message : gt("Failed to save rules"));
     } finally {
       setSaving(false);
     }
@@ -932,18 +986,20 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
   return (
     <section className="border border-border rounded-xl p-5 space-y-4">
       <div>
-        <h2 className="text-sm font-semibold text-on-surface-secondary">Alert routing</h2>
+        <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Alert routing")}</h2>
         <p className="text-xs text-on-surface-muted mt-1">
-          Rules are evaluated top to bottom. The first rule that matches decides where an alert
-          goes, unless it says to keep going — so put the specific rules above the general ones.
+          {gt(
+            "Rules are evaluated top to bottom. The first rule that matches decides where an alert goes, unless it says to keep going — so put the specific rules above the general ones.",
+          )}
         </p>
       </div>
 
       {data.usingDefaults && !dirty && (
         <div className="rounded-lg border border-border/60 bg-surface-muted/40 p-3 space-y-2">
           <p className="text-xs text-on-surface-secondary">
-            You haven&apos;t written any rules, so alerts follow the default: everything except
-            drift goes to every connected channel and to mobile push.
+            {gt(
+              "You haven't written any rules, so alerts follow the default: everything except drift goes to every connected channel and to mobile push.",
+            )}
           </p>
           <button
             type="button"
@@ -951,7 +1007,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
             disabled={saving}
             className="text-xs text-info hover:text-info-strong disabled:opacity-50"
           >
-            Start from the default and edit it
+            {gt("Start from the default and edit it")}
           </button>
         </div>
       )}
@@ -986,7 +1042,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
           onClick={() => update([...rules, blankRule(rules.length)])}
           className="text-xs text-info hover:text-info-strong"
         >
-          Add rule
+          {gt("Add rule")}
         </button>
         {dirty && (
           <>
@@ -996,7 +1052,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
               disabled={saving || firstProblem !== null}
               className="rounded-md bg-blue-600 px-3 py-1.5 text-xs text-white disabled:opacity-50"
             >
-              {saving ? "Saving…" : "Save rules"}
+              {saving ? gt("Saving…") : gt("Save rules")}
             </button>
             <button
               type="button"
@@ -1004,7 +1060,7 @@ export function AlertRoutingSection({ orgId }: { orgId: string }) {
               disabled={saving}
               className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
             >
-              Discard changes
+              {gt("Discard changes")}
             </button>
           </>
         )}
@@ -1033,15 +1089,6 @@ interface DeliveryRow {
   escalateAt: string | null;
 }
 
-const STATE_LABELS: Record<string, string> = {
-  held: "Held for quiet hours",
-  awaiting_ack: "Waiting for acknowledgement",
-  sent: "Sent",
-  acknowledged: "Acknowledged",
-  escalated: "Escalated",
-  expired: "Given up",
-};
-
 /**
  * What the rules actually did. Only ever shows rows a rule created follow-up
  * work for — an alert that went straight out with no quiet hours and no
@@ -1049,10 +1096,21 @@ const STATE_LABELS: Record<string, string> = {
  * still need to act on.
  */
 function AlertDeliveriesPanel({ orgId }: { orgId: string }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const { api } = useSettingsHost();
   // See the note in `AlertRoutingSection`: the stable method, not the container.
   const apiGet = api.get;
   const [rows, setRows] = useState<DeliveryRow[] | null>(null);
+
+  const stateLabels: Record<string, string> = {
+    held: gt("Held for quiet hours"),
+    awaiting_ack: gt("Waiting for acknowledgement"),
+    sent: gt("Sent"),
+    acknowledged: gt("Acknowledged"),
+    escalated: gt("Escalated"),
+    expired: gt("Given up"),
+  };
 
   useEffect(() => {
     apiGet<DeliveryRow[]>(`/api/org/${orgId}/alert-rules/deliveries?limit=20`)
@@ -1065,20 +1123,20 @@ function AlertDeliveriesPanel({ orgId }: { orgId: string }) {
   return (
     <div className="pt-3 border-t border-border/50 space-y-2">
       <h3 className="text-xs font-semibold text-on-surface-tertiary uppercase tracking-wide">
-        Recent held and escalating alerts
+        {gt("Recent held and escalating alerts")}
       </h3>
       <ul className="divide-y divide-border/50">
         {rows.map((r) => (
           <li key={r.id} className="py-2 text-sm">
             <p className="text-on-surface-secondary truncate">{r.title}</p>
             <p className="text-xs text-on-surface-tertiary">
-              {alertTriggerDef(r.trigger).label} · {STATE_LABELS[r.state] ?? r.state}
+              {gtData(alertTriggerDef(r.trigger).label)} · {stateLabels[r.state] ?? r.state}
               {r.ruleName ? ` · ${r.ruleName}` : ""}
               {r.state === "held" && r.deliverAfter
-                ? ` · sends ${new Date(r.deliverAfter).toLocaleString()}`
+                ? gt(" · sends {date}", { date: new Date(r.deliverAfter).toLocaleString() })
                 : ""}
               {r.state === "awaiting_ack" && r.escalateAt
-                ? ` · escalates ${new Date(r.escalateAt).toLocaleString()}`
+                ? gt(" · escalates {date}", { date: new Date(r.escalateAt).toLocaleString() })
                 : ""}
             </p>
           </li>

@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { T, Var, useGT } from "gt-react";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { sshExecCommand, sshOpenTunnel } from "../lib/ssh-tunnel";
@@ -26,6 +27,7 @@ export function DockerSetupModal({
   onClose,
   onComplete,
 }: DockerSetupModalProps) {
+  const gt = useGT();
   const [sshUser, setSshUser] = useState(defaultUsername ?? "root");
   const [sshPort, setSshPort] = useState(22);
   const [privateKey, setPrivateKey] = useState("");
@@ -78,11 +80,11 @@ export function DockerSetupModal({
   async function startSetup() {
     if (isCloudKey) {
       if (!selectedKey || !activeCloudOrgId) {
-        setError("Select an SSH key first");
+        setError(gt("Select an SSH key first"));
         return;
       }
     } else if (!privateKey.trim()) {
-      setError("Select an SSH key first");
+      setError(gt("Select an SSH key first"));
       return;
     }
     setError(null);
@@ -99,7 +101,7 @@ export function DockerSetupModal({
       });
       setDockerVersion(ver);
 
-      appendLog("Opening SSH tunnel to Docker...");
+      appendLog(gt("Opening SSH tunnel to Docker..."));
 
       let newAccountId: string;
       if (isCloudKey && selectedKey && activeCloudOrgId) {
@@ -115,14 +117,16 @@ export function DockerSetupModal({
           credentials: { dockerHost: "tcp://localhost:2375" },
         });
         newAccountId = resp.accountId;
-        appendLog(`Cloud tunnel created for ${sshHost}:2375`);
+        appendLog(gt("Cloud tunnel created for {host}:2375", { host: sshHost }));
       } else {
         const { localPort } = await sshOpenTunnel({
           ...sshConfig(),
           remoteHost: "127.0.0.1",
           remotePort: 2375,
         });
-        appendLog(`Tunnel open: localhost:${localPort} -> ${sshHost}:2375`);
+        appendLog(
+          gt("Tunnel open: localhost:{localPort} -> {host}:2375", { localPort, host: sshHost }),
+        );
 
         const db = await getDb();
         newAccountId = crypto.randomUUID();
@@ -161,7 +165,7 @@ export function DockerSetupModal({
         );
       }
 
-      appendLog("Docker account created.");
+      appendLog(gt("Docker account created."));
       setCreatedAccountId(newAccountId);
       useUIStore.getState().bumpAccounts();
       setStep("done");
@@ -173,13 +177,18 @@ export function DockerSetupModal({
   const isRunning = step === "checking" || step === "installing" || step === "configuring";
 
   return (
-    <Modal onClose={onClose} ariaLabel="Setup Docker on VM">
+    <Modal onClose={onClose} ariaLabel={gt("Setup Docker on VM")}>
       <div className="bg-surface-raised border border-border-strong rounded-2xl shadow-2xl w-[520px] max-h-[90vh] overflow-auto">
         <div className="p-6 border-b border-border">
-          <h2 className="text-base font-semibold text-on-surface">Setup Docker on VM</h2>
-          <p className="text-xs text-on-surface-muted mt-1">
-            Host: <span className="text-on-surface-secondary font-mono">{sshHost}</span>
-          </p>
+          <h2 className="text-base font-semibold text-on-surface">{gt("Setup Docker on VM")}</h2>
+          <T>
+            <p className="text-xs text-on-surface-muted mt-1">
+              Host:{" "}
+              <Var>
+                <span className="text-on-surface-secondary font-mono">{sshHost}</span>
+              </Var>
+            </p>
+          </T>
         </div>
 
         <div className="p-6 space-y-4">
@@ -191,7 +200,7 @@ export function DockerSetupModal({
                   htmlFor="docker-setup-name"
                   className="text-xs text-on-surface-muted w-20 shrink-0"
                 >
-                  Name
+                  {gt("Name")}
                 </label>
                 <input
                   id="docker-setup-name"
@@ -199,7 +208,7 @@ export function DockerSetupModal({
                   value={accountName}
                   onChange={(e) => setAccountName(e.target.value)}
                   className="flex-1 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary focus:outline-none focus:border-border-strong"
-                  placeholder={`Docker on ${sshHost}`}
+                  placeholder={gt("Docker on {host}", { host: sshHost })}
                   spellCheck={false}
                 />
               </div>
@@ -217,7 +226,7 @@ export function DockerSetupModal({
                   htmlFor="docker-setup-ssh-port"
                   className="text-xs text-on-surface-muted w-20 shrink-0"
                 >
-                  SSH Port
+                  {gt("SSH Port")}
                 </label>
                 <input
                   id="docker-setup-ssh-port"
@@ -230,13 +239,17 @@ export function DockerSetupModal({
               </div>
 
               <div className="bg-surface-overlay/50 rounded-lg p-3 space-y-1">
-                <div className="text-xs text-on-surface-tertiary font-medium">This will:</div>
-                <ul className="text-xs text-on-surface-muted space-y-0.5 list-disc pl-4">
-                  <li>Check if Docker is installed on the VM</li>
-                  <li>Install Docker if needed (via get.docker.com)</li>
-                  <li>Configure Docker to listen on TCP (localhost only)</li>
-                  <li>Create an SSH tunnel and Docker account</li>
-                </ul>
+                <div className="text-xs text-on-surface-tertiary font-medium">
+                  {gt("This will:")}
+                </div>
+                <T>
+                  <ul className="text-xs text-on-surface-muted space-y-0.5 list-disc pl-4">
+                    <li>Check if Docker is installed on the VM</li>
+                    <li>Install Docker if needed (via get.docker.com)</li>
+                    <li>Configure Docker to listen on TCP (localhost only)</li>
+                    <li>Create an SSH tunnel and Docker account</li>
+                  </ul>
+                </T>
               </div>
             </>
           )}
@@ -246,21 +259,21 @@ export function DockerSetupModal({
             <div className="space-y-3">
               <div className="flex items-center gap-6 text-xs">
                 <StepIndicator
-                  label="Check"
+                  label={gt("Check")}
                   active={step === "checking"}
                   done={step !== "checking"}
                 />
                 <StepIndicator
-                  label="Install"
+                  label={gt("Install")}
                   active={step === "installing"}
                   done={step === "configuring" || step === "done"}
                 />
                 <StepIndicator
-                  label="Configure"
+                  label={gt("Configure")}
                   active={step === "configuring"}
                   done={step === "done"}
                 />
-                <StepIndicator label="Done" active={step === "done"} done={false} />
+                <StepIndicator label={gt("Done")} active={step === "done"} done={false} />
               </div>
 
               <div className="bg-surface rounded-lg p-3 max-h-[200px] overflow-y-auto">
@@ -274,7 +287,9 @@ export function DockerSetupModal({
                   </div>
                 ))}
                 {isRunning && (
-                  <div className="text-xs font-mono text-accent animate-pulse mt-1">Working…</div>
+                  <div className="text-xs font-mono text-accent animate-pulse mt-1">
+                    {gt("Working…")}
+                  </div>
                 )}
               </div>
 
@@ -300,7 +315,7 @@ export function DockerSetupModal({
             disabled={isRunning}
             className="px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors disabled:opacity-50"
           >
-            {step === "done" ? "Close" : "Cancel"}
+            {step === "done" ? gt("Close") : gt("Cancel")}
           </button>
           {step === "credentials" && (
             <button
@@ -314,7 +329,7 @@ export function DockerSetupModal({
               }
               className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"
             >
-              Start Setup
+              {gt("Start Setup")}
             </button>
           )}
           {step === "done" && createdAccountId && (
@@ -357,7 +372,7 @@ export function DockerSetupModal({
                       : "bg-surface-sunken hover:bg-surface-sunken text-on-surface-secondary"
                   }`}
                 >
-                  {pinnedToDashboard ? "Added to Dashboard" : "Add to Dashboard"}
+                  {pinnedToDashboard ? gt("Added to Dashboard") : gt("Add to Dashboard")}
                 </button>
                 {showDashboardPicker && (
                   <div className="absolute bottom-full mb-1 right-0 bg-surface-overlay border border-border-strong rounded-lg shadow-xl py-1 min-w-[180px] z-10">
@@ -397,7 +412,7 @@ export function DockerSetupModal({
                 onClick={() => onComplete(createdAccountId)}
                 className="px-4 py-2 text-sm bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors"
               >
-                Open Docker
+                {gt("Open Docker")}
               </button>
             </>
           )}
@@ -410,7 +425,7 @@ export function DockerSetupModal({
               }}
               className="px-4 py-2 text-sm bg-surface-sunken hover:bg-surface-sunken text-on-surface-secondary rounded-lg transition-colors"
             >
-              Retry
+              {gt("Retry")}
             </button>
           )}
         </div>

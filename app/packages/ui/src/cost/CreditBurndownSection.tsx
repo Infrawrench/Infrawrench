@@ -139,7 +139,10 @@ function PotRow({
           {formatCreditAmount(pot.remaining, pot.currency)}
           {pot.granted !== null && pot.granted > 0 && (
             <T>
-              <> of <Var>{formatCreditAmount(pot.granted, pot.currency)}</Var></>
+              <>
+                {" "}
+                of <Var>{formatCreditAmount(pot.granted, pot.currency)}</Var>
+              </>
             </T>
           )}{" "}
           · {formatBurn(pot)}

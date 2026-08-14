@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { SftpBrowserPanel } from "../../components/SftpBrowserPanel";
 import { SshQuickConnectPanel } from "../../components/SshQuickConnectPanel";
 import type { QuickSshConnection, SshConfig } from "./-types";
@@ -23,6 +24,7 @@ export function SftpViewPane({
   quickSshConnection,
   onConnect,
 }: SftpViewPaneProps) {
+  const gt = useGT();
   return (
     <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
       {activeCloudOrgId && sshHost && quickSshConnection ? (
@@ -69,10 +71,10 @@ export function SftpViewPane({
       ) : (
         <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center">
           <div className="text-sm text-on-surface-muted animate-pulse">
-            Waiting for an SSH address…
+            {gt("Waiting for an SSH address…")}
           </div>
           <div className="text-xs text-on-surface-faint">
-            The server may still be starting up. This view refreshes automatically.
+            {gt("The server may still be starting up. This view refreshes automatically.")}
           </div>
         </div>
       )}

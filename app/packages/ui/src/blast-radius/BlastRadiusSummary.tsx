@@ -1,3 +1,4 @@
+import { T, Var, useGT } from "gt-react";
 import {
   blastRadiusReferenceLabel,
   formatFlowBytes,
@@ -38,6 +39,7 @@ const SEVERITY_CLASS: Record<BlastRadiusSeverity, string> = {
  *    "nothing depends on this, but flows are off" are different claims.
  */
 export function BlastRadiusSummary({ client, resourceId, maxNamed = 3 }: BlastRadiusSummaryProps) {
+  const gt = useGT();
   const { report, loading, error } = useBlastRadius(client, resourceId);
 
   if (!client) return null;
@@ -45,7 +47,7 @@ export function BlastRadiusSummary({ client, resourceId, maxNamed = 3 }: BlastRa
   if (loading) {
     return (
       <p className="mb-4 text-xs text-on-surface-faint" aria-live="polite">
-        Checking what depends on this…
+        {gt("Checking what depends on this…")}
       </p>
     );
   }
@@ -57,12 +59,14 @@ export function BlastRadiusSummary({ client, resourceId, maxNamed = 3 }: BlastRa
         aria-live="polite"
       >
         <p className="text-xs text-on-surface-secondary">
-          Couldn&apos;t check what depends on this resource.
+          {gt("Couldn't check what depends on this resource.")}
         </p>
-        <p className="mt-0.5 text-xs text-on-surface-faint">
-          {error ?? "The impact report is unavailable."} Deleting is still allowed — decide from
-          what you know.
-        </p>
+        <T>
+          <p className="mt-0.5 text-xs text-on-surface-faint">
+            <Var>{error ?? gt("The impact report is unavailable.")}</Var> Deleting is still allowed
+            — decide from what you know.
+          </p>
+        </T>
       </div>
     );
   }
@@ -76,7 +80,7 @@ export function BlastRadiusSummary({ client, resourceId, maxNamed = 3 }: BlastRa
       <SummaryLines report={report} maxNamed={maxNamed} />
       {report.unchecked.length > 0 && (
         <p className="mt-1.5 text-xs text-on-surface-faint">
-          Not checked: {report.unchecked.map((gap) => gap.reason).join(" ")}
+          {gt("Not checked:")} {report.unchecked.map((gap) => gap.reason).join(" ")}
         </p>
       )}
     </div>
@@ -84,6 +88,7 @@ export function BlastRadiusSummary({ client, resourceId, maxNamed = 3 }: BlastRa
 }
 
 function SummaryLines({ report, maxNamed }: { report: BlastRadiusReport; maxNamed: number }) {
+  const gt = useGT();
   const named = report.dependants.slice(0, maxNamed);
   const rest = report.dependants.length - named.length;
 
@@ -99,32 +104,44 @@ function SummaryLines({ report, maxNamed }: { report: BlastRadiusReport; maxName
       {named.length > 0 && (
         <p className="mt-1 text-xs text-on-surface-secondary">
           {named.map((d) => d.node.displayName).join(", ")}
-          {rest > 0 ? ` and ${rest} more` : ""}
+          {rest > 0 ? (rest === 1 ? gt(" and 1 more") : gt(" and {rest} more", { rest })) : ""}
         </p>
       )}
       {userFacing.length > 0 && (
         <p className="mt-1 text-xs font-medium">
-          Customer-visible: {userFacing.map((r) => r.name).join(", ")}
+          {gt("Customer-visible:")} {userFacing.map((r) => r.name).join(", ")}
         </p>
       )}
       {referenceCounts.size > 0 && (
-        <p className="mt-1 text-xs text-on-surface-secondary">
-          Also referenced by{" "}
-          {[...referenceCounts.entries()]
-            .map(([kind, count]) => {
-              const label = blastRadiusReferenceLabel(kind as never).toLowerCase();
-              return `${count} ${label}${count === 1 ? "" : "s"}`;
-            })
-            .join(", ")}
-          .
-        </p>
+        <T>
+          <p className="mt-1 text-xs text-on-surface-secondary">
+            Also referenced by{" "}
+            <Var>
+              {[...referenceCounts.entries()]
+                .map(([kind, count]) => {
+                  const label = blastRadiusReferenceLabel(kind as never).toLowerCase();
+                  return count === 1
+                    ? gt("{count} {label}", { count, label })
+                    : gt("{count} {label}s", { count, label });
+                })
+                .join(", ")}
+            </Var>
+            .
+          </p>
+        </T>
       )}
       {report.flowTotals && report.flowTotals.bytes > 0 && (
-        <p className="mt-1 text-xs text-on-surface-secondary">
-          {formatFlowBytes(report.flowTotals.bytes)} of measured traffic with{" "}
-          {report.flowPeers.length} peer{report.flowPeers.length === 1 ? "" : "s"} in the last 14
-          days.
-        </p>
+        <T>
+          <p className="mt-1 text-xs text-on-surface-secondary">
+            <Var>{formatFlowBytes(report.flowTotals.bytes)}</Var> of measured traffic with{" "}
+            <Var>
+              {report.flowPeers.length === 1
+                ? gt("1 peer")
+                : gt("{count} peers", { count: report.flowPeers.length })}
+            </Var>{" "}
+            in the last 14 days.
+          </p>
+        </T>
       )}
     </>
   );

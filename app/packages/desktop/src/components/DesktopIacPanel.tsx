@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { T, useGT } from "gt-react";
 import { IacPanel, useUIStore } from "@infrawrench/ui";
 import { createDesktopIacClient } from "@/lib/iac-client";
 import { getWorkspaceNavigateArgs, resourceTabTarget } from "@/lib/workspace-tabs";
@@ -14,18 +15,21 @@ import { getWorkspaceNavigateArgs, resourceTabTarget } from "@/lib/workspace-tab
  */
 export function DesktopIacPanel() {
   const navigate = useNavigate();
+  const gt = useGT();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const client = useMemo(() => createDesktopIacClient(), []);
 
   if (!activeCloudOrgId) {
     return (
       <div className="flex-1 overflow-auto p-6">
-        <h1 className="text-xl font-semibold mb-1">Infrastructure as Code</h1>
-        <p className="text-sm text-on-surface-muted">
-          Reconciliation compares your Terraform state against the resources Infrawrench Cloud has
-          synced. Local-only mode has no synced inventory to compare against — sign in to an
-          organization to use it.
-        </p>
+        <h1 className="text-xl font-semibold mb-1">{gt("Infrastructure as Code")}</h1>
+        <T>
+          <p className="text-sm text-on-surface-muted">
+            Reconciliation compares your Terraform state against the resources Infrawrench Cloud has
+            synced. Local-only mode has no synced inventory to compare against — sign in to an
+            organization to use it.
+          </p>
+        </T>
       </div>
     );
   }

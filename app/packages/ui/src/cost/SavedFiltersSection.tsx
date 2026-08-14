@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useState } from "react";
+import { useGT } from "gt-react";
 
 import { Modal } from "../components/Modal.js";
 import { CostFilterEditor } from "./CostGraphConfigModal.js";
@@ -26,6 +27,7 @@ const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
  * 409 listing referents) instead of pretending the operation is local.
  */
 export function SavedFiltersSection({ client }: { client: CostsClient }) {
+  const gt = useGT();
   const [filters, setFilters] = useState<SavedCostFilter[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ filter: SavedCostFilter | null } | null>(null);
@@ -49,7 +51,7 @@ export function SavedFiltersSection({ client }: { client: CostsClient }) {
   }, [refresh]);
 
   async function deleteFilter(filter: SavedCostFilter) {
-    if (!window.confirm(`Delete the saved filter "${filter.name}"?`)) return;
+    if (!window.confirm(gt('Delete the saved filter "{name}"?', { name: filter.name }))) return;
     setRowError(null);
     try {
       await client.deleteSavedFilter?.(filter.id);
@@ -69,10 +71,11 @@ export function SavedFiltersSection({ client }: { client: CostsClient }) {
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-on-surface">Saved filters</h2>
+          <h2 className="text-sm font-semibold text-on-surface">{gt("Saved filters")}</h2>
           <p className="text-xs text-on-surface-faint mt-0.5">
-            A named filter that graphs, reports and budgets apply by reference — edit it once and
-            everything using it changes.
+            {gt(
+              "A named filter that graphs, reports and budgets apply by reference — edit it once and everything using it changes.",
+            )}
           </p>
         </div>
         {canWrite && (
@@ -81,30 +84,31 @@ export function SavedFiltersSection({ client }: { client: CostsClient }) {
             onClick={() => setEditing({ filter: null })}
             className="shrink-0 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            New filter
+            {gt("New filter")}
           </button>
         )}
       </div>
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          Couldn&rsquo;t load saved filters — {error}{" "}
+          {gt("Couldn’t load saved filters — {error}", { error })}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
-            Retry
+            {gt("Retry")}
           </button>
         </div>
       )}
 
       {filters === null && error === null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Loading saved filters…
+          {gt("Loading saved filters…")}
         </p>
       )}
 
       {filters?.length === 0 && (
         <p className="text-sm text-on-surface-faint">
-          No saved filters yet. Build filter rows in any cost editor and choose &ldquo;Save these
-          rows as a filter&rdquo;, or create one here.
+          {gt(
+            "No saved filters yet. Build filter rows in any cost editor and choose “Save these rows as a filter”, or create one here.",
+          )}
         </p>
       )}
 
@@ -135,14 +139,14 @@ export function SavedFiltersSection({ client }: { client: CostsClient }) {
                     onClick={() => setEditing({ filter })}
                     className="hover:text-on-surface-secondary underline"
                   >
-                    Edit
+                    {gt("Edit")}
                   </button>
                   <button
                     type="button"
                     onClick={() => void deleteFilter(filter)}
                     className="hover:text-danger underline"
                   >
-                    Delete
+                    {gt("Delete")}
                   </button>
                 </div>
               )}
@@ -187,6 +191,7 @@ function SavedFilterEditModal({
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
+  const gt = useGT();
   const uid = useId();
   const [name, setName] = useState(filter?.name ?? "");
   const [description, setDescription] = useState(filter?.description ?? "");
@@ -215,7 +220,7 @@ function SavedFilterEditModal({
 
   const save = async () => {
     if (filterError) {
-      setError("Fix the filter query before saving.");
+      setError(gt("Fix the filter query before saving."));
       return;
     }
     const input: SavedCostFilterInput = {
@@ -224,11 +229,11 @@ function SavedFilterEditModal({
       filters: rows.filter((f) => f.values.length > 0),
     };
     if (!input.name) {
-      setError("A saved filter needs a name.");
+      setError(gt("A saved filter needs a name."));
       return;
     }
     if (input.filters.length === 0) {
-      setError("Add at least one filter row — an empty filter matches everything.");
+      setError(gt("Add at least one filter row — an empty filter matches everything."));
       return;
     }
     setSaving(true);
@@ -238,52 +243,59 @@ function SavedFilterEditModal({
       else await client.createSavedFilter?.(input);
       await onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
+      setError(e instanceof Error ? e.message : gt("Failed to save"));
       setSaving(false);
     }
   };
 
   return (
-    <Modal onClose={onClose} ariaLabel={filter ? `Edit ${filter.name}` : "New saved filter"}>
+    <Modal
+      onClose={onClose}
+      ariaLabel={filter ? gt("Edit {name}", { name: filter.name }) : gt("New saved filter")}
+    >
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[560px] max-w-full p-6 max-h-[85vh] overflow-y-auto">
         <h2 className="text-base font-semibold text-on-surface mb-1">
-          {filter ? "Edit saved filter" : "New saved filter"}
+          {filter ? gt("Edit saved filter") : gt("New saved filter")}
         </h2>
         {filter && referents !== null && referents.length > 0 && (
           <p className="text-xs text-warning mb-3">
-            Saving changes {describeSavedCostFilterReferents(referents)} — everything referencing
-            this filter runs the new rows on its next query.
+            {gt(
+              "Saving changes {referents} — everything referencing this filter runs the new rows on its next query.",
+              {
+                referents: describeSavedCostFilterReferents(referents),
+              },
+            )}
           </p>
         )}
 
         <div className="space-y-4">
           <div>
             <label htmlFor={`${uid}-name`} className={labelClass}>
-              Name
+              {gt("Name")}
             </label>
             <input
               id={`${uid}-name`}
               className={inputClass}
-              placeholder="e.g. Prod only"
+              placeholder={gt("e.g. Prod only")}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
           </div>
           <div>
             <label htmlFor={`${uid}-description`} className={labelClass}>
-              Description (optional)
+              {gt("Description (optional)")}
             </label>
             <input
               id={`${uid}-description`}
               className={inputClass}
-              placeholder="What this filter scopes to"
+              placeholder={gt("What this filter scopes to")}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
           <div role="group" aria-labelledby={`${uid}-rows-label`}>
             <span id={`${uid}-rows-label`} className={labelClass}>
-              Filter
+              {gt("Filter")}
             </span>
             {/* No savedFilterId props on purpose: a saved filter referencing
                 another saved filter would make resolution recursive for no
@@ -304,7 +316,7 @@ function SavedFilterEditModal({
               onClick={onClose}
               className="px-3 py-1.5 rounded-lg text-sm text-on-surface-secondary hover:bg-surface-sunken transition-colors"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -312,7 +324,7 @@ function SavedFilterEditModal({
               disabled={saving || filterError !== null}
               className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? gt("Saving…") : gt("Save")}
             </button>
           </div>
         </div>

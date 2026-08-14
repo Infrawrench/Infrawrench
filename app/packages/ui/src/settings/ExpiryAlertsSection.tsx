@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { T, useGT } from "gt-react";
 import type { ExpirySettings } from "@infrawrench/client-core";
 import { useSettingsHost } from "./host.js";
 
@@ -13,6 +14,7 @@ const inputClass =
  * drift.
  */
 export function ExpiryAlertsSection() {
+  const gt = useGT();
   const { orgId, api, openWorkspace } = useSettingsHost();
   const [settings, setSettings] = useState<ExpirySettings | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +57,7 @@ export function ExpiryAlertsSection() {
       setSettings(saved);
     } catch (e) {
       setSettings(previous);
-      setError(e instanceof Error ? e.message : "Failed to save expiry alert settings");
+      setError(e instanceof Error ? e.message : gt("Failed to save expiry alert settings"));
     }
   }
 
@@ -64,15 +66,17 @@ export function ExpiryAlertsSection() {
   return (
     <section className="border border-border rounded-xl p-5 space-y-4">
       <div>
-        <h2 className="text-sm font-semibold text-on-surface-secondary">Expiry radar</h2>
-        <p className="text-xs text-on-surface-muted mt-1">
-          Alerts for certificates, domains, tokens and keys approaching expiry — the deadlines the{" "}
-          <button type="button" onClick={() => openWorkspace("expiring")} className="underline">
-            Expiring screen
-          </button>{" "}
-          tracks. Turn the <strong>Expiry alerts</strong> trigger on for a channel or your phone
-          above to route them.
-        </p>
+        <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Expiry radar")}</h2>
+        <T>
+          <p className="text-xs text-on-surface-muted mt-1">
+            Alerts for certificates, domains, tokens and keys approaching expiry — the deadlines the{" "}
+            <button type="button" onClick={() => openWorkspace("expiring")} className="underline">
+              Expiring screen
+            </button>{" "}
+            tracks. Turn the <strong>Expiry alerts</strong> trigger on for a channel or your phone
+            above to route them.
+          </p>
+        </T>
       </div>
 
       <label className="flex items-center gap-2 text-sm text-on-surface-secondary">
@@ -81,13 +85,13 @@ export function ExpiryAlertsSection() {
           checked={settings.enabled}
           onChange={(e) => void save({ enabled: e.target.checked })}
         />
-        <span>Send expiry alerts</span>
+        <span>{gt("Send expiry alerts")}</span>
       </label>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label htmlFor="expiry-lead-days" className="block text-xs text-on-surface-tertiary mb-1">
-            Lead time (days)
+            {gt("Lead time (days)")}
           </label>
           <input
             id="expiry-lead-days"
@@ -106,14 +110,16 @@ export function ExpiryAlertsSection() {
             className={inputClass}
           />
           <p className="text-xs text-on-surface-faint mt-1">
-            How early a deadline counts as upcoming and becomes alertable, 1–365.
+            {gt("How early a deadline counts as upcoming and becomes alertable, 1–365.")}
           </p>
         </div>
       </div>
 
       {settings.lastNotifiedAt && (
         <p className="text-xs text-on-surface-tertiary">
-          Last expiry alert sent {new Date(settings.lastNotifiedAt).toLocaleString()}.
+          {gt("Last expiry alert sent {date}.", {
+            date: new Date(settings.lastNotifiedAt).toLocaleString(),
+          })}
         </p>
       )}
       {error && <p className="text-xs text-danger">{error}</p>}

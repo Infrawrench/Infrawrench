@@ -6,6 +6,7 @@
  * inbox (someone else's run is blocked on it). Keeping one component means the
  * two surfaces can't drift on what an approver is shown before deciding.
  */
+import { t, useGT } from "gt-react";
 import type { WorkflowApprovalRow } from "./types.js";
 
 export interface ApprovalCardProps {
@@ -35,13 +36,13 @@ export function formatExpiry(expiresAt: string, now: number = Date.now()): strin
   const mins = Math.round(Math.abs(deltaMs) / 60_000);
   const body =
     mins < 1
-      ? "less than a minute"
+      ? t("less than a minute")
       : mins < 60
         ? `${mins}m`
         : mins < 60 * 24
           ? `${Math.round(mins / 60)}h`
           : `${Math.round(mins / (60 * 24))}d`;
-  return past ? `expired ${body} ago` : `expires in ${body}`;
+  return past ? t("expired {body} ago", { body }) : t("expires in {body}", { body });
 }
 
 export function ApprovalCard({
@@ -52,12 +53,13 @@ export function ApprovalCard({
   showWorkflow = false,
   onOpenWorkflow,
 }: ApprovalCardProps) {
+  const gt = useGT();
   const expired = new Date(approval.expiresAt).getTime() <= Date.now();
   return (
     <div className="px-3 py-2 flex items-start gap-3 border-b border-white/5">
       <div className="flex-1 min-w-0">
         <div className="text-xs font-semibold text-warning">
-          Approval needed: {approval.title}
+          {gt("Approval needed: {title}", { title: approval.title })}
           <span
             className={`ml-2 font-normal ${expired ? "text-danger" : "opacity-60"}`}
             title={new Date(approval.expiresAt).toLocaleString()}
@@ -73,16 +75,16 @@ export function ApprovalCard({
                 onClick={() => onOpenWorkflow(approval.workflowId)}
                 className="underline underline-offset-2 hover:opacity-80"
               >
-                {approval.workflowName ?? "Deleted workflow"}
+                {approval.workflowName ?? gt("Deleted workflow")}
               </button>
             ) : (
-              (approval.workflowName ?? "Deleted workflow")
+              (approval.workflowName ?? gt("Deleted workflow"))
             )}
             <span className="mx-1.5">·</span>
-            <span title={approval.runId}>run {approval.runId.slice(0, 8)}</span>
+            <span title={approval.runId}>{gt("run {id}", { id: approval.runId.slice(0, 8) })}</span>
             <span className="mx-1.5">·</span>
             <span title={new Date(approval.createdAt).toLocaleString()}>
-              requested {new Date(approval.createdAt).toLocaleString()}
+              {gt("requested {date}", { date: new Date(approval.createdAt).toLocaleString() })}
             </span>
           </div>
         )}
@@ -96,7 +98,7 @@ export function ApprovalCard({
             onClick={() => onDecide?.(approval.id, "approve")}
             className="px-2 py-1 text-xs rounded bg-green-500/20 text-success hover:bg-green-500/30 disabled:opacity-50"
           >
-            Approve
+            {gt("Approve")}
           </button>
           <button
             type="button"
@@ -104,7 +106,7 @@ export function ApprovalCard({
             onClick={() => onDecide?.(approval.id, "deny")}
             className="px-2 py-1 text-xs rounded bg-red-500/20 text-danger hover:bg-red-500/30 disabled:opacity-50"
           >
-            Deny
+            {gt("Deny")}
           </button>
         </div>
       )}

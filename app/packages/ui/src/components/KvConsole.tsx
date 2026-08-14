@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useGT } from "gt-react";
 import {
   formatRedisResult,
   kvConsoleProfile,
@@ -14,6 +15,7 @@ export interface KvConsoleProps {
 }
 
 export function KvConsole({ driverName, connected = true, onCommand }: KvConsoleProps) {
+  const gt = useGT();
   const [input, setInput] = useState("");
   const [lines, setLines] = useState<ConsoleLine[]>([]);
   const [running, setRunning] = useState(false);
@@ -84,14 +86,16 @@ export function KvConsole({ driverName, connected = true, onCommand }: KvConsole
         <span
           className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${connected ? "bg-blue-400" : "bg-surface-sunken"}`}
         />
-        <span className="text-xs text-on-surface-muted font-medium">{profile.label} Console</span>
+        <span className="text-xs text-on-surface-muted font-medium">
+          {gt("{label} Console", { label: profile.label })}
+        </span>
         {lines.length > 0 && (
           <button
             type="button"
             onClick={() => setLines([])}
             className="ml-auto text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
           >
-            Clear
+            {gt("Clear")}
           </button>
         )}
       </div>
@@ -103,7 +107,10 @@ export function KvConsole({ driverName, connected = true, onCommand }: KvConsole
       >
         {lines.length === 0 && (
           <span className="text-on-surface-faint">
-            Type a {profile.label} command and press Enter, e.g. {profile.examples}
+            {gt("Type a {label} command and press Enter, e.g. {examples}", {
+              label: profile.label,
+              examples: profile.examples,
+            })}
           </span>
         )}
         {lines.map((line, i) => (
@@ -128,11 +135,11 @@ export function KvConsole({ driverName, connected = true, onCommand }: KvConsole
         <span className="text-on-surface-faint font-mono text-xs flex-shrink-0">{">"}</span>
         <input
           ref={inputRef}
-          aria-label={`${profile.label} console command`}
+          aria-label={gt("{label} console command", { label: profile.label })}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={connected ? profile.placeholder : "connecting…"}
+          placeholder={connected ? profile.placeholder : gt("connecting…")}
           disabled={!connected || running}
           className="flex-1 bg-transparent font-mono text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none disabled:opacity-40"
           autoComplete="off"

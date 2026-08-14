@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import { summarizeChange, type ChangeCostImpact } from "@infrawrench/client-core";
 import { ChangeCostImpactLine } from "../cost/ChangeCostImpactLine.js";
 import { ChangeDiffList, ChangeKindBadge } from "./ChangeParts.js";
@@ -54,6 +55,7 @@ export function ChangesPanel({
   onOpenUrl,
   onInvestigateMoment,
 }: ChangesPanelProps) {
+  const gt = useGT();
   const [entries, setEntries] = useState<ResourceChangeEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -70,6 +72,12 @@ export function ChangesPanel({
   // Bumped per request so a slow page can't overwrite a later one that already
   // landed — filters change faster than a feed query returns.
   const requestSeq = useRef(0);
+
+  const kindLabel = useCallback(
+    (k: ResourceChangeKind): string =>
+      k === "created" ? gt("created") : k === "updated" ? gt("updated") : gt("deleted"),
+    [gt],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -169,10 +177,11 @@ export function ChangesPanel({
 
   return (
     <div className="flex-1 overflow-auto p-6">
-      <h1 className="text-xl font-semibold mb-1">Changes</h1>
+      <h1 className="text-xl font-semibold mb-1">{gt("Changes")}</h1>
       <p className="text-sm text-on-surface-muted mb-6">
-        Everything the resource poller saw appear, change, or disappear across your connected
-        providers.
+        {gt(
+          "Everything the resource poller saw appear, change, or disappear across your connected providers.",
+        )}
       </p>
 
       {statusClient && (
@@ -181,7 +190,7 @@ export function ChangesPanel({
 
       <div className="flex gap-3 mb-4">
         <label htmlFor="changes-kind-filter" className="sr-only">
-          Filter by change kind
+          {gt("Filter by change kind")}
         </label>
         <select
           id="changes-kind-filter"
@@ -192,15 +201,15 @@ export function ChangesPanel({
           }}
           className="bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary"
         >
-          <option value="">All kinds</option>
+          <option value="">{gt("All kinds")}</option>
           {KINDS.map((k) => (
             <option key={k} value={k}>
-              {k}
+              {kindLabel(k)}
             </option>
           ))}
         </select>
         <label htmlFor="changes-account-filter" className="sr-only">
-          Filter by account
+          {gt("Filter by account")}
         </label>
         <select
           id="changes-account-filter"
@@ -211,7 +220,7 @@ export function ChangesPanel({
           }}
           className="bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary"
         >
-          <option value="">All accounts</option>
+          <option value="">{gt("All accounts")}</option>
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
               {a.displayName}
@@ -223,18 +232,20 @@ export function ChangesPanel({
             type="button"
             onClick={onInvestigateMoment}
             className="ml-auto px-3 py-1.5 text-sm border border-border-strong rounded-lg text-on-surface-tertiary hover:text-on-surface-secondary whitespace-nowrap"
-            title="Merge every feed around one timestamp — changes, incidents, anomalies, runs, deployments, audit entries and freezes."
+            title={gt(
+              "Merge every feed around one timestamp — changes, incidents, anomalies, runs, deployments, audit entries and freezes.",
+            )}
           >
-            Investigate a moment
+            {gt("Investigate a moment")}
           </button>
         )}
       </div>
 
       {error !== null && (
         <div role="alert" className="mb-4 text-sm text-danger">
-          Couldn&apos;t load the change feed — {error}{" "}
+          {gt("Couldn't load the change feed — {error}", { error })}{" "}
           <button type="button" onClick={() => void load()} className="underline">
-            Retry
+            {gt("Retry")}
           </button>
         </div>
       )}
@@ -242,13 +253,13 @@ export function ChangesPanel({
       <div className="border border-border rounded-xl overflow-hidden">
         {loading ? (
           <p role="status" className="px-4 py-8 text-center text-sm text-on-surface-faint">
-            Loading…
+            {gt("Loading…")}
           </p>
         ) : entries.length === 0 ? (
           <div className="px-4 py-12 text-center">
-            <p className="text-sm text-on-surface-faint">No changes recorded yet.</p>
+            <p className="text-sm text-on-surface-faint">{gt("No changes recorded yet.")}</p>
             <p className="text-xs text-on-surface-faint mt-1">
-              Events appear here after the poller has synced your accounts at least twice.
+              {gt("Events appear here after the poller has synced your accounts at least twice.")}
             </p>
           </div>
         ) : (
@@ -266,9 +277,9 @@ export function ChangesPanel({
                   {entry.origin === "schedule" && (
                     <span
                       className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary whitespace-nowrap"
-                      title="This transition was executed by a sleep/wake schedule."
+                      title={gt("This transition was executed by a sleep/wake schedule.")}
                     >
-                      via schedule
+                      {gt("via schedule")}
                     </span>
                   )}
                   {onOpenResource ? (
@@ -276,7 +287,7 @@ export function ChangesPanel({
                       type="button"
                       onClick={() => onOpenResource(entry)}
                       className="text-sm text-on-surface-secondary hover:text-on-surface hover:underline truncate"
-                      title={`Open ${entry.displayName}`}
+                      title={gt("Open {name}", { name: entry.displayName })}
                     >
                       {entry.displayName}
                     </button>
@@ -300,9 +311,11 @@ export function ChangesPanel({
                     {entry.revertedAt && (
                       <span
                         className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary whitespace-nowrap"
-                        title={`Reverted on ${new Date(entry.revertedAt).toLocaleString()}.`}
+                        title={gt("Reverted on {date}.", {
+                          date: new Date(entry.revertedAt).toLocaleString(),
+                        })}
                       >
-                        reverted
+                        {gt("reverted")}
                       </span>
                     )}
                     {entry.changeKind === "updated" && entry.diff.length > 0 && (
@@ -312,7 +325,7 @@ export function ChangesPanel({
                         aria-expanded={expandedId === entry.id}
                         className="text-xs text-on-surface-faint hover:text-on-surface-secondary shrink-0"
                       >
-                        {expandedId === entry.id ? "Hide diff" : "Show diff"}
+                        {expandedId === entry.id ? gt("Hide diff") : gt("Show diff")}
                       </button>
                     )}
                     {/* Rendered for every row, disabled with its reason on the
@@ -337,13 +350,13 @@ export function ChangesPanel({
                         onClick={() => void annotate(entry.id)}
                         disabled={annotatingId === entry.id}
                         className="text-xs text-on-surface-faint hover:text-on-surface-secondary disabled:opacity-40 shrink-0"
-                        title="Write this finding onto the cost charts as an annotation"
+                        title={gt("Write this finding onto the cost charts as an annotation")}
                       >
                         {annotatedIds.includes(entry.id)
-                          ? "Annotated"
+                          ? gt("Annotated")
                           : annotatingId === entry.id
-                            ? "Annotating…"
-                            : "Annotate cost graph"}
+                            ? gt("Annotating…")
+                            : gt("Annotate cost graph")}
                       </button>
                     )}
                   </div>
@@ -363,20 +376,20 @@ export function ChangesPanel({
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-4">
-          <p className="text-xs text-on-surface-muted">{total} events</p>
+          <p className="text-xs text-on-surface-muted">{gt("{count} events", { count: total })}</p>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              aria-label="Previous page"
+              aria-label={gt("Previous page")}
               className="px-3 py-1 text-sm border border-border-strong rounded-lg text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-30"
             >
-              Previous
+              {gt("Previous")}
             </button>
             <span
               aria-current="page"
-              aria-label={`Page ${page} of ${totalPages}`}
+              aria-label={gt("Page {page} of {totalPages}", { page, totalPages })}
               className="px-3 py-1 text-sm text-on-surface-tertiary"
             >
               {page} / {totalPages}
@@ -385,10 +398,10 @@ export function ChangesPanel({
               type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              aria-label="Next page"
+              aria-label={gt("Next page")}
               className="px-3 py-1 text-sm border border-border-strong rounded-lg text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-30"
             >
-              Next
+              {gt("Next")}
             </button>
           </div>
         </div>

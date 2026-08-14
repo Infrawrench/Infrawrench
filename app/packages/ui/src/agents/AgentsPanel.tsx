@@ -444,8 +444,8 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                           T3 Code runs as a server on the VM and drives{" "}
                           <Var>{toolLabel(settings?.tool ?? "codex")}</Var>, which is installed
                           alongside it. Open runs the one-off authorization steps over SSH; after
-                          that you use the server from T3 Code itself. No repository checkout —
-                          add projects from inside T3 Code.
+                          that you use the server from T3 Code itself. No repository checkout — add
+                          projects from inside T3 Code.
                         </p>
                       </T>
                     )}
@@ -698,7 +698,9 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                               aria-busy={openingSessionId === session.id}
                               className="px-2 py-1 rounded border border-border text-xs disabled:opacity-50"
                             >
-                              {openingSessionId === session.id ? gt("Retrying...") : gt("Retry setup")}
+                              {openingSessionId === session.id
+                                ? gt("Retrying...")
+                                : gt("Retry setup")}
                             </button>
                           )}
                           {/* Reconcile pushes the session branch back; a T3

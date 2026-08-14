@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useGT } from "gt-react";
 import {
   Area,
   Bar,
@@ -93,11 +94,13 @@ function SpendGraphCard({
   api,
   periodNativeNote,
   onEdit,
-  editLabel = "Edit widget",
+  editLabel,
   onRemove,
   annotationReportId,
   annotationReportName,
 }: CostGraphCardProps) {
+  const gt = useGT();
+  const resolvedEditLabel = editLabel ?? gt("Edit widget");
   const chart = useChartTheme();
   const [state, setState] = useState<LoadedState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -136,7 +139,7 @@ function SpendGraphCard({
         setState({ response, pivot });
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load costs");
+        if (!cancelled) setError(e instanceof Error ? e.message : gt("Failed to load costs"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -144,7 +147,7 @@ function SpendGraphCard({
     return () => {
       cancelled = true;
     };
-  }, [api, request, config.chartType, config.binning]);
+  }, [api, request, config.chartType, config.binning, gt]);
 
   const loadAnnotations = api.listCostAnnotations;
   const refreshAnnotations = useCallback(async () => {
@@ -196,7 +199,9 @@ function SpendGraphCard({
    * which assumptions, from the chart alone.
    */
   const scenario = state?.response.scenario;
-  const scenarioLabel = scenario ? `Scenario: ${scenario.modelName}` : "Scenario";
+  const scenarioLabel = scenario
+    ? gt("Scenario: {name}", { name: scenario.modelName })
+    : gt("Scenario");
   /**
    * The org's billing rules, when this card asked for them.
    *
@@ -239,23 +244,33 @@ function SpendGraphCard({
   }, [state, currency]);
 
   const chartAriaLabel = useMemo(() => {
-    const parts = [`${title || "Costs"} chart`];
-    if (total) parts.push(`total ${total}`);
+    const parts = [gt("{title} chart", { title: title || gt("Costs") })];
+    if (total) parts.push(gt("total {total}", { total }));
     if (deltaPct !== null) {
       parts.push(
-        `${deltaPct > 0 ? "up" : "down"} ${Math.abs(deltaPct).toFixed(1)}% vs previous period`,
+        deltaPct > 0
+          ? gt("up {percent}% vs previous period", { percent: Math.abs(deltaPct).toFixed(1) })
+          : gt("down {percent}% vs previous period", { percent: Math.abs(deltaPct).toFixed(1) }),
       );
     }
     // The chart body is one opaque image to assistive tech, so the count has to
     // be said here; the notes themselves are read from the rail below it.
     const noted = markers.reduce((sum, m) => sum + m.annotations.length, 0);
-    if (noted > 0) parts.push(`${noted} annotation${noted === 1 ? "" : "s"}`);
+    if (noted > 0) {
+      parts.push(
+        noted === 1
+          ? gt("{count} annotation", { count: noted })
+          : gt("{count} annotations", { count: noted }),
+      );
+    }
     // Said here as well as in the header: the chart body is one opaque image to
     // assistive tech, so "part of this line is an assumption" cannot be left to
     // a legend nobody can read.
-    if (scenario) parts.push(`projection includes scenario ${scenario.modelName}`);
+    if (scenario) {
+      parts.push(gt("projection includes scenario {name}", { name: scenario.modelName }));
+    }
     return parts.join(", ");
-  }, [title, total, deltaPct, markers, scenario]);
+  }, [title, total, deltaPct, markers, scenario, gt]);
 
   const tooltipStyle = {
     backgroundColor: chart.tooltipBg,
@@ -279,7 +294,7 @@ function SpendGraphCard({
     if (pivot.rows.length === 0) {
       return (
         <div className="flex-1 flex items-center justify-center text-sm text-on-surface-faint">
-          No cost data for this period yet
+          {gt("No cost data for this period yet")}
         </div>
       );
     }
@@ -380,9 +395,9 @@ function SpendGraphCard({
             formatter={(value, name) => {
               const label =
                 String(name) === COMPARISON_KEY
-                  ? "Previous period"
+                  ? gt("Previous period")
                   : String(name) === FORECAST_KEY
-                    ? "Forecast (trend)"
+                    ? gt("Forecast (trend)")
                     : String(name) === SCENARIO_KEY
                       ? scenarioLabel
                       : (pivot.series.find((s) => s.dataKey === String(name))?.label ??
@@ -399,9 +414,9 @@ function SpendGraphCard({
                   <span style={{ color: chart.tick }}>
                     {def?.label ??
                       (value === COMPARISON_KEY
-                        ? "Previous period"
+                        ? gt("Previous period")
                         : value === FORECAST_KEY
-                          ? "Forecast (trend)"
+                          ? gt("Forecast (trend)")
                           : value === SCENARIO_KEY
                             ? scenarioLabel
                             : value)}
@@ -535,8 +550,8 @@ function SpendGraphCard({
           <button
             type="button"
             onClick={onEdit}
-            title={editLabel}
-            aria-label={editLabel}
+            title={resolvedEditLabel}
+            aria-label={resolvedEditLabel}
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
             ✎
@@ -546,8 +561,8 @@ function SpendGraphCard({
           <button
             type="button"
             onClick={onRemove}
-            title="Remove from dashboard"
-            aria-label="Remove from dashboard"
+            title={gt("Remove from dashboard")}
+            aria-label={gt("Remove from dashboard")}
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
             ✕
@@ -558,7 +573,7 @@ function SpendGraphCard({
       <div className="px-5 pt-4 pb-1">
         <div className="flex items-baseline gap-3 pr-14">
           <h3 className="text-base font-semibold text-on-surface leading-tight truncate">
-            {title || "Costs"}
+            {title || gt("Costs")}
           </h3>
           {/*
             A ternary rather than `total && …`: this slot sits next to money, so
@@ -574,15 +589,17 @@ function SpendGraphCard({
           {adjustment && (
             <span
               className="text-[10px] uppercase tracking-wide text-warning border border-amber-500/40 rounded px-1 py-px flex-shrink-0"
-              title="The organisation's billing rules are applied to this figure."
+              title={gt("The organisation's billing rules are applied to this figure.")}
             >
-              Adjusted
+              {gt("Adjusted")}
             </span>
           )}
           {deltaPct !== null && (
             <span
               className={`text-xs flex-shrink-0 ${deltaPct > 0 ? "text-danger" : "text-success"}`}
-              title={previousTotal ? `Previous period: ${previousTotal}` : undefined}
+              title={
+                previousTotal ? gt("Previous period: {total}", { total: previousTotal }) : undefined
+              }
             >
               {deltaPct > 0 ? "▲" : "▼"} {Math.abs(deltaPct).toFixed(1)}%
             </span>
@@ -596,10 +613,12 @@ function SpendGraphCard({
         */}
         {adjustment && (
           <p className="text-[11px] text-warning mt-0.5">
-            Billing rules applied — collected spend {adjustedRawTotal}.
+            {gt("Billing rules applied — collected spend {total}.", { total: adjustedRawTotal })}
             {adjustment.rules.length > 0
-              ? ` In force: ${adjustment.rules.map((r) => `${r.name} (${r.summary})`).join("; ")}.`
-              : " No billing rules are defined, so these are the collected figures."}
+              ? gt(" In force: {rules}.", {
+                  rules: adjustment.rules.map((r) => `${r.name} (${r.summary})`).join("; "),
+                })
+              : gt(" No billing rules are defined, so these are the collected figures.")}
             {/*
               Fixed charges are stated separately and never folded into the
               total above, which stays the sum of the series drawn. The figure
@@ -608,24 +627,35 @@ function SpendGraphCard({
               bars.
             */}
             {adjustedFixedTotal &&
-              ` Plus ${adjustedFixedTotal} in fixed charges, not included in the total above (they have no series behind them).`}
+              gt(
+                " Plus {amount} in fixed charges, not included in the total above (they have no series behind them).",
+                { amount: adjustedFixedTotal },
+              )}
           </p>
         )}
         {scenario && (
           <p className="text-[11px] text-warning mt-0.5">
-            Projection includes scenario &ldquo;{scenario.modelName}&rdquo; (
-            {scenario.totalDelta >= 0 ? "+" : "−"}
-            {formatMoney(Math.abs(scenario.totalDelta), scenario.currency)} over the forecast
-            horizon). The dashed trend line is the unadjusted forecast.
+            {gt(
+              'Projection includes scenario "{name}" ({sign}{amount} over the forecast horizon). The dashed trend line is the unadjusted forecast.',
+              {
+                name: scenario.modelName,
+                sign: scenario.totalDelta >= 0 ? "+" : "−",
+                amount: formatMoney(Math.abs(scenario.totalDelta), scenario.currency),
+              },
+            )}
             {scenario.convertedFrom &&
-              ` Amounts converted from ${scenario.convertedFrom} at your stated rates.`}
+              gt(" Amounts converted from {currency} at your stated rates.", {
+                currency: scenario.convertedFrom,
+              })}
             {scenario.outOfScope.length > 0 &&
-              ` Not applied here (out of this chart's scope): ${scenario.outOfScope.join(", ")}.`}
+              gt(" Not applied here (out of this chart's scope): {list}.", {
+                list: scenario.outOfScope.join(", "),
+              })}
           </p>
         )}
         {(mixedCurrency || periodNativeNote || conversionNote) && (
           <p className="text-[11px] text-on-surface-faint mt-0.5">
-            {mixedCurrency && "Mixed currencies — series are shown per currency. "}
+            {mixedCurrency && gt("Mixed currencies — series are shown per currency. ")}
             {/*
               Sits with the other caveats, under the title, for the same reason
               they do: a total that folded three currencies together at rates
@@ -633,7 +663,7 @@ function SpendGraphCard({
               a tooltip nobody opens.
             */}
             {conversionNote && `${conversionNote} `}
-            {periodNativeNote && "Some providers report monthly totals, shown on period dates."}
+            {periodNativeNote && gt("Some providers report monthly totals, shown on period dates.")}
           </p>
         )}
       </div>
@@ -648,7 +678,7 @@ function SpendGraphCard({
             role="status"
             className="flex-1 flex items-center justify-center text-sm text-on-surface-faint"
           >
-            Loading costs…
+            {gt("Loading costs…")}
           </div>
         ) : error ? (
           <div
@@ -682,9 +712,23 @@ function SpendGraphCard({
                   type="button"
                   onClick={() => setOpenMarker(openMarker === marker.bucket ? null : marker.bucket)}
                   aria-expanded={openMarker === marker.bucket}
-                  aria-label={`Annotation ${marker.index}, ${dates}: ${first.text}${
-                    more > 0 ? `, and ${more} more on the same bucket` : ""
-                  }`}
+                  aria-label={
+                    more > 0
+                      ? gt(
+                          "Annotation {index}, {dates}: {text}, and {more} more on the same bucket",
+                          {
+                            index: marker.index,
+                            dates,
+                            text: first.text,
+                            more,
+                          },
+                        )
+                      : gt("Annotation {index}, {dates}: {text}", {
+                          index: marker.index,
+                          dates,
+                          text: first.text,
+                        })
+                  }
                   className="flex max-w-full items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] text-on-surface-secondary hover:border-border-strong hover:text-on-surface focus-visible:border-border-strong"
                 >
                   <span
@@ -723,7 +767,7 @@ function SpendGraphCard({
                 }
                 className="rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] text-on-surface-faint hover:border-border-strong hover:text-on-surface-secondary"
               >
-                + Annotate
+                {gt("+ Annotate")}
               </button>
             )}
           </div>
@@ -743,7 +787,7 @@ function SpendGraphCard({
                         doubts it can go and check it against the finding rather
                         than taking it on trust.
                       */}
-                      {annotation.costAnomalyId ? " · Explains a detected anomaly" : ""}
+                      {annotation.costAnomalyId ? gt(" · Explains a detected anomaly") : ""}
                     </p>
                   </div>
                   {canWriteAnnotations && (
@@ -752,7 +796,7 @@ function SpendGraphCard({
                       onClick={() => setEditing({ annotation, startDate: annotation.startDate })}
                       className="shrink-0 text-[11px] text-on-surface-faint underline hover:text-on-surface-secondary"
                     >
-                      Edit
+                      {gt("Edit")}
                     </button>
                   )}
                 </li>

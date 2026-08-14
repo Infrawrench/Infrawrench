@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
+import { useGT } from "gt-react";
 import type { PolicyOption } from "@infrawrench/plugin-base";
+import { useDataString } from "../../i18n/data-strings.js";
 
 function parseSelection(value: string): string[] {
   if (!value) return [];
@@ -24,6 +26,8 @@ export function PolicyPicker({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [search, setSearch] = useState("");
 
   const selectedIds = useMemo(() => parseSelection(value), [value]);
@@ -78,13 +82,13 @@ export function PolicyPicker({
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-accent-muted text-accent-on-muted text-xs"
               >
                 <span className="truncate max-w-[240px]" title={p?.description ?? id}>
-                  {label}
+                  {gtData(label)}
                 </span>
                 <button
                   type="button"
                   onClick={() => remove(id)}
                   className="text-accent-on-muted/70 hover:text-accent-on-muted"
-                  aria-label={`Remove ${label}`}
+                  aria-label={gt("Remove {label}", { label: gtData(label) })}
                 >
                   ×
                 </button>
@@ -98,21 +102,23 @@ export function PolicyPicker({
       <div className="px-3 py-2 border-b border-border-strong bg-surface-overlay/50 flex items-center gap-2">
         <input
           type="text"
-          aria-label="Search policies"
+          aria-label={gt("Search policies")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder={`Search ${policies.length} policies…`}
+          placeholder={gt("Search {count} policies…", { count: policies.length })}
           className="flex-1 bg-transparent text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none"
         />
         {selectedIds.length > 0 && (
-          <span className="text-[11px] text-on-surface-faint">{selectedIds.length} selected</span>
+          <span className="text-[11px] text-on-surface-faint">
+            {gt("{count} selected", { count: selectedIds.length })}
+          </span>
         )}
       </div>
 
       <div className="max-h-64 overflow-y-auto">
         {filtered ? (
           filtered.length === 0 ? (
-            <p className="p-3 text-xs text-on-surface-faint">No matches</p>
+            <p className="p-3 text-xs text-on-surface-faint">{gt("No matches")}</p>
           ) : (
             filtered.map((p) => (
               <PolicyRow

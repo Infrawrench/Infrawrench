@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useGT } from "gt-react";
 import { formatErrorMessage } from "../../utils.js";
 
 export interface SshKeyEntry {
@@ -60,6 +61,7 @@ export function SshKeyPicker({
   showCloudSection = true,
   onCloudSignIn,
 }: SshKeyPickerProps) {
+  const gt = useGT();
   const [cloudKeys, setCloudKeys] = useState<SshKeyEntry[]>([]);
   const [cloudLoading, setCloudLoading] = useState(true);
   const loading = cloudEnabled ? cloudLoading : false;
@@ -153,11 +155,13 @@ export function SshKeyPicker({
         <span
           className={`w-2 h-2 rounded-full flex-shrink-0 ${noneSelected ? "bg-blue-400" : "bg-surface-sunken"}`}
         />
-        No SSH key
+        {gt("No SSH key")}
       </button>
 
       <div className="max-h-52 overflow-y-auto">
-        {loading && <p className="px-3 py-2 text-xs text-on-surface-faint">Loading keys…</p>}
+        {loading && (
+          <p className="px-3 py-2 text-xs text-on-surface-faint">{gt("Loading keys…")}</p>
+        )}
 
         {/* 1Password agent keys (desktop only) */}
         {onePasswordKeys && onePasswordKeys.length > 0 && (
@@ -187,7 +191,8 @@ export function SshKeyPicker({
                   <span className="flex-1 min-w-0">
                     <span className="font-medium block text-xs">{k.name}</span>
                     <span className="text-[11px] text-on-surface-faint">
-                      1Password agent{keyType ? ` · ${keyType}` : ""}
+                      {gt("{brand} agent", { brand: "1Password" })}
+                      {keyType ? ` · ${keyType}` : ""}
                     </span>
                   </span>
                 </button>
@@ -201,7 +206,7 @@ export function SshKeyPicker({
           <div>
             <div className="px-3 py-1 bg-surface-overlay/30 border-b border-border-strong/40">
               <span className="text-[10px] font-semibold text-on-surface-faint uppercase tracking-wide">
-                System (~/.ssh)
+                {gt("System ({path})", { path: "~/.ssh" })}
               </span>
             </div>
             {systemKeys.map((k) => {
@@ -238,7 +243,7 @@ export function SshKeyPicker({
           <div>
             <div className="px-3 py-1 bg-surface-overlay/30 border-b border-border-strong/40 flex items-center justify-between">
               <span className="text-[10px] font-semibold text-on-surface-faint uppercase tracking-wide">
-                Cloud keys
+                {gt("Cloud keys")}
               </span>
               {cloudEnabled && cloudKeys.length > 0 && (
                 <span className="text-[10px] text-on-surface-faint">{cloudKeys.length}</span>
@@ -247,7 +252,7 @@ export function SshKeyPicker({
             {!cloudEnabled ? (
               <div className="px-3 py-2.5 flex items-center justify-between">
                 <span className="text-xs text-on-surface-faint">
-                  Sign in to use cloud-managed keys
+                  {gt("Sign in to use cloud-managed keys")}
                 </span>
                 {onCloudSignIn && (
                   <button
@@ -255,14 +260,16 @@ export function SshKeyPicker({
                     onClick={onCloudSignIn}
                     className="text-xs text-accent hover:text-accent-on-muted transition-colors"
                   >
-                    Sign in
+                    {gt("Sign in")}
                   </button>
                 )}
               </div>
             ) : (
               <>
                 {cloudKeys.length === 0 && !showGenerate && (
-                  <p className="px-3 py-2 text-xs text-on-surface-faint">No cloud keys yet.</p>
+                  <p className="px-3 py-2 text-xs text-on-surface-faint">
+                    {gt("No cloud keys yet.")}
+                  </p>
                 )}
                 {cloudKeys.map((k) => {
                   const selected = value === k.publicKey;
@@ -285,7 +292,7 @@ export function SshKeyPicker({
                           <span className="font-medium block text-xs">{k.name}</span>
                           <span className="text-[11px] text-on-surface-faint">
                             {k.keyType && <>{k.keyType} · </>}
-                            {k.ownerName ?? k.ownerEmail ?? "you"}
+                            {k.ownerName ?? k.ownerEmail ?? gt("you")}
                           </span>
                         </span>
                       </button>
@@ -297,8 +304,8 @@ export function SshKeyPicker({
                             void handleDelete(k.id);
                           }}
                           className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-on-surface-faint hover:text-danger text-xs px-1 transition-all flex-shrink-0"
-                          title="Remove key"
-                          aria-label={`Remove SSH key ${k.name}`}
+                          title={gt("Remove key")}
+                          aria-label={gt("Remove SSH key {name}", { name: k.name })}
                         >
                           ✕
                         </button>
@@ -316,7 +323,7 @@ export function SshKeyPicker({
       {showCloudSection && cloudEnabled && generatedPrivateKey && (
         <div className="border-t border-border-strong/40 p-3 space-y-2 bg-yellow-100 dark:bg-yellow-900/10">
           <p className="text-xs text-warning font-medium">
-            Save this private key now, it won't be shown again.
+            {gt("Save this private key now, it won't be shown again.")}
           </p>
           <pre className="w-full bg-surface-raised border border-border-strong rounded px-2 py-1.5 text-[10px] text-on-surface-secondary font-mono overflow-x-auto max-h-32 overflow-y-auto select-all whitespace-pre">
             {generatedPrivateKey}
@@ -327,14 +334,14 @@ export function SshKeyPicker({
               onClick={handleCopyPrivateKey}
               className="px-3 py-1 rounded bg-surface-sunken hover:bg-surface-sunken text-xs text-on-surface-secondary transition-colors"
             >
-              Copy
+              {gt("Copy")}
             </button>
             <button
               type="button"
               onClick={handleDismissPrivateKey}
               className="px-3 py-1 rounded bg-surface-sunken hover:bg-surface-sunken text-xs text-on-surface-secondary transition-colors"
             >
-              I've saved it
+              {gt("I've saved it")}
             </button>
           </div>
         </div>
@@ -351,8 +358,8 @@ export function SshKeyPicker({
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-xs text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
-              placeholder="Key name (e.g. deploy-key)"
-              aria-label="Key name"
+              placeholder={gt("Key name (e.g. deploy-key)")}
+              aria-label={gt("Key name")}
               spellCheck={false}
             />
             {error && <p className="text-xs text-danger">{error}</p>}
@@ -366,7 +373,7 @@ export function SshKeyPicker({
                 }}
                 className="px-3 py-1 text-xs text-on-surface-muted hover:text-on-surface-secondary transition-colors"
               >
-                Cancel
+                {gt("Cancel")}
               </button>
               <button
                 type="button"
@@ -374,7 +381,7 @@ export function SshKeyPicker({
                 disabled={generating || !newName.trim()}
                 className="px-3 py-1 rounded bg-surface-sunken hover:bg-surface-sunken text-xs text-on-surface-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                {generating ? "Generating..." : "Generate Key"}
+                {generating ? gt("Generating...") : gt("Generate Key")}
               </button>
             </div>
           </div>
@@ -384,7 +391,7 @@ export function SshKeyPicker({
             onClick={() => setShowGenerate(true)}
             className="w-full px-3 py-2 text-xs text-on-surface-faint hover:text-on-surface-tertiary hover:bg-surface-overlay/50 transition-colors text-left border-t border-border-strong/40"
           >
-            + Generate SSH key
+            {gt("+ Generate SSH key")}
           </button>
         ))}
     </div>

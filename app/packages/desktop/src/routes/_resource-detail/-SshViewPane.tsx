@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import { SshTerminal } from "../../components/SshTerminal";
 import { SshQuickConnectPanel } from "../../components/SshQuickConnectPanel";
 import { invoke } from "../../lib/invoke";
@@ -50,6 +51,7 @@ export function SshViewPane({
   agentKeyScope = "app",
   agentLaunchError,
 }: SshViewPaneProps) {
+  const gt = useGT();
   const storageKey = agentForwardStorageKey(accountId, decodedResourceId);
   const [autoConnectError, setAutoConnectError] = useState<string | null>(null);
   const [autoConnectPending, setAutoConnectPending] = useState(false);
@@ -190,8 +192,8 @@ export function SshViewPane({
         ) : sshHost && (autoConnectPending || !autoConnectReady) ? (
           <div className="flex h-full items-center justify-center px-4 text-sm text-on-surface-muted">
             {autoConnectReady
-              ? "Connecting with infrawrench-agent..."
-              : "Preparing agent SSH session..."}
+              ? gt("Connecting with infrawrench-agent...")
+              : gt("Preparing agent SSH session...")}
           </div>
         ) : sshHost ? (
           <>
@@ -202,8 +204,10 @@ export function SshViewPane({
             )}
             {autoConnectError && (
               <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-warning">
-                Could not auto-connect with {effectiveSshKeyName ?? "the agent key"}:{" "}
-                {autoConnectError}
+                {gt("Could not auto-connect with {keyName}: {error}", {
+                  keyName: effectiveSshKeyName ?? gt("the agent key"),
+                  error: autoConnectError,
+                })}
               </div>
             )}
             <SshQuickConnectPanel
@@ -229,10 +233,10 @@ export function SshViewPane({
               </div>
             )}
             <div className="text-sm text-on-surface-muted animate-pulse">
-              Waiting for an SSH address…
+              {gt("Waiting for an SSH address…")}
             </div>
             <div className="text-xs text-on-surface-faint">
-              The server may still be starting up. This view refreshes automatically.
+              {gt("The server may still be starting up. This view refreshes automatically.")}
             </div>
           </div>
         )}
@@ -246,23 +250,26 @@ function formatErrorMessage(error: unknown): string {
 }
 
 function AgentForwardToolbar({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  const gt = useGT();
   return (
     <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border/60 bg-surface/40">
       <label className="flex items-center gap-2 text-xs text-on-surface-muted cursor-pointer select-none">
         <input
           type="checkbox"
-          aria-label="Forward SSH agent"
+          aria-label={gt("Forward SSH agent")}
           checked={checked}
           onChange={onChange}
           className="accent-green-600"
         />
-        <span>Forward SSH agent</span>
+        <span>{gt("Forward SSH agent")}</span>
       </label>
       <span
         className="text-[10px] text-on-surface-faint"
-        title="Forwards the same SSH key you used to log in, so commands like `git clone` on the remote can authenticate with it. A compromised remote could use the forwarded key against other hosts that accept it — only enable for hosts you trust. Takes effect on the next connection."
+        title={gt(
+          "Forwards the same SSH key you used to log in, so commands like `git clone` on the remote can authenticate with it. A compromised remote could use the forwarded key against other hosts that accept it — only enable for hosts you trust. Takes effect on the next connection.",
+        )}
       >
-        (forwards your selected key; applies on next connect)
+        {gt("(forwards your selected key; applies on next connect)")}
       </span>
     </div>
   );

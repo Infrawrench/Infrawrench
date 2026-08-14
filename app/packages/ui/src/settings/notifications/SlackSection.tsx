@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { T, Var, useGT } from "gt-react";
 import type { SlackAvailableChannel, SlackStatus } from "@infrawrench/client-core";
 import { useSettingsHost } from "../host.js";
 import { Field, inputClass } from "./shared.js";
@@ -33,6 +34,7 @@ export function SlackMark({ className }: { className?: string }) {
  * `?slack=connected`, which the banner below reports.
  */
 export function SlackSection({ orgId, embedded = false }: { orgId: string; embedded?: boolean }) {
+  const gt = useGT();
   const { api, openExternal } = useSettingsHost();
   const [status, setStatus] = useState<SlackStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +60,7 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
     try {
       setStatus(await api.get<SlackStatus>(`/api/org/${orgId}/slack/status`));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load Slack settings");
+      setError(e instanceof Error ? e.message : gt("Failed to load Slack settings"));
     }
   }
 
@@ -78,7 +80,7 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
       openExternal(url, { sameTab: true });
       setBusy(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start the Slack install");
+      setError(e instanceof Error ? e.message : gt("Failed to start the Slack install"));
       setBusy(false);
     }
   }
@@ -102,10 +104,16 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
       );
       setTestMessage({
         kind: "ok",
-        text: `Posted to ${r.succeeded}/${r.channelCount} channel(s).`,
+        text: gt("Posted to {succeeded}/{count} channel(s).", {
+          succeeded: r.succeeded,
+          count: r.channelCount,
+        }),
       });
     } catch (e) {
-      setTestMessage({ kind: "error", text: e instanceof Error ? e.message : "Test failed" });
+      setTestMessage({
+        kind: "error",
+        text: e instanceof Error ? e.message : gt("Test failed"),
+      });
     } finally {
       setBusy(false);
     }
@@ -125,7 +133,7 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
         {error ? (
           <p className="text-xs text-danger">{error}</p>
         ) : (
-          <p className="text-sm text-on-surface-faint">Loading…</p>
+          <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
         )}
       </>,
       "space-y-2",
@@ -142,32 +150,35 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
       </div>
 
       {installResult === "connected" && (
-        <p className="text-xs text-success">Slack workspace connected.</p>
+        <p className="text-xs text-success">{gt("Slack workspace connected.")}</p>
       )}
       {installResult === "cancelled" && (
-        <p className="text-xs text-on-surface-muted">Slack install was cancelled.</p>
+        <p className="text-xs text-on-surface-muted">{gt("Slack install was cancelled.")}</p>
       )}
       {installResult === "linked" && (
         <p className="text-xs text-success">
-          Your Slack account is linked. You can now run /infrawrench commands and decide approvals
-          from Slack.
+          {gt(
+            "Your Slack account is linked. You can now run /infrawrench commands and decide approvals from Slack.",
+          )}
         </p>
       )}
       {installResult === "error" && (
         <p className="text-xs text-danger">
-          The Slack install didn&apos;t complete. Try connecting again.
+          {gt("The Slack install didn't complete. Try connecting again.")}
         </p>
       )}
 
       {!status.configured ? (
-        <p className="text-sm text-on-surface-muted">
-          Slack isn&apos;t set up on this server. An administrator needs to register a Slack app and
-          set <code>SLACK_CLIENT_ID</code> and <code>SLACK_CLIENT_SECRET</code>.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-muted">
+            Slack isn&apos;t set up on this server. An administrator needs to register a Slack app
+            and set <code>SLACK_CLIENT_ID</code> and <code>SLACK_CLIENT_SECRET</code>.
+          </p>
+        </T>
       ) : !install ? (
         <>
           <p className="text-xs text-on-surface-muted">
-            Connect a workspace, then pick the channels each kind of alert should go to.
+            {gt("Connect a workspace, then pick the channels each kind of alert should go to.")}
           </p>
           <div className="flex justify-end">
             <button
@@ -177,28 +188,33 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
               className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium border border-border-strong hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
             >
               <SlackMark className="w-4 h-4" />
-              {busy ? "Opening Slack…" : "Add to Slack"}
+              {busy ? gt("Opening Slack…") : gt("Add to Slack")}
             </button>
           </div>
         </>
       ) : (
         <>
           <div className="flex items-center justify-between text-sm">
-            <p className="text-on-surface-secondary">
-              Connected to <span className="font-medium">{install.teamName ?? install.teamId}</span>
-            </p>
+            <T>
+              <p className="text-on-surface-secondary">
+                Connected to{" "}
+                <Var>
+                  <span className="font-medium">{install.teamName ?? install.teamId}</span>
+                </Var>
+              </p>
+            </T>
             <button
               type="button"
               onClick={() => void handleDisconnect(install.id)}
               className="text-xs text-danger hover:text-danger-strong"
             >
-              Disconnect
+              {gt("Disconnect")}
             </button>
           </div>
 
           {status.channels.length === 0 ? (
             <p className="text-sm text-on-surface-muted">
-              No channels yet. Add one below to start receiving alerts.
+              {gt("No channels yet. Add one below to start receiving alerts.")}
             </p>
           ) : (
             <ul className="divide-y divide-border/50">
@@ -211,7 +227,7 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
                     #{ch.channelName}
                     {ch.isPrivate && (
                       <span className="ml-2 text-xs font-sans text-on-surface-tertiary">
-                        private
+                        {gt("private")}
                       </span>
                     )}
                   </p>
@@ -221,7 +237,7 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
                       onClick={() => void handleRemoveChannel(ch.id)}
                       className="text-danger hover:text-danger-strong"
                     >
-                      Remove
+                      {gt("Remove")}
                     </button>
                   </div>
                 </li>
@@ -236,11 +252,13 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
             onAdded={() => void load()}
           />
 
-          <p className="text-xs text-on-surface-faint">
-            Public channels work as soon as you add them. For a private channel, invite the
-            Infrawrench app to it in Slack first — otherwise posting fails with{" "}
-            <code>not_in_channel</code>.
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-faint">
+              Public channels work as soon as you add them. For a private channel, invite the
+              Infrawrench app to it in Slack first — otherwise posting fails with{" "}
+              <code>not_in_channel</code>.
+            </p>
+          </T>
 
           {error && <p className="text-xs text-danger">{error}</p>}
           {testMessage && (
@@ -253,10 +271,10 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
               type="button"
               onClick={() => void handleTest()}
               disabled={busy || status.channels.length === 0}
-              title={status.channels.length === 0 ? "Add a channel first" : undefined}
+              title={status.channels.length === 0 ? gt("Add a channel first") : undefined}
               className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
             >
-              {busy ? "Posting…" : "Send test message"}
+              {busy ? gt("Posting…") : gt("Send test message")}
             </button>
           </div>
         </>
@@ -281,6 +299,7 @@ function AddSlackChannel({
   existing: string[];
   onAdded: () => void;
 }) {
+  const gt = useGT();
   const { api } = useSettingsHost();
   const [available, setAvailable] = useState<SlackAvailableChannel[] | null>(null);
   const [selected, setSelected] = useState("");
@@ -297,7 +316,7 @@ function AddSlackChannel({
       );
       setAvailable(r.channels);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to list Slack channels");
+      setError(e instanceof Error ? e.message : gt("Failed to list Slack channels"));
       setAvailable([]);
     } finally {
       setLoading(false);
@@ -319,7 +338,7 @@ function AddSlackChannel({
       setSelected("");
       onAdded();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add the channel");
+      setError(e instanceof Error ? e.message : gt("Failed to add the channel"));
     } finally {
       setSaving(false);
     }
@@ -334,7 +353,7 @@ function AddSlackChannel({
           disabled={loading}
           className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
         >
-          {loading ? "Loading channels…" : "Add a channel"}
+          {loading ? gt("Loading channels…") : gt("Add a channel")}
         </button>
         {error && <p className="text-xs text-danger mt-2">{error}</p>}
       </div>
@@ -345,25 +364,25 @@ function AddSlackChannel({
 
   return (
     <div className="pt-2 border-t border-border/50 space-y-2">
-      <Field label="Channel">
+      <Field label={gt("Channel")}>
         <select
-          aria-label="Channel"
+          aria-label={gt("Channel")}
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
           className={inputClass}
         >
-          <option value="">Select a channel…</option>
+          <option value="">{gt("Select a channel…")}</option>
           {options.map((c) => (
             <option key={c.id} value={c.id}>
               #{c.name}
-              {c.isPrivate ? " (private)" : ""}
+              {c.isPrivate ? gt(" (private)") : ""}
             </option>
           ))}
         </select>
       </Field>
       {options.length === 0 && (
         <p className="text-xs text-on-surface-faint">
-          Every channel the app can see is already routed here.
+          {gt("Every channel the app can see is already routed here.")}
         </p>
       )}
       {error && <p className="text-xs text-danger">{error}</p>}
@@ -374,7 +393,7 @@ function AddSlackChannel({
           disabled={saving || !selected}
           className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
         >
-          {saving ? "Adding…" : "Add channel"}
+          {saving ? gt("Adding…") : gt("Add channel")}
         </button>
       </div>
     </div>

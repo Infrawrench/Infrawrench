@@ -1,3 +1,4 @@
+import { T, Var, useGT } from "gt-react";
 import {
   formatUptime,
   groupStatusComponents,
@@ -8,6 +9,7 @@ import {
   type StatusHistoryDay,
   type StatusPageState,
 } from "@infrawrench/client-core";
+import { useDataString } from "../i18n/data-strings.js";
 
 export interface PublicStatusPageViewProps {
   page: PublicStatusPage;
@@ -59,9 +61,9 @@ function dayColor(day: StatusHistoryDay): string {
   return "bg-red-500";
 }
 
-function dayTitle(day: StatusHistoryDay): string {
-  if (day.uptime === null) return `${day.day} — no data`;
-  return `${day.day} — ${formatUptime(day.uptime)} uptime`;
+function dayTitle(day: StatusHistoryDay, gt: ReturnType<typeof useGT>): string {
+  if (day.uptime === null) return gt("{day} — no data", { day: day.day });
+  return gt("{day} — {uptime} uptime", { day: day.day, uptime: formatUptime(day.uptime) });
 }
 
 function ComponentRow({
@@ -71,19 +73,25 @@ function ComponentRow({
   component: PublicStatusComponent;
   showUptime: boolean;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   return (
     <div className="flex flex-col gap-2 border-b border-border px-4 py-3 last:border-b-0">
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm font-medium text-on-surface">{component.name}</span>
         <span className="flex items-center gap-2 text-xs">
           {showUptime && component.uptime24h !== null && (
-            <span className="text-on-surface-faint">{formatUptime(component.uptime24h)} 24h</span>
+            <span className="text-on-surface-faint">
+              {gt("{value} 24h", { value: formatUptime(component.uptime24h) })}
+            </span>
           )}
           <span
             aria-hidden="true"
             className={`h-2 w-2 rounded-full ${stateColor(component.state)}`}
           />
-          <span className="text-on-surface-secondary">{statusComponentLabel(component.state)}</span>
+          <span className="text-on-surface-secondary">
+            {gtData(statusComponentLabel(component.state))}
+          </span>
         </span>
       </div>
       {component.history.length > 0 && (
@@ -95,7 +103,7 @@ function ComponentRow({
             {component.history.map((day) => (
               <span
                 key={day.day}
-                title={dayTitle(day)}
+                title={dayTitle(day, gt)}
                 className={`h-6 flex-1 rounded-[1px] ${dayColor(day)}`}
               />
             ))}
@@ -104,22 +112,14 @@ function ComponentRow({
             aria-hidden="true"
             className="flex justify-between text-[10px] text-on-surface-faint"
           >
-            <span>{component.history.length} days ago</span>
-            <span>Today</span>
+            <span>{gt("{count} days ago", { count: component.history.length })}</span>
+            <span>{gt("Today")}</span>
           </div>
         </>
       )}
     </div>
   );
 }
-
-/** Notice states in the words a visitor expects, not the enum's. */
-const NOTICE_STATE_LABELS: Record<string, string> = {
-  investigating: "Investigating",
-  identified: "Identified",
-  monitoring: "Monitoring",
-  resolved: "Resolved",
-};
 
 function formatNoticeTime(iso: string): string {
   try {
@@ -146,8 +146,16 @@ function formatNoticeTime(iso: string): string {
  * component cannot leak what it is never given.
  */
 export function PublicStatusPageView({ page }: PublicStatusPageViewProps) {
+  const gt = useGT();
   const accent = pageAccent(page.state);
   const groups = groupStatusComponents(page.components);
+  /** Notice states in the words a visitor expects, not the enum's. */
+  const noticeStateLabels: Record<string, string> = {
+    investigating: gt("Investigating"),
+    identified: gt("Identified"),
+    monitoring: gt("Monitoring"),
+    resolved: gt("Resolved"),
+  };
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-10">
@@ -171,7 +179,7 @@ export function PublicStatusPageView({ page }: PublicStatusPageViewProps) {
         there is nothing here to accidentally render.
       */}
       {(page.notices ?? []).length > 0 && (
-        <section className="flex flex-col gap-2" aria-label="Updates">
+        <section className="flex flex-col gap-2" aria-label={gt("Updates")}>
           {(page.notices ?? []).map((notice) => (
             <article
               key={notice.id}
@@ -183,7 +191,7 @@ export function PublicStatusPageView({ page }: PublicStatusPageViewProps) {
             >
               <div className="flex flex-wrap items-baseline gap-2">
                 <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-tertiary">
-                  {NOTICE_STATE_LABELS[notice.state] ?? notice.state}
+                  {noticeStateLabels[notice.state] ?? notice.state}
                 </span>
                 <span className="text-xs text-on-surface-faint">
                   {formatNoticeTime(notice.resolvedAt ?? notice.startedAt)}
@@ -202,7 +210,7 @@ export function PublicStatusPageView({ page }: PublicStatusPageViewProps) {
 
       {page.components.length === 0 ? (
         <p className="text-sm text-on-surface-faint">
-          No components are being published on this page yet.
+          {gt("No components are being published on this page yet.")}
         </p>
       ) : (
         groups.map((group) => (
@@ -227,8 +235,12 @@ export function PublicStatusPageView({ page }: PublicStatusPageViewProps) {
 
       <footer className="flex flex-wrap items-center justify-between gap-2 text-xs text-on-surface-faint">
         <span>
-          Updated{" "}
-          <time dateTime={page.generatedAt}>{new Date(page.generatedAt).toLocaleString()}</time>
+          <T>
+            Updated{" "}
+            <Var>
+              <time dateTime={page.generatedAt}>{new Date(page.generatedAt).toLocaleString()}</time>
+            </Var>
+          </T>
         </span>
         {page.supportUrl && (
           <a
@@ -237,7 +249,7 @@ export function PublicStatusPageView({ page }: PublicStatusPageViewProps) {
             rel="noreferrer noopener"
             className="underline hover:text-on-surface"
           >
-            Contact support
+            {gt("Contact support")}
           </a>
         )}
       </footer>

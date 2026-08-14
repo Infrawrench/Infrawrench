@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useId, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 
 import { Modal } from "../components/Modal.js";
+import { useDataString } from "../i18n/data-strings.js";
 import { CostFilterEditor } from "./CostGraphConfigModal.js";
 import {
   BUSINESS_METRIC_KEY_HELP,
@@ -46,16 +48,26 @@ function metricToInput(metric: BusinessMetric): BusinessMetricInput {
  * the list says it here, and says it in terms of days rather than a date range,
  * because "42 of 90 days" is the sentence that makes someone go and look.
  */
-function describeCoverage(metric: BusinessMetric): string {
-  if (!metric.coverage) return "No values reported yet — unit costs will be one continuous gap.";
+function describeCoverage(metric: BusinessMetric, gt: ReturnType<typeof useGT>): string {
+  if (!metric.coverage) {
+    return gt("No values reported yet — unit costs will be one continuous gap.");
+  }
   const { firstDay, lastDay, reportedDays } = metric.coverage;
   const span =
     Math.round(
       (new Date(`${lastDay}T00:00:00Z`).getTime() - new Date(`${firstDay}T00:00:00Z`).getTime()) /
         86_400_000,
     ) + 1;
-  const sparse = reportedDays < span ? ` (${span - reportedDays} missing)` : "";
-  return `${reportedDays} day${reportedDays === 1 ? "" : "s"} reported, ${firstDay} → ${lastDay}${sparse}`;
+  const missing = span - reportedDays;
+  const sparse = reportedDays < span ? gt(" ({missing} missing)", { missing }) : "";
+  const dayLabel = reportedDays === 1 ? gt("day") : gt("days");
+  return gt("{reportedDays} {dayLabel} reported, {firstDay} → {lastDay}{sparse}", {
+    reportedDays,
+    dayLabel,
+    firstDay,
+    lastDay,
+    sparse,
+  });
 }
 
 /**
@@ -68,6 +80,7 @@ function describeCoverage(metric: BusinessMetric): string {
  * carries the same filter editor a graph does rather than a simplified one.
  */
 export function UnitCostsSection({ client }: { client: CostsClient }) {
+  const gt = useGT();
   const [metrics, setMetrics] = useState<BusinessMetric[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ metric: BusinessMetric | null } | null>(null);
@@ -107,8 +120,10 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
   async function remove(metric: BusinessMetric) {
     if (
       !window.confirm(
-        `Delete the metric "${metric.name}"? Its reported values go with it, and any unit-cost ` +
-          "card using it will show an error rather than falling back to plain spend.",
+        gt(
+          'Delete the metric "{name}"? Its reported values go with it, and any unit-cost card using it will show an error rather than falling back to plain spend.',
+          { name: metric.name },
+        ),
       )
     ) {
       return;
@@ -126,11 +141,13 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-on-surface">Unit costs</h2>
-          <p className="text-xs text-on-surface-faint mt-0.5">
-            What one of the things you do costs. Declare the number your business runs on —
-            customers, requests, GB — report it daily, and any cost graph can divide spend by it.
-          </p>
+          <h2 className="text-sm font-semibold text-on-surface">{gt("Unit costs")}</h2>
+          <T>
+            <p className="text-xs text-on-surface-faint mt-0.5">
+              What one of the things you do costs. Declare the number your business runs on —
+              customers, requests, GB — report it daily, and any cost graph can divide spend by it.
+            </p>
+          </T>
         </div>
         {canWrite && (
           <button
@@ -138,32 +155,36 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
             onClick={() => setEditing({ metric: null })}
             className="shrink-0 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            New metric
+            {gt("New metric")}
           </button>
         )}
       </div>
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          Couldn&rsquo;t load business metrics — {error}{" "}
+          {gt("Couldn’t load business metrics — {error}", { error })}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
-            Retry
+            {gt("Retry")}
           </button>
         </div>
       )}
 
       {metrics === null && error === null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Loading business metrics…
+          {gt("Loading business metrics…")}
         </p>
       )}
 
       {metrics?.length === 0 && (
-        <p className="text-sm text-on-surface-faint">
-          No business metrics yet. Add one, then report its daily values from a workflow with{" "}
-          <code className="text-on-surface-secondary">infra.businessMetrics.write</code>, over the
-          API, or by hand.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-faint">
+            No business metrics yet. Add one, then report its daily values from a workflow with{" "}
+            <Var>
+              <code className="text-on-surface-secondary">infra.businessMetrics.write</code>
+            </Var>
+            , over the API, or by hand.
+          </p>
+        </T>
       )}
 
       <ul className="flex flex-col gap-2">
@@ -178,16 +199,21 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
                   {metric.name} <code className="text-xs text-on-surface-faint">{metric.key}</code>
                 </span>
                 <span className="block text-xs text-on-surface-faint mt-0.5">
-                  per {metric.unit}
-                  {metric.kind === "currency" ? ` · revenue in ${metric.currency}` : ""}
+                  {gt("per {unit}", { unit: metric.unit })}
+                  {metric.kind === "currency"
+                    ? gt(" · revenue in {currency}", { currency: metric.currency ?? "" })
+                    : ""}
                   {metric.costScope.length > 0
-                    ? ` · scoped to ${metric.costScope.length} filter${metric.costScope.length === 1 ? "" : "s"}`
-                    : " · all spend"}
+                    ? gt(" · scoped to {count} {filterLabel}", {
+                        count: metric.costScope.length,
+                        filterLabel: metric.costScope.length === 1 ? gt("filter") : gt("filters"),
+                      })
+                    : gt(" · all spend")}
                 </span>
                 <span
                   className={`block text-xs mt-0.5 ${metric.coverage ? "text-on-surface-faint" : "text-warning"}`}
                 >
-                  {describeCoverage(metric)}
+                  {describeCoverage(metric, gt)}
                 </span>
                 {metric.description && (
                   <span className="block text-xs text-on-surface-faint mt-0.5">
@@ -202,7 +228,7 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
                     onClick={() => setReporting(metric)}
                     className="text-on-surface-secondary hover:text-on-surface underline"
                   >
-                    Values
+                    {gt("Values")}
                   </button>
                 )}
                 {canWrite && (
@@ -212,14 +238,14 @@ export function UnitCostsSection({ client }: { client: CostsClient }) {
                       onClick={() => setEditing({ metric })}
                       className="text-on-surface-secondary hover:text-on-surface underline"
                     >
-                      Edit
+                      {gt("Edit")}
                     </button>
                     <button
                       type="button"
                       onClick={() => void remove(metric)}
                       className="text-on-surface-faint hover:text-danger underline"
                     >
-                      Delete
+                      {gt("Delete")}
                     </button>
                   </>
                 )}
@@ -272,6 +298,8 @@ function BusinessMetricModal({
   onSave: (input: BusinessMetricInput) => Promise<void>;
   onClose: () => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const uid = useId();
   const [input, setInput] = useState<BusinessMetricInput>(initialInput);
   const [busy, setBusy] = useState(false);
@@ -310,10 +338,13 @@ function BusinessMetricModal({
     (input.kind !== "currency" || !!input.currency?.trim());
 
   return (
-    <Modal onClose={onClose} ariaLabel={isNew ? "New business metric" : "Edit business metric"}>
+    <Modal
+      onClose={onClose}
+      ariaLabel={isNew ? gt("New business metric") : gt("Edit business metric")}
+    >
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[560px] max-h-[85vh] overflow-y-auto p-6">
         <h2 className="text-base font-semibold text-on-surface mb-4">
-          {isNew ? "New business metric" : "Edit business metric"}
+          {isNew ? gt("New business metric") : gt("Edit business metric")}
         </h2>
 
         {error !== null && (
@@ -326,7 +357,7 @@ function BusinessMetricModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelClass} htmlFor={`${uid}-name`}>
-                Name
+                {gt("Name")}
               </label>
               <input
                 id={`${uid}-name`}
@@ -339,7 +370,7 @@ function BusinessMetricModal({
             </div>
             <div>
               <label className={labelClass} htmlFor={`${uid}-key`}>
-                Key
+                {gt("Key")}
               </label>
               <input
                 id={`${uid}-key`}
@@ -349,14 +380,16 @@ function BusinessMetricModal({
                 onChange={(e) => set("key", normalizeBusinessMetricKey(e.target.value))}
                 placeholder="active-customers"
               />
-              <p className="text-[11px] text-on-surface-faint mt-1">{BUSINESS_METRIC_KEY_HELP}</p>
+              <p className="text-[11px] text-on-surface-faint mt-1">
+                {gtData(BUSINESS_METRIC_KEY_HELP)}
+              </p>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelClass} htmlFor={`${uid}-unit`}>
-                Unit (singular)
+                {gt("Unit (singular)")}
               </label>
               <input
                 id={`${uid}-unit`}
@@ -366,13 +399,15 @@ function BusinessMetricModal({
                 onChange={(e) => set("unit", e.target.value)}
                 placeholder="customer"
               />
-              <p className="text-[11px] text-on-surface-faint mt-1">
-                The noun in &ldquo;USD per customer&rdquo;.
-              </p>
+              <T>
+                <p className="text-[11px] text-on-surface-faint mt-1">
+                  The noun in &ldquo;USD per customer&rdquo;.
+                </p>
+              </T>
             </div>
             <div>
               <label className={labelClass} htmlFor={`${uid}-kind`}>
-                Kind
+                {gt("Kind")}
               </label>
               <select
                 id={`${uid}-kind`}
@@ -382,12 +417,12 @@ function BusinessMetricModal({
               >
                 {BUSINESS_METRIC_KINDS.map((kind) => (
                   <option key={kind} value={kind}>
-                    {BUSINESS_METRIC_KIND_LABELS[kind]}
+                    {gtData(BUSINESS_METRIC_KIND_LABELS[kind])}
                   </option>
                 ))}
               </select>
               <p className="text-[11px] text-on-surface-faint mt-1">
-                {BUSINESS_METRIC_KIND_DESCRIPTIONS[input.kind]}
+                {gtData(BUSINESS_METRIC_KIND_DESCRIPTIONS[input.kind])}
               </p>
             </div>
           </div>
@@ -395,7 +430,7 @@ function BusinessMetricModal({
           {input.kind === "currency" && (
             <div>
               <label className={labelClass} htmlFor={`${uid}-currency`}>
-                Revenue currency
+                {gt("Revenue currency")}
               </label>
               <input
                 id={`${uid}-currency`}
@@ -405,16 +440,18 @@ function BusinessMetricModal({
                 onChange={(e) => set("currency", e.target.value.toUpperCase())}
                 placeholder="USD"
               />
-              <p className="text-[11px] text-on-surface-faint mt-1">
-                Margin subtracts spend from revenue, so both have to be in this currency. Spend in a
-                currency you have stated no rate for is shown as a gap rather than folded in.
-              </p>
+              <T>
+                <p className="text-[11px] text-on-surface-faint mt-1">
+                  Margin subtracts spend from revenue, so both have to be in this currency. Spend in
+                  a currency you have stated no rate for is shown as a gap rather than folded in.
+                </p>
+              </T>
             </div>
           )}
 
           <div>
             <label className={labelClass} htmlFor={`${uid}-description`}>
-              Description (optional)
+              {gt("Description (optional)")}
             </label>
             <input
               id={`${uid}-description`}
@@ -427,11 +464,13 @@ function BusinessMetricModal({
           </div>
 
           <div>
-            <span className={labelClass}>Spend this metric divides</span>
-            <p className="text-[11px] text-on-surface-faint mb-2">
-              Empty means all of your spend. A unit-cost graph can narrow this further, but never
-              widen it — the scope is part of what the metric means.
-            </p>
+            <span className={labelClass}>{gt("Spend this metric divides")}</span>
+            <T>
+              <p className="text-[11px] text-on-surface-faint mb-2">
+                Empty means all of your spend. A unit-cost graph can narrow this further, but never
+                widen it — the scope is part of what the metric means.
+              </p>
+            </T>
             <CostFilterEditor
               filters={input.costScope ?? []}
               onChange={(filters: CostFilter[]) => set("costScope", filters)}
@@ -446,7 +485,7 @@ function BusinessMetricModal({
             onClick={onClose}
             className="rounded-lg border border-border px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -454,7 +493,7 @@ function BusinessMetricModal({
             onClick={() => void submit()}
             className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
           >
-            Save
+            {gt("Save")}
           </button>
         </div>
       </div>
@@ -481,6 +520,7 @@ function MetricValuesModal({
   onClose: () => void;
   onChanged: () => Promise<void>;
 }) {
+  const gt = useGT();
   const uid = useId();
   const [values, setValues] = useState<BusinessMetricValue[] | null>(null);
   const [day, setDay] = useState(() =>
@@ -510,7 +550,7 @@ function MetricValuesModal({
   async function submit() {
     const parsed = Number(amount);
     if (!Number.isFinite(parsed)) {
-      setError("Enter a number.");
+      setError(gt("Enter a number."));
       return;
     }
     setBusy(true);
@@ -528,12 +568,14 @@ function MetricValuesModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel={`Values for ${metric.name}`}>
+    <Modal onClose={onClose} ariaLabel={gt("Values for {name}", { name: metric.name })}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[460px] max-h-[85vh] overflow-y-auto p-6">
         <h2 className="text-base font-semibold text-on-surface mb-1">{metric.name}</h2>
         <p className="text-xs text-on-surface-faint mb-4">
-          One value per UTC day, in {metric.unit}s. Reporting a day again replaces it rather than
-          adding to it, so a nightly job is safe to re-run.
+          {gt(
+            "One value per UTC day, in {unit}s. Reporting a day again replaces it rather than adding to it, so a nightly job is safe to re-run.",
+            { unit: metric.unit },
+          )}
         </p>
 
         {error !== null && (
@@ -546,7 +588,7 @@ function MetricValuesModal({
           <div className="flex items-end gap-2 mb-4">
             <div className="flex-1">
               <label className={labelClass} htmlFor={`${uid}-day`}>
-                Day
+                {gt("Day")}
               </label>
               <input
                 id={`${uid}-day`}
@@ -558,7 +600,7 @@ function MetricValuesModal({
             </div>
             <div className="flex-1">
               <label className={labelClass} htmlFor={`${uid}-value`}>
-                Value
+                {gt("Value")}
               </label>
               <input
                 id={`${uid}-value`}
@@ -575,19 +617,21 @@ function MetricValuesModal({
               onClick={() => void submit()}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
             >
-              Report
+              {gt("Report")}
             </button>
           </div>
         )}
 
         {values === null && error === null && (
           <p role="status" className="text-sm text-on-surface-faint">
-            Loading values…
+            {gt("Loading values…")}
           </p>
         )}
         {values?.length === 0 && (
           <p className="text-sm text-on-surface-faint">
-            Nothing reported yet — every unit-cost chart for this metric is one continuous gap.
+            {gt(
+              "Nothing reported yet — every unit-cost chart for this metric is one continuous gap.",
+            )}
           </p>
         )}
 
@@ -610,7 +654,7 @@ function MetricValuesModal({
             onClick={onClose}
             className="rounded-lg border border-border px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            Done
+            {gt("Done")}
           </button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
+import { T, useGT } from "gt-react";
 import {
   BACKUP_FINDING_KIND_LABELS,
   BACKUP_POLICY_LIMITS,
@@ -52,6 +53,8 @@ export interface BackupsSectionProps {
 
 type Tab = "findings" | "coverage" | "policies";
 
+type Gt = ReturnType<typeof useGT>;
+
 /** Pill tones per bucket, matching the PostureSection translucent-badge recipe. */
 const SEVERITY_BADGE_CLASSES: Record<BackupSeverity, string> = {
   critical: "bg-red-500/10 text-danger",
@@ -71,13 +74,20 @@ const STATE_BADGE_CLASSES: Record<BackupProtectionState, string> = {
   unprotected: "bg-red-500/10 text-danger",
 };
 
-const STATE_LABELS: Record<BackupProtectionState, string> = {
-  protected: "Backed up",
-  automated: "Provider-managed",
-  stale: "Stale",
-  unknown: "Not assessed",
-  unprotected: "Unprotected",
-};
+function stateLabel(gt: Gt, state: BackupProtectionState): string {
+  switch (state) {
+    case "protected":
+      return gt("Backed up");
+    case "automated":
+      return gt("Provider-managed");
+    case "stale":
+      return gt("Stale");
+    case "unknown":
+      return gt("Not assessed");
+    case "unprotected":
+      return gt("Unprotected");
+  }
+}
 
 const FINDING_KINDS: readonly BackupFindingKind[] = [
   "unprotected",
@@ -122,33 +132,38 @@ function rowKeyHandler(open: () => void) {
  * exists to answer, and "you have 400 snapshots" never was.
  */
 function SummaryCards({ data }: { data: BackupCoverageResponse }) {
+  const gt = useGT();
   const { summary } = data;
   const cards: Array<{ label: string; value: string; hint: string }> = [
     {
-      label: "Worst RPO",
+      label: gt("Worst RPO"),
       value: summary.worstRpoHours == null ? "—" : formatHours(summary.worstRpoHours),
       hint:
         summary.worstRpoHours == null
-          ? "Nothing has a datable backup yet"
-          : "Oldest newest-backup across everything protected",
+          ? gt("Nothing has a datable backup yet")
+          : gt("Oldest newest-backup across everything protected"),
     },
     {
-      label: "Unprotected",
+      label: gt("Unprotected"),
       value: `${summary.unprotectedCount} / ${summary.statefulCount}`,
       hint:
         summary.unknownCount > 0
-          ? `Confirmed gaps — ${summary.unknownCount} more could not be assessed`
-          : "Stateful resources with no backup we can see",
+          ? gt("Confirmed gaps — {count} more could not be assessed", {
+              count: summary.unknownCount,
+            })
+          : gt("Stateful resources with no backup we can see"),
     },
     {
-      label: "Orphaned backups",
+      label: gt("Orphaned backups"),
       value: String(summary.orphanedBackupCount),
       hint:
         summary.orphanedMonthlyCost != null
-          ? `${formatMoney(summary.orphanedMonthlyCost, summary.currency)} in the last 30 days`
+          ? gt("{amount} in the last 30 days", {
+              amount: formatMoney(summary.orphanedMonthlyCost, summary.currency),
+            })
           : summary.orphanedGb != null
-            ? `${formatGb(summary.orphanedGb)} held`
-            : "Backups whose source is gone",
+            ? gt("{size} held", { size: formatGb(summary.orphanedGb) })
+            : gt("Backups whose source is gone"),
     },
   ];
   return (
@@ -167,6 +182,7 @@ function SummaryCards({ data }: { data: BackupCoverageResponse }) {
 }
 
 function SeverityChips({ data }: { data: BackupCoverageResponse }) {
+  const gt = useGT();
   return (
     <div className="flex flex-wrap items-center gap-2 mb-4">
       {BACKUP_SEVERITIES.map((severity) => (
@@ -181,7 +197,7 @@ function SeverityChips({ data }: { data: BackupCoverageResponse }) {
       {data.summary.unattributableBackupCount > 0 && (
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
           <span className="tabular-nums">{data.summary.unattributableBackupCount}</span>
-          Unattributable
+          {gt("Unattributable")}
         </span>
       )}
       {/* Same reason the unattributable count is here: an unassessed resource
@@ -190,7 +206,7 @@ function SeverityChips({ data }: { data: BackupCoverageResponse }) {
       {data.summary.unknownCount > 0 && (
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
           <span className="tabular-nums">{data.summary.unknownCount}</span>
-          Not assessed
+          {gt("Not assessed")}
         </span>
       )}
     </div>
@@ -267,6 +283,7 @@ function CoverageRow({
   row: BackupCoverageRow;
   onOpenResource?: ((f: { accountId: string; resourceId: string }) => void) | undefined;
 }) {
+  const gt = useGT();
   const open = onOpenResource ? () => onOpenResource(row) : undefined;
   return (
     <tr
@@ -305,7 +322,7 @@ function CoverageRow({
         <span
           className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${STATE_BADGE_CLASSES[row.state]}`}
         >
-          {STATE_LABELS[row.state]}
+          {stateLabel(gt, row.state)}
         </span>
       </td>
     </tr>
@@ -355,25 +372,29 @@ function policyToDraft(policy: BackupPolicy): PolicyDraft {
 }
 
 /** Describe a policy's selector in one line, so the list is readable at a glance. */
-function describeSelector(policy: BackupPolicy, typeLabels: Map<string, string>): string {
+function describeSelector(gt: Gt, policy: BackupPolicy, typeLabels: Map<string, string>): string {
   const parts: string[] = [];
   parts.push(
     policy.resourceTypeIds.length === 0
-      ? "every stateful resource"
+      ? gt("every stateful resource")
       : policy.resourceTypeIds.map((id) => typeLabels.get(id) ?? id).join(", "),
   );
   if (policy.tagKey) {
     parts.push(
-      policy.tagValue ? `tagged ${policy.tagKey}=${policy.tagValue}` : `tagged ${policy.tagKey}`,
+      policy.tagValue
+        ? gt("tagged {tagKey}={tagValue}", { tagKey: policy.tagKey, tagValue: policy.tagValue })
+        : gt("tagged {tagKey}", { tagKey: policy.tagKey }),
     );
   }
   return parts.join(", ");
 }
 
-function describeDemands(policy: BackupPolicy): string {
+function describeDemands(gt: Gt, policy: BackupPolicy): string {
   const parts: string[] = [];
-  if (policy.maxRpoHours != null) parts.push(`RPO ≤ ${formatHours(policy.maxRpoHours)}`);
-  if (policy.minRetentionDays != null) parts.push(`retention ≥ ${policy.minRetentionDays}d`);
+  if (policy.maxRpoHours != null)
+    parts.push(gt("RPO ≤ {hours}", { hours: formatHours(policy.maxRpoHours) }));
+  if (policy.minRetentionDays != null)
+    parts.push(gt("retention ≥ {days}d", { days: policy.minRetentionDays }));
   return parts.join(" · ");
 }
 
@@ -388,26 +409,27 @@ function PolicyEditor({
   resourceTypeOptions: ReadonlyArray<{ id: string; label: string }>;
   disabled: boolean;
 }) {
+  const gt = useGT();
   const inputClass =
     "rounded-lg border border-border bg-surface-raised px-2 py-1 text-xs text-on-surface disabled:opacity-50";
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border p-4">
       <label className="flex flex-col gap-1 text-xs text-on-surface-tertiary">
-        Name
+        {gt("Name")}
         <input
           type="text"
           value={draft.name}
           disabled={disabled}
           maxLength={BACKUP_POLICY_LIMITS.maxNameLength}
           onChange={(e) => onChange({ ...draft, name: e.target.value })}
-          placeholder="Production databases, daily"
+          placeholder={gt("Production databases, daily")}
           className={inputClass}
         />
       </label>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs text-on-surface-tertiary">
-          Maximum RPO (hours)
+          {gt("Maximum RPO (hours)")}
           <input
             type="number"
             min={BACKUP_POLICY_LIMITS.minRpoHours}
@@ -415,12 +437,12 @@ function PolicyEditor({
             value={draft.maxRpoHours}
             disabled={disabled}
             onChange={(e) => onChange({ ...draft, maxRpoHours: e.target.value })}
-            placeholder="Leave empty for no RPO"
+            placeholder={gt("Leave empty for no RPO")}
             className={inputClass}
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-on-surface-tertiary">
-          Minimum retention (days)
+          {gt("Minimum retention (days)")}
           <input
             type="number"
             min={BACKUP_POLICY_LIMITS.minRetentionDays}
@@ -428,7 +450,7 @@ function PolicyEditor({
             value={draft.minRetentionDays}
             disabled={disabled}
             onChange={(e) => onChange({ ...draft, minRetentionDays: e.target.value })}
-            placeholder="Leave empty for no floor"
+            placeholder={gt("Leave empty for no floor")}
             className={inputClass}
           />
         </label>
@@ -436,7 +458,7 @@ function PolicyEditor({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs text-on-surface-tertiary">
-          Tag key (optional)
+          {gt("Tag key (optional)")}
           <input
             type="text"
             value={draft.tagKey}
@@ -447,7 +469,7 @@ function PolicyEditor({
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-on-surface-tertiary">
-          Tag value (optional)
+          {gt("Tag value (optional)")}
           <input
             type="text"
             value={draft.tagValue}
@@ -461,13 +483,15 @@ function PolicyEditor({
 
       <fieldset className="flex flex-col gap-2">
         <legend className="text-xs text-on-surface-tertiary">
-          Resource types — none selected applies the policy to everything stateful
+          {gt("Resource types — none selected applies the policy to everything stateful")}
         </legend>
         {resourceTypeOptions.length === 0 ? (
-          <p className="text-xs text-on-surface-faint">
-            No backup-aware resource types are synced yet, so this policy will apply to whatever
-            appears once an account with them syncs.
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-faint">
+              No backup-aware resource types are synced yet, so this policy will apply to whatever
+              appears once an account with them syncs.
+            </p>
+          </T>
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {resourceTypeOptions.map((option) => {
@@ -527,6 +551,7 @@ export function BackupsSection({
   onDeletePolicy,
   resourceTypeOptions,
 }: BackupsSectionProps) {
+  const gt = useGT();
   const [tab, setTab] = useState<Tab>("findings");
   const [kindFilter, setKindFilter] = useState<BackupFindingKind | "all">("all");
   const [draft, setDraft] = useState<PolicyDraft | null>(null);
@@ -595,31 +620,33 @@ export function BackupsSection({
 
   return (
     <div className="flex-1 overflow-auto p-6">
-      <h1 className="text-xl font-semibold mb-1">Backups</h1>
-      <p className="text-sm text-on-surface-muted mb-6">
-        What is actually recoverable, across every provider — which stateful resources have a
-        backup, how old the newest one is, and which backups protect a resource that no longer
-        exists. Derived from the state your accounts last synced; no provider calls are made.
-      </p>
+      <h1 className="text-xl font-semibold mb-1">{gt("Backups")}</h1>
+      <T>
+        <p className="text-sm text-on-surface-muted mb-6">
+          What is actually recoverable, across every provider — which stateful resources have a
+          backup, how old the newest one is, and which backups protect a resource that no longer
+          exists. Derived from the state your accounts last synced; no provider calls are made.
+        </p>
+      </T>
 
       {error != null && data === null && (
         <div role="alert" className="text-sm text-danger">
-          Couldn&apos;t load the backup coverage — {error}{" "}
+          {gt("Couldn't load the backup coverage — {error}", { error })}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
-              Retry
+              {gt("Retry")}
             </button>
           )}
         </div>
       )}
       {data === null && error == null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Scanning synced resources…
+          {gt("Scanning synced resources…")}
         </p>
       )}
       {error != null && data !== null && (
         <p role="alert" className="mb-4 text-xs text-danger">
-          Couldn&apos;t refresh — showing the last loaded coverage. {error}
+          {gt("Couldn't refresh — showing the last loaded coverage. {error}", { error })}
         </p>
       )}
 
@@ -634,9 +661,9 @@ export function BackupsSection({
           >
             {(
               [
-                ["findings", `Gaps (${data.totalCount})`],
-                ["coverage", `Coverage (${data.resources.length})`],
-                ["policies", `Policies (${policies?.length ?? 0})`],
+                ["findings", gt("Gaps ({count})", { count: data.totalCount })],
+                ["coverage", gt("Coverage ({count})", { count: data.resources.length })],
+                ["policies", gt("Policies ({count})", { count: policies?.length ?? 0 })],
               ] as const
             ).map(([key, label]) => (
               <button
@@ -666,16 +693,18 @@ export function BackupsSection({
             <>
               <SeverityChips data={data} />
               {data.findings.length === 0 ? (
-                <p className="text-sm text-on-surface-faint">
-                  No gaps. Coverage appears when a plugin declares which of its types are backups
-                  and which need protecting, over fields its listers actually sync — so an empty
-                  list means nothing declared is unprotected, not that nothing was checked. The
-                  Coverage tab shows what was judged.
-                </p>
+                <T>
+                  <p className="text-sm text-on-surface-faint">
+                    No gaps. Coverage appears when a plugin declares which of its types are backups
+                    and which need protecting, over fields its listers actually sync — so an empty
+                    list means nothing declared is unprotected, not that nothing was checked. The
+                    Coverage tab shows what was judged.
+                  </p>
+                </T>
               ) : (
                 <>
                   <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
-                    <span className="text-on-surface-faint mr-1">Show</span>
+                    <span className="text-on-surface-faint mr-1">{gt("Show")}</span>
                     {(["all", ...FINDING_KINDS] as const).map((kind) => (
                       <button
                         key={kind}
@@ -689,8 +718,11 @@ export function BackupsSection({
                         }`}
                       >
                         {kind === "all"
-                          ? `All (${data.totalCount})`
-                          : `${BACKUP_FINDING_KIND_LABELS[kind]} (${data.kindCounts[kind]})`}
+                          ? gt("All ({count})", { count: data.totalCount })
+                          : gt("{label} ({count})", {
+                              label: BACKUP_FINDING_KIND_LABELS[kind],
+                              count: data.kindCounts[kind],
+                            })}
                       </button>
                     ))}
                   </div>
@@ -699,29 +731,29 @@ export function BackupsSection({
                       <thead className="text-xs text-on-surface-faint">
                         <tr className="border-b border-border">
                           <th scope="col" className="px-4 py-2 text-left font-medium">
-                            Resource
+                            {gt("Resource")}
                           </th>
                           <th scope="col" className="px-3 py-2 text-left font-medium">
-                            Type
+                            {gt("Type")}
                           </th>
                           <th scope="col" className="px-3 py-2 text-left font-medium">
-                            Account
+                            {gt("Account")}
                           </th>
                           <th scope="col" className="px-3 py-2 text-left font-medium">
-                            Gap
+                            {gt("Gap")}
                           </th>
                           <th scope="col" className="px-3 py-2 text-right font-medium">
-                            Age / cost
+                            {gt("Age / cost")}
                           </th>
                           <th scope="col" className="px-4 py-2 text-right font-medium">
-                            Severity
+                            {gt("Severity")}
                           </th>
                         </tr>
                       </thead>
                       <tbody>
                         {findings.map((finding) => (
                           <FindingRow
-                            key={`${finding.resourceId} ${finding.kind}`}
+                            key={`${finding.resourceId} ${finding.kind}`}
                             finding={finding}
                             onOpenResource={onOpenResource}
                           />
@@ -737,39 +769,41 @@ export function BackupsSection({
           {tab === "coverage" && (
             <>
               {data.resources.length === 0 ? (
-                <p className="text-sm text-on-surface-faint">
-                  Nothing to judge yet. A resource appears here once its plugin declares it as
-                  stateful and something the plugin&apos;s listers already sync can tell us whether
-                  it is protected.
-                </p>
+                <T>
+                  <p className="text-sm text-on-surface-faint">
+                    Nothing to judge yet. A resource appears here once its plugin declares it as
+                    stateful and something the plugin&apos;s listers already sync can tell us
+                    whether it is protected.
+                  </p>
+                </T>
               ) : (
                 <div className="overflow-x-auto rounded-xl border border-border">
                   <table className="w-full text-sm">
                     <thead className="text-xs text-on-surface-faint">
                       <tr className="border-b border-border">
                         <th scope="col" className="px-4 py-2 text-left font-medium">
-                          Resource
+                          {gt("Resource")}
                         </th>
                         <th scope="col" className="px-3 py-2 text-left font-medium">
-                          Type
+                          {gt("Type")}
                         </th>
                         <th scope="col" className="px-3 py-2 text-left font-medium">
-                          Account
+                          {gt("Account")}
                         </th>
                         <th scope="col" className="px-3 py-2 text-right font-medium">
-                          Backups
+                          {gt("Backups")}
                         </th>
                         <th scope="col" className="px-3 py-2 text-right font-medium">
-                          RPO
+                          {gt("RPO")}
                         </th>
                         <th scope="col" className="px-3 py-2 text-right font-medium">
-                          Retention
+                          {gt("Retention")}
                         </th>
                         <th scope="col" className="px-3 py-2 text-left font-medium">
-                          Policy
+                          {gt("Policy")}
                         </th>
                         <th scope="col" className="px-4 py-2 text-right font-medium">
-                          State
+                          {gt("State")}
                         </th>
                       </tr>
                     </thead>
@@ -790,25 +824,27 @@ export function BackupsSection({
 
           {tab === "policies" && (
             <div className="flex flex-col gap-4">
-              <p className="text-sm text-on-surface-tertiary">
-                A policy is a recovery objective: which resources it applies to, and how fresh their
-                newest backup has to be. Without one, coverage still reports what is unprotected — a
-                policy is what turns &quot;there is a backup&quot; into &quot;there is a backup
-                recent enough&quot;.
-              </p>
+              <T>
+                <p className="text-sm text-on-surface-tertiary">
+                  A policy is a recovery objective: which resources it applies to, and how fresh
+                  their newest backup has to be. Without one, coverage still reports what is
+                  unprotected — a policy is what turns &quot;there is a backup&quot; into
+                  &quot;there is a backup recent enough&quot;.
+                </p>
+              </T>
 
               {policies === null ? (
                 <p role="status" className="text-sm text-on-surface-faint">
-                  Loading policies…
+                  {gt("Loading policies…")}
                 </p>
               ) : (
                 <>
                   {policies.length === 0 && draft === null && (
                     <p className="text-sm text-on-surface-faint">
-                      No policies yet.
+                      {gt("No policies yet.")}
                       {canEditPolicies
-                        ? " Add one to start measuring against an objective."
-                        : " Ask an administrator to add one."}
+                        ? gt(" Add one to start measuring against an objective.")
+                        : gt(" Ask an administrator to add one.")}
                     </p>
                   )}
 
@@ -822,15 +858,17 @@ export function BackupsSection({
                           <span className="font-medium text-on-surface">{policy.name}</span>
                           {!policy.enabled && (
                             <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-on-surface-tertiary">
-                              Off
+                              {gt("Off")}
                             </span>
                           )}
                         </div>
                         <div className="mt-1 text-xs text-on-surface-tertiary">
-                          Applies to {describeSelector(policy, typeLabels)}
+                          {gt("Applies to {selector}", {
+                            selector: describeSelector(gt, policy, typeLabels),
+                          })}
                         </div>
                         <div className="mt-0.5 text-xs text-on-surface-tertiary">
-                          {describeDemands(policy)}
+                          {describeDemands(gt, policy)}
                         </div>
                       </div>
                       {canEditPolicies && (
@@ -846,7 +884,7 @@ export function BackupsSection({
                               }
                               className="text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-50"
                             >
-                              {policy.enabled ? "Turn off" : "Turn on"}
+                              {policy.enabled ? gt("Turn off") : gt("Turn on")}
                             </button>
                           )}
                           {onUpdatePolicy && (
@@ -860,7 +898,7 @@ export function BackupsSection({
                               }}
                               className="text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-50"
                             >
-                              Edit
+                              {gt("Edit")}
                             </button>
                           )}
                           {onDeletePolicy && (
@@ -870,7 +908,7 @@ export function BackupsSection({
                               onClick={() => void run(() => onDeletePolicy(policy.id))}
                               className="text-on-surface-tertiary hover:text-danger disabled:opacity-50"
                             >
-                              Delete
+                              {gt("Delete")}
                             </button>
                           )}
                         </div>
@@ -893,7 +931,11 @@ export function BackupsSection({
                           onClick={savePolicy}
                           className="rounded-lg border border-border px-3 py-1.5 text-on-surface hover:bg-surface-overlay disabled:opacity-50"
                         >
-                          {busy ? "Saving…" : editingId ? "Save changes" : "Create policy"}
+                          {busy
+                            ? gt("Saving…")
+                            : editingId
+                              ? gt("Save changes")
+                              : gt("Create policy")}
                         </button>
                         <button
                           type="button"
@@ -904,7 +946,7 @@ export function BackupsSection({
                           }}
                           className="text-on-surface-tertiary hover:text-on-surface-secondary"
                         >
-                          Cancel
+                          {gt("Cancel")}
                         </button>
                       </div>
                     </div>
@@ -920,7 +962,7 @@ export function BackupsSection({
                       }}
                       className="w-fit rounded-lg border border-border px-3 py-1.5 text-xs text-on-surface hover:bg-surface-overlay"
                     >
-                      Add a policy
+                      {gt("Add a policy")}
                     </button>
                   )}
                 </>

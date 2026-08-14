@@ -1,4 +1,5 @@
 import { useDraggable } from "@dnd-kit/core";
+import { useGT } from "gt-react";
 import type { ChildResource } from "../components/detail/DetailView.js";
 import type { DraggableResource } from "./types.js";
 
@@ -10,6 +11,7 @@ export interface DraggableChildPillProps {
 }
 
 export function DraggableChildPill({ child, onOpen, extraDragData }: DraggableChildPillProps) {
+  const gt = useGT();
   const draggableData: DraggableResource = {
     id: child.id,
     pluginId: child.pluginId,
@@ -79,8 +81,8 @@ export function DraggableChildPill({ child, onOpen, extraDragData }: DraggableCh
           e.stopPropagation();
           onOpen();
         }}
-        title="Open detail view"
-        aria-label="Open detail view"
+        title={gt("Open detail view")}
+        aria-label={gt("Open detail view")}
         className="p-1 rounded-full text-on-surface-faint hover:text-on-surface-secondary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-all text-xs"
       >
         →

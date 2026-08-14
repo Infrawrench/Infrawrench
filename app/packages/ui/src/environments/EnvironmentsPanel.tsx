@@ -102,8 +102,7 @@ function InstanceItem({
               created: instance.members.filter((m) => m.status === "created").length,
               total: instance.members.length,
             })}
-            {live &&
-              gt(" · expires in {time}", { time: formatTimeRemaining(instance.expiresAt) })}
+            {live && gt(" · expires in {time}", { time: formatTimeRemaining(instance.expiresAt) })}
           </p>
         </button>
         <div className="flex shrink-0 items-center gap-1.5">
@@ -400,7 +399,7 @@ export function EnvironmentsPanel({ client }: EnvironmentsPanelProps) {
   const tearDown = async (instance: EnvironmentInstance) => {
     if (
       !window.confirm(
-        gt("Tear down \"{name}\"? This deletes its {count} resource{plural}.", {
+        gt('Tear down "{name}"? This deletes its {count} resource{plural}.', {
           name: instance.name,
           count: instance.members.length,
           plural: instance.members.length === 1 ? "" : "s",

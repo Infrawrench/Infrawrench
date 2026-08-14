@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import {
   DNS_CLASSIFICATION_LABELS,
   type DnsInventoryResponse,
@@ -6,6 +7,7 @@ import {
   type DnsTargetClassification,
   type DnsZoneEntry,
 } from "@infrawrench/client-core";
+import { useDataString } from "../i18n/data-strings.js";
 
 export interface DnsSectionProps {
   /**
@@ -29,13 +31,17 @@ export interface DnsSectionProps {
 
 type StatusFilter = "all" | DnsTargetClassification;
 
-const FILTER_OPTIONS: Array<{ key: StatusFilter; label: string }> = [
-  { key: "all", label: "All" },
-  { key: "dangling", label: "Dangling" },
-  { key: "owned", label: "Resolves here" },
-  { key: "external", label: "External" },
-  { key: "not-analysed", label: "Not analysed" },
-];
+function useFilterOptions(
+  gt: ReturnType<typeof useGT>,
+): Array<{ key: StatusFilter; label: string }> {
+  return [
+    { key: "all", label: gt("All") },
+    { key: "dangling", label: gt("Dangling") },
+    { key: "owned", label: gt("Resolves here") },
+    { key: "external", label: gt("External") },
+    { key: "not-analysed", label: gt("Not analysed") },
+  ];
+}
 
 /** Pill tones per bucket, matching the PostureSection translucent-badge recipe. */
 const STATUS_BADGE_CLASSES: Record<DnsTargetClassification, string> = {
@@ -46,17 +52,21 @@ const STATUS_BADGE_CLASSES: Record<DnsTargetClassification, string> = {
 };
 
 /** Compact labels for the badge; the long forms read better in prose. */
-const STATUS_BADGE_LABELS: Record<DnsTargetClassification, string> = {
-  dangling: "Dangling",
-  owned: "Resolves here",
-  external: "External",
-  "not-analysed": "Not analysed",
-};
+function useStatusBadgeLabels(
+  gt: ReturnType<typeof useGT>,
+): Record<DnsTargetClassification, string> {
+  return {
+    dangling: gt("Dangling"),
+    owned: gt("Resolves here"),
+    external: gt("External"),
+    "not-analysed": gt("Not analysed"),
+  };
+}
 
-function formatTtl(ttl: number | null): string {
+function formatTtl(gt: ReturnType<typeof useGT>, ttl: number | null): string {
   if (ttl === null) return "—";
-  if (ttl <= 0) return "Default";
-  if (ttl === 1) return "Auto";
+  if (ttl <= 0) return gt("Default");
+  if (ttl === 1) return gt("Auto");
   if (ttl < 60) return `${ttl}s`;
   if (ttl < 3600) return `${Math.round(ttl / 60)}m`;
   if (ttl < 86400) return `${Math.round(ttl / 3600)}h`;
@@ -74,6 +84,10 @@ function formatTtl(ttl: number | null): string {
  * count can be compared against what actually synced.
  */
 export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: DnsSectionProps) {
+  const gt = useGT();
+  const gtData = useDataString();
+  const FILTER_OPTIONS = useFilterOptions(gt);
+  const STATUS_BADGE_LABELS = useStatusBadgeLabels(gt);
   const [filter, setFilter] = useState<StatusFilter>("all");
 
   const records = useMemo(
@@ -83,31 +97,31 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
 
   return (
     <div className="flex-1 overflow-auto p-6">
-      <h1 className="text-xl font-semibold mb-1">Domains</h1>
+      <h1 className="text-xl font-semibold mb-1">{gt("Domains")}</h1>
       <p className="text-sm text-on-surface-muted mb-6">
-        Every DNS zone and record across your providers in one place, with each record&apos;s target
-        checked against the rest of your workspace. Nothing here resolves DNS or calls a provider —
-        it reads the state your accounts last synced.
+        {gt(
+          "Every DNS zone and record across your providers in one place, with each record's target checked against the rest of your workspace. Nothing here resolves DNS or calls a provider — it reads the state your accounts last synced.",
+        )}
       </p>
 
       {error != null && data === null && (
         <div role="alert" className="text-sm text-danger">
-          Couldn&apos;t load the DNS inventory — {error}{" "}
+          {gt("Couldn't load the DNS inventory — {error}", { error })}{" "}
           {onRetry && (
             <button type="button" onClick={onRetry} className="underline">
-              Retry
+              {gt("Retry")}
             </button>
           )}
         </div>
       )}
       {data === null && error == null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Reading synced zones and records…
+          {gt("Reading synced zones and records…")}
         </p>
       )}
       {error != null && data !== null && (
         <p role="alert" className="mb-4 text-xs text-danger">
-          Couldn&apos;t refresh — showing the last loaded inventory. {error}
+          {gt("Couldn't refresh — showing the last loaded inventory. {error}", { error })}
         </p>
       )}
 
@@ -115,10 +129,20 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
         <>
           <div className="flex flex-wrap items-center gap-2 mb-6">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-overlay px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
-              <span className="tabular-nums">{data.counts.zones}</span> zones
+              <T>
+                <span className="tabular-nums">
+                  <Var>{data.counts.zones}</Var>
+                </span>{" "}
+                zones
+              </T>
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-overlay px-2.5 py-1 text-xs font-medium text-on-surface-tertiary">
-              <span className="tabular-nums">{data.counts.records}</span> records
+              <T>
+                <span className="tabular-nums">
+                  <Var>{data.counts.records}</Var>
+                </span>{" "}
+                records
+              </T>
             </span>
             {(["dangling", "owned", "external"] as const).map((key) => (
               <span
@@ -135,15 +159,15 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
 
           {data.zones.length === 0 && data.records.length === 0 ? (
             <p className="text-sm text-on-surface-faint">
-              No DNS zones synced. Connect an account on a provider that manages DNS — Cloudflare,
-              Route 53, Cloud DNS, DigitalOcean, Netlify, Azure DNS or Vercel — and its zones and
-              records appear here after the next sync.
+              {gt(
+                "No DNS zones synced. Connect an account on a provider that manages DNS — Cloudflare, Route 53, Cloud DNS, DigitalOcean, Netlify, Azure DNS or Vercel — and its zones and records appear here after the next sync.",
+              )}
             </p>
           ) : (
             <>
               {data.zones.length > 0 && (
                 <section className="mb-8">
-                  <h2 className="text-sm font-medium text-on-surface mb-2">Zones</h2>
+                  <h2 className="text-sm font-medium text-on-surface mb-2">{gt("Zones")}</h2>
                   <div className="border border-border rounded-xl overflow-hidden">
                     <table className="w-full text-sm">
                       <tbody>
@@ -170,7 +194,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                               )}
                               {zone.isPrivate && (
                                 <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-[11px] font-normal text-on-surface-faint">
-                                  Private
+                                  {gt("Private")}
                                 </span>
                               )}
                             </td>
@@ -179,12 +203,17 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                               <span className="text-on-surface-faint"> · {zone.accountName}</span>
                             </td>
                             <td className="px-3 py-2.5 w-full align-top text-xs text-on-surface-tertiary">
-                              {zone.recordCount} record{zone.recordCount === 1 ? "" : "s"} synced
+                              {gt("{count} record{plural} synced", {
+                                count: zone.recordCount,
+                                plural: zone.recordCount === 1 ? "" : "s",
+                              })}
                               {zone.providerRecordCount !== null &&
                                 zone.providerRecordCount !== zone.recordCount && (
                                   <span className="text-on-surface-faint">
                                     {" "}
-                                    · {zone.providerRecordCount} reported by the provider
+                                    {gt("· {count} reported by the provider", {
+                                      count: zone.providerRecordCount,
+                                    })}
                                   </span>
                                 )}
                             </td>
@@ -193,7 +222,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                                 <span
                                   className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE_CLASSES.dangling}`}
                                 >
-                                  {zone.danglingCount} dangling
+                                  {gt("{count} dangling", { count: zone.danglingCount })}
                                 </span>
                               )}
                             </td>
@@ -206,10 +235,10 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
               )}
 
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                <h2 className="text-sm font-medium text-on-surface">Records</h2>
+                <h2 className="text-sm font-medium text-on-surface">{gt("Records")}</h2>
                 <div
                   role="group"
-                  aria-label="Filter records by status"
+                  aria-label={gt("Filter records by status")}
                   className="flex items-center gap-1 text-xs"
                 >
                   <div className="flex rounded-lg border border-border overflow-hidden">
@@ -235,8 +264,14 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
               {records.length === 0 ? (
                 <p className="text-sm text-on-surface-faint">
                   {filter === "all"
-                    ? "No records synced. Several providers list zones without their records — those zones show above with the provider's own record count."
-                    : `No ${DNS_CLASSIFICATION_LABELS[filter as DnsTargetClassification].toLowerCase()} records.`}
+                    ? gt(
+                        "No records synced. Several providers list zones without their records — those zones show above with the provider's own record count.",
+                      )
+                    : gt("No {label} records.", {
+                        label: gtData(
+                          DNS_CLASSIFICATION_LABELS[filter as DnsTargetClassification],
+                        ).toLowerCase(),
+                      })}
                 </p>
               ) : (
                 <div className="border border-border rounded-xl overflow-hidden">
@@ -266,7 +301,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                             )}
                             {record.proxied && (
                               <span className="ml-2 rounded-full bg-orange-500/10 px-2 py-0.5 text-[11px] font-normal text-severe">
-                                Proxied
+                                {gt("Proxied")}
                               </span>
                             )}
                           </td>
@@ -278,14 +313,18 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                                 <span key={target.value} className="block break-all">
                                   <span className="font-mono text-xs">{target.value}</span>
                                   {target.service && (
-                                    <span className="block text-xs text-danger">
-                                      {target.service.label} — nothing synced claims &ldquo;
-                                      {target.service.claimLabel}&rdquo;. {target.service.reason}
-                                    </span>
+                                    <T>
+                                      <span className="block text-xs text-danger">
+                                        <Var>{gtData(target.service.label)}</Var> — nothing synced
+                                        claims &ldquo;
+                                        <Var>{target.service.claimLabel}</Var>&rdquo;.{" "}
+                                        <Var>{gtData(target.service.reason)}</Var>
+                                      </span>
+                                    </T>
                                   )}
                                   {target.resource && (
                                     <span className="block text-xs text-on-surface-faint">
-                                      {target.resource.resourceTypeName} ·{" "}
+                                      {gtData(target.resource.resourceTypeName)} ·{" "}
                                       {target.resource.displayName}
                                     </span>
                                   )}
@@ -294,7 +333,7 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                             )}
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-on-surface-tertiary">
-                            {formatTtl(record.ttl)}
+                            {formatTtl(gt, record.ttl)}
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap align-top text-xs text-on-surface-tertiary">
                             {record.pluginName}
@@ -316,12 +355,11 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
 
               {data.skippedNamespaces.length > 0 && (
                 <section className="mt-6">
-                  <h2 className="text-sm font-medium text-on-surface mb-2">Not checked</h2>
+                  <h2 className="text-sm font-medium text-on-surface mb-2">{gt("Not checked")}</h2>
                   <p className="text-xs text-on-surface-faint mb-2">
-                    A record pointing into one of these provider namespaces is shown as external
-                    rather than dangling. We can&apos;t tell a name you released from one you never
-                    owned without the data below, and guessing would flag records that are perfectly
-                    fine.
+                    {gt(
+                      "A record pointing into one of these provider namespaces is shown as external rather than dangling. We can't tell a name you released from one you never owned without the data below, and guessing would flag records that are perfectly fine.",
+                    )}
                   </p>
                   <ul className="flex flex-col gap-1">
                     {data.skippedNamespaces.map((entry) => (
@@ -329,8 +367,8 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
                         key={`${entry.pluginId}:${entry.label}`}
                         className="text-xs text-on-surface-tertiary"
                       >
-                        <span className="text-on-surface-secondary">{entry.label}</span> —{" "}
-                        {entry.reason}
+                        <span className="text-on-surface-secondary">{gtData(entry.label)}</span> —{" "}
+                        {gtData(entry.reason)}
                       </li>
                     ))}
                   </ul>
@@ -338,9 +376,9 @@ export function DnsSection({ data, error, onRetry, onOpenRecord, onOpenZone }: D
               )}
 
               <p className="mt-4 text-xs text-on-surface-faint">
-                A dangling record points into a provider namespace this workspace manages that
-                nothing synced claims — the subdomain-takeover signature. Those records also appear
-                on Posture as high-severity findings and alert through the posture channel.
+                {gt(
+                  "A dangling record points into a provider namespace this workspace manages that nothing synced claims — the subdomain-takeover signature. Those records also appear on Posture as high-severity findings and alert through the posture channel.",
+                )}
               </p>
             </>
           )}

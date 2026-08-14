@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 
 import {
   MANAGED_INVOICE_DELIVERY_STATUS_LABELS,
@@ -46,11 +47,13 @@ function StatusChip({ status }: { status: ManagedInvoiceStatus }) {
  * the transport's own error when it did not.
  */
 function DeliveryNote({ delivery }: { delivery: ManagedInvoiceDelivery | null }) {
+  const gt = useGT();
   if (!delivery) {
     return (
       <p className="text-xs text-on-surface-faint">
-        No delivery has been attempted from here. Sending emails the invoice to the customer's
-        contact addresses with the CSV attached.
+        {gt(
+          "No delivery has been attempted from here. Sending emails the invoice to the customer's contact addresses with the CSV attached.",
+        )}
       </p>
     );
   }
@@ -62,14 +65,25 @@ function DeliveryNote({ delivery }: { delivery: ManagedInvoiceDelivery | null })
         : delivery.status === "pending"
           ? "text-warning"
           : "text-danger";
+  const recipientsLine =
+    delivery.recipients.length === 1
+      ? gt("{label} — {delivered} of {count} recipient on {date} (attempt {attempts})", {
+          label: MANAGED_INVOICE_DELIVERY_STATUS_LABELS[delivery.status],
+          delivered: delivery.delivered,
+          count: delivery.recipients.length,
+          date: new Date(delivery.attemptedAt).toLocaleString(),
+          attempts: delivery.attempts,
+        })
+      : gt("{label} — {delivered} of {count} recipients on {date} (attempt {attempts})", {
+          label: MANAGED_INVOICE_DELIVERY_STATUS_LABELS[delivery.status],
+          delivered: delivery.delivered,
+          count: delivery.recipients.length,
+          date: new Date(delivery.attemptedAt).toLocaleString(),
+          attempts: delivery.attempts,
+        });
   return (
     <div className="flex flex-col gap-1">
-      <p className={`text-xs ${tone}`}>
-        {MANAGED_INVOICE_DELIVERY_STATUS_LABELS[delivery.status]} — {delivery.delivered} of{" "}
-        {delivery.recipients.length} recipient
-        {delivery.recipients.length === 1 ? "" : "s"} on{" "}
-        {new Date(delivery.attemptedAt).toLocaleString()} (attempt {delivery.attempts})
-      </p>
+      <p className={`text-xs ${tone}`}>{recipientsLine}</p>
       {delivery.recipients.length > 0 && (
         <p className="text-xs text-on-surface-faint">{delivery.recipients.join(", ")}</p>
       )}
@@ -148,6 +162,7 @@ export interface InvoicesPanelProps {
  * sentence, and neither can drift from the other.
  */
 export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPanelProps) {
+  const gt = useGT();
   const [accounts, setAccounts] = useState<ManagedAccount[] | null>(null);
   const [invoices, setInvoices] = useState<ManagedInvoiceSummary[] | null>(null);
   const [centres, setCentres] = useState<CostCentre[]>([]);
@@ -202,12 +217,19 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
   }
 
   async function retireAccount(account: ManagedAccount) {
-    const warning =
-      account.invoiceCount > 0
-        ? `\n\n${account.invoiceCount} invoice${account.invoiceCount === 1 ? "" : "s"} raised for ` +
-          "this customer will be kept — an issued invoice names its customer, so the record stays."
-        : "";
-    if (!window.confirm(`Retire "${account.name}"?${warning}`)) return;
+    const confirmMessage =
+      account.invoiceCount === 0
+        ? gt('Retire "{name}"?', { name: account.name })
+        : account.invoiceCount === 1
+          ? gt(
+              'Retire "{name}"?\n\n1 invoice raised for this customer will be kept — an issued invoice names its customer, so the record stays.',
+              { name: account.name },
+            )
+          : gt(
+              'Retire "{name}"?\n\n{count} invoices raised for this customer will be kept — an issued invoice names its customer, so the record stays.',
+              { name: account.name, count: account.invoiceCount },
+            );
+    if (!window.confirm(confirmMessage)) return;
     try {
       await client.deleteManagedAccount?.(account.id);
       await refresh();
@@ -235,9 +257,13 @@ export function InvoicesPanel({ client, invoiceId, onSelectInvoice }: InvoicesPa
       <div className="mx-auto max-w-5xl px-6 py-6 flex flex-col gap-6">
         {error !== null && (
           <div role="alert" className="text-sm text-danger">
-            Couldn&rsquo;t load invoices — {error}{" "}
+            <T>
+              <span>
+                Couldn&rsquo;t load invoices — <Var>{error}</Var>
+              </span>
+            </T>{" "}
             <button type="button" onClick={() => void refresh()} className="underline">
-              Retry
+              {gt("Retry")}
             </button>
           </div>
         )}
@@ -311,31 +337,34 @@ function CustomerList({
   onRetire: (account: ManagedAccount) => void;
   onRaise: (account: ManagedAccount) => void;
 }) {
+  const gt = useGT();
   const centreName = useMemo(() => new Map(centres.map((c) => [c.id, c.name])), [centres]);
 
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold text-on-surface">Customers</h2>
+          <h2 className="text-base font-semibold text-on-surface">{gt("Customers")}</h2>
           <p className="text-xs text-on-surface-faint">
-            Each customer is billed for the cost centres they own. Which spend lands in a centre is
-            decided by the allocation rules — a customer names centres, never rules.
+            {gt(
+              "Each customer is billed for the cost centres they own. Which spend lands in a centre is decided by the allocation rules — a customer names centres, never rules.",
+            )}
           </p>
         </div>
         {canWrite && (
           <button type="button" className={BTN} onClick={onNew}>
-            New customer
+            {gt("New customer")}
           </button>
         )}
       </div>
 
       {accounts === null ? (
-        <p className="text-sm text-on-surface-faint">Loading…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
       ) : accounts.length === 0 ? (
         <p className="text-sm text-on-surface-faint">
-          No managed accounts yet. Add one to bill a customer for the infrastructure you run on
-          their behalf.
+          {gt(
+            "No managed accounts yet. Add one to bill a customer for the infrastructure you run on their behalf.",
+          )}
         </p>
       ) : (
         <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
@@ -346,31 +375,35 @@ function CustomerList({
                   <span className="truncate text-sm text-on-surface">{account.name}</span>
                   <span className="text-xs text-on-surface-faint">{account.billingCurrency}</span>
                   {!account.applyBillingRules && (
-                    <span className="text-xs text-on-surface-faint">· pass-through</span>
+                    <span className="text-xs text-on-surface-faint">{gt("· pass-through")}</span>
                   )}
                 </div>
                 <div className="truncate text-xs text-on-surface-faint">
                   {account.costCentreIds.length === 0 && account.accountIds.length === 0
-                    ? "No scope — invoices for this customer will be empty"
+                    ? gt("No scope — invoices for this customer will be empty")
                     : [
                         ...account.costCentreIds.map((id) => centreName.get(id) ?? id),
-                        ...account.accountIds.map((id) => `account ${id.slice(0, 8)}`),
+                        ...account.accountIds.map((id) =>
+                          gt("account {id}", { id: id.slice(0, 8) }),
+                        ),
                       ].join(", ")}
                 </div>
               </div>
               <span className="text-xs text-on-surface-faint">
-                {account.invoiceCount} invoice{account.invoiceCount === 1 ? "" : "s"}
+                {account.invoiceCount === 1
+                  ? gt("1 invoice")
+                  : gt("{count} invoices", { count: account.invoiceCount })}
               </span>
               {canWrite && (
                 <>
                   <button type="button" className={BTN} onClick={() => onRaise(account)}>
-                    Raise invoice
+                    {gt("Raise invoice")}
                   </button>
                   <button type="button" className={BTN} onClick={() => onEdit(account)}>
-                    Edit
+                    {gt("Edit")}
                   </button>
                   <button type="button" className={BTN} onClick={() => onRetire(account)}>
-                    Retire
+                    {gt("Retire")}
                   </button>
                 </>
               )}
@@ -395,6 +428,7 @@ function CustomerModal({
   onSave: (input: ManagedAccountInput) => Promise<void>;
   onClose: () => void;
 }) {
+  const gt = useGT();
   const [name, setName] = useState(account?.name ?? "");
   const [contactName, setContactName] = useState(account?.contactName ?? "");
   const [contactEmail, setContactEmail] = useState(account?.contactEmail ?? "");
@@ -439,15 +473,18 @@ function CustomerModal({
   }
 
   return (
-    <Modal ariaLabel={account ? `Edit ${account.name}` : "New customer"} onClose={onClose}>
+    <Modal
+      ariaLabel={account ? gt("Edit {name}", { name: account.name }) : gt("New customer")}
+      onClose={onClose}
+    >
       <div className="flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-          Name
+          {gt("Name")}
           <input className={FIELD} value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-            Contact name
+            {gt("Contact name")}
             <input
               className={FIELD}
               value={contactName}
@@ -455,7 +492,7 @@ function CustomerModal({
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-            Contact email
+            {gt("Contact email")}
             <input
               className={FIELD}
               value={contactEmail}
@@ -464,7 +501,7 @@ function CustomerModal({
           </label>
         </div>
         <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-          Billing address
+          {gt("Billing address")}
           <textarea
             className={FIELD}
             rows={2}
@@ -474,7 +511,7 @@ function CustomerModal({
         </label>
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-            Billing currency
+            {gt("Billing currency")}
             <input
               className={FIELD}
               value={currency}
@@ -483,14 +520,14 @@ function CustomerModal({
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-            Cost basis
+            {gt("Cost basis")}
             <select
               className={FIELD}
               value={costBasis}
               onChange={(e) => setCostBasis(e.target.value as "cash" | "amortized")}
             >
-              <option value="amortized">Amortized</option>
-              <option value="cash">Cash</option>
+              <option value="amortized">{gt("Amortized")}</option>
+              <option value="cash">{gt("Cash")}</option>
             </select>
           </label>
         </div>
@@ -500,19 +537,21 @@ function CustomerModal({
             checked={applyRules}
             onChange={(e) => setApplyRules(e.target.checked)}
           />
-          Apply the organisation&rsquo;s billing rules (markups, discounts, fixed fees). Off is a
-          pass-through contract: billed exactly what the providers charged.
+          {gt(
+            "Apply the organisation’s billing rules (markups, discounts, fixed fees). Off is a pass-through contract: billed exactly what the providers charged.",
+          )}
         </label>
 
         <div className="flex flex-col gap-1">
           <span className="text-xs text-on-surface-faint">
-            Cost centres — naming a parent bills its whole subtree
+            {gt("Cost centres — naming a parent bills its whole subtree")}
           </span>
           <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-surface-sunken p-2">
             {paths.length === 0 ? (
               <p className="text-xs text-on-surface-faint">
-                No cost centres defined. Define them in Settings → Tag policy first; a customer
-                references centres rather than matching spend itself.
+                {gt(
+                  "No cost centres defined. Define them in Settings → Tag policy first; a customer references centres rather than matching spend itself.",
+                )}
               </p>
             ) : (
               paths.map((row) => (
@@ -536,11 +575,11 @@ function CustomerModal({
 
         <div className="flex flex-col gap-1">
           <span className="text-xs text-on-surface-faint">
-            Cloud accounts — claims only spend no cost centre already claimed
+            {gt("Cloud accounts — claims only spend no cost centre already claimed")}
           </span>
           <div className="max-h-32 overflow-y-auto rounded-lg border border-border bg-surface-sunken p-2">
             {cloudAccounts.length === 0 ? (
-              <p className="text-xs text-on-surface-faint">No connected accounts.</p>
+              <p className="text-xs text-on-surface-faint">{gt("No connected accounts.")}</p>
             ) : (
               cloudAccounts.map((a) => (
                 <label
@@ -568,7 +607,7 @@ function CustomerModal({
 
         <div className="flex justify-end gap-2">
           <button type="button" className={BTN} onClick={onClose}>
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -576,7 +615,7 @@ function CustomerModal({
             disabled={saving || !name.trim()}
             onClick={() => void submit()}
           >
-            {saving ? "Saving…" : "Save"}
+            {saving ? gt("Saving…") : gt("Save")}
           </button>
         </div>
       </div>
@@ -593,6 +632,7 @@ function RaiseInvoiceModal({
   onRaise: (from: string, to: string, notes: string) => Promise<void>;
   onClose: () => void;
 }) {
+  const gt = useGT();
   const defaults = useMemo(lastMonth, []);
   const [from, setFrom] = useState(defaults.from);
   const [to, setTo] = useState(defaults.to);
@@ -601,15 +641,17 @@ function RaiseInvoiceModal({
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <Modal ariaLabel={`Raise an invoice for ${account.name}`} onClose={onClose}>
+    <Modal ariaLabel={gt("Raise an invoice for {name}", { name: account.name })} onClose={onClose}>
       <div className="flex flex-col gap-3">
-        <p className="text-xs text-on-surface-faint">
-          This raises a <strong>draft</strong>. Its figures recompute from live spend every time you
-          open it, and nothing is frozen until you approve it.
-        </p>
+        <T>
+          <p className="text-xs text-on-surface-faint">
+            This raises a <strong>draft</strong>. Its figures recompute from live spend every time
+            you open it, and nothing is frozen until you approve it.
+          </p>
+        </T>
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-            Period from
+            {gt("Period from")}
             <input
               type="date"
               className={FIELD}
@@ -618,7 +660,7 @@ function RaiseInvoiceModal({
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-            Period to
+            {gt("Period to")}
             <input
               type="date"
               className={FIELD}
@@ -628,7 +670,7 @@ function RaiseInvoiceModal({
           </label>
         </div>
         <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-          Notes (printed on the invoice)
+          {gt("Notes (printed on the invoice)")}
           <textarea
             className={FIELD}
             rows={2}
@@ -643,7 +685,7 @@ function RaiseInvoiceModal({
         )}
         <div className="flex justify-end gap-2">
           <button type="button" className={BTN} onClick={onClose}>
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -657,7 +699,7 @@ function RaiseInvoiceModal({
                 .finally(() => setBusy(false));
             }}
           >
-            {busy ? "Raising…" : "Raise draft"}
+            {busy ? gt("Raising…") : gt("Raise draft")}
           </button>
         </div>
       </div>
@@ -676,13 +718,14 @@ function InvoiceList({
   invoices: ManagedInvoiceSummary[] | null;
   onOpen: (invoiceId: string) => void;
 }) {
+  const gt = useGT();
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-base font-semibold text-on-surface">Invoices</h2>
+      <h2 className="text-base font-semibold text-on-surface">{gt("Invoices")}</h2>
       {invoices === null ? (
-        <p className="text-sm text-on-surface-faint">Loading…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
       ) : invoices.length === 0 ? (
-        <p className="text-sm text-on-surface-faint">No invoices yet.</p>
+        <p className="text-sm text-on-surface-faint">{gt("No invoices yet.")}</p>
       ) : (
         <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
           {invoices.map((invoice) => (
@@ -693,7 +736,7 @@ function InvoiceList({
               className="flex items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-raised"
             >
               <span className="w-32 shrink-0 text-sm text-on-surface">
-                {invoice.number ?? <span className="text-on-surface-faint">draft</span>}
+                {invoice.number ?? <span className="text-on-surface-faint">{gt("draft")}</span>}
               </span>
               <span className="min-w-0 flex-1 truncate text-sm text-on-surface">
                 {invoice.managedAccountName}
@@ -749,6 +792,7 @@ function InvoiceDetail({
   onOpenInvoice: (invoiceId: string) => void;
   onChanged: () => Promise<void>;
 }) {
+  const gt = useGT();
   const [invoice, setInvoice] = useState<ManagedInvoice | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -785,14 +829,14 @@ function InvoiceDetail({
     return (
       <div className="flex flex-col gap-3">
         <button type="button" className={BTN + " self-start"} onClick={onBack}>
-          ← All invoices
+          {gt("← All invoices")}
         </button>
         {error !== null ? (
           <p role="alert" className="text-sm text-danger">
             {error}
           </p>
         ) : (
-          <p className="text-sm text-on-surface-faint">Loading…</p>
+          <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
         )}
       </div>
     );
@@ -809,7 +853,11 @@ function InvoiceDetail({
   const resendBlocker = managedInvoiceBlocker(invoice, "send", { resend: true });
   const needsResendConfirm = sendBlocker !== null && resendBlocker === null;
   const isRetry = invoice.status === "sent" && managedInvoiceDeliveryRetryable(invoice.delivery);
-  const sendLabel = needsResendConfirm ? "Send again" : isRetry ? "Retry delivery" : "Send";
+  const sendLabel = needsResendConfirm
+    ? gt("Send again")
+    : isRetry
+      ? gt("Retry delivery")
+      : gt("Send");
   const voidBlocker = managedInvoiceBlocker(invoice, "void");
   const deleteBlocker = managedInvoiceBlocker(invoice, "delete");
   const exportUrl = client.invoiceExportUrl?.(invoice.id);
@@ -817,13 +865,13 @@ function InvoiceDetail({
   return (
     <div className="flex flex-col gap-5">
       <button type="button" className={BTN + " self-start"} onClick={onBack}>
-        ← All invoices
+        {gt("← All invoices")}
       </button>
 
       <header className="flex flex-col gap-1">
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-semibold text-on-surface">
-            {invoice.number ?? "Draft invoice"}
+            {invoice.number ?? gt("Draft invoice")}
           </h1>
           <StatusChip status={invoice.status} />
         </div>
@@ -834,11 +882,18 @@ function InvoiceDetail({
         {/* The one sentence that separates a working document from a sent one. */}
         <p className="text-xs text-on-surface-faint">
           {invoice.live
-            ? "Draft — these figures are recomputed from live spend every time this page loads, and will keep moving as providers restate. Approving freezes them."
-            : `Frozen at approval on ${new Date(invoice.computedAt).toLocaleString()}. Nothing that happens to spend, exchange rates, billing rules or names can change what this document says.`}
+            ? gt(
+                "Draft — these figures are recomputed from live spend every time this page loads, and will keep moving as providers restate. Approving freezes them.",
+              )
+            : gt(
+                "Frozen at approval on {date}. Nothing that happens to spend, exchange rates, billing rules or names can change what this document says.",
+                { date: new Date(invoice.computedAt).toLocaleString() },
+              )}
         </p>
         {invoice.status === "void" && invoice.voidReason && (
-          <p className="text-xs text-danger">Voided — {invoice.voidReason}</p>
+          <p className="text-xs text-danger">
+            {gt("Voided — {reason}", { reason: invoice.voidReason })}
+          </p>
         )}
         {invoice.status !== "draft" && <DeliveryNote delivery={invoice.delivery} />}
         {invoice.supersededByInvoiceId && (
@@ -847,7 +902,7 @@ function InvoiceDetail({
             className="self-start text-xs underline text-on-surface-faint"
             onClick={() => onOpenInvoice(invoice.supersededByInvoiceId!)}
           >
-            Superseded by a corrective invoice →
+            {gt("Superseded by a corrective invoice →")}
           </button>
         )}
         {invoice.supersedesInvoiceId && (
@@ -856,7 +911,7 @@ function InvoiceDetail({
             className="self-start text-xs underline text-on-surface-faint"
             onClick={() => onOpenInvoice(invoice.supersedesInvoiceId!)}
           >
-            ← Corrects an earlier, voided invoice
+            {gt("← Corrects an earlier, voided invoice")}
           </button>
         )}
       </header>
@@ -874,10 +929,10 @@ function InvoiceDetail({
               type="button"
               className={BTN}
               disabled={busy || approveBlocker !== null}
-              title={approveBlocker ?? "Freeze these figures"}
+              title={approveBlocker ?? gt("Freeze these figures")}
               onClick={() => void run(() => client.approveInvoice!(invoice.id))}
             >
-              Approve
+              {gt("Approve")}
             </button>
             <button
               type="button"
@@ -888,11 +943,14 @@ function InvoiceDetail({
                 (needsResendConfirm
                   ? sendBlocker!
                   : isRetry
-                    ? "Nothing reached the customer last time, so this retries the delivery"
-                    : "Email this invoice to the customer, with the CSV attached")
+                    ? gt("Nothing reached the customer last time, so this retries the delivery")
+                    : gt("Email this invoice to the customer, with the CSV attached"))
               }
               onClick={() => {
-                if (needsResendConfirm && !window.confirm(`${sendBlocker}\n\nSend another copy?`)) {
+                if (
+                  needsResendConfirm &&
+                  !window.confirm(gt("{blocker}\n\nSend another copy?", { blocker: sendBlocker! }))
+                ) {
                   return;
                 }
                 void run(() => client.sendInvoice!(invoice.id, needsResendConfirm));
@@ -904,10 +962,10 @@ function InvoiceDetail({
               type="button"
               className={BTN}
               disabled={busy || voidBlocker !== null}
-              title={voidBlocker ?? "Withdraw this invoice"}
+              title={voidBlocker ?? gt("Withdraw this invoice")}
               onClick={() => setVoiding(true)}
             >
-              Void
+              {gt("Void")}
             </button>
           </>
         )}
@@ -917,7 +975,9 @@ function InvoiceDetail({
             className={BTN}
             disabled={busy}
             onClick={() => {
-              if (!window.confirm("Delete this draft? It was never issued, so nothing is lost."))
+              if (
+                !window.confirm(gt("Delete this draft? It was never issued, so nothing is lost."))
+              )
                 return;
               void run(async () => {
                 await client.deleteInvoice?.(invoice.id);
@@ -925,12 +985,12 @@ function InvoiceDetail({
               });
             }}
           >
-            Delete draft
+            {gt("Delete draft")}
           </button>
         )}
         {exportUrl && (
           <a className={BTN} href={exportUrl} download>
-            Download CSV
+            {gt("Download CSV")}
           </a>
         )}
       </div>
@@ -940,9 +1000,11 @@ function InvoiceDetail({
       )}
       {invoice.derivation.missingScope.length > 0 && (
         <p className="text-sm text-warning">
-          {invoice.derivation.missingScope.length} scope entr
-          {invoice.derivation.missingScope.length === 1 ? "y" : "ies"} no longer exist and
-          contributed nothing to this invoice.
+          {invoice.derivation.missingScope.length === 1
+            ? gt("1 scope entry no longer exist and contributed nothing to this invoice.")
+            : gt("{count} scope entries no longer exist and contributed nothing to this invoice.", {
+                count: invoice.derivation.missingScope.length,
+              })}
         </p>
       )}
 
@@ -973,12 +1035,13 @@ function InvoiceDetail({
  * table exists to answer and the answer is the three numbers together.
  */
 function LineTable({ invoice }: { invoice: ManagedInvoice }) {
+  const gt = useGT();
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-base font-semibold text-on-surface">Lines</h2>
+      <h2 className="text-base font-semibold text-on-surface">{gt("Lines")}</h2>
       {invoice.lines.length === 0 ? (
         <p className="text-sm text-on-surface-faint">
-          No spend in this period for anything this customer owns.
+          {gt("No spend in this period for anything this customer owns.")}
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
@@ -986,22 +1049,22 @@ function LineTable({ invoice }: { invoice: ManagedInvoice }) {
             <thead>
               <tr className="text-xs uppercase tracking-wide text-on-surface-faint">
                 <th scope="col" className="px-3 py-2 text-left font-normal">
-                  Line
+                  {gt("Line")}
                 </th>
                 <th scope="col" className="px-3 py-2 text-right font-normal">
-                  Collected
+                  {gt("Collected")}
                 </th>
                 <th scope="col" className="px-3 py-2 text-right font-normal">
-                  Adjustment
+                  {gt("Adjustment")}
                 </th>
                 <th scope="col" className="px-3 py-2 text-right font-normal">
-                  Subtotal
+                  {gt("Subtotal")}
                 </th>
                 <th scope="col" className="px-3 py-2 text-right font-normal">
-                  Rate
+                  {gt("Rate")}
                 </th>
                 <th scope="col" className="px-3 py-2 text-right font-normal">
-                  Invoiced
+                  {gt("Invoiced")}
                 </th>
               </tr>
             </thead>
@@ -1022,10 +1085,10 @@ function LineTable({ invoice }: { invoice: ManagedInvoice }) {
                     {line.label}
                     <span className="ml-2 text-xs text-on-surface-faint">
                       {line.kind === "cost_centre"
-                        ? "cost centre"
+                        ? gt("cost centre")
                         : line.kind === "account"
-                          ? "account"
-                          : "fixed charge"}
+                          ? gt("account")
+                          : gt("fixed charge")}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-on-surface-faint">
@@ -1039,7 +1102,7 @@ function LineTable({ invoice }: { invoice: ManagedInvoice }) {
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-on-surface-faint">
                     {line.rate === null ? (
-                      <span className="text-warning">no rate</span>
+                      <span className="text-warning">{gt("no rate")}</span>
                     ) : line.rate === 1 ? (
                       "—"
                     ) : (
@@ -1057,7 +1120,7 @@ function LineTable({ invoice }: { invoice: ManagedInvoice }) {
             <tfoot>
               <tr className="border-t border-border">
                 <td className="px-3 py-2 text-on-surface" colSpan={5}>
-                  Total
+                  {gt("Total")}
                 </td>
                 <td className="px-3 py-2 text-right font-semibold tabular-nums text-on-surface">
                   {describeManagedInvoiceTotal(invoice.totals, invoice.currency)}
@@ -1073,46 +1136,69 @@ function LineTable({ invoice }: { invoice: ManagedInvoice }) {
 
 /** Everything needed to re-derive the total by hand. */
 function Derivation({ invoice }: { invoice: ManagedInvoice }) {
+  const gt = useGT();
   const d = invoice.derivation;
+  const scope =
+    d.scope.costCentres.length === 0 && d.scope.accounts.length === 0
+      ? gt("nothing")
+      : [...d.scope.costCentres.map((c) => c.name), ...d.scope.accounts.map((a) => a.label)].join(
+          ", ",
+        );
+  const rulesList = d.rules.map((r) => `${r.name} (${r.summary})`).join("; ");
+  const ratesList = d.rates
+    .map((r) => `1 ${r.currency} = ${r.rate} ${invoice.currency} (stated ${r.effectiveFrom})`)
+    .join("; ");
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-base font-semibold text-on-surface">How this total was reached</h2>
+      <h2 className="text-base font-semibold text-on-surface">
+        {gt("How this total was reached")}
+      </h2>
       <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-sunken p-3 text-sm text-on-surface">
         <p>
-          Spend allocated to{" "}
-          {d.scope.costCentres.length === 0 && d.scope.accounts.length === 0
-            ? "nothing"
-            : [
-                ...d.scope.costCentres.map((c) => c.name),
-                ...d.scope.accounts.map((a) => a.label),
-              ].join(", ")}
-          , on the {d.costBasis} basis, over {invoice.periodFrom} to {invoice.periodTo}.
+          {gt(
+            "Spend allocated to {scope}, on the {costBasis} basis, over {periodFrom} to {periodTo}.",
+            {
+              scope,
+              costBasis: d.costBasis,
+              periodFrom: invoice.periodFrom,
+              periodTo: invoice.periodTo,
+            },
+          )}
         </p>
         <p className="text-on-surface-faint">
           {d.applyBillingRules
             ? d.rules.length === 0
-              ? "Billing rules apply to this customer, but the organisation has none — the invoiced figure equals what the providers charged."
-              : `${d.rules.length} billing rule${d.rules.length === 1 ? "" : "s"} applied: ${d.rules
-                  .map((r) => `${r.name} (${r.summary})`)
-                  .join("; ")}.`
-            : "Pass-through contract: no billing rule was applied, so the invoiced figure is exactly what the providers charged."}
+              ? gt(
+                  "Billing rules apply to this customer, but the organisation has none — the invoiced figure equals what the providers charged.",
+                )
+              : d.rules.length === 1
+                ? gt("1 billing rule applied: {list}.", { list: rulesList })
+                : gt("{count} billing rules applied: {list}.", {
+                    count: d.rules.length,
+                    list: rulesList,
+                  })
+            : gt(
+                "Pass-through contract: no billing rule was applied, so the invoiced figure is exactly what the providers charged.",
+              )}
         </p>
         <p className="text-on-surface-faint">
           {d.rates.length === 0
-            ? `All spend was already in ${invoice.currency}; no conversion was needed.`
-            : `Converted at the rates in force on ${d.rateDate}: ${d.rates
-                .map(
-                  (r) =>
-                    `1 ${r.currency} = ${r.rate} ${invoice.currency} (stated ${r.effectiveFrom})`,
-                )
-                .join("; ")}.`}
+            ? gt("All spend was already in {currency}; no conversion was needed.", {
+                currency: invoice.currency,
+              })
+            : gt("Converted at the rates in force on {date}: {list}.", {
+                date: d.rateDate,
+                list: ratesList,
+              })}
           {!invoice.live &&
-            " These rates are frozen — restating one later cannot change this invoice."}
+            gt(" These rates are frozen — restating one later cannot change this invoice.")}
         </p>
         {d.unconverted.length > 0 && (
           <p className="text-warning">
-            No exchange rate was stated for {d.unconverted.join(", ")}, so those amounts are carried
-            in their own currency. Add the rate in Settings → Currency before approving.
+            {gt(
+              "No exchange rate was stated for {currencies}, so those amounts are carried in their own currency. Add the rate in Settings → Currency before approving.",
+              { currencies: d.unconverted.join(", ") },
+            )}
           </p>
         )}
       </div>
@@ -1127,18 +1213,20 @@ function VoidModal({
   onClose: () => void;
   onVoid: (reason: string, supersede: boolean) => Promise<void>;
 }) {
+  const gt = useGT();
   const [reason, setReason] = useState("");
   const [supersede, setSupersede] = useState(true);
 
   return (
-    <Modal ariaLabel="Void this invoice" onClose={onClose}>
+    <Modal ariaLabel={gt("Void this invoice")} onClose={onClose}>
       <div className="flex flex-col gap-3">
         <p className="text-xs text-on-surface-faint">
-          The invoice keeps every figure it was sent with. Voiding records that it was withdrawn —
-          it does not edit or delete it, because the customer holds a copy.
+          {gt(
+            "The invoice keeps every figure it was sent with. Voiding records that it was withdrawn — it does not edit or delete it, because the customer holds a copy.",
+          )}
         </p>
         <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-          Reason (required — the only record of why)
+          {gt("Reason (required — the only record of why)")}
           <textarea
             className={FIELD}
             rows={3}
@@ -1152,11 +1240,11 @@ function VoidModal({
             checked={supersede}
             onChange={(e) => setSupersede(e.target.checked)}
           />
-          Raise a corrective draft for the same period, linked to this one
+          {gt("Raise a corrective draft for the same period, linked to this one")}
         </label>
         <div className="flex justify-end gap-2">
           <button type="button" className={BTN} onClick={onClose}>
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -1164,7 +1252,7 @@ function VoidModal({
             disabled={!reason.trim()}
             onClick={() => void onVoid(reason.trim(), supersede)}
           >
-            Void invoice
+            {gt("Void invoice")}
           </button>
         </div>
       </div>

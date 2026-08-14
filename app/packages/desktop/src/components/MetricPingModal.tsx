@@ -228,7 +228,9 @@ export function MetricPingModal({
             )}
             <div className="flex gap-2">
               <label className="flex flex-col gap-1 flex-1">
-                <span className="text-xs text-on-surface-muted">{gt("Min (alert when below)")}</span>
+                <span className="text-xs text-on-surface-muted">
+                  {gt("Min (alert when below)")}
+                </span>
                 <input
                   type="number"
                   value={minStr}
@@ -239,7 +241,9 @@ export function MetricPingModal({
                 />
               </label>
               <label className="flex flex-col gap-1 flex-1">
-                <span className="text-xs text-on-surface-muted">{gt("Max (alert when above)")}</span>
+                <span className="text-xs text-on-surface-muted">
+                  {gt("Max (alert when above)")}
+                </span>
                 <input
                   type="number"
                   value={maxStr}

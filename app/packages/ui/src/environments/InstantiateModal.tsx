@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import {
   ENVIRONMENT_LIMITS,
   parseTtlDraft,
@@ -7,6 +8,7 @@ import {
   validateTtlHours,
   type EnvironmentCostEstimate,
 } from "@infrawrench/client-core";
+import { useDataString } from "../i18n/data-strings.js";
 import type {
   EnvironmentInstance,
   EnvironmentSettings,
@@ -22,12 +24,14 @@ export interface InstantiateModalProps {
   onCreated(instance: EnvironmentInstance): void;
 }
 
-const TTL_PRESETS = [
-  { hours: 4, label: "4 hours" },
-  { hours: 24, label: "1 day" },
-  { hours: 72, label: "3 days" },
-  { hours: 168, label: "1 week" },
-];
+function useTtlPresets(gt: ReturnType<typeof useGT>) {
+  return [
+    { hours: 4, label: gt("4 hours") },
+    { hours: 24, label: gt("1 day") },
+    { hours: 72, label: gt("3 days") },
+    { hours: 168, label: gt("1 week") },
+  ];
+}
 
 function formatMoney(amount: number, currency: string): string {
   try {
@@ -54,6 +58,9 @@ export function InstantiateModal({
   onClose,
   onCreated,
 }: InstantiateModalProps) {
+  const gt = useGT();
+  const gtData = useDataString();
+  const TTL_PRESETS = useTtlPresets(gt);
   const [name, setName] = useState("");
   // null is "the field is empty". Coercing an empty input with Number() would
   // store 0, which both renders as a value the user never typed and reads as

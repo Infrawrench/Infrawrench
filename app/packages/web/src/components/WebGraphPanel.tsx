@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import {
   RESOURCES_CHANGED_EVENT,
   DependencyGraphView,
@@ -17,6 +18,7 @@ interface WebGraphPanelProps {
  * the API and refreshes when resources change.
  */
 export function WebGraphPanel({ orgId, openResource }: WebGraphPanelProps) {
+  const gt = useGT();
   const [data, setData] = useState<DependencyGraphData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -58,26 +60,27 @@ export function WebGraphPanel({ orgId, openResource }: WebGraphPanelProps) {
           onClick={() => setReloadKey((k) => k + 1)}
           className="mt-3 rounded-md border border-border px-2.5 py-1 text-xs text-on-surface-secondary hover:bg-surface-overlay transition-colors"
         >
-          Retry
+          {gt("Retry")}
         </button>
       </div>
     );
   }
   if (!data) {
-    return <div className="p-6 text-on-surface-muted text-sm animate-pulse">Loading…</div>;
+    return <div className="p-6 text-on-surface-muted text-sm animate-pulse">{gt("Loading…")}</div>;
   }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="shrink-0 px-6 pt-6 pb-4 border-b border-border">
-        <h1 className="text-xl font-semibold text-on-surface">Dependency graph</h1>
+        <h1 className="text-xl font-semibold text-on-surface">{gt("Dependency graph")}</h1>
         <p className="text-sm text-on-surface-muted mt-0.5">
-          How your resources are wired together — read from your synced cloud data and from output
-          references you wire yourself.
+          {gt(
+            "How your resources are wired together — read from your synced cloud data and from output references you wire yourself.",
+          )}
         </p>
         {error && (
           <p className="mt-2 text-xs text-danger">
-            Couldn&rsquo;t refresh — showing the last loaded graph. {error}
+            {gt("Couldn’t refresh — showing the last loaded graph. {error}", { error })}
           </p>
         )}
       </div>

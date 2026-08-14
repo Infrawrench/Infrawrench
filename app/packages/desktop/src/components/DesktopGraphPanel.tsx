@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { T, useGT } from "gt-react";
 import {
   RESOURCES_CHANGED_EVENT,
   DependencyGraphView,
@@ -19,6 +20,7 @@ interface DesktopGraphPanelProps {
  * local SQLite reference tables.
  */
 export function DesktopGraphPanel({ openResource }: DesktopGraphPanelProps) {
+  const gt = useGT();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const [data, setData] = useState<DependencyGraphData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +47,7 @@ export function DesktopGraphPanel({ openResource }: DesktopGraphPanelProps) {
         .catch((e: unknown) => {
           // A failed *refresh* must not blank a graph that is already drawn —
           // surface it as a banner over the existing render instead.
-          if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load graph");
+          if (!cancelled) setError(e instanceof Error ? e.message : gt("Failed to load graph"));
         });
     }
     load();
@@ -54,7 +56,7 @@ export function DesktopGraphPanel({ openResource }: DesktopGraphPanelProps) {
       cancelled = true;
       window.removeEventListener(RESOURCES_CHANGED_EVENT, load);
     };
-  }, [activeCloudOrgId, reloadKey]);
+  }, [activeCloudOrgId, reloadKey, gt]);
 
   if (error && !data) {
     return (
@@ -65,26 +67,28 @@ export function DesktopGraphPanel({ openResource }: DesktopGraphPanelProps) {
           onClick={() => setReloadKey((k) => k + 1)}
           className="mt-3 rounded-md border border-border px-2.5 py-1 text-xs text-on-surface-secondary hover:bg-surface-overlay transition-colors"
         >
-          Retry
+          {gt("Retry")}
         </button>
       </div>
     );
   }
   if (!data) {
-    return <div className="p-6 text-on-surface-muted text-sm animate-pulse">Loading…</div>;
+    return <div className="p-6 text-on-surface-muted text-sm animate-pulse">{gt("Loading…")}</div>;
   }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="shrink-0 px-6 pt-6 pb-4 border-b border-border">
-        <h1 className="text-xl font-semibold text-on-surface">Dependency graph</h1>
-        <p className="text-sm text-on-surface-muted mt-0.5">
-          How your resources are wired together — read from your synced cloud data and from output
-          references you wire yourself.
-        </p>
+        <h1 className="text-xl font-semibold text-on-surface">{gt("Dependency graph")}</h1>
+        <T>
+          <p className="text-sm text-on-surface-muted mt-0.5">
+            How your resources are wired together — read from your synced cloud data and from output
+            references you wire yourself.
+          </p>
+        </T>
         {error && (
           <p className="mt-2 text-xs text-danger">
-            Couldn&rsquo;t refresh — showing the last loaded graph. {error}
+            {gt("Couldn’t refresh — showing the last loaded graph. {error}", { error })}
           </p>
         )}
       </div>

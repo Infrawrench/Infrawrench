@@ -4,8 +4,10 @@ import {
   EFFICIENCY_ALERT_KIND_LABELS,
 } from "@infrawrench/client-core";
 import { useEffect, useId, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 
 import { parseNumericInputValue } from "../form-values.js";
+import { useDataString } from "../i18n/data-strings.js";
 import { formatMoney } from "./transform.js";
 import type { CostEfficiencySettings } from "./config.js";
 import type { CostsClient, EfficiencyAlertEvent, EfficiencyAlertKind } from "./types.js";
@@ -37,16 +39,25 @@ const KIND_TONE: Record<EfficiencyAlertKind, string> = {
  * genuinely different facts share one list without three wire types or a
  * discriminated union nobody else needs.
  */
-function describeEvent(event: EfficiencyAlertEvent): string {
+function describeEvent(
+  event: EfficiencyAlertEvent,
+  gt: ReturnType<typeof useGT>,
+  gtData: ReturnType<typeof useDataString>,
+): string {
   const d = event.detail;
   switch (event.kind) {
     case "commitment_expiry": {
       const horizon = typeof d["horizonDays"] === "number" ? d["horizonDays"] : null;
       const end = typeof d["termEndDay"] === "string" ? d["termEndDay"] : "";
-      const when = horizon === 0 ? `expired ${end}` : `ends ${end} (${horizon}-day notice)`;
+      const when =
+        horizon === 0
+          ? gt("expired {end}", { end })
+          : gt("ends {end} ({horizon}-day notice)", { end, horizon });
       const exposure =
         event.amount !== null
-          ? ` · at least ${formatMoney(event.amount, event.currency ?? "USD")}/month reverts to on-demand`
+          ? gt(" · at least {amount}/month reverts to on-demand", {
+              amount: formatMoney(event.amount, event.currency ?? "USD"),
+            })
           : "";
       return `${when}${exposure}`;
     }
@@ -56,20 +67,32 @@ function describeEvent(event: EfficiencyAlertEvent): string {
       const to = typeof d["windowTo"] === "string" ? d["windowTo"] : "";
       const wasted =
         event.amount !== null
-          ? `${formatMoney(event.amount, event.currency ?? "USD")} unused`
-          : "unused";
-      return `${percent ?? "?"}% used over ${from}–${to} · ${wasted}`;
+          ? gt("{amount} unused", { amount: formatMoney(event.amount, event.currency ?? "USD") })
+          : gt("unused");
+      return gt("{percent}% used over {from}–{to} · {wasted}", {
+        percent: percent ?? "?",
+        from,
+        to,
+        wasted,
+      });
     }
     case "unit_cost_regression": {
       const percent = typeof d["changePercent"] === "number" ? d["changePercent"] : null;
-      const unit = typeof d["unit"] === "string" && d["unit"] ? d["unit"] : "unit";
+      const unit = typeof d["unit"] === "string" && d["unit"] ? gtData(d["unit"]) : gt("unit");
       const before = typeof d["previousUnitCost"] === "number" ? d["previousUnitCost"] : null;
       const after = typeof d["currentUnitCost"] === "number" ? d["currentUnitCost"] : null;
       const move =
         before !== null && after !== null
-          ? ` (${formatMoney(before, event.currency ?? "USD")} → ${formatMoney(after, event.currency ?? "USD")})`
+          ? gt(" ({before} → {after})", {
+              before: formatMoney(before, event.currency ?? "USD"),
+              after: formatMoney(after, event.currency ?? "USD"),
+            })
           : "";
-      return `cost per ${unit} up ${percent ?? "?"}%${move}`;
+      return gt("cost per {unit} up {percent}%{move}", {
+        unit,
+        percent: percent ?? "?",
+        move,
+      });
     }
     default:
       // A row written by a newer build naming a fourth detector. Rendering the
@@ -98,6 +121,8 @@ export interface EfficiencyAlertsSectionProps {
  * nothing to say here and an empty panel would just be furniture.
  */
 export function EfficiencyAlertsSection({ client }: EfficiencyAlertsSectionProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [events, setEvents] = useState<EfficiencyAlertEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tuning, setTuning] = useState(false);
@@ -136,11 +161,12 @@ export function EfficiencyAlertsSection({ client }: EfficiencyAlertsSectionProps
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-on-surface-secondary">
-            Commitment &amp; unit-cost alerts
+            {gt("Commitment & unit-cost alerts")}
           </h2>
           <p className="text-xs text-on-surface-faint">
-            Three things the cost data already knows and no spend total can show: a commitment about
-            to lapse, a commitment nobody is using, and cost per unit going the wrong way.
+            {gt(
+              "Three things the cost data already knows and no spend total can show: a commitment about to lapse, a commitment nobody is using, and cost per unit going the wrong way.",
+            )}
           </p>
         </div>
         {canTune && (
@@ -149,7 +175,7 @@ export function EfficiencyAlertsSection({ client }: EfficiencyAlertsSectionProps
             onClick={() => setTuning((v) => !v)}
             className="shrink-0 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            {tuning ? "Hide settings" : "Tune alerts"}
+            {tuning ? gt("Hide settings") : gt("Tune alerts")}
           </button>
         )}
       </div>
@@ -158,21 +184,23 @@ export function EfficiencyAlertsSection({ client }: EfficiencyAlertsSectionProps
 
       {error !== null && (
         <div role="alert" className="rounded-xl border border-border p-4 text-sm text-danger">
-          Couldn&rsquo;t load efficiency alerts — {error}
+          <T>
+            Couldn&rsquo;t load efficiency alerts — <Var>{error}</Var>
+          </T>
         </div>
       )}
 
       {error === null && events === null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Loading efficiency alerts…
+          {gt("Loading efficiency alerts…")}
         </p>
       )}
 
       {error === null && events !== null && events.length === 0 && (
         <p className="rounded-xl border border-border p-4 text-sm text-on-surface-faint">
-          Nothing has fired yet. Commitment alerts need at least one reservation, savings plan or
-          committed-use discount; unit-cost regressions need a business metric with a fortnight of
-          reported values on each side of the comparison.
+          {gt(
+            "Nothing has fired yet. Commitment alerts need at least one reservation, savings plan or committed-use discount; unit-cost regressions need a business metric with a fortnight of reported values on each side of the comparison.",
+          )}
         </p>
       )}
 
@@ -182,7 +210,7 @@ export function EfficiencyAlertsSection({ client }: EfficiencyAlertsSectionProps
             <li key={event.id} className="flex flex-col gap-0.5 px-4 py-3">
               <div className="flex items-center gap-2">
                 <span className={`text-[11px] font-medium ${KIND_TONE[event.kind] ?? ""}`}>
-                  {EFFICIENCY_ALERT_KIND_LABELS[event.kind]}
+                  {gtData(EFFICIENCY_ALERT_KIND_LABELS[event.kind])}
                 </span>
                 <span className="truncate text-sm text-on-surface">{event.subject}</span>
                 {event.accountName && (
@@ -194,10 +222,14 @@ export function EfficiencyAlertsSection({ client }: EfficiencyAlertsSectionProps
                   {formatWhen(event.firedAt)}
                 </span>
               </div>
-              <p className="text-xs text-on-surface-secondary">{describeEvent(event)}</p>
+              <p className="text-xs text-on-surface-secondary">
+                {describeEvent(event, gt, gtData)}
+              </p>
               {event.notifiedAt === null && (
                 <p className="text-[11px] text-on-surface-faint">
-                  Stored but not delivered — no routing rule matched, or quiet hours are holding it.
+                  {gt(
+                    "Stored but not delivered — no routing rule matched, or quiet hours are holding it.",
+                  )}
                 </p>
               )}
             </li>
@@ -264,6 +296,7 @@ function NumberField({
  * reject is caught before the round trip; the server is still the authority.
  */
 function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
+  const gt = useGT();
   const uid = useId();
   const [draft, setDraft] = useState<CostEfficiencySettings | null>(null);
   const [saved, setSaved] = useState<CostEfficiencySettings | null>(null);
@@ -301,23 +334,28 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
   function validate(next: CostEfficiencySettings): string | null {
     const L = COST_EFFICIENCY_LIMITS;
     if (next.commitmentExpiryHorizonDays.length === 0) {
-      return "Give at least one expiry horizon, or turn commitment expiry alerts off.";
+      return gt("Give at least one expiry horizon, or turn commitment expiry alerts off.");
     }
     if (next.commitmentExpiryHorizonDays.length > L.maxExpiryHorizons) {
-      return `At most ${L.maxExpiryHorizons} horizons — past that one commitment becomes its own digest.`;
+      return gt("At most {max} horizons — past that one commitment becomes its own digest.", {
+        max: L.maxExpiryHorizons,
+      });
     }
     if (
       next.commitmentExpiryHorizonDays.some(
         (h) => h < L.minExpiryHorizonDays || h > L.maxExpiryHorizonDays,
       )
     ) {
-      return `Each horizon must be between ${L.minExpiryHorizonDays} and ${L.maxExpiryHorizonDays} days.`;
+      return gt("Each horizon must be between {min} and {max} days.", {
+        min: L.minExpiryHorizonDays,
+        max: L.maxExpiryHorizonDays,
+      });
     }
     if (next.commitmentIdleMinMeasuredDays > next.commitmentIdleWindowDays) {
-      return "The idle window can't require more days of data than it contains.";
+      return gt("The idle window can't require more days of data than it contains.");
     }
     if (next.unitCostMinReportedDays > next.unitCostWindowDays) {
-      return "Each unit-cost window can't require more reported days than it contains.";
+      return gt("Each unit-cost window can't require more reported days than it contains.");
     }
     return null;
   }
@@ -348,7 +386,9 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
   if (loadError !== null) {
     return (
       <div role="alert" className="rounded-xl border border-border p-4 text-sm text-danger">
-        Couldn&rsquo;t load alert settings — {loadError}
+        <T>
+          Couldn&rsquo;t load alert settings — <Var>{loadError}</Var>
+        </T>
       </div>
     );
   }
@@ -356,7 +396,7 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
   if (!draft || !saved) {
     return (
       <p role="status" className="text-sm text-on-surface-faint">
-        Loading alert settings…
+        {gt("Loading alert settings…")}
       </p>
     );
   }
@@ -380,9 +420,9 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
   return (
     <div className="flex flex-col gap-5 rounded-xl border border-border bg-surface-sunken p-4">
       <p className="text-xs text-on-surface-faint">
-        Changes apply on the next evaluation pass, which runs after each cost collection. Alerts
-        already fired are not re-judged — widening the horizon list warns about future crossings,
-        not past ones.
+        {gt(
+          "Changes apply on the next evaluation pass, which runs after each cost collection. Alerts already fired are not re-judged — widening the horizon list warns about future crossings, not past ones.",
+        )}
       </p>
 
       {/* --- Commitment expiry --- */}
@@ -394,12 +434,12 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
             checked={draft.commitmentExpiryEnabled}
             onChange={(e) => set({ commitmentExpiryEnabled: e.target.checked })}
           />
-          <span className="font-medium">Commitment expiry</span>
+          <span className="font-medium">{gt("Commitment expiry")}</span>
         </label>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1" htmlFor={`${uid}-horizons`}>
             <span className="text-xs font-medium text-on-surface-secondary">
-              Horizons (days of notice)
+              {gt("Horizons (days of notice)")}
             </span>
             <input
               id={`${uid}-horizons`}
@@ -418,14 +458,16 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
               className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500 disabled:opacity-60"
             />
             <span className="text-[11px] text-on-surface-faint">
-              Comma separated. Each fires once per commitment per term, and a commitment fires at
-              the smallest horizon it has reached — so an account connected 30 days out gets one
-              alert, not two. Default {D.commitmentExpiryHorizonDays.join(", ")}.
+              <T>
+                Comma separated. Each fires once per commitment per term, and a commitment fires at
+                the smallest horizon it has reached — so an account connected 30 days out gets one
+                alert, not two. Default <Var>{D.commitmentExpiryHorizonDays.join(", ")}</Var>.
+              </T>
             </span>
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-on-surface-secondary">
-              Already-expired commitments
+              {gt("Already-expired commitments")}
             </span>
             <label className="flex items-center gap-2 text-sm text-on-surface">
               <input
@@ -434,11 +476,12 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
                 checked={draft.commitmentExpiryAlertOnExpired}
                 onChange={(e) => set({ commitmentExpiryAlertOnExpired: e.target.checked })}
               />
-              <span>Alert once about ones that already lapsed</span>
+              <span>{gt("Alert once about ones that already lapsed")}</span>
             </label>
             <span className="text-[11px] text-on-surface-faint">
-              A commitment that ended before we ever collected it cannot have crossed a horizon, so
-              nothing else would ever mention it. Bounded to the last 90 days. Default on.
+              {gt(
+                "A commitment that ended before we ever collected it cannot have crossed a horizon, so nothing else would ever mention it. Bounded to the last 90 days. Default on.",
+              )}
             </span>
           </label>
         </div>
@@ -453,13 +496,16 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
             checked={draft.commitmentIdleEnabled}
             onChange={(e) => set({ commitmentIdleEnabled: e.target.checked })}
           />
-          <span className="font-medium">Idle commitments</span>
+          <span className="font-medium">{gt("Idle commitments")}</span>
         </label>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <NumberField
             id={`${uid}-idle-threshold`}
-            label="Utilization under (%)"
-            hint={`Aggregated over the whole window, never sampled per day — a weekday-only workload reads about 71% and stays quiet. Default ${D.commitmentIdleThresholdPercent}%.`}
+            label={gt("Utilization under (%)")}
+            hint={gt(
+              "Aggregated over the whole window, never sampled per day — a weekday-only workload reads about 71% and stays quiet. Default {value}%.",
+              { value: D.commitmentIdleThresholdPercent },
+            )}
             value={draft.commitmentIdleThresholdPercent}
             min={L.minIdleThresholdPercent}
             max={L.maxIdleThresholdPercent}
@@ -468,8 +514,10 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
           />
           <NumberField
             id={`${uid}-idle-window`}
-            label="Window (days)"
-            hint={`Trailing days measured. Default ${D.commitmentIdleWindowDays}.`}
+            label={gt("Window (days)")}
+            hint={gt("Trailing days measured. Default {value}.", {
+              value: D.commitmentIdleWindowDays,
+            })}
             value={draft.commitmentIdleWindowDays}
             min={L.minIdleWindowDays}
             max={L.maxIdleWindowDays}
@@ -478,8 +526,11 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
           />
           <NumberField
             id={`${uid}-idle-measured`}
-            label="Least days with data"
-            hint={`Window days that must carry cost rows before anything is judged. A commitment whose utilization can't be measured at all never alerts, whatever this says. Default ${D.commitmentIdleMinMeasuredDays}.`}
+            label={gt("Least days with data")}
+            hint={gt(
+              "Window days that must carry cost rows before anything is judged. A commitment whose utilization can't be measured at all never alerts, whatever this says. Default {value}.",
+              { value: D.commitmentIdleMinMeasuredDays },
+            )}
             value={draft.commitmentIdleMinMeasuredDays}
             min={L.minIdleMinMeasuredDays}
             max={L.maxIdleMinMeasuredDays}
@@ -488,8 +539,10 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
           />
           <NumberField
             id={`${uid}-idle-waste`}
-            label="Least waste (USD)"
-            hint={`The floor is on the money, not the percentage. Default ${formatMoney(toDollars(D.commitmentIdleMinWasteCents), "USD")}.`}
+            label={gt("Least waste (USD)")}
+            hint={gt("The floor is on the money, not the percentage. Default {value}.", {
+              value: formatMoney(toDollars(D.commitmentIdleMinWasteCents), "USD"),
+            })}
             value={toDollars(draft.commitmentIdleMinWasteCents)}
             min={toDollars(L.minIdleWasteCents)}
             max={toDollars(L.maxIdleWasteCents)}
@@ -508,13 +561,15 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
             checked={draft.unitCostRegressionEnabled}
             onChange={(e) => set({ unitCostRegressionEnabled: e.target.checked })}
           />
-          <span className="font-medium">Unit-cost regressions</span>
+          <span className="font-medium">{gt("Unit-cost regressions")}</span>
         </label>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <NumberField
             id={`${uid}-unit-threshold`}
-            label="Unit cost up by (%)"
-            hint={`Versus the prior window. Default ${D.unitCostThresholdPercent}%.`}
+            label={gt("Unit cost up by (%)")}
+            hint={gt("Versus the prior window. Default {value}%.", {
+              value: D.unitCostThresholdPercent,
+            })}
             value={draft.unitCostThresholdPercent}
             min={L.minUnitCostThresholdPercent}
             max={L.maxUnitCostThresholdPercent}
@@ -523,8 +578,11 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
           />
           <NumberField
             id={`${uid}-unit-window`}
-            label="Each window (days)"
-            hint={`Two adjacent windows of this length are compared. Default ${D.unitCostWindowDays} — two whole weekly cycles a side.`}
+            label={gt("Each window (days)")}
+            hint={gt(
+              "Two adjacent windows of this length are compared. Default {value} — two whole weekly cycles a side.",
+              { value: D.unitCostWindowDays },
+            )}
             value={draft.unitCostWindowDays}
             min={L.minUnitCostWindowDays}
             max={L.maxUnitCostWindowDays}
@@ -533,8 +591,11 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
           />
           <NumberField
             id={`${uid}-unit-reported`}
-            label="Least reported days"
-            hint={`Required in each window. A day with no reported metric value is a gap, not a zero: it counts on neither side, and a window below this bar produces no comparison at all. Default ${D.unitCostMinReportedDays}.`}
+            label={gt("Least reported days")}
+            hint={gt(
+              "Required in each window. A day with no reported metric value is a gap, not a zero: it counts on neither side, and a window below this bar produces no comparison at all. Default {value}.",
+              { value: D.unitCostMinReportedDays },
+            )}
             value={draft.unitCostMinReportedDays}
             min={L.minUnitCostReportedDays}
             max={L.maxUnitCostReportedDays}
@@ -543,8 +604,13 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
           />
           <NumberField
             id={`${uid}-unit-spend`}
-            label="Least window spend (USD)"
-            hint={`A scope spending less than this can't move a unit cost readably. Default ${formatMoney(toDollars(D.unitCostMinSpendCents), "USD")}.`}
+            label={gt("Least window spend (USD)")}
+            hint={gt(
+              "A scope spending less than this can't move a unit cost readably. Default {value}.",
+              {
+                value: formatMoney(toDollars(D.unitCostMinSpendCents), "USD"),
+              },
+            )}
             value={toDollars(draft.unitCostMinSpendCents)}
             min={toDollars(L.minUnitCostSpendCents)}
             max={toDollars(L.maxUnitCostSpendCents)}
@@ -568,7 +634,7 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
             onClick={() => void save()}
             className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
           >
-            {busy ? "Saving…" : "Save"}
+            {busy ? gt("Saving…") : gt("Save")}
           </button>
           <button
             type="button"
@@ -579,17 +645,17 @@ function EfficiencyTuningPanel({ client }: { client: CostsClient }) {
             }}
             className="text-xs text-on-surface-faint underline hover:text-on-surface-secondary disabled:opacity-50"
           >
-            Reset to defaults
+            {gt("Reset to defaults")}
           </button>
           {justSaved && !dirty && (
             <span role="status" className="text-xs text-on-surface-faint">
-              Saved.
+              {gt("Saved.")}
             </span>
           )}
         </div>
       ) : (
         <p className="text-xs text-on-surface-faint">
-          You don&rsquo;t have permission to change these.
+          {gt("You don't have permission to change these.")}
         </p>
       )}
     </div>

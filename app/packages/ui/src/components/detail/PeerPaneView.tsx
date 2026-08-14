@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useDraggable, useDndContext, useDndMonitor, useDroppable } from "@dnd-kit/core";
+import { useGT } from "gt-react";
 import type { PeerPaneResource, PeerPaneResourceGroup } from "@infrawrench/plugin-base";
 import type { DraggableResource } from "../../dnd/types.js";
 import { ErrorNotice } from "../ErrorNotice.js";
@@ -7,6 +8,7 @@ import { ImportYamlModal } from "../ImportYamlModal.js";
 import type { PeerPaneData } from "./detail-types.js";
 import { statusDotClass } from "../schema-tokens.js";
 import { dispatchPromptNoSqlCommand } from "../../utils.js";
+import { useDataString } from "../../i18n/data-strings.js";
 
 export interface PeerPanePortForwardEntry {
   sessionId: string;
@@ -66,6 +68,8 @@ export function PeerPaneView({
   portForward,
   onSecretDrop,
 }: PeerPaneViewProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [resourceGroups, setResourceGroups] = useState(pane.schema.resourceGroups);
   const [importYamlOpen, setImportYamlOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -153,7 +157,9 @@ export function PeerPaneView({
     pane.schema.status?.status === "provisioning" && resourceGroups.length === 0;
   const paneError =
     pane.schema.status?.status === "error" && resourceGroups.length === 0
-      ? (pane.schema.status.label ?? "Failed to load workloads")
+      ? pane.schema.status.label
+        ? gtData(pane.schema.status.label)
+        : gt("Failed to load workloads")
       : null;
   const guidance = pane.schema.guidance;
   // Guidance was originally a whole-pane replacement (the host's "this peer is
@@ -169,13 +175,15 @@ export function PeerPaneView({
       <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-6 space-y-4">
         <div className="flex items-start gap-3">
           <div className="size-2 rounded-full bg-amber-400 flex-shrink-0 mt-1.5" />
-          <p className="text-sm font-medium text-on-surface leading-relaxed">{guidance.title}</p>
+          <p className="text-sm font-medium text-on-surface leading-relaxed">
+            {gtData(guidance.title)}
+          </p>
         </div>
         {guidance.suggestions.length > 0 && (
           <ul className="space-y-2 ml-5 list-disc text-sm text-on-surface-secondary marker:text-on-surface-muted">
             {guidance.suggestions.map((s, i) => (
               <li key={i} className="leading-relaxed">
-                {s}
+                {gtData(s)}
               </li>
             ))}
           </ul>
@@ -199,7 +207,7 @@ export function PeerPaneView({
             }
             className="ml-5 px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-md hover:bg-accent-blue/90 transition-colors"
           >
-            {guidance.action.label}
+            {gtData(guidance.action.label)}
           </button>
         )}
       </div>
@@ -216,9 +224,13 @@ export function PeerPaneView({
           className="size-10 rounded-full border-2 border-blue-400/30 border-t-blue-400 animate-spin"
         />
         <div className="space-y-1.5">
-          <p className="text-sm font-medium text-on-surface-secondary">Cluster is provisioning</p>
+          <p className="text-sm font-medium text-on-surface-secondary">
+            {gt("Cluster is provisioning")}
+          </p>
           <p className="text-xs text-on-surface-muted max-w-xs">
-            Workloads will appear here once the cluster is ready. This usually takes a few minutes.
+            {gt(
+              "Workloads will appear here once the cluster is ready. This usually takes a few minutes.",
+            )}
           </p>
         </div>
       </div>
@@ -246,10 +258,12 @@ export function PeerPaneView({
             <select
               value={nsFilter ?? ""}
               onChange={(e) => setNsFilter(e.target.value || null)}
-              aria-label="Filter by namespace"
+              aria-label={gt("Filter by namespace")}
               className="text-xs bg-surface-overlay border border-border-strong text-on-surface-secondary rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500 transition-colors"
             >
-              <option value="">All namespaces ({namespaces.length})</option>
+              <option value="">
+                {gt("All namespaces ({count})", { count: namespaces.length })}
+              </option>
               {namespaces.map((ns) => (
                 <option key={ns} value={ns}>
                   {ns}
@@ -265,7 +279,7 @@ export function PeerPaneView({
               onClick={() => setImportYamlOpen(true)}
               className="px-3 py-1.5 rounded-lg border border-border-strong bg-surface-overlay hover:bg-surface-sunken text-sm text-on-surface-secondary transition-colors"
             >
-              Import YAML
+              {gt("Import YAML")}
             </button>
           )}
           {k9s && (
@@ -277,7 +291,7 @@ export function PeerPaneView({
               disabled={k9s.disabled}
               className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-surface-overlay disabled:text-on-surface-tertiary disabled:hover:bg-surface-overlay text-sm font-medium text-white transition-colors"
             >
-              {k9s.label}
+              {gtData(k9s.label)}
             </button>
           )}
         </div>
@@ -285,13 +299,17 @@ export function PeerPaneView({
 
       {visibleGroups.length === 0 && (
         <div className="rounded-2xl border border-border bg-surface-raised/40 px-6 py-10 text-center">
-          <p className="text-sm text-on-surface-secondary">Connected, nothing to show here yet.</p>
+          <p className="text-sm text-on-surface-secondary">
+            {gt("Connected, nothing to show here yet.")}
+          </p>
           <p className="text-xs text-on-surface-muted mt-1.5">
             {resourceGroups.length > 0
-              ? `No ${resourceGroups
-                  .map((g) => g.title.replace(/\s*\(\d+\)\s*$/, "").toLowerCase())
-                  .join(" / ")} found. Create one in the provider, then refresh.`
-              : "Create a resource in the provider, then refresh."}
+              ? gt("No {groupNames} found. Create one in the provider, then refresh.", {
+                  groupNames: resourceGroups
+                    .map((g) => gtData(g.title.replace(/\s*\(\d+\)\s*$/, "").toLowerCase()))
+                    .join(" / "),
+                })
+              : gt("Create a resource in the provider, then refresh.")}
           </p>
         </div>
       )}
@@ -328,13 +346,12 @@ export function PeerPaneView({
                 </h3>
                 {isNamespaceGroup && (
                   <span className="text-xs text-on-surface-muted">
-                    {
-                      group.items.filter(
+                    {gt("{count} user", {
+                      count: group.items.filter(
                         (ns) =>
                           ns.fields["system"] !== "true" && namespaces.includes(ns.displayName),
-                      ).length
-                    }{" "}
-                    user
+                      ).length,
+                    })}
                   </span>
                 )}
               </button>
@@ -348,7 +365,7 @@ export function PeerPaneView({
                     }}
                     className="px-2.5 py-1 rounded-lg border border-border-strong bg-surface-overlay text-xs text-on-surface-secondary hover:border-border-strong hover:bg-surface-sunken transition-colors"
                   >
-                    Create {getCreateLabel(group.title)}
+                    {gt("Create {label}", { label: gtData(getCreateLabel(group.title)) })}
                   </button>
                 )}
               </div>
@@ -401,7 +418,7 @@ export function PeerPaneView({
 
             {!isCollapsed && itemCount === 0 && (
               <div id={`peer-pane-group-${groupKey}`} className="px-4 pb-3">
-                <p className="text-sm text-on-surface-muted">No resources found.</p>
+                <p className="text-sm text-on-surface-muted">{gt("No resources found.")}</p>
               </div>
             )}
           </section>
@@ -429,7 +446,7 @@ export function PeerPaneView({
                     void navigator.clipboard.writeText(`localhost:${pf.localPort}`);
                   }}
                   className="text-xs font-mono text-success hover:text-success-strong transition-colors"
-                  title="Click to copy"
+                  title={gt("Click to copy")}
                 >
                   localhost:{pf.localPort} → {pf.remotePort}
                 </button>
@@ -438,7 +455,7 @@ export function PeerPaneView({
                   onClick={() => portForward.onStop(pf.sessionId)}
                   className="px-2 py-0.5 rounded text-xs text-danger hover:text-danger-strong hover:bg-red-500/10 transition-colors"
                 >
-                  Stop
+                  {gt("Stop")}
                 </button>
               </div>
             </div>
@@ -456,9 +473,11 @@ export function PeerPaneView({
 
       {isOver && supportsSecretImport && (
         <div className="rounded-xl border-2 border-dashed border-blue-500/40 bg-accent-muted px-4 py-6 text-center">
-          <p className="text-sm font-medium text-accent-on-muted">Drop to create K8s Secret</p>
+          <p className="text-sm font-medium text-accent-on-muted">
+            {gt("Drop to create K8s Secret")}
+          </p>
           <p className="text-xs text-accent/60 mt-1">
-            Secret keys will be created from the resource's outputs
+            {gt("Secret keys will be created from the resource's outputs")}
           </p>
         </div>
       )}
@@ -479,6 +498,7 @@ function NamespaceGrid({
   activeNamespace: string | null;
   onSelect: (ns: string) => void;
 }) {
+  const gt = useGT();
   const userNs = items.filter((ns) => ns.fields["system"] !== "true");
   const systemNs = items.filter((ns) => ns.fields["system"] === "true");
   const [showSystem, setShowSystem] = useState(false);
@@ -501,7 +521,7 @@ function NamespaceGrid({
             {ns.status && (
               <span
                 role="img"
-                aria-label={`Status: ${ns.status}`}
+                aria-label={gt("Status: {status}", { status: ns.status })}
                 className={`ml-1.5 inline-block size-1.5 rounded-full ${statusDotClass(ns.status)}`}
               />
             )}
@@ -515,8 +535,15 @@ function NamespaceGrid({
             onClick={() => setShowSystem(!showSystem)}
             className="text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
           >
-            {showSystem ? "Hide" : "Show"} {systemNs.length} system namespace
-            {systemNs.length === 1 ? "" : "s"}
+            {showSystem
+              ? gt("Hide {count} system namespace{suffix}", {
+                  count: systemNs.length,
+                  suffix: systemNs.length === 1 ? "" : "s",
+                })
+              : gt("Show {count} system namespace{suffix}", {
+                  count: systemNs.length,
+                  suffix: systemNs.length === 1 ? "" : "s",
+                })}
           </button>
           {showSystem && (
             <div className="flex flex-wrap gap-1.5 mt-1.5">
@@ -565,6 +592,7 @@ function PeerResourcePill({
   onStopPortForward?: (sessionId: string) => void;
   onExec?: () => void;
 }): ReactNode {
+  const gt = useGT();
   const draggableResource: DraggableResource = {
     id: resource.id,
     pluginId: resource.pluginId,
@@ -627,7 +655,7 @@ function PeerResourcePill({
             {resource.status && (
               <span
                 role="img"
-                aria-label={`Status: ${resource.status}`}
+                aria-label={gt("Status: {status}", { status: resource.status })}
                 className={`size-2 rounded-full flex-shrink-0 ${statusDotClass(resource.status)}`}
               />
             )}
@@ -651,8 +679,8 @@ function PeerResourcePill({
             onExec();
           }}
           className="ml-1 h-6 px-2 rounded-full bg-surface-overlay hover:bg-surface-sunken text-xs text-on-surface-secondary transition-colors whitespace-nowrap"
-          title="Exec shell"
-          aria-label={`Exec shell into ${resource.displayName}`}
+          title={gt("Exec shell")}
+          aria-label={gt("Exec shell into {name}", { name: resource.displayName })}
         >
           <span aria-hidden="true">⌨</span>
         </button>
@@ -667,7 +695,7 @@ function PeerResourcePill({
           }}
           disabled={isPortForwarding}
           className="ml-1 h-6 px-2 rounded-full bg-surface-overlay hover:bg-surface-sunken disabled:opacity-50 text-xs text-on-surface-secondary transition-colors whitespace-nowrap"
-          title="Port forward"
+          title={gt("Port forward")}
         >
           {isPortForwarding ? "…" : "⇌"}
         </button>
@@ -681,7 +709,7 @@ function PeerResourcePill({
             onStopPortForward(activePortForward.sessionId);
           }}
           className="ml-1 size-6 rounded-full bg-red-100 dark:bg-red-900/50 hover:bg-red-200 dark:hover:bg-red-800/50 text-xs text-danger transition-colors"
-          title="Stop port forward"
+          title={gt("Stop port forward")}
         >
           ■
         </button>

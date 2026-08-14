@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { T, useGT } from "gt-react";
 import { Modal } from "../components/Modal.js";
 import {
   WORKFLOW_PROMPT_EVENT,
@@ -23,7 +24,9 @@ export interface PromptHostProps {
  * `options` — so a `select` rendered through it would offer no options at all,
  * which is precisely the interaction an Infrafile's `select(...)` depends on.
  */
-export function PromptHost({ title = "Workflow input" }: PromptHostProps) {
+export function PromptHost({ title }: PromptHostProps) {
+  const gt = useGT();
+  const displayTitle = title ?? gt("Workflow input");
   const [queue, setQueue] = useState<WorkflowPromptRequest[]>([]);
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null>(null);
@@ -74,13 +77,13 @@ export function PromptHost({ title = "Workflow input" }: PromptHostProps) {
   }
 
   return (
-    <Modal onClose={() => answer(null)} ariaLabel={title}>
+    <Modal onClose={() => answer(null)} ariaLabel={displayTitle}>
       <div
         className={`bg-surface-raised border border-border-strong rounded-xl shadow-2xl p-6 ${
           kind === "code" ? "w-[640px] max-w-[90vw]" : "w-[440px]"
         }`}
       >
-        <h2 className="text-sm font-semibold text-on-surface mb-1">{title}</h2>
+        <h2 className="text-sm font-semibold text-on-surface mb-1">{displayTitle}</h2>
         <p id={messageId} className="text-sm text-on-surface-secondary whitespace-pre-wrap mb-4">
           {spec.message}
         </p>
@@ -92,21 +95,21 @@ export function PromptHost({ title = "Workflow input" }: PromptHostProps) {
               onClick={() => answer(null)}
               className="text-xs px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-on-surface-secondary"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
               onClick={() => answer(false)}
               className="text-xs px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-on-surface-secondary"
             >
-              No
+              {gt("No")}
             </button>
             <button
               type="button"
               onClick={() => answer(true)}
               className="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white"
             >
-              Yes
+              {gt("Yes")}
             </button>
           </div>
         ) : (
@@ -185,23 +188,25 @@ export function PromptHost({ title = "Workflow input" }: PromptHostProps) {
             )}
             <div className="flex items-center justify-end gap-2">
               {kind === "code" && (
-                <span className="mr-auto text-[11px] text-on-surface-faint">
-                  <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>↵</kbd> to submit
-                </span>
+                <T>
+                  <span className="mr-auto text-[11px] text-on-surface-faint">
+                    <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>↵</kbd> to submit
+                  </span>
+                </T>
               )}
               <button
                 type="button"
                 onClick={() => answer(null)}
                 className="text-xs px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-on-surface-secondary"
               >
-                Cancel
+                {gt("Cancel")}
               </button>
               <button
                 type="button"
                 onClick={submitText}
                 className="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white"
               >
-                Submit
+                {gt("Submit")}
               </button>
             </div>
           </>
