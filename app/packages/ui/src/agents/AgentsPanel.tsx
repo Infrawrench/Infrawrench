@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import type { CreateFieldConfig } from "@infrawrench/plugin-base";
 import { FieldRenderer } from "../components/create-resource/FieldRenderer.js";
+import { useDataString } from "../i18n/data-strings.js";
 import { AGENT_SETUP_FAILED_LOG_PREFIX } from "./launch-command.js";
 import { closeSshTabsForAgentTarget, openAgentSshTerminalTab } from "./open-ssh-tab.js";
 import {
@@ -42,13 +44,19 @@ function statusClass(status: AgentSession["status"]): string {
   return "bg-yellow-500";
 }
 
-function statusLabel(status: AgentSession["status"]): string {
-  if (status === "up") return "Ready";
-  if (status === "setting-up") return "Setting up";
-  return status.charAt(0).toUpperCase() + status.slice(1);
+function statusLabel(
+  status: AgentSession["status"],
+  gt: ReturnType<typeof useGT>,
+  gtData: ReturnType<typeof useDataString>,
+): string {
+  if (status === "up") return gt("Ready");
+  if (status === "setting-up") return gt("Setting up");
+  return gtData(status.charAt(0).toUpperCase() + status.slice(1));
 }
 
 export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: AgentsPanelProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [accounts, setAccounts] = useState<AgentVmAccount[]>([]);
   const [settings, setSettings] = useState<AgentSettings | null>(null);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
@@ -173,7 +181,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   const accountField = useMemo<CreateFieldConfig>(
     () => ({
       key: "account",
-      label: "Account",
+      label: gt("Account"),
       kind: "select",
       required: true,
       options: accounts.map((account) => ({
@@ -181,13 +189,13 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
         label: accountLabel(account),
       })),
     }),
-    [accounts],
+    [accounts, gt],
   );
 
   const toolField = useMemo<CreateFieldConfig>(
     () => ({
       key: "tool",
-      label: "Tool",
+      label: gt("Tool"),
       kind: "select",
       required: true,
       options: [
@@ -195,7 +203,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
         { id: "claude-code", label: "Claude Code" },
       ],
     }),
-    [],
+    [gt],
   );
 
   // Which agent runs (`tool`) and how you talk to it (`surface`) are separate
@@ -204,15 +212,15 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   const surfaceField = useMemo<CreateFieldConfig>(
     () => ({
       key: "surface",
-      label: "Interface",
+      label: gt("Interface"),
       kind: "select",
       required: true,
       options: [
-        { id: "terminal", label: "Terminal (SSH)" },
+        { id: "terminal", label: gt("Terminal (SSH)") },
         { id: "t3-code", label: "T3 Code" },
       ],
     }),
-    [],
+    [gt],
   );
 
   const selectedSurface = agentSurfaceOrDefault(settings?.surface);
@@ -305,8 +313,8 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
     setOpeningSessionId(session.id);
     setMessage(
       t3Code
-        ? `Opening the setup terminal for ${session.projectName}...`
-        : `Opening ${session.projectName}... preparing SSH session.`,
+        ? gt("Opening the setup terminal for {name}...", { name: session.projectName })
+        : gt("Opening {name}... preparing SSH session.", { name: session.projectName }),
     );
     try {
       // T3 Code servers open the interactive authorization terminal — the
@@ -316,8 +324,11 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
         client,
         session,
         title: t3Code
-          ? `T3 Code setup · ${session.projectName}`
-          : `${toolCommandLabel(session.tool)} · ${session.projectName}`,
+          ? gt("T3 Code setup · {name}", { name: session.projectName })
+          : gt("{tool} · {name}", {
+              tool: toolCommandLabel(session.tool),
+              name: session.projectName,
+            }),
         ...(openWorkspaceTarget ? { openWorkspaceTarget } : {}),
       });
       const nextSessions = await client.listSessions().catch(() => null);
@@ -333,7 +344,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   async function reconcileSession(id: string) {
     try {
       const result = await client.reconcileSession(id);
-      setMessage(result.message || `Fetched ${result.branchName}.`);
+      setMessage(result.message || gt("Fetched {branch}.", { branch: result.branchName }));
       const nextSessions = await client.listSessions().catch(() => null);
       if (nextSessions) setSessions(nextSessions.filter(sessionHasVm));
     } catch (e) {
@@ -344,7 +355,10 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   async function deleteSession(session: AgentSession) {
     if (deletingSessionId) return;
     const confirmed = window.confirm(
-      `Delete agent "${session.projectName}"? This destroys its VM and any work on it that hasn't been reconciled.`,
+      gt(
+        'Delete agent "{name}"? This destroys its VM and any work on it that hasn\'t been reconciled.',
+        { name: session.projectName },
+      ),
     );
     if (!confirmed) return;
     setDeletingSessionId(session.id);
@@ -374,9 +388,9 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
       <div className="max-w-6xl mx-auto p-4 space-y-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h1 className="text-base font-semibold">Agents</h1>
+            <h1 className="text-base font-semibold">{gt("Agents")}</h1>
             <p className="text-xs text-on-surface-muted">
-              Provision coding VMs from cloud accounts and reconcile their branches locally.
+              {gt("Provision coding VMs from cloud accounts and reconcile their branches locally.")}
             </p>
           </div>
           <div ref={configRef} className="relative w-full lg:w-[420px]">
@@ -390,10 +404,10 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
               <ProviderMark account={selectedAccount} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium text-on-surface">
-                  {selectedAccount ? accountLabel(selectedAccount) : "No VM-capable account"}
+                  {selectedAccount ? accountLabel(selectedAccount) : gt("No VM-capable account")}
                 </span>
                 <span className="block truncate text-xs text-on-surface-muted">
-                  {configSummary || "Choose defaults"}
+                  {configSummary || gt("Choose defaults")}
                 </span>
               </span>
               <span className="shrink-0 text-xs text-on-surface-faint">
@@ -425,13 +439,15 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                       }
                     />
                     {isT3CodeSurface(selectedSurface) && (
-                      <p className="text-xs text-on-surface-muted">
-                        T3 Code runs as a server on the VM and drives{" "}
-                        {toolLabel(settings?.tool ?? "codex")}, which is installed alongside it.
-                        Open runs the one-off authorization steps over SSH; after that you use the
-                        server from T3 Code itself. No repository checkout — add projects from
-                        inside T3 Code.
-                      </p>
+                      <T>
+                        <p className="text-xs text-on-surface-muted">
+                          T3 Code runs as a server on the VM and drives{" "}
+                          <Var>{toolLabel(settings?.tool ?? "codex")}</Var>, which is installed
+                          alongside it. Open runs the one-off authorization steps over SSH; after
+                          that you use the server from T3 Code itself. No repository checkout —
+                          add projects from inside T3 Code.
+                        </p>
+                      </T>
                     )}
                     {visibleFields.map(([key, value]) => (
                       <FieldRenderer
@@ -451,14 +467,14 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                     onClick={() => void saveDefaults()}
                     className="w-full rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
                   >
-                    Save defaults
+                    {gt("Save defaults")}
                   </button>
                 </div>
               </div>
             )}
             {saveNotice && !configOpen && (
               <div className="absolute right-0 top-full z-40 mt-2 rounded-md border border-green-500/30 bg-green-500/10 px-3 py-2 text-xs font-medium text-success shadow-lg">
-                Agent defaults saved
+                {gt("Agent defaults saved")}
               </div>
             )}
           </div>
@@ -478,8 +494,8 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                   <input
                     value={agentName}
                     onChange={(e) => setAgentName(e.target.value)}
-                    placeholder={needsRepo ? "Agent name" : "Server name"}
-                    aria-label={needsRepo ? "Agent name" : "Server name"}
+                    placeholder={needsRepo ? gt("Agent name") : gt("Server name")}
+                    aria-label={needsRepo ? gt("Agent name") : gt("Server name")}
                     className="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-1.5 text-sm"
                   />
                   <button
@@ -488,7 +504,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                     onClick={() => void createSession()}
                     className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
                   >
-                    Create
+                    {gt("Create")}
                   </button>
                 </div>
                 {/* A T3 Code server has no Infrawrench-managed checkout, so
@@ -507,7 +523,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                             : "text-on-surface-muted hover:text-on-surface"
                         }`}
                       >
-                        Git URL
+                        {gt("Git URL")}
                       </button>
                       <button
                         type="button"
@@ -522,29 +538,30 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                             : "text-on-surface-muted hover:text-on-surface"
                         }`}
                       >
-                        Local folder
+                        {gt("Local folder")}
                       </button>
                     </div>
                     {showRepoPicker && (
                       <select
                         value={repoPickerValue}
                         onChange={(e) => pickGitRepo(e.target.value)}
-                        aria-label="Repository"
+                        aria-label={gt("Repository")}
                         className={`min-w-0 rounded border border-border bg-surface px-2 py-1.5 text-sm ${
                           repoPickerValue === "custom" ? "md:w-56 md:flex-none" : "flex-1"
                         }`}
                       >
-                        <option value="">Select a repository…</option>
+                        <option value="">{gt("Select a repository…")}</option>
                         {gitRepoOptions.map((option) => (
                           <option
                             key={`${option.installationId}:${option.fullName}`}
                             value={option.fullName}
                           >
-                            {option.fullName}
-                            {option.private ? " (private)" : ""}
+                            {option.private
+                              ? gt("{name} (private)", { name: option.fullName })
+                              : option.fullName}
                           </option>
                         ))}
-                        <option value="custom">Custom Git URL…</option>
+                        <option value="custom">{gt("Custom Git URL…")}</option>
                       </select>
                     )}
                     {(!showRepoPicker || repoPickerValue === "custom") && (
@@ -556,10 +573,12 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                             ? "https://github.com/org/repo.git"
                             : client.pickLocalRepoPath
                               ? "/path/to/local/repo"
-                              : "Local folders are available in the desktop app"
+                              : gt("Local folders are available in the desktop app")
                         }
                         aria-label={
-                          repoSource === "git-url" ? "Repository Git URL" : "Local repository path"
+                          repoSource === "git-url"
+                            ? gt("Repository Git URL")
+                            : gt("Local repository path")
                         }
                         className="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-1.5 text-sm"
                       />
@@ -572,17 +591,17 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                           onClick={gitIntegration.onConnect}
                           className="rounded border border-border-strong px-3 py-1.5 text-sm text-on-surface-secondary hover:bg-surface-sunken"
                         >
-                          {gitIntegration.loading ? "Loading repos…" : "Connect GitHub"}
+                          {gitIntegration.loading ? gt("Loading repos…") : gt("Connect GitHub")}
                         </button>
                       )}
                     {showRepoPicker && (
                       <button
                         type="button"
                         onClick={gitIntegration?.onConnect}
-                        title="Add or remove repositories on GitHub"
+                        title={gt("Add or remove repositories on GitHub")}
                         className="shrink-0 rounded border border-border-strong px-3 py-1.5 text-sm text-on-surface-secondary hover:bg-surface-sunken"
                       >
-                        + repos
+                        {gt("+ repos")}
                       </button>
                     )}
                     {repoSource === "local-path" && client.pickLocalRepoPath && (
@@ -591,7 +610,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                         onClick={() => void browseLocalRepo()}
                         className="rounded border border-border-strong px-3 py-1.5 text-sm text-on-surface-secondary hover:bg-surface-sunken"
                       >
-                        Browse
+                        {gt("Browse")}
                       </button>
                     )}
                   </div>
@@ -601,7 +620,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
 
             <div className="border border-border rounded-lg overflow-hidden">
               {sessions.length === 0 ? (
-                <div className="p-4 text-xs text-on-surface-muted">No agent VMs yet.</div>
+                <div className="p-4 text-xs text-on-surface-muted">{gt("No agent VMs yet.")}</div>
               ) : (
                 sessions.map((session) => {
                   const sessionAccount = accounts.find(
@@ -626,14 +645,16 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                               {session.projectName}
                             </span>
                             <span className="text-xs text-on-surface-muted">
-                              {statusLabel(session.status)}
+                              {statusLabel(session.status, gt, gtData)}
                             </span>
                           </div>
                           {isT3CodeSurface(session.surface) ? (
-                            <div className="mt-1 text-xs text-on-surface-muted">
-                              T3 Code server driving {toolLabel(session.tool)} · projects managed in
-                              T3 Code
-                            </div>
+                            <T>
+                              <div className="mt-1 text-xs text-on-surface-muted">
+                                T3 Code server driving <Var>{toolLabel(session.tool)}</Var> ·
+                                projects managed in T3 Code
+                              </div>
+                            </T>
                           ) : (
                             <>
                               <div className="mt-1 text-xs text-on-surface-muted truncate">
@@ -645,7 +666,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                             </>
                           )}
                           <div className="mt-1 text-xs text-on-surface-tertiary truncate">
-                            {sessionLocationLabel(session, sessionAccount)}
+                            {sessionLocationLabel(session, sessionAccount, gt)}
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -657,16 +678,16 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                               aria-busy={openingSessionId === session.id}
                               title={
                                 isT3CodeSurface(session.surface)
-                                  ? "Run the T3 Connect and provider sign-in steps over SSH"
+                                  ? gt("Run the T3 Connect and provider sign-in steps over SSH")
                                   : undefined
                               }
                               className="px-2 py-1 rounded border border-border text-xs disabled:opacity-50"
                             >
                               {openingSessionId === session.id
-                                ? "Opening..."
+                                ? gt("Opening...")
                                 : isT3CodeSurface(session.surface)
-                                  ? "Authorize server"
-                                  : "Open"}
+                                  ? gt("Authorize server")
+                                  : gt("Open")}
                             </button>
                           )}
                           {sessionSetupFailed(session) && (
@@ -677,7 +698,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                               aria-busy={openingSessionId === session.id}
                               className="px-2 py-1 rounded border border-border text-xs disabled:opacity-50"
                             >
-                              {openingSessionId === session.id ? "Retrying..." : "Retry setup"}
+                              {openingSessionId === session.id ? gt("Retrying...") : gt("Retry setup")}
                             </button>
                           )}
                           {/* Reconcile pushes the session branch back; a T3
@@ -689,7 +710,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                               onClick={() => void reconcileSession(session.id)}
                               className="px-2 py-1 rounded border border-border text-xs"
                             >
-                              Reconcile
+                              {gt("Reconcile")}
                             </button>
                           )}
                           <button
@@ -699,7 +720,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                             aria-busy={deletingSessionId === session.id}
                             className="px-2 py-1 rounded border border-red-500/40 text-xs text-danger hover:bg-red-500/10 disabled:opacity-50"
                           >
-                            {deletingSessionId === session.id ? "Deleting..." : "Delete"}
+                            {deletingSessionId === session.id ? gt("Deleting...") : gt("Delete")}
                           </button>
                         </div>
                       </div>
@@ -756,8 +777,15 @@ function sessionSetupFailed(session: AgentSession): boolean {
   return Boolean(lastLog?.startsWith(AGENT_SETUP_FAILED_LOG_PREFIX));
 }
 
-function sessionLocationLabel(session: AgentSession, account: AgentVmAccount | undefined): string {
-  return `${account ? accountLabel(account) : session.pluginId} · VM ${session.vmResourceId}`;
+function sessionLocationLabel(
+  session: AgentSession,
+  account: AgentVmAccount | undefined,
+  gt: ReturnType<typeof useGT>,
+): string {
+  return gt("{location} · VM {vmId}", {
+    location: account ? accountLabel(account) : session.pluginId,
+    vmId: session.vmResourceId,
+  });
 }
 
 function ProviderMark({ account }: { account: AgentVmAccount | undefined }) {

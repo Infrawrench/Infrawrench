@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { T, Var, useGT } from "gt-react";
 import { apiGet, apiPost } from "@/lib/api";
 
 interface InviteDetails {
@@ -17,6 +18,7 @@ export const Route = createFileRoute("/invite/$token")({
 });
 
 function InviteAcceptPage() {
+  const gt = useGT();
   const { token } = Route.useParams();
   const navigate = useNavigate();
   const [invite, setInvite] = useState<InviteDetails | null>(null);
@@ -27,9 +29,9 @@ function InviteAcceptPage() {
   useEffect(() => {
     apiGet<InviteDetails>(`/api/invitations/by-token/${token}`)
       .then(setInvite)
-      .catch((e) => setError(e instanceof Error ? e.message : "Invitation not found"))
+      .catch((e) => setError(e instanceof Error ? e.message : gt("Invitation not found")))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, gt]);
 
   async function handleAccept() {
     setAccepting(true);
@@ -41,7 +43,7 @@ function InviteAcceptPage() {
       );
       void navigate({ to: "/org/$orgId", params: { orgId: result.organization.id } });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to accept invitation");
+      setError(e instanceof Error ? e.message : gt("Failed to accept invitation"));
       setAccepting(false);
     }
   }
@@ -49,7 +51,7 @@ function InviteAcceptPage() {
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-on-surface-tertiary">
-        <div className="animate-pulse text-sm">Loading…</div>
+        <div className="animate-pulse text-sm">{gt("Loading…")}</div>
       </div>
     );
   }
@@ -58,7 +60,7 @@ function InviteAcceptPage() {
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-on-surface">
         <div className="text-center">
-          <h1 className="text-xl font-bold mb-2">Invalid invitation</h1>
+          <h1 className="text-xl font-bold mb-2">{gt("Invalid invitation")}</h1>
           <p className="text-sm text-on-surface-tertiary">{error}</p>
         </div>
       </div>
@@ -71,9 +73,9 @@ function InviteAcceptPage() {
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-on-surface">
         <div className="text-center">
-          <h1 className="text-xl font-bold mb-2">Invitation already accepted</h1>
+          <h1 className="text-xl font-bold mb-2">{gt("Invitation already accepted")}</h1>
           <p className="text-sm text-on-surface-tertiary mb-4">
-            You're already a member of {invite.organizationName}.
+            {gt("You're already a member of {org}.", { org: invite.organizationName })}
           </p>
           <button
             type="button"
@@ -82,7 +84,7 @@ function InviteAcceptPage() {
             }
             className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
           >
-            Go to {invite.organizationName}
+            {gt("Go to {org}", { org: invite.organizationName })}
           </button>
         </div>
       </div>
@@ -94,17 +96,27 @@ function InviteAcceptPage() {
   return (
     <div className="flex h-screen items-center justify-center bg-surface text-on-surface">
       <div className="w-full max-w-md px-6 text-center">
-        <h1 className="text-2xl font-bold mb-2">You've been invited</h1>
-        <p className="text-sm text-on-surface-tertiary mb-8">
-          You've been invited to join{" "}
-          <span className="text-on-surface-secondary font-medium">{invite.organizationName}</span>{" "}
-          as a <span className="text-on-surface-secondary font-medium">{invite.role}</span>.
-        </p>
+        <h1 className="text-2xl font-bold mb-2">{gt("You've been invited")}</h1>
+        <T>
+          <p className="text-sm text-on-surface-tertiary mb-8">
+            You've been invited to join{" "}
+            <Var>
+              <span className="text-on-surface-secondary font-medium">
+                {invite.organizationName}
+              </span>
+            </Var>{" "}
+            as a{" "}
+            <Var>
+              <span className="text-on-surface-secondary font-medium">{invite.role}</span>
+            </Var>
+            .
+          </p>
+        </T>
 
         {error && <p className="text-xs text-danger mb-4">{error}</p>}
 
         {expired ? (
-          <p className="text-sm text-danger">This invitation has expired.</p>
+          <p className="text-sm text-danger">{gt("This invitation has expired.")}</p>
         ) : (
           <button
             type="button"
@@ -112,7 +124,7 @@ function InviteAcceptPage() {
             disabled={accepting}
             className="w-full px-4 py-3 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
           >
-            {accepting ? "Joining..." : "Accept Invitation"}
+            {accepting ? gt("Joining...") : gt("Accept Invitation")}
           </button>
         )}
       </div>

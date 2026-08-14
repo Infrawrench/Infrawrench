@@ -16,11 +16,13 @@ import {
   type CostDimensionId,
 } from "@infrawrench/client-core";
 import { useEffect, useId, useState } from "react";
+import { T, useGT } from "gt-react";
 
 import { COST_DIMENSIONS, costAlertInputSchema, type CostFilter } from "./config.js";
 import { CostFilterRows } from "./CostGraphConfigModal.js";
 import { formatMoney } from "./transform.js";
 import { Modal } from "../components/Modal.js";
+import { useDataString } from "../i18n/data-strings.js";
 import type { CostsClient } from "./types.js";
 
 const inputClass =
@@ -54,33 +56,44 @@ function windowLabel(event: CostAlertEvent): string {
 }
 
 /** One line describing what an alert watches, for the list row. */
-function describeScope(alert: CostAlert): string {
+function describeScope(
+  alert: CostAlert,
+  gt: ReturnType<typeof useGT>,
+  gtData: ReturnType<typeof useDataString>,
+): string {
   const parts: string[] = [];
-  parts.push(
-    alert.groupBy === null
-      ? "one total"
-      : `each ${(COST_DIMENSION_LABELS[alert.groupBy] ?? alert.groupBy).toLowerCase()}${
-          alert.groupBy === "tag" && alert.groupByTagKey ? ` (${alert.groupByTagKey})` : ""
-        }`,
-  );
+  if (alert.groupBy === null) {
+    parts.push(gt("one total"));
+  } else {
+    const dimensionLabel = gtData(
+      (COST_DIMENSION_LABELS[alert.groupBy] ?? alert.groupBy).toLowerCase(),
+    );
+    const tagKey = alert.groupBy === "tag" && alert.groupByTagKey ? ` (${alert.groupByTagKey})` : "";
+    parts.push(gt("each {dimensionLabel}{tagKey}", { dimensionLabel, tagKey }));
+  }
   parts.push(
     alert.filters.length === 0
-      ? "all spend"
-      : `${alert.filters.length} filter${alert.filters.length === 1 ? "" : "s"}`,
+      ? gt("all spend")
+      : alert.filters.length === 1
+        ? gt("1 filter")
+        : gt("{count} filters", { count: alert.filters.length }),
   );
   return parts.join(" · ");
 }
 
 /** "≥ 25% and ≥ $100 up" — the firing condition, compactly. */
-function describeThreshold(alert: CostAlert): string {
+function describeThreshold(alert: CostAlert, gt: ReturnType<typeof useGT>): string {
   const parts: string[] = [];
-  if (alert.thresholdPercent !== null) parts.push(`≥ ${alert.thresholdPercent}%`);
-  if (alert.thresholdAmountCents !== null) {
-    parts.push(`≥ ${formatMoney(alert.thresholdAmountCents / 100, "USD")}`);
+  if (alert.thresholdPercent !== null) {
+    parts.push(gt("≥ {percent}%", { percent: alert.thresholdPercent }));
   }
+  if (alert.thresholdAmountCents !== null) {
+    parts.push(gt("≥ {amount}", { amount: formatMoney(alert.thresholdAmountCents / 100, "USD") }));
+  }
+  const condition = parts.length === 2 ? gt("{a} and {b}", { a: parts[0], b: parts[1] }) : (parts[0] ?? "");
   const direction =
-    alert.direction === "both" ? "either way" : alert.direction === "increase" ? "up" : "down";
-  return `${parts.join(" and ")} ${direction}`;
+    alert.direction === "both" ? gt("either way") : alert.direction === "increase" ? gt("up") : gt("down");
+  return gt("{condition} {direction}", { condition, direction });
 }
 
 const CADENCE_BADGE: Record<CostChangeCadence, string> = {
@@ -102,6 +115,8 @@ export interface CostChangeAlertsSectionProps {
  * relative change* on a chosen scope and cadence.
  */
 export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [alerts, setAlerts] = useState<CostAlert[] | null>(null);
   const [events, setEvents] = useState<CostAlertEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -157,7 +172,11 @@ export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps
   };
 
   const remove = async (alert: CostAlert) => {
-    if (!window.confirm(`Delete the cost alert "${alert.name}"? Its fired events go with it.`)) {
+    if (
+      !window.confirm(
+        gt('Delete the cost alert "{name}"? Its fired events go with it.', { name: alert.name }),
+      )
+    ) {
       return;
     }
     try {
@@ -171,35 +190,35 @@ export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-on-surface">Change alerts</h2>
+        <h2 className="text-sm font-semibold text-on-surface">{gt("Change alerts")}</h2>
         {canWrite && (
           <button
             type="button"
             onClick={() => setEditing({ alert: null })}
             className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            New alert
+            {gt("New alert")}
           </button>
         )}
       </div>
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          Couldn&rsquo;t load change alerts — {error}
+          {gt("Couldn't load change alerts — {error}", { error })}
         </div>
       )}
 
       {alerts === null && error === null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Loading change alerts…
+          {gt("Loading change alerts…")}
         </p>
       )}
 
       {alerts?.length === 0 && (
         <p className="text-sm text-on-surface-faint">
-          No change alerts yet. A change alert fires when spend on a scope you choose moves more
-          than a threshold you choose versus the prior period — unlike budgets (an absolute monthly
-          total) and anomaly detection (statistical outliers against a learned baseline).
+          {gt(
+            "No change alerts yet. A change alert fires when spend on a scope you choose moves more than a threshold you choose versus the prior period — unlike budgets (an absolute monthly total) and anomaly detection (statistical outliers against a learned baseline).",
+          )}
         </p>
       )}
 
@@ -211,21 +230,23 @@ export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium text-on-surface">{alert.name}</span>
                   <span className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-on-surface-faint">
-                    {CADENCE_BADGE[alert.cadence]}
+                    {gtData(CADENCE_BADGE[alert.cadence])}
                   </span>
                   {!alert.enabled && (
                     <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning">
-                      Paused
+                      {gt("Paused")}
                     </span>
                   )}
                 </div>
                 <p className="text-xs text-on-surface-faint">
-                  {describeThreshold(alert)} · {describeScope(alert)} ·{" "}
-                  {COST_CHANGE_CADENCE_DESCRIPTIONS[alert.cadence].toLowerCase()}
+                  {describeThreshold(alert, gt)} · {describeScope(alert, gt, gtData)} ·{" "}
+                  {gtData(COST_CHANGE_CADENCE_DESCRIPTIONS[alert.cadence]).toLowerCase()}
                 </p>
               </div>
               <span className="whitespace-nowrap text-xs text-on-surface-faint">
-                {alert.lastFiredAt ? `Last fired ${formatWhen(alert.lastFiredAt)}` : "Never fired"}
+                {alert.lastFiredAt
+                  ? gt("Last fired {when}", { when: formatWhen(alert.lastFiredAt) })
+                  : gt("Never fired")}
               </span>
               {canWrite && (
                 <span className="flex items-center gap-2">
@@ -234,14 +255,14 @@ export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps
                     onClick={() => setEditing({ alert })}
                     className="text-xs text-info hover:text-info-strong"
                   >
-                    Edit
+                    {gt("Edit")}
                   </button>
                   <button
                     type="button"
                     onClick={() => void remove(alert)}
                     className="text-xs text-on-surface-faint hover:text-danger"
                   >
-                    Delete
+                    {gt("Delete")}
                   </button>
                 </span>
               )}
@@ -253,17 +274,17 @@ export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps
       {events !== null && events.length > 0 && (
         <div>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-on-surface-faint">
-            Recent firings
+            {gt("Recent firings")}
           </h3>
           <div className="overflow-x-auto rounded-xl border border-border">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-on-surface-faint">
-                  <th className="px-3 py-2 font-medium">When</th>
-                  <th className="px-3 py-2 font-medium">Alert</th>
-                  <th className="px-3 py-2 font-medium">Window</th>
-                  <th className="px-3 py-2 font-medium text-right">Previous → current</th>
-                  <th className="px-3 py-2 font-medium text-right">Change</th>
+                  <th className="px-3 py-2 font-medium">{gt("When")}</th>
+                  <th className="px-3 py-2 font-medium">{gt("Alert")}</th>
+                  <th className="px-3 py-2 font-medium">{gt("Window")}</th>
+                  <th className="px-3 py-2 font-medium text-right">{gt("Previous → current")}</th>
+                  <th className="px-3 py-2 font-medium text-right">{gt("Change")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
@@ -291,7 +312,7 @@ export function CostChangeAlertsSection({ client }: CostChangeAlertsSectionProps
                         event.direction === "increase" ? "text-danger" : "text-success"
                       }`}
                     >
-                      {costAlertEventDeltaLabel(event)}
+                      {gtData(costAlertEventDeltaLabel(event))}
                     </td>
                   </tr>
                 ))}
@@ -347,6 +368,8 @@ export function CostChangeAlertConfigModal({
   onSave,
   onClose,
 }: CostChangeAlertConfigModalProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const uid = useId();
   const [input, setInput] = useState<CostAlertInput>(initialInput);
   const [percentText, setPercentText] = useState(
@@ -367,15 +390,15 @@ export function CostChangeAlertConfigModal({
     const percent = percentText.trim() === "" ? null : Number(percentText);
     const amount = amountText.trim() === "" ? null : Number(amountText);
     if (percent !== null && (!Number.isFinite(percent) || percent <= 0)) {
-      setError("The percent threshold must be a positive number (or empty).");
+      setError(gt("The percent threshold must be a positive number (or empty)."));
       return;
     }
     if (amount !== null && (!Number.isFinite(amount) || amount <= 0)) {
-      setError("The amount threshold must be a positive number (or empty).");
+      setError(gt("The amount threshold must be a positive number (or empty)."));
       return;
     }
     if (percent === null && amount === null) {
-      setError("Set a percent threshold, an amount threshold, or both.");
+      setError(gt("Set a percent threshold, an amount threshold, or both."));
       return;
     }
     const cleaned: CostAlertInput = {
@@ -386,7 +409,7 @@ export function CostChangeAlertConfigModal({
     };
     const parsed = costAlertInputSchema.safeParse(cleaned);
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "Invalid cost alert");
+      setError(parsed.error.issues[0]?.message ?? gt("Invalid cost alert"));
       return;
     }
     setSaving(true);
@@ -395,31 +418,32 @@ export function CostChangeAlertConfigModal({
       await onSave(parsed.data);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
+      setError(e instanceof Error ? e.message : gt("Failed to save"));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Modal onClose={onClose} ariaLabel="Change alert">
+    <Modal onClose={onClose} ariaLabel={gt("Change alert")}>
       <div className="w-[32rem] max-w-[90vw] rounded-2xl border border-border bg-surface-raised p-5 max-h-[85vh] overflow-y-auto">
-        <h2 className="text-lg font-semibold text-on-surface mb-1">Change alert</h2>
+        <h2 className="text-lg font-semibold text-on-surface mb-1">{gt("Change alert")}</h2>
         <p className="text-xs text-on-surface-faint mb-4">
-          Fires when spend on this scope moves past the threshold versus the prior period. Each
-          period fires at most once per watched group.
+          {gt(
+            "Fires when spend on this scope moves past the threshold versus the prior period. Each period fires at most once per watched group.",
+          )}
         </p>
 
         <div className="space-y-4">
           <div>
             <label htmlFor={`${uid}-name`} className={labelClass}>
-              Name
+              {gt("Name")}
             </label>
             <input
               id={`${uid}-name`}
               className={inputClass}
               maxLength={COST_ALERT_LIMITS.maxNameLength}
-              placeholder="e.g. Weekly AWS movement"
+              placeholder={gt("e.g. Weekly AWS movement")}
               value={input.name}
               onChange={(e) => set({ name: e.target.value })}
             />
@@ -428,7 +452,7 @@ export function CostChangeAlertConfigModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor={`${uid}-cadence`} className={labelClass}>
-                Cadence
+                {gt("Cadence")}
               </label>
               <select
                 id={`${uid}-cadence`}
@@ -438,17 +462,17 @@ export function CostChangeAlertConfigModal({
               >
                 {COST_CHANGE_CADENCES.map((cadence) => (
                   <option key={cadence} value={cadence}>
-                    {COST_CHANGE_CADENCE_LABELS[cadence]}
+                    {gtData(COST_CHANGE_CADENCE_LABELS[cadence])}
                   </option>
                 ))}
               </select>
               <p className="mt-1 text-[11px] text-on-surface-faint">
-                {COST_CHANGE_CADENCE_DESCRIPTIONS[input.cadence]}.
+                {gtData(COST_CHANGE_CADENCE_DESCRIPTIONS[input.cadence])}.
               </p>
             </div>
             <div>
               <label htmlFor={`${uid}-direction`} className={labelClass}>
-                Direction
+                {gt("Direction")}
               </label>
               <select
                 id={`${uid}-direction`}
@@ -458,7 +482,7 @@ export function CostChangeAlertConfigModal({
               >
                 {COST_CHANGE_DIRECTIONS.map((direction) => (
                   <option key={direction} value={direction}>
-                    {COST_CHANGE_DIRECTION_LABELS[direction]}
+                    {gtData(COST_CHANGE_DIRECTION_LABELS[direction])}
                   </option>
                 ))}
               </select>
@@ -468,7 +492,7 @@ export function CostChangeAlertConfigModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor={`${uid}-percent`} className={labelClass}>
-                Moves at least (%)
+                {gt("Moves at least (%)")}
               </label>
               <input
                 id={`${uid}-percent`}
@@ -477,14 +501,14 @@ export function CostChangeAlertConfigModal({
                 max={COST_ALERT_LIMITS.maxPercent}
                 step={1}
                 className={inputClass}
-                placeholder="e.g. 25"
+                placeholder={gt("e.g. 25")}
                 value={percentText}
                 onChange={(e) => setPercentText(e.target.value)}
               />
             </div>
             <div>
               <label htmlFor={`${uid}-amount`} className={labelClass}>
-                And at least (amount)
+                {gt("And at least (amount)")}
               </label>
               <input
                 id={`${uid}-amount`}
@@ -492,21 +516,23 @@ export function CostChangeAlertConfigModal({
                 min={0}
                 step="0.01"
                 className={inputClass}
-                placeholder="e.g. 100"
+                placeholder={gt("e.g. 100")}
                 value={amountText}
                 onChange={(e) => setAmountText(e.target.value)}
               />
             </div>
           </div>
-          <p className="text-[11px] text-on-surface-faint">
-            Set one or both. When both are set the change must clear <em>both</em> bars, so a 50%
-            jump on $2 of spend stays quiet. New spend with no prior baseline counts as an infinite
-            percent change — an amount floor is what keeps tiny new groups from firing.
-          </p>
+          <T>
+            <p className="text-[11px] text-on-surface-faint">
+              Set one or both. When both are set the change must clear <em>both</em> bars, so a 50%
+              jump on $2 of spend stays quiet. New spend with no prior baseline counts as an
+              infinite percent change — an amount floor is what keeps tiny new groups from firing.
+            </p>
+          </T>
 
           <div>
             <label htmlFor={`${uid}-groupby`} className={labelClass}>
-              Watch
+              {gt("Watch")}
             </label>
             <select
               id={`${uid}-groupby`}
@@ -518,31 +544,34 @@ export function CostChangeAlertConfigModal({
                 })
               }
             >
-              <option value="none">The scope&rsquo;s one total</option>
+              <option value="none">{gt("The scope's one total")}</option>
               {COST_DIMENSIONS.map((dimension) => (
                 <option key={dimension} value={dimension}>
-                  Each {COST_DIMENSION_LABELS[dimension].toLowerCase()} separately
+                  {gt("Each {dimensionLabel} separately", {
+                    dimensionLabel: gtData(COST_DIMENSION_LABELS[dimension].toLowerCase()),
+                  })}
                 </option>
               ))}
             </select>
             {input.groupBy === "tag" && (
               <input
-                aria-label="Tag key"
+                aria-label={gt("Tag key")}
                 className={`${inputClass} mt-2`}
-                placeholder="Tag key, e.g. team"
+                placeholder={gt("Tag key, e.g. team")}
                 value={input.groupByTagKey ?? ""}
                 onChange={(e) => set({ groupByTagKey: e.target.value })}
               />
             )}
             <p className="mt-1 text-[11px] text-on-surface-faint">
-              Watching a dimension compares each group against its own prior window — each offending
-              group fires its own event.
+              {gt(
+                "Watching a dimension compares each group against its own prior window — each offending group fires its own event.",
+              )}
             </p>
           </div>
 
           <div role="group" aria-labelledby={`${uid}-scope-label`}>
             <span id={`${uid}-scope-label`} className={labelClass}>
-              Scope (all spend when empty)
+              {gt("Scope (all spend when empty)")}
             </span>
             <CostFilterRows
               filters={input.filters as CostFilter[]}
@@ -557,7 +586,7 @@ export function CostChangeAlertConfigModal({
               checked={input.enabled}
               onChange={(e) => set({ enabled: e.target.checked })}
             />
-            Enabled
+            {gt("Enabled")}
           </label>
 
           {error && <p className="text-sm text-danger">{error}</p>}
@@ -568,7 +597,7 @@ export function CostChangeAlertConfigModal({
               onClick={onClose}
               className="px-3 py-1.5 rounded-lg text-sm text-on-surface-secondary hover:bg-surface-sunken transition-colors"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -576,7 +605,7 @@ export function CostChangeAlertConfigModal({
               disabled={saving}
               className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? gt("Saving…") : gt("Save")}
             </button>
           </div>
         </div>

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import {
   formatMoney,
   formatTicketRef,
   type ResourceOwnerAnnotation,
 } from "@infrawrench/client-core";
 import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
+import { useDataString } from "../i18n/data-strings.js";
 import type { OrphanedResource, OrphanListResponse, OrphansClient } from "./types.js";
 
 /**
@@ -17,10 +19,11 @@ import type { OrphanedResource, OrphanListResponse, OrphansClient } from "./type
  * "Sam Reyes" from "Platform team", and only the former gets alerts.
  */
 function OwnerCell({ owner }: { owner: ResourceOwnerAnnotation | null }) {
+  const gt = useGT();
   if (!owner) {
     return (
       <span className="rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-on-surface-faint">
-        Unowned
+        {gt("Unowned")}
       </span>
     );
   }
@@ -30,9 +33,9 @@ function OwnerCell({ owner }: { owner: ResourceOwnerAnnotation | null }) {
       {owner.isLabel && (
         <span
           className="text-xs text-on-surface-faint"
-          title="A team name, not an Infrawrench member — alerts can't be routed to it."
+          title={gt("A team name, not an Infrawrench member — alerts can't be routed to it.")}
         >
-          team
+          {gt("team")}
         </span>
       )}
       {owner.ticketUrl && (
@@ -77,6 +80,8 @@ export interface SavingsSectionProps {
  * for it.
  */
 export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [data, setData] = useState<OrphanListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Bumped per request so a slow response can't overwrite the result of a
@@ -111,9 +116,11 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
     <section className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-on-surface">Potential savings</h2>
+          <h2 className="text-sm font-semibold text-on-surface">{gt("Potential savings")}</h2>
           <p className="mt-1 text-xs text-on-surface-secondary">
-            Resources that look orphaned or idle, based on the state your accounts last synced.
+            {gt(
+              "Resources that look orphaned or idle, based on the state your accounts last synced.",
+            )}
           </p>
         </div>
         <button
@@ -121,33 +128,34 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
           onClick={() => void refresh()}
           className="shrink-0 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
         >
-          Refresh
+          {gt("Refresh")}
         </button>
       </div>
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          Couldn&apos;t load potential savings — {error}{" "}
+          {gt("Couldn't load potential savings — {error}", { error })}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
-            Retry
+            {gt("Retry")}
           </button>
         </div>
       )}
       {data === null && error === null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Scanning synced resources…
+          {gt("Scanning synced resources…")}
         </p>
       )}
       {data !== null && data.accounts.length === 0 && (
         <p className="text-sm text-on-surface-faint">
-          Nothing looks wasted right now. Resources are flagged when a provider plugin&apos;s
-          heuristic matches — unattached volumes, unassigned IPs — so an empty list is the good
-          outcome.
+          {gt(
+            "Nothing looks wasted right now. Resources are flagged when a provider plugin's heuristic matches — unattached volumes, unassigned IPs — so an empty list is the good outcome.",
+          )}
           {!showCost && (
             <>
               {" "}
-              This scan covers the resources stored in the local workspace; sign in to classify
-              everything your accounts sync.
+              {gt(
+                "This scan covers the resources stored in the local workspace; sign in to classify everything your accounts sync.",
+              )}
             </>
           )}
         </p>
@@ -158,9 +166,13 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="text-sm font-medium text-on-surface">
               {group.accountName}
-              <span className="ml-2 font-normal text-on-surface-tertiary">{group.pluginName}</span>
+              <span className="ml-2 font-normal text-on-surface-tertiary">
+                {gtData(group.pluginName)}
+              </span>
             </h3>
-            <span className="text-xs text-on-surface-faint">{group.resources.length} flagged</span>
+            <span className="text-xs text-on-surface-faint">
+              {gt("{count} flagged", { count: group.resources.length })}
+            </span>
           </div>
           <div className="border border-border rounded-xl overflow-hidden">
             <table className="w-full text-sm">
@@ -188,10 +200,12 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
-                        {r.resourceTypeName}
+                        {gtData(r.resourceTypeName)}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 w-full text-on-surface-secondary">{r.reason}</td>
+                    <td className="px-3 py-2.5 w-full text-on-surface-secondary">
+                      {gtData(r.reason)}
+                    </td>
                     {showOwner && (
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <OwnerCell owner={r.owner} />
@@ -203,7 +217,7 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                           <>
                             {formatMoney(r.cost.amount, r.cost.currency)}
                             <span className="ml-1 text-xs text-on-surface-faint">
-                              / {data.costWindowDays}d
+                              {gt("/ {days}d", { days: data.costWindowDays })}
                             </span>
                           </>
                         ) : (
@@ -216,20 +230,23 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
                         sourceKind="orphan"
                         sourceId={r.id}
                         draft={{
-                          title: `${r.displayName} (${r.resourceTypeName}) looks orphaned`,
+                          title: gt("{name} ({type}) looks orphaned", {
+                            name: r.displayName,
+                            type: gtData(r.resourceTypeName),
+                          }),
                           details: [
-                            { label: "Resource", value: r.displayName },
-                            { label: "Type", value: r.resourceTypeName },
-                            { label: "Provider", value: group.pluginName },
-                            { label: "Account", value: group.accountName },
-                            { label: "Provider id", value: r.externalId },
+                            { label: gt("Resource"), value: r.displayName },
+                            { label: gt("Type"), value: gtData(r.resourceTypeName) },
+                            { label: gt("Provider"), value: gtData(group.pluginName) },
+                            { label: gt("Account"), value: group.accountName },
+                            { label: gt("Provider id"), value: r.externalId },
                             {
-                              label: `Spend / ${data.costWindowDays}d`,
+                              label: gt("Spend / {days}d", { days: data.costWindowDays }),
                               value: r.cost
                                 ? formatMoney(r.cost.amount, r.cost.currency)
                                 : undefined,
                             },
-                            { label: "Last synced", value: r.lastSyncedAt },
+                            { label: gt("Last synced"), value: r.lastSyncedAt },
                           ],
                           note: r.reason,
                         }}
@@ -243,32 +260,53 @@ export function SavingsSection({ client, onOpenResource }: SavingsSectionProps) 
         </div>
       ))}
 
-      {data !== null && data.accounts.length > 0 && showOwner && data.unownedCount > 0 && (
-        <p className="text-xs text-on-surface-secondary">
-          <strong className="font-medium text-on-surface">
-            {data.unownedCount} of {data.totalCount}
-          </strong>{" "}
-          {data.unownedCount === 1 ? "has" : "have"} no recorded owner — nobody to ask before
-          deleting, and nobody an alert can reach. Open a resource and set an owner on its{" "}
-          <span className="text-on-surface">Ownership</span> tab.
-        </p>
-      )}
+      {data !== null &&
+        data.accounts.length > 0 &&
+        showOwner &&
+        data.unownedCount > 0 &&
+        (data.unownedCount === 1 ? (
+          <T>
+            <p className="text-xs text-on-surface-secondary">
+              <strong className="font-medium text-on-surface">
+                <Var>{data.unownedCount}</Var> of <Var>{data.totalCount}</Var>
+              </strong>{" "}
+              has no recorded owner — nobody to ask before deleting, and nobody an alert can
+              reach. Open a resource and set an owner on its{" "}
+              <span className="text-on-surface">Ownership</span> tab.
+            </p>
+          </T>
+        ) : (
+          <T>
+            <p className="text-xs text-on-surface-secondary">
+              <strong className="font-medium text-on-surface">
+                <Var>{data.unownedCount}</Var> of <Var>{data.totalCount}</Var>
+              </strong>{" "}
+              have no recorded owner — nobody to ask before deleting, and nobody an alert can
+              reach. Open a resource and set an owner on its{" "}
+              <span className="text-on-surface">Ownership</span> tab.
+            </p>
+          </T>
+        ))}
 
       {data !== null && data.accounts.length > 0 && (
         <p className="text-xs text-on-surface-faint">
           {showCost ? (
-            <>
-              Cost figures are best-effort, matched from collected per-resource billing rows over
-              the last {data.costWindowDays} days; most providers don&apos;t report cost at resource
-              granularity.
-            </>
+            <T>
+              <>
+                Cost figures are best-effort, matched from collected per-resource billing rows
+                over the last <Var>{data.costWindowDays}</Var> days; most providers don&apos;t
+                report cost at resource granularity.
+              </>
+            </T>
           ) : (
-            <>
-              No cost figures here: spend is collected by Infrawrench Cloud, and this workspace is
-              local. The flags themselves never depend on billing data.
-            </>
+            <T>
+              <>
+                No cost figures here: spend is collected by Infrawrench Cloud, and this workspace
+                is local. The flags themselves never depend on billing data.
+              </>
+            </T>
           )}{" "}
-          Confirm a resource really is unused before deleting it.
+          {gt("Confirm a resource really is unused before deleting it.")}
         </p>
       )}
     </section>
