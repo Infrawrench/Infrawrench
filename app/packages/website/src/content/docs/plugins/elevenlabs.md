@@ -38,7 +38,7 @@ ElevenLabs accounts feed [cost graphs & budgets](../features/cloud-costs.md) wit
 
 The credits behind each charge ride along on the row, so a service's cost and the consumption that produced it sit side by side.
 
-<insert [Cost graph for an ElevenLabs account broken down by product type, with text to speech as the largest series] here>
+![Cost graph for an ElevenLabs account broken down by product type, with text to speech as the largest series](https://agent-assets.infrawrench.com/docs-screenshots/plugins/elevenlabs/cost-graph.png)
 
 - **Your billing currency is read, never assumed.** ElevenLabs bills workspaces in USD, EUR, INR or PLN, and the plugin takes the currency from the usage response itself, falling back to the one on `GET /v1/user/subscription`. USD is only ever used when the account refuses to state a currency at all.
 - **The endpoint this uses is the replacement for a deprecated one.** ElevenLabs has deprecated the old character-stats usage endpoint in favour of the workspace analytics query, so the plugin asks the new one first and only drops back to the old one if the new one is unavailable to your key.

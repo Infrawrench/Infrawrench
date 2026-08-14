@@ -47,7 +47,7 @@ Two caveats:
 - **Account-wide costs need an account-administrator key.** With a plain member key the plugin falls back to that principal's own usage rather than reporting nothing, and says so if even that is refused.
 - **Subtotals exclude fixed fees, invoice-level discounts, minimums, credits and taxes.** They are usage priced at your subscription rates, not an invoice.
 
-<insert [The cost view filtered to a Fireworks account, showing daily spend broken down by model] here>
+![The cost view filtered to a Fireworks account, showing daily spend broken down by model](https://agent-assets.infrawrench.com/docs-screenshots/plugins/fireworks/cost-graph.png)
 
 ## Metrics
 

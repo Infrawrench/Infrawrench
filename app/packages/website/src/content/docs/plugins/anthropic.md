@@ -30,7 +30,7 @@ The Admin API does not exist on individual (non-organization) accounts, so there
 
 With an admin key attached, spend is collected from `GET /v1/organizations/cost_report`. That endpoint is **daily-granularity only** — there is no hourly cost — and can be grouped by description and by workspace, so cost views attribute Claude spend per service and per workspace. Up to a year of history is available, with the last three days re-fetched each sync because Anthropic restates them.
 
-<insert [Cost view filtered to an Anthropic account, showing daily spend broken down by workspace] here>
+![Cost view filtered to an Anthropic account, showing daily spend broken down by workspace](https://agent-assets.infrawrench.com/docs-screenshots/plugins/anthropic/cost-graph.png)
 
 ## Tips & limits
 

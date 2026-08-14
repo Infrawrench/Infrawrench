@@ -101,7 +101,7 @@ Nothing is required of you. Days collected by an older version were stored with 
 
 Earlier builds documented a manual `ALTER TABLE cost_daily DELETE` here. It is no longer needed and should not be run.
 
-<insert [Cost graph for an Azure subscription grouped by charge type, showing a Usage series alongside a Commitment fee spike on a reservation purchase day] here>
+![Cost graph for an Azure subscription grouped by charge type, showing a Usage series alongside a Commitment fee spike on a reservation purchase day](https://agent-assets.infrawrench.com/docs-screenshots/plugins/azure/cost-graph.png)
 
 ## Commitments
 

@@ -73,7 +73,7 @@ Treat the graph as a shape-of-spend signal and the Speechmatics Portal as the in
 - **Temporary keys don't work.** A temporary key created with a `client_ref` is scoped to that client's jobs and is refused by the usage endpoint with `403 Forbidden`. If cost collection reports that, swap the account's **API Key** for a long-lived one from the Portal — **Manage workspace › API keys**.
 - Region is not a cost dimension: an account is bound to one regional endpoint by its credential, so it would be the same value on every row. Usage is account-wide and is not attributed back to individual jobs, so there is no per-job breakdown either.
 
-<insert [Cost graph for a Speechmatics account broken down by service, showing Batch Enhanced and Real-time Standard as separate series, with the estimated-cost notice visible] here>
+![Cost graph for a Speechmatics account broken down by service, showing Batch Enhanced and Real-time Standard as separate series, with the estimated-cost notice visible](https://agent-assets.infrawrench.com/docs-screenshots/plugins/speechmatics/cost-graph.png)
 
 ## Tips & limits
 
