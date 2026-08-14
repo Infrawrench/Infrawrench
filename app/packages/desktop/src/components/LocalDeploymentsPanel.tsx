@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { T, useGT } from "gt-react";
 import { DEPLOY_STAGES, formatDate } from "@infrawrench/ui";
 
 import { listLocalDeploys, type LocalDeployRun } from "../lib/deploy-history";
@@ -16,6 +17,7 @@ import { listLocalDeploys, type LocalDeployRun } from "../lib/deploy-history";
  * Cloud mode renders the shared DeploymentsPanel instead.
  */
 export function LocalDeploymentsPanel() {
+  const gt = useGT();
   const [runs, setRuns] = useState<LocalDeployRun[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -42,23 +44,26 @@ export function LocalDeploymentsPanel() {
     <div className="flex flex-col h-full min-h-0 text-on-surface">
       <div className="p-4 border-b border-white/10 space-y-2">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-sm font-semibold">Deploy</h1>
+          <h1 className="text-sm font-semibold">{gt("Deploy")}</h1>
           <button
             type="button"
             onClick={() => void load()}
             className="text-xs px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-on-surface-secondary"
           >
-            Refresh
+            {gt("Refresh")}
           </button>
         </div>
-        <p className="text-xs text-on-surface-secondary">
-          Local deploys run from the terminal. In your project&apos;s directory run{" "}
-          <code>infrawrench deploy</code> — it reads the Infrafile at your repo root and builds with
-          your own Docker daemon. Runs show up here.
-        </p>
+        <T>
+          <p className="text-xs text-on-surface-secondary">
+            Local deploys run from the terminal. In your project&apos;s directory run{" "}
+            <code>infrawrench deploy</code> — it reads the Infrafile at your repo root and builds
+            with your own Docker daemon. Runs show up here.
+          </p>
+        </T>
         <p className="text-xs text-on-surface-faint">
-          Deploying from the app, deploy-on-push triggers and rollbacks need an organization —
-          switch to one in the sidebar to get the full Deploy screen.
+          {gt(
+            "Deploying from the app, deploy-on-push triggers and rollbacks need an organization — switch to one in the sidebar to get the full Deploy screen.",
+          )}
         </p>
         {error && (
           <p className="text-xs text-danger" role="alert">
@@ -69,23 +74,23 @@ export function LocalDeploymentsPanel() {
 
       <div className="flex-1 overflow-auto min-h-0">
         {runs === null ? (
-          <p className="p-4 text-xs text-on-surface-faint">Loading…</p>
+          <p className="p-4 text-xs text-on-surface-faint">{gt("Loading…")}</p>
         ) : runs.length === 0 ? (
           <p className="p-4 text-xs text-on-surface-faint">
-            Nothing deployed from this machine yet.
+            {gt("Nothing deployed from this machine yet.")}
           </p>
         ) : (
           <table className="w-full text-xs">
-            <caption className="sr-only">Deploys from this machine</caption>
+            <caption className="sr-only">{gt("Deploys from this machine")}</caption>
             <thead className="text-[11px] uppercase tracking-wide text-on-surface-faint">
               <tr className="border-b border-white/10">
-                <Th>When</Th>
-                <Th>Env</Th>
-                <Th>Project</Th>
-                <Th>Commit</Th>
-                <Th>Image</Th>
-                <Th>Status</Th>
-                <Th>Took</Th>
+                <Th>{gt("When")}</Th>
+                <Th>{gt("Env")}</Th>
+                <Th>{gt("Project")}</Th>
+                <Th>{gt("Commit")}</Th>
+                <Th>{gt("Image")}</Th>
+                <Th>{gt("Status")}</Th>
+                <Th>{gt("Took")}</Th>
                 <Th />
               </tr>
             </thead>
@@ -115,6 +120,7 @@ function RunRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const gt = useGT();
   const hasDetail = run.notes.length > 0 || run.error !== null;
   return (
     <>
@@ -126,7 +132,9 @@ function RunRow({
         </Td>
         <Td>
           {run.gitSha ? (
-            <span title={run.dirty ? "Built from a tree with uncommitted changes" : undefined}>
+            <span
+              title={run.dirty ? gt("Built from a tree with uncommitted changes") : undefined}
+            >
               {run.gitSha.slice(0, 7)}
               {run.dirty && <span className="text-warning"> ·dirty</span>}
             </span>
@@ -149,7 +157,10 @@ function RunRow({
           </span>
           {/* Which stage it died at is the first thing you want from a failure. */}
           {run.status !== "success" && run.stage && (
-            <span className="text-on-surface-faint"> at {stageLabel(run.stage)}</span>
+            <span className="text-on-surface-faint">
+              {" "}
+              {gt("at {stage}", { stage: stageLabel(run.stage, gt) })}
+            </span>
           )}
         </Td>
         <Td>{run.durationMs === null ? "—" : `${Math.round(run.durationMs / 1000)}s`}</Td>
@@ -160,7 +171,7 @@ function RunRow({
               onClick={onToggle}
               className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-on-surface-secondary"
             >
-              {expanded ? "Hide" : "Details"}
+              {expanded ? gt("Hide") : gt("Details")}
             </button>
           )}
         </Td>
@@ -180,7 +191,7 @@ function RunRow({
               ))}
               {run.orgId && (
                 <p className="text-[11px] text-on-surface-faint">
-                  Also recorded in the organization&apos;s deploy history.
+                  {gt("Also recorded in the organization's deploy history.")}
                 </p>
               )}
             </div>
@@ -196,8 +207,8 @@ function RunRow({
  * plain string in the record, and printing an unknown value as "at <junk>"
  * would read as a stage that exists.
  */
-function stageLabel(stage: string): string {
-  return (DEPLOY_STAGES as readonly string[]).includes(stage) ? stage : "an earlier stage";
+function stageLabel(stage: string, gt: ReturnType<typeof useGT>): string {
+  return (DEPLOY_STAGES as readonly string[]).includes(stage) ? stage : gt("an earlier stage");
 }
 
 function basename(dir: string): string {
