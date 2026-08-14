@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useId, useState } from "react";
 
+import { T, Var, useGT } from "gt-react";
 import {
   CHANGE_IMPACT_CONFIDENCE_LABELS,
   costBasisLabel,
   formatSignedPerDay,
   type DeploymentCostImpact,
 } from "@infrawrench/client-core";
+import { useDataString } from "../i18n/data-strings.js";
 import { ChangeCostImpactFootnote, ChangeCostImpactLine } from "../cost/ChangeCostImpactLine.js";
 import {
   DEPLOY_STAGES,
@@ -43,6 +45,7 @@ export interface DeploymentsPanelProps {
  * not here.
  */
 export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps) {
+  const gt = useGT();
   const [repos, setRepos] = useState<DeployRepo[]>([]);
   const [repo, setRepo] = useState("");
   const [branch, setBranch] = useState("");
@@ -97,8 +100,10 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
           setBranch(match.defaultBranch);
         } else if (wanted) {
           setError(
-            `This organization's GitHub App cannot see ${initialRepo}. ` +
-              `Connect it under Settings → GitHub, or pick another repository.`,
+            gt(
+              "This organization's GitHub App cannot see {repo}. Connect it under Settings → GitHub, or pick another repository.",
+              { repo: initialRepo ?? "" },
+            ),
           );
         }
       })
@@ -110,7 +115,7 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
         // History is supplementary; a failure here must not block deploying.
       });
     void refreshTriggers();
-  }, [client, initialRepo, refreshTriggers]);
+  }, [client, initialRepo, refreshTriggers, gt]);
 
   /** Picking a repo seeds its default branch and clears anything downstream. */
   const chooseRepo = (fullName: string) => {
@@ -228,10 +233,10 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
   return (
     <div className="flex flex-col h-full min-h-0 text-on-surface">
       <div className="p-4 border-b border-white/10 space-y-3">
-        <h1 className="text-sm font-semibold">Deploy</h1>
+        <h1 className="text-sm font-semibold">{gt("Deploy")}</h1>
 
         <div className="flex flex-wrap items-end gap-3">
-          <Field label="Repository">
+          <Field label={gt("Repository")}>
             {(id) => (
               <select
                 id={id}
@@ -240,7 +245,7 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
                 className={inputClass}
                 disabled={busy !== null}
               >
-                <option value="">Choose a repository…</option>
+                <option value="">{gt("Choose a repository…")}</option>
                 {repos.map((r) => (
                   <option key={r.fullName} value={r.fullName}>
                     {r.fullName}
@@ -250,7 +255,7 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
             )}
           </Field>
 
-          <Field label="Branch">
+          <Field label={gt("Branch")}>
             {(id) => (
               <input
                 id={id}
@@ -264,7 +269,7 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
             )}
           </Field>
 
-          <Field label="Environment">
+          <Field label={gt("Environment")}>
             {(id) => (
               <select
                 id={id}
@@ -273,10 +278,12 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
                 className={inputClass}
                 disabled={!envInfo || busy !== null}
               >
-                {!envInfo && <option value="">Load the Infrafile first…</option>}
-                {envInfo?.envs.length === 0 && <option value="">No environments declared</option>}
+                {!envInfo && <option value="">{gt("Load the Infrafile first…")}</option>}
+                {envInfo?.envs.length === 0 && (
+                  <option value="">{gt("No environments declared")}</option>
+                )}
                 {envInfo && envInfo.envs.length > 0 && (
-                  <option value="">Choose an environment…</option>
+                  <option value="">{gt("Choose an environment…")}</option>
                 )}
                 {envInfo?.envs.map((e) => (
                   <option key={e} value={e}>
@@ -293,7 +300,7 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
             disabled={!repo || !branch || busy !== null}
             className={ghostButton}
           >
-            Load Infrafile
+            {gt("Load Infrafile")}
           </button>
           <button
             type="button"
@@ -301,7 +308,7 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
             disabled={!canRun}
             className={ghostButton}
           >
-            {busy === "plan" ? "Planning…" : "Plan"}
+            {busy === "plan" ? gt("Planning…") : gt("Plan")}
           </button>
           <button
             type="button"
@@ -309,11 +316,11 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
             disabled={!canRun}
             className="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40"
           >
-            {busy === "deploy" ? "Deploying…" : "Deploy"}
+            {busy === "deploy" ? gt("Deploying…") : gt("Deploy")}
           </button>
           {busy === "deploy" && stopFn && (
             <button type="button" onClick={stopFn} className={ghostButton}>
-              Stop
+              {gt("Stop")}
             </button>
           )}
         </div>
@@ -444,6 +451,7 @@ function LogPanel({ logs }: { logs: WorkflowRunLog[] }) {
 }
 
 function ResultPanel({ result }: { result: DeployRunResult }) {
+  const gt = useGT();
   return (
     <div className="p-4 space-y-4 text-xs">
       <div className="flex items-center gap-3">
@@ -456,7 +464,9 @@ function ResultPanel({ result }: { result: DeployRunResult }) {
         </span>
         <span className="text-on-surface-faint">
           {result.env} · {Math.round(result.durationMs / 1000)}s
-          {result.reachedStage ? ` · stopped at ${result.reachedStage}` : ""}
+          {result.reachedStage
+            ? ` · ${gt("stopped at {stage}", { stage: result.reachedStage })}`
+            : ""}
         </span>
       </div>
 
@@ -466,31 +476,31 @@ function ResultPanel({ result }: { result: DeployRunResult }) {
         </pre>
       )}
       {result.image && (
-        <Section title="Image">
+        <Section title={gt("Image")}>
           <code className="text-on-surface">{result.image}</code>
         </Section>
       )}
       {result.plan !== undefined && (
-        <Section title="Plan">
+        <Section title={gt("Plan")}>
           <pre className="whitespace-pre-wrap font-mono">
             {JSON.stringify(result.plan, null, 2)}
           </pre>
         </Section>
       )}
       {result.dockerfile && (
-        <Section title="Dockerfile">
+        <Section title={gt("Dockerfile")}>
           <pre className="whitespace-pre-wrap font-mono">{result.dockerfile}</pre>
         </Section>
       )}
       {result.notes.length > 0 && (
-        <Section title="Notes">
+        <Section title={gt("Notes")}>
           {result.notes.map((n, i) => (
             <div key={i}>{n}</div>
           ))}
         </Section>
       )}
       {result.logs.length > 0 && (
-        <Section title="Logs">
+        <Section title={gt("Logs")}>
           <LogPanel logs={result.logs} />
         </Section>
       )}
@@ -542,24 +552,27 @@ function TriggersSection({
   onToggle: (id: string, enabled: boolean) => void;
   onDelete: (id: string) => void;
 }) {
+  const gt = useGT();
   const targeted = Boolean(repo && branch && env);
   const duplicate = triggers.some((t) => t.repo === repo && t.branch === branch && t.env === env);
 
   return (
     <div className="p-4 border-b border-white/10 space-y-3">
-      <h2 className="text-[11px] uppercase tracking-wide text-on-surface-faint">Deploy on push</h2>
+      <h2 className="text-[11px] uppercase tracking-wide text-on-surface-faint">
+        {gt("Deploy on push")}
+      </h2>
 
       {triggers.length === 0 ? (
-        <p className="text-xs text-on-surface-faint">No branches are watched yet.</p>
+        <p className="text-xs text-on-surface-faint">{gt("No branches are watched yet.")}</p>
       ) : (
         <table className="w-full text-xs">
           <thead className="text-[11px] uppercase tracking-wide text-on-surface-faint">
             <tr className="border-b border-white/10">
-              <Th>Watching</Th>
-              <Th>Deploys</Th>
-              <Th>Last commit seen</Th>
-              <Th>Last fired</Th>
-              <Th>Enabled</Th>
+              <Th>{gt("Watching")}</Th>
+              <Th>{gt("Deploys")}</Th>
+              <Th>{gt("Last commit seen")}</Th>
+              <Th>{gt("Last fired")}</Th>
+              <Th>{gt("Enabled")}</Th>
               <Th />
             </tr>
           </thead>
@@ -575,7 +588,7 @@ function TriggersSection({
                   {t.lastRunAt ? (
                     new Date(t.lastRunAt).toLocaleString()
                   ) : (
-                    <span className="text-on-surface-faint">Waiting for the next push</span>
+                    <span className="text-on-surface-faint">{gt("Waiting for the next push")}</span>
                   )}
                 </Td>
                 <Td>
@@ -583,13 +596,17 @@ function TriggersSection({
                     type="checkbox"
                     checked={t.enabled}
                     onChange={(e) => onToggle(t.id, e.target.checked)}
-                    aria-label={`Deploy ${t.env} when ${t.repo} @ ${t.branch} moves`}
+                    aria-label={gt("Deploy {env} when {repo} @ {branch} moves", {
+                      env: t.env,
+                      repo: t.repo,
+                      branch: t.branch,
+                    })}
                     className="accent-blue-500"
                   />
                 </Td>
                 <Td>
                   <button type="button" onClick={() => onDelete(t.id)} className={ghostButton}>
-                    Delete
+                    {gt("Delete")}
                   </button>
                 </Td>
               </tr>
@@ -600,13 +617,13 @@ function TriggersSection({
 
       <div className="flex flex-wrap items-end gap-3">
         {selectKeys.map((key) => (
-          <Field key={key} label={`Answer for ${key}`}>
+          <Field key={key} label={gt("Answer for {key}", { key })}>
             {(id) => (
               <input
                 id={id}
                 value={answers[key] ?? ""}
                 onChange={(e) => onAnswer(key, e.target.value)}
-                placeholder="value"
+                placeholder={gt("value")}
                 className={inputClass}
                 disabled={busy}
               />
@@ -619,30 +636,35 @@ function TriggersSection({
           disabled={!targeted || duplicate || busy}
           className={ghostButton}
         >
-          {busy ? "Adding…" : "Watch this branch"}
+          {busy ? gt("Adding…") : gt("Watch this branch")}
         </button>
         <p className="text-xs text-on-surface-faint">
           {duplicate
-            ? `${repo} @ ${branch} → ${env} is already watched.`
+            ? gt("{repo} @ {branch} → {env} is already watched.", { repo, branch, env })
             : targeted
-              ? `Deploy ${env} whenever ${repo} @ ${branch} moves.`
-              : "Choose a repository, branch and environment above to watch one."}
+              ? gt("Deploy {env} whenever {repo} @ {branch} moves.", { env, repo, branch })
+              : gt("Choose a repository, branch and environment above to watch one.")}
         </p>
       </div>
 
       {selectKeys.length > 0 && (
-        <p className="text-xs text-warning">
-          A run reported no answer for {selectKeys.map((k) => `select("${k}")`).join(", ")}. Fill
-          those in above — a triggered deploy cannot ask.
-        </p>
+        <T>
+          <p className="text-xs text-warning">
+            A run reported no answer for{" "}
+            <Var>{selectKeys.map((k) => `select("${k}")`).join(", ")}</Var>. Fill those in above — a
+            triggered deploy cannot ask.
+          </p>
+        </T>
       )}
 
-      <p className="text-xs text-on-surface-faint">
-        A triggered deploy runs unattended, so every <code>select(…)</code> the Infrafile reaches
-        must be answered here; an unanswered key fails the run instead of prompting. Adding a
-        trigger does not deploy the current commit — the watcher records where the branch is now and
-        deploys on the <em>next</em> push to it.
-      </p>
+      <T>
+        <p className="text-xs text-on-surface-faint">
+          A triggered deploy runs unattended, so every <code>select(…)</code> the Infrafile reaches
+          must be answered here; an unanswered key fails the run instead of prompting. Adding a
+          trigger does not deploy the current commit — the watcher records where the branch is now
+          and deploys on the <em>next</em> push to it.
+        </p>
+      </T>
 
       {error && (
         <p className="text-xs text-danger whitespace-pre-wrap" role="alert">
@@ -662,6 +684,7 @@ function RunHistory({
   client: DeploymentClient;
   onRollback: (runId: string) => void | Promise<void>;
 }) {
+  const gt = useGT();
   // One run's breakdown at a time, fetched on demand: computing an impact is
   // two ClickHouse reads per run and a history page has fifty of them.
   const [openRunId, setOpenRunId] = useState<string | null>(null);
@@ -692,23 +715,25 @@ function RunHistory({
 
   if (runs.length === 0) {
     return (
-      <p className="p-4 text-xs text-on-surface-faint">
-        No deploys yet. Pick a repository above, or run <code>infrawrench deploy</code>.
-      </p>
+      <T>
+        <p className="p-4 text-xs text-on-surface-faint">
+          No deploys yet. Pick a repository above, or run <code>infrawrench deploy</code>.
+        </p>
+      </T>
     );
   }
   return (
     <table className="w-full text-xs">
-      <caption className="sr-only">Deploy history</caption>
+      <caption className="sr-only">{gt("Deploy history")}</caption>
       <thead className="text-[11px] uppercase tracking-wide text-on-surface-faint">
         <tr className="border-b border-white/10">
-          <Th>When</Th>
-          <Th>Env</Th>
-          <Th>Repo</Th>
-          <Th>Commit</Th>
-          <Th>Image</Th>
-          <Th>Status</Th>
-          <Th>From</Th>
+          <Th>{gt("When")}</Th>
+          <Th>{gt("Env")}</Th>
+          <Th>{gt("Repo")}</Th>
+          <Th>{gt("Commit")}</Th>
+          <Th>{gt("Image")}</Th>
+          <Th>{gt("Status")}</Th>
+          <Th>{gt("From")}</Th>
           <Th />
         </tr>
       </thead>
@@ -742,9 +767,9 @@ function RunHistory({
                     onClick={() => void toggleImpact(r.id)}
                     aria-expanded={openRunId === r.id}
                     className={ghostButton}
-                    title="What this deploy did to the run rate"
+                    title={gt("What this deploy did to the run rate")}
                   >
-                    {openRunId === r.id ? "Hide cost" : "Cost impact"}
+                    {openRunId === r.id ? gt("Hide cost") : gt("Cost impact")}
                   </button>
                 )}
                 {/* Only a successful run has an artifact worth shipping again. */}
@@ -754,7 +779,7 @@ function RunHistory({
                     onClick={() => void onRollback(r.id)}
                     className={ghostButton}
                   >
-                    Roll back
+                    {gt("Roll back")}
                   </button>
                 )}
               </span>
@@ -797,21 +822,28 @@ function DeploymentCostImpactPanel({
   impact: DeploymentCostImpact | null;
   onAnnotate?: (() => Promise<void>) | undefined;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [annotating, setAnnotating] = useState(false);
   const [annotated, setAnnotated] = useState(false);
   const [annotateError, setAnnotateError] = useState<string | null>(null);
 
-  if (state === "loading") return <p className="text-xs text-on-surface-faint">Measuring…</p>;
+  if (state === "loading")
+    return <p className="text-xs text-on-surface-faint">{gt("Measuring…")}</p>;
   if (state === "error") {
-    return <p className="text-xs text-danger">Could not read cost for this run.</p>;
+    return <p className="text-xs text-danger">{gt("Could not read cost for this run.")}</p>;
   }
-  if (!impact) return <p className="text-xs text-on-surface-faint">No cost data for this run.</p>;
+  if (!impact) {
+    return <p className="text-xs text-on-surface-faint">{gt("No cost data for this run.")}</p>;
+  }
   if (impact.resources.length === 0) {
     return (
-      <p className="text-xs text-on-surface-faint">
-        This deploy provisioned no resources, so there is nothing to attribute to it. Resources it
-        merely updated are not linked to a run.
-      </p>
+      <T>
+        <p className="text-xs text-on-surface-faint">
+          This deploy provisioned no resources, so there is nothing to attribute to it. Resources it
+          merely updated are not linked to a run.
+        </p>
+      </T>
     );
   }
 
@@ -820,16 +852,18 @@ function DeploymentCostImpactPanel({
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="text-xs text-on-surface-secondary font-medium">
           {impact.total.length === 0
-            ? "No measurable cost impact"
+            ? gt("No measurable cost impact")
             : impact.total.map((t) => formatSignedPerDay(t.deltaPerDay, t.currency)).join(", ")}
         </span>
         <span className="text-xs text-on-surface-faint">
-          {costBasisLabel(impact.costBasis)}, {impact.windowDays}d before/after ·{" "}
-          {CHANGE_IMPACT_CONFIDENCE_LABELS[impact.confidence].toLowerCase()}
+          {gtData(costBasisLabel(impact.costBasis))},{" "}
+          {gt("{days}d before/after", { days: impact.windowDays })} ·{" "}
+          {gtData(CHANGE_IMPACT_CONFIDENCE_LABELS[impact.confidence].toLowerCase())}
           {impact.unknownResources > 0
-            ? ` · ${impact.unknownResources} resource${
-                impact.unknownResources === 1 ? "" : "s"
-              } could not be measured and are not in the total`
+            ? ` · ${gt("{count} resource{plural} could not be measured and are not in the total", {
+                count: impact.unknownResources,
+                plural: impact.unknownResources === 1 ? "" : "s",
+              })}`
             : ""}
         </span>
         {onAnnotate && impact.total.length > 0 && (
@@ -846,7 +880,11 @@ function DeploymentCostImpactPanel({
                 .finally(() => setAnnotating(false));
             }}
           >
-            {annotated ? "Annotated" : annotating ? "Annotating…" : "Annotate cost graph"}
+            {annotated
+              ? gt("Annotated")
+              : annotating
+                ? gt("Annotating…")
+                : gt("Annotate cost graph")}
           </button>
         )}
       </div>

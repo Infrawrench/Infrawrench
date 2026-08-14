@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useGT } from "gt-react";
 import type { CostEstimate, FieldDefinition } from "@infrawrench/plugin-base";
 import { costEstimateDelta, isFieldEditable } from "@infrawrench/plugin-base";
 import { describeMonthlyDelta } from "@infrawrench/client-core";
 import { Modal } from "./Modal.js";
 import { CostEstimateBreakdown } from "./CostEstimateChip.js";
 import { ErrorNotice } from "./ErrorNotice.js";
+import { useDataString } from "../i18n/data-strings.js";
 
 export interface EditResourceModalProps {
   /** Title shown in the modal header — typically the resource type display name (e.g. "Project"). */
@@ -51,6 +53,7 @@ export function EditResourceModal({
   onClose,
   loadCostEstimate,
 }: EditResourceModalProps) {
+  const gt = useGT();
   const editableFields = useMemo(() => fields.filter(isFieldEditable), [fields]);
   const [values, setValues] = useState<Record<string, string>>(() => {
     const seed: Record<string, string> = {};
@@ -144,22 +147,24 @@ export function EditResourceModal({
       await onSubmit(changed);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
+      setError(e instanceof Error ? e.message : gt("Failed to save"));
     } finally {
       setSaving(false);
     }
-  }, [changed, hasChanges, isValid, onClose, onSubmit, saving]);
+  }, [changed, gt, hasChanges, isValid, onClose, onSubmit, saving]);
 
   return (
-    <Modal onClose={onClose} ariaLabel={`Edit ${displayName}`}>
+    <Modal onClose={onClose} ariaLabel={gt("Edit {name}", { name: displayName })}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl flex flex-col w-[520px] max-h-[72vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
-          <h2 className="text-base font-semibold text-on-surface">Edit {displayName}</h2>
+          <h2 className="text-base font-semibold text-on-surface">
+            {gt("Edit {name}", { name: displayName })}
+          </h2>
           <button
             type="button"
             onClick={onClose}
             className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
-            aria-label="Close"
+            aria-label={gt("Close")}
           >
             &times;
           </button>
@@ -167,7 +172,9 @@ export function EditResourceModal({
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
           {editableFields.length === 0 ? (
-            <p className="text-sm text-on-surface-muted">This resource has no editable fields.</p>
+            <p className="text-sm text-on-surface-muted">
+              {gt("This resource has no editable fields.")}
+            </p>
           ) : (
             editableFields.map((field) => (
               <EditField
@@ -204,7 +211,7 @@ export function EditResourceModal({
               onClick={onClose}
               className="flex-1 px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary bg-surface-overlay hover:bg-surface-sunken rounded-lg transition-colors"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -212,7 +219,7 @@ export function EditResourceModal({
               disabled={saving || !hasChanges || !isValid}
               className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
             >
-              {saving ? "Saving..." : "Save changes"}
+              {saving ? gt("Saving...") : gt("Save changes")}
             </button>
           </div>
         </div>
@@ -228,15 +235,17 @@ interface EditFieldProps {
 }
 
 function EditField({ field, value, onChange }: EditFieldProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const inputId = useId();
   const labelEl = (
     <label htmlFor={inputId} className="block text-xs font-medium text-on-surface-secondary mb-1.5">
-      {field.label}
+      {gtData(field.label)}
       {field.required && <span className="text-danger ml-0.5">*</span>}
     </label>
   );
   const descriptionEl = field.description ? (
-    <p className="mt-1 text-xs text-on-surface-faint">{field.description}</p>
+    <p className="mt-1 text-xs text-on-surface-faint">{gtData(field.description)}</p>
   ) : null;
 
   const inputClass =
@@ -251,9 +260,9 @@ function EditField({ field, value, onChange }: EditFieldProps) {
             type="checkbox"
             checked={checked}
             onChange={(e) => onChange(e.target.checked ? "true" : "false")}
-            aria-label={field.label}
+            aria-label={gtData(field.label)}
           />
-          <span>{field.label}</span>
+          <span>{gtData(field.label)}</span>
         </label>
         {descriptionEl}
       </div>
@@ -270,7 +279,7 @@ function EditField({ field, value, onChange }: EditFieldProps) {
           onChange={(e) => onChange(e.target.value)}
           className={inputClass}
         >
-          {!field.required && <option value="">(none)</option>}
+          {!field.required && <option value="">{gt("(none)")}</option>}
           {field.enumValues.map((opt) => (
             <option key={opt} value={opt}>
               {opt}
@@ -292,7 +301,7 @@ function EditField({ field, value, onChange }: EditFieldProps) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className={inputClass}
-          aria-label={field.label}
+          aria-label={gtData(field.label)}
         />
         {descriptionEl}
       </div>
@@ -309,9 +318,9 @@ function EditField({ field, value, onChange }: EditFieldProps) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className={inputClass}
-          aria-label={field.label}
+          aria-label={gtData(field.label)}
           autoComplete="new-password"
-          placeholder="Leave blank to keep current"
+          placeholder={gt("Leave blank to keep current")}
         />
         {descriptionEl}
       </div>
@@ -328,7 +337,7 @@ function EditField({ field, value, onChange }: EditFieldProps) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={inputClass}
-        aria-label={field.label}
+        aria-label={gtData(field.label)}
       />
       {descriptionEl}
     </div>

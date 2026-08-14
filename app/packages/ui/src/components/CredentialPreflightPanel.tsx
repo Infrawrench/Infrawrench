@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import {
   buildPreflightChecklist,
   defaultTemplateCapabilityIds,
@@ -10,6 +11,7 @@ import {
 } from "@infrawrench/client-core";
 import { formatErrorMessage } from "../utils.js";
 import { Modal } from "./Modal.js";
+import { useDataString } from "../i18n/data-strings.js";
 
 export interface CredentialPreflightPanelProps {
   /** The plugin's declared capabilities (from the plugin catalog). */
@@ -51,12 +53,19 @@ function StatusGlyph({ status }: { status: PreflightChecklistRow["status"] }) {
   );
 }
 
-const STATUS_TEXT: Record<PreflightChecklistRow["status"], string> = {
-  ok: "Ready",
-  missing: "Missing permissions",
-  unknown: "Couldn't verify",
-  unchecked: "Not checked yet",
-};
+/** Translate a checklist row's status into its display text. */
+function statusText(gt: ReturnType<typeof useGT>, status: PreflightChecklistRow["status"]): string {
+  switch (status) {
+    case "ok":
+      return gt("Ready");
+    case "missing":
+      return gt("Missing permissions");
+    case "unknown":
+      return gt("Couldn't verify");
+    case "unchecked":
+      return gt("Not checked yet");
+  }
+}
 
 function ExternalLink({
   link,
@@ -65,6 +74,7 @@ function ExternalLink({
   link: { label: string; url: string };
   onOpenExternal?: ((url: string) => void) | undefined;
 }) {
+  const gtData = useDataString();
   return (
     <a
       href={link.url}
@@ -80,7 +90,7 @@ function ExternalLink({
       }
       className="inline-flex items-center gap-1 text-xs text-info hover:text-info-strong"
     >
-      {link.label}
+      {gtData(link.label)}
       <span aria-hidden="true">↗</span>
     </a>
   );
@@ -100,6 +110,8 @@ export function CredentialPreflightPanel({
   fetchPolicyTemplate,
   onOpenExternal,
 }: CredentialPreflightPanelProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [report, setReport] = useState<PreflightReport | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -168,12 +180,14 @@ export function CredentialPreflightPanel({
     <div className="rounded-lg border border-border-strong bg-surface-overlay/50 p-3 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-xs font-medium text-on-surface-secondary">Credential check</p>
+          <p className="text-xs font-medium text-on-surface-secondary">{gt("Credential check")}</p>
           <p className="text-xs text-on-surface-faint">
             {checked
-              ? `${summary.ok} of ${summary.total} capabilities ready` +
-                (report.identity ? ` · ${report.identity}` : "")
-              : "Verify what these credentials can do before saving."}
+              ? gt("{ok} of {total} capabilities ready", {
+                  ok: summary.ok,
+                  total: summary.total,
+                }) + (report.identity ? ` · ${report.identity}` : "")
+              : gt("Verify what these credentials can do before saving.")}
           </p>
         </div>
         {runPreflight && (
@@ -183,7 +197,7 @@ export function CredentialPreflightPanel({
             disabled={running}
             className="shrink-0 px-3 py-1.5 text-xs font-medium border border-border-strong rounded-lg text-on-surface-secondary hover:bg-surface-overlay disabled:opacity-50 transition-colors"
           >
-            {running ? "Checking…" : checked ? "Re-check" : "Check credentials"}
+            {running ? gt("Checking…") : checked ? gt("Re-check") : gt("Check credentials")}
           </button>
         )}
       </div>
@@ -197,13 +211,17 @@ export function CredentialPreflightPanel({
               <StatusGlyph status={row.status} />
               <div className="min-w-0 flex-1">
                 <span className="text-on-surface-secondary font-medium">
-                  {row.capability.label}
+                  {gtData(row.capability.label)}
                 </span>
-                <span className="text-on-surface-faint"> — {STATUS_TEXT[row.status]}</span>
+                <span className="text-on-surface-faint"> — {statusText(gt, row.status)}</span>
                 {row.status === "unchecked" && row.capability.description && (
-                  <p className="text-on-surface-faint mt-0.5">{row.capability.description}</p>
+                  <p className="text-on-surface-faint mt-0.5">
+                    {gtData(row.capability.description)}
+                  </p>
                 )}
-                {row.message && <p className="text-on-surface-tertiary mt-0.5">{row.message}</p>}
+                {row.message && (
+                  <p className="text-on-surface-tertiary mt-0.5">{gtData(row.message)}</p>
+                )}
                 {row.status === "missing" && row.missingPermissions.length > 0 && (
                   <ul className="mt-1 space-y-0.5">
                     {row.missingPermissions.map((p) => (
@@ -211,7 +229,7 @@ export function CredentialPreflightPanel({
                         <code className="font-mono text-[11px] bg-surface-overlay rounded px-1 py-0.5">
                           {p.id}
                         </code>{" "}
-                        <span className="text-on-surface-faint">{p.label}</span>
+                        <span className="text-on-surface-faint">{gtData(p.label)}</span>
                       </li>
                     ))}
                   </ul>
@@ -239,15 +257,17 @@ export function CredentialPreflightPanel({
             className="text-xs text-info hover:text-info-strong"
           >
             {showGenerator
-              ? "Hide least-privilege template"
-              : `Generate least-privilege ${declaration.templateFormat!.label}`}
+              ? gt("Hide least-privilege template")
+              : gt("Generate least-privilege {format}", {
+                  format: gtData(declaration.templateFormat!.label),
+                })}
           </button>
 
           {showGenerator && (
             <div className="mt-2 space-y-2">
               <fieldset>
                 <legend className="text-xs text-on-surface-faint mb-1">
-                  Scope the credential to:
+                  {gt("Scope the credential to:")}
                 </legend>
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
                   {declaration.capabilities.map((cap) => (
@@ -276,19 +296,19 @@ export function CredentialPreflightPanel({
                           }
                         }}
                       />
-                      {cap.label}
+                      {gtData(cap.label)}
                     </label>
                   ))}
                 </div>
               </fieldset>
 
               {generatorError && <p className="text-xs text-danger">{generatorError}</p>}
-              {generating && <p className="text-xs text-on-surface-faint">Generating…</p>}
+              {generating && <p className="text-xs text-on-surface-faint">{gt("Generating…")}</p>}
 
               {template && !generating && (
                 <div className="space-y-2">
                   {template.instructions && (
-                    <p className="text-xs text-on-surface-faint">{template.instructions}</p>
+                    <p className="text-xs text-on-surface-faint">{gtData(template.instructions)}</p>
                   )}
                   <div className="relative">
                     <pre className="max-h-56 overflow-auto rounded-lg bg-surface-overlay border border-border-strong p-2 text-[11px] font-mono text-on-surface-secondary whitespace-pre-wrap break-all">
@@ -299,7 +319,7 @@ export function CredentialPreflightPanel({
                       onClick={() => void copyTemplate()}
                       className="absolute top-2 right-2 px-2 py-1 text-[11px] font-medium border border-border-strong rounded bg-surface-raised text-on-surface-secondary hover:bg-surface-overlay transition-colors"
                     >
-                      {copied ? "Copied" : "Copy"}
+                      {copied ? gt("Copied") : gt("Copy")}
                     </button>
                   </div>
                   {template.helpLink && (
@@ -327,18 +347,19 @@ export function CredentialPreflightModal({
   onClose,
   ...panel
 }: CredentialPreflightModalProps) {
+  const gt = useGT();
   return (
-    <Modal onClose={onClose} ariaLabel={`Check credentials for ${accountName}`}>
+    <Modal onClose={onClose} ariaLabel={gt("Check credentials for {name}", { name: accountName })}>
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-on-surface-secondary">
-            Check credentials — {accountName}
+            {gt("Check credentials — {name}", { name: accountName })}
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg leading-none"
-            aria-label="Close"
+            aria-label={gt("Close")}
           >
             &#215;
           </button>

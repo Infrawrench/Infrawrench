@@ -1,3 +1,4 @@
+import { T, Var, useGT } from "gt-react";
 import type { CostConversion } from "@infrawrench/client-core";
 
 export interface CostConversionNoticeProps {
@@ -29,6 +30,7 @@ export interface CostConversionNoticeProps {
  * Renders nothing when there was no conversion to describe.
  */
 export function CostConversionNotice({ conversion }: CostConversionNoticeProps) {
+  const gt = useGT();
   if (!conversion) return null;
   const { displayCurrency, converted, unconverted } = conversion;
   if (converted.length === 0 && unconverted.length === 0) return null;
@@ -40,26 +42,32 @@ export function CostConversionNotice({ conversion }: CostConversionNoticeProps) 
           role="status"
           className="mb-4 rounded-xl border border-border bg-surface-overlay px-4 py-3 text-sm"
         >
-          <p className="font-medium text-on-surface">Amounts are converted to {displayCurrency}</p>
+          <p className="font-medium text-on-surface">
+            {gt("Amounts are converted to {currency}", { currency: displayCurrency })}
+          </p>
           <ul className="mt-1 space-y-1.5">
             {converted.map((entry) => (
               <li key={entry.currency} className="text-on-surface-secondary">
                 <span className="text-on-surface-muted">
                   {entry.currency} → {displayCurrency}
                 </span>{" "}
-                {entry.rates.map((r) => `${r.rate} from ${r.effectiveFrom}`).join(", ")}
+                {entry.rates
+                  .map((r) => gt("{rate} from {from}", { rate: r.rate, from: r.effectiveFrom }))
+                  .join(", ")}
                 {entry.rates.length > 1 && (
-                  <span className="text-on-surface-muted"> (rate changed mid-period)</span>
+                  <span className="text-on-surface-muted"> {gt("(rate changed mid-period)")}</span>
                 )}
               </li>
             ))}
           </ul>
-          <p className="mt-1.5 text-xs text-on-surface-faint">
-            These are your organization&apos;s own rates, set in Settings → Currency. Infrawrench
-            does not fetch live exchange rates, so a converted figure reconciles against the rate
-            your finance team stated rather than today&apos;s market price. Spend already in{" "}
-            {displayCurrency} is not converted.
-          </p>
+          <T>
+            <p className="mt-1.5 text-xs text-on-surface-faint">
+              These are your organization&apos;s own rates, set in Settings → Currency. Infrawrench
+              does not fetch live exchange rates, so a converted figure reconciles against the rate
+              your finance team stated rather than today&apos;s market price. Spend already in{" "}
+              <Var>{displayCurrency}</Var> is not converted.
+            </p>
+          </T>
         </div>
       )}
 
@@ -70,8 +78,14 @@ export function CostConversionNotice({ conversion }: CostConversionNoticeProps) 
         >
           <p className="font-medium text-warning">
             {unconverted.length === 1
-              ? `Spend in ${unconverted[0]} is not included in the ${displayCurrency} figure`
-              : `Spend in ${unconverted.length} currencies is not included in the ${displayCurrency} figure`}
+              ? gt("Spend in {currency} is not included in the {display} figure", {
+                  currency: unconverted[0],
+                  display: displayCurrency,
+                })
+              : gt("Spend in {count} currencies is not included in the {display} figure", {
+                  count: unconverted.length,
+                  display: displayCurrency,
+                })}
           </p>
           {unconverted.length > 1 && (
             <ul className="mt-1 space-y-1.5">
@@ -82,12 +96,15 @@ export function CostConversionNotice({ conversion }: CostConversionNoticeProps) 
               ))}
             </ul>
           )}
-          <p className="mt-1.5 text-xs text-on-surface-faint">
-            No exchange rate is configured for {unconverted.length === 1 ? "it" : "them"}, or none
-            covers every day in this range, so the amounts are shown separately in their own
-            currency rather than folded in or dropped. Add a rate in Settings → Currency to include{" "}
-            {unconverted.length === 1 ? "it" : "them"}.
-          </p>
+          <T>
+            <p className="mt-1.5 text-xs text-on-surface-faint">
+              No exchange rate is configured for{" "}
+              <Var>{unconverted.length === 1 ? gt("it") : gt("them")}</Var>, or none covers every
+              day in this range, so the amounts are shown separately in their own currency rather
+              than folded in or dropped. Add a rate in Settings → Currency to include{" "}
+              <Var>{unconverted.length === 1 ? gt("it") : gt("them")}</Var>.
+            </p>
+          </T>
         </div>
       )}
     </>

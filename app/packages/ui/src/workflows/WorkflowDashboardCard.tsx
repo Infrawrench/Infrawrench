@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { t, useGT } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 import { WorkflowIcon } from "./WorkflowIcon.js";
 
 export interface WorkflowCardMetric {
@@ -28,7 +30,7 @@ export interface WorkflowDashboardCardProps {
 
 function formatValue(v: WorkflowCardMetric["value"], unit?: string | null): string {
   if (v === null || v === undefined) return "—";
-  const base = typeof v === "boolean" ? (v ? "yes" : "no") : String(v);
+  const base = typeof v === "boolean" ? (v ? t("yes") : t("no")) : String(v);
   return unit ? `${base} ${unit}` : base;
 }
 
@@ -37,12 +39,12 @@ function relativeTime(iso: string): string {
   const then = new Date(iso.includes("T") ? iso : iso.replace(" ", "T") + "Z").getTime();
   if (Number.isNaN(then)) return "";
   const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
-  if (secs < 60) return "just now";
+  if (secs < 60) return t("just now");
   const mins = Math.round(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 60) return t("{mins}m ago", { mins });
   const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.round(hrs / 24)}d ago`;
+  if (hrs < 24) return t("{hrs}h ago", { hrs });
+  return t("{days}d ago", { days: Math.round(hrs / 24) });
 }
 
 /**
@@ -56,6 +58,8 @@ export function WorkflowDashboardCard({
   onUnpin,
   onRun,
 }: WorkflowDashboardCardProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [running, setRunning] = useState(false);
 
   const run = async () => {
@@ -87,8 +91,8 @@ export function WorkflowDashboardCard({
           e.stopPropagation();
           onUnpin();
         }}
-        title="Remove from dashboard"
-        aria-label="Remove from dashboard"
+        title={gt("Remove from dashboard")}
+        aria-label={gt("Remove from dashboard")}
         className="absolute top-2 right-2 size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-all opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-xs flex items-center justify-center z-10"
       >
         ✕
@@ -115,18 +119,18 @@ export function WorkflowDashboardCard({
           disabled={running}
           className="flex-shrink-0 text-[11px] px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors mr-6"
         >
-          {running ? "Running…" : "Run"}
+          {running ? gt("Running…") : gt("Run")}
         </button>
       </div>
 
       <button type="button" onClick={onOpen} className="px-5 pb-4 text-left flex flex-col gap-1.5">
         {data.metrics.length === 0 ? (
-          <span className="text-xs text-on-surface-faint">No metrics declared.</span>
+          <span className="text-xs text-on-surface-faint">{gt("No metrics declared.")}</span>
         ) : (
           data.metrics.map((m) => (
             <div key={m.key} className="flex items-baseline justify-between gap-3 text-xs">
-              <span className="text-on-surface-muted truncate" title={m.label}>
-                {m.label}
+              <span className="text-on-surface-muted truncate" title={gtData(m.label)}>
+                {gtData(m.label)}
               </span>
               <span className="font-mono text-on-surface tabular-nums flex-shrink-0">
                 {formatValue(m.value, m.unit)}
@@ -140,10 +144,10 @@ export function WorkflowDashboardCard({
         <span className={statusColor}>{statusGlyph}</span>
         <span className="text-on-surface-faint">
           {status === "running"
-            ? "running…"
+            ? gt("running…")
             : data.lastRunAt
-              ? `ran ${relativeTime(data.lastRunAt)}`
-              : "never run"}
+              ? gt("ran {time}", { time: relativeTime(data.lastRunAt) })
+              : gt("never run")}
         </span>
       </div>
     </div>

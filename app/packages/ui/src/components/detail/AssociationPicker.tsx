@@ -1,6 +1,8 @@
 import { useId, useRef, useState, type KeyboardEvent } from "react";
+import { T, Var, useGT } from "gt-react";
 import type { ProviderResource, RerollSelection } from "./detail-types.js";
 import { Modal } from "../Modal.js";
+import { useDataString } from "../../i18n/data-strings.js";
 import { camelToTitle } from "@infrawrench/plugin-base";
 
 const tabOrder: Array<"provider" | "literal"> = ["provider", "literal"];
@@ -25,6 +27,8 @@ export function AssociationPicker({
   onConfirm,
   onCancel,
 }: AssociationPickerProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [mode, setMode] = useState<"provider" | "literal">("provider");
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [literalValue, setLiteralValue] = useState("");
@@ -75,7 +79,7 @@ export function AssociationPicker({
   };
 
   return (
-    <Modal onClose={onCancel} ariaLabel={`Reroll ${fieldKey}`}>
+    <Modal onClose={onCancel} ariaLabel={gt("Reroll {field}", { field: fieldKey })}>
       <div
         className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl overflow-hidden"
         style={{ width: "28rem", maxWidth: "calc(100vw - 2rem)" }}
@@ -83,13 +87,18 @@ export function AssociationPicker({
         {/* Header */}
         <div className="flex items-center justify-between gap-3 p-4 border-b border-border">
           <h2 className="text-sm font-semibold text-on-surface min-w-0 flex-1 truncate">
-            Reroll <code className="text-accent">{fieldKey}</code>
+            <T>
+              Reroll{" "}
+              <Var>
+                <code className="text-accent">{fieldKey}</code>
+              </Var>
+            </T>
           </h2>
           <button
             type="button"
             onClick={onCancel}
             className="text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
-            aria-label="Close"
+            aria-label={gt("Close")}
           >
             ✕
           </button>
@@ -98,7 +107,7 @@ export function AssociationPicker({
         {/* Mode tabs */}
         <div
           role="tablist"
-          aria-label="Reroll source"
+          aria-label={gt("Reroll source")}
           aria-orientation="horizontal"
           className="flex border-b border-border"
         >
@@ -120,7 +129,7 @@ export function AssociationPicker({
                 : "text-on-surface-muted hover:text-on-surface-secondary"
             }`}
           >
-            From resource
+            {gt("From resource")}
           </button>
           <button
             ref={(el) => {
@@ -140,7 +149,7 @@ export function AssociationPicker({
                 : "text-on-surface-muted hover:text-on-surface-secondary"
             }`}
           >
-            Paste literal value
+            {gt("Paste literal value")}
           </button>
         </div>
 
@@ -156,7 +165,7 @@ export function AssociationPicker({
             >
               {providerResources.length === 0 ? (
                 <p className="text-sm text-on-surface-faint text-center py-4">
-                  No compatible resources found.
+                  {gt("No compatible resources found.")}
                 </p>
               ) : (
                 providerResources.map((resource) => (
@@ -180,7 +189,8 @@ export function AssociationPicker({
                         {resource.displayName}
                       </p>
                       <p className="text-xs text-on-surface-muted">
-                        {camelToTitle(resource.resourceTypeId)} · {camelToTitle(resource.outputKey)}
+                        {gtData(camelToTitle(resource.resourceTypeId))} ·{" "}
+                        {gtData(camelToTitle(resource.outputKey))}
                       </p>
                     </div>
                     {selectedProviderId === resource.resourceId && (
@@ -197,9 +207,9 @@ export function AssociationPicker({
               <textarea
                 value={literalValue}
                 onChange={(e) => setLiteralValue(e.target.value)}
-                placeholder={`Paste ${fieldKey} value...`}
+                placeholder={gt("Paste {field} value...", { field: fieldKey })}
                 className="w-full h-40 bg-surface-overlay border border-border-strong rounded-lg p-3 text-sm font-mono text-on-surface-secondary placeholder:text-on-surface-faint resize-none focus:outline-none focus:border-blue-500"
-                aria-label={`${fieldKey} value`}
+                aria-label={gt("{field} value", { field: fieldKey })}
               />
             </div>
           )}
@@ -212,7 +222,7 @@ export function AssociationPicker({
             onClick={onCancel}
             className="flex-1 py-2 rounded-lg border border-border-strong text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -220,7 +230,7 @@ export function AssociationPicker({
             disabled={mode === "provider" ? !selectedProviderId : !literalValue.trim()}
             className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm text-white transition-colors"
           >
-            Confirm
+            {gt("Confirm")}
           </button>
         </div>
       </div>

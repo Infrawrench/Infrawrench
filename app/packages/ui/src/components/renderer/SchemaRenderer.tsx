@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useGT } from "gt-react";
 import type {
   SchemaNode,
   TextNode,
@@ -25,6 +26,7 @@ import {
 } from "../../utils.js";
 
 function CopyButton({ value }: { value: string }) {
+  const gt = useGT();
   const [copied, setCopied] = useState(false);
   const onClick = () => {
     void navigator.clipboard.writeText(value).then(() => {
@@ -36,8 +38,8 @@ function CopyButton({ value }: { value: string }) {
     <button
       type="button"
       onClick={onClick}
-      aria-label={copied ? "Copied" : "Copy"}
-      title={copied ? "Copied" : "Copy"}
+      aria-label={copied ? gt("Copied") : gt("Copy")}
+      title={copied ? gt("Copied") : gt("Copy")}
       className={`flex-shrink-0 inline-flex items-center justify-center size-6 rounded transition-colors ${
         copied
           ? "text-success bg-emerald-500/10"
@@ -184,6 +186,7 @@ export function StatusDotNodeRenderer({ node }: { node: StatusDotNode }) {
 }
 
 function KVItemRenderer({ item, resourceId }: { item: KVItem; resourceId?: string | undefined }) {
+  const gt = useGT();
   const dispatch = useActionDispatch();
   const value =
     typeof item.value === "string" ? (
@@ -194,7 +197,7 @@ function KVItemRenderer({ item, resourceId }: { item: KVItem; resourceId?: strin
       <span className="flex items-center gap-2">
         <span className="text-xs text-on-surface-muted italic">
           {item.value.resolution.kind === "output-ref"
-            ? `from: ${item.value.resolution.sourceResourceId}`
+            ? gt("from: {source}", { source: item.value.resolution.sourceResourceId })
             : "•••••"}
         </span>
         <button
@@ -206,7 +209,7 @@ function KVItemRenderer({ item, resourceId }: { item: KVItem; resourceId?: strin
           }}
           className="text-xs text-accent hover:text-accent-on-muted transition-colors"
         >
-          Reroll
+          {gt("Reroll")}
         </button>
       </span>
     );
@@ -325,6 +328,7 @@ function TableNodeRenderer({
   node: TableNode;
   resourceId?: string | undefined;
 }) {
+  const gt = useGT();
   return (
     <div className="overflow-x-auto rounded border border-border bg-surface-overlay/40">
       <table className="w-full text-sm border-collapse">
@@ -348,7 +352,7 @@ function TableNodeRenderer({
                 colSpan={node.columns.length}
                 className="p-4 text-center text-xs text-on-surface-muted"
               >
-                No rows
+                {gt("No rows")}
               </td>
             </tr>
           ) : (

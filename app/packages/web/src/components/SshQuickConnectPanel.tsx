@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useGT } from "gt-react";
 import {
   deriveSSHUsername,
   formatErrorMessage,
@@ -25,6 +26,7 @@ export function SshQuickConnectPanel({
   preferredSshKeyName,
   onConnect,
 }: SshQuickConnectPanelProps) {
+  const gt = useGT();
   const orgId = useOrgId();
   const [keys, setKeys] = useState<SshKey[]>([]);
   const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null);
@@ -58,9 +60,11 @@ export function SshQuickConnectPanel({
           }
         }
       })
-      .catch((err) => toast.error(`Couldn't load SSH keys: ${formatErrorMessage(err)}`))
+      .catch((err) =>
+        toast.error(gt("Couldn't load SSH keys: {message}", { message: formatErrorMessage(err) })),
+      )
       .finally(() => setLoading(false));
-  }, [orgId, preferredSshKeyId, preferredSshKeyName]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [orgId, preferredSshKeyId, preferredSshKeyName, gt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleConnect = useCallback(() => {
     if (!selectedKeyId) return;
@@ -70,7 +74,7 @@ export function SshQuickConnectPanel({
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-on-surface-muted text-sm">
-        Loading SSH keys…
+        {gt("Loading SSH keys…")}
       </div>
     );
   }
@@ -90,7 +94,7 @@ export function SshQuickConnectPanel({
             htmlFor="ssh-quick-connect-username"
             className="text-xs text-on-surface-muted w-20 shrink-0"
           >
-            Username
+            {gt("Username")}
           </label>
           <input
             id="ssh-quick-connect-username"
@@ -110,15 +114,15 @@ export function SshQuickConnectPanel({
 
         {/* Key picker */}
         <div className="flex items-start gap-3">
-          <span className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</span>
+          <span className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">{gt("SSH Key")}</span>
           <div className="flex-1 space-y-1">
             {keys.length === 0 ? (
               <p className="text-xs text-on-surface-faint py-1">
-                No SSH keys found. Go to Settings to create one.
+                {gt("No SSH keys found. Go to Settings to create one.")}
               </p>
             ) : (
               <SshKeyRadioGroup
-                ariaLabel="SSH Key"
+                ariaLabel={gt("SSH Key")}
                 selectedId={selectedKeyId}
                 onChange={(id) => {
                   setSelectedKeyId(id);
@@ -148,7 +152,7 @@ export function SshQuickConnectPanel({
             disabled={!selectedKeyId}
             className="px-4 py-1.5 rounded-lg bg-green-100 dark:bg-green-900 border border-green-300 dark:border-green-700 hover:bg-green-200 dark:hover:bg-green-800 hover:border-green-400 dark:hover:border-green-600 text-success hover:text-success-strong text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Connect
+            {gt("Connect")}
           </button>
         </div>
       </div>

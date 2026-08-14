@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useGT } from "gt-react";
 import { getDb } from "../db/client";
 import { useUIStore } from "@infrawrench/ui";
 import {
@@ -13,6 +14,7 @@ export const Route = createFileRoute("/")({
 });
 
 function IndexPage() {
+  const gt = useGT();
   const navigate = useNavigate();
   const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
   const tabsHydrated = useUIStore((s) => s.tabsHydrated);
@@ -37,7 +39,7 @@ function IndexPage() {
         );
         if (cancelled) return;
         let homeId: string;
-        let homeName = "Home";
+        let homeName = gt("Home");
         if (rows[0]) {
           homeId = rows[0].id;
           homeName = rows[0].name;
@@ -47,7 +49,7 @@ function IndexPage() {
           try {
             await db.execute("INSERT INTO dashboards (id, name, is_default) VALUES ($1, $2, 1)", [
               homeId,
-              "Home",
+              gt("Home"),
             ]);
             bumpDashboardPins();
           } catch {
@@ -75,12 +77,12 @@ function IndexPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeWorkspaceTabId, navigate, tabsHydrated, workspaceTabs]);
+  }, [activeWorkspaceTabId, gt, navigate, tabsHydrated, workspaceTabs]);
 
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 h-full text-sm px-6 text-center">
-        <span className="text-danger font-medium">Couldn&apos;t open your home dashboard</span>
+        <span className="text-danger font-medium">{gt("Couldn't open your home dashboard")}</span>
         <span className="text-on-surface-faint break-all">{error}</span>
       </div>
     );
@@ -88,7 +90,7 @@ function IndexPage() {
 
   return (
     <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-      Loading…
+      {gt("Loading…")}
     </div>
   );
 }

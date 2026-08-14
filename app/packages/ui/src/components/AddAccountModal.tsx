@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useGT } from "gt-react";
 import type {
   PolicyTemplate,
   PreflightDeclaration,
@@ -119,6 +120,7 @@ export function AddAccountModal({
   runPreflight,
   fetchPolicyTemplate,
 }: AddAccountModalProps) {
+  const gt = useGT();
   const [step, setStep] = useState<Step>(prefilledPluginId ? "enter-credentials" : "pick-plugin");
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [selected, setSelected] = useState<PluginInfo | null>(null);
@@ -177,13 +179,13 @@ export function AddAccountModal({
   async function save() {
     if (!selected) return;
     if (!accountName.trim()) {
-      setError("Account name is required.");
+      setError(gt("Account name is required."));
       return;
     }
     for (const f of selected.credentialFields) {
       if (f.optional) continue;
       if (!fieldValues[f.key]?.trim() && !f.defaultValue) {
-        setError(`${f.label} is required.`);
+        setError(gt("{label} is required.", { label: f.label }));
         return;
       }
     }
@@ -210,19 +212,25 @@ export function AddAccountModal({
   return (
     <Modal
       onClose={onClose}
-      ariaLabel={step === "pick-plugin" ? "Add account" : `Add ${selected?.displayName} account`}
+      ariaLabel={
+        step === "pick-plugin"
+          ? gt("Add account")
+          : gt("Add {name} account", { name: selected?.displayName ?? "" })
+      }
     >
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-on-surface-secondary">
-            {step === "pick-plugin" ? "Add account" : `Add ${selected?.displayName} account`}
+            {step === "pick-plugin"
+              ? gt("Add account")
+              : gt("Add {name} account", { name: selected?.displayName ?? "" })}
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg leading-none"
-            aria-label="Close"
+            aria-label={gt("Close")}
           >
             &#215;
           </button>
@@ -235,12 +243,12 @@ export function AddAccountModal({
                 ref={searchInputRef}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search plugins..."
-                aria-label="Search plugins"
+                placeholder={gt("Search plugins...")}
+                aria-label={gt("Search plugins")}
                 className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong mb-3"
               />
               {plugins.length === 0 ? (
-                <p className="text-xs text-on-surface-faint">Loading plugins…</p>
+                <p className="text-xs text-on-surface-faint">{gt("Loading plugins…")}</p>
               ) : (
                 <div className="flex flex-wrap gap-2 max-h-[320px] overflow-y-auto">
                   {plugins
@@ -289,15 +297,15 @@ export function AddAccountModal({
                       htmlFor="add-account-name"
                       className="block text-xs text-on-surface-tertiary mb-1"
                     >
-                      Account name
+                      {gt("Account name")}
                     </label>
                     <input
                       id="add-account-name"
                       type="text"
-                      aria-label="Account name"
+                      aria-label={gt("Account name")}
                       value={accountName}
                       onChange={(e) => setAccountName(e.target.value)}
-                      placeholder={`My ${selected.displayName} account`}
+                      placeholder={gt("My {name} account", { name: selected.displayName })}
                       className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
                     />
                   </div>
@@ -349,7 +357,7 @@ export function AddAccountModal({
                                 }
                                 className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary focus:outline-none focus:border-border-strong"
                               >
-                                <option value="">None (direct)</option>
+                                <option value="">{gt("None (direct)")}</option>
                                 {candidates.map((a) => (
                                   <option key={a.id} value={a.id}>
                                     {a.displayName}
@@ -399,11 +407,12 @@ export function AddAccountModal({
                         htmlFor="add-account-bastion"
                         className="block text-xs text-on-surface-tertiary mb-1"
                       >
-                        Egress via
+                        {gt("Egress via")}
                       </label>
                       <p className="text-xs text-on-surface-faint mb-1">
-                        Route this account&apos;s cloud-API traffic through a bastion agent. Leave
-                        as &quot;Direct&quot; to keep using the default egress.
+                        {gt(
+                          'Route this account\'s cloud-API traffic through a bastion agent. Leave as "Direct" to keep using the default egress.',
+                        )}
                       </p>
                       <select
                         id="add-account-bastion"
@@ -411,11 +420,10 @@ export function AddAccountModal({
                         onChange={(e) => setBastionId(e.target.value)}
                         className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary focus:outline-none focus:border-border-strong"
                       >
-                        <option value="">Direct (no bastion)</option>
+                        <option value="">{gt("Direct (no bastion)")}</option>
                         {bastions.map((b) => (
                           <option key={b.id} value={b.id}>
-                            {b.name}
-                            {b.connected ? "" : " — offline"}
+                            {b.connected ? b.name : gt("{name} — offline", { name: b.name })}
                           </option>
                         ))}
                       </select>
@@ -448,7 +456,7 @@ export function AddAccountModal({
                       onClick={() => setStep("pick-plugin")}
                       className="flex-1 px-3 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong rounded-lg hover:border-border-strong transition-colors"
                     >
-                      Back
+                      {gt("Back")}
                     </button>
                     <button
                       type="button"
@@ -456,7 +464,7 @@ export function AddAccountModal({
                       disabled={saving || !isValid}
                       className="flex-1 px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
                     >
-                      {saving ? "Saving..." : "Add account"}
+                      {saving ? gt("Saving...") : gt("Add account")}
                     </button>
                   </div>
                 </div>

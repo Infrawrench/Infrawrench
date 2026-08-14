@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import {
   COST_DIMENSIONS,
   COST_DIMENSION_LABELS,
@@ -17,6 +18,7 @@ import {
 } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
 import { parseNumericInputValue } from "../form-values.js";
+import { useDataString } from "../i18n/data-strings.js";
 import { useSettingsHost } from "./host.js";
 import { CARD, INPUT, LABEL, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles.js";
 
@@ -47,15 +49,25 @@ function statusTone(exp: CostExport): string {
   return "text-on-surface-muted";
 }
 
-function statusLabel(exp: CostExport): string {
-  if (exp.lastStatus === "pending") return "Not run yet";
+function statusLabel(exp: CostExport, gt: ReturnType<typeof useGT>): string {
+  if (exp.lastStatus === "pending") return gt("Not run yet");
   const when = exp.lastRunAt ? new Date(exp.lastRunAt).toLocaleString() : "";
   if (exp.lastStatus === "succeeded") {
     const objects = exp.lastObjectCount ?? 0;
     const rows = exp.lastRowCount ?? 0;
-    return `Wrote ${objects} object${objects === 1 ? "" : "s"} · ${rows.toLocaleString()} rows · ${when}`;
+    return objects === 1
+      ? gt("Wrote {objects} object · {rows} rows · {when}", {
+          objects,
+          rows: rows.toLocaleString(),
+          when,
+        })
+      : gt("Wrote {objects} objects · {rows} rows · {when}", {
+          objects,
+          rows: rows.toLocaleString(),
+          when,
+        });
   }
-  return `Failed ${when}`;
+  return gt("Failed {when}", { when });
 }
 
 function describeDestination(exp: CostExport): string {
@@ -64,9 +76,9 @@ function describeDestination(exp: CostExport): string {
     : `${exp.destination.method} ${exp.destination.urlHint}`;
 }
 
-function describeSchedule(exp: CostExport): string {
+function describeSchedule(exp: CostExport, gtData: (value: string) => string): string {
   const hour = String(exp.hour).padStart(2, "0");
-  return `${COST_EXPORT_CADENCE_LABELS[exp.cadence]} · ${hour}:00 ${exp.timezone}`;
+  return `${gtData(COST_EXPORT_CADENCE_LABELS[exp.cadence])} · ${hour}:00 ${exp.timezone}`;
 }
 
 /** Everything a saved export needs, as the form holds it before submitting. */
@@ -93,6 +105,8 @@ function formFromExport(exp: CostExport | null): CostExportInput {
 }
 
 export function CostExportsSection() {
+  const gt = useGT();
+  const gtData = useDataString();
   const { orgId, api, has } = useSettingsHost();
   const canWrite = has("org:settings:write");
 
@@ -107,10 +121,10 @@ export function CostExportsSection() {
     try {
       setExports(await api.get<CostExport[]>(`/api/org/${orgId}/cost-exports`));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load cost exports");
+      setError(e instanceof Error ? e.message : gt("Failed to load cost exports"));
       setExports([]);
     }
-  }, [api, orgId]);
+  }, [api, orgId, gt]);
 
   useEffect(() => {
     void load();
@@ -119,7 +133,9 @@ export function CostExportsSection() {
   async function remove(exp: CostExport) {
     if (
       !window.confirm(
-        `Delete "${exp.name}"? Objects already written to the destination are left alone.`,
+        gt('Delete "{name}"? Objects already written to the destination are left alone.', {
+          name: exp.name,
+        }),
       )
     ) {
       return;
@@ -128,10 +144,10 @@ export function CostExportsSection() {
     setNotice(null);
     try {
       await api.delete(`/api/org/${orgId}/cost-exports/${exp.id}`);
-      setNotice(`Deleted "${exp.name}".`);
+      setNotice(gt('Deleted "{name}".', { name: exp.name }));
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete the export");
+      setError(e instanceof Error ? e.message : gt("Failed to delete the export"));
     }
   }
 
@@ -144,17 +160,32 @@ export function CostExportsSection() {
         `/api/org/${orgId}/cost-exports/${exp.id}/run`,
       );
       if (result.status === "failed") {
-        setError(`"${exp.name}" failed: ${result.error ?? "unknown error"}`);
+        setError(
+          gt('"{name}" failed: {error}', {
+            name: exp.name,
+            error: result.error ?? gt("unknown error"),
+          }),
+        );
+      } else if (result.objects.length === 1) {
+        setNotice(
+          gt('"{name}" wrote {objects} object ({rows} rows).', {
+            name: exp.name,
+            objects: result.objects.length,
+            rows: result.rowCount.toLocaleString(),
+          }),
+        );
       } else {
         setNotice(
-          `"${exp.name}" wrote ${result.objects.length} object${
-            result.objects.length === 1 ? "" : "s"
-          } (${result.rowCount.toLocaleString()} rows).`,
+          gt('"{name}" wrote {objects} objects ({rows} rows).', {
+            name: exp.name,
+            objects: result.objects.length,
+            rows: result.rowCount.toLocaleString(),
+          }),
         );
       }
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to run the export");
+      setError(e instanceof Error ? e.message : gt("Failed to run the export"));
     } finally {
       setRunningId(null);
     }
@@ -164,13 +195,15 @@ export function CostExportsSection() {
     <div>
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-xl font-semibold">Cost exports</h1>
-          <p className="text-sm text-on-surface-muted mt-1">
-            Ship the organization&rsquo;s raw cost rows to a warehouse or object store on a
-            schedule. Each run writes <strong>one object per period</strong> at a deterministic key,
-            so re-exporting a period replaces the file rather than adding a second copy of the same
-            days.
-          </p>
+          <h1 className="text-xl font-semibold">{gt("Cost exports")}</h1>
+          <T>
+            <p className="text-sm text-on-surface-muted mt-1">
+              Ship the organization&rsquo;s raw cost rows to a warehouse or object store on a
+              schedule. Each run writes <strong>one object per period</strong> at a deterministic
+              key, so re-exporting a period replaces the file rather than adding a second copy of
+              the same days.
+            </p>
+          </T>
         </div>
         {canWrite && (
           <button
@@ -178,19 +211,21 @@ export function CostExportsSection() {
             onClick={() => setEditing({ export: null })}
             className={`${PRIMARY_BUTTON} shrink-0`}
           >
-            New export
+            {gt("New export")}
           </button>
         )}
       </div>
 
-      <div className="mb-6 px-3 py-2 text-xs text-warning/90 border border-amber-900/40 bg-amber-950/20 rounded-lg">
-        <strong>Providers restate spend for days after the fact.</strong> The object written for
-        yesterday is not final — credits land late, tax lines are recomputed, and amortization
-        shifts. Every run therefore re-writes the periods inside its restatement window, and every
-        row carries a <code>collection_watermark</code> column: the newest day every collecting
-        account had reported. Hold back periods ending after the watermark if your reconciliation
-        needs certainty.
-      </div>
+      <T>
+        <div className="mb-6 px-3 py-2 text-xs text-warning/90 border border-amber-900/40 bg-amber-950/20 rounded-lg">
+          <strong>Providers restate spend for days after the fact.</strong> The object written for
+          yesterday is not final — credits land late, tax lines are recomputed, and amortization
+          shifts. Every run therefore re-writes the periods inside its restatement window, and every
+          row carries a <code>collection_watermark</code> column: the newest day every collecting
+          account had reported. Hold back periods ending after the watermark if your reconciliation
+          needs certainty.
+        </div>
+      </T>
 
       {error !== null && (
         <div className="mb-4 px-3 py-2 text-sm text-danger border border-red-900/50 bg-red-950/20 rounded-lg">
@@ -204,12 +239,14 @@ export function CostExportsSection() {
       )}
 
       {exports === null ? (
-        <p className="text-sm text-on-surface-faint">Loading…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
       ) : exports.length === 0 ? (
-        <p className="text-sm text-on-surface-muted">
-          No exports yet. Create one to have Infrawrench write CSV or NDJSON cost rows to an
-          S3-compatible bucket (AWS S3, R2, Spaces, MinIO) or POST them to an HTTPS endpoint.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-muted">
+            No exports yet. Create one to have Infrawrench write CSV or NDJSON cost rows to an
+            S3-compatible bucket (AWS S3, R2, Spaces, MinIO) or POST them to an HTTPS endpoint.
+          </p>
+        </T>
       ) : (
         <ul className="space-y-3">
           {exports.map((exp) => (
@@ -221,7 +258,7 @@ export function CostExportsSection() {
                     <span className="text-xs text-on-surface-muted uppercase">{exp.format}</span>
                     {!exp.enabled && (
                       <span className="text-xs px-1.5 py-0.5 rounded bg-surface-overlay text-on-surface-muted">
-                        paused
+                        {gt("paused")}
                       </span>
                     )}
                   </div>
@@ -229,16 +266,24 @@ export function CostExportsSection() {
                     {describeDestination(exp)}
                   </p>
                   <p className="text-xs text-on-surface-muted mt-0.5">
-                    {describeSchedule(exp)} · {exp.restatementDays}-day restatement window
-                    {exp.credentialHint ? ` · credential ${exp.credentialHint}` : ""}
+                    {exp.credentialHint
+                      ? gt("{schedule} · {days}-day restatement window · credential {hint}", {
+                          schedule: describeSchedule(exp, gtData),
+                          days: exp.restatementDays,
+                          hint: exp.credentialHint,
+                        })
+                      : gt("{schedule} · {days}-day restatement window", {
+                          schedule: describeSchedule(exp, gtData),
+                          days: exp.restatementDays,
+                        })}
                   </p>
-                  <p className={`text-xs mt-1 ${statusTone(exp)}`}>{statusLabel(exp)}</p>
+                  <p className={`text-xs mt-1 ${statusTone(exp)}`}>{statusLabel(exp, gt)}</p>
                   {exp.lastStatus === "failed" && exp.lastError && (
                     <p className="text-xs text-danger/80 mt-0.5 break-words">{exp.lastError}</p>
                   )}
                   {exp.enabled && exp.nextRunAt && (
                     <p className="text-xs text-on-surface-faint mt-0.5">
-                      Next run {new Date(exp.nextRunAt).toLocaleString()}
+                      {gt("Next run {when}", { when: new Date(exp.nextRunAt).toLocaleString() })}
                     </p>
                   )}
                 </div>
@@ -250,21 +295,21 @@ export function CostExportsSection() {
                       disabled={runningId !== null}
                       className={SECONDARY_BUTTON}
                     >
-                      {runningId === exp.id ? "Running…" : "Run now"}
+                      {runningId === exp.id ? gt("Running…") : gt("Run now")}
                     </button>
                     <button
                       type="button"
                       onClick={() => setEditing({ export: exp })}
                       className={SECONDARY_BUTTON}
                     >
-                      Edit
+                      {gt("Edit")}
                     </button>
                     <button
                       type="button"
                       onClick={() => void remove(exp)}
                       className="px-3 py-1.5 text-sm font-medium text-danger hover:text-danger-strong"
                     >
-                      Delete
+                      {gt("Delete")}
                     </button>
                   </div>
                 )}
@@ -298,6 +343,8 @@ function CostExportEditor({
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const { orgId, api } = useSettingsHost();
   const [form, setForm] = useState<CostExportInput>(() => formFromExport(existing));
   const [accessKeyId, setAccessKeyId] = useState("");
@@ -340,13 +387,13 @@ function CostExportEditor({
       };
       if (existing) {
         await api.put(`/api/org/${orgId}/cost-exports/${existing.id}`, body);
-        onSaved(`Saved "${form.name}".`);
+        onSaved(gt('Saved "{name}".', { name: form.name }));
       } else {
         await api.post(`/api/org/${orgId}/cost-exports`, body);
-        onSaved(`Created "${form.name}".`);
+        onSaved(gt('Created "{name}".', { name: form.name }));
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save the export");
+      setError(e instanceof Error ? e.message : gt("Failed to save the export"));
     } finally {
       setSaving(false);
     }
@@ -355,12 +402,12 @@ function CostExportEditor({
   return (
     <Modal
       onClose={onClose}
-      ariaLabel={existing ? "Edit cost export" : "New cost export"}
+      ariaLabel={existing ? gt("Edit cost export") : gt("New cost export")}
       className="w-[42rem] max-w-[92vw]"
     >
       <div className="p-5 space-y-5 max-h-[80vh] overflow-y-auto">
         <h2 className="text-lg font-semibold">
-          {existing ? "Edit cost export" : "New cost export"}
+          {existing ? gt("Edit cost export") : gt("New cost export")}
         </h2>
 
         {error !== null && (
@@ -371,7 +418,7 @@ function CostExportEditor({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block sm:col-span-2">
-            <span className={LABEL}>Name</span>
+            <span className={LABEL}>{gt("Name")}</span>
             <input
               type="text"
               value={form.name}
@@ -382,7 +429,7 @@ function CostExportEditor({
           </label>
 
           <label className="block">
-            <span className={LABEL}>Format</span>
+            <span className={LABEL}>{gt("Format")}</span>
             <select
               value={form.format}
               onChange={(e) =>
@@ -392,14 +439,14 @@ function CostExportEditor({
             >
               {COST_EXPORT_FORMATS.map((f) => (
                 <option key={f} value={f}>
-                  {COST_EXPORT_FORMAT_LABELS[f]}
+                  {gtData(COST_EXPORT_FORMAT_LABELS[f])}
                 </option>
               ))}
             </select>
           </label>
 
           <label className="block">
-            <span className={LABEL}>Cadence (also the period per object)</span>
+            <span className={LABEL}>{gt("Cadence (also the period per object)")}</span>
             <select
               value={form.cadence}
               onChange={(e) =>
@@ -409,14 +456,14 @@ function CostExportEditor({
             >
               {COST_EXPORT_CADENCES.map((cadence) => (
                 <option key={cadence} value={cadence}>
-                  {COST_EXPORT_CADENCE_LABELS[cadence]}
+                  {gtData(COST_EXPORT_CADENCE_LABELS[cadence])}
                 </option>
               ))}
             </select>
           </label>
 
           <label className="block">
-            <span className={LABEL}>Hour (local)</span>
+            <span className={LABEL}>{gt("Hour (local)")}</span>
             <select
               value={form.hour}
               onChange={(e) => setForm({ ...form, hour: Number(e.target.value) })}
@@ -431,7 +478,7 @@ function CostExportEditor({
           </label>
 
           <label className="block">
-            <span className={LABEL}>Timezone</span>
+            <span className={LABEL}>{gt("Timezone")}</span>
             <input
               type="text"
               value={form.timezone}
@@ -443,15 +490,17 @@ function CostExportEditor({
         </div>
 
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Restatement window</h3>
-          <p className="text-xs text-on-surface-muted">
-            Days of already-written history each run rebuilds. Every period overlapping the window
-            is re-exported <em>in full</em> at the key it already occupies, so the destination ends
-            up with a better copy of the same file — never a duplicate. Seven days covers how far
-            back the providers we collect from normally revise; set 0 only if yours never do.
-          </p>
+          <h3 className="text-sm font-semibold">{gt("Restatement window")}</h3>
+          <T>
+            <p className="text-xs text-on-surface-muted">
+              Days of already-written history each run rebuilds. Every period overlapping the window
+              is re-exported <em>in full</em> at the key it already occupies, so the destination
+              ends up with a better copy of the same file — never a duplicate. Seven days covers how
+              far back the providers we collect from normally revise; set 0 only if yours never do.
+            </p>
+          </T>
           <label className="block max-w-[12rem]">
-            <span className={LABEL}>Days</span>
+            <span className={LABEL}>{gt("Days")}</span>
             <input
               type="number"
               min={0}
@@ -472,21 +521,21 @@ function CostExportEditor({
         <ColumnPicker query={form.query} onChange={(query) => setForm((f) => ({ ...f, query }))} />
 
         <section className="space-y-3">
-          <h3 className="text-sm font-semibold">Destination</h3>
+          <h3 className="text-sm font-semibold">{gt("Destination")}</h3>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => setDestinationKind("s3")}
               className={isS3 ? PRIMARY_BUTTON : SECONDARY_BUTTON}
             >
-              S3-compatible
+              {gt("S3-compatible")}
             </button>
             <button
               type="button"
               onClick={() => setDestinationKind("http")}
               className={!isS3 ? PRIMARY_BUTTON : SECONDARY_BUTTON}
             >
-              HTTPS endpoint
+              {gt("HTTPS endpoint")}
             </button>
           </div>
 
@@ -518,13 +567,13 @@ function CostExportEditor({
             onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
           />
           <span className="text-on-surface-secondary">
-            Run on schedule (uncheck to pause without deleting)
+            {gt("Run on schedule (uncheck to pause without deleting)")}
           </span>
         </label>
 
         <div className="flex items-center justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} className={SECONDARY_BUTTON}>
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -532,7 +581,7 @@ function CostExportEditor({
             disabled={saving || !form.name.trim()}
             className={PRIMARY_BUTTON}
           >
-            {saving ? "Saving…" : existing ? "Save changes" : "Create export"}
+            {saving ? gt("Saving…") : existing ? gt("Save changes") : gt("Create export")}
           </button>
         </div>
       </div>
@@ -555,6 +604,8 @@ function ColumnPicker({
   query: CostExportQuery;
   onChange: (query: CostExportQuery) => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [tagKeyDraft, setTagKeyDraft] = useState("");
 
   function toggleDimension(dimension: CostDimensionId) {
@@ -576,12 +627,14 @@ function ColumnPicker({
 
   return (
     <section className="space-y-2">
-      <h3 className="text-sm font-semibold">Columns</h3>
-      <p className="text-xs text-on-surface-muted">
-        Which identity columns survive into the output. Leaving one out aggregates over it — a
-        provider + service export is a fraction of the size of a per-resource one. Day, currency,
-        amount and usage always come along.
-      </p>
+      <h3 className="text-sm font-semibold">{gt("Columns")}</h3>
+      <T>
+        <p className="text-xs text-on-surface-muted">
+          Which identity columns survive into the output. Leaving one out aggregates over it — a
+          provider + service export is a fraction of the size of a per-resource one. Day, currency,
+          amount and usage always come along.
+        </p>
+      </T>
       <div className="flex flex-wrap gap-2">
         {PICKABLE_DIMENSIONS.map((dimension) => {
           const selected = query.dimensions.includes(dimension);
@@ -596,14 +649,14 @@ function ColumnPicker({
                   : "border-border text-on-surface-muted hover:bg-surface-overlay"
               }`}
             >
-              {COST_DIMENSION_LABELS[dimension]}
+              {gtData(COST_DIMENSION_LABELS[dimension])}
             </button>
           );
         })}
       </div>
 
       <div className="pt-2">
-        <span className={LABEL}>Tag columns</span>
+        <span className={LABEL}>{gt("Tag columns")}</span>
         <div className="flex flex-wrap gap-2 mb-2">
           {query.tagKeys.map((key) => (
             <span
@@ -613,7 +666,7 @@ function ColumnPicker({
               {key}
               <button
                 type="button"
-                aria-label={`Remove tag column ${key}`}
+                aria-label={gt("Remove tag column {key}", { key })}
                 onClick={() =>
                   onChange({ ...query, tagKeys: query.tagKeys.filter((k) => k !== key) })
                 }
@@ -626,7 +679,7 @@ function ColumnPicker({
         </div>
         <div className="flex items-end gap-2">
           <label className="block flex-1">
-            <span className={LABEL}>Tag key</span>
+            <span className={LABEL}>{gt("Tag key")}</span>
             <input
               type="text"
               value={tagKeyDraft}
@@ -636,7 +689,7 @@ function ColumnPicker({
             />
           </label>
           <button type="button" className={SECONDARY_BUTTON} onClick={addTagKey}>
-            Add
+            {gt("Add")}
           </button>
         </div>
       </div>
@@ -666,15 +719,18 @@ function S3DestinationFields({
   secretAccessKey: string;
   onSecretAccessKeyChange: (value: string) => void;
 }) {
+  const gt = useGT();
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <p className="sm:col-span-2 text-xs text-on-surface-muted">
-        One setting covers AWS S3, Cloudflare R2, DigitalOcean Spaces, Scaleway, Backblaze B2 and
-        MinIO — leave the endpoint blank for AWS, otherwise paste the provider&rsquo;s S3 API
-        origin.
-      </p>
+      <T>
+        <p className="sm:col-span-2 text-xs text-on-surface-muted">
+          One setting covers AWS S3, Cloudflare R2, DigitalOcean Spaces, Scaleway, Backblaze B2 and
+          MinIO — leave the endpoint blank for AWS, otherwise paste the provider&rsquo;s S3 API
+          origin.
+        </p>
+      </T>
       <label className="block">
-        <span className={LABEL}>Bucket</span>
+        <span className={LABEL}>{gt("Bucket")}</span>
         <input
           type="text"
           value={destination.bucket}
@@ -683,7 +739,7 @@ function S3DestinationFields({
         />
       </label>
       <label className="block">
-        <span className={LABEL}>Key prefix</span>
+        <span className={LABEL}>{gt("Key prefix")}</span>
         <input
           type="text"
           value={destination.prefix}
@@ -693,7 +749,7 @@ function S3DestinationFields({
         />
       </label>
       <label className="block">
-        <span className={LABEL}>Region</span>
+        <span className={LABEL}>{gt("Region")}</span>
         <input
           type="text"
           value={destination.region}
@@ -703,7 +759,7 @@ function S3DestinationFields({
         />
       </label>
       <label className="block">
-        <span className={LABEL}>Endpoint (blank = AWS S3)</span>
+        <span className={LABEL}>{gt("Endpoint (blank = AWS S3)")}</span>
         <input
           type="text"
           value={destination.endpoint}
@@ -719,30 +775,34 @@ function S3DestinationFields({
           onChange={(e) => onChange({ ...destination, forcePathStyle: e.target.checked })}
         />
         <span className="text-on-surface-secondary">
-          Path-style addressing (needed by MinIO and most self-hosted gateways)
+          {gt("Path-style addressing (needed by MinIO and most self-hosted gateways)")}
         </span>
       </label>
       <label className="block">
-        <span className={LABEL}>Access key id</span>
+        <span className={LABEL}>{gt("Access key id")}</span>
         <input
           type="text"
           value={accessKeyId}
           onChange={(e) => onAccessKeyIdChange(e.target.value)}
           autoComplete="off"
           placeholder={
-            existing?.hasCredentials ? `Stored: ${existing.credentialHint ?? "…"}` : "AKIA…"
+            existing?.hasCredentials
+              ? gt("Stored: {hint}", { hint: existing.credentialHint ?? "…" })
+              : "AKIA…"
           }
           className={INPUT}
         />
       </label>
       <label className="block">
-        <span className={LABEL}>Secret access key</span>
+        <span className={LABEL}>{gt("Secret access key")}</span>
         <input
           type="password"
           value={secretAccessKey}
           onChange={(e) => onSecretAccessKeyChange(e.target.value)}
           autoComplete="new-password"
-          placeholder={existing?.hasCredentials ? "Leave blank to keep the stored key" : "Secret"}
+          placeholder={
+            existing?.hasCredentials ? gt("Leave blank to keep the stored key") : gt("Secret")
+          }
           className={INPUT}
         />
       </label>
@@ -764,15 +824,18 @@ function HttpDestinationFields({
   url: string;
   onUrlChange: (value: string) => void;
 }) {
+  const gt = useGT();
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <p className="sm:col-span-2 text-xs text-on-surface-muted">
-        Each object is sent as the request body, with the object key in the
-        <code> X-Infrawrench-Object-Key</code> header. The URL is treated as a credential — a
-        pre-signed URL carries its own signature — so it is encrypted and never shown again.
-      </p>
+      <T>
+        <p className="sm:col-span-2 text-xs text-on-surface-muted">
+          Each object is sent as the request body, with the object key in the
+          <code> X-Infrawrench-Object-Key</code> header. The URL is treated as a credential — a
+          pre-signed URL carries its own signature — so it is encrypted and never shown again.
+        </p>
+      </T>
       <label className="block">
-        <span className={LABEL}>Method</span>
+        <span className={LABEL}>{gt("Method")}</span>
         <select
           value={destination.method}
           onChange={(e) => onChange({ ...destination, method: e.target.value as "POST" | "PUT" })}
@@ -783,14 +846,16 @@ function HttpDestinationFields({
         </select>
       </label>
       <label className="block">
-        <span className={LABEL}>URL</span>
+        <span className={LABEL}>{gt("URL")}</span>
         <input
           type="password"
           value={url}
           onChange={(e) => onUrlChange(e.target.value)}
           autoComplete="new-password"
           placeholder={
-            existing?.hasCredentials ? `Stored: ${existing.credentialHint ?? "…"}` : "https://…"
+            existing?.hasCredentials
+              ? gt("Stored: {hint}", { hint: existing.credentialHint ?? "…" })
+              : "https://…"
           }
           className={INPUT}
         />

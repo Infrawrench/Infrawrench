@@ -168,19 +168,19 @@ export function ChatPanel({ capability, onStream }: Props) {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-surface shrink-0">
         <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">
-          {capability.tabLabel ?? "Playground"}
+          {capability.tabLabel ?? gt("Playground")}
         </span>
         {capability.subtitle && (
           <span className="text-xs text-on-surface-tertiary truncate">{capability.subtitle}</span>
         )}
         {capability.models && capability.models.length > 0 && (
           <label className="flex items-center gap-1.5 text-xs text-on-surface-tertiary">
-            <span className="sr-only">{capability.modelLabel ?? "Model"}</span>
+            <span className="sr-only">{capability.modelLabel ?? gt("Model")}</span>
             <select
               value={model}
               onChange={(e) => setModel(e.target.value)}
               disabled={streaming}
-              aria-label={capability.modelLabel ?? "Model"}
+              aria-label={capability.modelLabel ?? gt("Model")}
               className="max-w-[18rem] bg-surface-overlay text-on-surface text-xs border border-border-strong rounded-md px-2 py-1 focus:outline-none focus:border-accent-blue disabled:opacity-60"
             >
               {capability.models.map((m) => (

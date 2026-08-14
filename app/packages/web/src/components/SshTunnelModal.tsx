@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
+import { T, Var, useGT } from "gt-react";
 import {
   Modal,
   useUIStore,
   formatErrorMessage,
   deriveSSHUsername,
   toast,
+  useDataString,
   SSH_TUNNEL_PRESETS,
   buildSshTunnelCredentials,
   SshKeyRadioGroup,
@@ -32,6 +34,8 @@ export function SshTunnelModal({
   onClose,
   onTunnelEstablished,
 }: SshTunnelModalProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const orgId = useOrgId();
   const { withTrustPrompt, dialog: hostKeyDialog } = useHostKeyTrust(orgId);
   const [sshUser, setSshUser] = useState(defaultUsername ?? "root");
@@ -58,22 +62,24 @@ export function SshTunnelModal({
           }
         }
       })
-      .catch((err) => toast.error(`Couldn't load SSH keys: ${formatErrorMessage(err)}`))
+      .catch((err) =>
+        toast.error(gt("Couldn't load SSH keys: {message}", { message: formatErrorMessage(err) })),
+      )
       .finally(() => setLoadingKeys(false));
-  }, []);
+  }, [gt]);
 
   async function onConfirm() {
     if (!selectedKeyId) {
-      setError("Select an SSH key first");
+      setError(gt("Select an SSH key first"));
       return;
     }
     const pluginId = preset.pluginId;
     if (!pluginId) {
-      setError("Select a service type");
+      setError(gt("Select a service type"));
       return;
     }
     if (service === "custom" && !customPort) {
-      setError("Remote port is required");
+      setError(gt("Remote port is required"));
       return;
     }
 
@@ -109,29 +115,40 @@ export function SshTunnelModal({
   return (
     <>
       {hostKeyDialog}
-      <Modal onClose={onClose} ariaLabel="Connect to service via SSH">
+      <Modal onClose={onClose} ariaLabel={gt("Connect to service via SSH")}>
         <div className="bg-surface-raised border border-border-strong rounded-2xl shadow-2xl w-[480px] max-h-[90vh] overflow-auto">
           <div className="p-6 border-b border-border">
-            <h2 className="text-base font-semibold text-on-surface">Connect to service via SSH</h2>
-            <p className="text-xs text-on-surface-muted mt-1">
-              SSH host: <span className="text-on-surface-secondary font-mono">{sshHost}</span>
-            </p>
+            <h2 className="text-base font-semibold text-on-surface">
+              {gt("Connect to service via SSH")}
+            </h2>
+            <T>
+              <p className="text-xs text-on-surface-muted mt-1">
+                SSH host:{" "}
+                <Var>
+                  <span className="text-on-surface-secondary font-mono">{sshHost}</span>
+                </Var>
+              </p>
+            </T>
           </div>
 
           <div className="p-6 space-y-4">
             {/* SSH Key picker */}
             <div className="flex items-start gap-3">
-              <span className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</span>
+              <span className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">
+                {gt("SSH Key")}
+              </span>
               <div className="flex-1 space-y-1">
                 {loadingKeys ? (
-                  <p className="text-xs text-on-surface-faint py-1">Loading keys…</p>
+                  <p className="text-xs text-on-surface-faint py-1">{gt("Loading keys…")}</p>
                 ) : keys.length === 0 ? (
-                  <p className="text-xs text-on-surface-faint py-1">
-                    No SSH keys found. Go to Settings to create one.
-                  </p>
+                  <T>
+                    <p className="text-xs text-on-surface-faint py-1">
+                      No SSH keys found. Go to Settings to create one.
+                    </p>
+                  </T>
                 ) : (
                   <SshKeyRadioGroup
-                    ariaLabel="SSH Key"
+                    ariaLabel={gt("SSH Key")}
                     selectedId={selectedKeyId}
                     onChange={(id) => {
                       setSelectedKeyId(id);
@@ -157,7 +174,7 @@ export function SshTunnelModal({
                 htmlFor="ssh-tunnel-username"
                 className="text-xs text-on-surface-muted w-20 shrink-0"
               >
-                Username
+                {gt("Username")}
               </label>
               <input
                 id="ssh-tunnel-username"
@@ -177,7 +194,7 @@ export function SshTunnelModal({
                 htmlFor="ssh-tunnel-port"
                 className="text-xs text-on-surface-muted w-20 shrink-0"
               >
-                SSH Port
+                {gt("SSH Port")}
               </label>
               <input
                 id="ssh-tunnel-port"
@@ -191,7 +208,9 @@ export function SshTunnelModal({
 
             {/* Service selector */}
             <div>
-              <span className="block text-xs text-on-surface-muted mb-2">Target Service</span>
+              <span className="block text-xs text-on-surface-muted mb-2">
+                {gt("Target Service")}
+              </span>
               <div className="grid grid-cols-3 gap-2">
                 {(
                   Object.entries(SSH_TUNNEL_PRESETS) as [
@@ -209,7 +228,7 @@ export function SshTunnelModal({
                         : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong hover:text-on-surface-secondary"
                     }`}
                   >
-                    <div className="font-medium">{p.label}</div>
+                    <div className="font-medium">{gtData(p.label)}</div>
                     {key !== "custom" && (
                       <div className="text-on-surface-muted mt-0.5">:{p.port}</div>
                     )}
@@ -225,7 +244,7 @@ export function SshTunnelModal({
                   htmlFor="ssh-tunnel-remote-port"
                   className="text-xs text-on-surface-muted w-20 shrink-0"
                 >
-                  Remote Port
+                  {gt("Remote Port")}
                 </label>
                 <input
                   id="ssh-tunnel-remote-port"
@@ -252,7 +271,7 @@ export function SshTunnelModal({
               disabled={connecting}
               className="px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -260,7 +279,7 @@ export function SshTunnelModal({
               disabled={connecting || !selectedKeyId}
               className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"
             >
-              {connecting ? "Connecting..." : "Connect"}
+              {connecting ? gt("Connecting...") : gt("Connect")}
             </button>
           </div>
         </div>

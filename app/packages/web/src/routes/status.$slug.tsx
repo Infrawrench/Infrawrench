@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import { PublicStatusPageView } from "@infrawrench/ui";
 import type { PublicStatusPage } from "@infrawrench/client-core";
 
@@ -20,6 +21,7 @@ export const Route = createFileRoute("/status/$slug")({
  * before this renders.
  */
 function PublicStatusPageRoute() {
+  const gt = useGT();
   const { slug } = Route.useParams();
   const [page, setPage] = useState<PublicStatusPage | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "missing" | "error">("loading");
@@ -59,7 +61,7 @@ function PublicStatusPageRoute() {
   if (state === "loading") {
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-on-surface-tertiary">
-        <div className="animate-pulse text-sm">Loading…</div>
+        <div className="animate-pulse text-sm">{gt("Loading…")}</div>
       </div>
     );
   }
@@ -69,12 +71,12 @@ function PublicStatusPageRoute() {
       <div className="flex h-screen items-center justify-center bg-surface px-4 text-center">
         <div>
           <h1 className="text-lg font-semibold text-on-surface">
-            {state === "missing" ? "Status page not found" : "Status page unavailable"}
+            {state === "missing" ? gt("Status page not found") : gt("Status page unavailable")}
           </h1>
           <p className="mt-2 text-sm text-on-surface-secondary">
             {state === "missing"
-              ? "This link is no longer valid, or the page hasn't been published."
-              : "Something went wrong loading this page. Try again in a moment."}
+              ? gt("This link is no longer valid, or the page hasn't been published.")
+              : gt("Something went wrong loading this page. Try again in a moment.")}
           </p>
         </div>
       </div>

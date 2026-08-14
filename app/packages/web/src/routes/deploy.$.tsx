@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
+import { T, Var, useGT } from "gt-react";
 
 import { apiGet } from "@/lib/api";
 
@@ -37,6 +38,7 @@ interface OrgRow {
 }
 
 function DeployHotlink() {
+  const gt = useGT();
   const navigate = useNavigate();
   const params = useParams({ from: "/deploy/$" });
   const splat = (params as { _splat?: string })._splat ?? "";
@@ -77,36 +79,44 @@ function DeployHotlink() {
 
   if (!repo) {
     return (
-      <Shell title="That does not look like a repository">
-        Deploy links look like{" "}
-        <code className="text-on-surface">/deploy/github.com/owner/name</code>.
+      <Shell title={gt("That does not look like a repository")}>
+        <T>
+          Deploy links look like{" "}
+          <code className="text-on-surface">/deploy/github.com/owner/name</code>.
+        </T>
       </Shell>
     );
   }
 
   if (failed) {
     return (
-      <Shell title="Sign in to deploy">
-        <a href="/" className="text-info hover:underline">
-          Sign in
-        </a>{" "}
-        and open this link again to deploy <span className="text-on-surface">{repo}</span>.
+      <Shell title={gt("Sign in to deploy")}>
+        <T>
+          <a href="/" className="text-info hover:underline">
+            Sign in
+          </a>{" "}
+          and open this link again to deploy{" "}
+          <Var>
+            <span className="text-on-surface">{repo}</span>
+          </Var>
+          .
+        </T>
       </Shell>
     );
   }
 
   if (orgs && orgs.length === 0) {
     return (
-      <Shell title="No organizations">
-        You are not a member of an organization yet. Create one, then open this link again.
+      <Shell title={gt("No organizations")}>
+        {gt("You are not a member of an organization yet. Create one, then open this link again.")}
       </Shell>
     );
   }
 
   if (orgs) {
     return (
-      <Shell title={`Deploy ${repo}`}>
-        <p className="mb-3">Which organization?</p>
+      <Shell title={gt("Deploy {repo}", { repo })}>
+        <p className="mb-3">{gt("Which organization?")}</p>
         <div className="flex flex-col gap-1 items-start">
           {orgs.map((o) => (
             <button
@@ -130,7 +140,7 @@ function DeployHotlink() {
     );
   }
 
-  return <Shell title={`Opening deploy for ${repo}…`} />;
+  return <Shell title={gt("Opening deploy for {repo}…", { repo })} />;
 }
 
 function Shell({ title, children }: { title: string; children?: React.ReactNode }) {

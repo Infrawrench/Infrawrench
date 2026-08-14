@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { T, Var, useGT } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 import {
   CartesianGrid,
   Line,
@@ -64,10 +66,13 @@ export function UnitCostCard({
   config,
   api,
   onEdit,
-  editLabel = "Edit widget",
+  editLabel,
   onRemove,
 }: UnitCostCardProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const chart = useChartTheme();
+  const resolvedEditLabel = editLabel ?? gt("Edit widget");
   const [response, setResponse] = useState<UnitCostQueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -80,8 +85,9 @@ export function UnitCostCard({
     if (!run || !metricId) {
       setLoading(false);
       setError(
-        "This card needs a business metric, and this app build can't query one. Open it on the " +
-          "web app.",
+        gt(
+          "This card needs a business metric, and this app build can't query one. Open it on the web app.",
+        ),
       );
       return;
     }
@@ -93,7 +99,7 @@ export function UnitCostCard({
         if (!cancelled) setResponse(next);
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load unit costs");
+        if (!cancelled) setError(e instanceof Error ? e.message : gt("Failed to load unit costs"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -101,7 +107,7 @@ export function UnitCostCard({
     return () => {
       cancelled = true;
     };
-  }, [run, metricId, request]);
+  }, [run, metricId, request, gt]);
 
   const mode = response?.mode ?? config.unitCostMode ?? "unit_cost";
   const caveat = response ? describeUnitCostCaveats(response) : null;
@@ -140,9 +146,12 @@ export function UnitCostCard({
     if (!response) return null;
     if (series.length === 0 || series.every((s) => s.points.length === 0)) {
       return (
-        <div className="flex-1 flex items-center justify-center px-6 text-center text-sm text-on-surface-faint">
-          {response.metric.name} has no values in this period, so there is nothing to divide by.
-        </div>
+        <T>
+          <div className="flex-1 flex items-center justify-center px-6 text-center text-sm text-on-surface-faint">
+            <Var>{response.metric.name}</Var> has no values in this period, so there is nothing to
+            divide by.
+          </div>
+        </T>
       );
     }
 
@@ -258,8 +267,8 @@ export function UnitCostCard({
       response.series.flatMap((s) => s.points.flatMap((p) => (p.gap ? [p.gap] : []))),
     );
     if (reasons.size === 0) return null;
-    return [...reasons].map((r) => UNIT_COST_GAP_REASON_LABELS[r]).join("; ");
-  }, [response]);
+    return [...reasons].map((r) => gtData(UNIT_COST_GAP_REASON_LABELS[r])).join("; ");
+  }, [response, gtData]);
 
   return (
     <div className="group relative rounded-2xl border border-border bg-surface-raised hover:border-border-strong transition-colors flex flex-col overflow-hidden min-h-[18rem]">
@@ -268,8 +277,8 @@ export function UnitCostCard({
           <button
             type="button"
             onClick={onEdit}
-            title={editLabel}
-            aria-label={editLabel}
+            title={resolvedEditLabel}
+            aria-label={resolvedEditLabel}
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
             ✎
@@ -279,8 +288,8 @@ export function UnitCostCard({
           <button
             type="button"
             onClick={onRemove}
-            title="Remove from dashboard"
-            aria-label="Remove from dashboard"
+            title={gt("Remove from dashboard")}
+            aria-label={gt("Remove from dashboard")}
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
             ✕
@@ -291,7 +300,7 @@ export function UnitCostCard({
       <div className="px-5 pt-4 pb-1">
         <div className="flex items-baseline gap-3 pr-14">
           <h3 className="text-base font-semibold text-on-surface leading-tight truncate">
-            {title || "Unit costs"}
+            {title || gt("Unit costs")}
           </h3>
           {headline && (
             <span className="text-sm text-on-surface-secondary flex-shrink-0">{headline}</span>
@@ -299,7 +308,7 @@ export function UnitCostCard({
         </div>
         {response && (
           <p className="text-[11px] text-on-surface-faint mt-0.5">
-            {unitLabels.join(" · ") || "per unit"} · {response.metric.name}
+            {unitLabels.join(" · ") || gt("per unit")} · {response.metric.name}
           </p>
         )}
         {caveat && (
@@ -315,9 +324,17 @@ export function UnitCostCard({
         role={hasChartData ? "img" : undefined}
         aria-label={
           hasChartData
-            ? `${title || "Unit costs"} chart, ${headline || "no period value"} ${
-                unitLabels[0] ?? ""
-              }${response && response.gapBuckets > 0 ? `, ${response.gapBuckets} periods with no metric value` : ""}`
+            ? gt("{title} chart, {headline} {unit}{gapNote}", {
+                title: title || gt("Unit costs"),
+                headline: headline || gt("no period value"),
+                unit: unitLabels[0] ?? "",
+                gapNote:
+                  response && response.gapBuckets > 0
+                    ? gt(", {count} periods with no metric value", {
+                        count: response.gapBuckets,
+                      })
+                    : "",
+              })
             : undefined
         }
       >
@@ -326,7 +343,7 @@ export function UnitCostCard({
             role="status"
             className="flex-1 flex items-center justify-center text-sm text-on-surface-faint"
           >
-            Loading unit costs…
+            {gt("Loading unit costs…")}
           </div>
         ) : error ? (
           <div

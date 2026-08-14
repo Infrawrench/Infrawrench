@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
+import { useGT } from "gt-react";
 import type { ImageOption } from "@infrawrench/plugin-base";
+import { useDataString } from "../../i18n/data-strings.js";
 import { ImageRow } from "./ImageRow.js";
 
 export function ImagePicker({
@@ -11,6 +13,8 @@ export function ImagePicker({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [search, setSearch] = useState("");
 
   const categories = useMemo(() => {
@@ -41,20 +45,22 @@ export function ImagePicker({
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search images…"
-          aria-label="Search images"
+          placeholder={gt("Search images…")}
+          aria-label={gt("Search images")}
           className="flex-1 bg-transparent text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none"
         />
         {selectedImage && !search && (
-          <span className="text-xs text-accent truncate max-w-[160px]">{selectedImage.label}</span>
+          <span className="text-xs text-accent truncate max-w-[160px]">
+            {gtData(selectedImage.label)}
+          </span>
         )}
       </div>
 
-      <div className="max-h-52 overflow-y-auto" role="listbox" aria-label="Images">
+      <div className="max-h-52 overflow-y-auto" role="listbox" aria-label={gt("Images")}>
         {filtered ? (
           // Flat search results
           filtered.length === 0 ? (
-            <p className="p-3 text-xs text-on-surface-faint">No matches</p>
+            <p className="p-3 text-xs text-on-surface-faint">{gt("No matches")}</p>
           ) : (
             filtered.map((img) => (
               <ImageRow
@@ -71,7 +77,7 @@ export function ImagePicker({
             <div key={cat}>
               <div className="px-3 py-1 bg-surface-overlay/30 border-b border-border-strong/40">
                 <span className="text-[10px] font-semibold text-on-surface-faint uppercase tracking-wide">
-                  {cat}
+                  {gtData(cat)}
                 </span>
               </div>
               {catImages.map((img) => (

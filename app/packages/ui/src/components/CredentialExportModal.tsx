@@ -1,7 +1,9 @@
 import { useState, useMemo } from "react";
+import { useGT } from "gt-react";
 import type { CredentialExport, CredentialFormat } from "@infrawrench/plugin-base";
 import { Modal } from "./Modal.js";
 import { formatErrorMessage } from "../utils.js";
+import { useDataString } from "../i18n/data-strings.js";
 
 export interface CredentialExportModalProps {
   resourceDisplayName: string;
@@ -23,6 +25,8 @@ export function CredentialExportModal({
   onClose,
   onDownload,
 }: CredentialExportModalProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [selectedFormatId, setSelectedFormatId] = useState<string>(formats[0]?.id ?? "");
   const [result, setResult] = useState<CredentialExport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -105,11 +109,11 @@ export function CredentialExportModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel="Get credentials">
+    <Modal onClose={onClose} ariaLabel={gt("Get credentials")}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[560px] max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
-            <h2 className="text-base font-semibold text-on-surface">Get credentials</h2>
+            <h2 className="text-base font-semibold text-on-surface">{gt("Get credentials")}</h2>
             <p className="text-xs text-on-surface-faint mt-0.5 truncate max-w-[440px]">
               {resourceDisplayName}
             </p>
@@ -118,7 +122,7 @@ export function CredentialExportModal({
             type="button"
             onClick={onClose}
             className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
-            aria-label="Close"
+            aria-label={gt("Close")}
           >
             &times;
           </button>
@@ -129,7 +133,9 @@ export function CredentialExportModal({
             <>
               {formats.length > 1 && (
                 <div className="space-y-2">
-                  <span className="block text-xs font-medium text-on-surface-tertiary">Format</span>
+                  <span className="block text-xs font-medium text-on-surface-tertiary">
+                    {gt("Format")}
+                  </span>
                   <div className="space-y-2">
                     {formats.map((f) => (
                       <label
@@ -143,17 +149,19 @@ export function CredentialExportModal({
                         <input
                           type="radio"
                           name="cred-format"
-                          aria-label={f.label}
+                          aria-label={gtData(f.label)}
                           value={f.id}
                           checked={selectedFormatId === f.id}
                           onChange={() => setSelectedFormatId(f.id)}
                           className="mt-1"
                         />
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-on-surface">{f.label}</div>
+                          <div className="text-sm font-medium text-on-surface">
+                            {gtData(f.label)}
+                          </div>
                           {f.description && (
                             <div className="text-xs text-on-surface-faint mt-0.5">
-                              {f.description}
+                              {gtData(f.description)}
                             </div>
                           )}
                         </div>
@@ -163,7 +171,9 @@ export function CredentialExportModal({
                 </div>
               )}
               {formats.length === 1 && selectedFormat?.description && (
-                <p className="text-xs text-on-surface-faint">{selectedFormat.description}</p>
+                <p className="text-xs text-on-surface-faint">
+                  {gtData(selectedFormat.description)}
+                </p>
               )}
               {error && (
                 <div className="rounded-lg bg-red-100 dark:bg-red-900/20 border border-red-500/30 px-3 py-2 text-xs text-danger leading-relaxed break-words">
@@ -178,7 +188,7 @@ export function CredentialExportModal({
               {result.warning && (
                 <div className="rounded-lg bg-amber-500/10 border border-amber-500/40 px-3 py-2 flex gap-2">
                   <span className="text-warning font-bold leading-none mt-0.5">!</span>
-                  <p className="text-xs text-warning leading-relaxed">{result.warning}</p>
+                  <p className="text-xs text-warning leading-relaxed">{gtData(result.warning)}</p>
                 </div>
               )}
 
@@ -190,10 +200,12 @@ export function CredentialExportModal({
                       <div key={`${f.label}-${i}`} className="px-3 py-2.5">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-[11px] font-medium text-on-surface-tertiary uppercase tracking-wide">
-                            {f.label}
+                            {gtData(f.label)}
                           </span>
                           {f.hint && (
-                            <span className="text-[10px] text-on-surface-faint">{f.hint}</span>
+                            <span className="text-[10px] text-on-surface-faint">
+                              {gtData(f.hint)}
+                            </span>
                           )}
                         </div>
                         <div className="mt-1 flex items-center gap-2">
@@ -204,19 +216,22 @@ export function CredentialExportModal({
                             <button
                               type="button"
                               onClick={() => toggleReveal(i)}
-                              aria-label={`${revealed.has(i) ? "Hide" : "Reveal"} credential for ${f.label}`}
+                              aria-label={gt("{action} credential for {label}", {
+                                action: revealed.has(i) ? gt("Hide") : gt("Reveal"),
+                                label: gtData(f.label),
+                              })}
                               className="text-[10px] uppercase tracking-wide text-on-surface-faint hover:text-on-surface-secondary px-2 py-1 rounded hover:bg-surface-overlay flex-shrink-0"
                             >
-                              {revealed.has(i) ? "Hide" : "Reveal"}
+                              {revealed.has(i) ? gt("Hide") : gt("Reveal")}
                             </button>
                           )}
                           <button
                             type="button"
                             onClick={() => copy(f.value, i)}
-                            aria-label={`Copy ${f.label}`}
+                            aria-label={gt("Copy {label}", { label: gtData(f.label) })}
                             className="text-[10px] uppercase tracking-wide text-on-surface-faint hover:text-on-surface-secondary px-2 py-1 rounded hover:bg-surface-overlay flex-shrink-0"
                           >
-                            {copied === i ? "Copied" : "Copy"}
+                            {copied === i ? gt("Copied") : gt("Copy")}
                           </button>
                         </div>
                       </div>
@@ -228,7 +243,7 @@ export function CredentialExportModal({
               {selectedFormat?.mediaType !== "binary-base64" && (
                 <details className="group">
                   <summary className="text-xs text-on-surface-faint hover:text-on-surface-tertiary cursor-pointer select-none">
-                    Show full file
+                    {gt("Show full file")}
                   </summary>
                   <pre className="mt-2 max-h-60 overflow-auto text-[11px] font-mono bg-surface-sunken border border-border-strong rounded-lg p-3 text-on-surface-secondary whitespace-pre-wrap break-all">
                     {result.content}
@@ -247,7 +262,7 @@ export function CredentialExportModal({
                 onClick={onClose}
                 className="flex-1 px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary bg-surface-overlay hover:bg-surface-sunken rounded-lg transition-colors"
               >
-                Cancel
+                {gt("Cancel")}
               </button>
               <button
                 type="button"
@@ -255,7 +270,7 @@ export function CredentialExportModal({
                 disabled={loading || !selectedFormat}
                 className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
               >
-                {loading ? "Generating…" : "Generate"}
+                {loading ? gt("Generating…") : gt("Generate")}
               </button>
             </>
           ) : (
@@ -265,14 +280,14 @@ export function CredentialExportModal({
                 onClick={() => void copy(result.content, "all")}
                 className="flex-1 px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary bg-surface-overlay hover:bg-surface-sunken rounded-lg transition-colors"
               >
-                {copied === "all" ? "Copied" : "Copy file"}
+                {copied === "all" ? gt("Copied") : gt("Copy file")}
               </button>
               <button
                 type="button"
                 onClick={download}
                 className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors"
               >
-                Download {result.filename}
+                {gt("Download {filename}", { filename: result.filename })}
               </button>
             </>
           )}

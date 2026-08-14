@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
+import { T, Var, useGT } from "gt-react";
 import type {
   DigestEmailRecipient,
   DigestSendResult,
   DigestSettings,
   DigestSettingsPatch,
 } from "@infrawrench/client-core";
+import { useDataString } from "../i18n/data-strings.js";
 import { useSettingsHost } from "./host.js";
 
 /**
@@ -55,21 +57,24 @@ function hourLabel(hour: number): string {
 }
 
 /** The last-attempt banner: colour, headline, detail. */
-function statusView(settings: DigestSettings): {
+function statusView(
+  settings: DigestSettings,
+  gt: ReturnType<typeof useGT>,
+): {
   tone: "ok" | "warn" | "error" | "muted";
   headline: string;
 } | null {
   switch (settings.lastStatus) {
     case "succeeded":
-      return { tone: "ok", headline: "Last digest delivered to every destination." };
+      return { tone: "ok", headline: gt("Last digest delivered to every destination.") };
     case "partial":
-      return { tone: "warn", headline: "Last digest only partly delivered." };
+      return { tone: "warn", headline: gt("Last digest only partly delivered.") };
     case "failed":
-      return { tone: "error", headline: "Last digest failed to send." };
+      return { tone: "error", headline: gt("Last digest failed to send.") };
     case "no_targets":
-      return { tone: "warn", headline: "The digest has nowhere to go." };
+      return { tone: "warn", headline: gt("The digest has nowhere to go.") };
     case "pending":
-      return { tone: "muted", headline: "A digest is being sent…" };
+      return { tone: "muted", headline: gt("A digest is being sent…") };
     default:
       return null;
   }
@@ -83,6 +88,8 @@ const TONE_CLASS = {
 } as const;
 
 export function WeeklyDigestSection() {
+  const gt = useGT();
+  const gtData = useDataString();
   const { orgId, api } = useSettingsHost();
   const [settings, setSettings] = useState<DigestSettings | null>(null);
   const [recipients, setRecipients] = useState<DigestEmailRecipient[]>([]);
@@ -116,14 +123,14 @@ export function WeeklyDigestSection() {
         }
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load digest settings");
+          setError(e instanceof Error ? e.message : gt("Failed to load digest settings"));
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [api, orgId, reloadNonce]);
+  }, [api, orgId, reloadNonce, gt]);
 
   const save = useCallback(
     async (patch: DigestSettingsPatch) => {
@@ -138,10 +145,10 @@ export function WeeklyDigestSection() {
         setSettings(await api.put<DigestSettings>(`/api/org/${orgId}/digest`, patch));
       } catch (e) {
         setSettings(previous);
-        setError(e instanceof Error ? e.message : "Failed to save digest settings");
+        setError(e instanceof Error ? e.message : gt("Failed to save digest settings"));
       }
     },
-    [api, orgId, settings],
+    [api, orgId, settings, gt],
   );
 
   async function handleSendNow() {
@@ -151,11 +158,23 @@ export function WeeklyDigestSection() {
       const r = await api.post<DigestSendResult>(`/api/org/${orgId}/digest/send`);
       setSendMessage({
         kind: "ok",
-        text: `Sent to ${r.succeeded}/${r.attempted} destination(s) — Slack ${r.slack.succeeded}/${r.slack.attempted}, Teams ${r.teams.succeeded}/${r.teams.attempted}, email ${r.email.succeeded}/${r.email.attempted}.`,
+        text: gt(
+          "Sent to {succeeded}/{attempted} destination(s) — Slack {slackSucceeded}/{slackAttempted}, Teams {teamsSucceeded}/{teamsAttempted}, email {emailSucceeded}/{emailAttempted}.",
+          {
+            succeeded: r.succeeded,
+            attempted: r.attempted,
+            slackSucceeded: r.slack.succeeded,
+            slackAttempted: r.slack.attempted,
+            teamsSucceeded: r.teams.succeeded,
+            teamsAttempted: r.teams.attempted,
+            emailSucceeded: r.email.succeeded,
+            emailAttempted: r.email.attempted,
+          },
+        ),
       });
       setReloadNonce((n) => n + 1);
     } catch (e) {
-      setSendMessage({ kind: "error", text: e instanceof Error ? e.message : "Send failed" });
+      setSendMessage({ kind: "error", text: e instanceof Error ? e.message : gt("Send failed") });
     } finally {
       setSendBusy(false);
     }
@@ -177,7 +196,7 @@ export function WeeklyDigestSection() {
       );
       setNewEmail("");
     } catch (e) {
-      setRecipientError(e instanceof Error ? e.message : "Failed to add the recipient");
+      setRecipientError(e instanceof Error ? e.message : gt("Failed to add the recipient"));
     } finally {
       setAddBusy(false);
     }
@@ -190,35 +209,38 @@ export function WeeklyDigestSection() {
       await api.delete(`/api/org/${orgId}/digest/recipients/${id}`);
     } catch (e) {
       setRecipients(previous);
-      setRecipientError(e instanceof Error ? e.message : "Failed to remove the recipient");
+      setRecipientError(e instanceof Error ? e.message : gt("Failed to remove the recipient"));
     }
   }
 
   if (!settings) {
     return (
       <section className="border border-border rounded-xl p-5 space-y-2">
-        <h2 className="text-sm font-semibold text-on-surface-secondary">Weekly digest</h2>
+        <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Weekly digest")}</h2>
         {error ? (
           <p className="text-xs text-danger">{error}</p>
         ) : (
-          <p className="text-sm text-on-surface-faint">Loading…</p>
+          <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
         )}
       </section>
     );
   }
 
   const dayLabel = DAYS.find((d) => d.value === settings.sendDay)?.label ?? "Monday";
-  const status = statusView(settings);
+  const status = statusView(settings, gt);
 
   return (
     <section className="border border-border rounded-xl p-5 space-y-4">
-      <h2 className="text-sm font-semibold text-on-surface-secondary">Weekly digest</h2>
-      <p className="text-xs text-on-surface-muted">
-        A summary of last week: total spend with week-over-week movers by provider and service, sync
-        incidents, and resources added or removed. It always covers the last complete
-        Monday-to-Sunday week in the time zone below, and goes to the Slack and Teams channels above
-        that have <strong>Weekly digest</strong> ticked, plus any email recipients you add here.
-      </p>
+      <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Weekly digest")}</h2>
+      <T>
+        <p className="text-xs text-on-surface-muted">
+          A summary of last week: total spend with week-over-week movers by provider and service,
+          sync incidents, and resources added or removed. It always covers the last complete
+          Monday-to-Sunday week in the time zone below, and goes to the Slack and Teams channels
+          above that have <strong>Weekly digest</strong> ticked, plus any email recipients you add
+          here.
+        </p>
+      </T>
 
       <label className="flex items-center gap-2 text-sm text-on-surface-secondary">
         <input
@@ -226,13 +248,13 @@ export function WeeklyDigestSection() {
           checked={settings.enabled}
           onChange={(e) => void save({ enabled: e.target.checked })}
         />
-        <span>Send a weekly digest</span>
+        <span>{gt("Send a weekly digest")}</span>
       </label>
 
       {/* Schedule */}
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs text-on-surface-muted">
-          <span>Send on</span>
+          <span>{gt("Send on")}</span>
           <select
             value={settings.sendDay}
             onChange={(e) => void save({ sendDay: Number(e.target.value) as 1 })}
@@ -240,13 +262,13 @@ export function WeeklyDigestSection() {
           >
             {DAYS.map((d) => (
               <option key={d.value} value={d.value}>
-                {d.label}
+                {gtData(d.label)}
               </option>
             ))}
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs text-on-surface-muted">
-          <span>at</span>
+          <span>{gt("at")}</span>
           <select
             value={settings.sendHour}
             onChange={(e) => void save({ sendHour: Number(e.target.value) })}
@@ -260,7 +282,7 @@ export function WeeklyDigestSection() {
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs text-on-surface-muted flex-1 min-w-48">
-          <span>Time zone</span>
+          <span>{gt("Time zone")}</span>
           {zones ? (
             <select
               value={settings.timezone}
@@ -286,10 +308,13 @@ export function WeeklyDigestSection() {
           )}
         </label>
       </div>
-      <p className="text-xs text-on-surface-tertiary">
-        Sends every {dayLabel} at {hourLabel(settings.sendHour)} {settings.timezone}.
-        Daylight-saving changes are handled for you — the digest keeps its local send time.
-      </p>
+      <T>
+        <p className="text-xs text-on-surface-tertiary">
+          Sends every <Var>{gtData(dayLabel)}</Var> at <Var>{hourLabel(settings.sendHour)}</Var>{" "}
+          <Var>{settings.timezone}</Var>. Daylight-saving changes are handled for you — the digest
+          keeps its local send time.
+        </p>
+      </T>
 
       {/* AI narrative */}
       <div className="space-y-1">
@@ -300,28 +325,34 @@ export function WeeklyDigestSection() {
             disabled={!settings.narrativeAvailable}
             onChange={(e) => void save({ narrativeEnabled: e.target.checked })}
           />
-          <span>Add an AI-written summary paragraph</span>
+          <span>{gt("Add an AI-written summary paragraph")}</span>
         </label>
         <p className="text-xs text-on-surface-muted">
           {settings.narrativeAvailable
-            ? "A short paragraph above the numbers saying what changed and why it stands out. Only the digest's own figures are sent to the model — never resource or credential data. If it fails, the digest still sends without it."
-            : "Unavailable: this deployment has no LLM API key configured."}
+            ? gt(
+                "A short paragraph above the numbers saying what changed and why it stands out. Only the digest's own figures are sent to the model — never resource or credential data. If it fails, the digest still sends without it.",
+              )
+            : gt("Unavailable: this deployment has no LLM API key configured.")}
         </p>
       </div>
 
       {/* Email recipients */}
       <div className="space-y-2 border-t border-border pt-4">
-        <h3 className="text-xs font-semibold text-on-surface-secondary">Email recipients</h3>
+        <h3 className="text-xs font-semibold text-on-surface-secondary">
+          {gt("Email recipients")}
+        </h3>
         {!settings.emailAvailable && (
           <p className="text-xs text-warning">
-            This deployment has no mail provider configured, so email recipients will not receive
-            anything.
+            {gt(
+              "This deployment has no mail provider configured, so email recipients will not receive anything.",
+            )}
           </p>
         )}
         {recipients.length === 0 ? (
           <p className="text-xs text-on-surface-muted">
-            No email recipients. Addresses don&apos;t have to belong to Infrawrench users — a
-            finance alias works fine.
+            {gt(
+              "No email recipients. Addresses don't have to belong to Infrawrench users — a finance alias works fine.",
+            )}
           </p>
         ) : (
           <ul className="space-y-1">
@@ -334,10 +365,10 @@ export function WeeklyDigestSection() {
                 <button
                   type="button"
                   onClick={() => void handleRemoveRecipient(r.id)}
-                  aria-label={`Remove ${r.email}`}
+                  aria-label={gt("Remove {email}", { email: r.email })}
                   className="text-xs text-on-surface-tertiary hover:text-danger transition-colors"
                 >
-                  Remove
+                  {gt("Remove")}
                 </button>
               </li>
             ))}
@@ -352,7 +383,7 @@ export function WeeklyDigestSection() {
               if (e.key === "Enter") void handleAddRecipient();
             }}
             placeholder="finance@example.com"
-            aria-label="Email recipient to add"
+            aria-label={gt("Email recipient to add")}
             className="flex-1 px-2 py-1.5 text-sm bg-surface-overlay border border-border rounded-lg text-on-surface-secondary"
           />
           <button
@@ -361,7 +392,7 @@ export function WeeklyDigestSection() {
             disabled={addBusy || newEmail.trim().length === 0}
             className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
           >
-            {addBusy ? "Adding…" : "Add"}
+            {addBusy ? gt("Adding…") : gt("Add")}
           </button>
         </div>
         {recipientError && <p className="text-xs text-danger">{recipientError}</p>}
@@ -376,11 +407,18 @@ export function WeeklyDigestSection() {
           )}
           <p className="text-xs text-on-surface-tertiary">
             {settings.lastAttemptAt
-              ? `Last attempt ${new Date(settings.lastAttemptAt).toLocaleString()} (attempt ${settings.attemptCount})`
-              : "No attempt yet"}
-            {settings.lastSentWeekStart ? ` · week of ${settings.lastSentWeekStart}` : ""}
+              ? gt("Last attempt {when} (attempt {count})", {
+                  when: new Date(settings.lastAttemptAt).toLocaleString(),
+                  count: settings.attemptCount,
+                })
+              : gt("No attempt yet")}
+            {settings.lastSentWeekStart
+              ? gt(" · week of {week}", { week: settings.lastSentWeekStart })
+              : ""}
             {settings.nextAttemptAt
-              ? ` · retrying ${new Date(settings.nextAttemptAt).toLocaleString()}`
+              ? gt(" · retrying {when}", {
+                  when: new Date(settings.nextAttemptAt).toLocaleString(),
+                })
               : ""}
             .
           </p>
@@ -388,8 +426,11 @@ export function WeeklyDigestSection() {
       )}
       {!status && settings.lastSentAt && (
         <p className="text-xs text-on-surface-tertiary">
-          Last sent {new Date(settings.lastSentAt).toLocaleString()}
-          {settings.lastSentWeekStart ? ` (week of ${settings.lastSentWeekStart})` : ""}.
+          {gt("Last sent {when}", { when: new Date(settings.lastSentAt).toLocaleString() })}
+          {settings.lastSentWeekStart
+            ? gt(" (week of {week})", { week: settings.lastSentWeekStart })
+            : ""}
+          .
         </p>
       )}
 
@@ -406,7 +447,7 @@ export function WeeklyDigestSection() {
           disabled={sendBusy}
           className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
         >
-          {sendBusy ? "Sending…" : "Send now"}
+          {sendBusy ? gt("Sending…") : gt("Send now")}
         </button>
       </div>
     </section>

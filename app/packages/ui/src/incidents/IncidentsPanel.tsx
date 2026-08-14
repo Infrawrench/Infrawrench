@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { T, t, useGT } from "gt-react";
 import {
   formatIncidentDuration,
   isIncidentArtifactFailure,
@@ -9,6 +10,7 @@ import {
   type IncidentStatus,
   type IncidentTimelineResponse,
 } from "@infrawrench/client-core";
+import { useDataString } from "../i18n/data-strings.js";
 import { DeclareIncidentModal } from "./DeclareIncidentModal.js";
 import { IncidentTimelineView, artifactLabel } from "./IncidentTimelineView.js";
 import type { IncidentSeed, IncidentsClient } from "./types.js";
@@ -24,10 +26,10 @@ export interface IncidentsPanelProps {
 }
 
 const STATUS_FILTERS: Array<{ id: IncidentStatus | "all"; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "open", label: "Open" },
-  { id: "mitigated", label: "Mitigated" },
-  { id: "resolved", label: "Resolved" },
+  { id: "all", label: t("All") },
+  { id: "open", label: t("Open") },
+  { id: "mitigated", label: t("Mitigated") },
+  { id: "resolved", label: t("Resolved") },
 ];
 
 function severityTone(severity: string): string {
@@ -84,6 +86,8 @@ export function IncidentsPanel({
   onIncidentChange,
   initialSeed,
 }: IncidentsPanelProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   // null = loading, [] = loaded-empty.
   const [incidents, setIncidents] = useState<Incident[] | null>(null);
   const [filter, setFilter] = useState<IncidentStatus | "all">("all");
@@ -224,7 +228,7 @@ export function IncidentsPanel({
           onClick={() => open(null)}
           className="text-xs text-on-surface-secondary hover:text-on-surface"
         >
-          ← All incidents
+          {gt("← All incidents")}
         </button>
 
         <header className="space-y-2">
@@ -232,17 +236,18 @@ export function IncidentsPanel({
             <span
               className={`px-2 py-0.5 rounded text-xs font-semibold ${severityTone(selected.severity)}`}
             >
-              {incidentSeverityLabel(selected.severity)}
+              {gtData(incidentSeverityLabel(selected.severity))}
             </span>
             <h2 className="text-lg font-semibold text-on-surface">{selected.title}</h2>
           </div>
           <p className="text-xs text-on-surface-secondary">
             <span className={statusTone(selected.status)}>
-              {incidentStatusLabel(selected.status)}
+              {gtData(incidentStatusLabel(selected.status))}
             </span>{" "}
-            · started {formatWhen(selected.startedAt)} ·{" "}
+            · {gt("started")} {formatWhen(selected.startedAt)} ·{" "}
             {formatIncidentDuration(selected.startedAt, selected.resolvedAt)}
-            {selected.declaredByName && ` · declared by ${selected.declaredByName}`}
+            {selected.declaredByName &&
+              ` · ${gt("declared by {name}", { name: selected.declaredByName })}`}
           </p>
           {selected.summary && <p className="text-sm text-on-surface">{selected.summary}</p>}
         </header>
@@ -263,21 +268,27 @@ export function IncidentsPanel({
                         : "bg-emerald-500/15 text-success"
                   }`}
                 >
-                  {artifactLabel(artifact.kind)} · {artifact.status}
+                  {gtData(artifactLabel(artifact.kind))} · {artifact.status}
                 </span>
               ))}
             </div>
             {failed.length > 0 && (
               <div className="rounded-lg border border-red-500/40 bg-red-500/5 px-3 py-2">
                 <p className="text-xs text-danger-strong">
-                  {failed.length === 1 ? "One thing" : `${failed.length} things`} on this incident
-                  needs attention:
+                  {gt("{subject} on this incident needs attention:", {
+                    subject:
+                      failed.length === 1
+                        ? gt("One thing")
+                        : gt("{count} things", { count: failed.length }),
+                  })}
                 </p>
                 <ul className="mt-1 space-y-0.5">
                   {failed.map((artifact) => (
                     <li key={artifact.id} className="text-xs text-on-surface-secondary">
-                      <span className="text-on-surface">{artifactLabel(artifact.kind)}</span>
-                      {artifact.status === "close_failed" ? " is still open — " : " — "}
+                      <span className="text-on-surface">
+                        {gtData(artifactLabel(artifact.kind))}
+                      </span>
+                      {artifact.status === "close_failed" ? ` ${gt("is still open")} — ` : " — "}
                       {artifact.error}
                     </li>
                   ))}
@@ -289,7 +300,7 @@ export function IncidentsPanel({
                     disabled={busy}
                     className="mt-2 px-2 py-1 rounded-lg text-xs bg-surface-sunken text-on-surface-secondary hover:bg-surface disabled:opacity-50"
                   >
-                    Retry these
+                    {gt("Retry these")}
                   </button>
                 )}
               </div>
@@ -306,7 +317,7 @@ export function IncidentsPanel({
                 disabled={busy}
                 className="px-3 py-1.5 rounded-lg text-sm bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white transition-colors"
               >
-                Mark mitigated
+                {gt("Mark mitigated")}
               </button>
             )}
             {selected.status !== "resolved" && (
@@ -316,7 +327,7 @@ export function IncidentsPanel({
                 disabled={busy}
                 className="px-3 py-1.5 rounded-lg text-sm bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white transition-colors"
               >
-                Resolve
+                {gt("Resolve")}
               </button>
             )}
             {selected.status === "resolved" && (
@@ -326,7 +337,7 @@ export function IncidentsPanel({
                 disabled={busy}
                 className="px-3 py-1.5 rounded-lg text-sm bg-surface-sunken text-on-surface-secondary hover:bg-surface disabled:opacity-50 transition-colors"
               >
-                Reopen
+                {gt("Reopen")}
               </button>
             )}
             <button
@@ -335,7 +346,7 @@ export function IncidentsPanel({
               disabled={busy}
               className="px-3 py-1.5 rounded-lg text-sm bg-surface-sunken text-on-surface-secondary hover:bg-surface disabled:opacity-50 transition-colors"
             >
-              Postmortem
+              {gt("Postmortem")}
             </button>
           </div>
         )}
@@ -343,21 +354,21 @@ export function IncidentsPanel({
         {postmortem !== null && (
           <section className="space-y-2">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-on-surface">Postmortem draft</h3>
+              <h3 className="text-sm font-semibold text-on-surface">{gt("Postmortem draft")}</h3>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => void navigator.clipboard?.writeText(postmortem)}
                   className="px-2 py-1 rounded-lg text-xs bg-surface-sunken text-on-surface-secondary hover:bg-surface"
                 >
-                  Copy
+                  {gt("Copy")}
                 </button>
                 <button
                   type="button"
                   onClick={() => setPostmortem(null)}
                   className="px-2 py-1 rounded-lg text-xs text-on-surface-secondary hover:bg-surface-sunken"
                 >
-                  Close
+                  {gt("Close")}
                 </button>
               </div>
             </div>
@@ -367,15 +378,17 @@ export function IncidentsPanel({
               rows={16}
               className="w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 font-mono text-xs text-on-surface"
             />
-            <p className="text-xs text-on-surface-faint">
-              The facts are filled in. Impact, root cause and action items are deliberately left
-              blank — paste this into your tracker and finish it there.
-            </p>
+            <T>
+              <p className="text-xs text-on-surface-faint">
+                The facts are filled in. Impact, root cause and action items are deliberately left
+                blank — paste this into your tracker and finish it there.
+              </p>
+            </T>
           </section>
         )}
 
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold text-on-surface">Timeline</h3>
+          <h3 className="text-sm font-semibold text-on-surface">{gt("Timeline")}</h3>
           {client.addNote && (
             <div className="flex gap-2">
               <input
@@ -385,7 +398,7 @@ export function IncidentsPanel({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") void submitNote();
                 }}
-                placeholder="Add a note — failed over to the replica…"
+                placeholder={gt("Add a note — failed over to the replica…")}
                 className="flex-1 rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-on-surface"
               />
               <button
@@ -394,7 +407,7 @@ export function IncidentsPanel({
                 disabled={busy || !noteDraft.trim()}
                 className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
               >
-                Add
+                {gt("Add")}
               </button>
             </div>
           )}
@@ -407,7 +420,10 @@ export function IncidentsPanel({
 
         {notes.length > 0 && (
           <p className="text-xs text-on-surface-faint">
-            {notes.length} note{notes.length === 1 ? "" : "s"} on this incident, shown inline above.
+            {gt("{count} note{plural} on this incident, shown inline above.", {
+              count: notes.length,
+              plural: notes.length === 1 ? "" : "s",
+            })}
           </p>
         )}
 
@@ -424,12 +440,14 @@ export function IncidentsPanel({
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-on-surface">Incidents</h2>
-          <p className="text-xs text-on-surface-faint">
-            Incidents you declared — not provider outages, which live under Changes. Declaring
-            records the incident and, if you ask it to, freezes changes, pins the moment, tells your
-            org and tells the public.
-          </p>
+          <h2 className="text-base font-semibold text-on-surface">{gt("Incidents")}</h2>
+          <T>
+            <p className="text-xs text-on-surface-faint">
+              Incidents you declared — not provider outages, which live under Changes. Declaring
+              records the incident and, if you ask it to, freezes changes, pins the moment, tells
+              your org and tells the public.
+            </p>
+          </T>
         </div>
         {canWrite && (
           <button
@@ -437,7 +455,7 @@ export function IncidentsPanel({
             onClick={() => setDeclaring({})}
             className="shrink-0 px-3 py-1.5 rounded-lg text-sm bg-red-600 hover:bg-red-500 text-white transition-colors"
           >
-            Declare incident
+            {gt("Declare incident")}
           </button>
         )}
       </div>
@@ -464,16 +482,18 @@ export function IncidentsPanel({
         <p className="text-sm text-danger">
           {error}{" "}
           <button type="button" onClick={reload} className="underline hover:text-danger-strong">
-            Retry
+            {gt("Retry")}
           </button>
         </p>
       )}
       {incidents === null && !error && (
-        <p className="text-sm text-on-surface-faint">Loading incidents…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading incidents…")}</p>
       )}
       {incidents !== null && incidents.length === 0 && (
         <p className="text-sm text-on-surface-faint">
-          No incidents{filter === "all" ? "" : ` with status ${filter}`}. Long may it last.
+          {gt("No incidents{suffix}. Long may it last.", {
+            suffix: filter === "all" ? "" : ` ${gt("with status {status}", { status: filter })}`,
+          })}
         </p>
       )}
 
@@ -494,18 +514,21 @@ export function IncidentsPanel({
                     <span
                       className={`px-1.5 py-0.5 rounded text-[11px] font-semibold ${severityTone(incident.severity)}`}
                     >
-                      {incidentSeverityLabel(incident.severity)}
+                      {gtData(incidentSeverityLabel(incident.severity))}
                     </span>
                     <span className="text-sm font-medium text-on-surface truncate">
                       {incident.title}
                     </span>
                     <span className={`text-xs ${statusTone(incident.status)}`}>
-                      {incidentStatusLabel(incident.status)}
+                      {gtData(incidentStatusLabel(incident.status))}
                     </span>
                     {failedCount > 0 && (
                       <span className="text-xs text-danger">
-                        {failedCount} artefact{failedCount === 1 ? "" : "s"} need
-                        {failedCount === 1 ? "s" : ""} attention
+                        {gt("{count} artefact{plural} need{verbSuffix} attention", {
+                          count: failedCount,
+                          plural: failedCount === 1 ? "" : "s",
+                          verbSuffix: failedCount === 1 ? "s" : "",
+                        })}
                       </span>
                     )}
                   </div>
@@ -513,9 +536,12 @@ export function IncidentsPanel({
                     {formatWhen(incident.startedAt)} ·{" "}
                     {formatIncidentDuration(incident.startedAt, incident.resolvedAt)}
                     {incident.declaredByName && ` · ${incident.declaredByName}`}
-                    {incident.noteCount > 0 && ` · ${incident.noteCount} notes`}
+                    {incident.noteCount > 0 &&
+                      ` · ${gt("{count} notes", { count: incident.noteCount })}`}
                     {incident.affectedResourceIds.length > 0 &&
-                      ` · ${incident.affectedResourceIds.length} resources`}
+                      ` · ${gt("{count} resources", {
+                        count: incident.affectedResourceIds.length,
+                      })}`}
                   </p>
                 </button>
               </li>

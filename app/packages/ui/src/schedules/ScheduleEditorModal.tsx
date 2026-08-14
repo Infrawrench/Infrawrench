@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { T, Var, t, useGT } from "gt-react";
 import {
   WEEKDAY_LABELS,
   formatMoney,
@@ -69,9 +70,11 @@ function formatTransition(at: string, action: string, timezone: string): string 
       minute: "2-digit",
       hourCycle: "h23",
     }).format(new Date(at));
-    return `${action === "stop" ? "Off" : "On"} ${formatted}`;
+    const status = action === "stop" ? t("Off") : t("On");
+    return t("{status} {date}", { status, date: formatted });
   } catch {
-    return `${action === "stop" ? "Off" : "On"} ${at}`;
+    const status = action === "stop" ? t("Off") : t("On");
+    return t("{status} {date}", { status, date: at });
   }
 }
 
@@ -87,6 +90,7 @@ export function ScheduleEditorModal({
   onSaved,
   onClose,
 }: ScheduleEditorModalProps) {
+  const gt = useGT();
   const [timing, setTiming] = useState<SleepScheduleTiming>(() =>
     existing
       ? {
@@ -157,27 +161,33 @@ export function ScheduleEditorModal({
       onSaved(saved);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save schedule");
+      setError(e instanceof Error ? e.message : gt("Failed to save schedule"));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Modal onClose={onClose} ariaLabel={existing ? "Edit sleep schedule" : "New sleep schedule"}>
+    <Modal
+      onClose={onClose}
+      ariaLabel={existing ? gt("Edit sleep schedule") : gt("New sleep schedule")}
+    >
       <div className="w-[28rem] max-w-[90vw] rounded-2xl border border-border bg-surface p-5 shadow-xl">
         <h2 className="text-sm font-semibold text-on-surface">
-          {existing ? "Edit sleep schedule" : "New sleep schedule"}
+          {existing ? gt("Edit sleep schedule") : gt("New sleep schedule")}
         </h2>
-        <p className="mt-1 text-xs text-on-surface-secondary">
-          {target.resourceName} is stopped at the off time and started at the on time on each
-          selected day, in the chosen timezone (DST-safe). Weekends between selected days stay off.
-        </p>
+        <T>
+          <p className="mt-1 text-xs text-on-surface-secondary">
+            <Var>{target.resourceName}</Var> is stopped at the off time and started at the on time
+            on each selected day, in the chosen timezone (DST-safe). Weekends between selected days
+            stay off.
+          </p>
+        </T>
 
         <div className="mt-4 flex flex-col gap-3">
           <div>
-            <span className={labelClass}>Days of week</span>
-            <div className="flex gap-1" role="group" aria-label="Days of week">
+            <span className={labelClass}>{gt("Days of week")}</span>
+            <div className="flex gap-1" role="group" aria-label={gt("Days of week")}>
               {WEEKDAY_LABELS.map((label, i) => {
                 const day = i + 1;
                 const active = timing.daysOfWeek.includes(day);
@@ -203,7 +213,7 @@ export function ScheduleEditorModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelClass} htmlFor="schedule-stop-time">
-                Off at
+                {gt("Off at")}
               </label>
               <input
                 id="schedule-stop-time"
@@ -215,7 +225,7 @@ export function ScheduleEditorModal({
             </div>
             <div>
               <label className={labelClass} htmlFor="schedule-start-time">
-                On at
+                {gt("On at")}
               </label>
               <input
                 id="schedule-start-time"
@@ -229,7 +239,7 @@ export function ScheduleEditorModal({
 
           <div>
             <label className={labelClass} htmlFor="schedule-timezone">
-              Timezone
+              {gt("Timezone")}
             </label>
             {zones.length > 0 ? (
               <select
@@ -265,30 +275,40 @@ export function ScheduleEditorModal({
             ) : (
               <>
                 <div className="text-on-surface">
-                  Off ~{Math.round(hoursOffPerWeek(timing))}h per week
+                  {gt("Off ~{hours}h per week", { hours: Math.round(hoursOffPerWeek(timing)) })}
                   {preview?.projectedMonthlySaving != null && preview.currency ? (
-                    <>
-                      {" · "}projected saving{" "}
-                      <span className="font-semibold">
-                        {formatMoney(preview.projectedMonthlySaving, preview.currency)}/mo
-                      </span>
-                    </>
+                    <T>
+                      <>
+                        {" · "}projected saving{" "}
+                        <Var>
+                          <span className="font-semibold">
+                            {formatMoney(preview.projectedMonthlySaving, preview.currency)}/mo
+                          </span>
+                        </Var>
+                      </>
+                    </T>
                   ) : null}
                 </div>
                 {preview !== null && preview.projectedMonthlySaving == null && (
-                  <div className="mt-1">
-                    No per-resource billing rows for this resource yet, so there is no savings
-                    figure — the schedule works either way.
-                  </div>
+                  <T>
+                    <div className="mt-1">
+                      No per-resource billing rows for this resource yet, so there is no savings
+                      figure — the schedule works either way.
+                    </div>
+                  </T>
                 )}
                 {preview && preview.nextTransitions.length > 0 && (
-                  <div className="mt-1 text-on-surface-faint">
-                    Next:{" "}
-                    {preview.nextTransitions
-                      .slice(0, 3)
-                      .map((t) => formatTransition(t.at, t.action, timing.timezone))
-                      .join(" · ")}
-                  </div>
+                  <T>
+                    <div className="mt-1 text-on-surface-faint">
+                      Next:{" "}
+                      <Var>
+                        {preview.nextTransitions
+                          .slice(0, 3)
+                          .map((t) => formatTransition(t.at, t.action, timing.timezone))
+                          .join(" · ")}
+                      </Var>
+                    </div>
+                  </T>
                 )}
               </>
             )}
@@ -306,7 +326,7 @@ export function ScheduleEditorModal({
               onClick={onClose}
               className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -314,7 +334,7 @@ export function ScheduleEditorModal({
               disabled={saving || timingError !== null}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
             >
-              {saving ? "Saving…" : existing ? "Save changes" : "Create schedule"}
+              {saving ? gt("Saving…") : existing ? gt("Save changes") : gt("Create schedule")}
             </button>
           </div>
         </div>

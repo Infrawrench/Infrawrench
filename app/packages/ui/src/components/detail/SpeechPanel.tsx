@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { T, Var, useGT } from "gt-react";
+import { useDataString } from "../../i18n/data-strings.js";
 import type {
   SpeechPanelCapability,
   SpeechPanelOption,
@@ -33,6 +35,8 @@ interface Props {
 }
 
 export function SpeechPanel({ capability, onSynthesize, onTranscribe }: Props) {
+  const gt = useGT();
+  const gtData = useDataString();
   const showTts = capability.modes.includes("tts") && !!onSynthesize;
   const showStt = capability.modes.includes("stt") && !!onTranscribe;
   const disabled = !!capability.disabledReason;
@@ -45,28 +49,32 @@ export function SpeechPanel({ capability, onSynthesize, onTranscribe }: Props) {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-surface shrink-0">
         <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">
-          {capability.tabLabel ?? "Speech"}
+          {capability.tabLabel ? gtData(capability.tabLabel) : gt("Speech")}
         </span>
         {capability.subtitle && (
-          <span className="text-xs text-on-surface-tertiary truncate">{capability.subtitle}</span>
+          <span className="text-xs text-on-surface-tertiary truncate">
+            {gtData(capability.subtitle)}
+          </span>
         )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto p-4 space-y-6">
         {disabled ? (
           <div className="text-sm text-on-surface-tertiary italic max-w-2xl">
-            {capability.disabledReason}
+            {capability.disabledReason ? gtData(capability.disabledReason) : null}
           </div>
         ) : (
           <>
             {capability.helpText && (
-              <p className="text-xs text-on-surface-muted max-w-2xl">{capability.helpText}</p>
+              <p className="text-xs text-on-surface-muted max-w-2xl">
+                {gtData(capability.helpText)}
+              </p>
             )}
 
             {capability.models && capability.models.length > 0 && (
               <div className="max-w-sm">
                 <OptionSelect
-                  label={capability.modelLabel ?? "Model"}
+                  label={capability.modelLabel ? gtData(capability.modelLabel) : gt("Model")}
                   options={capability.models}
                   value={model}
                   onChange={setModel}
@@ -117,6 +125,8 @@ interface Clip {
 }
 
 function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectionProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [text, setText] = useState(capability.defaultText ?? "");
   const [voice, setVoice] = useState(
     () => capability.defaultVoice ?? capability.voices?.[0]?.id ?? "",
@@ -177,13 +187,13 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
   return (
     <section className="space-y-3">
       <h3 className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">
-        Text to speech
+        {gt("Text to speech")}
       </h3>
 
       {capability.voices && capability.voices.length > 0 && (
         <div className="max-w-sm">
           <OptionSelect
-            label={capability.voiceLabel ?? "Voice"}
+            label={capability.voiceLabel ? gtData(capability.voiceLabel) : gt("Voice")}
             options={capability.voices}
             value={voice}
             onChange={setVoice}
@@ -193,13 +203,13 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
 
       <label className="block">
         <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">
-          Text
+          {gt("Text")}
         </span>
         <textarea
-          aria-label="Text to synthesize"
+          aria-label={gt("Text to synthesize")}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Type something to hear it spoken…"
+          placeholder={gt("Type something to hear it spoken…")}
           rows={4}
           className="mt-1 w-full resize-y bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent-blue placeholder:text-on-surface-faint"
         />
@@ -207,7 +217,9 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
 
       {maxCharacters != null && (
         <p className={`text-[11px] ${overLimit ? "text-danger" : "text-on-surface-faint"}`}>
-          {text.length} / {maxCharacters} characters
+          <T>
+            <Var>{text.length}</Var> / <Var>{maxCharacters}</Var> characters
+          </T>
         </p>
       )}
 
@@ -220,7 +232,11 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
           disabled={busy}
           className="px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-md hover:bg-accent-blue/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
         >
-          {busy ? "Synthesizing…" : (capability.synthesizeLabel ?? "Synthesize")}
+          {busy
+            ? gt("Synthesizing…")
+            : capability.synthesizeLabel
+              ? gtData(capability.synthesizeLabel)
+              : gt("Synthesize")}
         </button>
       </div>
 
@@ -228,7 +244,7 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
         <div className="rounded-md border border-border bg-surface-overlay px-3 py-2 space-y-2">
           {/* eslint-disable-next-line jsx-a11y/media-has-caption -- generated speech of text the user just typed and can still see above; a caption track would duplicate it. */}
           <audio controls src={clip.url} className="w-full">
-            Your browser does not support audio playback.
+            {gt("Your browser does not support audio playback.")}
           </audio>
           <div className="flex items-center gap-3 text-[11px] text-on-surface-tertiary">
             <span className="truncate flex-1">{clip.summary}</span>
@@ -237,7 +253,7 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
               download={clip.fileName}
               className="text-accent-blue hover:underline shrink-0"
             >
-              Download
+              {gt("Download")}
             </a>
           </div>
         </div>
@@ -264,6 +280,8 @@ interface PendingAudio {
 }
 
 function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectionProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [language, setLanguage] = useState(
     () => capability.defaultLanguage ?? capability.languages?.[0]?.id ?? "",
   );
@@ -341,11 +359,11 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
       setRecording(false);
       setError(
         err instanceof Error
-          ? `Could not start recording: ${err.message}`
-          : "Could not start recording.",
+          ? gt("Could not start recording: {message}", { message: err.message })
+          : gt("Could not start recording."),
       );
     }
-  }, [attach]);
+  }, [attach, gt]);
 
   const stopRecording = useCallback(() => {
     const rec = recorderRef.current;
@@ -399,13 +417,13 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
   return (
     <section className="space-y-3">
       <h3 className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">
-        Speech to text
+        {gt("Speech to text")}
       </h3>
 
       {capability.languages && capability.languages.length > 0 && (
         <div className="max-w-sm">
           <OptionSelect
-            label={capability.languageLabel ?? "Language"}
+            label={capability.languageLabel ? gtData(capability.languageLabel) : gt("Language")}
             options={capability.languages}
             value={language}
             onChange={setLanguage}
@@ -421,7 +439,7 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
               onClick={stopRecording}
               className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-600/90 transition-colors"
             >
-              ■ Stop recording
+              {gt("■ Stop recording")}
             </button>
           ) : (
             <button
@@ -430,7 +448,7 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
               disabled={busy}
               className="px-4 py-2 text-sm font-medium text-on-surface bg-surface-overlay border border-border-strong rounded-md hover:border-accent-blue disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
             >
-              ● Record
+              {gt("● Record")}
             </button>
           ))}
 
@@ -440,7 +458,7 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
           disabled={busy || recording}
           className="px-4 py-2 text-sm font-medium text-on-surface bg-surface-overlay border border-border-strong rounded-md hover:border-accent-blue disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
         >
-          Upload a clip
+          {gt("Upload a clip")}
         </button>
         <input
           ref={fileInputRef}
@@ -448,22 +466,25 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
           accept={accept}
           onChange={onPickFile}
           className="hidden"
-          aria-label="Audio file to transcribe"
+          aria-label={gt("Audio file to transcribe")}
         />
 
         {!canRecord && (
           <span className="text-[11px] text-on-surface-faint">
             {recordingBlocked
-              ? (capability.recordingDisabledReason ??
-                "This provider does not accept browser recordings — upload a clip instead.")
-              : "Microphone recording needs a browser with MediaRecorder — upload a clip instead."}
+              ? capability.recordingDisabledReason
+                ? gtData(capability.recordingDisabledReason)
+                : gt("This provider does not accept browser recordings — upload a clip instead.")
+              : gt(
+                  "Microphone recording needs a browser with MediaRecorder — upload a clip instead.",
+                )}
           </span>
         )}
       </div>
 
       {recording && (
         <p className="text-xs text-danger" aria-live="polite">
-          Recording… speak now, then press Stop.
+          {gt("Recording… speak now, then press Stop.")}
         </p>
       )}
 
@@ -482,7 +503,7 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
               }}
               className="text-on-surface-faint hover:text-danger shrink-0"
             >
-              Clear
+              {gt("Clear")}
             </button>
           </div>
           {/* eslint-disable-next-line jsx-a11y/media-has-caption -- preview of the user's own clip, played back so they can check it before sending; the transcript below is the text alternative. */}
@@ -499,10 +520,16 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
           disabled={busy || !audio || recording}
           className="px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-md hover:bg-accent-blue/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
         >
-          {busy ? "Transcribing…" : (capability.transcribeLabel ?? "Transcribe")}
+          {busy
+            ? gt("Transcribing…")
+            : capability.transcribeLabel
+              ? gtData(capability.transcribeLabel)
+              : gt("Transcribe")}
         </button>
         {!audio && (
-          <span className="text-[11px] text-on-surface-faint">Record or upload a clip first.</span>
+          <span className="text-[11px] text-on-surface-faint">
+            {gt("Record or upload a clip first.")}
+          </span>
         )}
       </div>
 
@@ -511,7 +538,7 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
           <div className="rounded-md border border-border bg-surface-overlay px-3 py-2">
             <p className="text-sm text-on-surface whitespace-pre-wrap">
               {result.text || (
-                <span className="italic text-on-surface-faint">(no speech detected)</span>
+                <span className="italic text-on-surface-faint">{gt("(no speech detected)")}</span>
               )}
             </p>
           </div>
@@ -525,25 +552,27 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
                 onClick={() => setShowWords((v) => !v)}
                 className="text-[11px] text-on-surface-faint hover:text-accent transition-colors"
               >
-                {showWords ? "Hide word timings" : `Show word timings (${result.words.length})`}
+                {showWords
+                  ? gt("Hide word timings")
+                  : gt("Show word timings ({count})", { count: result.words.length })}
               </button>
               {showWords && (
                 <div className="mt-1 max-h-56 overflow-auto rounded-md border border-border">
                   <table className="w-full text-[11px] font-mono">
-                    <caption className="sr-only">Word timings</caption>
+                    <caption className="sr-only">{gt("Word timings")}</caption>
                     <thead className="sticky top-0 bg-surface">
                       <tr className="text-on-surface-muted">
                         <th scope="col" className="text-left px-2 py-1 font-semibold">
-                          Word
+                          {gt("Word")}
                         </th>
                         <th scope="col" className="text-left px-2 py-1 font-semibold">
-                          Start
+                          {gt("Start")}
                         </th>
                         <th scope="col" className="text-left px-2 py-1 font-semibold">
-                          End
+                          {gt("End")}
                         </th>
                         <th scope="col" className="text-left px-2 py-1 font-semibold">
-                          Speaker
+                          {gt("Speaker")}
                         </th>
                       </tr>
                     </thead>
@@ -592,6 +621,8 @@ function OptionSelect({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const selected = options.find((o) => o.id === value);
   // Several plugins ship a real empty-id entry — "Auto-detect" (Groq, Mistral)
   // or "Match the input text" (Gemini) — as a meaningful choice. Rendering the
@@ -610,15 +641,15 @@ function OptionSelect({
         onChange={(e) => onChange(e.target.value)}
         className="mt-1 w-full bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent-blue"
       >
-        {!value && !hasEmptyOption && <option value="">Select…</option>}
+        {!value && !hasEmptyOption && <option value="">{gt("Select…")}</option>}
         {options.map((opt) => (
           <option key={opt.id} value={opt.id}>
-            {opt.label}
+            {gtData(opt.label)}
           </option>
         ))}
       </select>
       {selected?.description && (
-        <p className="text-[11px] text-on-surface-faint mt-1">{selected.description}</p>
+        <p className="text-[11px] text-on-surface-faint mt-1">{gtData(selected.description)}</p>
       )}
     </label>
   );

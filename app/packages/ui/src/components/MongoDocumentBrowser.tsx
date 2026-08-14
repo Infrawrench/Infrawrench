@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import {
   formatMongoPreview,
   formatMongoValue,
@@ -25,6 +26,7 @@ export function MongoDocumentBrowser({
   connected = true,
   onCommand,
 }: MongoDocumentBrowserProps) {
+  const gt = useGT();
   const [collections, setCollections] = useState<string[]>([]);
   const [activeCollection, setActiveCollection] = useState<string | null>(null);
   const [collectionStats, setCollectionStats] = useState<CollectionStats | null>(null);
@@ -114,7 +116,7 @@ export function MongoDocumentBrowser({
       setAppliedFilter(trimmed);
       setPage(0);
     } catch {
-      setError("Invalid JSON filter");
+      setError(gt("Invalid JSON filter"));
     }
   }
 
@@ -177,7 +179,7 @@ export function MongoDocumentBrowser({
     try {
       doc = JSON.parse(trimmed);
     } catch {
-      setInsertError("Invalid JSON");
+      setInsertError(gt("Invalid JSON"));
       return;
     }
     try {
@@ -227,7 +229,7 @@ export function MongoDocumentBrowser({
   if (!connected) {
     return (
       <div className="flex-1 flex items-center justify-center text-on-surface-faint text-sm">
-        Connecting to MongoDB…
+        {gt("Connecting to MongoDB…")}
       </div>
     );
   }
@@ -238,13 +240,13 @@ export function MongoDocumentBrowser({
       <div className="w-64 border-r border-border flex flex-col overflow-hidden flex-shrink-0 bg-surface">
         <div className="px-3 py-2 border-b border-border/60 flex items-center justify-between">
           <span className="text-xs font-semibold text-on-surface-tertiary uppercase tracking-wide">
-            Collections
+            {gt("Collections")}
           </span>
           <button
             type="button"
             onClick={() => setShowNewCollection((v) => !v)}
             className="text-on-surface-faint hover:text-on-surface-secondary transition-colors text-sm leading-none"
-            title="Create collection"
+            title={gt("Create collection")}
           >
             +
           </button>
@@ -258,8 +260,8 @@ export function MongoDocumentBrowser({
                 if (e.key === "Enter") void handleCreateCollection();
                 if (e.key === "Escape") setShowNewCollection(false);
               }}
-              aria-label="Collection name"
-              placeholder="collection name"
+              aria-label={gt("Collection name")}
+              placeholder={gt("collection name")}
               className="flex-1 min-w-0 bg-surface-raised border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
               ref={newCollectionInputRef}
             />
@@ -268,15 +270,15 @@ export function MongoDocumentBrowser({
               onClick={() => void handleCreateCollection()}
               className="px-2 py-1 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 transition-colors flex-shrink-0"
             >
-              Create
+              {gt("Create")}
             </button>
           </div>
         )}
         <div className="flex-1 overflow-y-auto py-1">
           {collectionsLoading ? (
-            <div className="px-3 py-2 text-xs text-on-surface-faint">Loading…</div>
+            <div className="px-3 py-2 text-xs text-on-surface-faint">{gt("Loading…")}</div>
           ) : collections.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-on-surface-faint">No collections</div>
+            <div className="px-3 py-2 text-xs text-on-surface-faint">{gt("No collections")}</div>
           ) : (
             collections.map((col) => (
               <CollectionListItem
@@ -296,12 +298,14 @@ export function MongoDocumentBrowser({
         {collectionStats && activeCollection && (
           <div className="px-3 py-2 border-t border-border/60 space-y-0.5">
             <div className="text-xs text-on-surface-faint">
-              {collectionStats.count.toLocaleString()} docs
+              {gt("{count} docs", { count: collectionStats.count.toLocaleString() })}
             </div>
-            <div className="text-xs text-on-surface-faint">{collectionStats.nindexes} indexes</div>
+            <div className="text-xs text-on-surface-faint">
+              {gt("{count} indexes", { count: collectionStats.nindexes })}
+            </div>
             {collectionStats.size > 0 && (
               <div className="text-xs text-on-surface-faint">
-                {(collectionStats.size / 1024).toFixed(1)} KB
+                {gt("{size} KB", { size: (collectionStats.size / 1024).toFixed(1) })}
               </div>
             )}
           </div>
@@ -312,14 +316,14 @@ export function MongoDocumentBrowser({
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Filter bar */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border/60 bg-surface">
-          <span className="text-xs text-on-surface-muted flex-shrink-0">Filter:</span>
+          <span className="text-xs text-on-surface-muted flex-shrink-0">{gt("Filter:")}</span>
           <input
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") handleApplyFilter();
             }}
-            aria-label="Filter query"
+            aria-label={gt("Filter query")}
             placeholder='{ "field": "value" }'
             className="flex-1 bg-surface-raised border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
             spellCheck={false}
@@ -329,15 +333,15 @@ export function MongoDocumentBrowser({
             onClick={handleApplyFilter}
             className="px-2.5 py-1 rounded bg-surface-overlay border border-border-strong text-xs text-on-surface-secondary hover:bg-surface-sunken hover:border-border-strong transition-colors"
           >
-            Apply
+            {gt("Apply")}
           </button>
           <button
             type="button"
             onClick={() => void fetchDocuments()}
             className="px-2 py-1 rounded text-xs text-on-surface-muted hover:text-on-surface-secondary transition-colors"
-            title="Refresh"
+            title={gt("Refresh")}
           >
-            Refresh
+            {gt("Refresh")}
           </button>
           {activeCollection && (
             <button
@@ -345,7 +349,7 @@ export function MongoDocumentBrowser({
               onClick={() => setShowInsertDoc((v) => !v)}
               className="px-2.5 py-1 rounded bg-blue-600/80 border border-blue-500/50 text-xs text-white hover:bg-blue-600 transition-colors"
             >
-              + Insert
+              {gt("+ Insert")}
             </button>
           )}
         </div>
@@ -376,15 +380,15 @@ export function MongoDocumentBrowser({
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
           {!activeCollection ? (
             <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-              Select a collection
+              {gt("Select a collection")}
             </div>
           ) : loading ? (
             <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-              Loading…
+              {gt("Loading…")}
             </div>
           ) : documents.length === 0 ? (
             <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-              No documents found
+              {gt("No documents found")}
             </div>
           ) : (
             <div className="divide-y divide-border/50">
@@ -411,8 +415,10 @@ export function MongoDocumentBrowser({
         {activeCollection && totalCount > 0 && (
           <div className="flex items-center justify-between px-3 py-2 border-t border-border/60 bg-surface">
             <span className="text-xs text-on-surface-muted">
-              {totalCount.toLocaleString()} document{totalCount === 1 ? "" : "s"}
-              {appliedFilter !== "{}" && " (filtered)"}
+              {totalCount === 1
+                ? gt("1 document")
+                : gt("{count} documents", { count: totalCount.toLocaleString() })}
+              {appliedFilter !== "{}" && gt(" (filtered)")}
             </span>
             <div className="flex items-center gap-1.5">
               <button
@@ -421,10 +427,10 @@ export function MongoDocumentBrowser({
                 disabled={page === 0}
                 className="px-2 py-0.5 rounded text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
               >
-                Prev
+                {gt("Prev")}
               </button>
               <span className="text-xs text-on-surface-muted">
-                {page + 1} / {totalPages}
+                {gt("{page} / {total}", { page: page + 1, total: totalPages })}
               </span>
               <button
                 type="button"
@@ -432,7 +438,7 @@ export function MongoDocumentBrowser({
                 disabled={page >= totalPages - 1}
                 className="px-2 py-0.5 rounded text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
               >
-                Next
+                {gt("Next")}
               </button>
             </div>
           </div>

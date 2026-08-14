@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { T, useGT } from "gt-react";
 import { applyChosenParameters, type CaptureDraft } from "@infrawrench/client-core";
+import { useDataString } from "../i18n/data-strings.js";
 import type { EnvironmentAccount, EnvironmentsClient, EnvironmentTemplate } from "./types.js";
 
 export interface CaptureTemplateModalProps {
@@ -26,6 +28,8 @@ export function CaptureTemplateModal({
   onClose,
   onCreated,
 }: CaptureTemplateModalProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   // Only an explicit choice is state; the effective account falls back to the
   // first one during render, so accounts arriving after mount need no
   // catch-up effect (and no frame where the select shows nothing).
@@ -52,7 +56,7 @@ export function CaptureTemplateModal({
       setDraft(next);
       setChosen(new Set(next.suggestedParameters.map((p) => p.key)));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Capture failed");
+      setError(e instanceof Error ? e.message : gt("Capture failed"));
     } finally {
       setBusy(false);
     }
@@ -72,7 +76,7 @@ export function CaptureTemplateModal({
       });
       if (created) onCreated(created);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save the template");
+      setError(e instanceof Error ? e.message : gt("Could not save the template"));
     } finally {
       setBusy(false);
     }
@@ -91,15 +95,19 @@ export function CaptureTemplateModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl border border-border bg-surface-raised p-5">
-        <h3 className="text-base font-semibold text-on-surface">Capture an environment template</h3>
-        <p className="mt-1 text-xs text-on-surface-faint">
-          Point this at the environment you already have. Every field comes from the plugin&apos;s
-          own create form, so anything it can&apos;t create is reported rather than guessed at.
-        </p>
+        <h3 className="text-base font-semibold text-on-surface">
+          {gt("Capture an environment template")}
+        </h3>
+        <T>
+          <p className="mt-1 text-xs text-on-surface-faint">
+            Point this at the environment you already have. Every field comes from the plugin&apos;s
+            own create form, so anything it can&apos;t create is reported rather than guessed at.
+          </p>
+        </T>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <label className="text-xs text-on-surface-secondary sm:col-span-3">
-            Account
+            {gt("Account")}
             <select
               value={accountId}
               onChange={(e) => setChosenAccountId(e.target.value)}
@@ -113,7 +121,7 @@ export function CaptureTemplateModal({
             </select>
           </label>
           <label className="text-xs text-on-surface-secondary">
-            Tag key (optional)
+            {gt("Tag key (optional)")}
             <input
               value={tagKey}
               onChange={(e) => setTagKey(e.target.value)}
@@ -122,7 +130,7 @@ export function CaptureTemplateModal({
             />
           </label>
           <label className="text-xs text-on-surface-secondary">
-            Tag value (optional)
+            {gt("Tag value (optional)")}
             <input
               value={tagValue}
               onChange={(e) => setTagValue(e.target.value)}
@@ -137,7 +145,7 @@ export function CaptureTemplateModal({
               disabled={busy || accountId === ""}
               className="w-full rounded-lg bg-surface-sunken px-3 py-1.5 text-sm text-on-surface transition-colors hover:bg-surface disabled:opacity-50"
             >
-              {busy && !draft ? "Reading…" : "Preview capture"}
+              {busy && !draft ? gt("Reading…") : gt("Preview capture")}
             </button>
           </div>
         </div>
@@ -148,9 +156,13 @@ export function CaptureTemplateModal({
           <div className="mt-5 space-y-4">
             <div>
               <h4 className="text-sm font-medium text-on-surface">
-                {draft.members.length} resource{draft.members.length === 1 ? "" : "s"} captured
+                {draft.members.length === 1
+                  ? gt("{count} resource captured", { count: draft.members.length })
+                  : gt("{count} resources captured", { count: draft.members.length })}
                 {referenceCount > 0 &&
-                  ` · ${referenceCount} reference${referenceCount === 1 ? "" : "s"} preserved`}
+                  (referenceCount === 1
+                    ? gt(" · {count} reference preserved", { count: referenceCount })
+                    : gt(" · {count} references preserved", { count: referenceCount }))}
               </h4>
               <ul className="mt-2 space-y-1">
                 {draft.members.map((member) => (
@@ -173,7 +185,9 @@ export function CaptureTemplateModal({
 
             {draft.skipped.length > 0 && (
               <div>
-                <h4 className="text-sm font-medium text-warning">{draft.skipped.length} skipped</h4>
+                <h4 className="text-sm font-medium text-warning">
+                  {gt("{count} skipped", { count: draft.skipped.length })}
+                </h4>
                 <ul className="mt-1 space-y-1">
                   {draft.skipped.map((item) => (
                     <li key={item.resourceId} className="text-xs text-on-surface-faint">
@@ -185,15 +199,19 @@ export function CaptureTemplateModal({
             )}
 
             <div>
-              <h4 className="text-sm font-medium text-on-surface">What should vary?</h4>
-              <p className="text-xs text-on-surface-faint">
-                Checked fields become parameters you set at instantiation. Everything else is
-                captured as-is.
-              </p>
-              {draft.suggestedParameters.length === 0 ? (
-                <p className="mt-2 text-xs text-on-surface-faint">
-                  Nothing here looks like a knob — these resources will be reproduced exactly.
+              <h4 className="text-sm font-medium text-on-surface">{gt("What should vary?")}</h4>
+              <T>
+                <p className="text-xs text-on-surface-faint">
+                  Checked fields become parameters you set at instantiation. Everything else is
+                  captured as-is.
                 </p>
+              </T>
+              {draft.suggestedParameters.length === 0 ? (
+                <T>
+                  <p className="mt-2 text-xs text-on-surface-faint">
+                    Nothing here looks like a knob — these resources will be reproduced exactly.
+                  </p>
+                </T>
               ) : (
                 <ul className="mt-2 space-y-1">
                   {draft.suggestedParameters.map((parameter) => (
@@ -211,9 +229,9 @@ export function CaptureTemplateModal({
                             })
                           }
                         />
-                        {parameter.label}
+                        {gtData(parameter.label)}
                         <span className="text-on-surface-faint">
-                          (currently {parameter.defaultValue})
+                          {gt("(currently {value})", { value: parameter.defaultValue })}
                         </span>
                       </label>
                     </li>
@@ -224,7 +242,7 @@ export function CaptureTemplateModal({
 
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-xs text-on-surface-secondary">
-                Template name
+                {gt("Template name")}
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -233,7 +251,7 @@ export function CaptureTemplateModal({
                 />
               </label>
               <label className="text-xs text-on-surface-secondary">
-                Description (optional)
+                {gt("Description (optional)")}
                 <input
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -250,7 +268,7 @@ export function CaptureTemplateModal({
             onClick={onClose}
             className="rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary transition-colors hover:bg-surface-sunken"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -258,7 +276,7 @@ export function CaptureTemplateModal({
             disabled={busy || !draft || draft.members.length === 0 || name.trim() === ""}
             className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
           >
-            Save template
+            {gt("Save template")}
           </button>
         </div>
       </div>

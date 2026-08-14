@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
+import { T, Var, useGT } from "gt-react";
 import type { CreateFieldConfig } from "@infrawrench/plugin-base";
 import type { RequiredTag } from "@infrawrench/client-core";
 import type { CreateResourceFormState } from "../hooks/useCreateResourceForm.js";
@@ -44,6 +45,7 @@ export function CreateResourceModal({
   renderError,
   requiredTags,
 }: CreateResourceModalProps) {
+  const gt = useGT();
   const tagField = useMemo(
     () => (requiredTags?.length ? form.visibleFields.find(isTagField) : undefined),
     [form.visibleFields, requiredTags],
@@ -72,14 +74,16 @@ export function CreateResourceModal({
   const splitPane = codeFields.length > 0;
 
   return (
-    <Modal onClose={onClose} ariaLabel={`Create ${displayName}`}>
+    <Modal onClose={onClose} ariaLabel={gt("Create {name}", { name: displayName })}>
       <div
         className={`bg-surface-raised border border-border-strong rounded-xl shadow-2xl flex flex-col ${
           splitPane ? "w-[1100px] h-[80vh]" : "w-[560px] max-h-[72vh]"
         }`}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
-          <h2 className="text-base font-semibold text-on-surface">Create {displayName}</h2>
+          <h2 className="text-base font-semibold text-on-surface">
+            {gt("Create {name}", { name: displayName })}
+          </h2>
           <div className="flex items-center gap-3">
             {form.estimatedMonthlyPriceLabel && (
               <CostEstimateChip
@@ -91,7 +95,7 @@ export function CreateResourceModal({
               type="button"
               onClick={onClose}
               className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
-              aria-label="Close"
+              aria-label={gt("Close")}
             >
               &times;
             </button>
@@ -100,14 +104,18 @@ export function CreateResourceModal({
 
         {tagField && requiredTags && requiredTags.length > 0 && !form.loadingConfig && (
           <div className="px-6 pt-3 flex-shrink-0">
-            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-warning">
-              Org policy requires tags:{" "}
-              {requiredTags
-                .map((t) =>
-                  t.allowedValues?.length ? `${t.key} (${t.allowedValues.join(" | ")})` : t.key,
-                )
-                .join(", ")}
-            </p>
+            <T>
+              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-warning">
+                Org policy requires tags:{" "}
+                <Var>
+                  {requiredTags
+                    .map((t) =>
+                      t.allowedValues?.length ? `${t.key} (${t.allowedValues.join(" | ")})` : t.key,
+                    )
+                    .join(", ")}
+                </Var>
+              </p>
+            </T>
           </div>
         )}
 
@@ -120,7 +128,7 @@ export function CreateResourceModal({
                     aria-hidden="true"
                     className="animate-spin inline-block size-4 rounded-full border-2 border-border-strong border-t-gray-300"
                   />
-                  Fetching available options…
+                  {gt("Fetching available options…")}
                 </div>
               ) : form.configError ? (
                 errorEl(form.configError, { textClassName: "text-sm text-danger" })
@@ -148,7 +156,7 @@ export function CreateResourceModal({
                   aria-hidden="true"
                   className="animate-spin inline-block size-4 rounded-full border-2 border-border-strong border-t-gray-300"
                 />
-                Fetching available options…
+                {gt("Fetching available options…")}
               </div>
             ) : form.configError ? (
               errorEl(form.configError, { textClassName: "text-sm text-danger" })
@@ -175,7 +183,7 @@ export function CreateResourceModal({
               onClick={onClose}
               className="flex-1 px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary bg-surface-overlay hover:bg-surface-sunken rounded-lg transition-colors"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -183,7 +191,7 @@ export function CreateResourceModal({
               disabled={form.creating || form.loadingConfig || !!form.configError || !form.isValid}
               className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
             >
-              {form.creating ? "Creating..." : `Create ${displayName}`}
+              {form.creating ? gt("Creating...") : gt("Create {name}", { name: displayName })}
             </button>
           </div>
         </div>

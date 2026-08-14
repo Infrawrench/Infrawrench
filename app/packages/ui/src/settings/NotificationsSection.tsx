@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { T, useGT } from "gt-react";
 import type { Recipient } from "../api-types.js";
 import { useSettingsHost } from "./host.js";
 import { AlertRoutingSection } from "./AlertRoutingSection.js";
@@ -12,35 +13,37 @@ import { TwilioSection, type PagingSettings } from "./notifications/TwilioSectio
 
 type ConnectionId = "slack" | "teams" | "mobile" | "sms";
 
-const CONNECTIONS: Array<{
-  id: ConnectionId;
-  label: string;
-  description: string;
-}> = [
-  {
-    id: "slack",
-    label: "Slack",
-    description: "Workspace channels via OAuth",
-  },
-  {
-    id: "teams",
-    label: "Microsoft Teams",
-    description: "Channel webhooks",
-  },
-  {
-    id: "mobile",
-    label: "Mobile app",
-    description: "Push to your devices",
-  },
-  {
-    id: "sms",
-    label: "SMS & voice",
-    description: "Twilio paging",
-  },
-];
+const CONNECTION_IDS: ConnectionId[] = ["slack", "teams", "mobile", "sms"];
 
 export function NotificationsSection() {
+  const gt = useGT();
   const { orgId, api } = useSettingsHost();
+
+  const connectionLabel = (id: ConnectionId): string => {
+    switch (id) {
+      case "slack":
+        return gt("Slack");
+      case "teams":
+        return gt("Microsoft Teams");
+      case "mobile":
+        return gt("Mobile app");
+      case "sms":
+        return gt("SMS & voice");
+    }
+  };
+
+  const connectionDescription = (id: ConnectionId): string => {
+    switch (id) {
+      case "slack":
+        return gt("Workspace channels via OAuth");
+      case "teams":
+        return gt("Channel webhooks");
+      case "mobile":
+        return gt("Push to your devices");
+      case "sms":
+        return gt("Twilio paging");
+    }
+  };
   const [settings, setSettings] = useState<PagingSettings | null>(null);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,7 +61,7 @@ export function NotificationsSection() {
       setSettings(s);
       setRecipients(r);
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Failed to load paging settings");
+      setLoadError(e instanceof Error ? e.message : gt("Failed to load paging settings"));
     } finally {
       setLoading(false);
     }
@@ -73,21 +76,23 @@ export function NotificationsSection() {
     return <p className="text-sm text-danger">{loadError}</p>;
   }
   if (loading || !settings) {
-    return <p className="text-sm text-on-surface-faint">Loading…</p>;
+    return <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>;
   }
 
   return (
     <div className="space-y-8 max-w-6xl">
       <div>
-        <h1 className="text-xl font-semibold">Notifications</h1>
-        <p className="text-sm text-on-surface-muted mt-1 max-w-3xl">
-          Alert your team when a resource type fails to sync repeatedly, a budget threshold is
-          crossed, your infrastructure drifts, or a workflow calls <code>infra.page()</code> or{" "}
-          <code>infra.waitForApproval()</code>. Incidents are triggered by the background poller;
-          manual syncs from the UI never page. Delivery goes to mobile push (the Infrawrench app),
-          any Slack or Microsoft Teams channels you connect below, and — when Twilio credentials are
-          configured — SMS and voice calls.
-        </p>
+        <h1 className="text-xl font-semibold">{gt("Notifications")}</h1>
+        <T>
+          <p className="text-sm text-on-surface-muted mt-1 max-w-3xl">
+            Alert your team when a resource type fails to sync repeatedly, a budget threshold is
+            crossed, your infrastructure drifts, or a workflow calls <code>infra.page()</code> or{" "}
+            <code>infra.waitForApproval()</code>. Incidents are triggered by the background poller;
+            manual syncs from the UI never page. Delivery goes to mobile push (the Infrawrench app),
+            any Slack or Microsoft Teams channels you connect below, and — when Twilio credentials
+            are configured — SMS and voice calls.
+          </p>
+        </T>
       </div>
 
       {/*
@@ -98,25 +103,27 @@ export function NotificationsSection() {
       */}
       <section className="border border-border rounded-xl overflow-hidden">
         <div className="border-b border-border px-5 py-4">
-          <h2 className="text-sm font-semibold text-on-surface-secondary">Connections</h2>
-          <p className="text-xs text-on-surface-muted mt-1">
-            Add Slack, Teams, mobile push, or phone numbers — then route alerts to them with the
-            rules below.
-          </p>
+          <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Connections")}</h2>
+          <T>
+            <p className="text-xs text-on-surface-muted mt-1">
+              Add Slack, Teams, mobile push, or phone numbers — then route alerts to them with the
+              rules below.
+            </p>
+          </T>
         </div>
         <div className="flex min-h-[32rem] flex-col md:flex-row">
           <nav
-            aria-label="Notification connections"
+            aria-label={gt("Notification connections")}
             className="w-full shrink-0 border-b border-border md:w-60 md:border-b-0 md:border-r md:overflow-y-auto"
           >
             <ul className="flex gap-1 overflow-x-auto p-2 md:flex-col md:overflow-x-visible">
-              {CONNECTIONS.map((c) => {
-                const selected = selectedConnection === c.id;
+              {CONNECTION_IDS.map((id) => {
+                const selected = selectedConnection === id;
                 return (
-                  <li key={c.id} className="min-w-[9.5rem] md:min-w-0">
+                  <li key={id} className="min-w-[9.5rem] md:min-w-0">
                     <button
                       type="button"
-                      onClick={() => setSelectedConnection(c.id)}
+                      onClick={() => setSelectedConnection(id)}
                       aria-current={selected ? "true" : undefined}
                       className={`w-full rounded-lg px-3 py-2.5 text-left transition-colors ${
                         selected
@@ -125,12 +132,12 @@ export function NotificationsSection() {
                       }`}
                     >
                       <span className="flex items-center gap-2 text-sm font-medium">
-                        {c.id === "slack" && <SlackMark className="h-3.5 w-3.5 shrink-0" />}
-                        {c.id === "teams" && <TeamsMark className="h-3.5 w-3.5 shrink-0" />}
-                        {c.label}
+                        {id === "slack" && <SlackMark className="h-3.5 w-3.5 shrink-0" />}
+                        {id === "teams" && <TeamsMark className="h-3.5 w-3.5 shrink-0" />}
+                        {connectionLabel(id)}
                       </span>
                       <span className="mt-0.5 block text-xs text-on-surface-tertiary">
-                        {c.description}
+                        {connectionDescription(id)}
                       </span>
                     </button>
                   </li>

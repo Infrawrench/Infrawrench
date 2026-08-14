@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
+import { T, useGT } from "gt-react";
 import { MomentPanel, useUIStore, type MomentEvent } from "@infrawrench/ui";
 import { createDesktopMomentClient } from "@/lib/moment-client";
 import { getWorkspaceNavigateArgs, resourceTabTarget } from "@/lib/workspace-tabs";
@@ -29,6 +30,7 @@ export const Route = createFileRoute("/moment")({
  * covers signing out with the page open.
  */
 function MomentPage() {
+  const gt = useGT();
   const navigate = useNavigate();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const { at, window: windowMinutes } = Route.useSearch();
@@ -37,12 +39,14 @@ function MomentPage() {
   if (!activeCloudOrgId) {
     return (
       <div className="flex-1 overflow-auto p-6">
-        <h1 className="text-xl font-semibold mb-1">Investigate a moment</h1>
-        <p className="text-sm text-on-surface-muted">
-          The moment view merges feeds recorded by Infrawrench Cloud — the change timeline, provider
-          incidents, cost anomalies, workflow runs, deployments and more. Local-only mode records
-          none of them — sign in to an organization to investigate one.
-        </p>
+        <h1 className="text-xl font-semibold mb-1">{gt("Investigate a moment")}</h1>
+        <T>
+          <p className="text-sm text-on-surface-muted">
+            The moment view merges feeds recorded by Infrawrench Cloud — the change timeline,
+            provider incidents, cost anomalies, workflow runs, deployments and more. Local-only mode
+            records none of them — sign in to an organization to investigate one.
+          </p>
+        </T>
       </div>
     );
   }

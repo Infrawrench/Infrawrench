@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { T, useGT } from "gt-react";
 import type {
   LinearIntegration,
   LinearIssueLink,
@@ -19,6 +20,7 @@ import { useSettingsHost } from "./host.js";
  * saved, because Linear has nothing to tell us before then.
  */
 export function LinearSection() {
+  const gt = useGT();
   const { orgId, api, has, openExternal } = useSettingsHost();
   const canWrite = has("linear:write");
 
@@ -47,11 +49,11 @@ export function LinearSection() {
         setDefaultTeamId(res.integration.defaultTeamId ?? "");
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load the Linear connection");
+      setError(e instanceof Error ? e.message : gt("Failed to load the Linear connection"));
     } finally {
       setLoading(false);
     }
-  }, [api, orgId]);
+  }, [api, orgId, gt]);
 
   useEffect(() => {
     void load();
@@ -83,9 +85,9 @@ export function LinearSection() {
       });
       setIntegration(saved);
       setApiKey("");
-      setNotice("Linear connection saved.");
+      setNotice(gt("Linear connection saved."));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save the Linear connection");
+      setError(e instanceof Error ? e.message : gt("Failed to save the Linear connection"));
     } finally {
       setSaving(false);
     }
@@ -100,16 +102,16 @@ export function LinearSection() {
       // committing it; otherwise re-test the stored one.
       const body = apiKey ? { apiKey } : {};
       const res = await api.post<LinearVerifyResult>(`/api/org/${orgId}/linear/verify`, body);
-      setNotice(`Connected to Linear as ${res.name || res.email || res.id}.`);
+      setNotice(gt("Connected to Linear as {who}.", { who: res.name || res.email || res.id }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not verify the Linear API key");
+      setError(e instanceof Error ? e.message : gt("Could not verify the Linear API key"));
     } finally {
       setVerifying(false);
     }
   }
 
   async function disconnect() {
-    if (!window.confirm("Disconnect Linear? Issues already filed keep their links.")) return;
+    if (!window.confirm(gt("Disconnect Linear? Issues already filed keep their links."))) return;
     setError(null);
     setNotice(null);
     try {
@@ -117,9 +119,9 @@ export function LinearSection() {
       setIntegration(null);
       setApiKey("");
       setDefaultTeamId("");
-      setNotice("Linear disconnected.");
+      setNotice(gt("Linear disconnected."));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to disconnect Linear");
+      setError(e instanceof Error ? e.message : gt("Failed to disconnect Linear"));
     }
   }
 
@@ -130,14 +132,16 @@ export function LinearSection() {
     <div>
       <div className="mb-6">
         <h1 className="text-xl font-semibold">Linear</h1>
-        <p className="text-sm text-on-surface-muted mt-1">
-          File findings — cost anomalies, orphaned and oversized resources, posture findings,
-          expiring credentials, and failed probes — as Linear issues, and keep the issue link on the
-          finding. Connect one Linear workspace per organization. Filing needs{" "}
-          <code>linear:write</code>; seeing what has already been filed needs{" "}
-          <code>linear:read</code>. Works alongside Jira — an org with both connected chooses the
-          tracker when filing.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-muted mt-1">
+            File findings — cost anomalies, orphaned and oversized resources, posture findings,
+            expiring credentials, and failed probes — as Linear issues, and keep the issue link on
+            the finding. Connect one Linear workspace per organization. Filing needs{" "}
+            <code>linear:write</code>; seeing what has already been filed needs{" "}
+            <code>linear:read</code>. Works alongside Jira — an org with both connected chooses the
+            tracker when filing.
+          </p>
+        </T>
       </div>
 
       {error && (
@@ -152,30 +156,35 @@ export function LinearSection() {
       )}
 
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
       ) : (
         <div className="space-y-8">
           <section className="border border-border rounded-xl p-4 space-y-3 bg-surface-raised/50">
-            <h2 className="text-sm font-semibold">Connection</h2>
-            <p className="text-xs text-on-surface-muted">
-              Create a personal API key in Linear under Settings → Security &amp; access, then paste
-              it here. The key is encrypted and never shown again — the field stays blank on return,
-              and leaving it blank keeps the stored key. Issues are created as the Linear user the
-              key belongs to.{" "}
-              <button
-                type="button"
-                onClick={() => openExternal("https://linear.app/settings/account/security")}
-                className="text-info hover:text-info-strong"
-              >
-                Create an API key
-              </button>
-            </p>
+            <h2 className="text-sm font-semibold">{gt("Connection")}</h2>
+            <T>
+              <p className="text-xs text-on-surface-muted">
+                Create a personal API key in Linear under Settings → Security &amp; access, then
+                paste it here. The key is encrypted and never shown again — the field stays blank on
+                return, and leaving it blank keeps the stored key. Issues are created as the Linear
+                user the key belongs to.{" "}
+                <button
+                  type="button"
+                  onClick={() => openExternal("https://linear.app/settings/account/security")}
+                  className="text-info hover:text-info-strong"
+                >
+                  Create an API key
+                </button>
+              </p>
+            </T>
 
             <label className="block">
               <span className="block text-xs text-on-surface-tertiary mb-1">
-                API key
+                {gt("API key")}
                 {integration && (
-                  <span className="text-on-surface-muted"> — stored: {integration.keyHint}</span>
+                  <span className="text-on-surface-muted">
+                    {" "}
+                    — {gt("stored: {hint}", { hint: integration.keyHint })}
+                  </span>
                 )}
               </span>
               <input
@@ -184,30 +193,32 @@ export function LinearSection() {
                 disabled={!canWrite}
                 onChange={(e) => setApiKey(e.target.value)}
                 autoComplete="new-password"
-                placeholder={integration ? "Leave blank to keep the stored key" : "API key"}
+                placeholder={integration ? gt("Leave blank to keep the stored key") : gt("API key")}
                 className={inputClass}
               />
             </label>
           </section>
 
           <section className="border border-border rounded-xl p-4 space-y-3 bg-surface-raised/50">
-            <h2 className="text-sm font-semibold">Defaults</h2>
-            <p className="text-xs text-on-surface-muted">
-              The team the &ldquo;File in Linear&rdquo; window opens preselected — every Linear
-              issue belongs to exactly one team. The list comes from Linear, so there is no id to
-              look up.
-              {!integration && " Save the connection first to load it."}
-            </p>
+            <h2 className="text-sm font-semibold">{gt("Defaults")}</h2>
+            <T>
+              <p className="text-xs text-on-surface-muted">
+                The team the &ldquo;File in Linear&rdquo; window opens preselected — every Linear
+                issue belongs to exactly one team. The list comes from Linear, so there is no id to
+                look up.
+                {!integration && " Save the connection first to load it."}
+              </p>
+            </T>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
-                <span className="block text-xs text-on-surface-tertiary mb-1">Team</span>
+                <span className="block text-xs text-on-surface-tertiary mb-1">{gt("Team")}</span>
                 <select
                   value={defaultTeamId}
                   disabled={!canWrite || teams.length === 0}
                   onChange={(e) => setDefaultTeamId(e.target.value)}
                   className={inputClass}
                 >
-                  <option value="">No default</option>
+                  <option value="">{gt("No default")}</option>
                   {teams.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name} ({t.key})
@@ -226,7 +237,7 @@ export function LinearSection() {
                 disabled={saving || (!integration && !apiKey)}
                 className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
               >
-                {saving ? "Saving…" : integration ? "Save changes" : "Connect Linear"}
+                {saving ? gt("Saving…") : integration ? gt("Save changes") : gt("Connect Linear")}
               </button>
               <button
                 type="button"
@@ -234,7 +245,7 @@ export function LinearSection() {
                 disabled={verifying || (!integration && !apiKey)}
                 className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
               >
-                {verifying ? "Checking…" : "Verify"}
+                {verifying ? gt("Checking…") : gt("Verify")}
               </button>
               {integration && (
                 <button
@@ -242,23 +253,25 @@ export function LinearSection() {
                   onClick={() => void disconnect()}
                   className="px-3 py-1.5 text-sm font-medium text-danger hover:text-danger-strong"
                 >
-                  Disconnect
+                  {gt("Disconnect")}
                 </button>
               )}
             </div>
           )}
 
           <section className="space-y-3">
-            <h2 className="text-sm font-semibold">Filed issues</h2>
+            <h2 className="text-sm font-semibold">{gt("Filed issues")}</h2>
             {!integration ? (
               <p className="text-sm text-on-surface-muted">
-                Connect Linear to start filing findings.
+                {gt("Connect Linear to start filing findings.")}
               </p>
             ) : links.length === 0 ? (
-              <p className="text-sm text-on-surface-muted">
-                Nothing filed yet. The file button appears on cost anomalies, savings findings, and
-                posture findings.
-              </p>
+              <T>
+                <p className="text-sm text-on-surface-muted">
+                  Nothing filed yet. The file button appears on cost anomalies, savings findings,
+                  and posture findings.
+                </p>
+              </T>
             ) : (
               <ul className="border border-border rounded-xl divide-y divide-border/50">
                 {links.map((link) => (

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useGT } from "gt-react";
 
 import { Modal } from "../components/Modal.js";
 import { formatMoney } from "./transform.js";
@@ -26,6 +27,7 @@ export function BudgetPickerModal({
   onPick,
   onClose,
 }: BudgetPickerModalProps) {
+  const gt = useGT();
   const [budgets, setBudgets] = useState<BudgetWithStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -52,12 +54,15 @@ export function BudgetPickerModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel="Add an existing budget">
+    <Modal onClose={onClose} ariaLabel={gt("Add an existing budget")}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[420px] p-6">
-        <h2 className="text-base font-semibold text-on-surface mb-1">Add an existing budget</h2>
+        <h2 className="text-base font-semibold text-on-surface mb-1">
+          {gt("Add an existing budget")}
+        </h2>
         <p className="text-xs text-on-surface-faint mb-4">
-          Shows a card for a budget you already have. The budget itself is unchanged, and removing
-          the card later leaves it alone.
+          {gt(
+            "Shows a card for a budget you already have. The budget itself is unchanged, and removing the card later leaves it alone.",
+          )}
         </p>
 
         {error !== null && (
@@ -68,15 +73,15 @@ export function BudgetPickerModal({
 
         {budgets === null && error === null && (
           <p role="status" className="text-sm text-on-surface-faint">
-            Loading budgets…
+            {gt("Loading budgets…")}
           </p>
         )}
 
         {budgets !== null && available.length === 0 && (
           <p className="text-sm text-on-surface-faint">
             {budgets.length === 0
-              ? "This org has no budgets yet. Create one instead."
-              : "Every budget is already on this dashboard."}
+              ? gt("This org has no budgets yet. Create one instead.")
+              : gt("Every budget is already on this dashboard.")}
           </p>
         )}
 
@@ -105,7 +110,7 @@ export function BudgetPickerModal({
             onClick={onClose}
             className="rounded-lg border border-border px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import { formatErrorMessage } from "../utils.js";
 import { CollectionListItem, DocumentRow, InsertDocumentPanel } from "./document-browser-shared.js";
 
@@ -28,6 +29,7 @@ export function FirestoreDocumentBrowser({
   singleCollection = false,
   onCommand,
 }: FirestoreDocumentBrowserProps) {
+  const gt = useGT();
   const [collections, setCollections] = useState<string[]>([]);
   const [activeCollection, setActiveCollection] = useState<string | null>(null);
   const [documents, setDocuments] = useState<Record<string, unknown>[]>([]);
@@ -193,7 +195,7 @@ export function FirestoreDocumentBrowser({
   if (!connected) {
     return (
       <div className="flex-1 flex items-center justify-center text-on-surface-faint text-sm">
-        Connecting to Firestore…
+        {gt("Connecting to Firestore…")}
       </div>
     );
   }
@@ -204,14 +206,14 @@ export function FirestoreDocumentBrowser({
         <div className="w-64 border-r border-border flex flex-col overflow-hidden flex-shrink-0 bg-surface">
           <div className="px-3 py-2 border-b border-border/60 flex items-center justify-between">
             <span className="text-xs font-semibold text-on-surface-tertiary uppercase tracking-wide">
-              Collections
+              {gt("Collections")}
             </span>
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => void refreshCollections()}
                 className="text-on-surface-faint hover:text-on-surface-secondary transition-colors text-xs leading-none"
-                title="Refresh"
+                title={gt("Refresh")}
               >
                 ↻
               </button>
@@ -219,7 +221,7 @@ export function FirestoreDocumentBrowser({
                 type="button"
                 onClick={() => setShowNewCollection((v) => !v)}
                 className="text-on-surface-faint hover:text-on-surface-secondary transition-colors text-sm leading-none"
-                title="Add collection"
+                title={gt("Add collection")}
               >
                 +
               </button>
@@ -229,14 +231,14 @@ export function FirestoreDocumentBrowser({
             <div className="p-2 border-b border-border/60 flex gap-1">
               <input
                 ref={newCollectionInputRef}
-                aria-label="New collection name"
+                aria-label={gt("New collection name")}
                 value={newCollectionName}
                 onChange={(e) => setNewCollectionName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleAddCollection();
                   if (e.key === "Escape") setShowNewCollection(false);
                 }}
-                placeholder="collection name"
+                placeholder={gt("collection name")}
                 className="flex-1 min-w-0 bg-surface-raised border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
               />
               <button
@@ -244,16 +246,16 @@ export function FirestoreDocumentBrowser({
                 onClick={handleAddCollection}
                 className="px-2 py-1 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 transition-colors flex-shrink-0"
               >
-                Add
+                {gt("Add")}
               </button>
             </div>
           )}
           <div className="flex-1 overflow-y-auto py-1">
             {collectionsLoading ? (
-              <div className="px-3 py-2 text-xs text-on-surface-faint">Loading…</div>
+              <div className="px-3 py-2 text-xs text-on-surface-faint">{gt("Loading…")}</div>
             ) : collections.length === 0 ? (
               <div className="px-3 py-2 text-xs text-on-surface-faint">
-                No collections. Use + to start one.
+                {gt("No collections. Use + to start one.")}
               </div>
             ) : (
               collections.map((col) => (
@@ -284,13 +286,13 @@ export function FirestoreDocumentBrowser({
           <span className="text-xs text-on-surface-muted flex-shrink-0">
             {activeCollection ? (
               <>
-                {singleCollection ? "Table" : "Collection"}:{" "}
+                {singleCollection ? gt("Table") : gt("Collection")}:{" "}
                 <span className="text-on-surface-secondary">{activeCollection}</span>
               </>
             ) : singleCollection ? (
-              "Loading…"
+              gt("Loading…")
             ) : (
-              "Select a collection"
+              gt("Select a collection")
             )}
           </span>
           <div className="flex-1" />
@@ -298,9 +300,9 @@ export function FirestoreDocumentBrowser({
             type="button"
             onClick={() => void fetchDocuments()}
             className="px-2 py-1 rounded text-xs text-on-surface-muted hover:text-on-surface-secondary transition-colors"
-            title="Refresh"
+            title={gt("Refresh")}
           >
-            Refresh
+            {gt("Refresh")}
           </button>
           {activeCollection && (
             <button
@@ -308,7 +310,7 @@ export function FirestoreDocumentBrowser({
               onClick={() => setShowInsertDoc((v) => !v)}
               className="px-2.5 py-1 rounded bg-blue-600/80 border border-blue-500/50 text-xs text-white hover:bg-blue-600 transition-colors"
             >
-              + Insert
+              {gt("+ Insert")}
             </button>
           )}
         </div>
@@ -336,15 +338,15 @@ export function FirestoreDocumentBrowser({
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
           {!activeCollection ? (
             <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-              {singleCollection ? "Loading…" : "Select a collection"}
+              {singleCollection ? gt("Loading…") : gt("Select a collection")}
             </div>
           ) : loading ? (
             <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-              Loading…
+              {gt("Loading…")}
             </div>
           ) : documents.length === 0 ? (
             <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-              No documents
+              {gt("No documents")}
             </div>
           ) : (
             <div className="divide-y divide-border/50">
@@ -371,8 +373,11 @@ export function FirestoreDocumentBrowser({
           <div className="flex items-center justify-between px-3 py-2 border-t border-border/60 bg-surface">
             <span className="text-xs text-on-surface-muted">
               {totalCount !== null
-                ? `${totalCount.toLocaleString()} document${totalCount === 1 ? "" : "s"}`
-                : `Page ${page + 1}`}
+                ? gt("{count} document{suffix}", {
+                    count: totalCount.toLocaleString(),
+                    suffix: totalCount === 1 ? "" : "s",
+                  })
+                : gt("Page {page}", { page: page + 1 })}
             </span>
             <div className="flex items-center gap-1.5">
               <button
@@ -381,7 +386,7 @@ export function FirestoreDocumentBrowser({
                 disabled={page === 0}
                 className="px-2 py-0.5 rounded text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
               >
-                Prev
+                {gt("Prev")}
               </button>
               <span className="text-xs text-on-surface-muted">
                 {page + 1} / {totalPages}
@@ -392,7 +397,7 @@ export function FirestoreDocumentBrowser({
                 disabled={!hasMore}
                 className="px-2 py-0.5 rounded text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
               >
-                Next
+                {gt("Next")}
               </button>
             </div>
           </div>

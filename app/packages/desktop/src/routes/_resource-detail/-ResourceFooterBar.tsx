@@ -1,3 +1,5 @@
+import { useGT } from "gt-react";
+
 interface ResourceFooterBarProps {
   canDelete: boolean;
   canEdit: boolean;
@@ -17,6 +19,7 @@ export function ResourceFooterBar({
   onConfirmDelete,
   onEdit,
 }: ResourceFooterBarProps) {
+  const gt = useGT();
   return (
     <div className="shrink-0 px-4 py-2 border-t border-border flex items-center justify-end gap-3">
       {hasCredentialFormats && (
@@ -25,7 +28,7 @@ export function ResourceFooterBar({
           onClick={onShowExportCredential}
           className="text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
         >
-          Get credentials…
+          {gt("Get credentials…")}
         </button>
       )}
       {canEdit && (
@@ -34,7 +37,7 @@ export function ResourceFooterBar({
           onClick={onEdit}
           className="text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
         >
-          Edit {resourceTypeLabel}…
+          {gt("Edit {type}…", { type: resourceTypeLabel })}
         </button>
       )}
       {canDelete && (
@@ -43,7 +46,7 @@ export function ResourceFooterBar({
           onClick={onConfirmDelete}
           className="text-xs text-on-surface-faint hover:text-danger transition-colors px-2 py-1 rounded hover:bg-red-500/10"
         >
-          Delete {resourceTypeLabel}…
+          {gt("Delete {type}…", { type: resourceTypeLabel })}
         </button>
       )}
     </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { T, useGT } from "gt-react";
 import type { MsTeamsWebhook } from "@infrawrench/client-core";
 import { useSettingsHost } from "../host.js";
 import { Field, inputClass } from "./shared.js";
@@ -29,6 +30,7 @@ export function TeamsMark({ className }: { className?: string }) {
  * and the disclosure below carries the steps to get one.
  */
 export function MsTeamsSection({ orgId, embedded = false }: { orgId: string; embedded?: boolean }) {
+  const gt = useGT();
   const { api } = useSettingsHost();
   const [webhooks, setWebhooks] = useState<MsTeamsWebhook[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +44,7 @@ export function MsTeamsSection({ orgId, embedded = false }: { orgId: string; emb
       const r = await api.get<{ webhooks: MsTeamsWebhook[] }>(`/api/org/${orgId}/msteams/status`);
       setWebhooks(r.webhooks);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load Teams settings");
+      setError(e instanceof Error ? e.message : gt("Failed to load Teams settings"));
     }
   }
 
@@ -65,10 +67,16 @@ export function MsTeamsSection({ orgId, embedded = false }: { orgId: string; emb
       );
       setTestMessage({
         kind: "ok",
-        text: `Posted to ${r.succeeded}/${r.webhookCount} channel(s).`,
+        text: gt("Posted to {succeeded}/{count} channel(s).", {
+          succeeded: r.succeeded,
+          count: r.webhookCount,
+        }),
       });
     } catch (e) {
-      setTestMessage({ kind: "error", text: e instanceof Error ? e.message : "Test failed" });
+      setTestMessage({
+        kind: "error",
+        text: e instanceof Error ? e.message : gt("Test failed"),
+      });
     } finally {
       setBusy(false);
     }
@@ -84,11 +92,11 @@ export function MsTeamsSection({ orgId, embedded = false }: { orgId: string; emb
   if (!webhooks) {
     return shell(
       <>
-        <h2 className="text-sm font-semibold text-on-surface-secondary">Microsoft Teams</h2>
+        <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Microsoft Teams")}</h2>
         {error ? (
           <p className="text-xs text-danger">{error}</p>
         ) : (
-          <p className="text-sm text-on-surface-faint">Loading…</p>
+          <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
         )}
       </>,
       "space-y-2",
@@ -99,31 +107,40 @@ export function MsTeamsSection({ orgId, embedded = false }: { orgId: string; emb
     <>
       <div className="flex items-center gap-2">
         <TeamsMark className="w-4 h-4" />
-        <h2 className="text-sm font-semibold text-on-surface-secondary">Microsoft Teams</h2>
+        <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Microsoft Teams")}</h2>
       </div>
 
-      <p className="text-xs text-on-surface-muted">
-        Add a channel by pasting the webhook URL from a Teams <strong>Workflows</strong> automation.
-      </p>
+      <T>
+        <p className="text-xs text-on-surface-muted">
+          Add a channel by pasting the webhook URL from a Teams <strong>Workflows</strong>{" "}
+          automation.
+        </p>
+      </T>
 
       <details className="text-xs text-on-surface-muted">
         <summary className="cursor-pointer text-on-surface-tertiary hover:text-on-surface-secondary">
-          How do I get one?
+          {gt("How do I get one?")}
         </summary>
         <ol className="list-decimal ml-5 mt-2 space-y-1">
-          <li>
-            In Teams, hover the channel you want alerts in and choose{" "}
-            <strong>More options (…) → Workflows</strong>.
-          </li>
-          <li>
-            Pick the <strong>Post to a channel when a webhook request is received</strong> template.
-          </li>
-          <li>Name it, confirm the team and channel, and select Create.</li>
-          <li>Copy the webhook URL it shows you and paste it below.</li>
+          <T>
+            <li>
+              In Teams, hover the channel you want alerts in and choose{" "}
+              <strong>More options (…) → Workflows</strong>.
+            </li>
+          </T>
+          <T>
+            <li>
+              Pick the <strong>Post to a channel when a webhook request is received</strong>{" "}
+              template.
+            </li>
+          </T>
+          <li>{gt("Name it, confirm the team and channel, and select Create.")}</li>
+          <li>{gt("Copy the webhook URL it shows you and paste it below.")}</li>
         </ol>
         <p className="mt-2">
-          The URL is a credential — anyone holding it can post to that channel. It&apos;s stored
-          encrypted and never shown again after you add it.
+          {gt(
+            "The URL is a credential — anyone holding it can post to that channel. It's stored encrypted and never shown again after you add it.",
+          )}
         </p>
       </details>
 
@@ -144,7 +161,7 @@ export function MsTeamsSection({ orgId, embedded = false }: { orgId: string; emb
                   onClick={() => void handleRemove(w.id)}
                   className="text-danger hover:text-danger-strong"
                 >
-                  Remove
+                  {gt("Remove")}
                 </button>
               </div>
             </li>
@@ -165,10 +182,10 @@ export function MsTeamsSection({ orgId, embedded = false }: { orgId: string; emb
           type="button"
           onClick={() => void handleTest()}
           disabled={busy || webhooks.length === 0}
-          title={webhooks.length === 0 ? "Add a channel first" : undefined}
+          title={webhooks.length === 0 ? gt("Add a channel first") : undefined}
           className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
         >
-          {busy ? "Posting…" : "Send test message"}
+          {busy ? gt("Posting…") : gt("Send test message")}
         </button>
       </div>
     </>,
@@ -177,6 +194,7 @@ export function MsTeamsSection({ orgId, embedded = false }: { orgId: string; emb
 
 /** Paste-a-URL form. The server validates the host and returns the error to show. */
 function AddMsTeamsWebhook({ orgId, onAdded }: { orgId: string; onAdded: () => void }) {
+  const gt = useGT();
   const { api } = useSettingsHost();
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
@@ -192,7 +210,7 @@ function AddMsTeamsWebhook({ orgId, onAdded }: { orgId: string; onAdded: () => v
       setUrl("");
       onAdded();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add the channel");
+      setError(e instanceof Error ? e.message : gt("Failed to add the channel"));
     } finally {
       setSaving(false);
     }
@@ -200,20 +218,20 @@ function AddMsTeamsWebhook({ orgId, onAdded }: { orgId: string; onAdded: () => v
 
   return (
     <div className="pt-2 border-t border-border/50 space-y-2">
-      <Field label="Label">
+      <Field label={gt("Label")}>
         <input
           type="text"
-          aria-label="Label"
+          aria-label={gt("Label")}
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          placeholder="#alerts (Platform)"
+          placeholder={gt("#alerts (Platform)")}
           className={inputClass}
         />
       </Field>
-      <Field label="Webhook URL">
+      <Field label={gt("Webhook URL")}>
         <input
           type="url"
-          aria-label="Webhook URL"
+          aria-label={gt("Webhook URL")}
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder="https://…/workflows/…/triggers/manual/paths/invoke?…"
@@ -228,7 +246,7 @@ function AddMsTeamsWebhook({ orgId, onAdded }: { orgId: string; onAdded: () => v
           disabled={saving || !label.trim() || !url.trim()}
           className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
         >
-          {saving ? "Adding…" : "Add channel"}
+          {saving ? gt("Adding…") : gt("Add channel")}
         </button>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import { T, Var, useGT } from "gt-react";
 import {
   blastRadiusReferenceLabel,
   dependencyEdgeLabel,
@@ -27,19 +28,24 @@ interface BlastRadiusPanelProps {
  * dialog is where you find out, this is where you plan.
  */
 export function BlastRadiusPanel({ client, resourceId, onOpenResource }: BlastRadiusPanelProps) {
+  const gt = useGT();
   const { report, loading, error } = useBlastRadius(client, resourceId);
 
   if (loading) {
-    return <p className="p-6 text-sm text-on-surface-muted">Working out what depends on this…</p>;
+    return (
+      <p className="p-6 text-sm text-on-surface-muted">{gt("Working out what depends on this…")}</p>
+    );
   }
   if (error || !report) {
     return (
       <div className="p-6">
-        <p className="text-sm text-on-surface-secondary">
-          Couldn&apos;t work out this resource&apos;s blast radius.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-secondary">
+            Couldn&apos;t work out this resource&apos;s blast radius.
+          </p>
+        </T>
         <p className="mt-1 text-xs text-on-surface-faint">
-          {error ?? "The impact report is unavailable."}
+          {error ?? gt("The impact report is unavailable.")}
         </p>
       </div>
     );
@@ -47,16 +53,18 @@ export function BlastRadiusPanel({ client, resourceId, onOpenResource }: BlastRa
 
   return (
     <div className="p-6 space-y-6">
-      <section aria-label="Summary">
+      <section aria-label={gt("Summary")}>
         <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
-          If this is deleted
+          {gt("If this is deleted")}
         </h3>
         <p className="mt-1 text-sm text-on-surface">{report.headline}</p>
-        <p className="mt-0.5 text-xs text-on-surface-faint">
-          {report.directCount} direct, {report.transitiveCount} further down the chain,{" "}
-          {report.references.length} other reference
-          {report.references.length === 1 ? "" : "s"}.
-        </p>
+        <T>
+          <p className="mt-0.5 text-xs text-on-surface-faint">
+            <Var>{report.directCount}</Var> direct, <Var>{report.transitiveCount}</Var> further down
+            the chain, <Var>{report.references.length}</Var> other reference
+            <Var>{report.references.length === 1 ? "" : "s"}</Var>.
+          </p>
+        </T>
       </section>
 
       <DependantList
@@ -77,15 +85,18 @@ function DependantList({
   dependants: BlastRadiusDependant[];
   onOpenResource?: OpenBlastRadiusResource;
 }) {
+  const gt = useGT();
   return (
-    <section aria-label="Dependants">
+    <section aria-label={gt("Dependants")}>
       <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
-        Resources that depend on this
+        {gt("Resources that depend on this")}
       </h3>
       {dependants.length === 0 ? (
-        <p className="mt-2 text-sm text-on-surface-muted">
-          No other resource in this organization points at it.
-        </p>
+        <T>
+          <p className="mt-2 text-sm text-on-surface-muted">
+            No other resource in this organization points at it.
+          </p>
+        </T>
       ) : (
         <ul className="mt-3 space-y-2">
           {dependants.map((d) => {
@@ -122,7 +133,7 @@ function DependantList({
                         : "bg-surface-overlay text-on-surface-faint"
                     }`}
                   >
-                    {d.depth === 1 ? "direct" : `${d.depth} hops`}
+                    {d.depth === 1 ? gt("direct") : gt("{depth} hops", { depth: d.depth })}
                   </span>
                 </span>
               </>
@@ -152,18 +163,23 @@ function DependantList({
 }
 
 function ReferenceList({ references }: { references: BlastRadiusReference[] }) {
+  const gt = useGT();
   return (
-    <section aria-label="References">
+    <section aria-label={gt("References")}>
       <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
-        Things that point at it
+        {gt("Things that point at it")}
       </h3>
-      <p className="text-xs text-on-surface-faint mt-0.5">
-        These don&apos;t break — they quietly stop having anything to show.
-      </p>
-      {references.length === 0 ? (
-        <p className="mt-2 text-sm text-on-surface-muted">
-          Nothing charts, watches, schedules or claims this resource.
+      <T>
+        <p className="text-xs text-on-surface-faint mt-0.5">
+          These don&apos;t break — they quietly stop having anything to show.
         </p>
+      </T>
+      {references.length === 0 ? (
+        <T>
+          <p className="mt-2 text-sm text-on-surface-muted">
+            Nothing charts, watches, schedules or claims this resource.
+          </p>
+        </T>
       ) : (
         <ul className="mt-3 space-y-2">
           {references.map((ref) => (
@@ -182,7 +198,7 @@ function ReferenceList({ references }: { references: BlastRadiusReference[] }) {
               </span>
               {ref.userFacing && (
                 <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/15 text-danger flex-shrink-0">
-                  customer-visible
+                  {gt("customer-visible")}
                 </span>
               )}
             </li>
@@ -194,24 +210,32 @@ function ReferenceList({ references }: { references: BlastRadiusReference[] }) {
 }
 
 function FlowList({ report }: { report: BlastRadiusReport }) {
+  const gt = useGT();
   return (
-    <section aria-label="Network traffic">
+    <section aria-label={gt("Network traffic")}>
       <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
-        What talks to it
+        {gt("What talks to it")}
       </h3>
       {report.flowTotals === null ? (
-        <p className="mt-2 text-sm text-on-surface-muted">
-          Traffic wasn&apos;t measured — see what wasn&apos;t checked below.
-        </p>
+        <T>
+          <p className="mt-2 text-sm text-on-surface-muted">
+            Traffic wasn&apos;t measured — see what wasn&apos;t checked below.
+          </p>
+        </T>
       ) : report.flowPeers.length === 0 ? (
-        <p className="mt-2 text-sm text-on-surface-muted">
-          No attributed traffic in the last 14 days.
-        </p>
+        <T>
+          <p className="mt-2 text-sm text-on-surface-muted">
+            No attributed traffic in the last 14 days.
+          </p>
+        </T>
       ) : (
         <>
-          <p className="text-xs text-on-surface-faint mt-0.5">
-            {formatFlowBytes(report.flowTotals.bytes)} over the last 14 days. Volumes are estimates.
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-faint mt-0.5">
+              <Var>{formatFlowBytes(report.flowTotals.bytes)}</Var> over the last 14 days. Volumes
+              are estimates.
+            </p>
+          </T>
           <ul className="mt-3 space-y-2">
             {report.flowPeers.map((peer) => (
               <FlowRow key={`${peer.direction}:${peer.scope}:${peer.ref}`} peer={peer} />
@@ -224,16 +248,20 @@ function FlowList({ report }: { report: BlastRadiusReport }) {
 }
 
 function FlowRow({ peer }: { peer: BlastRadiusFlowPeer }) {
+  const gt = useGT();
   return (
     <li className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-surface-raised">
       <span className="text-xs px-1.5 py-0.5 rounded bg-surface-overlay text-on-surface-muted flex-shrink-0">
-        {peer.direction === "egress" ? "to" : "from"}
+        {peer.direction === "egress" ? gt("to") : gt("from")}
       </span>
       <span className="flex-1 min-w-0">
         <span className="block text-sm text-on-surface truncate">{peer.label}</span>
-        <span className="block text-xs text-on-surface-muted truncate">
-          {peer.scope} · {peer.days} day{peer.days === 1 ? "" : "s"}
-        </span>
+        <T>
+          <span className="block text-xs text-on-surface-muted truncate">
+            <Var>{peer.scope}</Var> · <Var>{peer.days}</Var> day
+            <Var>{peer.days === 1 ? "" : "s"}</Var>
+          </span>
+        </T>
       </span>
       <span className="text-xs text-on-surface-faint font-mono flex-shrink-0">
         {formatFlowBytes(peer.bytes)}
@@ -247,22 +275,23 @@ function FlowRow({ peer }: { peer: BlastRadiusFlowPeer }) {
  * long dependant list can still be missing the half nobody looked at.
  */
 function GapList({ report }: { report: BlastRadiusReport }) {
+  const gt = useGT();
   if (report.unchecked.length === 0) {
     return (
-      <section aria-label="Coverage">
+      <section aria-label={gt("Coverage")}>
         <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
-          What wasn&apos;t checked
+          {gt("What wasn't checked")}
         </h3>
         <p className="mt-2 text-sm text-on-surface-muted">
-          Everything this report can look at was checked.
+          {gt("Everything this report can look at was checked.")}
         </p>
       </section>
     );
   }
   return (
-    <section aria-label="Coverage">
+    <section aria-label={gt("Coverage")}>
       <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
-        What wasn&apos;t checked
+        {gt("What wasn't checked")}
       </h3>
       <ul className="mt-2 space-y-1.5">
         {report.unchecked.map((gap, i) => (
