@@ -11,7 +11,7 @@ edge network **outside** your clusters and clouds, records the latency and statu
 same metric store your resource charts read from, and pages you (push, Slack, Microsoft
 Teams) when the endpoint fails enough checks in a row.
 
-<insert [The Probes tab showing a list of probes — one down (red dot with the failure reason), several up with uptime percentages and last latencies — with one row expanded into its 24-hour latency chart] here>
+![The Probes tab showing a list of probes — one down (red dot with the failure reason), several up with uptime percentages and last latencies — with one row expanded into its 24-hour latency chart](https://agent-assets.infrawrench.com/docs-screenshots/features/synthetic-probes/probes-list-expanded.png)
 
 Find it under **Probes** in the sidebar on both the web app and the desktop app (cloud mode
 — the checks run server-side). The mobile app has a read-only Probes screen for answering

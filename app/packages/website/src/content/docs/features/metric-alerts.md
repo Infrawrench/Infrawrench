@@ -12,7 +12,7 @@ were notified about is followed by a matching **resolved** notification, so an a
 tells you both halves of the story. (Firings suppressed by the rule's cooldown recover just
 as quietly as they fired — see below.)
 
-<insert [The Metric alerts page showing a list of rules — one firing (red dot, "firing on 2 resources"), one healthy, one disabled — above the Recent firings table] here>
+![The Metric alerts page showing a list of rules — one firing (red dot, "firing on 2 resources"), one healthy, one disabled — above the Recent firings table](https://agent-assets.infrawrench.com/docs-screenshots/features/metric-alerts/metric-alerts-list.png)
 
 Find it under **Alerts** in the sidebar, next to Costs, on both the web app and the desktop
 app. The `infrawrench` [CLI](./cli.md) lists the same rules and their firing history with

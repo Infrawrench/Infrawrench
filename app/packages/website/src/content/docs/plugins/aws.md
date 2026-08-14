@@ -154,4 +154,4 @@ The VPC wiring is declared, so the [dependency graph](../features/dependency-gra
 
 **DB subnet groups** are listed as their own resource so database clusters reach the network. AWS reports a cluster's placement as nothing but the subnet group's name, so Aurora, DocumentDB and Neptune clusters link to their **DB subnet group**, and the group in turn links to its **VPC** and each **subnet** it spans. Opening the group shows every database sharing that placement.
 
-<insert [Dependency graph showing an Aurora cluster linked to a DB subnet group, which fans out to a VPC and two subnets] here>
+![Dependency graph showing an Aurora cluster linked to a DB subnet group, which fans out to a VPC and two subnets](https://agent-assets.infrawrench.com/docs-screenshots/plugins/aws/dependency-graph-aurora-subnet-group.png)

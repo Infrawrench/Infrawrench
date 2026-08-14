@@ -16,7 +16,7 @@ Open a DNS zone (Cloudflare zone, DigitalOcean domain, Route 53 hosted zone, Clo
 - The first cell of each row is a button (**Edit _name_**, or **Open _name_** for tables that navigate). Activating it opens an **inline edit form** right on the zone page (no navigation); the trailing **Delete** button removes the record. Both are ordinary tab stops.
 - **+ Create DNS Record** opens the create form.
 
-<insert [DNS zone detail page showing the DNS Records table with type badges and proxy indicators] here>
+![DNS zone detail page showing the DNS Records table with type badges and proxy indicators](https://agent-assets.infrawrench.com/docs-screenshots/features/dns-records/dns-records-table.png)
 
 ## Pointing a record at a resource
 
@@ -30,9 +30,9 @@ The picker searches **every account in your org** whose provider can produce tha
 
 Prefer to type a value? Switch **Value source** to **Use custom value** and enter it directly. Record types that aren't A/AAAA/CNAME (MX, TXT, SRV, …) are always a plain text field.
 
-<insert [DNS record create form for an A record with the resource picker open, listing IP-producing resources across accounts] here>
+![DNS record create form for an A record with the resource picker open, listing IP-producing resources across accounts](https://agent-assets.infrawrench.com/docs-screenshots/features/dns-records/create-record-resource-picker.png)
 
-<insert [DNS record create form with the "Use custom value" toggle enabled, showing the plain text fallback] here>
+![DNS record create form with the "Use custom value" toggle enabled, showing the plain text fallback](https://agent-assets.infrawrench.com/docs-screenshots/features/dns-records/create-record-custom-value.png)
 
 ## Live tracking
 

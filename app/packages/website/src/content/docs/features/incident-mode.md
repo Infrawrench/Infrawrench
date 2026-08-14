@@ -20,7 +20,7 @@ same ones you already configured, not incident-mode copies of them.
 > Everywhere the two could be confused, this one is spelled out: the CLI command is
 > `infrawrench declared-incidents`, because `infrawrench incidents` was already the providers'.
 
-<insert [The Incidents workspace tab showing a list with one open SEV1 and two resolved incidents, severity chips visible] here>
+![The Incidents workspace tab showing a list with one open SEV1 and two resolved incidents, severity chips visible](https://agent-assets.infrawrench.com/docs-screenshots/features/incident-mode/incidents-list.png)
 
 ## Declaring
 
@@ -41,7 +41,7 @@ The form asks for a title and a severity (SEV1–SEV4), and offers four things t
 The two that are off by default are the two with blast radius beyond the incident. The two
 that are on only help.
 
-<insert [The Declare incident modal with a title filled in, SEV1 selected, and the four action checkboxes visible] here>
+![The Declare incident modal with a title filled in, SEV1 selected, and the four actions visible — three checkboxes plus the "Tell the public" status-page picker](https://agent-assets.infrawrench.com/docs-screenshots/features/incident-mode/declare-incident-modal.png)
 
 ### If something fails, you still have the incident
 
