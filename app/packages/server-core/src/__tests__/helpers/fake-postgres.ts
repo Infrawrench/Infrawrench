@@ -48,6 +48,7 @@
  */
 import { drizzle } from "drizzle-orm/pg-proxy";
 import postgres from "postgres";
+import { vi } from "vitest";
 import * as schema from "../../db/schema";
 
 let shadow: postgres.Sql | null = null;
@@ -68,6 +69,12 @@ function shadowConnection(): postgres.Sql | null {
 }
 
 async function shadowValidate(statement: string): Promise<void> {
+  // A real network round trip cannot complete under vi.useFakeTimers() —
+  // postgres.js's connection machinery schedules real timers, so the PREPARE
+  // would hang until the test times out. Statements issued inside a
+  // fake-timer window are skipped; in practice the same statements are also
+  // issued by the suite's real-timer tests and validated there.
+  if (vi.isFakeTimers()) return;
   const sql = shadowConnection();
   if (!sql) return;
   const name = `__iw_shadow_${++prepareSeq}`;
