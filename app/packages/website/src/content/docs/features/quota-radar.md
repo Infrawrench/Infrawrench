@@ -13,7 +13,7 @@ The **Quotas** page watches it. Infrawrench reads each account's quotas from its
 few times a day, records a snapshot every time, and shows you how close you are, which way
 it is moving, and roughly when you run out.
 
-<insert [The Quotas page grouped by account, showing several utilisation bars — one red at 100%, two orange past the threshold marker, the rest muted — with the used/limit figures and a "full in 6 days" trend column] here>
+![The Quotas page grouped by account, showing several utilisation bars — one red at 100%, two orange past the threshold marker, the rest muted — with the used/limit figures and a "full in 6 days" trend column](https://agent-assets.infrawrench.com/docs-screenshots/features/quota-radar/quotas-grouped-by-account.png)
 
 Find it under **Quotas** in the sidebar on the web app and on the desktop app in cloud mode.
 

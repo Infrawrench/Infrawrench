@@ -100,12 +100,12 @@ Change alerts live on the **Costs panel**, next to the anomalies section, on bot
 desktop. The list shows each alert's cadence, threshold, scope, and when it last fired;
 recent firings are listed underneath with the previous → current amounts and the change.
 
-<insert [Costs panel change-alerts section showing two configured alerts (one weekly per-service alert, one monthly total alert) and a recent-firings table with previous → current amounts and percent deltas] here>
+![Costs panel change-alerts section showing two configured alerts (one weekly per-service alert, one monthly total alert) and a recent-firings table with previous → current amounts and percent deltas](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-change-alerts/alerts-and-firings.png)
 
 Creating or editing an alert opens a modal with the cadence, direction, thresholds, group-by
 picker, and the same filter rows the budget editor uses.
 
-<insert [Change alert editor modal with a weekly cadence selected, both thresholds filled in (25% and $100), "Each service separately" chosen in the Watch picker, and one provider filter row] here>
+![Change alert editor modal with a weekly cadence selected, both thresholds filled in (25% and $100), "Each service separately" chosen in the Watch picker, and one provider filter row](https://agent-assets.infrawrench.com/docs-screenshots/features/cost-change-alerts/alert-editor.png)
 
 Reads require the `costs:read` permission; creating, editing, and deleting require
 `costs:write`. Mutations are recorded in the [audit log](../team-and-billing/audit-log.md).
