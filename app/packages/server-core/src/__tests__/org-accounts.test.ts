@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const mockSelect = vi.fn();
-vi.mock("../db/client", () => ({ db: { select: (...a: unknown[]) => mockSelect(...a) } }));
+import { fakePostgres } from "./helpers/fake-postgres";
+
+// Real Drizzle over a recording driver: the account lookup below renders its
+// actual SQL (and shadow-validates it under test:postgres:shadow).
+const pg = fakePostgres();
+vi.mock("../db/client", () => ({ db: pg.db }));
 
 vi.mock("../encryption", () => ({
   decrypt: vi.fn().mockResolvedValue(JSON.stringify({ token: "secret" })),
@@ -25,19 +29,21 @@ const { getOrgAccountClient } = await import("../org-accounts");
 describe("getOrgAccountClient", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pg.reset();
     mockApplyRewriters.mockResolvedValue(undefined);
   });
 
-  function selectAccount(rows: unknown[]) {
-    const limit = vi.fn().mockResolvedValue(rows);
-    const where = vi.fn().mockReturnValue({ limit });
-    const from = vi.fn().mockReturnValue({ where });
-    mockSelect.mockReturnValue({ from });
+  // Keys in projection order — see helpers/fake-postgres.ts.
+  function selectAccount(rows: Array<Record<string, unknown>>) {
+    pg.setRows(rows);
   }
 
   it("returns null when the account does not exist", async () => {
     selectAccount([]);
     expect(await getOrgAccountClient("a1", "org-1")).toBeNull();
+    expect(pg.lastQuery().sql).toContain('from "accounts"');
+    // id, organizationId, and the parameterized limit 1.
+    expect(pg.lastQuery().params).toEqual(["a1", "org-1", 1]);
   });
 
   it("returns null when the plugin is not registered", async () => {

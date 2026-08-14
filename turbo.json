@@ -58,6 +58,11 @@
         "CLICKHOUSE_METRICS_REPLICATED"
       ]
     },
+    "test:postgres:shadow": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "passThroughEnv": ["DATABASE_URL"]
+    },
     "lint": {
       "outputs": []
     },

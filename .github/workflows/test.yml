@@ -218,3 +218,8 @@ jobs:
           CLICKHOUSE_METRICS_USER: default
           CLICKHOUSE_METRICS_PASSWORD: infrawrench
           CLICKHOUSE_METRICS_DATABASE: infrawrench
+
+      - name: Shadow-run the mocked Postgres suites
+        run: pnpm test:postgres:shadow
+        env:
+          DATABASE_URL: postgres://infrawrench:infrawrench@localhost:5432/infrawrench

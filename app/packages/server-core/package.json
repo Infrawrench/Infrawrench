@@ -200,7 +200,8 @@
     "test:db": "vitest run --config vitest.db.config.ts",
     "test:postgres": "vitest run --config vitest.db.config.ts src/__tests__/db/postgres",
     "test:clickhouse": "vitest run --config vitest.db.config.ts src/__tests__/db/clickhouse",
-    "test:clickhouse:shadow": "vitest run --config vitest.shadow.config.ts"
+    "test:clickhouse:shadow": "vitest run --config vitest.shadow-clickhouse.config.ts",
+    "test:postgres:shadow": "vitest run --config vitest.shadow-postgres.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

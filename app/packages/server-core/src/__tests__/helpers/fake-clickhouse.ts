@@ -24,7 +24,7 @@
  * executed against the server named by CLICKHOUSE_METRICS_* — results are
  * discarded (the canned rows still drive the assertions), but a rejection
  * fails the test with the server's parse error. Run via
- * `pnpm test:clickhouse:shadow` (vitest.shadow.config.ts), which collects
+ * `pnpm test:clickhouse:shadow` (vitest.shadow-clickhouse.config.ts), which collects
  * every suite using this helper, migrates the schema first, and only ever
  * against a scratch server: shadow inserts really write the fixture rows.
  *
