@@ -15,7 +15,6 @@
     "generate:openapi": "tsx --import @infrawrench/server-core/env-loader scripts/generate-openapi.ts",
     "generate:sdk": "tsx --import @infrawrench/server-core/env-loader scripts/generate-sdk.ts",
     "test": "vitest run",
-    "translate": "tsx scripts/generate-plugin-strings.ts && gt translate",
     "generate:plugin-strings": "tsx scripts/generate-plugin-strings.ts",
     "translations:status": "node scripts/translation-status.mjs"
   },

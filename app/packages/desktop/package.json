@@ -16,8 +16,7 @@
     "build": "node scripts/ensure-env.mjs && electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "node scripts/ensure-env.mjs && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "dist": "node scripts/ensure-env.mjs && electron-vite build && bash build/dist.sh",
-    "translate": "gt translate"
+    "dist": "node scripts/ensure-env.mjs && electron-vite build && bash build/dist.sh"
   },
   "build": {
     "appId": "com.infrawrench.desktop",
@@ -173,7 +172,6 @@
     "electron": "^41.10.4",
     "electron-builder": "^26.15.3",
     "electron-vite": "^3.1.0",
-    "gt": "^2.16.4",
     "gt-react": "^11.1.6",
     "jsdom": "^29.1.1",
     "react": "^19.2.8",
