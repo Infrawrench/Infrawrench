@@ -3296,5 +3296,153 @@
   "c3661ff8743b5fa5": "La langue de l'application sur cet appareil. Tout ce qui n'est pas encore traduit reste en anglais.",
   "a380d1dccfc9f3b1": "Une erreur s'est produite",
   "8ea31dd4350b42f6": "Échec de la connexion",
-  "d2dbee76f0857310": "Erreur d'authentification cloud"
+  "d2dbee76f0857310": "Erreur d'authentification cloud",
+  "c6fa2905d56a750c": "Enregistré",
+  "7601c9b387458fa5": "Échec de l'enregistrement",
+  "617a7a06714b3d7f": "E-mail de vérification envoyé",
+  "d9d788b8456f63ba": "Échec de l'envoi de l'e-mail de vérification",
+  "67508b5a9a7db096": "Profil",
+  "0d97f9c66db79593": "Prénom",
+  "9fa2a817f1e9b55b": "Nom",
+  "b9296e46dc68b1f0": "Non vérifié",
+  "f5234a723ba3210f": "Renvoyer l'e-mail de vérification",
+  "0475d053cda7562e": "Provient de {providers}, où vous vous connectez.",
+  "b64b550173eacbef": "L'adresse avec laquelle vous vous connectez.",
+  "7993d7b9cdd46d1f": "Modifier l'e-mail",
+  "d2505e0475e33690": "Comptes connectés",
+  "6a07b4bf846c9204": "Membre depuis {date}",
+  "b90b10b2f20a8ad2": "Dernière connexion {date}",
+  "6ad5d5a635a11015": "Enregistrement…",
+  "bc714daca44e1826": "Enregistrer les modifications",
+  "bdb7fa26efde3ff8": "Impossible d'envoyer le code de confirmation",
+  "38cf4dbae19c4b9a": "Ce code n'est pas valide",
+  "bb6d8920e9b4cc84": "Modifier l'adresse e-mail",
+  "86d287aa1993a091": "Fermer",
+  "5e9c50c53154f569": "Nouvelle adresse e-mail",
+  "90d2d202109eff30": "Envoi…",
+  "544962de49aa4d9e": "Envoyer le code de confirmation",
+  "a6464cee110668d4": "Code de confirmation",
+  "368e9ce4b08a093e": "Confirmation…",
+  "740296adf8e1c435": "Confirmer le nouvel e-mail",
+  "e56ebd079bb751a1": "Utiliser une autre adresse",
+  "64d82b8ad26e3b52": "Échec de la création d'un lien de réinitialisation",
+  "33816562fde5450a": "Ouverture…",
+  "07c1162f1cfdff2f": "Modifier le mot de passe",
+  "28c8849bf909b80c": "Échec du chargement des paramètres de double authentification",
+  "1116ab4e8c8c225e": "Échec de la suppression",
+  "f08ec63ffa59a90f": "Authentification à deux facteurs",
+  "3105dfeab149dba3": "Ajouter une application d'authentification",
+  "cfe751680be27bc0": "Application d'authentification",
+  "2c5674665579a329": "Supprimer",
+  "b5ed5c069f6ec282": "Échec du démarrage de l'inscription",
+  "393e8f824873c6dc": "Échec de la vérification",
+  "24482e4e8c4bd590": "Préparation de la configuration de votre authentificateur…",
+  "2f975700403cbc72": "Code QR d'inscription à la double authentification",
+  "348901857e7441c1": "Ou saisissez cette clé manuellement",
+  "9e498c67d54d8c6e": "Code à six chiffres",
+  "718d30152f1d8d04": "Vérification…",
+  "c9410d73fd4ac9c0": "Activer la double authentification",
+  "d25c9f0e3de7ce4b": "Échec du chargement des sessions",
+  "a5db2bcb9f33610d": "Échec de la révocation",
+  "ccfe9d913e128fe9": "Sessions actives",
+  "d7558ce48bab6fba": "Déconnexion…",
+  "83ffe79d57901cd3": "Déconnecter les autres sessions",
+  "018d3e69e1957cc4": "Aucune session active.",
+  "589f3050d8371c67": "Cet appareil",
+  "39181872a961d8a7": "IP inconnue",
+  "a656dc69a38a3639": "Se déconnecter",
+  "df7f7b29adfd3710": "Échec du chargement",
+  "7c2e06c22290fdd0": "Supprimer le compte",
+  "87dcfee20e83e856": "compte",
+  "1dc4a269ebd1d689": "Accès d'urgence",
+  "c43974666eaeb140": "Hôtes SSH de confiance",
+  "bf9c75794ad08c4c": "Enregistrements de session",
+  "95095da7c0bf7ba6": "Bastions",
+  "88d7f8d02d897d9d": "Hygiène des identifiants",
+  "717da91a621a8b38": "Gels des changements",
+  "076c8fffbd70333b": "Politique de tags",
+  "c5414512056d66b8": "Centres de coûts",
+  "642eba1afacd3de0": "Règles de facturation",
+  "117bfdac112e9306": "Configuration en tant que code",
+  "16d517dd9d5b3772": "Exports de coûts",
+  "ce19cbab7a347f89": "Approbations",
+  "e1483914168d6b8e": "Notifications",
+  "5e6ec559838201ee": "Jira",
+  "53b4ef4917317632": "Linear",
+  "47902dbaaa7d5d74": "Facturation",
+  "4a935c423763ba0d": "Journal d'audit",
+  "0a75e464d833bca8": "Paramètres",
+  "74907ef917fc71e0": "Tableaux de bord",
+  "afda415d2d75a5d3": "Chat",
+  "c470de965e25e06c": "Ajouter un compte",
+  "7f43fd54a3b0dfda": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Nous enverrons un code de confirmation à la nouvelle adresse. Votre compte reste sur",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      "jusqu'à ce que vous le saisissiez."
+    ]
+  },
+  "b02c93877154fd47": {
+    "t": "p",
+    "i": 1,
+    "c": "Vous vous connectez avec un compte associé. Modifier cette adresse ici ne la modifiera pas là-bas : assurez-vous de pouvoir toujours vous connecter ensuite."
+  },
+  "8bf3dba4045a4039": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Saisissez le code que nous avons envoyé à",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      ". Il expire à ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      "."
+    ]
+  },
+  "c03215d803bacd8a": {
+    "t": "p",
+    "i": 1,
+    "c": "Ouvre un lien à usage unique où vous pouvez définir un nouveau mot de passe. Utilisez-le pour ajouter un mot de passe à un compte qui se connecte uniquement avec Google ou SSO."
+  },
+  "f0dfc0c8b8ab1c98": {
+    "t": "p",
+    "i": 1,
+    "c": "Ajoutez un code à usage unique basé sur le temps depuis une application d'authentification comme deuxième étape lors de la connexion."
+  },
+  "820e65c8f356048e": {
+    "t": "p",
+    "i": 1,
+    "c": "Aucune application d'authentification pour l'instant. Votre compte est protégé uniquement par votre méthode de connexion."
+  },
+  "7f2638105a7689c4": {
+    "t": "p",
+    "i": 1,
+    "c": "Scannez ce code avec votre application d'authentification, puis saisissez le code à six chiffres qu'elle affiche."
+  },
+  "13a5b716b93ecc8d": {
+    "t": "p",
+    "i": 1,
+    "c": "Partout où vous êtes actuellement connecté — l'application web, l'application de bureau, la CLI et le mobile."
+  },
+  "f13a01cf9c97edc9": {
+    "t": "p",
+    "i": 1,
+    "c": "Supprime définitivement votre compte, vos clés SSH et API, votre historique de chat et votre appartenance à toutes les organisations. Cette action est irréversible."
+  }
 }

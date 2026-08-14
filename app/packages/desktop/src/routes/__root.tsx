@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import {
   createRootRoute,
   Outlet,
@@ -242,6 +243,7 @@ function handleResourceAttach(source: DraggableResource, target: DraggableResour
 }
 
 function RootLayout() {
+  const gt = useGT();
   const {
     sidebarCollapsed,
     toggleSidebar,
@@ -701,7 +703,7 @@ function RootLayout() {
                   className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
                 >
                   <span className="text-base leading-none">+</span>
-                  Add account
+                  {gt("Add account")}
                 </button>
                 {/* Org settings are cloud-backed; local-only mode has no org
                     to configure, so no tile without one. Same shared sections

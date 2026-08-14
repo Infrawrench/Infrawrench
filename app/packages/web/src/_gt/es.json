@@ -3294,5 +3294,149 @@
     "c": "Su cuenta personal. Esta configuración le acompaña en todas las organizaciones a las que pertenece."
   },
   "c3661ff8743b5fa5": "El idioma de la app en este dispositivo. Todo lo que aún no esté traducido se mostrará en inglés.",
-  "a380d1dccfc9f3b1": "Algo salió mal"
+  "a380d1dccfc9f3b1": "Algo salió mal",
+  "c6fa2905d56a750c": "Guardado",
+  "7601c9b387458fa5": "Error al guardar",
+  "617a7a06714b3d7f": "Correo de verificación enviado",
+  "d9d788b8456f63ba": "Error al enviar el correo de verificación",
+  "67508b5a9a7db096": "Perfil",
+  "0d97f9c66db79593": "Nombre",
+  "9fa2a817f1e9b55b": "Apellido",
+  "b9296e46dc68b1f0": "Sin verificar",
+  "f5234a723ba3210f": "Reenviar correo de verificación",
+  "0475d053cda7562e": "Proviene de {providers}, donde inicias sesión.",
+  "b64b550173eacbef": "La dirección con la que inicias sesión.",
+  "7993d7b9cdd46d1f": "Cambiar correo electrónico",
+  "d2505e0475e33690": "Cuentas conectadas",
+  "6a07b4bf846c9204": "Miembro desde {date}",
+  "b90b10b2f20a8ad2": "Último inicio de sesión {date}",
+  "6ad5d5a635a11015": "Guardando…",
+  "bc714daca44e1826": "Guardar cambios",
+  "bdb7fa26efde3ff8": "No se pudo enviar el código de confirmación",
+  "38cf4dbae19c4b9a": "Ese código no es válido",
+  "bb6d8920e9b4cc84": "Cambiar dirección de correo electrónico",
+  "86d287aa1993a091": "Cerrar",
+  "5e9c50c53154f569": "Nueva dirección de correo electrónico",
+  "90d2d202109eff30": "Enviando…",
+  "544962de49aa4d9e": "Enviar código de confirmación",
+  "a6464cee110668d4": "Código de confirmación",
+  "368e9ce4b08a093e": "Confirmando…",
+  "740296adf8e1c435": "Confirmar nuevo correo electrónico",
+  "e56ebd079bb751a1": "Usar una dirección diferente",
+  "64d82b8ad26e3b52": "Error al crear un enlace de restablecimiento",
+  "33816562fde5450a": "Abriendo…",
+  "07c1162f1cfdff2f": "Cambiar contraseña",
+  "28c8849bf909b80c": "Error al cargar la configuración de dos factores",
+  "1116ab4e8c8c225e": "Error al eliminar",
+  "f08ec63ffa59a90f": "Autenticación de dos factores",
+  "3105dfeab149dba3": "Añadir aplicación de autenticación",
+  "cfe751680be27bc0": "Aplicación de autenticación",
+  "2c5674665579a329": "Eliminar",
+  "b5ed5c069f6ec282": "Error al iniciar la inscripción",
+  "393e8f824873c6dc": "Error de verificación",
+  "24482e4e8c4bd590": "Preparando la configuración de tu autenticador…",
+  "2f975700403cbc72": "Código QR de inscripción de dos factores",
+  "348901857e7441c1": "O introduce esta clave manualmente",
+  "9e498c67d54d8c6e": "Código de seis dígitos",
+  "718d30152f1d8d04": "Verificando…",
+  "c9410d73fd4ac9c0": "Activar la autenticación de dos factores",
+  "d25c9f0e3de7ce4b": "Error al cargar las sesiones",
+  "a5db2bcb9f33610d": "Error al revocar",
+  "ccfe9d913e128fe9": "Sesiones activas",
+  "d7558ce48bab6fba": "Cerrando sesión…",
+  "83ffe79d57901cd3": "Cerrar otras sesiones",
+  "018d3e69e1957cc4": "No hay sesiones activas.",
+  "589f3050d8371c67": "Este dispositivo",
+  "39181872a961d8a7": "IP desconocida",
+  "a656dc69a38a3639": "Cerrar sesión",
+  "df7f7b29adfd3710": "Error al cargar",
+  "7c2e06c22290fdd0": "Eliminar cuenta",
+  "87dcfee20e83e856": "cuenta",
+  "1dc4a269ebd1d689": "Acceso de emergencia",
+  "c43974666eaeb140": "Hosts SSH de confianza",
+  "bf9c75794ad08c4c": "Grabaciones de sesión",
+  "95095da7c0bf7ba6": "Bastiones",
+  "88d7f8d02d897d9d": "Higiene de credenciales",
+  "717da91a621a8b38": "Congelaciones de cambios",
+  "076c8fffbd70333b": "Política de etiquetas",
+  "c5414512056d66b8": "Centros de costos",
+  "642eba1afacd3de0": "Reglas de facturación",
+  "117bfdac112e9306": "Configuración como código",
+  "16d517dd9d5b3772": "Exportaciones de costos",
+  "ce19cbab7a347f89": "Aprobaciones",
+  "e1483914168d6b8e": "Notificaciones",
+  "5e6ec559838201ee": "Jira",
+  "53b4ef4917317632": "Linear",
+  "47902dbaaa7d5d74": "Facturación",
+  "4a935c423763ba0d": "Registro de auditoría",
+  "7f43fd54a3b0dfda": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Enviaremos un código de confirmación a la nueva dirección. Su cuenta permanecerá en",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      "hasta que lo introduzca."
+    ]
+  },
+  "b02c93877154fd47": {
+    "t": "p",
+    "i": 1,
+    "c": "Inicia sesión con una cuenta conectada. Cambiar esta dirección aquí no la cambiará allí, así que asegúrese de que aún podrá iniciar sesión después."
+  },
+  "8bf3dba4045a4039": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Introduzca el código que enviamos a",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      ". Caduca a las ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      "."
+    ]
+  },
+  "c03215d803bacd8a": {
+    "t": "p",
+    "i": 1,
+    "c": "Abre un enlace de un solo uso donde puede establecer una nueva contraseña. Úselo para añadir una contraseña a una cuenta que solo inicia sesión con Google o SSO."
+  },
+  "f0dfc0c8b8ab1c98": {
+    "t": "p",
+    "i": 1,
+    "c": "Añada un código de un solo uso basado en tiempo desde una aplicación de autenticación como segundo paso al iniciar sesión."
+  },
+  "820e65c8f356048e": {
+    "t": "p",
+    "i": 1,
+    "c": "Aún no hay aplicaciones de autenticación. Su cuenta está protegida únicamente por su método de inicio de sesión."
+  },
+  "7f2638105a7689c4": {
+    "t": "p",
+    "i": 1,
+    "c": "Escanee este código con su aplicación de autenticación y luego introduzca el código de seis dígitos que muestra."
+  },
+  "13a5b716b93ecc8d": {
+    "t": "p",
+    "i": 1,
+    "c": "En todos los lugares donde tiene la sesión iniciada: la aplicación web, la aplicación de escritorio, la CLI y el móvil."
+  },
+  "f13a01cf9c97edc9": {
+    "t": "p",
+    "i": 1,
+    "c": "Elimina permanentemente su cuenta, sus claves SSH y de API, su historial de chat y su pertenencia a todas las organizaciones. Esto no se puede deshacer."
+  }
 }

@@ -3294,5 +3294,149 @@
     "c": "Ihr persönliches Konto. Diese Einstellungen begleiten Sie in jeder Organisation, der Sie angehören."
   },
   "c3661ff8743b5fa5": "Die Sprache der App auf diesem Gerät. Noch nicht übersetzte Inhalte werden auf Englisch angezeigt.",
-  "a380d1dccfc9f3b1": "Etwas ist schiefgelaufen"
+  "a380d1dccfc9f3b1": "Etwas ist schiefgelaufen",
+  "c6fa2905d56a750c": "Gespeichert",
+  "7601c9b387458fa5": "Speichern fehlgeschlagen",
+  "617a7a06714b3d7f": "Bestätigungs-E-Mail gesendet",
+  "d9d788b8456f63ba": "Bestätigungs-E-Mail konnte nicht gesendet werden",
+  "67508b5a9a7db096": "Profil",
+  "0d97f9c66db79593": "Vorname",
+  "9fa2a817f1e9b55b": "Nachname",
+  "b9296e46dc68b1f0": "Nicht bestätigt",
+  "f5234a723ba3210f": "Bestätigungs-E-Mail erneut senden",
+  "0475d053cda7562e": "Stammt von {providers}, wo Sie sich anmelden.",
+  "b64b550173eacbef": "Die Adresse, mit der Sie sich anmelden.",
+  "7993d7b9cdd46d1f": "E-Mail ändern",
+  "d2505e0475e33690": "Verbundene Konten",
+  "6a07b4bf846c9204": "Mitglied seit {date}",
+  "b90b10b2f20a8ad2": "Letzte Anmeldung {date}",
+  "6ad5d5a635a11015": "Wird gespeichert…",
+  "bc714daca44e1826": "Änderungen speichern",
+  "bdb7fa26efde3ff8": "Bestätigungscode konnte nicht gesendet werden",
+  "38cf4dbae19c4b9a": "Dieser Code ist ungültig",
+  "bb6d8920e9b4cc84": "E-Mail-Adresse ändern",
+  "86d287aa1993a091": "Schließen",
+  "5e9c50c53154f569": "Neue E-Mail-Adresse",
+  "90d2d202109eff30": "Wird gesendet…",
+  "544962de49aa4d9e": "Bestätigungscode senden",
+  "a6464cee110668d4": "Bestätigungscode",
+  "368e9ce4b08a093e": "Wird bestätigt…",
+  "740296adf8e1c435": "Neue E-Mail bestätigen",
+  "e56ebd079bb751a1": "Andere Adresse verwenden",
+  "64d82b8ad26e3b52": "Zurücksetzungslink konnte nicht erstellt werden",
+  "33816562fde5450a": "Wird geöffnet…",
+  "07c1162f1cfdff2f": "Passwort ändern",
+  "28c8849bf909b80c": "Zwei-Faktor-Einstellungen konnten nicht geladen werden",
+  "1116ab4e8c8c225e": "Entfernen fehlgeschlagen",
+  "f08ec63ffa59a90f": "Zwei-Faktor-Authentifizierung",
+  "3105dfeab149dba3": "Authenticator-App hinzufügen",
+  "cfe751680be27bc0": "Authenticator-App",
+  "2c5674665579a329": "Entfernen",
+  "b5ed5c069f6ec282": "Registrierung konnte nicht gestartet werden",
+  "393e8f824873c6dc": "Verifizierung fehlgeschlagen",
+  "24482e4e8c4bd590": "Ihre Authenticator-Einrichtung wird vorbereitet…",
+  "2f975700403cbc72": "QR-Code für die Zwei-Faktor-Registrierung",
+  "348901857e7441c1": "Oder geben Sie diesen Schlüssel manuell ein",
+  "9e498c67d54d8c6e": "Sechsstelliger Code",
+  "718d30152f1d8d04": "Wird überprüft…",
+  "c9410d73fd4ac9c0": "Zwei-Faktor aktivieren",
+  "d25c9f0e3de7ce4b": "Sitzungen konnten nicht geladen werden",
+  "a5db2bcb9f33610d": "Widerrufen fehlgeschlagen",
+  "ccfe9d913e128fe9": "Aktive Sitzungen",
+  "d7558ce48bab6fba": "Wird abgemeldet…",
+  "83ffe79d57901cd3": "Andere Sitzungen abmelden",
+  "018d3e69e1957cc4": "Keine aktiven Sitzungen.",
+  "589f3050d8371c67": "Dieses Gerät",
+  "39181872a961d8a7": "Unbekannte IP",
+  "a656dc69a38a3639": "Abmelden",
+  "df7f7b29adfd3710": "Laden fehlgeschlagen",
+  "7c2e06c22290fdd0": "Konto löschen",
+  "87dcfee20e83e856": "Konto",
+  "1dc4a269ebd1d689": "Notfallzugriff",
+  "c43974666eaeb140": "Vertrauenswürdige SSH-Hosts",
+  "bf9c75794ad08c4c": "Sitzungsaufzeichnungen",
+  "95095da7c0bf7ba6": "Bastions",
+  "88d7f8d02d897d9d": "Zugangsdaten-Hygiene",
+  "717da91a621a8b38": "Änderungssperren",
+  "076c8fffbd70333b": "Tag-Richtlinie",
+  "c5414512056d66b8": "Kostenstellen",
+  "642eba1afacd3de0": "Abrechnungsregeln",
+  "117bfdac112e9306": "Config as Code",
+  "16d517dd9d5b3772": "Kostenexporte",
+  "ce19cbab7a347f89": "Genehmigungen",
+  "e1483914168d6b8e": "Benachrichtigungen",
+  "5e6ec559838201ee": "Jira",
+  "53b4ef4917317632": "Linear",
+  "47902dbaaa7d5d74": "Abrechnung",
+  "4a935c423763ba0d": "Audit-Protokoll",
+  "7f43fd54a3b0dfda": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Wir senden einen Bestätigungscode an die neue Adresse. Ihr Konto bleibt bei",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      "bis Sie ihn eingeben."
+    ]
+  },
+  "b02c93877154fd47": {
+    "t": "p",
+    "i": 1,
+    "c": "Sie melden sich mit einem verbundenen Konto an. Wenn Sie diese Adresse hier ändern, ändert sie sich dort nicht — stellen Sie also sicher, dass Sie sich danach noch anmelden können."
+  },
+  "8bf3dba4045a4039": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Geben Sie den Code ein, den wir an",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " gesendet haben. Er läuft um ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " ab."
+    ]
+  },
+  "c03215d803bacd8a": {
+    "t": "p",
+    "i": 1,
+    "c": "Öffnet einen einmaligen Link, über den Sie ein neues Passwort festlegen können. Damit fügen Sie einem Konto ein Passwort hinzu, das sich nur mit Google oder SSO anmeldet."
+  },
+  "f0dfc0c8b8ab1c98": {
+    "t": "p",
+    "i": 1,
+    "c": "Fügen Sie einen zeitbasierten Einmalcode aus einer Authenticator-App als zweiten Schritt bei der Anmeldung hinzu."
+  },
+  "820e65c8f356048e": {
+    "t": "p",
+    "i": 1,
+    "c": "Noch keine Authenticator-Apps. Ihr Konto ist allein durch Ihre Anmeldemethode geschützt."
+  },
+  "7f2638105a7689c4": {
+    "t": "p",
+    "i": 1,
+    "c": "Scannen Sie diesen Code mit Ihrer Authenticator-App und geben Sie dann den sechsstelligen Code ein, den sie anzeigt."
+  },
+  "13a5b716b93ecc8d": {
+    "t": "p",
+    "i": 1,
+    "c": "Überall, wo Sie gerade angemeldet sind — die Web-App, die Desktop-App, die CLI und mobil."
+  },
+  "f13a01cf9c97edc9": {
+    "t": "p",
+    "i": 1,
+    "c": "Löscht dauerhaft Ihr Konto, Ihre SSH- und API-Schlüssel, Ihren Chat-Verlauf und Ihre Mitgliedschaft in allen Organisationen. Dies kann nicht rückgängig gemacht werden."
+  }
 }

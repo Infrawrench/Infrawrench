@@ -1,5 +1,6 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
+import { useMessages } from "gt-react";
 import {
   SETTINGS_SECTIONS,
   getWorkspaceTabId,
@@ -37,6 +38,8 @@ function SettingsLayout() {
 
   // Hidden outright without the permission — the page would only be able to
   // tell them they can't see it.
+  // Section labels are msg()-encoded in the registry; m() decodes + translates.
+  const m = useMessages();
   const navItems = SETTINGS_SECTIONS.filter(
     (s) => !s.requiresPermission || has(s.requiresPermission),
   ).map((s) => ({
@@ -70,7 +73,7 @@ function SettingsLayout() {
                       : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay/50"
                   }`}
                 >
-                  {item.label}
+                  {m(item.label)}
                 </Link>
               </li>
             );

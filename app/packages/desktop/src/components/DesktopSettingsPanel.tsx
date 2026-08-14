@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useGT, useMessages } from "gt-react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   SETTINGS_SECTIONS,
@@ -101,6 +102,9 @@ function CloudSettings({ orgId, section }: { orgId: string; section: string }) {
     [orgId, api, permissions, permissionsLoading, refreshPermissions, navigate],
   );
 
+  const gt = useGT();
+  // Section labels are msg()-encoded in the registry; m() decodes + translates.
+  const m = useMessages();
   const navItems = SETTINGS_SECTIONS.filter(
     (s) => !s.requiresPermission || hasPermission(permissions, s.requiresPermission),
   );
@@ -109,7 +113,7 @@ function CloudSettings({ orgId, section }: { orgId: string; section: string }) {
     <SettingsHostProvider value={value}>
       <div className="flex h-full min-h-0">
         <nav className="w-48 border-r border-border p-4 flex-shrink-0 flex flex-col overflow-y-auto">
-          <h2 className="text-sm font-semibold text-on-surface-secondary mb-4">Settings</h2>
+          <h2 className="text-sm font-semibold text-on-surface-secondary mb-4">{gt("Settings")}</h2>
           <ul className="space-y-1">
             {navItems.map((item) => {
               const isActive = section === item.key;
@@ -124,7 +128,7 @@ function CloudSettings({ orgId, section }: { orgId: string; section: string }) {
                         : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay/50"
                     }`}
                   >
-                    {item.label}
+                    {m(item.label)}
                   </button>
                 </li>
               );

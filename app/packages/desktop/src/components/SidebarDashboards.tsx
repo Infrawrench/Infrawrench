@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useGT } from "gt-react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { getDb } from "../db/client";
 import { createDashboard } from "../lib/pins";
@@ -63,6 +64,7 @@ interface DashboardRow {
 }
 
 export function SidebarDashboards() {
+  const gt = useGT();
   const [dashboards, setDashboards] = useState<DashboardRow[]>([]);
   const [addingNew, setAddingNew] = useState(false);
   const [newName, setNewName] = useState("");
@@ -424,7 +426,7 @@ export function SidebarDashboards() {
       {/* Section header */}
       <div className="flex items-center justify-between px-3 py-1">
         <span className="text-xs font-medium text-on-surface-muted uppercase tracking-wide">
-          Dashboards
+          {gt("Dashboards")}
         </span>
         <button
           type="button"
@@ -520,7 +522,7 @@ export function SidebarDashboards() {
               }
               className="text-xs font-medium text-on-surface-muted uppercase tracking-wide hover:text-on-surface-secondary transition-colors"
             >
-              Chat
+              {gt("Chat")}
             </button>
             <button
               type="button"
