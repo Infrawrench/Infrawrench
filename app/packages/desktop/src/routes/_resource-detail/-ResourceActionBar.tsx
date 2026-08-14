@@ -1,3 +1,5 @@
+import { useGT } from "gt-react";
+
 interface ResourceActionBarProps {
   hasSftpBrowser: boolean;
   hasSshPanel: boolean;
@@ -19,6 +21,7 @@ export function ResourceActionBar({
   onShowDockerSetup,
   onShowDropSpotlight,
 }: ResourceActionBarProps) {
+  const gt = useGT();
   return (
     <div className="shrink-0 flex justify-end gap-2 px-4 py-2 border-b border-border bg-surface">
       {hasSftpBrowser && (
@@ -27,7 +30,7 @@ export function ResourceActionBar({
           onClick={onOpenSftpTab}
           className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
         >
-          Open SFTP tab
+          {gt("Open SFTP tab")}
         </button>
       )}
       {hasSshPanel && (
@@ -36,7 +39,7 @@ export function ResourceActionBar({
           onClick={onOpenSshTab}
           className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
         >
-          Open SSH tab
+          {gt("Open SSH tab")}
         </button>
       )}
       {sshHost && (
@@ -46,14 +49,14 @@ export function ResourceActionBar({
             onClick={onShowTunnelModal}
             className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
           >
-            Connect service via SSH
+            {gt("Connect service via SSH")}
           </button>
           <button
             type="button"
             onClick={onShowDockerSetup}
             className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
           >
-            Setup Docker
+            {gt("Setup Docker")}
           </button>
         </>
       )}
@@ -62,7 +65,7 @@ export function ResourceActionBar({
         onClick={onShowDropSpotlight}
         className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
       >
-        Connect resource
+        {gt("Connect resource")}
       </button>
     </div>
   );

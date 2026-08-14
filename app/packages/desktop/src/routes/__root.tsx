@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import {
   createRootRoute,
   Outlet,
@@ -242,6 +243,7 @@ function handleResourceAttach(source: DraggableResource, target: DraggableResour
 }
 
 function RootLayout() {
+  const gt = useGT();
   const {
     sidebarCollapsed,
     toggleSidebar,
@@ -311,11 +313,11 @@ function RootLayout() {
         "cli_install_shell_command",
       );
       setShellCommandInstalled(true);
-      toast.success(`Installed \`infrawrench\` at ${result.path}`, {
+      toast.success(gt("Installed `infrawrench` at {path}", { path: result.path }), {
         ...(result.note ? { description: result.note } : {}),
       });
     } catch (e) {
-      toast.error("Couldn't install the shell command", {
+      toast.error(gt("Couldn't install the shell command"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -498,8 +500,8 @@ function RootLayout() {
   async function handleTunnelSshAttach(tunnel: DraggableResource, host: DraggableResource) {
     const orgId = useUIStore.getState().activeCloudOrgId;
     if (!orgId) {
-      toast.error("Set up SSH over tunnel runs through the cloud", {
-        description: "Sign in to an organization to use this.",
+      toast.error(gt("Set up SSH over tunnel runs through the cloud"), {
+        description: gt("Sign in to an organization to use this."),
       });
       return;
     }
@@ -523,7 +525,7 @@ function RootLayout() {
         defaultUsername: String(host.fields["sshUsername"] ?? "root"),
       });
     } catch (e) {
-      toast.error("Couldn't start SSH tunnel setup", {
+      toast.error(gt("Couldn't start SSH tunnel setup"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -558,13 +560,13 @@ function RootLayout() {
     // Only the local side can fall back to a synthesized id; a cloud dashboard
     // id has to come from the org.
     if (!home && orgId) {
-      toast.error("Couldn't open a new tab", {
-        description: "No dashboards in this organization.",
+      toast.error(gt("Couldn't open a new tab"), {
+        description: gt("No dashboards in this organization."),
       });
       return;
     }
     const target = dashboardTabTarget(home?.id ?? "dashboard-home");
-    createWorkspaceTabInstance(target, home?.name ?? "Home");
+    createWorkspaceTabInstance(target, home?.name ?? gt("Home"));
     void navigate(getWorkspaceNavigateArgs(target));
   }
 
@@ -578,7 +580,7 @@ function RootLayout() {
       });
     } catch (e) {
       console.error("[org-switch] failed to navigate to first dashboard:", e);
-      toast.error("Couldn't switch organization", {
+      toast.error(gt("Couldn't switch organization"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -602,7 +604,7 @@ function RootLayout() {
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:px-3 focus:py-1.5 focus:rounded focus:bg-surface-overlay focus:text-on-surface focus:border focus:border-border-strong focus:shadow-lg"
         >
-          Skip to content
+          {gt("Skip to content")}
         </a>
         {/* macOS drag region — children must opt out individually. */}
         <div
@@ -617,7 +619,7 @@ function RootLayout() {
               type="button"
               onClick={() => router.history.back()}
               className="size-6 flex items-center justify-center rounded text-on-surface-tertiary hover:text-on-surface hover:bg-surface-sunken transition-colors text-base leading-none font-medium"
-              aria-label="Go back"
+              aria-label={gt("Go back")}
             >
               ‹
             </button>
@@ -625,7 +627,7 @@ function RootLayout() {
               type="button"
               onClick={() => router.history.forward()}
               className="size-6 flex items-center justify-center rounded text-on-surface-tertiary hover:text-on-surface hover:bg-surface-sunken transition-colors text-base leading-none font-medium"
-              aria-label="Go forward"
+              aria-label={gt("Go forward")}
             >
               ›
             </button>
@@ -683,7 +685,7 @@ function RootLayout() {
                   onClick={toggleSidebar}
                   className="text-on-surface-faint hover:text-on-surface-tertiary transition-colors text-xs px-2"
                   style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                  aria-label="Collapse sidebar"
+                  aria-label={gt("Collapse sidebar")}
                 >
                   &#9664;
                 </button>
@@ -701,7 +703,7 @@ function RootLayout() {
                   className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
                 >
                   <span className="text-base leading-none">+</span>
-                  Add account
+                  {gt("Add account")}
                 </button>
                 {/* Org settings are cloud-backed; local-only mode has no org
                     to configure, so no tile without one. Same shared sections
@@ -711,13 +713,13 @@ function RootLayout() {
                     type="button"
                     onClick={() =>
                       void navigateToWorkspaceTarget(navigate, settingsTabTarget(), {
-                        label: "Settings",
+                        label: gt("Settings"),
                       })
                     }
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
                   >
                     <span className="text-base leading-none">&#9881;</span>
-                    Settings
+                    {gt("Settings")}
                   </button>
                 )}
                 {shellCommandInstalled === false && (
@@ -727,10 +729,12 @@ function RootLayout() {
                       void handleInstallShellCommand();
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-                    title="Adds an `infrawrench` command to your PATH so you can use the CLI and TUI from any terminal."
+                    title={gt(
+                      "Adds an `infrawrench` command to your PATH so you can use the CLI and TUI from any terminal.",
+                    )}
                   >
                     <span className="text-base leading-none font-mono">&gt;_</span>
-                    Install shell command
+                    {gt("Install shell command")}
                   </button>
                 )}
                 {SHOW_SIGN_IN_BUTTON && !cloudAuthenticated && (
@@ -755,7 +759,7 @@ function RootLayout() {
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
                   >
                     <span className="text-base leading-none">&#9729;</span>
-                    Sign in to cloud
+                    {gt("Sign in to cloud")}
                   </button>
                 )}
               </div>
@@ -767,7 +771,7 @@ function RootLayout() {
               type="button"
               onClick={toggleSidebar}
               className="w-8 border-r border-border flex items-center justify-center text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
-              aria-label="Expand sidebar"
+              aria-label={gt("Expand sidebar")}
             >
               ▶
             </button>
@@ -800,7 +804,7 @@ function RootLayout() {
             setSpotlightOpen(false);
             if (result.resourceTypeId === "__workflow__") {
               void navigateToWorkspaceTarget(navigate, workflowsTabTarget(), {
-                label: "Workflows",
+                label: gt("Workflows"),
               });
             } else {
               void navigateToWorkspaceTarget(
@@ -844,7 +848,7 @@ function RootLayout() {
           onClose={() => setTunnelAttach(null)}
           onRun={async (params) => {
             const orgId = useUIStore.getState().activeCloudOrgId;
-            if (!orgId) throw new Error("Not signed in to an organization");
+            if (!orgId) throw new Error(gt("Not signed in to an organization"));
             const { cloudTunnelSshAttach } = await import("../lib/cloud-resources");
             return cloudTunnelSshAttach(orgId, {
               tunnel: {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { T, useGT } from "gt-react";
 import {
   HYGIENE_SEVERITY_LABELS,
   hygieneFindingSection,
@@ -10,6 +11,7 @@ import {
 
 import { useSettingsHost } from "./host.js";
 import { CARD, SECONDARY_BUTTON } from "./styles.js";
+import { useDataString } from "../i18n/data-strings.js";
 
 const WINDOW_OPTIONS = [30, 90, 180, 365];
 
@@ -31,6 +33,8 @@ const SEVERITY_CLASS: Record<HygieneSeverity, string> = {
  * coverage that isn't there.
  */
 export function CredentialHygieneSection() {
+  const gt = useGT();
+  const gtData = useDataString();
   const { orgId, api, has, permissionsLoading, openSection } = useSettingsHost();
   const canRead = has("audit:read");
 
@@ -49,7 +53,7 @@ export function CredentialHygieneSection() {
       );
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not build the hygiene report");
+      setError(e instanceof Error ? e.message : gt("Could not build the hygiene report"));
     } finally {
       setLoading(false);
     }
@@ -60,15 +64,17 @@ export function CredentialHygieneSection() {
     void load();
   }, [canRead, load]);
 
-  if (permissionsLoading) return <p className="text-sm text-on-surface-faint">Loading…</p>;
+  if (permissionsLoading) return <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>;
 
   if (!canRead) {
     return (
       <div>
         <Header />
-        <p className="text-sm text-on-surface-muted">
-          This report is built from the audit log, so it needs <code>audit:read</code>.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-muted">
+            This report is built from the audit log, so it needs <code>audit:read</code>.
+          </p>
+        </T>
       </div>
     );
   }
@@ -82,9 +88,9 @@ export function CredentialHygieneSection() {
       <section className={`${CARD} space-y-3`}>
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <p className="text-sm text-on-surface-secondary">
-            {report ? summarizeHygiene(report) : loading ? "Building the report…" : "—"}
+            {report ? summarizeHygiene(report) : loading ? gt("Building the report…") : "—"}
           </p>
-          <div className="flex items-center gap-1" role="group" aria-label="Activity window">
+          <div className="flex items-center gap-1" role="group" aria-label={gt("Activity window")}>
             {WINDOW_OPTIONS.map((days) => (
               <button
                 key={days}
@@ -103,25 +109,33 @@ export function CredentialHygieneSection() {
           </div>
         </div>
 
-        <p className="text-xs text-on-surface-muted">
-          &ldquo;Unused&rdquo; means <em>no write recorded in the audit log</em> over the window.
-          Reads are not audit-logged, so nothing here concludes anything about what someone can{" "}
-          <em>see</em> — only about what they never <em>did</em>.
-        </p>
+        <T>
+          <p className="text-xs text-on-surface-muted">
+            &ldquo;Unused&rdquo; means <em>no write recorded in the audit log</em> over the window.
+            Reads are not audit-logged, so nothing here concludes anything about what someone can{" "}
+            <em>see</em> — only about what they never <em>did</em>.
+          </p>
+        </T>
 
         {report?.permissionFindingsWithheld && (
           <p className="text-xs text-warning">
             {report.auditHistoryDays === null
-              ? "This organization has no audit history yet, so the unused-permission findings are withheld."
-              : `This organization has ${report.auditHistoryDays} days of audit history — not enough to judge unused permissions, so those findings are withheld rather than guessed at.`}
+              ? gt(
+                  "This organization has no audit history yet, so the unused-permission findings are withheld.",
+                )
+              : gt(
+                  "This organization has {days} days of audit history — not enough to judge unused permissions, so those findings are withheld rather than guessed at.",
+                  { days: report.auditHistoryDays },
+                )}
           </p>
         )}
       </section>
 
       {report && report.findings.length === 0 && !loading && (
         <p className="text-sm text-on-surface-muted">
-          Nothing to flag. Every API key is in use, every SSH key has been used, and no member is
-          sitting on write permissions they have never exercised.
+          {gt(
+            "Nothing to flag. Every API key is in use, every SSH key has been used, and no member is sitting on write permissions they have never exercised.",
+          )}
         </p>
       )}
 
@@ -137,13 +151,14 @@ export function CredentialHygieneSection() {
 }
 
 function Header() {
+  const gt = useGT();
   return (
     <div className="mb-6">
-      <h1 className="text-xl font-semibold">Credential hygiene</h1>
+      <h1 className="text-xl font-semibold">{gt("Credential hygiene")}</h1>
       <p className="text-sm text-on-surface-muted mt-1">
-        API keys nobody uses, SSH keys nothing references, and members holding write permissions
-        they never exercise — all of it from data already in the system. Nothing to install, no
-        provider to ask.
+        {gt(
+          "API keys nobody uses, SSH keys nothing references, and members holding write permissions they never exercise — all of it from data already in the system. Nothing to install, no provider to ask.",
+        )}
       </p>
     </div>
   );
@@ -156,13 +171,15 @@ function FindingRow({
   finding: HygieneFinding;
   onOpenSection: (section: string) => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   return (
     <li className="p-3 space-y-1">
       <div className="flex items-start gap-3">
         <span
           className={`text-xs px-2 py-0.5 rounded-md whitespace-nowrap ${SEVERITY_CLASS[finding.severity]}`}
         >
-          {HYGIENE_SEVERITY_LABELS[finding.severity]}
+          {gtData(HYGIENE_SEVERITY_LABELS[finding.severity])}
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm text-on-surface-secondary">{finding.title}</p>
@@ -174,7 +191,7 @@ function FindingRow({
           className={SECONDARY_BUTTON}
           onClick={() => onOpenSection(hygieneFindingSection(finding))}
         >
-          Fix
+          {gt("Fix")}
         </button>
       </div>
     </li>

@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import {
   INCIDENT_ARTIFACT_LABELS,
   type IncidentTimelineEntry,
@@ -62,19 +63,21 @@ function entryTone(entry: IncidentTimelineEntry): string {
  * rows a human wrote or a human needs to act on; everything else is machinery.
  */
 export function IncidentTimelineView({ timeline, error, onRetry }: IncidentTimelineViewProps) {
+  const gt = useGT();
   if (error) {
     return (
       <p className="text-sm text-danger">
         {error}{" "}
         {onRetry && (
           <button type="button" onClick={onRetry} className="underline hover:text-danger-strong">
-            Retry
+            {gt("Retry")}
           </button>
         )}
       </p>
     );
   }
-  if (!timeline) return <p className="text-sm text-on-surface-faint">Assembling the timeline…</p>;
+  if (!timeline)
+    return <p className="text-sm text-on-surface-faint">{gt("Assembling the timeline…")}</p>;
 
   const degraded = timeline.feeds.filter((feed) => feed.status !== "ok");
 
@@ -88,7 +91,7 @@ export function IncidentTimelineView({ timeline, error, onRetry }: IncidentTimel
               className="px-2 py-0.5 rounded-full text-[11px] bg-surface-sunken text-on-surface-faint"
               title={feed.error ?? undefined}
             >
-              {feed.feed} {feed.status === "omitted" ? "not visible to you" : "unavailable"}
+              {feed.feed} {feed.status === "omitted" ? gt("not visible to you") : gt("unavailable")}
             </span>
           ))}
         </div>
@@ -96,8 +99,9 @@ export function IncidentTimelineView({ timeline, error, onRetry }: IncidentTimel
 
       {timeline.entries.length === 0 ? (
         <p className="text-sm text-on-surface-faint">
-          Nothing else was recorded in this window. That is a finding too — it means the change
-          feed, deploys and alerts were all quiet while this was happening.
+          {gt(
+            "Nothing else was recorded in this window. That is a finding too — it means the change feed, deploys and alerts were all quiet while this was happening.",
+          )}
         </p>
       ) : (
         <ol className="space-y-1.5">
@@ -135,7 +139,7 @@ export function IncidentTimelineView({ timeline, error, onRetry }: IncidentTimel
                       rel="noreferrer noopener"
                       className="text-[11px] text-info hover:underline"
                     >
-                      Open provider status page
+                      {gt("Open provider status page")}
                     </a>
                   )}
                 </div>
@@ -147,8 +151,9 @@ export function IncidentTimelineView({ timeline, error, onRetry }: IncidentTimel
 
       {timeline.truncated && (
         <p className="text-xs text-on-surface-faint">
-          The timeline was truncated — this incident's window contains more events than one view can
-          carry.
+          {gt(
+            "The timeline was truncated — this incident's window contains more events than one view can carry.",
+          )}
         </p>
       )}
     </div>

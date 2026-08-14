@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useGT } from "gt-react";
 
 import type {
   CustomGraphControlState,
@@ -33,6 +34,7 @@ export function CustomGraphCard({
   onRemove,
   reloadToken,
 }: CustomGraphCardProps) {
+  const gt = useGT();
   const [result, setResult] = useState<CustomGraphRenderResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
@@ -56,12 +58,12 @@ export function CustomGraphCard({
         if (next.spec) stateRef.current = controlStateOf(next.spec.controls);
       } catch (e: unknown) {
         if (gen !== generation.current) return;
-        setError(e instanceof Error ? e.message : "Failed to render graph");
+        setError(e instanceof Error ? e.message : gt("Failed to render graph"));
       } finally {
         if (gen === generation.current) setBusy(false);
       }
     },
-    [client, config.graphId],
+    [client, config.graphId, gt],
   );
 
   useEffect(() => {
@@ -90,8 +92,8 @@ export function CustomGraphCard({
           <button
             type="button"
             onClick={onEditScript}
-            title="Edit graph script"
-            aria-label="Edit graph script"
+            title={gt("Edit graph script")}
+            aria-label={gt("Edit graph script")}
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
             ✎
@@ -101,8 +103,8 @@ export function CustomGraphCard({
           <button
             type="button"
             onClick={onRemove}
-            title="Remove from dashboard"
-            aria-label="Remove from dashboard"
+            title={gt("Remove from dashboard")}
+            aria-label={gt("Remove from dashboard")}
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
             ✕
@@ -113,11 +115,11 @@ export function CustomGraphCard({
       <div className="px-5 pt-4 pb-1">
         <div className="flex items-baseline gap-2 pr-14">
           <h3 className="text-base font-semibold text-on-surface leading-tight truncate">
-            {spec?.title || title || "Custom graph"}
+            {spec?.title || title || gt("Custom graph")}
           </h3>
           {busy && result && (
             <span className="text-[10px] text-on-surface-faint flex-shrink-0" role="status">
-              refreshing…
+              {gt("refreshing…")}
             </span>
           )}
         </div>
@@ -150,7 +152,7 @@ export function CustomGraphCard({
             role="status"
             className="flex-1 flex items-center justify-center text-sm text-on-surface-faint"
           >
-            Running graph…
+            {gt("Running graph…")}
           </div>
         )}
       </div>

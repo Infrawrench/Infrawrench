@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import type { SizeOption } from "@infrawrench/plugin-base";
 
 export function SizeCard({
@@ -13,12 +14,15 @@ export function SizeCard({
   maxCpu: number;
   onSelect: () => void;
 }) {
+  const gt = useGT();
   const memPct = Math.max(4, Math.round((size.memoryMb / maxMemory) * 100));
   const cpuPct = Math.max(4, Math.round((size.vcpus / maxCpu) * 100));
   const memLabel =
     size.memoryMb >= 1024
-      ? `${(size.memoryMb / 1024).toFixed(size.memoryMb % 1024 === 0 ? 0 : 1)} GB`
-      : `${size.memoryMb} MB`;
+      ? gt("{value} GB", {
+          value: (size.memoryMb / 1024).toFixed(size.memoryMb % 1024 === 0 ? 0 : 1),
+        })
+      : gt("{value} MB", { value: size.memoryMb });
 
   return (
     <button
@@ -39,9 +43,11 @@ export function SizeCard({
       {/* CPU bar */}
       <div className="mb-1.5">
         <div className="flex justify-between mb-0.5">
-          <span className="text-[10px] text-on-surface-faint">CPU</span>
+          <span className="text-[10px] text-on-surface-faint">{gt("CPU")}</span>
           <span className="text-[10px] text-on-surface-muted">
-            {size.vcpus} vCPU{size.vcpus !== 1 ? "s" : ""}
+            {size.vcpus === 1
+              ? gt("{count} vCPU", { count: size.vcpus })
+              : gt("{count} vCPUs", { count: size.vcpus })}
           </span>
         </div>
         <div className="h-1 bg-surface-sunken rounded-full overflow-hidden">
@@ -55,7 +61,7 @@ export function SizeCard({
       {/* RAM bar */}
       <div className="mb-2">
         <div className="flex justify-between mb-0.5">
-          <span className="text-[10px] text-on-surface-faint">RAM</span>
+          <span className="text-[10px] text-on-surface-faint">{gt("RAM")}</span>
           <span className="text-[10px] text-on-surface-muted">{memLabel}</span>
         </div>
         <div className="h-1 bg-surface-sunken rounded-full overflow-hidden">
@@ -68,13 +74,15 @@ export function SizeCard({
 
       <div className="flex items-center justify-between">
         {size.diskGb != null && (
-          <span className="text-[10px] text-on-surface-faint">{size.diskGb} GB disk</span>
+          <span className="text-[10px] text-on-surface-faint">
+            {gt("{size} GB disk", { size: size.diskGb })}
+          </span>
         )}
         {size.priceMonthly != null && size.priceMonthly > 0 && (
           <span
             className={`text-[10px] ml-auto ${selected ? "text-accent" : "text-on-surface-muted"}`}
           >
-            ${size.priceMonthly}/mo
+            {gt("${amount}/mo", { amount: size.priceMonthly })}
           </span>
         )}
       </div>

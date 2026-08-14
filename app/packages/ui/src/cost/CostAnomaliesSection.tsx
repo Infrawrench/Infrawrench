@@ -9,6 +9,7 @@ import {
   isCostAnomalyExplained,
 } from "@infrawrench/client-core";
 import { useCallback, useEffect, useId, useState } from "react";
+import { T, useGT } from "gt-react";
 
 import { FileIssueButton } from "../issue-filing/FileIssueButton.js";
 import { CostAnomalyExplainModal } from "./CostAnomalyExplainModal.js";
@@ -37,6 +38,7 @@ export interface CostAnomaliesSectionProps {
  * tuning panel edits when the host wires the settings calls.
  */
 export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
+  const gt = useGT();
   const [anomalies, setAnomalies] = useState<CostAnomaly[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tuning, setTuning] = useState(false);
@@ -84,7 +86,7 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-on-surface">
-          Anomalies
+          {gt("Anomalies")}
           {/*
             The count is of *unexplained* findings, which is what "an
             acknowledged anomaly stops nagging" means here. Explained rows keep
@@ -94,8 +96,8 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
           {anomalies !== null && anomalies.length > 0 && (
             <span className="ml-2 font-normal text-on-surface-faint">
               {countUnexplainedCostAnomalies(anomalies) === 0
-                ? "all explained"
-                : `${countUnexplainedCostAnomalies(anomalies)} unexplained`}
+                ? gt("all explained")
+                : gt("{count} unexplained", { count: countUnexplainedCostAnomalies(anomalies) })}
             </span>
           )}
         </h2>
@@ -106,7 +108,7 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
             aria-expanded={tuning}
             className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            {tuning ? "Hide tuning" : "Tune detection"}
+            {tuning ? gt("Hide tuning") : gt("Tune detection")}
           </button>
         )}
       </div>
@@ -115,22 +117,22 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          Couldn&rsquo;t load anomalies — {error}
+          {gt("Couldn't load anomalies — {error}", { error })}
         </div>
       )}
 
       {anomalies === null && error === null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Loading anomalies…
+          {gt("Loading anomalies…")}
         </p>
       )}
 
       {anomalies?.length === 0 && (
         <p className="text-sm text-on-surface-faint">
-          No spend anomalies in the last {WINDOW_DAYS} days. Detection compares each day&rsquo;s
-          spend per provider and per service against its trailing 28-day baseline, flags
-          statistically unusual spikes, and separately flags anything that starts spending with no
-          history at all.
+          {gt(
+            "No spend anomalies in the last {days} days. Detection compares each day's spend per provider and per service against its trailing 28-day baseline, flags statistically unusual spikes, and separately flags anything that starts spending with no history at all.",
+            { days: WINDOW_DAYS },
+          )}
         </p>
       )}
 
@@ -140,22 +142,22 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
             <thead>
               <tr className="text-left text-xs text-on-surface-faint">
                 <th scope="col" className="px-3 py-2 font-medium">
-                  Day
+                  {gt("Day")}
                 </th>
                 <th scope="col" className="px-3 py-2 font-medium">
-                  What
+                  {gt("What")}
                 </th>
                 <th scope="col" className="px-3 py-2 font-medium text-right">
-                  Spend
+                  {gt("Spend")}
                 </th>
                 <th scope="col" className="px-3 py-2 font-medium text-right">
-                  Baseline / day
+                  {gt("Baseline / day")}
                 </th>
                 <th scope="col" className="px-3 py-2 font-medium text-right">
-                  Change
+                  {gt("Change")}
                 </th>
                 <th scope="col" className="px-3 py-2 font-medium text-right">
-                  Actions
+                  {gt("Actions")}
                 </th>
               </tr>
             </thead>
@@ -175,12 +177,12 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                       </span>
                       {isNew && (
                         <span className="ml-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning">
-                          New source
+                          {gt("New source")}
                         </span>
                       )}
                       {explained && (
                         <span className="ml-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-success">
-                          Explained
+                          {gt("Explained")}
                         </span>
                       )}
                       {/*
@@ -194,9 +196,9 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                           <span className="text-on-surface-faint">
                             {" · "}
                             {a.acknowledgement.annotationId
-                              ? "on every chart for this day"
+                              ? gt("on every chart for this day")
                               : /* The note was deleted; the explanation stands. */
-                                "note removed from charts"}
+                                gt("note removed from charts")}
                           </span>
                         </p>
                       )}
@@ -213,7 +215,7 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">
                       {isNew ? (
-                        <span className="text-on-surface-faint">none</span>
+                        <span className="text-on-surface-faint">{gt("none")}</span>
                       ) : (
                         formatMoney(a.baselineCents / 100, a.currency)
                       )}
@@ -223,7 +225,7 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                         isNew ? "text-warning" : "text-danger"
                       }`}
                     >
-                      {delta ?? "new"}
+                      {delta ?? gt("new")}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">
                       {/*
@@ -238,29 +240,40 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                           sourceKind="cost_anomaly"
                           sourceId={a.id}
                           draft={{
-                            title: `${a.dimensionKey} spend ${isNew ? "started" : `up ${delta ?? ""}`} on ${a.day}`,
+                            title: isNew
+                              ? gt("{dimension} spend started on {day}", {
+                                  dimension: a.dimensionKey,
+                                  day: a.day,
+                                })
+                              : gt("{dimension} spend up {delta} on {day}", {
+                                  dimension: a.dimensionKey,
+                                  delta: delta ?? "",
+                                  day: a.day,
+                                }),
                             details: [
-                              { label: "Day", value: a.day },
+                              { label: gt("Day"), value: a.day },
                               {
                                 label: COST_ANOMALY_DIMENSION_LABELS[a.dimension],
                                 value: a.dimensionKey,
                               },
                               {
-                                label: "Spend",
+                                label: gt("Spend"),
                                 value: formatMoney(a.actualCents / 100, a.currency),
                               },
                               {
-                                label: "Baseline / day",
+                                label: gt("Baseline / day"),
                                 value: isNew
-                                  ? "none (new source)"
+                                  ? gt("none (new source)")
                                   : formatMoney(a.baselineCents / 100, a.currency),
                               },
-                              { label: "Change", value: delta },
-                              { label: "Detected", value: a.detectedAt },
+                              { label: gt("Change"), value: delta },
+                              { label: gt("Detected"), value: a.detectedAt },
                             ],
                             ...(hints.length > 0
                               ? {
-                                  note: `What changed around this window:\n${hints.join("\n")}`,
+                                  note: gt("What changed around this window:\n{hints}", {
+                                    hints: hints.join("\n"),
+                                  }),
                                 }
                               : {}),
                           }}
@@ -271,7 +284,7 @@ export function CostAnomaliesSection({ client }: CostAnomaliesSectionProps) {
                             onClick={() => setExplaining(a)}
                             className="text-xs text-on-surface-faint underline hover:text-on-surface-secondary"
                           >
-                            {explained ? "Edit explanation" : "Explain"}
+                            {explained ? gt("Edit explanation") : gt("Explain")}
                           </button>
                         )}
                       </span>
@@ -311,6 +324,7 @@ function toDollars(cents: number): number {
  * reject is caught before the round trip; the server is still the authority.
  */
 function AnomalyTuningPanel({ client }: { client: CostsClient }) {
+  const gt = useGT();
   const uid = useId();
   const [draft, setDraft] = useState<CostAnomalySettingsView | null>(null);
   const [saved, setSaved] = useState<CostAnomalySettingsView | null>(null);
@@ -345,16 +359,25 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
   function validate(next: CostAnomalySettings): string | null {
     const L = COST_ANOMALY_LIMITS;
     if (!Number.isFinite(next.sigmas) || next.sigmas < L.sigmasMin || next.sigmas > L.sigmasMax) {
-      return `Sensitivity must be between ${L.sigmasMin} and ${L.sigmasMax} standard deviations.`;
+      return gt("Sensitivity must be between {min} and {max} standard deviations.", {
+        min: L.sigmasMin,
+        max: L.sigmasMax,
+      });
     }
     if (next.minDeltaCents < L.minDeltaCentsMin || next.minDeltaCents > L.minDeltaCentsMax) {
-      return `The spike floor must be between ${formatMoney(toDollars(L.minDeltaCentsMin), "USD")} and ${formatMoney(toDollars(L.minDeltaCentsMax), "USD")}.`;
+      return gt("The spike floor must be between {min} and {max}.", {
+        min: formatMoney(toDollars(L.minDeltaCentsMin), "USD"),
+        max: formatMoney(toDollars(L.minDeltaCentsMax), "USD"),
+      });
     }
     if (
       next.newSourceMinCents < L.newSourceMinCentsMin ||
       next.newSourceMinCents > L.newSourceMinCentsMax
     ) {
-      return `The new-source floor must be between ${formatMoney(toDollars(L.newSourceMinCentsMin), "USD")} and ${formatMoney(toDollars(L.newSourceMinCentsMax), "USD")}.`;
+      return gt("The new-source floor must be between {min} and {max}.", {
+        min: formatMoney(toDollars(L.newSourceMinCentsMin), "USD"),
+        max: formatMoney(toDollars(L.newSourceMinCentsMax), "USD"),
+      });
     }
     return null;
   }
@@ -391,7 +414,7 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
   if (loadError !== null) {
     return (
       <div role="alert" className="rounded-xl border border-border p-4 text-sm text-danger">
-        Couldn&rsquo;t load detection settings — {loadError}
+        {gt("Couldn't load detection settings — {loadError}", { loadError })}
       </div>
     );
   }
@@ -399,7 +422,7 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
   if (!draft || !saved) {
     return (
       <p role="status" className="text-sm text-on-surface-faint">
-        Loading detection settings…
+        {gt("Loading detection settings…")}
       </p>
     );
   }
@@ -426,14 +449,16 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface-sunken p-4">
       <p className="text-xs text-on-surface-faint">
-        What counts as anomalous for this organization. Changes apply on the next detection pass;
-        anomalies already found are not re-judged. The 28-day baseline, the 7-day alert cooldown,
-        and the minimum history a baseline needs are not adjustable.
+        {gt(
+          "What counts as anomalous for this organization. Changes apply on the next detection pass; anomalies already found are not re-judged. The 28-day baseline, the 7-day alert cooldown, and the minimum history a baseline needs are not adjustable.",
+        )}
       </p>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="flex flex-col gap-1" htmlFor={`${uid}-sigmas`}>
-          <span className="text-xs font-medium text-on-surface-secondary">Sensitivity (σ)</span>
+          <span className="text-xs font-medium text-on-surface-secondary">
+            {gt("Sensitivity (σ)")}
+          </span>
           <input
             id={`${uid}-sigmas`}
             type="number"
@@ -447,13 +472,17 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
             className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500 disabled:opacity-60"
           />
           <span className="text-[11px] text-on-surface-faint">
-            Deviations above a key&rsquo;s own average before a day is a spike. Lower catches more,
-            and alerts more. Default {DEFAULT_COST_ANOMALY_SETTINGS.sigmas}.
+            {gt(
+              "Deviations above a key's own average before a day is a spike. Lower catches more, and alerts more. Default {value}.",
+              { value: DEFAULT_COST_ANOMALY_SETTINGS.sigmas },
+            )}
           </span>
         </label>
 
         <label className="flex flex-col gap-1" htmlFor={`${uid}-delta`}>
-          <span className="text-xs font-medium text-on-surface-secondary">Spike floor (USD)</span>
+          <span className="text-xs font-medium text-on-surface-secondary">
+            {gt("Spike floor (USD)")}
+          </span>
           <input
             id={`${uid}-delta`}
             type="number"
@@ -467,14 +496,16 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
             className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500 disabled:opacity-60"
           />
           <span className="text-[11px] text-on-surface-faint">
-            A spike must also be this much above the baseline. Keeps penny-scale jumps quiet.
-            Default {formatMoney(toDollars(DEFAULT_COST_ANOMALY_SETTINGS.minDeltaCents), "USD")}.
+            {gt(
+              "A spike must also be this much above the baseline. Keeps penny-scale jumps quiet. Default {value}.",
+              { value: formatMoney(toDollars(DEFAULT_COST_ANOMALY_SETTINGS.minDeltaCents), "USD") },
+            )}
           </span>
         </label>
 
         <label className="flex flex-col gap-1" htmlFor={`${uid}-newsource`}>
           <span className="text-xs font-medium text-on-surface-secondary">
-            New-source floor (USD)
+            {gt("New-source floor (USD)")}
           </span>
           <input
             id={`${uid}-newsource`}
@@ -489,15 +520,23 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
             className="rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500 disabled:opacity-60"
           />
           <span className="text-[11px] text-on-surface-faint">
-            A provider or service with no prior spend alerts once it bills this much in a day.
-            Default {formatMoney(toDollars(DEFAULT_COST_ANOMALY_SETTINGS.newSourceMinCents), "USD")}
-            .
+            {gt(
+              "A provider or service with no prior spend alerts once it bills this much in a day. Default {value}.",
+              {
+                value: formatMoney(
+                  toDollars(DEFAULT_COST_ANOMALY_SETTINGS.newSourceMinCents),
+                  "USD",
+                ),
+              },
+            )}
           </span>
         </label>
       </div>
 
       <label className="flex flex-col gap-1" htmlFor={`${uid}-sms`}>
-        <span className="text-xs font-medium text-on-surface-secondary">Text the on-call list</span>
+        <span className="text-xs font-medium text-on-surface-secondary">
+          {gt("Text the on-call list")}
+        </span>
         <select
           id={`${uid}-sms`}
           disabled={!canEdit || busy}
@@ -511,21 +550,25 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
             </option>
           ))}
         </select>
-        <span className="text-[11px] text-on-surface-faint">
-          Off by default. When on, each detection pass sends at most{" "}
-          <strong className="font-medium">one</strong> SMS to your Twilio recipients summarizing
-          what it alerted on — a day where thirty services jump is one text, not thirty — and no
-          more than one every six hours. Push, Slack and Teams are unaffected and have their own
-          toggles.
-        </span>
+        <T>
+          <span className="text-[11px] text-on-surface-faint">
+            Off by default. When on, each detection pass sends at most{" "}
+            <strong className="font-medium">one</strong> SMS to your Twilio recipients summarizing
+            what it alerted on — a day where thirty services jump is one text, not thirty — and no
+            more than one every six hours. Push, Slack and Teams are unaffected and have their own
+            toggles.
+          </span>
+        </T>
       </label>
 
       {smsUnreachable && (
-        <div role="alert" className="text-xs text-warning">
-          This organization can&rsquo;t receive SMS yet. Anomaly texts need paging enabled with
-          Twilio credentials and at least one recipient opted into SMS, under Settings &rarr;
-          Notifications. Until then this setting is saved but nothing is sent.
-        </div>
+        <T>
+          <div role="alert" className="text-xs text-warning">
+            This organization can&rsquo;t receive SMS yet. Anomaly texts need paging enabled with
+            Twilio credentials and at least one recipient opted into SMS, under Settings &rarr;
+            Notifications. Until then this setting is saved but nothing is sent.
+          </div>
+        </T>
       )}
 
       {saveError !== null && (
@@ -542,7 +585,7 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
             onClick={() => void save()}
             className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
           >
-            {busy ? "Saving…" : "Save"}
+            {busy ? gt("Saving…") : gt("Save")}
           </button>
           <button
             type="button"
@@ -550,17 +593,17 @@ function AnomalyTuningPanel({ client }: { client: CostsClient }) {
             onClick={() => set({ ...DEFAULT_COST_ANOMALY_SETTINGS })}
             className="text-xs text-on-surface-faint underline hover:text-on-surface-secondary disabled:opacity-50"
           >
-            Reset to defaults
+            {gt("Reset to defaults")}
           </button>
           {justSaved && !dirty && (
             <span role="status" className="text-xs text-on-surface-faint">
-              Saved.
+              {gt("Saved.")}
             </span>
           )}
         </div>
       ) : (
         <p className="text-xs text-on-surface-faint">
-          You don&rsquo;t have permission to change these.
+          {gt("You don't have permission to change these.")}
         </p>
       )}
     </div>

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useGT } from "gt-react";
 import { Modal } from "../components/Modal.js";
+import { useDataString } from "../i18n/data-strings.js";
 import { useSettingsHost, type SettingsApi } from "./host.js";
 
 interface Role {
@@ -29,6 +31,8 @@ function categorize(allPermissions: string[]): PermissionGroup[] {
 }
 
 export function RolesSection() {
+  const gt = useGT();
+  const gtData = useDataString();
   const { orgId, api, has } = useSettingsHost();
   const canEdit = has("team:role:write");
 
@@ -61,27 +65,30 @@ export function RolesSection() {
 
   async function handleDelete(role: Role) {
     if (role.isSystem) return;
-    if (!window.confirm(`Delete the role "${role.name}"? This cannot be undone.`)) return;
+    if (
+      !window.confirm(gt('Delete the role "{name}"? This cannot be undone.', { name: role.name }))
+    )
+      return;
     setError(null);
     try {
       await api.delete(`/api/org/${orgId}/team/roles/${role.id}`);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete role");
+      setError(e instanceof Error ? e.message : gt("Failed to delete role"));
     }
   }
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold">Roles</h1>
+        <h1 className="text-xl font-semibold">{gt("Roles")}</h1>
         {canEdit && (
           <button
             type="button"
             onClick={() => setCreating(true)}
             className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg"
           >
-            New role
+            {gt("New role")}
           </button>
         )}
       </div>
@@ -93,7 +100,7 @@ export function RolesSection() {
       )}
 
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
       ) : (
         <div className="space-y-3">
           {roles.map((role) => (
@@ -101,20 +108,25 @@ export function RolesSection() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-sm font-semibold text-on-surface">{role.name}</h2>
+                    <h2 className="text-sm font-semibold text-on-surface">{gtData(role.name)}</h2>
                     {role.isSystem && (
                       <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-surface-overlay text-on-surface-tertiary">
-                        System
+                        {gt("System")}
                       </span>
                     )}
                   </div>
                   {role.description && (
-                    <p className="mt-1 text-xs text-on-surface-tertiary">{role.description}</p>
+                    <p className="mt-1 text-xs text-on-surface-tertiary">
+                      {gtData(role.description)}
+                    </p>
                   )}
                   <p className="mt-2 text-xs text-on-surface-muted">
                     {role.permissions.length === 1 && role.permissions[0] === "*"
-                      ? "All permissions"
-                      : `${role.permissions.length} permission${role.permissions.length === 1 ? "" : "s"}`}
+                      ? gt("All permissions")
+                      : gt("{count} permission{plural}", {
+                          count: role.permissions.length,
+                          plural: role.permissions.length === 1 ? "" : "s",
+                        })}
                   </p>
                 </div>
                 {canEdit && !role.isSystem && (
@@ -124,14 +136,14 @@ export function RolesSection() {
                       onClick={() => setEditing(role)}
                       className="text-xs text-on-surface-tertiary hover:text-on-surface"
                     >
-                      Edit
+                      {gt("Edit")}
                     </button>
                     <button
                       type="button"
                       onClick={() => void handleDelete(role)}
                       className="text-xs text-danger hover:text-danger-strong"
                     >
-                      Delete
+                      {gt("Delete")}
                     </button>
                   </div>
                 )}
@@ -174,6 +186,7 @@ interface RoleEditorProps {
 }
 
 function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: RoleEditorProps) {
+  const gt = useGT();
   const [name, setName] = useState(role?.name ?? "");
   const [description, setDescription] = useState(role?.description ?? "");
   const [permissions, setPermissions] = useState<Set<string>>(
@@ -200,7 +213,7 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
 
   async function save() {
     if (!name.trim()) {
-      onError("Name is required");
+      onError(gt("Name is required"));
       return;
     }
     setSaving(true);
@@ -217,7 +230,7 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
       }
       await onSaved();
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Failed to save");
+      onError(e instanceof Error ? e.message : gt("Failed to save"));
     } finally {
       setSaving(false);
     }
@@ -228,19 +241,22 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
   );
 
   return (
-    <Modal onClose={onClose} ariaLabel={role ? `Edit role: ${role.name}` : "New role"}>
+    <Modal
+      onClose={onClose}
+      ariaLabel={role ? gt("Edit role: {name}", { name: role.name }) : gt("New role")}
+    >
       <div className="bg-surface w-[min(48rem,92vw)] max-h-[90vh] overflow-auto rounded-xl border border-border p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold">
-            {role ? `Edit role: ${role.name}` : "New role"}
+            {role ? gt("Edit role: {name}", { name: role.name }) : gt("New role")}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={gt("Close")}
             className="text-on-surface-tertiary hover:text-on-surface"
           >
-            Close
+            {gt("Close")}
           </button>
         </div>
 
@@ -251,7 +267,7 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
               htmlFor="role-name"
               className="block text-xs text-on-surface-tertiary mb-1"
             >
-              Name
+              {gt("Name")}
             </label>
             <input
               id="role-name"
@@ -267,7 +283,7 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
               htmlFor="role-description"
               className="block text-xs text-on-surface-tertiary mb-1"
             >
-              Description
+              {gt("Description")}
             </label>
             <input
               id="role-description"
@@ -279,7 +295,7 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
           </div>
 
           <div>
-            <span className="block text-xs text-on-surface-tertiary mb-2">Permissions</span>
+            <span className="block text-xs text-on-surface-tertiary mb-2">{gt("Permissions")}</span>
             <div className="space-y-3 max-h-80 overflow-auto pr-2">
               {groups.map((g) => (
                 <div key={g.category}>
@@ -313,7 +329,7 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
               htmlFor="role-extra-permission"
               className="block text-xs text-on-surface-tertiary mb-1"
             >
-              Wildcard or custom permission
+              {gt("Wildcard or custom permission")}
             </label>
             <div className="flex gap-2">
               <input
@@ -329,7 +345,7 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
                 onClick={addExtra}
                 className="px-3 py-1.5 text-xs bg-surface-overlay hover:bg-surface-raised border border-border-strong rounded-lg"
               >
-                Add
+                {gt("Add")}
               </button>
             </div>
             {wildcardEntries.length > 0 && (
@@ -343,8 +359,8 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
                     <button
                       type="button"
                       onClick={() => toggle(p)}
-                      aria-label={`Remove permission ${p}`}
-                      title={`Remove permission ${p}`}
+                      aria-label={gt("Remove permission {permission}", { permission: p })}
+                      title={gt("Remove permission {permission}", { permission: p })}
                       className="text-on-surface-tertiary hover:text-on-surface"
                     >
                       ×
@@ -362,7 +378,7 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
               disabled={saving}
               className="px-3 py-1.5 text-sm border border-border-strong rounded-lg text-on-surface-tertiary"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -370,7 +386,7 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
               disabled={saving}
               className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg"
             >
-              {saving ? "Saving..." : "Save"}
+              {saving ? gt("Saving...") : gt("Save")}
             </button>
           </div>
         </div>

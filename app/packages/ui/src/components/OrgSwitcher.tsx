@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useId } from "react";
+import { useGT } from "gt-react";
 
 export interface OrgEntry {
   id: string;
@@ -23,6 +24,7 @@ export function OrgSwitcher({
   onCreateOrg,
   loading = false,
 }: OrgSwitcherProps) {
+  const gt = useGT();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -80,8 +82,8 @@ export function OrgSwitcher({
   const activeOrg = orgs.find((o) => o.id === activeOrgId);
   const label =
     activeOrgId === null && showLocalOption
-      ? "Local"
-      : (activeOrg?.displayName ?? (loading ? "Loading..." : "Select organization"));
+      ? gt("Local")
+      : (activeOrg?.displayName ?? (loading ? gt("Loading…") : gt("Select organization")));
 
   return (
     <div ref={ref} className="relative" onKeyDown={handleKeyDown}>
@@ -131,7 +133,7 @@ export function OrgSwitcher({
               }`}
             >
               {activeOrgId === null && <span className="text-accent text-xs">&#10003;</span>}
-              <span className={activeOrgId === null ? "" : "pl-5"}>Local</span>
+              <span className={activeOrgId === null ? "" : "pl-5"}>{gt("Local")}</span>
             </button>
           )}
 
@@ -170,7 +172,7 @@ export function OrgSwitcher({
                 }}
                 className="w-full text-left px-3 py-2 text-sm text-on-surface-muted hover:bg-surface-overlay hover:text-on-surface-secondary transition-colors"
               >
-                + Create organization
+                + {gt("Create organization")}
               </button>
             </>
           )}

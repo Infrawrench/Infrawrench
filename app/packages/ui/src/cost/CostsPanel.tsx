@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useGT } from "gt-react";
 
+import { useDataString } from "../i18n/data-strings.js";
 import { Modal } from "../components/Modal.js";
 import { SavingsSection } from "../savings/SavingsSection.js";
 import { OversizedSection } from "../savings/OversizedSection.js";
@@ -68,11 +70,11 @@ function budgetToInput(budget: BudgetWithStatus): BudgetInput {
   };
 }
 
-function placementSummary(budget: BudgetWithStatus): string {
+function placementSummary(gt: ReturnType<typeof useGT>, budget: BudgetWithStatus): string {
   const count = budget.placements.length;
-  if (count === 0) return "On no dashboard";
-  if (count === 1) return `On ${budget.placements[0]!.dashboardName}`;
-  return `On ${count} dashboards`;
+  if (count === 0) return gt("On no dashboard");
+  if (count === 1) return gt("On {name}", { name: budget.placements[0]!.dashboardName });
+  return gt("On {count} dashboards", { count });
 }
 
 export interface CostsPanelProps {
@@ -134,6 +136,8 @@ export function CostsPanel({
   onOpenExternal,
 }: CostsPanelProps) {
   const uid = useId();
+  const gt = useGT();
+  const gtData = useDataString();
   const [budgets, setBudgets] = useState<BudgetWithStatus[] | null>(null);
   const [statuses, setStatuses] = useState<CostAccountStatus[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -212,11 +216,21 @@ export function CostsPanel({
   }
 
   async function deleteBudget(budget: BudgetWithStatus) {
-    const where =
+    const confirmed =
       budget.placements.length > 0
-        ? `\n\nIts card will also be removed from ${budget.placements.map((p) => p.dashboardName).join(", ")}.`
-        : "";
-    if (!window.confirm(`Delete the budget "${budget.name}"? Its alerts stop firing.${where}`)) {
+        ? window.confirm(
+            gt(
+              'Delete the budget "{name}"? Its alerts stop firing.\n\nIts card will also be removed from {dashboards}.',
+              {
+                name: budget.name,
+                dashboards: budget.placements.map((p) => p.dashboardName).join(", "),
+              },
+            ),
+          )
+        : window.confirm(
+            gt('Delete the budget "{name}"? Its alerts stop firing.', { name: budget.name }),
+          );
+    if (!confirmed) {
       return;
     }
     await client.deleteBudget?.(budget.id);
@@ -230,7 +244,7 @@ export function CostsPanel({
 
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-on-surface">This month</h2>
+            <h2 className="text-sm font-semibold text-on-surface">{gt("This month")}</h2>
             <div className="flex items-center gap-2">
               {hasBillingRules && (
                 <label className="flex items-center gap-1.5 text-xs font-medium text-on-surface-secondary">
@@ -240,14 +254,14 @@ export function CostsPanel({
                     onChange={(e) => setAdjusted(e.target.checked)}
                     className="accent-amber-500"
                   />
-                  Apply billing rules
+                  {gt("Apply billing rules")}
                 </label>
               )}
               <label
                 htmlFor={`${uid}-groupby`}
                 className="text-xs font-medium text-on-surface-secondary"
               >
-                Break down by
+                {gt("Break down by")}
               </label>
               <select
                 id={`${uid}-groupby`}
@@ -257,7 +271,7 @@ export function CostsPanel({
               >
                 {OVERVIEW_GROUP_BYS.map((dim) => (
                   <option key={dim} value={dim}>
-                    {DIMENSION_LABELS[dim]}
+                    {gtData(DIMENSION_LABELS[dim])}
                   </option>
                 ))}
               </select>
@@ -272,43 +286,44 @@ export function CostsPanel({
             trick the dashboard's grid item uses.
           */}
           <div className="h-80 [&>*]:h-full">
-            <CostGraphCard title="Month to date" config={overview} api={client} />
+            <CostGraphCard title={gt("Month to date")} config={overview} api={client} />
           </div>
         </section>
 
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-on-surface">Budgets</h2>
+            <h2 className="text-sm font-semibold text-on-surface">{gt("Budgets")}</h2>
             {canWrite && (
               <button
                 type="button"
                 onClick={() => setEditing({ budget: null })}
                 className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
               >
-                New budget
+                {gt("New budget")}
               </button>
             )}
           </div>
 
           {error !== null && (
             <div role="alert" className="text-sm text-danger">
-              Couldn&rsquo;t load budgets — {error}{" "}
+              {gt("Couldn't load budgets — {error}", { error })}{" "}
               <button type="button" onClick={() => void refresh()} className="underline">
-                Retry
+                {gt("Retry")}
               </button>
             </div>
           )}
 
           {budgets === null && error === null && (
             <p role="status" className="text-sm text-on-surface-faint">
-              Loading budgets…
+              {gt("Loading budgets…")}
             </p>
           )}
 
           {budgets?.length === 0 && (
             <p className="text-sm text-on-surface-faint">
-              No budgets yet. A budget tracks a monthly amount against all spend or a filtered
-              slice, and alerts when it crosses a threshold.
+              {gt(
+                "No budgets yet. A budget tracks a monthly amount against all spend or a filtered slice, and alerts when it crosses a threshold.",
+              )}
             </p>
           )}
 
@@ -328,7 +343,7 @@ export function CostsPanel({
                         onClick={() => setPlacing(budget)}
                         className="hover:text-on-surface-secondary underline"
                       >
-                        Dashboards
+                        {gt("Dashboards")}
                       </button>
                     )}
                     {canWrite && (
@@ -337,7 +352,7 @@ export function CostsPanel({
                         onClick={() => void deleteBudget(budget)}
                         className="hover:text-danger underline"
                       >
-                        Delete
+                        {gt("Delete")}
                       </button>
                     )}
                   </div>
@@ -435,6 +450,7 @@ function PlacementList({
   budget: BudgetWithStatus;
   onOpenDashboard?: ((dashboardId: string) => void) | undefined;
 }) {
+  const gt = useGT();
   if (budget.placements.length === 1 && onOpenDashboard) {
     const only = budget.placements[0]!;
     return (
@@ -442,13 +458,13 @@ function PlacementList({
         type="button"
         onClick={() => onOpenDashboard(only.dashboardId)}
         className="truncate hover:text-on-surface-secondary underline"
-        title={`Open ${only.dashboardName}`}
+        title={gt("Open {name}", { name: only.dashboardName })}
       >
-        On {only.dashboardName}
+        {gt("On {name}", { name: only.dashboardName })}
       </button>
     );
   }
-  return <span className="truncate">{placementSummary(budget)}</span>;
+  return <span className="truncate">{placementSummary(gt, budget)}</span>;
 }
 
 /**
@@ -466,6 +482,7 @@ function PlacementModal({
   onClose: () => void;
   onChanged: () => Promise<void>;
 }) {
+  const gt = useGT();
   const [dashboards, setDashboards] = useState<CostsPanelDashboard[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -491,11 +508,15 @@ function PlacementModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel={`Dashboards showing ${budget.name}`}>
+    <Modal onClose={onClose} ariaLabel={gt("Dashboards showing {name}", { name: budget.name })}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[420px] p-6">
-        <h2 className="text-base font-semibold text-on-surface mb-1">Show on a dashboard</h2>
+        <h2 className="text-base font-semibold text-on-surface mb-1">
+          {gt("Show on a dashboard")}
+        </h2>
         <p className="text-xs text-on-surface-faint mb-4">
-          A card is a view onto this budget. Removing one leaves the budget and its alerts intact.
+          {gt(
+            "A card is a view onto this budget. Removing one leaves the budget and its alerts intact.",
+          )}
         </p>
 
         {error !== null && (
@@ -505,7 +526,7 @@ function PlacementModal({
         )}
         {dashboards === null && error === null && (
           <p role="status" className="text-sm text-on-surface-faint">
-            Loading dashboards…
+            {gt("Loading dashboards…")}
           </p>
         )}
 
@@ -524,7 +545,7 @@ function PlacementModal({
                     }
                     className="text-xs text-on-surface-faint hover:text-danger underline disabled:opacity-50"
                   >
-                    Remove
+                    {gt("Remove")}
                   </button>
                 ) : (
                   <button
@@ -535,7 +556,7 @@ function PlacementModal({
                     }
                     className="text-xs text-on-surface-secondary hover:text-on-surface underline disabled:opacity-50"
                   >
-                    Add
+                    {gt("Add")}
                   </button>
                 )}
               </li>
@@ -549,7 +570,7 @@ function PlacementModal({
             onClick={onClose}
             className="rounded-lg border border-border px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            Done
+            {gt("Done")}
           </button>
         </div>
       </div>

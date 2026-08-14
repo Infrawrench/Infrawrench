@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useGT } from "gt-react";
 
 import {
   REPORT_NOTIFICATION_CADENCES,
@@ -13,6 +14,7 @@ import {
   type ReportNotificationInput,
 } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
+import { useDataString } from "../i18n/data-strings.js";
 import type { CostReportsClient } from "./types.js";
 
 /**
@@ -57,6 +59,8 @@ function formatWhen(iso: string | null): string | null {
 }
 
 export function ReportDeliverySection({ reportId, client }: ReportDeliverySectionProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [notifications, setNotifications] = useState<ReportNotification[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ notification: ReportNotification | null } | null>(null);
@@ -88,7 +92,7 @@ export function ReportDeliverySection({ reportId, client }: ReportDeliverySectio
   if (!canRead) return null;
 
   async function deleteSchedule(notification: ReportNotification) {
-    if (!window.confirm("Delete this delivery schedule?")) return;
+    if (!window.confirm(gt("Delete this delivery schedule?"))) return;
     setBusyId(notification.id);
     setSendResult(null);
     try {
@@ -107,7 +111,12 @@ export function ReportDeliverySection({ reportId, client }: ReportDeliverySectio
     try {
       const result = await client.sendReportNotificationNow?.(reportId, notification.id);
       if (result) {
-        setSendResult(`Sent to ${result.succeeded} of ${result.attempted} destination(s).`);
+        setSendResult(
+          gt("Sent to {succeeded} of {attempted} destination(s).", {
+            succeeded: result.succeeded,
+            attempted: result.attempted,
+          }),
+        );
       }
       await refresh();
     } catch (e: unknown) {
@@ -122,10 +131,11 @@ export function ReportDeliverySection({ reportId, client }: ReportDeliverySectio
     <section className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-on-surface">Delivery</h3>
+          <h3 className="text-sm font-semibold text-on-surface">{gt("Delivery")}</h3>
           <p className="text-xs text-on-surface-faint mt-0.5">
-            Send this report on a schedule to Slack, Microsoft Teams or email — the numbers and a
-            link, no chart image. An empty period still sends, saying so.
+            {gt(
+              "Send this report on a schedule to Slack, Microsoft Teams or email — the numbers and a link, no chart image. An empty period still sends, saying so.",
+            )}
           </p>
         </div>
         {canManage && (
@@ -137,7 +147,7 @@ export function ReportDeliverySection({ reportId, client }: ReportDeliverySectio
             }}
             className="shrink-0 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            New schedule
+            {gt("New schedule")}
           </button>
         )}
       </div>
@@ -153,7 +163,7 @@ export function ReportDeliverySection({ reportId, client }: ReportDeliverySectio
             }}
             className="underline"
           >
-            Retry
+            {gt("Retry")}
           </button>
         </div>
       )}
@@ -165,80 +175,88 @@ export function ReportDeliverySection({ reportId, client }: ReportDeliverySectio
 
       {notifications === null && error === null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Loading schedules…
+          {gt("Loading schedules…")}
         </p>
       )}
 
       {notifications?.length === 0 && (
         <p className="text-sm text-on-surface-faint">
-          No scheduled delivery. Nothing goes anywhere until you add one.
+          {gt("No scheduled delivery. Nothing goes anywhere until you add one.")}
         </p>
       )}
 
       <ul className="flex flex-col gap-2">
-        {(notifications ?? []).map((n) => (
-          <li key={n.id} className="rounded-xl border border-border bg-surface-raised px-4 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <span className="block text-sm font-medium text-on-surface">
-                  {describeReportSchedule(n)}
-                  {!n.enabled && <span className="ml-2 text-xs text-on-surface-faint">paused</span>}
-                </span>
-                <span className="block truncate text-xs text-on-surface-faint mt-0.5">
-                  To {describeReportTargets(n)}
-                </span>
-                <span className={`block text-xs mt-0.5 ${statusTone(n.lastStatus)}`}>
-                  {n.lastStatus
-                    ? `${STATUS_LABELS[n.lastStatus] ?? n.lastStatus}${
-                        formatWhen(n.lastSentAt ?? null) && n.lastStatus !== "failed"
-                          ? ` · last sent ${formatWhen(n.lastSentAt)}`
-                          : ""
-                      }`
-                    : "Not sent yet"}
-                  {n.enabled && formatWhen(n.nextSendAt)
-                    ? ` · next ${formatWhen(n.nextSendAt)}`
-                    : ""}
-                </span>
-                {n.lastError && (
-                  <span role="alert" className="block text-xs text-danger mt-0.5">
-                    {n.lastError}
+        {(notifications ?? []).map((n) => {
+          const statusLabel = n.lastStatus
+            ? gtData(STATUS_LABELS[n.lastStatus] ?? n.lastStatus)
+            : gt("Not sent yet");
+          const lastSentSuffix =
+            n.lastStatus && formatWhen(n.lastSentAt ?? null) && n.lastStatus !== "failed"
+              ? gt(" · last sent {when}", { when: formatWhen(n.lastSentAt) ?? "" })
+              : "";
+          const nextSuffix =
+            n.enabled && formatWhen(n.nextSendAt)
+              ? gt(" · next {when}", { when: formatWhen(n.nextSendAt) ?? "" })
+              : "";
+          return (
+            <li key={n.id} className="rounded-xl border border-border bg-surface-raised px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <span className="block text-sm font-medium text-on-surface">
+                    {describeReportSchedule(n)}
+                    {!n.enabled && (
+                      <span className="ml-2 text-xs text-on-surface-faint">{gt("paused")}</span>
+                    )}
                   </span>
+                  <span className="block truncate text-xs text-on-surface-faint mt-0.5">
+                    {gt("To {targets}", { targets: describeReportTargets(n) })}
+                  </span>
+                  <span className={`block text-xs mt-0.5 ${statusTone(n.lastStatus)}`}>
+                    {statusLabel}
+                    {lastSentSuffix}
+                    {nextSuffix}
+                  </span>
+                  {n.lastError && (
+                    <span role="alert" className="block text-xs text-danger mt-0.5">
+                      {n.lastError}
+                    </span>
+                  )}
+                </div>
+                {canManage && (
+                  <div className="flex shrink-0 items-center gap-2 text-xs text-on-surface-faint">
+                    <button
+                      type="button"
+                      disabled={busyId === n.id}
+                      onClick={() => void sendNow(n)}
+                      className="hover:text-on-surface-secondary underline disabled:opacity-50"
+                    >
+                      {gt("Send now")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyId === n.id}
+                      onClick={() => {
+                        setSendResult(null);
+                        setEditing({ notification: n });
+                      }}
+                      className="hover:text-on-surface-secondary underline disabled:opacity-50"
+                    >
+                      {gt("Edit")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyId === n.id}
+                      onClick={() => void deleteSchedule(n)}
+                      className="hover:text-danger underline disabled:opacity-50"
+                    >
+                      {gt("Delete")}
+                    </button>
+                  </div>
                 )}
               </div>
-              {canManage && (
-                <div className="flex shrink-0 items-center gap-2 text-xs text-on-surface-faint">
-                  <button
-                    type="button"
-                    disabled={busyId === n.id}
-                    onClick={() => void sendNow(n)}
-                    className="hover:text-on-surface-secondary underline disabled:opacity-50"
-                  >
-                    Send now
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busyId === n.id}
-                    onClick={() => {
-                      setSendResult(null);
-                      setEditing({ notification: n });
-                    }}
-                    className="hover:text-on-surface-secondary underline disabled:opacity-50"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busyId === n.id}
-                    onClick={() => void deleteSchedule(n)}
-                    className="hover:text-danger underline disabled:opacity-50"
-                  >
-                    Delete
-                  </button>
-                </div>
-              )}
-            </div>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
 
       {editing && canManage && (
@@ -283,6 +301,8 @@ function ScheduleEditorModal({
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [targets, setTargets] = useState<ReportDeliveryTargets | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -355,15 +375,16 @@ function ScheduleEditorModal({
   return (
     <Modal
       onClose={onClose}
-      ariaLabel={notification ? "Edit delivery schedule" : "New delivery schedule"}
+      ariaLabel={notification ? gt("Edit delivery schedule") : gt("New delivery schedule")}
     >
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[440px] p-6 max-h-[85vh] overflow-y-auto">
         <h2 className="text-base font-semibold text-on-surface mb-1">
-          {notification ? "Edit delivery schedule" : "New delivery schedule"}
+          {notification ? gt("Edit delivery schedule") : gt("New delivery schedule")}
         </h2>
         <p className="text-xs text-on-surface-faint mb-4">
-          The report runs server-side at each send: total for its window, change vs the period
-          before, and its top groups — converted to your display currency where one is configured.
+          {gt(
+            "The report runs server-side at each send: total for its window, change vs the period before, and its top groups — converted to your display currency where one is configured.",
+          )}
         </p>
 
         {error !== null && (
@@ -375,7 +396,7 @@ function ScheduleEditorModal({
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <label className="text-sm text-on-surface w-24 shrink-0" htmlFor="rd-cadence">
-              Cadence
+              {gt("Cadence")}
             </label>
             <select
               id="rd-cadence"
@@ -385,34 +406,34 @@ function ScheduleEditorModal({
             >
               {REPORT_NOTIFICATION_CADENCES.map((c) => (
                 <option key={c} value={c}>
-                  {REPORT_NOTIFICATION_CADENCE_LABELS[c]}
+                  {gtData(REPORT_NOTIFICATION_CADENCE_LABELS[c])}
                 </option>
               ))}
             </select>
             {cadence === "weekly" && (
               <select
-                aria-label="Day of week"
+                aria-label={gt("Day of week")}
                 className={selectClass}
                 value={sendDay}
                 onChange={(e) => setSendDay(Number(e.target.value))}
               >
                 {[1, 2, 3, 4, 5, 6, 7].map((d) => (
                   <option key={d} value={d}>
-                    {REPORT_NOTIFICATION_WEEKDAY_LABELS[d]}
+                    {gtData(REPORT_NOTIFICATION_WEEKDAY_LABELS[d] ?? String(d))}
                   </option>
                 ))}
               </select>
             )}
             {cadence === "monthly" && (
               <select
-                aria-label="Day of month"
+                aria-label={gt("Day of month")}
                 className={selectClass}
                 value={sendDayOfMonth}
                 onChange={(e) => setSendDayOfMonth(Number(e.target.value))}
               >
                 {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
                   <option key={d} value={d}>
-                    {d === 31 ? "31 (month end)" : d}
+                    {d === 31 ? gt("31 (month end)") : d}
                   </option>
                 ))}
               </select>
@@ -421,7 +442,7 @@ function ScheduleEditorModal({
 
           <div className="flex items-center gap-2">
             <label className="text-sm text-on-surface w-24 shrink-0" htmlFor="rd-hour">
-              At
+              {gt("At")}
             </label>
             <select
               id="rd-hour"
@@ -436,7 +457,7 @@ function ScheduleEditorModal({
               ))}
             </select>
             <input
-              aria-label="Time zone"
+              aria-label={gt("Time zone")}
               className={`${selectClass} flex-1 min-w-0`}
               value={timezone}
               onChange={(e) => setTimezone(e.target.value)}
@@ -446,13 +467,13 @@ function ScheduleEditorModal({
 
           {targets === null && error === null && (
             <p role="status" className="text-xs text-on-surface-faint">
-              Loading destinations…
+              {gt("Loading destinations…")}
             </p>
           )}
 
           {targets && targets.slackChannels.length > 0 && (
             <fieldset>
-              <legend className="text-sm text-on-surface mb-1">Slack channels</legend>
+              <legend className="text-sm text-on-surface mb-1">{gt("Slack channels")}</legend>
               <div className="flex flex-col gap-1">
                 {targets.slackChannels.map((ch) => (
                   <label key={ch.id} className="flex items-center gap-2 text-sm text-on-surface">
@@ -470,7 +491,7 @@ function ScheduleEditorModal({
 
           {targets && targets.teamsWebhooks.length > 0 && (
             <fieldset>
-              <legend className="text-sm text-on-surface mb-1">Microsoft Teams</legend>
+              <legend className="text-sm text-on-surface mb-1">{gt("Microsoft Teams")}</legend>
               <div className="flex flex-col gap-1">
                 {targets.teamsWebhooks.map((w) => (
                   <label key={w.id} className="flex items-center gap-2 text-sm text-on-surface">
@@ -488,7 +509,7 @@ function ScheduleEditorModal({
 
           <div>
             <label className="block text-sm text-on-surface mb-1" htmlFor="rd-emails">
-              Email recipients
+              {gt("Email recipients")}
             </label>
             <textarea
               id="rd-emails"
@@ -499,9 +520,13 @@ function ScheduleEditorModal({
               placeholder="finance@example.com, cfo@example.com"
             />
             <p className="text-xs text-on-surface-faint mt-0.5">
-              Comma-separated, up to {REPORT_NOTIFICATION_LIMITS.maxEmailRecipients}.
+              {gt("Comma-separated, up to {max}.", {
+                max: REPORT_NOTIFICATION_LIMITS.maxEmailRecipients,
+              })}
               {targets && !targets.emailAvailable
-                ? " This deployment has no mail provider configured — addresses will be saved but nothing will be delivered to them."
+                ? gt(
+                    " This deployment has no mail provider configured — addresses will be saved but nothing will be delivered to them.",
+                  )
                 : ""}
             </p>
           </div>
@@ -512,7 +537,7 @@ function ScheduleEditorModal({
               checked={enabled}
               onChange={(e) => setEnabled(e.target.checked)}
             />
-            Enabled
+            {gt("Enabled")}
           </label>
         </div>
 
@@ -522,7 +547,7 @@ function ScheduleEditorModal({
             onClick={onClose}
             className="rounded-lg border border-border px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -530,7 +555,7 @@ function ScheduleEditorModal({
             onClick={() => void save()}
             className="rounded-lg border border-border-strong bg-surface px-3 py-1.5 text-sm font-medium text-on-surface hover:border-border-strong disabled:opacity-50"
           >
-            {notification ? "Save" : "Create"}
+            {notification ? gt("Save") : gt("Create")}
           </button>
         </div>
       </div>

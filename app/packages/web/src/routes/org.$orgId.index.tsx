@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { useGT } from "gt-react";
 import { useUIStore, RESOURCES_CHANGED_EVENT } from "@infrawrench/ui";
 import type { DashboardWidget } from "@infrawrench/ui/cost/config";
 import { DashboardView, type WorkflowPin } from "@/components/DashboardView";
@@ -11,6 +12,7 @@ export const Route = createFileRoute("/org/$orgId/")({
 });
 
 function HomePage() {
+  const gt = useGT();
   const { orgId } = Route.useParams();
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const [data, setData] = useState<{
@@ -49,7 +51,8 @@ function HomePage() {
     return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, onChanged);
   }, [orgId]);
 
-  if (!data) return <div className="p-6 text-on-surface-muted text-sm animate-pulse">Loading…</div>;
+  if (!data)
+    return <div className="p-6 text-on-surface-muted text-sm animate-pulse">{gt("Loading…")}</div>;
 
   return (
     <DashboardView

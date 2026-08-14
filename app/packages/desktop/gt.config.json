@@ -1,0 +1,20 @@
+{
+  "defaultLocale": "en",
+  "locales": ["es", "fr", "de", "ja", "zh"],
+  "src": [
+    "src/**/*.{ts,tsx}",
+    "!src/**/*.test.{ts,tsx}",
+    "!src/**/__tests__/**",
+    "../ui/src/**/*.{ts,tsx}",
+    "!../ui/src/**/*.test.{ts,tsx}",
+    "!../ui/src/**/__tests__/**"
+  ],
+  "files": {
+    "gt": {
+      "output": "src/_gt/[locale].json",
+      "parsingFlags": {
+        "devHotReload": true
+      }
+    }
+  }
+}

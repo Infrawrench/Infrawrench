@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import type { SecretExportTemplate, PluginClient } from "@infrawrench/plugin-base";
 import { camelToTitle } from "@infrawrench/plugin-base";
 import { getPlugin } from "../plugins/loader";
 import { getDb } from "../db/client";
 import { invoke } from "../lib/invoke";
 import type { DraggableResource } from "../lib/pins";
-import { Modal, formatErrorMessage } from "@infrawrench/ui";
+import { Modal, formatErrorMessage, useDataString } from "@infrawrench/ui";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 
 interface SecretExportModalProps {
@@ -26,6 +27,8 @@ export function SecretExportModal({
   onClose,
   onCreated,
 }: SecretExportModalProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [templates, setTemplates] = useState<SecretExportTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [namespaces, setNamespaces] = useState<string[]>([]);
@@ -62,7 +65,7 @@ export function SecretExportModal({
         }
         const tpls = resourceType?.secretExportTemplates ?? [];
         if (tpls.length === 0) {
-          setLoadError("This resource type doesn't declare any secret export templates.");
+          setLoadError(gt("This resource type doesn't declare any secret export templates."));
           return;
         }
         if (!cancelled && resourceType) {
@@ -138,13 +141,16 @@ export function SecretExportModal({
         [source.accountId],
       );
       const sourceRow = sourceRows[0];
-      if (!sourceRow) throw new Error("Source account not found");
+      if (!sourceRow) throw new Error(gt("Source account not found"));
 
       const sourceCreds = await invoke<Record<string, string>>("account_get_credentials", {
         accountId: sourceRow.id,
       });
       const sourcePlugin = await getPlugin(sourceRow.plugin_id);
-      if (!sourcePlugin) throw new Error(`Source plugin "${sourceRow.plugin_id}" not loaded`);
+      if (!sourcePlugin)
+        throw new Error(
+          gt('Source plugin "{pluginId}" not loaded', { pluginId: sourceRow.plugin_id }),
+        );
 
       const sourceClient = sourcePlugin.plugin.createClient(sourceCreds);
 
@@ -170,7 +176,7 @@ export function SecretExportModal({
       setResolving(false);
 
       if (!targetClient.importSecret)
-        throw new Error("Target plugin doesn't support secret import");
+        throw new Error(gt("Target plugin doesn't support secret import"));
       await targetClient.importSecret("", {
         namespace,
         secretName,
@@ -196,18 +202,19 @@ export function SecretExportModal({
   ]);
 
   const entryCount = selectedTemplate?.entries.length ?? 0;
+  const modalTitle = gt("Create Kubernetes Secret");
 
   return (
-    <Modal onClose={onClose} ariaLabel="Create Kubernetes Secret">
+    <Modal onClose={onClose} ariaLabel={modalTitle}>
       <div className="w-[min(520px,90vw)] max-h-[80vh] overflow-y-auto rounded-2xl border border-border-strong bg-surface-raised shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <h2 className="text-base font-semibold text-on-surface">Create Kubernetes Secret</h2>
+          <h2 className="text-base font-semibold text-on-surface">{modalTitle}</h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close Create Kubernetes Secret"
-            title="Close Create Kubernetes Secret"
+            aria-label={gt("Close {title}", { title: modalTitle })}
+            title={gt("Close {title}", { title: modalTitle })}
             className="text-on-surface-muted hover:text-on-surface-secondary transition-colors text-lg leading-none"
           >
             x
@@ -221,15 +228,19 @@ export function SecretExportModal({
             <>
               {/* Source info */}
               <div className="text-sm text-on-surface-tertiary">
-                Exporting secrets from{" "}
-                <span className="text-on-surface font-medium">{source.displayName}</span>
+                <T>
+                  Exporting secrets from{" "}
+                  <Var>
+                    <span className="text-on-surface font-medium">{source.displayName}</span>
+                  </Var>
+                </T>
               </div>
 
               {/* Template picker */}
               {templates.length > 1 && (
                 <div className="space-y-2">
                   <span className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
-                    Template
+                    {gt("Template")}
                   </span>
                   <div className="space-y-1.5">
                     {templates.map((tpl) => (
@@ -247,16 +258,16 @@ export function SecretExportModal({
                           value={tpl.id}
                           checked={selectedTemplateId === tpl.id}
                           onChange={() => handleTemplateChange(tpl.id)}
-                          aria-label={tpl.displayName}
+                          aria-label={gtData(tpl.displayName)}
                           className="mt-0.5 accent-blue-500"
                         />
                         <div>
                           <div className="text-sm font-medium text-on-surface">
-                            {tpl.displayName}
+                            {gtData(tpl.displayName)}
                           </div>
                           {tpl.description && (
                             <div className="text-xs text-on-surface-muted mt-0.5">
-                              {tpl.description}
+                              {gtData(tpl.description)}
                             </div>
                           )}
                         </div>
@@ -270,7 +281,7 @@ export function SecretExportModal({
               {selectedTemplate && (
                 <div className="space-y-2">
                   <span className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
-                    Secret Keys ({entryCount})
+                    {gt("Secret Keys ({count})", { count: entryCount })}
                   </span>
                   <div className="rounded-lg border border-border-strong divide-y divide-border">
                     {selectedTemplate.entries.map((entry) => (
@@ -284,12 +295,14 @@ export function SecretExportModal({
                               [entry.outputKey]: e.target.value,
                             }))
                           }
-                          aria-label={`Secret key for ${camelToTitle(entry.outputKey)}`}
+                          aria-label={gt("Secret key for {label}", {
+                            label: gtData(camelToTitle(entry.outputKey)),
+                          })}
                           className="flex-1 bg-transparent text-sm font-mono text-on-surface outline-none"
                         />
-                        <span className="text-xs text-on-surface-faint">from</span>
+                        <span className="text-xs text-on-surface-faint">{gt("from")}</span>
                         <span className="text-xs text-on-surface-muted font-mono">
-                          {camelToTitle(entry.outputKey)}
+                          {gtData(camelToTitle(entry.outputKey))}
                         </span>
                       </div>
                     ))}
@@ -304,7 +317,7 @@ export function SecretExportModal({
                   htmlFor="secret-export-namespace"
                   className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider"
                 >
-                  Namespace
+                  {gt("Namespace")}
                 </label>
                 {namespaces.length > 0 ? (
                   <select
@@ -340,7 +353,7 @@ export function SecretExportModal({
                   htmlFor="secret-export-name"
                   className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider"
                 >
-                  Secret Name
+                  {gt("Secret Name")}
                 </label>
                 <input
                   id="secret-export-name"
@@ -369,7 +382,7 @@ export function SecretExportModal({
               onClick={onClose}
               className="px-4 py-2 rounded-lg text-sm text-on-surface-secondary hover:text-on-surface transition-colors"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -380,7 +393,11 @@ export function SecretExportModal({
               {creating && (
                 <span className="animate-spin inline-block size-3.5 rounded-full border-2 border-border-strong border-t-white" />
               )}
-              {resolving ? "Resolving outputs..." : creating ? "Creating..." : "Create Secret"}
+              {resolving
+                ? gt("Resolving outputs...")
+                : creating
+                  ? gt("Creating...")
+                  : gt("Create Secret")}
             </button>
           </div>
         )}

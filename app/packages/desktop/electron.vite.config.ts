@@ -2,6 +2,8 @@ import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
+import { vite as gtCompiler } from "@generaltranslation/compiler";
+import gtConfig from "./gt.config.json" with { type: "json" };
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -9,6 +11,28 @@ import { readFileSync } from "node:fs";
 import type { Plugin } from "vite";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
+
+/**
+ * The GT compiler's own include filter is extension-only, so it also parses
+ * node_modules dists, where its build checks reject third-party patterns
+ * (e.g. @tanstack/react-router). Scope it to the renderer's sources; the
+ * @infrawrench/ui components are consumed as built dist and resolve their
+ * translations through gt-react's runtime hashing instead.
+ *
+ * devHotReload (live dev translation) must also be forced off for builds:
+ * it injects a top-level `await` into every module that translates strings,
+ * which the production browser targets reject.
+ */
+function scopedGtCompiler(dev: boolean) {
+  const srcRoot = resolve(__dirname, "src");
+  const plugins = [gtCompiler({ gtConfig, ...(dev ? {} : { devHotReload: false }) })].flat();
+  for (const plugin of plugins) {
+    const p = plugin as { transformInclude?: (id: string) => boolean };
+    const base = p.transformInclude;
+    p.transformInclude = (id: string) => id.startsWith(srcRoot) && (base ? base(id) : true);
+  }
+  return plugins;
+}
 
 /**
  * The workflow sandbox bundles `@jitl/quickjs-ng-wasmfile-release-asyncify`
@@ -34,7 +58,7 @@ function copyQuickJsWasm(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   main: {
     plugins: [
       externalizeDepsPlugin({
@@ -183,6 +207,7 @@ export default defineConfig({
       }),
       tailwindcss(),
       react(),
+      scopedGtCompiler(command === "serve"),
       // `@netlify/api/lib/open_api.js` uses `createRequire` to load the
       // OpenAPI JSON spec, which fails in the renderer build because
       // `node:module` isn't available. Rewrite that one file to import the
@@ -214,4 +239,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useGT } from "gt-react";
 import type { DiskOption } from "@infrawrench/plugin-base";
 
 export function DiskPicker({
@@ -10,6 +11,7 @@ export function DiskPicker({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const gt = useGT();
   const [search, setSearch] = useState("");
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -20,7 +22,9 @@ export function DiskPicker({
 
   if (disks.length === 0) {
     return (
-      <p className="text-sm text-on-surface-faint py-1">No existing disks found in this project.</p>
+      <p className="text-sm text-on-surface-faint py-1">
+        {gt("No existing disks found in this project.")}
+      </p>
     );
   }
 
@@ -29,14 +33,14 @@ export function DiskPicker({
       <div className="px-3 py-2 border-b border-border-strong bg-surface-overlay/50">
         <input
           type="text"
-          aria-label="Search disks"
+          aria-label={gt("Search disks")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search disks…"
+          placeholder={gt("Search disks…")}
           className="w-full bg-transparent text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none"
         />
       </div>
-      <div className="max-h-52 overflow-y-auto" role="listbox" aria-label="Disks">
+      <div className="max-h-52 overflow-y-auto" role="listbox" aria-label={gt("Disks")}>
         {filtered.map((d) => (
           <button
             key={d.id}
@@ -56,13 +60,16 @@ export function DiskPicker({
             <span className="flex-1 min-w-0">
               <span className="font-medium truncate block">{d.label}</span>
               <span className="text-[11px] text-on-surface-muted">
-                {d.sizeGb} GB{d.zone ? ` · ${d.zone}` : ""}
+                {gt("{size} GB", { size: d.sizeGb })}
+                {d.zone ? ` · ${d.zone}` : ""}
                 {d.diskType ? ` · ${d.diskType}` : ""}
               </span>
             </span>
           </button>
         ))}
-        {filtered.length === 0 && <p className="p-3 text-xs text-on-surface-faint">No matches</p>}
+        {filtered.length === 0 && (
+          <p className="p-3 text-xs text-on-surface-faint">{gt("No matches")}</p>
+        )}
       </div>
     </div>
   );

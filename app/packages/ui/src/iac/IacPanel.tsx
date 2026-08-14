@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import { IAC_STATUS_LABELS, type IacResourceStatus } from "@infrawrench/client-core";
 import { ResourceFieldDiffList } from "../changes/ChangeParts.js";
 import { formatErrorMessage } from "../utils.js";
+import { useDataString } from "../i18n/data-strings.js";
 import { IacImportPlanModal } from "./IacImportPlanModal.js";
 import type {
   IacAccountOption,
@@ -34,11 +36,12 @@ export interface IacPanelProps {
 }
 
 function StatusBadge({ status }: { status: IacResourceStatus }) {
+  const gtData = useDataString();
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE[status]}`}
     >
-      {IAC_STATUS_LABELS[status]}
+      {gtData(IAC_STATUS_LABELS[status])}
     </span>
   );
 }
@@ -88,6 +91,7 @@ function SummaryTile({
  * it classifies is the org's synced resources.
  */
 export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }: IacPanelProps) {
+  const gt = useGT();
   const [states, setStates] = useState<IacStateSummary[]>([]);
   const [selectedStateId, setSelectedStateId] = useState<string>("");
   const [report, setReport] = useState<IacReconciliationResponse | null>(null);
@@ -237,12 +241,14 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
     <div className="flex-1 overflow-auto p-6 space-y-5">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-semibold text-on-surface">Infrastructure as Code</h1>
-          <p className="text-sm text-on-surface-muted mt-1 max-w-[70ch]">
-            Upload the Terraform state you already have and every synced resource is classified as
-            managed, drifted, or unmanaged. The unmanaged ones are what somebody made by hand — and
-            they can be turned into <code>import</code> blocks from here.
-          </p>
+          <h1 className="text-xl font-semibold text-on-surface">{gt("Infrastructure as Code")}</h1>
+          <T>
+            <p className="text-sm text-on-surface-muted mt-1 max-w-[70ch]">
+              Upload the Terraform state you already have and every synced resource is classified as
+              managed, drifted, or unmanaged. The unmanaged ones are what somebody made by hand —
+              and they can be turned into <code>import</code> blocks from here.
+            </p>
+          </T>
         </div>
         {canWrite && (
           <button
@@ -250,7 +256,7 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
             onClick={() => setShowUpload((v) => !v)}
             className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shrink-0"
           >
-            {showUpload ? "Cancel" : "Upload state"}
+            {showUpload ? gt("Cancel") : gt("Upload state")}
           </button>
         )}
       </div>
@@ -268,24 +274,24 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
         >
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-xs text-on-surface-tertiary">
-              Label
+              {gt("Label")}
               <input
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 required
                 maxLength={120}
-                placeholder="prod / us-east-1"
+                placeholder={gt("prod / us-east-1")}
                 className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface"
               />
             </label>
             <label className="text-xs text-on-surface-tertiary">
-              Scope
+              {gt("Scope")}
               <select
                 value={scopeAccountId}
                 onChange={(e) => setScopeAccountId(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface"
               >
-                <option value="">Whole organization</option>
+                <option value="">{gt("Whole organization")}</option>
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.displayName}
@@ -295,7 +301,7 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
             </label>
           </div>
           <label className="block text-xs text-on-surface-tertiary">
-            State document
+            {gt("State document")}
             <input
               type="file"
               accept=".json,.tfstate,application/json"
@@ -311,20 +317,22 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
             onChange={(e) => setDocument(e.target.value)}
             required
             rows={6}
-            placeholder="Paste a .tfstate or the output of `terraform show -json`"
+            placeholder={gt("Paste a .tfstate or the output of `terraform show -json`")}
             className="w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 font-mono text-[11px] text-on-surface"
           />
-          <p className="text-[11px] text-on-surface-faint leading-snug">
-            Both formats are accepted and version-checked. Attributes the state marks sensitive are
-            dropped before anything is stored, and the document itself is never kept — only the
-            attributes the drift comparison reads.
-          </p>
+          <T>
+            <p className="text-[11px] text-on-surface-faint leading-snug">
+              Both formats are accepted and version-checked. Attributes the state marks sensitive
+              are dropped before anything is stored, and the document itself is never kept — only
+              the attributes the drift comparison reads.
+            </p>
+          </T>
           <button
             type="submit"
             disabled={uploading || !document}
             className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
           >
-            {uploading ? "Parsing…" : "Upload"}
+            {uploading ? gt("Parsing…") : gt("Upload")}
           </button>
         </form>
       )}
@@ -332,7 +340,7 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
       {states.length > 0 && (
         <div className="flex items-center gap-3 flex-wrap">
           <label className="text-xs text-on-surface-tertiary">
-            State
+            {gt("State")}
             <select
               value={selectedStateId}
               onChange={(e) => setSelectedStateId(e.target.value)}
@@ -340,22 +348,34 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
             >
               {states.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.label} — {s.accountName ?? "whole org"} · {s.resourceCount} resources
+                  {gt("{label} — {account} · {count} resources", {
+                    label: s.label,
+                    account: s.accountName ?? gt("whole org"),
+                    count: s.resourceCount,
+                  })}
                 </option>
               ))}
             </select>
           </label>
           {report && (
             <span className="text-[11px] text-on-surface-faint">
-              {report.state.format === "tfstate" ? "state file v" : "terraform show -json v"}
+              {report.state.format === "tfstate"
+                ? gt("state file v")
+                : gt("terraform show -json v")}
               {report.state.formatVersion}
-              {report.state.terraformVersion ? ` · Terraform ${report.state.terraformVersion}` : ""}
-              {report.state.redactedAttributeCount > 0
-                ? ` · ${report.state.redactedAttributeCount} sensitive attribute(s) redacted`
+              {report.state.terraformVersion
+                ? gt(" · Terraform {version}", { version: report.state.terraformVersion })
                 : ""}
-              {" · uploaded "}
+              {report.state.redactedAttributeCount > 0
+                ? gt(" · {count} sensitive attribute(s) redacted", {
+                    count: report.state.redactedAttributeCount,
+                  })
+                : ""}
+              {gt(" · uploaded ")}
               {new Date(report.state.createdAt).toLocaleString()}
-              {report.state.uploadedByName ? ` by ${report.state.uploadedByName}` : ""}
+              {report.state.uploadedByName
+                ? gt(" by {name}", { name: report.state.uploadedByName })
+                : ""}
             </span>
           )}
           {canWrite && selectedStateId && (
@@ -364,22 +384,24 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
               onClick={() => void removeState(selectedStateId)}
               className="text-[11px] text-on-surface-faint hover:text-danger"
             >
-              Delete this state
+              {gt("Delete this state")}
             </button>
           )}
         </div>
       )}
 
-      {loading && <p className="text-xs text-on-surface-faint">Loading…</p>}
+      {loading && <p className="text-xs text-on-surface-faint">{gt("Loading…")}</p>}
 
       {!loading && states.length === 0 && (
         <div className="rounded-xl border border-border bg-surface-raised px-4 py-6 text-center">
-          <p className="text-sm text-on-surface-tertiary">No state uploaded yet.</p>
-          <p className="text-xs text-on-surface-faint mt-1 max-w-[60ch] mx-auto">
-            Run <code>terraform show -json &gt; state.json</code> in your workspace and upload the
-            result. Until then Infrawrench has no way to tell a resource Terraform manages from one
-            somebody clicked into existence — and it will not guess.
-          </p>
+          <p className="text-sm text-on-surface-tertiary">{gt("No state uploaded yet.")}</p>
+          <T>
+            <p className="text-xs text-on-surface-faint mt-1 max-w-[60ch] mx-auto">
+              Run <code>terraform show -json &gt; state.json</code> in your workspace and upload the
+              result. Until then Infrawrench has no way to tell a resource Terraform manages from
+              one somebody clicked into existence — and it will not guess.
+            </p>
+          </T>
         </div>
       )}
 
@@ -387,39 +409,43 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <SummaryTile
-              label="Managed"
+              label={gt("Managed")}
               value={report.summary.managed}
-              hint="Matched a state entry and agrees with it."
+              hint={gt("Matched a state entry and agrees with it.")}
               active={statusFilter === "managed"}
               onClick={() => setStatusFilter((f) => (f === "managed" ? "" : "managed"))}
             />
             <SummaryTile
-              label="Drifted"
+              label={gt("Drifted")}
               value={report.summary.drifted}
-              hint="Matched, but the live fields differ from state."
+              hint={gt("Matched, but the live fields differ from state.")}
               active={statusFilter === "drifted"}
               onClick={() => setStatusFilter((f) => (f === "drifted" ? "" : "drifted"))}
             />
             <SummaryTile
-              label="Unmanaged"
+              label={gt("Unmanaged")}
               value={report.summary.unmanaged}
-              hint="In your inventory, absent from state."
+              hint={gt("In your inventory, absent from state.")}
               active={statusFilter === "unmanaged"}
               onClick={() => setStatusFilter((f) => (f === "unmanaged" ? "" : "unmanaged"))}
             />
             <SummaryTile
-              label="In state only"
+              label={gt("In state only")}
               value={report.summary.stateOnly}
-              hint="Terraform thinks it exists; nothing in inventory matches."
+              hint={gt("Terraform thinks it exists; nothing in inventory matches.")}
             />
           </div>
 
           {report.summary.undiffable > 0 && (
             <p className="text-[11px] text-on-surface-faint">
-              {report.summary.undiffable} managed resource
-              {report.summary.undiffable === 1 ? "" : "s"} could not be mapped to a Terraform block,
-              so drift for {report.summary.undiffable === 1 ? "it" : "them"} is unknown rather than
-              absent.
+              {gt(
+                "{count} managed resource{resourceSuffix} could not be mapped to a Terraform block, so drift for {pronoun} is unknown rather than absent.",
+                {
+                  count: report.summary.undiffable,
+                  resourceSuffix: report.summary.undiffable === 1 ? "" : "s",
+                  pronoun: report.summary.undiffable === 1 ? "it" : "them",
+                },
+              )}
             </p>
           )}
 
@@ -430,7 +456,7 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
                 onClick={() => setSelected(new Set(unmanagedIds))}
                 className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
               >
-                Select all {unmanagedIds.length} unmanaged
+                {gt("Select all {count} unmanaged", { count: unmanagedIds.length })}
               </button>
               {selected.size > 0 && (
                 <>
@@ -439,14 +465,14 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
                     onClick={() => setSelected(new Set())}
                     className="text-xs text-on-surface-faint hover:text-on-surface-secondary"
                   >
-                    Clear
+                    {gt("Clear")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowPlan(true)}
                     className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors"
                   >
-                    Generate import blocks ({selected.size})
+                    {gt("Generate import blocks ({count})", { count: selected.size })}
                   </button>
                 </>
               )}
@@ -458,18 +484,18 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
               <thead className="bg-surface-sunken text-[11px] uppercase tracking-wide text-on-surface-faint">
                 <tr>
                   <th className="w-8" />
-                  <th className="text-left px-3 py-2 font-medium">Resource</th>
-                  <th className="text-left px-3 py-2 font-medium">Terraform</th>
-                  <th className="text-left px-3 py-2 font-medium">Status</th>
-                  <th className="text-left px-3 py-2 font-medium">Owner</th>
-                  <th className="text-left px-3 py-2 font-medium">First seen</th>
+                  <th className="text-left px-3 py-2 font-medium">{gt("Resource")}</th>
+                  <th className="text-left px-3 py-2 font-medium">{gt("Terraform")}</th>
+                  <th className="text-left px-3 py-2 font-medium">{gt("Status")}</th>
+                  <th className="text-left px-3 py-2 font-medium">{gt("Owner")}</th>
+                  <th className="text-left px-3 py-2 font-medium">{gt("First seen")}</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-3 py-6 text-center text-xs text-on-surface-faint">
-                      Nothing in this category.
+                      {gt("Nothing in this category.")}
                     </td>
                   </tr>
                 )}
@@ -486,7 +512,7 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
                             type="checkbox"
                             checked={selected.has(entry.resourceId)}
                             onChange={() => toggle(entry.resourceId)}
-                            aria-label={`Select ${entry.displayName}`}
+                            aria-label={gt("Select {name}", { name: entry.displayName })}
                           />
                         )}
                       </td>
@@ -517,7 +543,7 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
                         </span>
                         {entry.matchedBy && (
                           <div className="text-[11px] text-on-surface-faint">
-                            matched by {entry.matchedBy}
+                            {gt("matched by {value}", { value: entry.matchedBy })}
                           </div>
                         )}
                       </td>
@@ -530,8 +556,11 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
                               onClick={() => setExpandedId(expanded ? null : entry.resourceId)}
                               className="block text-[11px] text-on-surface-faint hover:text-on-surface-secondary mt-1"
                             >
-                              {entry.drift.length} field{entry.drift.length === 1 ? "" : "s"} differ
-                              {entry.drift.length === 1 ? "s" : ""}
+                              {gt("{count} field{fieldSuffix} differ{verbSuffix}", {
+                                count: entry.drift.length,
+                                fieldSuffix: entry.drift.length === 1 ? "" : "s",
+                                verbSuffix: entry.drift.length === 1 ? "s" : "",
+                              })}
                             </button>
                             {expanded && <ResourceFieldDiffList diff={entry.drift} />}
                           </>
@@ -542,7 +571,7 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
                           <>
                             {entry.owner.displayName}
                             {entry.owner.isLabel && (
-                              <span className="text-on-surface-faint"> (label)</span>
+                              <span className="text-on-surface-faint"> {gt("(label)")}</span>
                             )}
                           </>
                         ) : (
@@ -561,12 +590,16 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
 
           {report.stateOnly.length > 0 && (
             <section>
-              <h2 className="text-sm font-semibold text-on-surface">In state, not in inventory</h2>
-              <p className="text-xs text-on-surface-faint mt-0.5 max-w-[70ch]">
-                Terraform believes these exist. Either the account holding them is not connected
-                here, the resource type is not synced yet, or the object is gone upstream and the
-                state is stale.
-              </p>
+              <h2 className="text-sm font-semibold text-on-surface">
+                {gt("In state, not in inventory")}
+              </h2>
+              <T>
+                <p className="text-xs text-on-surface-faint mt-0.5 max-w-[70ch]">
+                  Terraform believes these exist. Either the account holding them is not connected
+                  here, the resource type is not synced yet, or the object is gone upstream and the
+                  state is stale.
+                </p>
+              </T>
               <ul className="mt-2 space-y-1">
                 {report.stateOnly.map((entry) => (
                   <li key={entry.address} className="text-xs text-on-surface-tertiary">
@@ -574,15 +607,24 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
                     {entry.reason === "unknown-terraform-type" ? (
                       <span className="text-on-surface-faint">
                         {" "}
-                        — no Infrawrench plugin maps <code>{entry.terraformType}</code>
+                        <T>
+                          — no Infrawrench plugin maps{" "}
+                          <code>
+                            <Var>{entry.terraformType}</Var>
+                          </code>
+                        </T>
                       </span>
                     ) : (
                       <span className="text-on-surface-faint">
                         {" "}
-                        — expected{" "}
-                        {entry.candidates
-                          .map((c) => `${c.pluginId}/${c.resourceTypeId}`)
-                          .join(", ")}
+                        <T>
+                          — expected{" "}
+                          <Var>
+                            {entry.candidates
+                              .map((c) => `${c.pluginId}/${c.resourceTypeId}`)
+                              .join(", ")}
+                          </Var>
+                        </T>
                       </span>
                     )}
                   </li>
@@ -593,13 +635,16 @@ export function IacPanel({ client, canWrite = true, onOpenResource, onDownload }
 
           {report.underivable.length > 0 && (
             <section>
-              <h2 className="text-sm font-semibold text-on-surface">Coverage gaps</h2>
-              <p className="text-xs text-on-surface-faint mt-0.5 max-w-[70ch]">
-                The Terraform type for these resource types could not be derived from the
-                plugin&apos;s own export mapper, so a state entry of that type cannot be attributed
-                back to a plugin. Resources of these types still match when Infrawrench holds the
-                live resource — this only affects the &ldquo;in state only&rdquo; list above.
-              </p>
+              <h2 className="text-sm font-semibold text-on-surface">{gt("Coverage gaps")}</h2>
+              <T>
+                <p className="text-xs text-on-surface-faint mt-0.5 max-w-[70ch]">
+                  The Terraform type for these resource types could not be derived from the
+                  plugin&apos;s own export mapper, so a state entry of that type cannot be
+                  attributed back to a plugin. Resources of these types still match when Infrawrench
+                  holds the live resource — this only affects the &ldquo;in state only&rdquo; list
+                  above.
+                </p>
+              </T>
               <ul className="mt-2 space-y-1">
                 {report.underivable.map((u) => (
                   <li

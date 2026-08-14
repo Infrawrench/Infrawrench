@@ -7,7 +7,11 @@ out
 coverage
 pnpm-lock.yaml
 *.generated.*
-routeTree.gen.ts
+# Any *.gen.ts — TanStack's routeTree.gen.ts and the plugin-string extraction
+# manifest. Each generator writes in its own style, so formatting them puts
+# Prettier and the generator in a loop: format:check fails right after a
+# regeneration, and reformatting guarantees a diff on the next one.
+*.gen.ts
 **/assets/generated
 .expo
 /sdk
@@ -22,6 +26,12 @@ routeTree.gen.ts
 # spurious mega-diff on the next regeneration.
 app/packages/web/openapi.json
 app/packages/web/src/db/migrations/
+
+# Translation catalogs written wholesale by the gt CLI (`pnpm translate`),
+# keyed by content hashes. Formatting them guarantees a spurious diff on the
+# next regeneration.
+app/packages/web/src/_gt/
+app/packages/desktop/src/_gt/
 
 # Terraform Registry documentation, written wholesale by `tfplugindocs generate`
 # from the provider's schemas. Formatting it would put Prettier and the

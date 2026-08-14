@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useGT } from "gt-react";
 import {
   PROBE_DEFAULTS,
   PROBE_LIMITS,
@@ -44,6 +45,7 @@ function parseFieldInt(raw: string): number | null {
  * custom-URL option for endpoints Infrawrench doesn't know about.
  */
 export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEditorModalProps) {
+  const gt = useGT();
   const [name, setName] = useState(existing?.name ?? "");
   const [url, setUrl] = useState(existing?.url ?? "");
   const [method, setMethod] = useState(existing?.method ?? PROBE_DEFAULTS.method);
@@ -106,13 +108,13 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
   const thresholdNum = parseFieldInt(failureThreshold);
   const numbersProblem =
     intervalNum === null || timeoutNum === null || thresholdNum === null
-      ? "Interval, timeout and failure threshold must be whole numbers."
+      ? gt("Interval, timeout and failure threshold must be whole numbers.")
       : null;
   const thresholdForCopy = thresholdNum ?? PROBE_DEFAULTS.failureThreshold;
 
   const save = async () => {
     if (!name.trim()) {
-      setError("A name is required.");
+      setError(gt("A name is required."));
       return;
     }
     const parsed = normalizeProbeUrl(url);
@@ -128,7 +130,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
     if (!mutate) {
       // A read-only host opened the editor by mistake — fail loudly instead
       // of "saving" nothing and closing as if it worked.
-      setError("Probe editing isn't available here.");
+      setError(gt("Probe editing isn't available here."));
       return;
     }
     setSaving(true);
@@ -161,7 +163,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
       onSaved(saved);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save probe");
+      setError(e instanceof Error ? e.message : gt("Failed to save probe"));
     } finally {
       setSaving(false);
     }
@@ -174,22 +176,25 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
   };
 
   return (
-    <Modal onClose={dismiss} ariaLabel={existing ? "Edit probe" : "New probe"}>
+    <Modal onClose={dismiss} ariaLabel={existing ? gt("Edit probe") : gt("New probe")}>
       <div className="w-[28rem] max-w-[90vw] rounded-2xl border border-border bg-surface p-5 shadow-xl">
         <h2 className="text-sm font-semibold text-on-surface">
-          {existing ? "Edit probe" : "New probe"}
+          {existing ? gt("Edit probe") : gt("New probe")}
         </h2>
         <p className="mt-1 text-xs text-on-surface-secondary">
-          The endpoint is checked every interval from outside your infrastructure, so latency and
-          reachability reflect what your users see. {thresholdForCopy} consecutive failure
-          {thresholdForCopy === 1 ? "" : "s"} raise{thresholdForCopy === 1 ? "s" : ""} an alert.
+          {gt(
+            "The endpoint is checked every interval from outside your infrastructure, so latency and reachability reflect what your users see.",
+          )}{" "}
+          {gt("{count} consecutive failure", { count: thresholdForCopy })}
+          {thresholdForCopy === 1 ? "" : gt("s")} {gt("raise")}
+          {thresholdForCopy === 1 ? gt("s") : ""} {gt("an alert.")}
         </p>
 
         <div className="mt-4 flex flex-col gap-3">
           {!existing && (
             <div>
               <label className={labelClass} htmlFor="probe-endpoint">
-                Endpoint
+                {gt("Endpoint")}
               </label>
               <select
                 id="probe-endpoint"
@@ -199,17 +204,17 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
               >
                 <option value="" disabled>
                   {suggestions === null
-                    ? "Loading endpoints…"
+                    ? gt("Loading endpoints…")
                     : suggestions.length > 0
-                      ? "Pick an endpoint from your resources…"
-                      : "No endpoints found in synced resources"}
+                      ? gt("Pick an endpoint from your resources…")
+                      : gt("No endpoints found in synced resources")}
                 </option>
                 {(suggestions ?? []).map((s) => (
                   <option key={s.url} value={s.url}>
                     {s.displayName} — {s.url}
                   </option>
                 ))}
-                <option value={CUSTOM}>Custom URL…</option>
+                <option value={CUSTOM}>{gt("Custom URL…")}</option>
               </select>
             </div>
           )}
@@ -217,7 +222,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
           {(existing !== null || picked === CUSTOM || pickedSuggestion !== null) && (
             <div>
               <label className={labelClass} htmlFor="probe-url">
-                URL
+                {gt("URL")}
               </label>
               <input
                 id="probe-url"
@@ -233,7 +238,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
 
           <div>
             <label className={labelClass} htmlFor="probe-name">
-              Name
+              {gt("Name")}
             </label>
             <input
               id="probe-name"
@@ -241,14 +246,14 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
               className={inputClass}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="API health"
+              placeholder={gt("API health")}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelClass} htmlFor="probe-method">
-                Method
+                {gt("Method")}
               </label>
               <select
                 id="probe-method"
@@ -265,7 +270,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
             </div>
             <div>
               <label className={labelClass} htmlFor="probe-interval">
-                Interval (seconds)
+                {gt("Interval (seconds)")}
               </label>
               <input
                 id="probe-interval"
@@ -282,7 +287,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelClass} htmlFor="probe-timeout">
-                Timeout (ms)
+                {gt("Timeout (ms)")}
               </label>
               <input
                 id="probe-timeout"
@@ -297,7 +302,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
             </div>
             <div>
               <label className={labelClass} htmlFor="probe-threshold">
-                Failures before alert
+                {gt("Failures before alert")}
               </label>
               <input
                 id="probe-threshold"
@@ -324,7 +329,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
               disabled={saving}
               className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -338,7 +343,7 @@ export function ProbeEditorModal({ client, existing, onSaved, onClose }: ProbeEd
               }
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
             >
-              {saving ? "Saving…" : existing ? "Save changes" : "Create probe"}
+              {saving ? gt("Saving…") : existing ? gt("Save changes") : gt("Create probe")}
             </button>
           </div>
         </div>

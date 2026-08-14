@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useGT } from "gt-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useRouterState } from "@tanstack/react-router";
 import { hasPermission } from "@infrawrench/client-core";
@@ -122,6 +123,7 @@ function getLogWorkspaceClient(activeCloudOrgId: string | null): LogWorkspaceCli
 // per-kind panel components. Each open tab is rendered once and kept mounted
 // across tab switches — see WorkspaceTabsViewport for the rendering rules.
 export function DesktopWorkspaceTabsViewport() {
+  const gt = useGT();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hash = useRouterState({ select: (s) => s.location.hash });
@@ -151,7 +153,7 @@ export function DesktopWorkspaceTabsViewport() {
     <IssueFiling orgId={activeCloudOrgId}>
       <BaseViewport
         showActive={showActive}
-        renderTabPanel={(tab) => renderPanel(tab, navigate, activeCloudOrgId)}
+        renderTabPanel={(tab) => renderPanel(tab, navigate, activeCloudOrgId, gt)}
       />
     </IssueFiling>
   );
@@ -215,6 +217,7 @@ function renderPanel(
   tab: WorkspaceTab,
   navigate: ReturnType<typeof useNavigate>,
   activeCloudOrgId: string | null,
+  gt: ReturnType<typeof useGT>,
 ) {
   const t = tab.target;
   switch (t.kind) {
@@ -314,7 +317,9 @@ function renderPanel(
         />
       ) : (
         <div className="h-full flex items-center justify-center px-8 text-center text-sm text-on-surface-faint">
-          Cost reports live in Infrawrench Cloud — sign in and pick an organization to see them.
+          {gt(
+            "Cost reports live in Infrawrench Cloud — sign in and pick an organization to see them.",
+          )}
         </div>
       );
     case "invoices":
@@ -337,7 +342,7 @@ function renderPanel(
         />
       ) : (
         <div className="h-full flex items-center justify-center px-8 text-center text-sm text-on-surface-faint">
-          Invoices live in Infrawrench Cloud — sign in and pick an organization to see them.
+          {gt("Invoices live in Infrawrench Cloud — sign in and pick an organization to see them.")}
         </div>
       );
     case "graph":

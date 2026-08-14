@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import { costCentrePaths } from "@infrawrench/client-core";
 import type {
   AccountTagCompliance,
@@ -44,6 +45,7 @@ function labelFor(options: CostDimensionOption[], value: string | undefined): st
 }
 
 export function TagPolicySection() {
+  const gt = useGT();
   const { orgId, api, has, openSection } = useSettingsHost();
   const canEditPolicy = has("org:settings:write");
   const canReadAllocation = has("costs:read");
@@ -67,7 +69,7 @@ export function TagPolicySection() {
       setEnforceOnCreate(report.policy.enforceOnCreate);
       setCompliance(report.accounts);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load tag policy");
+      setError(e instanceof Error ? e.message : gt("Failed to load tag policy"));
     } finally {
       setLoading(false);
     }
@@ -90,7 +92,7 @@ export function TagPolicySection() {
       setSavedAt(Date.now());
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save tag policy");
+      setError(e instanceof Error ? e.message : gt("Failed to save tag policy"));
     } finally {
       setSaving(false);
     }
@@ -99,14 +101,16 @@ export function TagPolicySection() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold">Tag Policy</h1>
-        <p className="text-sm text-on-surface-muted mt-1">
-          Require every resource to carry tags like <code>owner</code> and <code>env</code>.
-          Compliance is scored per account, untagged spend shows up on the Costs page, and — when
-          enforcement is on — creating a resource without the required tags is rejected. Holders of{" "}
-          <code>tag-policy:override</code> can override; blocks and overrides are recorded in the
-          audit log.
-        </p>
+        <h1 className="text-xl font-semibold">{gt("Tag Policy")}</h1>
+        <T>
+          <p className="text-sm text-on-surface-muted mt-1">
+            Require every resource to carry tags like <code>owner</code> and <code>env</code>.
+            Compliance is scored per account, untagged spend shows up on the Costs page, and — when
+            enforcement is on — creating a resource without the required tags is rejected. Holders
+            of <code>tag-policy:override</code> can override; blocks and overrides are recorded in
+            the audit log.
+          </p>
+        </T>
       </div>
 
       {error && (
@@ -116,14 +120,14 @@ export function TagPolicySection() {
       )}
 
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
       ) : (
         <div className="space-y-8">
           <section className="border border-border rounded-xl p-4 space-y-3 bg-surface-raised/50">
-            <h2 className="text-sm font-semibold">Required tags</h2>
+            <h2 className="text-sm font-semibold">{gt("Required tags")}</h2>
             {rows.length === 0 && (
               <p className="text-sm text-on-surface-muted">
-                No required tags yet. Add keys every resource should carry.
+                {gt("No required tags yet. Add keys every resource should carry.")}
               </p>
             )}
             {rows.map((row, i) => (
@@ -137,8 +141,8 @@ export function TagPolicySection() {
                       prev.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)),
                     )
                   }
-                  placeholder="owner"
-                  aria-label="Tag key"
+                  placeholder={gt("owner")}
+                  aria-label={gt("Tag key")}
                   className="px-3 py-1.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-border-strong disabled:opacity-60"
                 />
                 <input
@@ -150,8 +154,10 @@ export function TagPolicySection() {
                       prev.map((r, j) => (j === i ? { ...r, allowedValues: e.target.value } : r)),
                     )
                   }
-                  placeholder="Allowed values, comma-separated (optional — e.g. prod, staging, dev)"
-                  aria-label="Allowed values"
+                  placeholder={gt(
+                    "Allowed values, comma-separated (optional — e.g. prod, staging, dev)",
+                  )}
+                  aria-label={gt("Allowed values")}
                   className="px-3 py-1.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-border-strong disabled:opacity-60"
                 />
                 {canEditPolicy && (
@@ -160,7 +166,7 @@ export function TagPolicySection() {
                     onClick={() => setRows((prev) => prev.filter((_, j) => j !== i))}
                     className="text-xs text-danger hover:text-danger-strong"
                   >
-                    Remove
+                    {gt("Remove")}
                   </button>
                 )}
               </div>
@@ -172,7 +178,7 @@ export function TagPolicySection() {
                   onClick={() => setRows((prev) => [...prev, { key: "", allowedValues: "" }])}
                   className="text-sm text-info hover:text-info-strong"
                 >
-                  + Add required tag
+                  {gt("+ Add required tag")}
                 </button>
                 <div className="flex items-center gap-4">
                   <label className="flex items-center gap-2 text-sm text-on-surface-secondary">
@@ -181,7 +187,7 @@ export function TagPolicySection() {
                       checked={enforceOnCreate}
                       onChange={(e) => setEnforceOnCreate(e.target.checked)}
                     />
-                    Enforce at create time
+                    {gt("Enforce at create time")}
                   </label>
                   <button
                     type="button"
@@ -189,7 +195,11 @@ export function TagPolicySection() {
                     disabled={saving}
                     className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
                   >
-                    {saving ? "Saving…" : savedAt ? "Saved — save again" : "Save policy"}
+                    {saving
+                      ? gt("Saving…")
+                      : savedAt
+                        ? gt("Saved — save again")
+                        : gt("Save policy")}
                   </button>
                 </div>
               </div>
@@ -197,30 +207,32 @@ export function TagPolicySection() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-sm font-semibold">Compliance by account</h2>
-            <p className="text-xs text-on-surface-muted">
-              Share of each account&rsquo;s resources exposing a <code>tags</code>/
-              <code>labels</code> field that carry every required tag. Resources whose types
-              don&rsquo;t surface tags are excluded from the score.
-            </p>
+            <h2 className="text-sm font-semibold">{gt("Compliance by account")}</h2>
+            <T>
+              <p className="text-xs text-on-surface-muted">
+                Share of each account&rsquo;s resources exposing a <code>tags</code>/
+                <code>labels</code> field that carry every required tag. Resources whose types
+                don&rsquo;t surface tags are excluded from the score.
+              </p>
+            </T>
             {compliance.length === 0 ? (
-              <p className="text-sm text-on-surface-muted">No accounts connected.</p>
+              <p className="text-sm text-on-surface-muted">{gt("No accounts connected.")}</p>
             ) : (
               <div className="border border-border rounded-xl overflow-hidden">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border text-xs text-on-surface-muted">
                       <th scope="col" className="text-left px-4 py-2 font-medium">
-                        Account
+                        {gt("Account")}
                       </th>
                       <th scope="col" className="text-right px-4 py-2 font-medium">
-                        Resources
+                        {gt("Resources")}
                       </th>
                       <th scope="col" className="text-right px-4 py-2 font-medium">
-                        Compliant
+                        {gt("Compliant")}
                       </th>
                       <th scope="col" className="text-right px-4 py-2 font-medium">
-                        Score
+                        {gt("Score")}
                       </th>
                     </tr>
                   </thead>
@@ -239,10 +251,12 @@ export function TagPolicySection() {
                         <td className="px-4 py-2 text-right text-xs text-on-surface-tertiary">
                           {account.evaluated}
                           {account.totalResources > account.evaluated && (
-                            <span className="text-on-surface-muted">
-                              {" "}
-                              of {account.totalResources}
-                            </span>
+                            <T>
+                              <span className="text-on-surface-muted">
+                                {" "}
+                                of <Var>{account.totalResources}</Var>
+                              </span>
+                            </T>
                           )}
                         </td>
                         <td className="px-4 py-2 text-right text-xs text-on-surface-tertiary">
@@ -303,6 +317,7 @@ function AllocationSection({
   canEdit: boolean;
   openSection: (section: string) => void;
 }) {
+  const gt = useGT();
   const [centres, setCentres] = useState<CostCentre[]>([]);
   const [rules, setRules] = useState<AllocationRule[]>([]);
   const [accounts, setAccounts] = useState<CostDimensionOption[]>([]);
@@ -321,7 +336,7 @@ function AllocationSection({
       setCentres(centreRows);
       setRules(ruleRows);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load cost centres");
+      setError(e instanceof Error ? e.message : gt("Failed to load cost centres"));
     }
   }, [api, orgId]);
 
@@ -348,7 +363,7 @@ function AllocationSection({
       await api.delete(`/api/org/${orgId}/cost-centres/rules/${rule.id}`);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete rule");
+      setError(e instanceof Error ? e.message : gt("Failed to delete rule"));
     }
   }
 
@@ -366,7 +381,7 @@ function AllocationSection({
       });
       setRules(next);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to reorder rule");
+      setError(e instanceof Error ? e.message : gt("Failed to reorder rule"));
     }
   }
 
@@ -377,14 +392,16 @@ function AllocationSection({
 
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold">Cost centres &amp; showback</h2>
-      <p className="text-xs text-on-surface-muted">
-        Map spend to cost centres for showback. Rules match on tag, account, provider, or service
-        and evaluate top-down — the first match wins, so every cost row is allocated exactly once;
-        unmatched spend reports as &ldquo;Unallocated&rdquo; on the Costs page. Centres nest, and a
-        rule may target a parent or a child freely: at the same priority the more deeply nested
-        centre claims the row, and the parent still counts it in its subtree total.
-      </p>
+      <h2 className="text-sm font-semibold">{gt("Cost centres & showback")}</h2>
+      <T>
+        <p className="text-xs text-on-surface-muted">
+          Map spend to cost centres for showback. Rules match on tag, account, provider, or service
+          and evaluate top-down — the first match wins, so every cost row is allocated exactly once;
+          unmatched spend reports as &ldquo;Unallocated&rdquo; on the Costs page. Centres nest, and
+          a rule may target a parent or a child freely: at the same priority the more deeply nested
+          centre claims the row, and the parent still counts it in its subtree total.
+        </p>
+      </T>
 
       {error && (
         <div className="px-3 py-2 text-sm text-danger border border-red-900/50 bg-red-950/20 rounded-lg">
@@ -394,19 +411,20 @@ function AllocationSection({
 
       <div className="border border-border rounded-xl p-4 space-y-2 bg-surface-raised/50">
         <div className="flex items-baseline justify-between gap-3">
-          <h3 className="text-xs font-semibold text-on-surface-secondary">Centres</h3>
+          <h3 className="text-xs font-semibold text-on-surface-secondary">{gt("Centres")}</h3>
           <button
             type="button"
             onClick={() => openSection("cost-centres")}
             className="text-xs text-info hover:text-info-strong"
           >
-            Manage cost centres →
+            {gt("Manage cost centres →")}
           </button>
         </div>
         {centres.length === 0 ? (
           <p className="text-sm text-on-surface-muted">
-            No cost centres yet. Create them under Settings → Cost Centres, then point rules at them
-            here.
+            {gt(
+              "No cost centres yet. Create them under Settings → Cost Centres, then point rules at them here.",
+            )}
           </p>
         ) : (
           // Read-only here on purpose: centres are a tree with move and depth
@@ -426,10 +444,12 @@ function AllocationSection({
       </div>
 
       <div className="border border-border rounded-xl p-4 space-y-3 bg-surface-raised/50">
-        <h3 className="text-xs font-semibold text-on-surface-secondary">Allocation rules</h3>
+        <h3 className="text-xs font-semibold text-on-surface-secondary">
+          {gt("Allocation rules")}
+        </h3>
         {rules.length === 0 && (
           <p className="text-sm text-on-surface-muted">
-            No rules yet. Spend stays &ldquo;Unallocated&rdquo; until a rule claims it.
+            {gt("No rules yet. Spend stays “Unallocated” until a rule claims it.")}
           </p>
         )}
         <ul className="space-y-1.5">
@@ -438,21 +458,21 @@ function AllocationSection({
             if (rule.match.tagKey) {
               parts.push(
                 rule.match.tagValue !== undefined
-                  ? `tag ${rule.match.tagKey}=${rule.match.tagValue}`
-                  : `has tag ${rule.match.tagKey}`,
+                  ? gt("tag {key}={value}", { key: rule.match.tagKey, value: rule.match.tagValue })
+                  : gt("has tag {key}", { key: rule.match.tagKey }),
               );
             }
             if (rule.match.accountId)
-              parts.push(`account ${labelFor(accounts, rule.match.accountId)}`);
+              parts.push(gt("account {name}", { name: labelFor(accounts, rule.match.accountId) }));
             if (rule.match.pluginId)
-              parts.push(`provider ${labelFor(providers, rule.match.pluginId)}`);
-            if (rule.match.service) parts.push(`service ${rule.match.service}`);
+              parts.push(gt("provider {name}", { name: labelFor(providers, rule.match.pluginId) }));
+            if (rule.match.service) parts.push(gt("service {name}", { name: rule.match.service }));
             const ruleIndex = rules.findIndex((r) => r.id === rule.id);
             return (
               <li key={rule.id} className="flex items-center gap-3 text-sm">
                 <span className="text-xs text-on-surface-muted w-10">#{rule.priority}</span>
                 <span className="flex-1 truncate text-on-surface-secondary">
-                  {parts.length > 0 ? parts.join(" and ") : "everything"}
+                  {parts.length > 0 ? parts.join(gt(" and ")) : gt("everything")}
                   <span className="text-on-surface-muted"> → </span>
                   {pathFor(rule.costCentreId) ?? "?"}
                 </span>
@@ -462,7 +482,7 @@ function AllocationSection({
                       type="button"
                       onClick={() => void moveRule(rule, -1)}
                       disabled={ruleIndex <= 0}
-                      aria-label="Move rule up"
+                      aria-label={gt("Move rule up")}
                       className="text-xs text-on-surface-muted hover:text-on-surface-secondary disabled:opacity-30 disabled:hover:text-on-surface-muted px-1"
                     >
                       ↑
@@ -471,7 +491,7 @@ function AllocationSection({
                       type="button"
                       onClick={() => void moveRule(rule, 1)}
                       disabled={ruleIndex < 0 || ruleIndex >= rules.length - 1}
-                      aria-label="Move rule down"
+                      aria-label={gt("Move rule down")}
                       className="text-xs text-on-surface-muted hover:text-on-surface-secondary disabled:opacity-30 disabled:hover:text-on-surface-muted px-1"
                     >
                       ↓
@@ -481,7 +501,7 @@ function AllocationSection({
                       onClick={() => void removeRule(rule)}
                       className="text-xs text-danger hover:text-danger-strong"
                     >
-                      Remove
+                      {gt("Remove")}
                     </button>
                   </span>
                 )}
@@ -531,6 +551,7 @@ function NewRuleForm({
   onCreated: () => Promise<void>;
   onError: (message: string) => void;
 }) {
+  const gt = useGT();
   const [costCentreId, setCostCentreId] = useState(centres[0]?.id ?? "");
   const [tagKey, setTagKey] = useState("");
   const [tagValue, setTagValue] = useState("");
@@ -565,7 +586,7 @@ function NewRuleForm({
       setService("");
       await onCreated();
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Failed to create rule");
+      onError(e instanceof Error ? e.message : gt("Failed to create rule"));
     } finally {
       setSubmitting(false);
     }
@@ -579,13 +600,13 @@ function NewRuleForm({
       <select
         value={tagKey}
         onChange={(e) => setTagKey(e.target.value)}
-        aria-label="Tag key"
+        aria-label={gt("Tag key")}
         className={selectClass}
       >
-        <option value="">Any tag</option>
+        <option value="">{gt("Any tag")}</option>
         {tagKeys.map((key) => (
           <option key={key} value={key}>
-            tag: {key}
+            {gt("tag: {key}", { key })}
           </option>
         ))}
       </select>
@@ -594,18 +615,18 @@ function NewRuleForm({
           type="text"
           value={tagValue}
           onChange={(e) => setTagValue(e.target.value)}
-          placeholder="value (blank = any)"
-          aria-label="Tag value"
+          placeholder={gt("value (blank = any)")}
+          aria-label={gt("Tag value")}
           className={selectClass}
         />
       )}
       <select
         value={accountId}
         onChange={(e) => setAccountId(e.target.value)}
-        aria-label="Account"
+        aria-label={gt("Account")}
         className={selectClass}
       >
-        <option value="">Any account</option>
+        <option value="">{gt("Any account")}</option>
         {accounts.map((a) => (
           <option key={a.value} value={a.value}>
             {a.label}
@@ -615,10 +636,10 @@ function NewRuleForm({
       <select
         value={pluginId}
         onChange={(e) => setPluginId(e.target.value)}
-        aria-label="Provider"
+        aria-label={gt("Provider")}
         className={selectClass}
       >
-        <option value="">Any provider</option>
+        <option value="">{gt("Any provider")}</option>
         {providers.map((p) => (
           <option key={p.value} value={p.value}>
             {p.label}
@@ -628,10 +649,10 @@ function NewRuleForm({
       <select
         value={service}
         onChange={(e) => setService(e.target.value)}
-        aria-label="Service"
+        aria-label={gt("Service")}
         className={selectClass}
       >
-        <option value="">Any service</option>
+        <option value="">{gt("Any service")}</option>
         {services.map((s) => (
           <option key={s.value} value={s.value}>
             {s.label}
@@ -642,7 +663,7 @@ function NewRuleForm({
       <select
         value={costCentreId}
         onChange={(e) => setCostCentreId(e.target.value)}
-        aria-label="Cost centre"
+        aria-label={gt("Cost centre")}
         className={selectClass}
       >
         {centres.map((c) => (
@@ -657,7 +678,7 @@ function NewRuleForm({
         disabled={submitting || !costCentreId}
         className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
       >
-        {submitting ? "Adding…" : "Add rule"}
+        {submitting ? gt("Adding…") : gt("Add rule")}
       </button>
     </div>
   );

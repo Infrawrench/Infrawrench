@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import { useGT } from "gt-react";
 import { Modal } from "../components/Modal.js";
+import { useDataString } from "../i18n/data-strings.js";
 import { useSettingsHost } from "./host.js";
 
 interface ApiKeySummary {
@@ -28,6 +30,7 @@ const AVAILABLE_SCOPES = [
 ];
 
 export function ApiKeysSection() {
+  const gt = useGT();
   const { orgId, api } = useSettingsHost();
   const [keys, setKeys] = useState<ApiKeySummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,42 +65,42 @@ export function ApiKeysSection() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold">API Keys</h1>
+        <h1 className="text-xl font-semibold">{gt("API Keys")}</h1>
         <button
           type="button"
           onClick={() => setShowCreate(true)}
           className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
         >
-          Create API Key
+          {gt("Create API Key")}
         </button>
       </div>
 
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
       ) : keys.length === 0 ? (
-        <p className="text-sm text-on-surface-muted">No API keys yet.</p>
+        <p className="text-sm text-on-surface-muted">{gt("No API keys yet.")}</p>
       ) : (
         <div className="border border-border rounded-xl overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-border text-xs text-on-surface-muted">
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Name
+                  {gt("Name")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Key
+                  {gt("Key")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Scopes
+                  {gt("Scopes")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Last used
+                  {gt("Last used")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Status
+                  {gt("Status")}
                 </th>
                 <th scope="col" className="text-right px-4 py-2 font-medium">
-                  Actions
+                  {gt("Actions")}
                 </th>
               </tr>
             </thead>
@@ -109,18 +112,21 @@ export function ApiKeysSection() {
                     {key.prefix}...
                   </td>
                   <td className="px-4 py-2 text-xs text-on-surface-tertiary">
-                    {key.scopes.length} scope{key.scopes.length !== 1 ? "s" : ""}
+                    {gt("{count} scope{suffix}", {
+                      count: key.scopes.length,
+                      suffix: key.scopes.length !== 1 ? "s" : "",
+                    })}
                   </td>
                   <td className="px-4 py-2 text-xs text-on-surface-muted">
-                    {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleDateString() : "Never"}
+                    {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleDateString() : gt("Never")}
                   </td>
                   <td className="px-4 py-2">
                     {key.revokedAt ? (
-                      <span className="text-xs text-danger">Revoked</span>
+                      <span className="text-xs text-danger">{gt("Revoked")}</span>
                     ) : key.expiresAt && new Date(key.expiresAt) < new Date() ? (
-                      <span className="text-xs text-warning">Expired</span>
+                      <span className="text-xs text-warning">{gt("Expired")}</span>
                     ) : (
-                      <span className="text-xs text-success">Active</span>
+                      <span className="text-xs text-success">{gt("Active")}</span>
                     )}
                   </td>
                   <td className="px-4 py-2 text-right">
@@ -131,14 +137,14 @@ export function ApiKeysSection() {
                           onClick={() => void handleRotate(key.id)}
                           className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
                         >
-                          Rotate
+                          {gt("Rotate")}
                         </button>
                         <button
                           type="button"
                           onClick={() => void handleRevoke(key.id)}
                           className="text-xs text-danger hover:text-danger-strong"
                         >
-                          Revoke
+                          {gt("Revoke")}
                         </button>
                       </div>
                     )}
@@ -162,13 +168,13 @@ export function ApiKeysSection() {
       )}
 
       {newKey && (
-        <Modal onClose={() => setNewKey(null)} ariaLabel="API Key Created">
+        <Modal onClose={() => setNewKey(null)} ariaLabel={gt("API Key Created")}>
           <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl p-5">
             <h2 className="text-sm font-semibold text-on-surface-secondary mb-3">
-              API Key Created
+              {gt("API Key Created")}
             </h2>
             <p className="text-xs text-on-surface-tertiary mb-3">
-              Copy this key now. You won&apos;t be able to see it again.
+              {gt("Copy this key now. You won't be able to see it again.")}
             </p>
             <div className="bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 font-mono text-xs text-on-surface-secondary break-all select-all">
               {newKey}
@@ -180,7 +186,7 @@ export function ApiKeysSection() {
               }}
               className="mt-3 w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
             >
-              Copy to clipboard
+              {gt("Copy to clipboard")}
             </button>
           </div>
         </Modal>
@@ -196,6 +202,8 @@ function CreateApiKeyModal({
   onClose: () => void;
   onCreated: (key: string) => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const { orgId, api } = useSettingsHost();
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<Set<string>>(new Set());
@@ -204,11 +212,11 @@ function CreateApiKeyModal({
 
   async function handleCreate() {
     if (!name.trim()) {
-      setError("Name is required");
+      setError(gt("Name is required"));
       return;
     }
     if (scopes.size === 0) {
-      setError("Select at least one scope");
+      setError(gt("Select at least one scope"));
       return;
     }
     setSaving(true);
@@ -220,21 +228,23 @@ function CreateApiKeyModal({
       });
       onCreated(result.key);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create key");
+      setError(e instanceof Error ? e.message : gt("Failed to create key"));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel="Create API Key">
+    <Modal onClose={onClose} ariaLabel={gt("Create API Key")}>
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-on-surface-secondary">Create API Key</h2>
+          <h2 className="text-sm font-semibold text-on-surface-secondary">
+            {gt("Create API Key")}
+          </h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={gt("Close")}
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg"
           >
             &#215;
@@ -243,20 +253,20 @@ function CreateApiKeyModal({
         <div className="p-5 space-y-4">
           <div>
             <label htmlFor="api-key-name" className="block text-xs text-on-surface-tertiary mb-1">
-              Name
+              {gt("Name")}
             </label>
             <input
               id="api-key-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="My desktop key"
+              placeholder={gt("My desktop key")}
               {...(error ? { "aria-describedby": "api-key-name-error" } : {})}
               className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
             />
           </div>
           <div>
-            <span className="block text-xs text-on-surface-tertiary mb-2">Scopes</span>
+            <span className="block text-xs text-on-surface-tertiary mb-2">{gt("Scopes")}</span>
             <div className="space-y-2">
               {AVAILABLE_SCOPES.map((scope) => (
                 <label
@@ -274,10 +284,10 @@ function CreateApiKeyModal({
                         return next;
                       });
                     }}
-                    aria-label={scope.label}
+                    aria-label={gtData(scope.label)}
                     className="rounded border-border-strong"
                   />
-                  {scope.label}
+                  {gtData(scope.label)}
                 </label>
               ))}
             </div>
@@ -293,7 +303,7 @@ function CreateApiKeyModal({
             disabled={saving}
             className="w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
           >
-            {saving ? "Creating..." : "Create key"}
+            {saving ? gt("Creating...") : gt("Create key")}
           </button>
         </div>
       </div>

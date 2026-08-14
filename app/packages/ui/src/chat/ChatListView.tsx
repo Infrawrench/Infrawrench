@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { useGT } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 import {
   CHAT_CONVERSATIONS_CHANGED_EVENT,
   CHAT_MODELS,
@@ -15,6 +17,8 @@ interface Props {
 
 /** Conversation list with new-chat and archive — the chat "home" page. */
 export function ChatListView({ client, onOpen }: Props): React.ReactElement {
+  const gt = useGT();
+  const gtData = useDataString();
   const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
   const [model, setModel] = useState(DEFAULT_CHAT_MODEL);
 
@@ -41,21 +45,23 @@ export function ChatListView({ client, onOpen }: Props): React.ReactElement {
     await load();
   }
 
+  const modelDescription = CHAT_MODELS.find((m) => m.id === model)?.description;
+
   return (
     <div className="max-w-3xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold">Chat</h1>
+        <h1 className="text-xl font-semibold">{gt("Chat")}</h1>
         <div className="flex items-center gap-2">
           <select
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            aria-label="Model for new chats"
-            title={CHAT_MODELS.find((m) => m.id === model)?.description}
+            aria-label={gt("Model for new chats")}
+            title={modelDescription ? gtData(modelDescription) : undefined}
             className="bg-surface-overlay border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             {CHAT_MODELS.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.label}
+                {gtData(m.label)}
               </option>
             ))}
           </select>
@@ -64,16 +70,16 @@ export function ChatListView({ client, onOpen }: Props): React.ReactElement {
             onClick={() => void handleNew()}
             className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
           >
-            New chat
+            {gt("New chat")}
           </button>
         </div>
       </div>
 
       {conversations === null ? (
-        <p className="text-sm text-on-surface-faint">Loading…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
       ) : conversations.length === 0 ? (
         <p className="text-sm text-on-surface-muted">
-          No chats yet. Start one to ask the agent to inspect or change your infrastructure.
+          {gt("No chats yet. Start one to ask the agent to inspect or change your infrastructure.")}
         </p>
       ) : (
         <ul className="border border-border rounded-xl divide-y divide-border overflow-hidden">
@@ -95,7 +101,7 @@ export function ChatListView({ client, onOpen }: Props): React.ReactElement {
                 onClick={() => void handleArchive(c.id)}
                 className="ml-3 text-xs text-on-surface-faint hover:text-danger"
               >
-                Archive
+                {gt("Archive")}
               </button>
             </li>
           ))}

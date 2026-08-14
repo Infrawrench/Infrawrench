@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { useGT } from "gt-react";
 import type { SidebarItemSchema } from "@infrawrench/plugin-base";
 import { SidebarItem } from "./SidebarItem.js";
+import { useDataString } from "../../i18n/data-strings.js";
 
 interface SidebarSectionProps {
   /** Plugin display name (e.g. "DigitalOcean") */
@@ -27,6 +29,7 @@ export function SidebarSection({
   accountName,
   resourceGroups,
 }: SidebarSectionProps) {
+  const gtData = useDataString();
   const [expanded, setExpanded] = useState(true);
   const panelId = `sidebar-section-${pluginId}-${accountId}`;
 
@@ -46,7 +49,7 @@ export function SidebarSection({
           aria-hidden
         />
         <span className="flex-1 text-left truncate">
-          {pluginName} · {accountName}
+          {gtData(pluginName)} · {accountName}
         </span>
         <span className="text-on-surface-faint">{expanded ? "▾" : "▸"}</span>
       </button>
@@ -76,6 +79,8 @@ function ResourceTypeGroup({
   pluginId: string;
   accountId: string;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [expanded, setExpanded] = useState(true);
   const panelId = `sidebar-group-${pluginId}-${accountId}-${group.resourceTypeId}`;
 
@@ -88,7 +93,7 @@ function ResourceTypeGroup({
         aria-controls={panelId}
         className="w-full flex items-center gap-1 px-3 py-1 text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
       >
-        <span className="flex-1 text-left">{group.displayName}</span>
+        <span className="flex-1 text-left">{gtData(group.displayName)}</span>
         <span>{expanded ? "▾" : "▸"}</span>
       </button>
       {expanded && (
@@ -102,7 +107,7 @@ function ResourceTypeGroup({
             />
           ))}
           {group.items.length === 0 && (
-            <p className="px-6 py-1 text-xs text-on-surface-faint">No resources</p>
+            <p className="px-6 py-1 text-xs text-on-surface-faint">{gt("No resources")}</p>
           )}
         </div>
       )}

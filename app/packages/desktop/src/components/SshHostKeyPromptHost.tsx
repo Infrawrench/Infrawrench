@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import { Modal } from "@infrawrench/ui";
 import type { HostKeyPromptPayload } from "@infrawrench/plugin-base";
 import { invoke } from "../lib/invoke";
@@ -9,6 +10,7 @@ import { invoke } from "../lib/invoke";
  * the connection. Multiple prompts queue up — we show one at a time.
  */
 export function SshHostKeyPromptHost() {
+  const gt = useGT();
   const [queue, setQueue] = useState<HostKeyPromptPayload[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -44,7 +46,7 @@ export function SshHostKeyPromptHost() {
   return (
     <Modal
       onClose={() => void decide(false)}
-      ariaLabel={isMismatch ? "SSH host key changed" : "Unknown SSH host"}
+      ariaLabel={isMismatch ? gt("SSH host key changed") : gt("Unknown SSH host")}
     >
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[520px] p-6">
         <div className="flex items-start gap-3 mb-4">
@@ -56,23 +58,30 @@ export function SshHostKeyPromptHost() {
           />
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-semibold text-on-surface">
-              {isMismatch ? "SSH host key changed" : "Unknown SSH host"}
+              {isMismatch ? gt("SSH host key changed") : gt("Unknown SSH host")}
             </h2>
             <p className="text-xs text-on-surface-tertiary mt-1">
               {isMismatch
-                ? `The host key for ${current.host}:${current.port} does not match the one previously pinned. ` +
-                  "This could mean the server was rebuilt — or someone is intercepting the connection. " +
-                  "Only accept if you expected the change."
-                : `You're connecting to ${current.host}:${current.port} for the first time. ` +
-                  "Confirm the fingerprint with the server admin before accepting."}
+                ? gt(
+                    "The host key for {host}:{port} does not match the one previously pinned. This could mean the server was rebuilt — or someone is intercepting the connection. Only accept if you expected the change.",
+                    { host: current.host, port: current.port },
+                  )
+                : gt(
+                    "You're connecting to {host}:{port} for the first time. Confirm the fingerprint with the server admin before accepting.",
+                    { host: current.host, port: current.port },
+                  )}
             </p>
           </div>
         </div>
 
         <div className="space-y-2 text-xs font-mono">
-          <FingerprintRow label="Presented" value={current.presentedFingerprint} />
+          <FingerprintRow label={gt("Presented")} value={current.presentedFingerprint} />
           {isMismatch && current.storedFingerprint && (
-            <FingerprintRow label="Previously pinned" value={current.storedFingerprint} muted />
+            <FingerprintRow
+              label={gt("Previously pinned")}
+              value={current.storedFingerprint}
+              muted
+            />
           )}
         </div>
 
@@ -83,7 +92,7 @@ export function SshHostKeyPromptHost() {
             disabled={busy}
             className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary transition-colors rounded-lg"
           >
-            Deny
+            {gt("Deny")}
           </button>
           <button
             type="button"
@@ -95,7 +104,7 @@ export function SshHostKeyPromptHost() {
                 : "bg-emerald-600 hover:bg-emerald-500 disabled:hover:bg-emerald-600"
             }`}
           >
-            {isMismatch ? "Replace pin and connect" : "Pin and connect"}
+            {isMismatch ? gt("Replace pin and connect") : gt("Pin and connect")}
           </button>
         </div>
       </div>

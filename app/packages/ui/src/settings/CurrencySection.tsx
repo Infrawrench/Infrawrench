@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { T, useGT } from "gt-react";
 import type {
   ExchangeRate,
   ExchangeRateInput,
@@ -27,6 +28,7 @@ import { useSettingsHost } from "./host.js";
  * on the page, not in the docs.
  */
 export function CurrencySection() {
+  const gt = useGT();
   const { orgId, api, has } = useSettingsHost();
   const canEdit = has("org:settings:write");
 
@@ -45,7 +47,7 @@ export function CurrencySection() {
       setDraftCurrency(config.displayCurrency ?? "");
       setRates(config.rates);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load currency settings");
+      setError(e instanceof Error ? e.message : gt("Failed to load currency settings"));
     } finally {
       setLoading(false);
     }
@@ -65,7 +67,7 @@ export function CurrencySection() {
       setDisplayCurrency(saved.displayCurrency);
       setDraftCurrency(saved.displayCurrency ?? "");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save display currency");
+      setError(e instanceof Error ? e.message : gt("Failed to save display currency"));
     } finally {
       setSaving(false);
     }
@@ -74,7 +76,10 @@ export function CurrencySection() {
   async function removeRate(rate: ExchangeRate) {
     if (
       !window.confirm(
-        `Delete the ${rate.fromCurrency} → ${rate.toCurrency} rate effective ${rate.effectiveFrom}?\n\nDays it covered will fall back to the next-older rate, or be reported unconverted if there is none. No spend is lost either way.`,
+        gt(
+          "Delete the {from} → {to} rate effective {effectiveFrom}?\n\nDays it covered will fall back to the next-older rate, or be reported unconverted if there is none. No spend is lost either way.",
+          { from: rate.fromCurrency, to: rate.toCurrency, effectiveFrom: rate.effectiveFrom },
+        ),
       )
     ) {
       return;
@@ -83,7 +88,7 @@ export function CurrencySection() {
       await api.delete(`/api/org/${orgId}/currency/rates/${rate.id}`);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete rate");
+      setError(e instanceof Error ? e.message : gt("Failed to delete rate"));
     }
   }
 
@@ -100,16 +105,18 @@ export function CurrencySection() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold">Currency</h1>
-        <p className="text-sm text-on-surface-muted mt-1">
-          Spend is collected and stored in the currency each provider bills in, and is never merged
-          &mdash; that stays the default. Set a display currency here and Infrawrench will convert
-          the others into it, using only the exchange rates you state below.{" "}
-          <strong className="text-on-surface-secondary">We never fetch live rates.</strong> A
-          finance team reconciles against the rate their accounting system booked the period at, not
-          today&rsquo;s market quote, so the rates have to be yours. Converted figures are labelled
-          as converted everywhere they appear.
-        </p>
+        <h1 className="text-xl font-semibold">{gt("Currency")}</h1>
+        <T>
+          <p className="text-sm text-on-surface-muted mt-1">
+            Spend is collected and stored in the currency each provider bills in, and is never
+            merged &mdash; that stays the default. Set a display currency here and Infrawrench will
+            convert the others into it, using only the exchange rates you state below.{" "}
+            <strong className="text-on-surface-secondary">We never fetch live rates.</strong> A
+            finance team reconciles against the rate their accounting system booked the period at,
+            not today&rsquo;s market quote, so the rates have to be yours. Converted figures are
+            labelled as converted everywhere they appear.
+          </p>
+        </T>
       </div>
 
       {error && (
@@ -119,15 +126,15 @@ export function CurrencySection() {
       )}
 
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
       ) : (
         <div className="space-y-8">
           <section className="border border-border rounded-xl p-4 space-y-3 bg-surface-raised/50">
-            <h2 className="text-sm font-semibold">Display currency</h2>
+            <h2 className="text-sm font-semibold">{gt("Display currency")}</h2>
             <p className="text-xs text-on-surface-muted">
-              Leave this empty to turn conversion off entirely. Nothing else on this page has any
-              effect while it is empty, and every cost surface shows one figure per currency, as it
-              does today.
+              {gt(
+                "Leave this empty to turn conversion off entirely. Nothing else on this page has any effect while it is empty, and every cost surface shows one figure per currency, as it does today.",
+              )}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <input
@@ -137,7 +144,7 @@ export function CurrencySection() {
                 maxLength={3}
                 onChange={(e) => setDraftCurrency(e.target.value.toUpperCase())}
                 placeholder="USD"
-                aria-label="Display currency"
+                aria-label={gt("Display currency")}
                 className="w-24 px-3 py-1.5 text-sm bg-surface border border-border rounded-lg focus:outline-none focus:border-border-strong disabled:opacity-60 uppercase"
               />
               {canEdit && (
@@ -148,7 +155,7 @@ export function CurrencySection() {
                     disabled={saving || normalizeCurrencyCode(draftCurrency) === null}
                     className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
                   >
-                    {saving ? "Saving…" : "Save"}
+                    {saving ? gt("Saving…") : gt("Save")}
                   </button>
                   {displayCurrency && (
                     <button
@@ -157,7 +164,7 @@ export function CurrencySection() {
                       disabled={saving}
                       className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
                     >
-                      Turn conversion off
+                      {gt("Turn conversion off")}
                     </button>
                   )}
                 </>
@@ -165,20 +172,27 @@ export function CurrencySection() {
             </div>
             <p className="text-xs text-on-surface-faint">
               {displayCurrency
-                ? `Converting into ${displayCurrency}. Spend already in ${displayCurrency} is passed through untouched; any other currency without a rate below is shown separately, never folded in or dropped.`
-                : "Conversion is off. Cost graphs, budgets, showback and the weekly digest all report one figure per currency."}
+                ? gt(
+                    "Converting into {currency}. Spend already in {currency} is passed through untouched; any other currency without a rate below is shown separately, never folded in or dropped.",
+                    { currency: displayCurrency },
+                  )
+                : gt(
+                    "Conversion is off. Cost graphs, budgets, showback and the weekly digest all report one figure per currency.",
+                  )}
             </p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-sm font-semibold">Exchange rates</h2>
-            <p className="text-xs text-on-surface-muted">
-              One rate per currency pair per effective date. A day&rsquo;s spend converts at the
-              rate with the latest effective date on or before that day, so restating a rate does
-              not rewrite periods you have already closed. Rates are used in one hop only &mdash;
-              Infrawrench never inverts a rate or chains two through a third currency, because
-              either would produce a number you never stated.
-            </p>
+            <h2 className="text-sm font-semibold">{gt("Exchange rates")}</h2>
+            <T>
+              <p className="text-xs text-on-surface-muted">
+                One rate per currency pair per effective date. A day&rsquo;s spend converts at the
+                rate with the latest effective date on or before that day, so restating a rate does
+                not rewrite periods you have already closed. Rates are used in one hop only &mdash;
+                Infrawrench never inverts a rate or chains two through a third currency, because
+                either would produce a number you never stated.
+              </p>
+            </T>
 
             {staleRates.length > 0 && (
               <div
@@ -186,21 +200,30 @@ export function CurrencySection() {
                 className="px-3 py-2 text-sm rounded-lg border border-amber-500/40 bg-amber-500/10"
               >
                 <p className="text-warning">
-                  {staleRates.length === 1 ? "One rate is" : `${staleRates.length} rates are`} not
-                  used
+                  {staleRates.length === 1
+                    ? gt("One rate is not used")
+                    : gt("{count} rates are not used", { count: staleRates.length })}
                 </p>
                 <p className="mt-1 text-xs text-on-surface-secondary">
-                  {staleRates.length === 1 ? "It converts" : "They convert"} to a currency that is
-                  not your display currency ({displayCurrency}), so nothing reads{" "}
-                  {staleRates.length === 1 ? "it" : "them"}.
+                  {staleRates.length === 1
+                    ? gt(
+                        "It converts to a currency that is not your display currency ({currency}), so nothing reads it.",
+                        { currency: displayCurrency },
+                      )
+                    : gt(
+                        "They convert to a currency that is not your display currency ({currency}), so nothing reads them.",
+                        { currency: displayCurrency },
+                      )}
                 </p>
               </div>
             )}
 
             {rates.length === 0 ? (
               <p className="text-sm text-on-surface-muted">
-                No rates yet. Until you add one, every currency other than{" "}
-                {displayCurrency ?? "your display currency"} is reported on its own.
+                {gt(
+                  "No rates yet. Until you add one, every currency other than {currency} is reported on its own.",
+                  { currency: displayCurrency ?? gt("your display currency") },
+                )}
               </p>
             ) : (
               <div className="border border-border rounded-xl overflow-hidden">
@@ -208,16 +231,16 @@ export function CurrencySection() {
                   <thead>
                     <tr className="border-b border-border text-xs text-on-surface-muted">
                       <th scope="col" className="text-left px-4 py-2 font-medium">
-                        From
+                        {gt("From")}
                       </th>
                       <th scope="col" className="text-left px-4 py-2 font-medium">
-                        To
+                        {gt("To")}
                       </th>
                       <th scope="col" className="text-right px-4 py-2 font-medium">
-                        Rate
+                        {gt("Rate")}
                       </th>
                       <th scope="col" className="text-left px-4 py-2 font-medium">
-                        Effective from
+                        {gt("Effective from")}
                       </th>
                       {canEdit && <th scope="col" className="px-4 py-2" />}
                     </tr>
@@ -234,7 +257,7 @@ export function CurrencySection() {
                         <td className="px-4 py-2 text-sm text-on-surface-secondary">
                           {rate.toCurrency}
                           {displayCurrency && rate.toCurrency !== displayCurrency && (
-                            <span className="ml-2 text-xs text-warning">unused</span>
+                            <span className="ml-2 text-xs text-warning">{gt("unused")}</span>
                           )}
                         </td>
                         <td className="px-4 py-2 text-right text-sm tabular-nums text-on-surface-secondary">
@@ -250,7 +273,7 @@ export function CurrencySection() {
                               onClick={() => void removeRate(rate)}
                               className="text-xs text-danger hover:text-danger-strong"
                             >
-                              Remove
+                              {gt("Remove")}
                             </button>
                           </td>
                         )}
@@ -294,6 +317,7 @@ function NewRateForm({
   onSubmit: (input: ExchangeRateInput) => Promise<void>;
   onError: (message: string) => void;
 }) {
+  const gt = useGT();
   const [fromCurrency, setFromCurrency] = useState("");
   /**
    * `null` until the user types a destination, so the field tracks the org's
@@ -324,7 +348,7 @@ function NewRateForm({
       setRate("");
       setEffectiveFrom("");
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Failed to save rate");
+      onError(e instanceof Error ? e.message : gt("Failed to save rate"));
     } finally {
       setSubmitting(false);
     }
@@ -333,7 +357,7 @@ function NewRateForm({
   return (
     <div className="flex flex-wrap items-end gap-2 pt-2 border-t border-border/50">
       <label className="flex flex-col gap-1">
-        <span className="text-xs text-on-surface-tertiary">From</span>
+        <span className="text-xs text-on-surface-tertiary">{gt("From")}</span>
         <input
           type="text"
           value={fromCurrency}
@@ -344,7 +368,7 @@ function NewRateForm({
         />
       </label>
       <label className="flex flex-col gap-1">
-        <span className="text-xs text-on-surface-tertiary">To</span>
+        <span className="text-xs text-on-surface-tertiary">{gt("To")}</span>
         <input
           type="text"
           value={toCurrency}
@@ -355,7 +379,7 @@ function NewRateForm({
         />
       </label>
       <label className="flex flex-col gap-1">
-        <span className="text-xs text-on-surface-tertiary">Rate</span>
+        <span className="text-xs text-on-surface-tertiary">{gt("Rate")}</span>
         <input
           type="text"
           inputMode="decimal"
@@ -366,7 +390,7 @@ function NewRateForm({
         />
       </label>
       <label className="flex flex-col gap-1">
-        <span className="text-xs text-on-surface-tertiary">Effective from</span>
+        <span className="text-xs text-on-surface-tertiary">{gt("Effective from")}</span>
         <input
           type="date"
           value={effectiveFrom}
@@ -380,11 +404,14 @@ function NewRateForm({
         disabled={submitting || !ready}
         className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
       >
-        {submitting ? "Saving…" : "Add rate"}
+        {submitting ? gt("Saving…") : gt("Add rate")}
       </button>
       <p className="basis-full text-xs text-on-surface-faint">
-        1 {from ?? "FROM"} = {rate || "?"} {to ?? "TO"}. Re-adding the same pair and date replaces
-        the stored rate.
+        {gt("1 {from} = {rate} {to}. Re-adding the same pair and date replaces the stored rate.", {
+          from: from ?? gt("FROM"),
+          rate: rate || "?",
+          to: to ?? gt("TO"),
+        })}
       </p>
     </div>
   );

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { useGT } from "gt-react";
 import { apiGet, apiPut } from "@/lib/api";
 
 interface AdminOrg {
@@ -16,6 +17,7 @@ export const Route = createFileRoute("/admin")({
 });
 
 function AdminPage() {
+  const gt = useGT();
   const [orgs, setOrgs] = useState<AdminOrg[] | undefined>(undefined);
   const [forbidden, setForbidden] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +28,7 @@ function AdminPage() {
       .then(setOrgs)
       .catch((e) => {
         if (e instanceof Error && e.message === "Forbidden") setForbidden(true);
-        else setError(e instanceof Error ? e.message : "Failed to load organizations");
+        else setError(e instanceof Error ? e.message : gt("Failed to load organizations"));
       });
   }, []);
 
@@ -44,7 +46,7 @@ function AdminPage() {
         ),
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update organization");
+      setError(e instanceof Error ? e.message : gt("Failed to update organization"));
     } finally {
       setBusyOrgId(null);
     }
@@ -54,12 +56,12 @@ function AdminPage() {
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-on-surface">
         <div className="text-center">
-          <h1 className="text-lg font-semibold mb-2">Platform admin</h1>
+          <h1 className="text-lg font-semibold mb-2">{gt("Platform admin")}</h1>
           <p className="text-sm text-on-surface-tertiary mb-4">
-            Your account is not on the platform admin allowlist.
+            {gt("Your account is not on the platform admin allowlist.")}
           </p>
           <a href="/" className="text-sm text-info hover:underline">
-            Back to the app
+            {gt("Back to the app")}
           </a>
         </div>
       </div>
@@ -70,42 +72,43 @@ function AdminPage() {
     <div className="min-h-screen bg-surface text-on-surface px-8 py-10">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-1">
-          <h1 className="text-xl font-semibold">Platform admin</h1>
+          <h1 className="text-xl font-semibold">{gt("Platform admin")}</h1>
           <a href="/" className="text-sm text-info hover:underline">
-            Back to the app
+            {gt("Back to the app")}
           </a>
         </div>
         <p className="text-sm text-on-surface-tertiary mb-6">
-          Complimentary organizations get every paid feature, uncapped AI chat, and are never
-          billed.
+          {gt(
+            "Complimentary organizations get every paid feature, uncapped AI chat, and are never billed.",
+          )}
         </p>
 
         {error && <p className="text-sm text-danger mb-3">{error}</p>}
 
         {orgs === undefined ? (
-          <p className="text-sm text-on-surface-faint">Loading…</p>
+          <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
         ) : orgs.length === 0 ? (
-          <p className="text-sm text-on-surface-faint">No organizations yet.</p>
+          <p className="text-sm text-on-surface-faint">{gt("No organizations yet.")}</p>
         ) : (
           <div className="border border-border rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
-              <caption className="sr-only">Organizations</caption>
+              <caption className="sr-only">{gt("Organizations")}</caption>
               <thead>
                 <tr className="text-left text-xs text-on-surface-muted border-b border-border">
                   <th scope="col" className="px-4 py-3 font-medium">
-                    Organization
+                    {gt("Organization")}
                   </th>
                   <th scope="col" className="px-4 py-3 font-medium">
-                    Members
+                    {gt("Members")}
                   </th>
                   <th scope="col" className="px-4 py-3 font-medium">
-                    Subscription
+                    {gt("Subscription")}
                   </th>
                   <th scope="col" className="px-4 py-3 font-medium">
-                    Created
+                    {gt("Created")}
                   </th>
                   <th scope="col" className="px-4 py-3 font-medium text-right">
-                    Complimentary
+                    {gt("Complimentary")}
                   </th>
                 </tr>
               </thead>
@@ -120,11 +123,11 @@ function AdminPage() {
                     <td className="px-4 py-3">
                       {org.complimentary ? (
                         <span className="text-xs font-medium px-2 py-1 rounded-full bg-purple-500/10 text-notice">
-                          Complimentary
+                          {gt("Complimentary")}
                         </span>
                       ) : (
                         <span className="text-xs text-on-surface-tertiary">
-                          {org.subscriptionStatus ?? "free"}
+                          {org.subscriptionStatus ?? gt("free")}
                         </span>
                       )}
                     </td>
@@ -142,7 +145,11 @@ function AdminPage() {
                             : "bg-purple-600 hover:bg-purple-500 text-white"
                         }`}
                       >
-                        {busyOrgId === org.id ? "Saving…" : org.complimentary ? "Revoke" : "Grant"}
+                        {busyOrgId === org.id
+                          ? gt("Saving…")
+                          : org.complimentary
+                            ? gt("Revoke")
+                            : gt("Grant")}
                       </button>
                     </td>
                   </tr>

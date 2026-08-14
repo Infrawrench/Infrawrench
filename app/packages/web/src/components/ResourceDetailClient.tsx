@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
   DetailView,
@@ -224,6 +225,7 @@ export function ResourceDetailClient({
 }: Props) {
   const navigate = useNavigate();
   const router = useRouter();
+  const gt = useGT();
   const orgId = useOrgId();
   const schedulesClient = useMemo(() => createWebSchedulesClient(orgId), [orgId]);
   const leasesClient = useMemo(() => createWebLeasesClient(orgId), [orgId]);
@@ -294,12 +296,22 @@ export function ResourceDetailClient({
         if (!cancelled) setMetricSeries(r.series);
       })
       .catch((err) => {
-        if (!cancelled) toast.error(`Couldn't load metrics: ${formatErrorMessage(err)}`);
+        if (!cancelled)
+          toast.error(gt("Couldn't load metrics: {error}", { error: formatErrorMessage(err) }));
       });
     return () => {
       cancelled = true;
     };
-  }, [supportsMetrics, orgId, pluginId, resourceTypeId, accountId, resourceId, parentResourceId]);
+  }, [
+    supportsMetrics,
+    orgId,
+    pluginId,
+    resourceTypeId,
+    accountId,
+    resourceId,
+    parentResourceId,
+    gt,
+  ]);
 
   // Direct neighbors in the org's output-reference graph — drives the
   // "Dependencies" tab. Best-effort: on failure the tab simply doesn't show.
@@ -423,7 +435,10 @@ export function ResourceDetailClient({
         if (cancelled) return;
         setAgentLaunchDefaults({});
         setAgentLaunchError(
-          `Couldn't prepare the agent SSH session: ${formatErrorMessage(err)}. You can still connect to the VM manually below.`,
+          gt(
+            "Couldn't prepare the agent SSH session: {error}. You can still connect to the VM manually below.",
+            { error: formatErrorMessage(err) },
+          ),
         );
         setResolvedLaunchLookupKey(launchLookupKey);
       });
@@ -439,6 +454,7 @@ export function ResourceDetailClient({
     initialSshKeyName,
     initialCommand,
     initialCwd,
+    gt,
   ]);
 
   const agentLaunch = resolveEffectiveAgentLaunch({
@@ -634,11 +650,11 @@ export function ResourceDetailClient({
         fields: changedFields,
         parentResourceId: resourceId,
       });
-      toast.success("Saved.");
+      toast.success(gt("Saved."));
       dispatchResourcesChanged({ accountId, resourceTypeId: child.resourceTypeId });
       void router.invalidate();
     },
-    [orgId, accountId, resourceId],
+    [orgId, accountId, resourceId, gt],
   );
 
   const handleChildDelete = useCallback(
@@ -648,11 +664,11 @@ export function ResourceDetailClient({
           child.id,
         )}&accountId=${encodeURIComponent(child.accountId || accountId)}&parentResourceId=${encodeURIComponent(resourceId)}`,
       );
-      toast.success("Deleted.");
+      toast.success(gt("Deleted."));
       dispatchResourcesChanged({ accountId, resourceTypeId: child.resourceTypeId });
       void router.invalidate();
     },
-    [orgId, accountId, resourceId],
+    [orgId, accountId, resourceId, gt],
   );
 
   const handleGetManifest = useCallback(async (): Promise<string> => {
@@ -739,7 +755,10 @@ export function ResourceDetailClient({
             const text = await res.text().catch(() => "");
             yield {
               kind: "error",
-              message: `Server returned ${res.status}: ${text || res.statusText}`,
+              message: gt("Server returned {status}: {detail}", {
+                status: res.status,
+                detail: text || res.statusText,
+              }),
             };
             return;
           }
@@ -786,7 +805,7 @@ export function ResourceDetailClient({
         },
       };
     },
-    [orgId, pluginId, accountId, resourceTypeId, resourceId, parentResourceId],
+    [orgId, pluginId, accountId, resourceTypeId, resourceId, parentResourceId, gt],
   );
 
   const handleListArtifacts = useCallback(
@@ -938,7 +957,7 @@ export function ResourceDetailClient({
       fields: changedFields,
       ...(parentResourceId ? { parentResourceId } : {}),
     });
-    toast.success(`${resourceTypeLabel} updated.`);
+    toast.success(gt("{type} updated.", { type: resourceTypeLabel }));
     dispatchResourcesChanged({ accountId, resourceTypeId });
   }
 
@@ -1027,7 +1046,7 @@ export function ResourceDetailClient({
     void navigateToWorkspaceTarget(
       navigate,
       resourceSshTabTarget(accountId, resourceId, pluginId, resourceTypeId),
-      { label: `SSH: ${resourceDisplayName}`, mode: "pin" },
+      { label: gt("SSH: {name}", { name: resourceDisplayName }), mode: "pin" },
     );
   }
 
@@ -1035,7 +1054,7 @@ export function ResourceDetailClient({
     void navigateToWorkspaceTarget(
       navigate,
       resourceSftpTabTarget(accountId, resourceId, pluginId, resourceTypeId),
-      { label: `SFTP: ${resourceDisplayName}`, mode: "pin" },
+      { label: gt("SFTP: {name}", { name: resourceDisplayName }), mode: "pin" },
     );
   }
 
@@ -1068,7 +1087,7 @@ export function ResourceDetailClient({
       )}
       {isSftpView && !hasSftpBrowser && (
         <div className="flex-1 flex items-center justify-center text-on-surface-muted text-sm">
-          Waiting for resource to be ready…
+          {gt("Waiting for resource to be ready…")}
         </div>
       )}
 
@@ -1090,13 +1109,15 @@ export function ResourceDetailClient({
               />
               {shareState && (
                 <span className="text-[11px] text-on-surface-muted">
-                  Live with{" "}
-                  {shareState.participants
-                    .filter((p) => p.status === "joined")
-                    .map(
-                      (p) => `${p.userName ?? p.userId}${p.role === "driver" ? " (driving)" : ""}`,
-                    )
-                    .join(", ")}
+                  {gt("Live with {names}", {
+                    names: shareState.participants
+                      .filter((p) => p.status === "joined")
+                      .map(
+                        (p) =>
+                          `${p.userName ?? p.userId}${p.role === "driver" ? ` ${gt("(driving)")}` : ""}`,
+                      )
+                      .join(", "),
+                  })}
                 </span>
               )}
             </div>
@@ -1106,18 +1127,20 @@ export function ResourceDetailClient({
               <label className="flex items-center gap-2 text-xs text-on-surface-muted cursor-pointer select-none">
                 <input
                   type="checkbox"
-                  aria-label="Forward SSH agent"
+                  aria-label={gt("Forward SSH agent")}
                   checked={agentForward}
                   onChange={toggleAgentForward}
                   className="accent-green-600"
                 />
-                <span>Forward SSH agent</span>
+                <span>{gt("Forward SSH agent")}</span>
               </label>
               <span
                 className="text-[10px] text-on-surface-faint"
-                title="Forwards the same SSH key used to log in, so commands like `git clone` on the remote can authenticate with it. A compromised remote could use the forwarded key against other hosts that accept it — only enable for hosts you trust. Takes effect on the next connection."
+                title={gt(
+                  "Forwards the same SSH key used to log in, so commands like `git clone` on the remote can authenticate with it. A compromised remote could use the forwarded key against other hosts that accept it — only enable for hosts you trust. Takes effect on the next connection.",
+                )}
               >
-                (forwards your selected key; applies on next connect)
+                {gt("(forwards your selected key; applies on next connect)")}
               </span>
             </div>
           )}
@@ -1127,8 +1150,8 @@ export function ResourceDetailClient({
             (autoConnectPending || !agentLaunch.autoConnectReady) ? (
               <div className="flex h-full items-center justify-center px-4 text-sm text-on-surface-muted">
                 {agentLaunch.autoConnectReady
-                  ? "Connecting with infrawrench-agent..."
-                  : "Preparing agent SSH session..."}
+                  ? gt("Connecting with infrawrench-agent...")
+                  : gt("Preparing agent SSH session...")}
               </div>
             ) : sshHost && !sshQuickConnect ? (
               <>
@@ -1139,7 +1162,9 @@ export function ResourceDetailClient({
                 )}
                 {autoConnectError && (
                   <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-warning">
-                    Could not auto-connect with {agentLaunch.sshKeyName ?? "the agent key"}:{" "}
+                    {gt("Could not auto-connect with {name}:", {
+                      name: agentLaunch.sshKeyName ?? gt("the agent key"),
+                    })}{" "}
                     {autoConnectError}
                   </div>
                 )}
@@ -1198,12 +1223,12 @@ export function ResourceDetailClient({
                   }}
                   className="px-4 py-2 text-sm text-on-surface-secondary border border-border-strong hover:border-border-strong rounded-lg transition-colors"
                 >
-                  Connect SSH Terminal
+                  {gt("Connect SSH Terminal")}
                 </button>
               </div>
             ) : (
               <div className="flex items-center justify-center h-full text-on-surface-muted text-sm animate-pulse">
-                Connecting…
+                {gt("Connecting…")}
               </div>
             )}
           </div>
@@ -1221,7 +1246,7 @@ export function ResourceDetailClient({
                 onClick={openSftpTab}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
               >
-                Open SFTP tab
+                {gt("Open SFTP tab")}
               </button>
             )}
             {hasSshPanel && (
@@ -1230,7 +1255,7 @@ export function ResourceDetailClient({
                 onClick={openSshTab}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
               >
-                Open SSH tab
+                {gt("Open SSH tab")}
               </button>
             )}
             {sshHost && (
@@ -1239,7 +1264,7 @@ export function ResourceDetailClient({
                 onClick={() => setShowSshTunnel(true)}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
               >
-                Connect service via SSH
+                {gt("Connect service via SSH")}
               </button>
             )}
             {sshHost && (
@@ -1248,7 +1273,7 @@ export function ResourceDetailClient({
                 onClick={() => setShowJumpboxDialog(true)}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
               >
-                Connect through jumpbox…
+                {gt("Connect through jumpbox…")}
               </button>
             )}
             {sshHost && (
@@ -1257,7 +1282,7 @@ export function ResourceDetailClient({
                 onClick={() => setShowDockerSetup(true)}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
               >
-                Setup Docker
+                {gt("Setup Docker")}
               </button>
             )}
             <button
@@ -1265,7 +1290,7 @@ export function ResourceDetailClient({
               onClick={() => setShowDropSpotlight(true)}
               className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
             >
-              Connect resource
+              {gt("Connect resource")}
             </button>
           </div>
 
@@ -1331,7 +1356,7 @@ export function ResourceDetailClient({
                     {...(pane.schema.supportsK9s
                       ? {
                           k9s: {
-                            label: "Open in k9s",
+                            label: gt("Open in k9s"),
                             onOpen: async () => {
                               const { token } = await apiPost<{ token: string }>(
                                 `/api/org/${orgId}/ws-token`,
@@ -1488,7 +1513,7 @@ export function ResourceDetailClient({
           <span className="text-xs font-mono text-on-surface-tertiary">
             {sshQuickConnect && sshHost
               ? `${sshQuickConnect.username}@${sshHost}:22`
-              : `SSH connected`}
+              : gt("SSH connected")}
           </span>
           {sshQuickConnect && (
             <button
@@ -1496,7 +1521,7 @@ export function ResourceDetailClient({
               onClick={() => setSshQuickConnect(null)}
               className="ml-auto text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
             >
-              Disconnect
+              {gt("Disconnect")}
             </button>
           )}
         </div>
@@ -1516,7 +1541,7 @@ export function ResourceDetailClient({
                 onClick={() => setShowTerraformExport(true)}
                 className="text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
               >
-                Export to Terraform…
+                {gt("Export to Terraform…")}
               </button>
             )}
             {credentialFormats && credentialFormats.length > 0 && (
@@ -1525,7 +1550,7 @@ export function ResourceDetailClient({
                 onClick={() => setShowExportCredential(true)}
                 className="text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
               >
-                Get credentials…
+                {gt("Get credentials…")}
               </button>
             )}
             {canEdit && (
@@ -1534,7 +1559,7 @@ export function ResourceDetailClient({
                 onClick={() => setShowEditModal(true)}
                 className="text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
               >
-                Edit {resourceTypeLabel}…
+                {gt("Edit {type}…", { type: resourceTypeLabel })}
               </button>
             )}
             {canDelete && (
@@ -1543,7 +1568,7 @@ export function ResourceDetailClient({
                 onClick={() => setConfirmDelete(true)}
                 className="text-xs text-on-surface-faint hover:text-danger transition-colors px-2 py-1 rounded hover:bg-red-500/10"
               >
-                Delete {resourceTypeLabel}…
+                {gt("Delete {type}…", { type: resourceTypeLabel })}
               </button>
             )}
           </div>
@@ -1709,12 +1734,12 @@ export function ResourceDetailClient({
             setConsoleOpen(false);
             setConsoleToken(null);
           }}
-          ariaLabel={`Console: ${resourceDisplayName}`}
+          ariaLabel={gt("Console: {name}", { name: resourceDisplayName })}
         >
           <div className="w-[min(1100px,92vw)] h-[min(720px,82vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-on-surface">
-                Console: {resourceDisplayName}
+                {gt("Console: {name}", { name: resourceDisplayName })}
               </h2>
               <button
                 type="button"
@@ -1722,7 +1747,7 @@ export function ResourceDetailClient({
                   setConsoleOpen(false);
                   setConsoleToken(null);
                 }}
-                aria-label="Close"
+                aria-label={gt("Close")}
                 className="text-on-surface-muted hover:text-on-surface-secondary text-xl leading-none"
               >
                 ×
@@ -1763,15 +1788,20 @@ export function ResourceDetailClient({
       )}
 
       {k9sPane && (
-        <Modal onClose={() => setK9sPane(null)} ariaLabel={`k9s: ${resourceDisplayName}`}>
+        <Modal
+          onClose={() => setK9sPane(null)}
+          ariaLabel={gt("k9s: {name}", { name: resourceDisplayName })}
+        >
           <div className="w-[min(1100px,92vw)] h-[min(720px,82vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <h2 className="text-sm font-semibold text-on-surface">k9s: {resourceDisplayName}</h2>
+              <h2 className="text-sm font-semibold text-on-surface">
+                {gt("k9s: {name}", { name: resourceDisplayName })}
+              </h2>
               <button
                 type="button"
                 onClick={() => setK9sPane(null)}
-                aria-label={`Close k9s: ${resourceDisplayName}`}
-                title={`Close k9s: ${resourceDisplayName}`}
+                aria-label={gt("Close k9s: {name}", { name: resourceDisplayName })}
+                title={gt("Close k9s: {name}", { name: resourceDisplayName })}
                 className="text-on-surface-muted hover:text-on-surface-secondary text-xl leading-none"
               >
                 ×

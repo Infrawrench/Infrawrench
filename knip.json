@@ -18,7 +18,12 @@
       "project": ["src/**/*.{ts,tsx}"]
     },
     "app/packages/ui": {
-      "entry": ["src/index.ts", "src/agents/launch-command.ts", "src/**/*.test.{ts,tsx}"],
+      "entry": [
+        "src/index.ts",
+        "src/i18n/plugin-strings.gen.ts",
+        "src/agents/launch-command.ts",
+        "src/**/*.test.{ts,tsx}"
+      ],
       "project": ["src/**/*.{ts,tsx}"]
     },
     "app/packages/web": {
@@ -27,13 +32,15 @@
         "drizzle.config.ts",
         "vite.config.ts",
         "vitest.config.ts",
-        "src/main.tsx",
+        "src/index.ts",
+        "src/vite-env.d.ts",
         "src/routeTree.gen.ts",
         "src/routes/**/*.{ts,tsx}",
         "src/**/*.test.{ts,tsx}",
-        "scripts/**/*.ts"
+        "scripts/**/*.ts",
+        "scripts/**/*.mjs"
       ],
-      "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts"],
+      "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "scripts/**/*.mjs"],
       "ignoreDependencies": ["tailwindcss", "@kubernetes/client-node", "cloudflare", "dockerode"]
     },
     "app/packages/desktop": {
@@ -43,7 +50,8 @@
         "electron/preload.ts",
         "electron.vite.config.ts",
         "vitest.config.ts",
-        "src/main.tsx",
+        "src/index.ts",
+        "src/vite-env.d.ts",
         "src/env.d.ts",
         "src/routeTree.gen.ts",
         "src/routes/**/*.{ts,tsx}",

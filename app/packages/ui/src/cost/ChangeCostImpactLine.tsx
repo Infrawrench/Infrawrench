@@ -1,3 +1,4 @@
+import { T, useGT } from "gt-react";
 import {
   changeCostImpactReasonLabel,
   changeImpactMonthly,
@@ -8,6 +9,7 @@ import {
   formatSignedPerDay,
   type ChangeCostImpact,
 } from "@infrawrench/client-core";
+import { useDataString } from "../i18n/data-strings.js";
 
 /**
  * The one-line cost verdict on a change or a deploy.
@@ -28,11 +30,16 @@ export function ChangeCostImpactLine({
   impact: ChangeCostImpact;
   compact?: boolean;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
+
   if (impact.status !== "measured") {
     if (compact) return null;
-    const why = impact.reasons.map(changeCostImpactReasonLabel).join("; ");
+    const why = impact.reasons.map((r) => gtData(changeCostImpactReasonLabel(r))).join("; ");
     return (
-      <p className="text-xs text-on-surface-faint">Cost impact unknown{why ? ` — ${why}` : ""}.</p>
+      <p className="text-xs text-on-surface-faint">
+        {why ? gt("Cost impact unknown — {why}.", { why }) : gt("Cost impact unknown.")}
+      </p>
     );
   }
 
@@ -40,6 +47,8 @@ export function ChangeCostImpactLine({
   // so "spend went up" is one colour across the product.
   const tone = (delta: number) =>
     delta > 0 ? "text-danger" : delta < 0 ? "text-success" : "text-on-surface-muted";
+
+  const confidenceLabel = gtData(CHANGE_IMPACT_CONFIDENCE_LABELS[impact.confidence]).toLowerCase();
 
   return (
     <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
@@ -59,24 +68,39 @@ export function ChangeCostImpactLine({
         className="text-on-surface-faint"
         title={
           impact.before && impact.after
-            ? `${impact.before.from}–${impact.before.to} vs ${impact.after.from}–${impact.after.to}`
+            ? gt("{beforeFrom}–{beforeTo} vs {afterFrom}–{afterTo}", {
+                beforeFrom: impact.before.from,
+                beforeTo: impact.before.to,
+                afterFrom: impact.after.from,
+                afterTo: impact.after.to,
+              })
             : undefined
         }
       >
-        {costBasisLabel(impact.costBasis)}, {impact.effectiveWindowDays}d before/after
+        {gt("{basis}, {days}d before/after", {
+          basis: gtData(costBasisLabel(impact.costBasis)),
+          days: impact.effectiveWindowDays,
+        })}
       </span>
       <span
         className="text-on-surface-faint"
         title={
           impact.overlappingChanges > 0
-            ? `${impact.overlappingChanges} other change${
-                impact.overlappingChanges === 1 ? "" : "s"
-              } touched this resource inside the window — this delta is correlation, not proof.`
+            ? impact.overlappingChanges === 1
+              ? gt(
+                  "{count} other change touched this resource inside the window — this delta is correlation, not proof.",
+                  { count: impact.overlappingChanges },
+                )
+              : gt(
+                  "{count} other changes touched this resource inside the window — this delta is correlation, not proof.",
+                  { count: impact.overlappingChanges },
+                )
             : undefined
         }
       >
-        · {CHANGE_IMPACT_CONFIDENCE_LABELS[impact.confidence].toLowerCase()}
-        {impact.overlappingChanges > 0 ? " (contested)" : ""}
+        {impact.overlappingChanges > 0
+          ? gt("· {confidence} (contested)", { confidence: confidenceLabel })
+          : gt("· {confidence}", { confidence: confidenceLabel })}
       </span>
     </span>
   );
@@ -88,10 +112,12 @@ export function ChangeCostImpactLine({
  */
 export function ChangeCostImpactFootnote() {
   return (
-    <p className="text-xs text-on-surface-faint mt-2">
-      Measured from collected provider spend either side of the change, and recomputed on every view
-      — the figure moves as late-arriving cost lands. A delta is correlation, not proof of cause;
-      monthly equivalents are the daily rate × 30.
-    </p>
+    <T>
+      <p className="text-xs text-on-surface-faint mt-2">
+        Measured from collected provider spend either side of the change, and recomputed on every
+        view — the figure moves as late-arriving cost lands. A delta is correlation, not proof of
+        cause; monthly equivalents are the daily rate × 30.
+      </p>
+    </T>
   );
 }

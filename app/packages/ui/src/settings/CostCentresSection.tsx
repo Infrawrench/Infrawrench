@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import {
   COST_CENTRE_LIMITS,
   costCentreDepths,
@@ -25,6 +26,7 @@ import { useSettingsHost } from "./host.js";
  * accepted.
  */
 export function CostCentresSection() {
+  const gt = useGT();
   const { orgId, api, has, openSection } = useSettingsHost();
   const canEdit = has("costs:write");
 
@@ -47,7 +49,7 @@ export function CostCentresSection() {
       setCentres(centreRows);
       setRules(ruleRows);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load cost centres");
+      setError(e instanceof Error ? e.message : gt("Failed to load cost centres"));
     } finally {
       setLoading(false);
     }
@@ -84,7 +86,7 @@ export function CostCentresSection() {
       await load();
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create cost centre");
+      setError(e instanceof Error ? e.message : gt("Failed to create cost centre"));
       return false;
     } finally {
       setBusyId(null);
@@ -107,7 +109,7 @@ export function CostCentresSection() {
       setEditingId(null);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to rename cost centre");
+      setError(e instanceof Error ? e.message : gt("Failed to rename cost centre"));
     } finally {
       setBusyId(null);
     }
@@ -124,7 +126,7 @@ export function CostCentresSection() {
       });
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to move cost centre");
+      setError(e instanceof Error ? e.message : gt("Failed to move cost centre"));
     } finally {
       setBusyId(null);
     }
@@ -134,25 +136,33 @@ export function CostCentresSection() {
     const ruleCount = ruleCounts.get(centre.id) ?? 0;
     const childCount = childCounts.get(centre.id) ?? 0;
     const parentName = centre.parentId
-      ? (centres.find((c) => c.id === centre.parentId)?.name ?? "its parent")
+      ? (centres.find((c) => c.id === centre.parentId)?.name ?? gt("its parent"))
       : null;
 
     // The confirmation says exactly where the pieces land — children move up
     // one level, spend history is untouched, and only the rules go away.
-    const lines = [`Delete cost centre "${centre.name}"?`];
+    const lines = [gt('Delete cost centre "{name}"?', { name: centre.name })];
     if (childCount > 0) {
       lines.push(
         parentName
-          ? `Its ${childCount} child centre(s) move up under "${parentName}" — they are not deleted.`
-          : `Its ${childCount} child centre(s) become top-level centres — they are not deleted.`,
+          ? gt('Its {count} child centre(s) move up under "{parent}" — they are not deleted.', {
+              count: childCount,
+              parent: parentName,
+            })
+          : gt("Its {count} child centre(s) become top-level centres — they are not deleted.", {
+              count: childCount,
+            }),
       );
     }
     if (ruleCount > 0) {
       lines.push(
-        `Its ${ruleCount} allocation rule(s) are deleted, so the spend they claimed falls through to the next matching rule or to "Unallocated".`,
+        gt(
+          'Its {count} allocation rule(s) are deleted, so the spend they claimed falls through to the next matching rule or to "Unallocated".',
+          { count: ruleCount },
+        ),
       );
     }
-    lines.push("No spend history is deleted.");
+    lines.push(gt("No spend history is deleted."));
     if (!window.confirm(lines.join("\n\n"))) return;
 
     setBusyId(centre.id);
@@ -160,7 +170,7 @@ export function CostCentresSection() {
       await api.delete(`/api/org/${orgId}/cost-centres/${centre.id}`);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete cost centre");
+      setError(e instanceof Error ? e.message : gt("Failed to delete cost centre"));
     } finally {
       setBusyId(null);
     }
@@ -172,26 +182,31 @@ export function CostCentresSection() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold">Cost Centres</h1>
-        <p className="text-sm text-on-surface-muted mt-1">
-          The tree spend is allocated to for showback. Centres nest, so a division holds teams and a
-          team holds products — &ldquo;what does Engineering cost&rdquo; is the whole subtree, not
-          one bucket. The Costs panel reports each centre&rsquo;s own spend and its subtree&rsquo;s
-          separately. Nesting is at most {COST_CENTRE_LIMITS.maxDepth} levels deep.
-        </p>
-        <p className="text-sm text-on-surface-muted mt-2">
-          Nesting changes nothing about matching: a cost row is still allocated to exactly one
-          centre by the{" "}
-          <button
-            type="button"
-            onClick={() => openSection("tag-policy")}
-            className="text-info hover:text-info-strong underline underline-offset-2"
-          >
-            allocation rules
-          </button>{" "}
-          on the Tag Policy page, and spend no rule claims still reports as
-          &ldquo;Unallocated&rdquo;.
-        </p>
+        <h1 className="text-xl font-semibold">{gt("Cost Centres")}</h1>
+        <T>
+          <p className="text-sm text-on-surface-muted mt-1">
+            The tree spend is allocated to for showback. Centres nest, so a division holds teams and
+            a team holds products — &ldquo;what does Engineering cost&rdquo; is the whole subtree,
+            not one bucket. The Costs panel reports each centre&rsquo;s own spend and its
+            subtree&rsquo;s separately. Nesting is at most <Var>{COST_CENTRE_LIMITS.maxDepth}</Var>{" "}
+            levels deep.
+          </p>
+        </T>
+        <T>
+          <p className="text-sm text-on-surface-muted mt-2">
+            Nesting changes nothing about matching: a cost row is still allocated to exactly one
+            centre by the{" "}
+            <button
+              type="button"
+              onClick={() => openSection("tag-policy")}
+              className="text-info hover:text-info-strong underline underline-offset-2"
+            >
+              allocation rules
+            </button>{" "}
+            on the Tag Policy page, and spend no rule claims still reports as
+            &ldquo;Unallocated&rdquo;.
+          </p>
+        </T>
       </div>
 
       {error && (
@@ -201,13 +216,15 @@ export function CostCentresSection() {
       )}
 
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
       ) : (
         <div className="space-y-6">
           <div className="border border-border rounded-xl overflow-hidden">
             {tree.length === 0 ? (
               <p className="px-4 py-3 text-sm text-on-surface-muted">
-                No cost centres yet. Add one below, then map spend onto it with an allocation rule.
+                {gt(
+                  "No cost centres yet. Add one below, then map spend onto it with an allocation rule.",
+                )}
               </p>
             ) : (
               <ul>
@@ -243,16 +260,24 @@ export function CostCentresSection() {
                               if (e.key === "Enter") void renameCentre(centre);
                               if (e.key === "Escape") setEditingId(null);
                             }}
-                            aria-label={`Rename ${centre.name}`}
+                            aria-label={gt("Rename {name}", { name: centre.name })}
                             className={selectClass}
                           />
                         ) : (
                           <span className="truncate text-sm text-on-surface-secondary">{name}</span>
                         )}
                         <span className="text-xs text-on-surface-muted shrink-0">
-                          {rulesHere > 0 && `${rulesHere} rule${rulesHere === 1 ? "" : "s"}`}
+                          {rulesHere > 0 &&
+                            gt("{count} rule{suffix}", {
+                              count: rulesHere,
+                              suffix: rulesHere === 1 ? "" : "s",
+                            })}
                           {rulesHere > 0 && kids > 0 && " · "}
-                          {kids > 0 && `${kids} child${kids === 1 ? "" : "ren"}`}
+                          {kids > 0 &&
+                            gt("{count} child{suffix}", {
+                              count: kids,
+                              suffix: kids === 1 ? "" : "ren",
+                            })}
                         </span>
                       </span>
 
@@ -275,7 +300,7 @@ export function CostCentresSection() {
                             }}
                             className="text-xs text-on-surface-muted hover:text-on-surface-secondary disabled:opacity-40"
                           >
-                            Rename
+                            {gt("Rename")}
                           </button>
                           <button
                             type="button"
@@ -283,7 +308,7 @@ export function CostCentresSection() {
                             onClick={() => void removeCentre(centre)}
                             className="text-xs text-danger hover:text-danger-strong disabled:opacity-40"
                           >
-                            Delete
+                            {gt("Delete")}
                           </button>
                         </span>
                       )}
@@ -328,6 +353,7 @@ function AddCentreForm({
   className: string;
   onAdd: (name: string, parentId: string | null) => Promise<boolean>;
 }) {
+  const gt = useGT();
   const [name, setName] = useState("");
   const [parentId, setParentId] = useState("");
 
@@ -339,7 +365,7 @@ function AddCentreForm({
 
   return (
     <div className="border border-border rounded-xl p-4 space-y-3 bg-surface-raised/50">
-      <h2 className="text-sm font-semibold">Add a cost centre</h2>
+      <h2 className="text-sm font-semibold">{gt("Add a cost centre")}</h2>
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="text"
@@ -349,18 +375,18 @@ function AddCentreForm({
           onKeyDown={(e) => {
             if (e.key === "Enter") void submit();
           }}
-          placeholder="e.g. Platform"
-          aria-label="Cost centre name"
+          placeholder={gt("e.g. Platform")}
+          aria-label={gt("Cost centre name")}
           className={className}
         />
-        <span className="text-sm text-on-surface-muted">under</span>
+        <span className="text-sm text-on-surface-muted">{gt("under")}</span>
         <select
           value={parentId}
           onChange={(e) => setParentId(e.target.value)}
-          aria-label="Parent cost centre"
+          aria-label={gt("Parent cost centre")}
           className={className}
         >
-          <option value="">Top level</option>
+          <option value="">{gt("Top level")}</option>
           {tree.map(({ id, path }) => (
             <option
               key={id}
@@ -379,7 +405,7 @@ function AddCentreForm({
           disabled={busy || name.trim().length === 0}
           className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
         >
-          Add
+          {gt("Add")}
         </button>
       </div>
     </div>
@@ -407,15 +433,16 @@ function MoveSelect({
   className: string;
   onMove: (parentId: string | null) => void;
 }) {
+  const gt = useGT();
   return (
     <select
       value={centre.parentId ?? ""}
       disabled={disabled}
-      aria-label={`Move ${centre.name}`}
+      aria-label={gt("Move {name}", { name: centre.name })}
       onChange={(e) => onMove(e.target.value || null)}
       className={`${className} max-w-44`}
     >
-      <option value="">Top level</option>
+      <option value="">{gt("Top level")}</option>
       {tree.map((row) => {
         if (row.id === centre.id) return null;
         const blocked = costCentreMoveBlocker(centres, centre.id, row.id);

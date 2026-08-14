@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useGT } from "gt-react";
 
 interface StringEntry {
   /** Stable per-row id for React keys — rows are editable and removable. */
@@ -28,8 +29,10 @@ export function StringListPicker({
   value,
   onChange,
   placeholder,
-  addLabel = "+ Add",
+  addLabel,
 }: StringListPickerProps) {
+  const gt = useGT();
+  const displayAddLabel = addLabel ?? gt("+ Add");
   const parsed = useMemo(() => parseEntries(value), [value]);
   const [entries, setEntries] = useState<StringEntry[]>(() =>
     parsed.length > 0 ? parsed : [{ id: crypto.randomUUID(), value: "" }],
@@ -94,15 +97,15 @@ export function StringListPicker({
               });
             }}
             placeholder={placeholder}
-            aria-label={placeholder ?? "Value"}
+            aria-label={placeholder ?? gt("Value")}
             className="flex-1 min-w-0 bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
           />
           <button
             type="button"
             onClick={() => removeRow(i)}
             className="flex-shrink-0 text-on-surface-faint hover:text-danger transition-colors text-sm leading-none"
-            aria-label="Remove"
-            title="Remove"
+            aria-label={gt("Remove")}
+            title={gt("Remove")}
           >
             ✕
           </button>
@@ -113,7 +116,7 @@ export function StringListPicker({
         onClick={addRow}
         className="text-xs text-on-surface-faint hover:text-accent transition-colors"
       >
-        {addLabel}
+        {displayAddLabel}
       </button>
     </div>
   );

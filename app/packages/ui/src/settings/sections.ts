@@ -1,3 +1,5 @@
+import { msg } from "gt-react";
+
 /**
  * The settings section registry — one entry per page, in sidebar order.
  * `key` is the URL segment on web (`/org/:orgId/settings/<key>`, "" for
@@ -5,41 +7,46 @@
  */
 export interface SettingsSectionDef {
   key: string;
+  /**
+   * gt-encoded via `msg()` — render it through `useMessages()` (both navs do),
+   * never raw, or the encoded suffix shows up in the UI. `decodeMsg()` gets
+   * the plain English back outside React.
+   */
   label: string;
   /** Hidden outright without this permission (the page could only refuse). */
   requiresPermission?: string;
 }
 
 export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
-  { key: "", label: "General" },
-  { key: "team", label: "Team" },
-  { key: "roles", label: "Roles" },
-  { key: "access-requests", label: "Break-glass Access", requiresPermission: "access:read" },
-  { key: "ssh-keys", label: "SSH Keys" },
-  { key: "ssh-host-keys", label: "Trusted SSH Hosts" },
+  { key: "", label: msg("General") },
+  { key: "team", label: msg("Team") },
+  { key: "roles", label: msg("Roles") },
+  { key: "access-requests", label: msg("Break-glass Access"), requiresPermission: "access:read" },
+  { key: "ssh-keys", label: msg("SSH Keys") },
+  { key: "ssh-host-keys", label: msg("Trusted SSH Hosts") },
   {
     key: "session-recordings",
-    label: "Session Recordings",
+    label: msg("Session Recordings"),
     requiresPermission: "session-recordings:read",
   },
-  { key: "bastions", label: "Bastions" },
-  { key: "api-keys", label: "API Keys" },
-  { key: "credential-hygiene", label: "Credential Hygiene", requiresPermission: "audit:read" },
-  { key: "freezes", label: "Change Freezes" },
-  { key: "tag-policy", label: "Tag Policy" },
-  { key: "cost-centres", label: "Cost Centres", requiresPermission: "costs:read" },
+  { key: "bastions", label: msg("Bastions") },
+  { key: "api-keys", label: msg("API Keys") },
+  { key: "credential-hygiene", label: msg("Credential Hygiene"), requiresPermission: "audit:read" },
+  { key: "freezes", label: msg("Change Freezes") },
+  { key: "tag-policy", label: msg("Tag Policy") },
+  { key: "cost-centres", label: msg("Cost Centres"), requiresPermission: "costs:read" },
   // Next to Cost Centres and Currency, the two other pages where one person's
   // edit restates numbers everybody else reads. Visible on `costs:read` (a
   // rule is part of the explanation for a figure); editing needs
   // `org:settings:write`.
-  { key: "billing-rules", label: "Billing Rules", requiresPermission: "costs:read" },
-  { key: "config", label: "Config as Code", requiresPermission: "config:read" },
-  { key: "currency", label: "Currency" },
-  { key: "cost-exports", label: "Cost Exports", requiresPermission: "costs:read" },
-  { key: "approvals", label: "Approvals", requiresPermission: "workflows:read" },
-  { key: "paging", label: "Notifications" },
-  { key: "jira", label: "Jira", requiresPermission: "jira:read" },
-  { key: "linear", label: "Linear", requiresPermission: "linear:read" },
-  { key: "billing", label: "Billing" },
-  { key: "audit-log", label: "Audit Log" },
+  { key: "billing-rules", label: msg("Billing Rules"), requiresPermission: "costs:read" },
+  { key: "config", label: msg("Config as Code"), requiresPermission: "config:read" },
+  { key: "currency", label: msg("Currency") },
+  { key: "cost-exports", label: msg("Cost Exports"), requiresPermission: "costs:read" },
+  { key: "approvals", label: msg("Approvals"), requiresPermission: "workflows:read" },
+  { key: "paging", label: msg("Notifications") },
+  { key: "jira", label: msg("Jira"), requiresPermission: "jira:read" },
+  { key: "linear", label: msg("Linear"), requiresPermission: "linear:read" },
+  { key: "billing", label: msg("Billing") },
+  { key: "audit-log", label: msg("Audit Log") },
 ];

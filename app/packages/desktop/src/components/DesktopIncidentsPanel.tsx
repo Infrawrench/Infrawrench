@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useGT } from "gt-react";
 import { useUIStore } from "@infrawrench/ui";
 import { IncidentsPanel } from "@infrawrench/ui/incidents";
 import { createDesktopIncidentsClient } from "@/lib/incidents-client";
@@ -18,6 +19,7 @@ import { incidentsTabTarget, navigateToWorkspaceTarget } from "@/lib/workspace-t
  * somebody was reading rather than on the list.
  */
 export function DesktopIncidentsPanel({ incidentId }: { incidentId?: string | undefined }) {
+  const gt = useGT();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const navigate = useNavigate();
   const client = useMemo(() => createDesktopIncidentsClient(), []);
@@ -25,7 +27,7 @@ export function DesktopIncidentsPanel({ incidentId }: { incidentId?: string | un
   if (!activeCloudOrgId) {
     return (
       <div className="p-6 text-sm text-on-surface-faint">
-        Incidents require cloud mode — sign in to sync.
+        {gt("Incidents require cloud mode — sign in to sync.")}
       </div>
     );
   }
@@ -39,7 +41,7 @@ export function DesktopIncidentsPanel({ incidentId }: { incidentId?: string | un
         incidentId={incidentId}
         onIncidentChange={(next) =>
           void navigateToWorkspaceTarget(navigate, incidentsTabTarget(next ?? undefined), {
-            label: "Incidents",
+            label: gt("Incidents"),
           })
         }
       />

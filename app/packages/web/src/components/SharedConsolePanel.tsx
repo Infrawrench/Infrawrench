@@ -16,6 +16,7 @@
  * everyone sees the same participant list at the same moment.
  */
 import { useCallback, useEffect, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 
 import {
   currentDriver,
@@ -52,6 +53,7 @@ export function SharedConsolePanel({
   participants,
   youParticipantId,
 }: SharedConsolePanelProps) {
+  const gt = useGT();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +96,7 @@ export function SharedConsolePanel({
 
   const startShare = () =>
     run(async () => {
-      if (!session) throw new Error("The terminal is not connected yet.");
+      if (!session) throw new Error(gt("The terminal is not connected yet."));
       const created = await apiPost<{ inviteToken: string }>(base, {
         liveConsoleId: session.liveConsoleId,
         routingKey: session.routingKey,
@@ -145,7 +147,7 @@ export function SharedConsolePanel({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      setError("Could not reach the clipboard — select the link and copy it manually.");
+      setError(gt("Could not reach the clipboard — select the link and copy it manually."));
     }
   };
 
@@ -164,35 +166,48 @@ export function SharedConsolePanel({
         className={`${share ? PRIMARY_BUTTON : SECONDARY_BUTTON} disabled:opacity-40`}
         title={
           session
-            ? "Share this live session with a colleague"
-            : "Available once the terminal is connected"
+            ? gt("Share this live session with a colleague")
+            : gt("Available once the terminal is connected")
         }
       >
-        {share ? `Shared · ${joined.length}` : "Share"}
+        {share ? gt("Shared · {count}", { count: joined.length }) : gt("Share")}
       </button>
 
       {open && (
-        <Modal ariaLabel="Share this console" onClose={() => setOpen(false)}>
+        <Modal ariaLabel={gt("Share this console")} onClose={() => setOpen(false)}>
           <div className="w-[34rem] max-w-full p-5 space-y-4">
             <div>
-              <h2 className="text-base font-semibold text-on-surface">Share this console</h2>
+              <h2 className="text-base font-semibold text-on-surface">
+                {gt("Share this console")}
+              </h2>
               <p className="mt-1 text-xs text-on-surface-tertiary">
-                {share
-                  ? `${share.username}@${share.host} — everyone here sees this terminal live.`
-                  : "Invite a colleague to watch this session, and optionally hand them the keyboard."}
+                {share ? (
+                  <T>
+                    <Var>
+                      {share.username}@{share.host}
+                    </Var>{" "}
+                    — everyone here sees this terminal live.
+                  </T>
+                ) : (
+                  gt(
+                    "Invite a colleague to watch this session, and optionally hand them the keyboard.",
+                  )
+                )}
               </p>
             </div>
 
             {/* The trust statement, in front of the person doing the sharing.
                 It is not decoration: the single most common misconception
                 about a link like this is that the link is the access. */}
-            <p className="text-xs text-on-surface-tertiary border border-border rounded-lg p-3 leading-relaxed">
-              Anyone you invite must already be a member of this organization with permission to
-              open a terminal on this resource — the link says <em>which</em> session, never{" "}
-              <em>whether</em>. Every join, handover and departure is written to the audit log, and
-              if this organization records sessions, everyone on the console is named in the
-              recording.
-            </p>
+            <T>
+              <p className="text-xs text-on-surface-tertiary border border-border rounded-lg p-3 leading-relaxed">
+                Anyone you invite must already be a member of this organization with permission to
+                open a terminal on this resource — the link says <em>which</em> session, never{" "}
+                <em>whether</em>. Every join, handover and departure is written to the audit log,
+                and if this organization records sessions, everyone on the console is named in the
+                recording.
+              </p>
+            </T>
 
             {error && (
               <p className="text-xs text-danger border border-red-500/30 bg-red-500/10 rounded-lg p-2">
@@ -209,14 +224,16 @@ export function SharedConsolePanel({
                     onChange={(e) => setAllowHandover(e.target.checked)}
                     className="mt-0.5 accent-blue-600"
                   />
-                  <span>
-                    Allow handing over the keyboard.
-                    <span className="block text-on-surface-tertiary">
-                      Leave this off for a strictly read-only share — nobody but you will ever be
-                      able to type, and that is enforced on the server rather than inferred from
-                      what anyone types.
+                  <T>
+                    <span>
+                      Allow handing over the keyboard.
+                      <span className="block text-on-surface-tertiary">
+                        Leave this off for a strictly read-only share — nobody but you will ever be
+                        able to type, and that is enforced on the server rather than inferred from
+                        what anyone types.
+                      </span>
                     </span>
-                  </span>
+                  </T>
                 </label>
                 <button
                   type="button"
@@ -224,14 +241,14 @@ export function SharedConsolePanel({
                   disabled={busy || !session}
                   className={PRIMARY_BUTTON}
                 >
-                  {busy ? "Sharing…" : "Start sharing"}
+                  {busy ? gt("Sharing…") : gt("Start sharing")}
                 </button>
               </div>
             ) : (
               <div className="space-y-4">
                 <section className="space-y-2">
                   <h3 className="text-xs font-medium uppercase tracking-wide text-on-surface-tertiary">
-                    Invite link
+                    {gt("Invite link")}
                   </h3>
                   {inviteToken ? (
                     <div className="space-y-1">
@@ -243,21 +260,29 @@ export function SharedConsolePanel({
                           className="flex-1 bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-xs font-mono text-on-surface"
                         />
                         <button type="button" onClick={copyLink} className={SECONDARY_BUTTON}>
-                          {copied ? "Copied" : "Copy"}
+                          {copied ? gt("Copied") : gt("Copy")}
                         </button>
                       </div>
-                      <p className="text-[11px] text-on-surface-tertiary">
-                        Shown once — {formatInviteExpiry(share.inviteExpiresAt)}, and spent by the
-                        first person it admits. Mint another for a second guest.
-                      </p>
+                      <T>
+                        <p className="text-[11px] text-on-surface-tertiary">
+                          Shown once — <Var>{formatInviteExpiry(share.inviteExpiresAt)}</Var>, and
+                          spent by the first person it admits. Mint another for a second guest.
+                        </p>
+                      </T>
                     </div>
                   ) : (
                     <p className="text-xs text-on-surface-tertiary">
                       {share.inviteConsumedAt
-                        ? "The last invite has been used."
+                        ? gt("The last invite has been used.")
                         : share.inviteExpiresAt
-                          ? `An invite is outstanding (…${share.inviteTokenPrefix}, ${formatInviteExpiry(share.inviteExpiresAt)}). The link itself cannot be shown again.`
-                          : "No open invite."}
+                          ? gt(
+                              "An invite is outstanding (…{prefix}, {expiry}). The link itself cannot be shown again.",
+                              {
+                                prefix: share.inviteTokenPrefix,
+                                expiry: formatInviteExpiry(share.inviteExpiresAt),
+                              },
+                            )
+                          : gt("No open invite.")}
                     </p>
                   )}
                   {youAreOwner && (
@@ -268,7 +293,7 @@ export function SharedConsolePanel({
                         disabled={busy}
                         className={SECONDARY_BUTTON}
                       >
-                        New invite link
+                        {gt("New invite link")}
                       </button>
                       {share.inviteExpiresAt && (
                         <button
@@ -277,7 +302,7 @@ export function SharedConsolePanel({
                           disabled={busy}
                           className={SECONDARY_BUTTON}
                         >
-                          Withdraw
+                          {gt("Withdraw")}
                         </button>
                       )}
                     </div>
@@ -286,7 +311,7 @@ export function SharedConsolePanel({
 
                 <section className="space-y-2">
                   <h3 className="text-xs font-medium uppercase tracking-wide text-on-surface-tertiary">
-                    On this console
+                    {gt("On this console")}
                   </h3>
                   <ul className="divide-y divide-border border border-border rounded-lg">
                     {joined.map((p) => (
@@ -294,19 +319,19 @@ export function SharedConsolePanel({
                         <span className="flex-1 truncate text-sm text-on-surface">
                           {p.userName ?? p.userId}
                           {p.id === youParticipantId && (
-                            <span className="text-on-surface-tertiary"> (you)</span>
+                            <span className="text-on-surface-tertiary"> {gt("(you)")}</span>
                           )}
                           {share.ownerUserId === p.userId && (
-                            <span className="text-on-surface-tertiary"> · sharer</span>
+                            <span className="text-on-surface-tertiary"> · {gt("sharer")}</span>
                           )}
                         </span>
                         <RoleBadge role={p.role} />
                         {p.driverRequestedAt && p.role !== "driver" && (
                           <span
                             className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-warning"
-                            title="They have asked for the keyboard"
+                            title={gt("They have asked for the keyboard")}
                           >
-                            asked
+                            {gt("asked")}
                           </span>
                         )}
                         {(youAreDriver || youAreOwner) &&
@@ -318,7 +343,7 @@ export function SharedConsolePanel({
                               disabled={busy}
                               className="text-[11px] text-info hover:text-info-strong disabled:opacity-50"
                             >
-                              give keyboard
+                              {gt("give keyboard")}
                             </button>
                           )}
                         {youAreOwner && share.ownerUserId !== p.userId && (
@@ -328,7 +353,7 @@ export function SharedConsolePanel({
                             disabled={busy}
                             className="text-[11px] text-danger hover:text-danger-strong disabled:opacity-50"
                           >
-                            remove
+                            {gt("remove")}
                           </button>
                         )}
                       </li>
@@ -336,7 +361,7 @@ export function SharedConsolePanel({
                   </ul>
                   {!share.allowHandover && (
                     <p className="text-[11px] text-on-surface-tertiary">
-                      Read-only share — the keyboard cannot move.
+                      {gt("Read-only share — the keyboard cannot move.")}
                     </p>
                   )}
                 </section>
@@ -344,7 +369,7 @@ export function SharedConsolePanel({
                 {youAreOwner && (
                   <div className="flex justify-between items-center pt-1">
                     <span className="text-[11px] text-on-surface-tertiary">
-                      Revoking disconnects everyone. Your own session keeps running.
+                      {gt("Revoking disconnects everyone. Your own session keeps running.")}
                     </span>
                     <button
                       type="button"
@@ -352,7 +377,7 @@ export function SharedConsolePanel({
                       disabled={busy}
                       className={DANGER_BUTTON}
                     >
-                      Revoke share
+                      {gt("Revoke share")}
                     </button>
                   </div>
                 )}
@@ -361,7 +386,7 @@ export function SharedConsolePanel({
 
             <div className="flex justify-end pt-2">
               <button type="button" onClick={() => setOpen(false)} className={SECONDARY_BUTTON}>
-                Close
+                {gt("Close")}
               </button>
             </div>
           </div>
@@ -372,19 +397,20 @@ export function SharedConsolePanel({
 }
 
 export function RoleBadge({ role }: { role: "observer" | "driver" }) {
+  const gt = useGT();
   return role === "driver" ? (
     <span
       className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/15 text-success"
-      title="Holds the keyboard. Everyone else's keystrokes are dropped by the server."
+      title={gt("Holds the keyboard. Everyone else's keystrokes are dropped by the server.")}
     >
-      driver
+      {gt("driver")}
     </span>
   ) : (
     <span
       className="text-[10px] px-1.5 py-0.5 rounded bg-surface-overlay text-on-surface-tertiary"
-      title="Watching. Their keystrokes never reach the host."
+      title={gt("Watching. Their keystrokes never reach the host.")}
     >
-      observer
+      {gt("observer")}
     </span>
   );
 }

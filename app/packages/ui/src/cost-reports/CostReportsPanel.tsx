@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useGT } from "gt-react";
 
 import {
   DEFAULT_COST_GRAPH_CONFIG,
@@ -28,11 +29,11 @@ function toInput(report: CostReport): CostReportInput {
   };
 }
 
-function placementSummary(report: CostReport): string {
+function placementSummary(gt: ReturnType<typeof useGT>, report: CostReport): string {
   const count = report.placements.length;
-  if (count === 0) return "On no dashboard";
-  if (count === 1) return `On ${report.placements[0]!.dashboardName}`;
-  return `On ${count} dashboards`;
+  if (count === 0) return gt("On no dashboard");
+  if (count === 1) return gt("On {name}", { name: report.placements[0]!.dashboardName });
+  return gt("On {count} dashboards", { count });
 }
 
 /** What a move modal offers: the top level, then every folder as a tree row. */
@@ -85,6 +86,7 @@ export function CostReportsPanel({
   onSelectReport,
   onOpenDashboard,
 }: CostReportsPanelProps) {
+  const gt = useGT();
   const [reports, setReports] = useState<CostReport[] | null>(null);
   const [folders, setFolders] = useState<CostReportFolder[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -133,7 +135,7 @@ export function CostReportsPanel({
 
   async function saveReport(name: string, config: CostGraphConfig) {
     const clean = normalizeCostReportName(name);
-    if (!clean) throw new Error("A report needs a name.");
+    if (!clean) throw new Error(gt("A report needs a name."));
     const target = editing?.report;
     const input: CostReportInput = {
       name: clean,
@@ -153,7 +155,7 @@ export function CostReportsPanel({
   }
 
   async function renameReport(report: CostReport) {
-    const raw = window.prompt("Rename report", report.name);
+    const raw = window.prompt(gt("Rename report"), report.name);
     if (raw === null) return;
     const name = normalizeCostReportName(raw);
     if (!name) return;
@@ -174,11 +176,12 @@ export function CostReportsPanel({
   async function deleteReport(report: CostReport) {
     const where =
       report.placements.length > 0
-        ? `\n\nIts card will also be removed from ${report.placements
-            .map((p) => p.dashboardName)
-            .join(", ")}.`
+        ? gt("\n\nIts card will also be removed from {names}.", {
+            names: report.placements.map((p) => p.dashboardName).join(", "),
+          })
         : "";
-    if (!window.confirm(`Delete the report "${report.name}"?${where}`)) return;
+    if (!window.confirm(gt('Delete the report "{name}"?{where}', { name: report.name, where })))
+      return;
     await client.deleteReport?.(report.id);
     if (reportId === report.id) onSelectReport?.(undefined);
     await refresh();
@@ -186,7 +189,7 @@ export function CostReportsPanel({
 
   async function createFolder(parent: CostReportFolder | null) {
     const raw = window.prompt(
-      parent ? `New folder inside "${parent.name}"` : "New folder name",
+      parent ? gt('New folder inside "{name}"', { name: parent.name }) : gt("New folder name"),
       "",
     );
     if (raw === null) return;
@@ -197,7 +200,7 @@ export function CostReportsPanel({
   }
 
   async function renameFolder(folder: CostReportFolder) {
-    const raw = window.prompt("Rename folder", folder.name);
+    const raw = window.prompt(gt("Rename folder"), folder.name);
     if (raw === null) return;
     const name = raw.trim();
     if (!name) return;
@@ -214,22 +217,23 @@ export function CostReportsPanel({
     if (reportCount > 0) {
       consequences.push(
         reportCount === 1
-          ? "its report moves to the top of the list"
-          : `its ${reportCount} reports move to the top of the list`,
+          ? gt("its report moves to the top of the list")
+          : gt("its {count} reports move to the top of the list", { count: reportCount }),
       );
     }
     if (subfolderCount > 0) {
       consequences.push(
         subfolderCount === 1
-          ? "its subfolder becomes a top-level folder"
-          : `its ${subfolderCount} subfolders become top-level folders`,
+          ? gt("its subfolder becomes a top-level folder")
+          : gt("its {count} subfolders become top-level folders", { count: subfolderCount }),
       );
     }
-    const joined = consequences.join(", and ");
+    const joined = consequences.join(gt(", and "));
     const detail = joined
-      ? `\n\n${joined[0]!.toUpperCase()}${joined.slice(1)}. No reports are deleted.`
+      ? `\n\n${joined[0]!.toUpperCase()}${joined.slice(1)}${gt(". No reports are deleted.")}`
       : "";
-    if (!window.confirm(`Delete the folder "${folder.name}"?${detail}`)) return;
+    if (!window.confirm(gt('Delete the folder "{name}"?{detail}', { name: folder.name, detail })))
+      return;
     await client.deleteFolder?.(folder.id);
     await refresh();
   }
@@ -259,9 +263,9 @@ export function CostReportsPanel({
     const targets: MoveTarget[] = [
       {
         folderId: null,
-        label: "Top level (no folder)",
+        label: gt("Top level (no folder)"),
         depth: 0,
-        blocked: currentParent === null ? "Already here" : undefined,
+        blocked: currentParent === null ? gt("Already here") : undefined,
       },
     ];
     for (const { folder, depth } of folderTree) {
@@ -275,7 +279,7 @@ export function CostReportsPanel({
         folderId: folder.id,
         label: folder.name,
         depth: depth + 1,
-        blocked: folder.id === currentParent ? "Already here" : blocked,
+        blocked: folder.id === currentParent ? gt("Already here") : blocked,
       });
     }
     return targets;
@@ -286,9 +290,9 @@ export function CostReportsPanel({
       <div className="mx-auto max-w-5xl px-6 py-6 flex flex-col gap-6">
         {error !== null && (
           <div role="alert" className="text-sm text-danger">
-            Couldn&rsquo;t load reports — {error}{" "}
+            {gt("Couldn’t load reports — {error}", { error })}{" "}
             <button type="button" onClick={() => void refresh()} className="underline">
-              Retry
+              {gt("Retry")}
             </button>
           </div>
         )}
@@ -405,6 +409,7 @@ function ReportList({
   onDeleteFolder: (folder: CostReportFolder) => void;
   onOpenDashboard?: ((dashboardId: string) => void) | undefined;
 }) {
+  const gt = useGT();
   const tree = useMemo(() => flattenCostReportFolderTree(folders), [folders]);
   const byFolder = useMemo(() => {
     const known = new Set(folders.map((f) => f.id));
@@ -435,10 +440,11 @@ function ReportList({
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-on-surface">Cost reports</h2>
+          <h2 className="text-sm font-semibold text-on-surface">{gt("Cost reports")}</h2>
           <p className="text-xs text-on-surface-faint mt-0.5">
-            A saved cost graph with a name and an address. Put one on as many dashboards as you like
-            — editing the report updates all of them.
+            {gt(
+              "A saved cost graph with a name and an address. Put one on as many dashboards as you like — editing the report updates all of them.",
+            )}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -448,7 +454,7 @@ function ReportList({
               onClick={() => onNewFolder(null)}
               className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
             >
-              New folder
+              {gt("New folder")}
             </button>
           )}
           {canWrite && (
@@ -457,7 +463,7 @@ function ReportList({
               onClick={onNew}
               className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
             >
-              New report
+              {gt("New report")}
             </button>
           )}
         </div>
@@ -465,14 +471,15 @@ function ReportList({
 
       {reports === null && error === null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Loading reports…
+          {gt("Loading reports…")}
         </p>
       )}
 
       {reports?.length === 0 && folders.length === 0 && (
         <p className="text-sm text-on-surface-faint">
-          No reports yet. A one-off chart can still go straight onto a dashboard — a report is for
-          the ones you want to keep, name, and share.
+          {gt(
+            "No reports yet. A one-off chart can still go straight onto a dashboard — a report is for the ones you want to keep, name, and share.",
+          )}
         </p>
       )}
 
@@ -500,8 +507,11 @@ function ReportList({
                 <span>{folder.name}</span>
                 <span className="ml-2 font-normal normal-case tracking-normal text-on-surface-faint">
                   {contents.length === 0
-                    ? "empty"
-                    : `${contents.length} report${contents.length === 1 ? "" : "s"}`}
+                    ? gt("empty")
+                    : gt("{count} report{plural}", {
+                        count: contents.length,
+                        plural: contents.length === 1 ? "" : "s",
+                      })}
                 </span>
               </h3>
               {canManageFolders && (
@@ -512,7 +522,7 @@ function ReportList({
                       onClick={() => onNewFolder(folder)}
                       className="hover:text-on-surface-secondary underline"
                     >
-                      New subfolder
+                      {gt("New subfolder")}
                     </button>
                   )}
                   <button
@@ -520,21 +530,21 @@ function ReportList({
                     onClick={() => onRenameFolder(folder)}
                     className="hover:text-on-surface-secondary underline"
                   >
-                    Rename
+                    {gt("Rename")}
                   </button>
                   <button
                     type="button"
                     onClick={() => onMoveFolder(folder)}
                     className="hover:text-on-surface-secondary underline"
                   >
-                    Move
+                    {gt("Move")}
                   </button>
                   <button
                     type="button"
                     onClick={() => onDeleteFolder(folder)}
                     className="hover:text-danger underline"
                   >
-                    Delete
+                    {gt("Delete")}
                   </button>
                 </div>
               )}
@@ -581,6 +591,7 @@ function ReportRow({
   onPlace: (report: CostReport) => void;
   onOpenDashboard?: ((dashboardId: string) => void) | undefined;
 }) {
+  const gt = useGT();
   return (
     <li className="rounded-xl border border-border bg-surface-raised px-4 py-3 hover:border-border-strong transition-colors">
       <div className="flex items-start justify-between gap-3">
@@ -588,7 +599,7 @@ function ReportRow({
           type="button"
           onClick={() => onOpen(report)}
           className="min-w-0 text-left"
-          title={`Open ${report.name}`}
+          title={gt("Open {name}", { name: report.name })}
         >
           <span className="block truncate text-sm font-medium text-on-surface">{report.name}</span>
           {report.description && (
@@ -604,7 +615,7 @@ function ReportRow({
               onClick={() => onPlace(report)}
               className="hover:text-on-surface-secondary underline"
             >
-              Dashboards
+              {gt("Dashboards")}
             </button>
           )}
           {canWrite && (
@@ -614,28 +625,28 @@ function ReportRow({
                 onClick={() => onRename(report)}
                 className="hover:text-on-surface-secondary underline"
               >
-                Rename
+                {gt("Rename")}
               </button>
               <button
                 type="button"
                 onClick={() => onMove(report)}
                 className="hover:text-on-surface-secondary underline"
               >
-                Move
+                {gt("Move")}
               </button>
               <button
                 type="button"
                 onClick={() => onDuplicate(report)}
                 className="hover:text-on-surface-secondary underline"
               >
-                Duplicate
+                {gt("Duplicate")}
               </button>
               <button
                 type="button"
                 onClick={() => onDelete(report)}
                 className="hover:text-danger underline"
               >
-                Delete
+                {gt("Delete")}
               </button>
             </>
           )}
@@ -677,6 +688,7 @@ function ReportDetail({
   onPlace: () => void;
   onOpenDashboard?: ((dashboardId: string) => void) | undefined;
 }) {
+  const gt = useGT();
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
@@ -686,10 +698,10 @@ function ReportDetail({
             onClick={onBack}
             className="text-xs text-on-surface-faint hover:text-on-surface-secondary underline"
           >
-            ← All reports
+            {gt("← All reports")}
           </button>
           {folderPath && (
-            <span className="ml-2 text-xs text-on-surface-faint" title="Folder">
+            <span className="ml-2 text-xs text-on-surface-faint" title={gt("Folder")}>
               {folderPath}
             </span>
           )}
@@ -705,7 +717,7 @@ function ReportDetail({
               onClick={onPlace}
               className="hover:text-on-surface-secondary underline"
             >
-              Dashboards
+              {gt("Dashboards")}
             </button>
           )}
           {canWrite && (
@@ -715,24 +727,24 @@ function ReportDetail({
                 onClick={onRename}
                 className="hover:text-on-surface-secondary underline"
               >
-                Rename
+                {gt("Rename")}
               </button>
               <button
                 type="button"
                 onClick={onMove}
                 className="hover:text-on-surface-secondary underline"
               >
-                Move
+                {gt("Move")}
               </button>
               <button
                 type="button"
                 onClick={onDuplicate}
                 className="hover:text-on-surface-secondary underline"
               >
-                Duplicate
+                {gt("Duplicate")}
               </button>
               <button type="button" onClick={onDelete} className="hover:text-danger underline">
-                Delete
+                {gt("Delete")}
               </button>
             </>
           )}
@@ -779,6 +791,7 @@ function PlacementList({
   report: CostReport;
   onOpenDashboard?: ((dashboardId: string) => void) | undefined;
 }) {
+  const gt = useGT();
   if (report.placements.length === 1 && onOpenDashboard) {
     const only = report.placements[0]!;
     return (
@@ -786,13 +799,13 @@ function PlacementList({
         type="button"
         onClick={() => onOpenDashboard(only.dashboardId)}
         className="truncate hover:text-on-surface-secondary underline"
-        title={`Open ${only.dashboardName}`}
+        title={gt("Open {name}", { name: only.dashboardName })}
       >
-        On {only.dashboardName}
+        {gt("On {name}", { name: only.dashboardName })}
       </button>
     );
   }
-  return <span className="truncate">{placementSummary(report)}</span>;
+  return <span className="truncate">{placementSummary(gt, report)}</span>;
 }
 
 /**
@@ -814,6 +827,7 @@ function MoveToFolderModal({
   onPick: (folderId: string | null) => Promise<void>;
   onClose: () => void;
 }) {
+  const gt = useGT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -829,13 +843,13 @@ function MoveToFolderModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel={`Move ${subjectName}`}>
+    <Modal onClose={onClose} ariaLabel={gt("Move {name}", { name: subjectName })}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[420px] p-6">
         <h2 className="text-base font-semibold text-on-surface mb-1">
-          Move &ldquo;{subjectName}&rdquo;
+          {gt("Move “{name}”", { name: subjectName })}
         </h2>
         <p className="text-xs text-on-surface-faint mb-4">
-          Folders only organize this list — moving changes nothing about the report itself.
+          {gt("Folders only organize this list — moving changes nothing about the report itself.")}
         </p>
 
         {error !== null && (
@@ -867,7 +881,7 @@ function MoveToFolderModal({
             onClick={onClose}
             className="rounded-lg border border-border px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
         </div>
       </div>
@@ -891,6 +905,7 @@ function PlacementModal({
   onClose: () => void;
   onChanged: () => Promise<void>;
 }) {
+  const gt = useGT();
   const [dashboards, setDashboards] = useState<CostsPanelDashboard[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -916,12 +931,15 @@ function PlacementModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel={`Dashboards showing ${report.name}`}>
+    <Modal onClose={onClose} ariaLabel={gt("Dashboards showing {name}", { name: report.name })}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[420px] p-6">
-        <h2 className="text-base font-semibold text-on-surface mb-1">Show on a dashboard</h2>
+        <h2 className="text-base font-semibold text-on-surface mb-1">
+          {gt("Show on a dashboard")}
+        </h2>
         <p className="text-xs text-on-surface-faint mb-4">
-          A card is a view onto this report. Removing one leaves the report intact; editing the
-          report changes every card at once.
+          {gt(
+            "A card is a view onto this report. Removing one leaves the report intact; editing the report changes every card at once.",
+          )}
         </p>
 
         {error !== null && (
@@ -931,7 +949,7 @@ function PlacementModal({
         )}
         {dashboards === null && error === null && (
           <p role="status" className="text-sm text-on-surface-faint">
-            Loading dashboards…
+            {gt("Loading dashboards…")}
           </p>
         )}
 
@@ -950,7 +968,7 @@ function PlacementModal({
                     }
                     className="text-xs text-on-surface-faint hover:text-danger underline disabled:opacity-50"
                   >
-                    Remove
+                    {gt("Remove")}
                   </button>
                 ) : (
                   <button
@@ -961,7 +979,7 @@ function PlacementModal({
                     }
                     className="text-xs text-on-surface-secondary hover:text-on-surface underline disabled:opacity-50"
                   >
-                    Add
+                    {gt("Add")}
                   </button>
                 )}
               </li>
@@ -975,7 +993,7 @@ function PlacementModal({
             onClick={onClose}
             className="rounded-lg border border-border px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            Done
+            {gt("Done")}
           </button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import { validateLeaseInput } from "@infrawrench/client-core";
 import { Modal } from "../components/Modal.js";
 import type { LeasesClient, ResourceLease } from "./types.js";
@@ -26,12 +27,28 @@ export interface LeaseEditorModalProps {
 const DAY_MS = 86_400_000;
 
 /** Quick presets, in days; "custom" opens the datetime field. */
-const PRESETS: Array<{ label: string; days: number }> = [
-  { label: "1 day", days: 1 },
-  { label: "3 days", days: 3 },
-  { label: "1 week", days: 7 },
-  { label: "30 days", days: 30 },
+const PRESETS: Array<{ id: string; days: number }> = [
+  { id: "1d", days: 1 },
+  { id: "3d", days: 3 },
+  { id: "1w", days: 7 },
+  { id: "30d", days: 30 },
 ];
+
+/** Display label for a preset's duration. */
+function presetLabel(gt: ReturnType<typeof useGT>, days: number): string {
+  switch (days) {
+    case 1:
+      return gt("1 day");
+    case 3:
+      return gt("3 days");
+    case 7:
+      return gt("1 week");
+    case 30:
+      return gt("30 days");
+    default:
+      return gt("{days} days", { days });
+  }
+}
 
 /** Epoch ms → the value a `datetime-local` input wants (local wall time). */
 function toLocalInputValue(ms: number): string {
@@ -51,6 +68,7 @@ export function LeaseEditorModal({
   onSaved,
   onClose,
 }: LeaseEditorModalProps) {
+  const gt = useGT();
   const [expiresLocal, setExpiresLocal] = useState<string>(() =>
     toLocalInputValue(existing ? Date.parse(existing.expiresAt) : Date.now() + 3 * DAY_MS),
   );
@@ -92,7 +110,7 @@ export function LeaseEditorModal({
       onSaved(saved);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save lease");
+      setError(e instanceof Error ? e.message : gt("Failed to save lease"));
     } finally {
       setSaving(false);
     }
@@ -105,28 +123,30 @@ export function LeaseEditorModal({
   };
 
   return (
-    <Modal onClose={dismiss} ariaLabel={existing ? "Edit lease" : "New lease"}>
+    <Modal onClose={dismiss} ariaLabel={existing ? gt("Edit lease") : gt("New lease")}>
       <div className="w-[28rem] max-w-[90vw] rounded-2xl border border-border bg-surface p-5 shadow-xl">
         <h2 className="text-sm font-semibold text-on-surface">
-          {existing ? "Edit lease" : "New lease"}
+          {existing ? gt("Edit lease") : gt("New lease")}
         </h2>
-        <p className="mt-1 text-xs text-on-surface-secondary">
-          {target.resourceName} gets an expiry date and shows up on the Expiring radar as the
-          deadline approaches.
-        </p>
+        <T>
+          <p className="mt-1 text-xs text-on-surface-secondary">
+            <Var>{target.resourceName}</Var> gets an expiry date and shows up on the Expiring radar
+            as the deadline approaches.
+          </p>
+        </T>
 
         <div className="mt-4 flex flex-col gap-3">
           <div>
-            <span className={labelClass}>Lease length</span>
-            <div className="flex gap-1" role="group" aria-label="Lease length presets">
+            <span className={labelClass}>{gt("Lease length")}</span>
+            <div className="flex gap-1" role="group" aria-label={gt("Lease length presets")}>
               {PRESETS.map((preset) => (
                 <button
-                  key={preset.label}
+                  key={preset.id}
                   type="button"
                   onClick={() => applyPreset(preset.days)}
                   className="flex-1 rounded-lg border border-border bg-surface-sunken px-1 py-1.5 text-xs text-on-surface-tertiary hover:border-border-strong hover:text-on-surface"
                 >
-                  {preset.label}
+                  {presetLabel(gt, preset.days)}
                 </button>
               ))}
             </div>
@@ -134,7 +154,7 @@ export function LeaseEditorModal({
 
           <div>
             <label className={labelClass} htmlFor="lease-expires-at">
-              Expires at
+              {gt("Expires at")}
             </label>
             <input
               id="lease-expires-at"
@@ -146,16 +166,18 @@ export function LeaseEditorModal({
           </div>
 
           <div>
-            <label className={labelClass} htmlFor="lease-note">
-              Note <span className="font-normal text-on-surface-faint">(why / who for)</span>
-            </label>
+            <T>
+              <label className={labelClass} htmlFor="lease-note">
+                Note <span className="font-normal text-on-surface-faint">(why / who for)</span>
+              </label>
+            </T>
             <input
               id="lease-note"
               type="text"
               className={inputClass}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Load-test cluster for the Q3 launch"
+              placeholder={gt("Load-test cluster for the Q3 launch")}
             />
           </div>
 
@@ -167,11 +189,13 @@ export function LeaseEditorModal({
               onChange={(e) => setAutoDelete(e.target.checked)}
             />
             <span>
-              <span className="font-medium text-on-surface">Auto-delete at expiry</span>
-              <span className="mt-0.5 block text-on-surface-secondary">
-                The resource will be deleted when the lease expires. You&apos;ll be warned twice
-                first. Freezes pause deletion.
-              </span>
+              <span className="font-medium text-on-surface">{gt("Auto-delete at expiry")}</span>
+              <T>
+                <span className="mt-0.5 block text-on-surface-secondary">
+                  The resource will be deleted when the lease expires. You&apos;ll be warned twice
+                  first. Freezes pause deletion.
+                </span>
+              </T>
             </span>
           </label>
 
@@ -188,7 +212,7 @@ export function LeaseEditorModal({
               disabled={saving}
               className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -196,7 +220,7 @@ export function LeaseEditorModal({
               disabled={saving || inputProblem !== null}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
             >
-              {saving ? "Saving…" : existing ? "Save changes" : "Create lease"}
+              {saving ? gt("Saving…") : existing ? gt("Save changes") : gt("Create lease")}
             </button>
           </div>
         </div>

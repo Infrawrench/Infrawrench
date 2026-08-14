@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useGT } from "gt-react";
 
 interface KeyValueEntry {
   /** Stable per-row id for React keys — rows are editable and removable. */
@@ -46,6 +47,7 @@ export function KeyValueListPicker({
   minEntries = 0,
   maxEntries,
 }: KeyValueListPickerProps) {
+  const gt = useGT();
   const parsed = useMemo(
     () => parseEntries(value, keyName, valueName),
     [value, keyName, valueName],
@@ -139,8 +141,8 @@ export function KeyValueListPicker({
             className={`flex-shrink-0 text-on-surface-faint hover:text-danger transition-colors text-sm leading-none disabled:opacity-30 disabled:hover:text-on-surface-faint ${
               valueLabel && i === 0 ? "mt-5" : "mt-2.5"
             }`}
-            aria-label="Remove row"
-            title="Remove row"
+            aria-label={gt("Remove row")}
+            title={gt("Remove row")}
           >
             ✕
           </button>

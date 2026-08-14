@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useGT } from "gt-react";
 
 import { Modal } from "../components/Modal.js";
 import { WorkflowEditorView } from "../workflows/WorkflowEditorView.js";
@@ -31,6 +32,7 @@ export function CustomGraphEditorModal({
   onClose,
   onSaved,
 }: CustomGraphEditorModalProps) {
+  const gt = useGT();
   const [name, setName] = useState("");
   const [source, setSource] = useState<string | null>(null);
   const [dts, setDts] = useState("");
@@ -96,7 +98,7 @@ export function CustomGraphEditorModal({
           return false;
         }
       }
-      await client.update(graphId, { name: name.trim() || "Untitled graph", source });
+      await client.update(graphId, { name: name.trim() || gt("Untitled graph"), source });
       setDirty(false);
       onSaved?.();
       return true;
@@ -113,7 +115,7 @@ export function CustomGraphEditorModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel="Edit custom graph">
+    <Modal onClose={onClose} ariaLabel={gt("Edit custom graph")}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[min(96vw,1100px)] h-[min(90vh,720px)] flex flex-col overflow-hidden">
         <div className="flex items-center gap-3 px-5 py-3 border-b border-border">
           <input
@@ -123,7 +125,7 @@ export function CustomGraphEditorModal({
               setName(e.target.value);
               setDirty(true);
             }}
-            aria-label="Graph name"
+            aria-label={gt("Graph name")}
             className="flex-1 bg-transparent text-base font-semibold text-on-surface focus:outline-none"
           />
           <button
@@ -132,12 +134,12 @@ export function CustomGraphEditorModal({
             disabled={busy || source === null || !client.update}
             className="rounded-md border border-border px-3 py-1.5 text-sm text-on-surface-secondary hover:bg-surface-sunken disabled:opacity-50"
           >
-            {busy ? "Working…" : dirty ? "Save & preview" : "Preview"}
+            {busy ? gt("Working…") : dirty ? gt("Save & preview") : gt("Preview")}
           </button>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close editor"
+            aria-label={gt("Close editor")}
             className="size-7 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-sm"
           >
             ✕
@@ -148,7 +150,7 @@ export function CustomGraphEditorModal({
           <div className="flex-1 min-w-0 flex flex-col border-r border-border">
             {source === null ? (
               <div role="status" className="flex-1 p-4 text-sm text-on-surface-faint">
-                Loading…
+                {gt("Loading…")}
               </div>
             ) : (
               <WorkflowEditorView
@@ -206,7 +208,9 @@ export function CustomGraphEditorModal({
               </div>
             ) : (
               <div className="flex-1 flex items-center justify-center text-sm text-on-surface-faint px-6 text-center">
-                {busy ? "Running…" : "Save & preview runs the saved script and shows it here."}
+                {busy
+                  ? gt("Running…")
+                  : gt("Save & preview runs the saved script and shows it here.")}
               </div>
             )}
             {preview && preview.logs.length > 0 && (

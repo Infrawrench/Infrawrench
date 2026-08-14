@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import {
   formatBurn,
   formatCreditAmount,
@@ -8,6 +9,7 @@ import {
   type RunwayUrgency,
 } from "@infrawrench/client-core";
 
+import { useDataString } from "../i18n/data-strings.js";
 import type { CostsClient } from "./types.js";
 
 const URGENCY_CLASS: Record<RunwayUrgency, string> = {
@@ -37,6 +39,8 @@ export interface CreditBurndownSectionProps {
  * to scroll past this part of the page.
  */
 export function CreditBurndownSection({ client, onOpenExternal }: CreditBurndownSectionProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [feed, setFeed] = useState<CreditBurndown | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,12 +75,14 @@ export function CreditBurndownSection({ client, onOpenExternal }: CreditBurndown
   return (
     <section className="space-y-3">
       <div>
-        <h2 className="text-sm font-semibold text-on-surface-secondary">Credit burndown</h2>
-        <p className="text-xs text-on-surface-muted mt-1">
-          Prepaid balances and how long they last at the burn measured over the last{" "}
-          {feed?.burnWindowDays ?? 30} days. Running a prepaid pot to zero is an outage, not an
-          invoice.
-        </p>
+        <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Credit burndown")}</h2>
+        <T>
+          <p className="text-xs text-on-surface-muted mt-1">
+            Prepaid balances and how long they last at the burn measured over the last{" "}
+            <Var>{feed?.burnWindowDays ?? 30}</Var> days. Running a prepaid pot to zero is an
+            outage, not an invoice.
+          </p>
+        </T>
       </div>
 
       {error && <p className="text-sm text-danger">{error}</p>}
@@ -104,7 +110,7 @@ export function CreditBurndownSection({ client, onOpenExternal }: CreditBurndown
                 className="underline"
                 onClick={() => onOpenExternal?.(failure.helpUrl!)}
               >
-                {failure.helpLabel}
+                {gtData(failure.helpLabel)}
               </button>
             </>
           )}
@@ -121,6 +127,7 @@ function PotRow({
   pot: CreditPot;
   onOpenExternal?: (url: string) => void;
 }) {
+  const gt = useGT();
   return (
     <li className="p-3 flex items-center gap-3 flex-wrap">
       <div className="min-w-0 flex-1">
@@ -131,22 +138,30 @@ function PotRow({
         <p className="text-xs text-on-surface-muted mt-0.5">
           {formatCreditAmount(pot.remaining, pot.currency)}
           {pot.granted !== null && pot.granted > 0 && (
-            <> of {formatCreditAmount(pot.granted, pot.currency)}</>
+            <T>
+              <>
+                {" "}
+                of <Var>{formatCreditAmount(pot.granted, pot.currency)}</Var>
+              </>
+            </T>
           )}{" "}
           · {formatBurn(pot)}
           {pot.topUps > 0 && (
             // Said out loud because a top-up inside the window is the thing
             // that makes a naive burn calculation lie, and a reader comparing
             // this to their own arithmetic deserves to know one happened.
-            <>
-              {" "}
-              · {pot.topUps} top-up{pot.topUps === 1 ? "" : "s"} in the window
-            </>
+            <T>
+              <>
+                {" "}
+                · <Var>{pot.topUps}</Var> top-up<Var>{pot.topUps === 1 ? "" : "s"}</Var> in the
+                window
+              </>
+            </T>
           )}
         </p>
         {pot.limitedByExpiry && (
           <p className="text-xs text-warning mt-0.5">
-            Limited by the credit&rsquo;s own expiry, not the burn rate.
+            {gt("Limited by the credit’s own expiry, not the burn rate.")}
           </p>
         )}
       </div>
@@ -163,7 +178,7 @@ function PotRow({
           className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay text-on-surface-secondary rounded-lg transition-colors"
           onClick={() => onOpenExternal(pot.topUpUrl!)}
         >
-          Add credit
+          {gt("Add credit")}
         </button>
       )}
     </li>

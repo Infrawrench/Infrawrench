@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useGT } from "gt-react";
 
 /**
  * The dashboard's "+ Add" popover menu — one entry per card kind. Web and
@@ -22,6 +23,7 @@ export function DashboardAddMenu({
   onPickCustomGraph: () => void;
   onClose: () => void;
 }) {
+  const gt = useGT();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -39,7 +41,7 @@ export function DashboardAddMenu({
       <div aria-hidden="true" className="fixed inset-0 z-20" onClick={onClose} />
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-52 rounded-xl border border-border bg-surface-raised shadow-xl overflow-hidden py-1">
         <button type="button" onClick={onPickResource} className={itemClass}>
-          <span className="text-on-surface-faint">▣</span> Pin a resource
+          <span className="text-on-surface-faint">▣</span> {gt("Pin a resource")}
         </button>
         {/*
           Two entries on purpose: "Cost graph" is a one-off card owned by this
@@ -47,19 +49,19 @@ export function DashboardAddMenu({
           them would force anyone wanting one chart to name and file a report.
         */}
         <button type="button" onClick={onPickCostGraph} className={itemClass}>
-          <span className="text-on-surface-faint">▤</span> Cost graph
+          <span className="text-on-surface-faint">▤</span> {gt("Cost graph")}
         </button>
         <button type="button" onClick={onPickSavedReport} className={itemClass}>
-          <span className="text-on-surface-faint">▥</span> Saved report
+          <span className="text-on-surface-faint">▥</span> {gt("Saved report")}
         </button>
         <button type="button" onClick={onPickBudget} className={itemClass}>
-          <span className="text-on-surface-faint">◔</span> New budget
+          <span className="text-on-surface-faint">◔</span> {gt("New budget")}
         </button>
         <button type="button" onClick={onPickExistingBudget} className={itemClass}>
-          <span className="text-on-surface-faint">◕</span> Existing budget
+          <span className="text-on-surface-faint">◕</span> {gt("Existing budget")}
         </button>
         <button type="button" onClick={onPickCustomGraph} className={itemClass}>
-          <span className="text-on-surface-faint">◈</span> Custom graph
+          <span className="text-on-surface-faint">◈</span> {gt("Custom graph")}
         </button>
       </div>
     </>

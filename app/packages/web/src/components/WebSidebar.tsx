@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useGT } from "gt-react";
 import {
   useUIStore,
   DroppableDashboardItem,
@@ -8,6 +9,7 @@ import {
   OrgSwitcher,
   SidebarToolsButton,
   toast,
+  useDataString,
   type Account,
   type Dashboard,
   type OrgEntry,
@@ -81,6 +83,8 @@ const EMPTY_RESOURCES: Record<
 > = {};
 
 export function WebSidebar({ orgId }: WebSidebarProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [groups, setGroups] = useState<PluginGroup[]>([]);
@@ -163,10 +167,12 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
     try {
       const created = await apiPost<{ id: string }>(`${apiBase}/chat/conversations`, {});
       window.dispatchEvent(new Event(CHAT_CONVERSATIONS_CHANGED_EVENT));
-      void navigateToWorkspaceTarget(navigate, chatTabTarget(created.id), { label: "New chat" });
+      void navigateToWorkspaceTarget(navigate, chatTabTarget(created.id), {
+        label: gt("New chat"),
+      });
     } catch (e) {
       console.error("Failed to create chat:", e);
-      toast.error("Couldn't create chat", {
+      toast.error(gt("Couldn't create chat"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -191,7 +197,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
       );
     } catch (e) {
       console.error("Failed to archive chat:", e);
-      toast.error("Couldn't archive chat", {
+      toast.error(gt("Couldn't archive chat"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -230,7 +236,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
         setGroups([...groupMap.values()]);
       } catch (e) {
         console.error("Sidebar load error:", e);
-        toast.error("Couldn't load sidebar", {
+        toast.error(gt("Couldn't load sidebar"), {
           description: e instanceof Error ? e.message : String(e),
         });
       } finally {
@@ -279,7 +285,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
       }
     } catch (e) {
       console.error("Failed to create dashboard:", e);
-      toast.error("Couldn't create dashboard", {
+      toast.error(gt("Couldn't create dashboard"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -297,7 +303,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
       setDashboardList((prev) => prev.map((d) => (d.id === id ? { ...d, name } : d)));
     } catch (e) {
       console.error("Failed to rename dashboard:", e);
-      toast.error("Couldn't rename dashboard", {
+      toast.error(gt("Couldn't rename dashboard"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -313,7 +319,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
       }
     } catch (e) {
       console.error("Failed to delete dashboard:", e);
-      toast.error("Couldn't delete dashboard", {
+      toast.error(gt("Couldn't delete dashboard"), {
         description: e instanceof Error ? e.message : String(e),
       });
     }
@@ -380,7 +386,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             [accountId]: {
               loading: false,
               resources: [],
-              error: e instanceof Error ? e.message : "Failed to load resources",
+              error: e instanceof Error ? e.message : gt("Failed to load resources"),
             },
           },
         };
@@ -429,7 +435,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
         type="button"
         onClick={toggleSidebar}
         className="w-8 border-r border-border flex items-center justify-center text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
-        aria-label="Expand sidebar"
+        aria-label={gt("Expand sidebar")}
       >
         &#9654;
       </button>
@@ -453,7 +459,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             type="button"
             onClick={toggleSidebar}
             className="text-on-surface-faint hover:text-on-surface-tertiary transition-colors text-xs px-2"
-            aria-label="Collapse sidebar"
+            aria-label={gt("Collapse sidebar")}
           >
             &#9664;
           </button>
@@ -464,117 +470,117 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             tools={[
               {
                 key: "agents",
-                label: "Agents",
+                label: gt("Agents"),
                 icon: <span className="font-mono text-[11px]">&gt;_</span>,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/agents", params: { orgId: orgId! } }),
               },
               {
                 key: "workflows",
-                label: "Workflows",
+                label: gt("Workflows"),
                 icon: <WorkflowIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/workflows", params: { orgId: orgId! } }),
               },
               {
                 key: "deploy",
-                label: "Deploy",
+                label: gt("Deploy"),
                 icon: <DeployIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/deployments", params: { orgId: orgId! } }),
               },
               {
                 key: "costs",
-                label: "Costs",
+                label: gt("Costs"),
                 icon: <CostsIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/costs", params: { orgId: orgId! } }),
               },
               {
                 key: "cost-reports",
-                label: "Reports",
+                label: gt("Reports"),
                 icon: <CostReportsIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/cost-reports", params: { orgId: orgId! } }),
               },
               {
                 key: "invoices",
-                label: "Invoices",
+                label: gt("Invoices"),
                 icon: <InvoicesIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/invoices", params: { orgId: orgId! } }),
               },
               {
                 key: "metric-alerts",
-                label: "Alerts",
+                label: gt("Alerts"),
                 icon: <MetricAlertIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/metric-alerts", params: { orgId: orgId! } }),
               },
               {
                 key: "changes",
-                label: "Changes",
+                label: gt("Changes"),
                 icon: <ChangesIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/changes", params: { orgId: orgId! } }),
               },
               {
                 key: "iac",
-                label: "IaC",
+                label: gt("IaC"),
                 icon: <IacIcon />,
                 onClick: () => void navigate({ to: "/org/$orgId/iac", params: { orgId: orgId! } }),
               },
               {
                 key: "graph",
-                label: "Graph",
+                label: gt("Graph"),
                 icon: <GraphIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/graph", params: { orgId: orgId! } }),
               },
               {
                 key: "environments",
-                label: "Environments",
+                label: gt("Environments"),
                 icon: <EnvironmentsIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/environments", params: { orgId: orgId! } }),
               },
               {
                 key: "expiring",
-                label: "Expiring",
+                label: gt("Expiring"),
                 icon: <ExpiryIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/expiring", params: { orgId: orgId! } }),
               },
               {
                 key: "posture",
-                label: "Posture",
+                label: gt("Posture"),
                 icon: <PostureIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/posture", params: { orgId: orgId! } }),
               },
               {
                 key: "access-review",
-                label: "Access review",
+                label: gt("Access review"),
                 icon: <AccessReviewIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/access-review", params: { orgId: orgId! } }),
               },
               {
                 key: "backups",
-                label: "Backups",
+                label: gt("Backups"),
                 icon: <BackupsIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/backups", params: { orgId: orgId! } }),
               },
               {
                 key: "dns",
-                label: "Domains",
+                label: gt("Domains"),
                 icon: <DomainsIcon />,
                 onClick: () => void navigate({ to: "/org/$orgId/dns", params: { orgId: orgId! } }),
               },
               {
                 key: "environment-diff",
-                label: "Env diff",
+                label: gt("Env diff"),
                 icon: <EnvironmentDiffIcon />,
                 onClick: () =>
                   void navigate({
@@ -584,42 +590,42 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
               },
               {
                 key: "probes",
-                label: "Probes",
+                label: gt("Probes"),
                 icon: <ProbesIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/probes", params: { orgId: orgId! } }),
               },
               {
                 key: "status-pages",
-                label: "Status pages",
+                label: gt("Status pages"),
                 icon: <StatusPagesIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/status-pages", params: { orgId: orgId! } }),
               },
               {
                 key: "quotas",
-                label: "Quotas",
+                label: gt("Quotas"),
                 icon: <QuotasIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/quotas", params: { orgId: orgId! } }),
               },
               {
                 key: "incidents",
-                label: "Incidents",
+                label: gt("Incidents"),
                 icon: <IncidentsIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/incidents", params: { orgId: orgId! } }),
               },
               {
                 key: "ssh-fanout",
-                label: "Fan-out",
+                label: gt("Fan-out"),
                 icon: <FanoutIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/ssh-fanout", params: { orgId: orgId! } }),
               },
               {
                 key: "logs",
-                label: "Logs",
+                label: gt("Logs"),
                 icon: <LogsIcon />,
                 onClick: () => void navigate({ to: "/org/$orgId/logs", params: { orgId: orgId! } }),
               },
@@ -629,12 +635,12 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
           <div className="mb-2">
             <div className="flex items-center justify-between px-3 py-1">
               <span className="text-xs font-medium text-on-surface-muted uppercase tracking-wide">
-                Dashboards
+                {gt("Dashboards")}
               </span>
               <button
                 type="button"
                 onClick={() => setAddingDashboard(true)}
-                title="New dashboard"
+                title={gt("New dashboard")}
                 className="text-on-surface-faint hover:text-on-surface-secondary text-sm leading-none size-5 flex items-center justify-center rounded hover:bg-surface-overlay transition-colors"
               >
                 +
@@ -654,7 +660,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                   <div key={dash.id} className="mx-2 px-3 py-1">
                     <input
                       ref={renameRef}
-                      aria-label="Dashboard name"
+                      aria-label={gt("Dashboard name")}
                       value={renameValue}
                       onChange={(e) => setRenameValue(e.target.value)}
                       onBlur={() => void handleRename()}
@@ -697,10 +703,10 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
               <div className="mx-2 px-3 py-1.5">
                 <input
                   ref={newDashboardRef}
-                  aria-label="New dashboard name"
+                  aria-label={gt("New dashboard name")}
                   value={newDashboardName}
                   onChange={(e) => setNewDashboardName(e.target.value)}
-                  placeholder="Dashboard name..."
+                  placeholder={gt("Dashboard name...")}
                   onBlur={() => void handleCreateDashboard()}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") void handleCreateDashboard();
@@ -721,16 +727,16 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
               <button
                 type="button"
                 onClick={() =>
-                  void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: "Chat" })
+                  void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: gt("Chat") })
                 }
                 className="text-xs font-medium text-on-surface-muted uppercase tracking-wide hover:text-on-surface-secondary transition-colors"
               >
-                Chat
+                {gt("Chat")}
               </button>
               <button
                 type="button"
                 onClick={() => void handleNewChat()}
-                title="New chat"
+                title={gt("New chat")}
                 className="text-on-surface-faint hover:text-on-surface-secondary text-sm leading-none size-5 flex items-center justify-center rounded hover:bg-surface-overlay transition-colors"
               >
                 +
@@ -762,8 +768,8 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                   <button
                     type="button"
                     onClick={() => void handleArchiveChat(chat.id)}
-                    title="Archive chat"
-                    aria-label="Archive chat"
+                    title={gt("Archive chat")}
+                    aria-label={gt("Archive chat")}
                     className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-danger text-xs px-2 py-1.5 transition-opacity"
                   >
                     ×
@@ -776,17 +782,19 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
               <button
                 type="button"
                 onClick={() =>
-                  void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: "Chat" })
+                  void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: gt("Chat") })
                 }
                 className="mx-2 px-3 py-1 text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
               >
-                All chats…
+                {gt("All chats…")}
               </button>
             )}
           </div>
 
           {/* Plugin groups */}
-          {loading && <div className="px-3 py-2 text-xs text-on-surface-faint">Loading…</div>}
+          {loading && (
+            <div className="px-3 py-2 text-xs text-on-surface-faint">{gt("Loading…")}</div>
+          )}
 
           {groups.map((group) => (
             <div key={group.pluginId} className="mb-3">
@@ -798,7 +806,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                   aria-hidden="true"
                 />
                 <span className="text-xs font-medium text-on-surface-muted uppercase tracking-wide">
-                  {group.displayName}
+                  {gtData(group.displayName)}
                 </span>
               </div>
 
@@ -816,7 +824,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                         onClick={() => void toggleExpand(account.id)}
                         aria-expanded={isExpanded}
                         aria-controls={`web-sidebar-account-${account.id}`}
-                        aria-label={isExpanded ? "Collapse account" : "Expand account"}
+                        aria-label={isExpanded ? gt("Collapse account") : gt("Expand account")}
                         className="size-4 flex items-center justify-center flex-shrink-0 text-on-surface-faint hover:text-on-surface-tertiary transition-colors mr-1"
                       >
                         <span
@@ -846,11 +854,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                     {isExpanded && (
                       <div id={`web-sidebar-account-${account.id}`} className="pl-8 pb-1">
                         {resourceState?.loading && (
-                          <div className="px-3 py-1 text-xs text-on-surface-faint">Loading…</div>
+                          <div className="px-3 py-1 text-xs text-on-surface-faint">
+                            {gt("Loading…")}
+                          </div>
                         )}
                         {resourceState && !resourceState.loading && resourceState.error && (
                           <div className="px-3 py-1 text-xs text-danger">
-                            Error loading resources
+                            {gt("Error loading resources")}
                           </div>
                         )}
                         {resourceState &&
@@ -858,7 +868,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                           !resourceState.error &&
                           resourceState.resources.length === 0 && (
                             <div className="px-3 py-1 text-xs text-on-surface-faint">
-                              No resources
+                              {gt("No resources")}
                             </div>
                           )}
                         {resourceState?.resources.map((resource) => {
@@ -915,7 +925,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
           >
             <span className="text-base leading-none">+</span>
-            Add account
+            {gt("Add account")}
           </button>
           <button
             type="button"
@@ -923,7 +933,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
           >
             <span className="text-base leading-none">&#9881;</span>
-            Settings
+            {gt("Settings")}
           </button>
         </div>
       </aside>

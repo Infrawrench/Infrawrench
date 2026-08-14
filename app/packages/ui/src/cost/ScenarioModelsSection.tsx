@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 
 import { Modal } from "../components/Modal.js";
 import { CostFilterEditor } from "./CostGraphConfigModal.js";
@@ -43,6 +44,7 @@ const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
  * gets paged.
  */
 export function ScenarioModelsSection({ client }: { client: CostsClient }) {
+  const gt = useGT();
   const [models, setModels] = useState<CostScenarioModel[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ model: CostScenarioModel | null } | null>(null);
@@ -66,7 +68,7 @@ export function ScenarioModelsSection({ client }: { client: CostsClient }) {
   }, [refresh]);
 
   async function deleteModel(model: CostScenarioModel) {
-    if (!window.confirm(`Delete the scenario model "${model.name}"?`)) return;
+    if (!window.confirm(gt('Delete the scenario model "{name}"?', { name: model.name }))) return;
     setRowError(null);
     try {
       await client.deleteScenarioModel?.(model.id);
@@ -83,12 +85,14 @@ export function ScenarioModelsSection({ client }: { client: CostsClient }) {
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-on-surface">Scenario models</h2>
-          <p className="text-xs text-on-surface-faint mt-0.5">
-            Known future cost the trend can&rsquo;t see &mdash; a purchase, a new team, a migration.
-            Applying one draws a second line beside the forecast; it never replaces it, and it never
-            changes recorded spend.
-          </p>
+          <h2 className="text-sm font-semibold text-on-surface">{gt("Scenario models")}</h2>
+          <T>
+            <p className="text-xs text-on-surface-faint mt-0.5">
+              Known future cost the trend can&rsquo;t see &mdash; a purchase, a new team, a
+              migration. Applying one draws a second line beside the forecast; it never replaces it,
+              and it never changes recorded spend.
+            </p>
+          </T>
         </div>
         {canWrite && (
           <button
@@ -96,32 +100,36 @@ export function ScenarioModelsSection({ client }: { client: CostsClient }) {
             onClick={() => setEditing({ model: null })}
             className="shrink-0 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
           >
-            New scenario
+            {gt("New scenario")}
           </button>
         )}
       </div>
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          Couldn&rsquo;t load scenario models &mdash; {error}{" "}
-          <button type="button" onClick={() => void refresh()} className="underline">
-            Retry
-          </button>
+          <T>
+            Couldn&rsquo;t load scenario models &mdash; <Var>{error}</Var>{" "}
+            <button type="button" onClick={() => void refresh()} className="underline">
+              Retry
+            </button>
+          </T>
         </div>
       )}
 
       {models === null && error === null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Loading scenario models…
+          {gt("Loading scenario models…")}
         </p>
       )}
 
       {models?.length === 0 && (
-        <p className="text-sm text-on-surface-faint">
-          No scenario models yet. Create one to describe spend you already know is coming &mdash; a
-          reserved-instance purchase, a team starting next quarter, a migration that takes a fifth
-          off compute.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-faint">
+            No scenario models yet. Create one to describe spend you already know is coming &mdash;
+            a reserved-instance purchase, a team starting next quarter, a migration that takes a
+            fifth off compute.
+          </p>
+        </T>
       )}
 
       <ul className="flex flex-col gap-2">
@@ -162,14 +170,14 @@ export function ScenarioModelsSection({ client }: { client: CostsClient }) {
                     onClick={() => setEditing({ model })}
                     className="hover:text-on-surface-secondary underline"
                   >
-                    Edit
+                    {gt("Edit")}
                   </button>
                   <button
                     type="button"
                     onClick={() => void deleteModel(model)}
                     className="hover:text-danger underline"
                   >
-                    Delete
+                    {gt("Delete")}
                   </button>
                 </div>
               )}
@@ -236,6 +244,7 @@ function ScenarioModelEditModal({
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
+  const gt = useGT();
   const uid = useId();
   const [name, setName] = useState(model?.name ?? "");
   const [description, setDescription] = useState(model?.description ?? "");
@@ -297,7 +306,7 @@ function ScenarioModelEditModal({
       else await client.createScenarioModel?.(input);
       await onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
+      setError(e instanceof Error ? e.message : gt("Failed to save"));
       setSaving(false);
     }
   };
@@ -305,20 +314,30 @@ function ScenarioModelEditModal({
   const budgetReferents = (referents ?? []).filter((r) => r.kind === "budget");
 
   return (
-    <Modal onClose={onClose} ariaLabel={model ? `Edit ${model.name}` : "New scenario model"}>
+    <Modal
+      onClose={onClose}
+      ariaLabel={model ? gt("Edit {name}", { name: model.name }) : gt("New scenario model")}
+    >
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[680px] max-w-full p-6 max-h-[85vh] overflow-y-auto">
         <h2 className="text-base font-semibold text-on-surface mb-1">
-          {model ? "Edit scenario model" : "New scenario model"}
+          {model ? gt("Edit scenario model") : gt("New scenario model")}
         </h2>
-        <p className="text-xs text-on-surface-faint mb-3">
-          Adjustments only ever apply to days after the last day with recorded spend. Recorded
-          history is never changed, and the unadjusted trend is always drawn alongside.
-        </p>
+        <T>
+          <p className="text-xs text-on-surface-faint mb-3">
+            Adjustments only ever apply to days after the last day with recorded spend. Recorded
+            history is never changed, and the unadjusted trend is always drawn alongside.
+          </p>
+        </T>
         {model && referents !== null && referents.length > 0 && (
           <p className="text-xs text-warning mb-3">
-            Saving changes {describeCostScenarioReferents(referents)}.
+            {gt("Saving changes {referents}.", {
+              referents: describeCostScenarioReferents(referents),
+            })}
             {budgetReferents.length > 0 &&
-              " Those budgets judge their forecast thresholds against this model, so this can change which alerts fire."}
+              " " +
+                gt(
+                  "Those budgets judge their forecast thresholds against this model, so this can change which alerts fire.",
+                )}
           </p>
         )}
 
@@ -326,19 +345,19 @@ function ScenarioModelEditModal({
           <div className="grid grid-cols-[1fr_6rem] gap-3">
             <div>
               <label htmlFor={`${uid}-name`} className={labelClass}>
-                Name
+                {gt("Name")}
               </label>
               <input
                 id={`${uid}-name`}
                 className={inputClass}
-                placeholder="e.g. Q4 plan"
+                placeholder={gt("e.g. Q4 plan")}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
             <div>
               <label htmlFor={`${uid}-currency`} className={labelClass}>
-                Currency
+                {gt("Currency")}
               </label>
               <input
                 id={`${uid}-currency`}
@@ -352,12 +371,12 @@ function ScenarioModelEditModal({
           </div>
           <div>
             <label htmlFor={`${uid}-description`} className={labelClass}>
-              Description (optional)
+              {gt("Description (optional)")}
             </label>
             <input
               id={`${uid}-description`}
               className={inputClass}
-              placeholder="What this scenario assumes"
+              placeholder={gt("What this scenario assumes")}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
@@ -365,7 +384,7 @@ function ScenarioModelEditModal({
 
           <div role="group" aria-labelledby={`${uid}-rows-label`} className="flex flex-col gap-3">
             <span id={`${uid}-rows-label`} className={labelClass}>
-              Adjustments
+              {gt("Adjustments")}
             </span>
             {adjustments.map((adjustment, index) => (
               <AdjustmentRow
@@ -383,7 +402,7 @@ function ScenarioModelEditModal({
               onClick={() => setAdjustments((rows) => [...rows, newAdjustment(currency)])}
               className="self-start rounded-lg border border-dashed border-border px-3 py-1.5 text-sm text-on-surface-secondary hover:border-border-strong"
             >
-              + Add adjustment
+              {gt("+ Add adjustment")}
             </button>
           </div>
 
@@ -399,7 +418,7 @@ function ScenarioModelEditModal({
               onClick={onClose}
               className="px-3 py-1.5 rounded-lg text-sm text-on-surface-secondary hover:bg-surface-sunken transition-colors"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -407,7 +426,7 @@ function ScenarioModelEditModal({
               disabled={saving}
               className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? gt("Saving…") : gt("Save")}
             </button>
           </div>
         </div>
@@ -443,6 +462,7 @@ function AdjustmentRow({
   onChange: (over: Partial<CostScenarioAdjustment>) => void;
   onRemove: () => void;
 }) {
+  const gt = useGT();
   /**
    * Changing the kind clears the fields the new kind cannot carry, rather than
    * leaving them set and letting the API refuse the save. A percent left over
@@ -467,14 +487,14 @@ function AdjustmentRow({
       <div className="flex items-start gap-2">
         <input
           className={inputClass}
-          aria-label={`Adjustment ${index + 1} label`}
-          placeholder="What this is — e.g. Annual Datadog licence"
+          aria-label={gt("Adjustment {n} label", { n: index + 1 })}
+          placeholder={gt("What this is — e.g. Annual Datadog licence")}
           value={adjustment.label}
           onChange={(e) => onChange({ label: e.target.value })}
         />
         <button
           type="button"
-          aria-label={`Remove adjustment ${index + 1}`}
+          aria-label={gt("Remove adjustment {n}", { n: index + 1 })}
           onClick={onRemove}
           className="shrink-0 rounded-lg px-2 py-1.5 text-sm text-on-surface-faint hover:text-danger"
         >
@@ -484,7 +504,7 @@ function AdjustmentRow({
 
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col text-xs text-on-surface-faint">
-          Kind
+          {gt("Kind")}
           <select
             className={inputClass}
             value={adjustment.kind}
@@ -500,7 +520,7 @@ function AdjustmentRow({
 
         {adjustment.kind === "rate_change" ? (
           <label className="flex flex-col text-xs text-on-surface-faint">
-            Percent
+            {gt("Percent")}
             <input
               type="number"
               className={inputClass}
@@ -521,7 +541,7 @@ function AdjustmentRow({
           </label>
         ) : (
           <label className="flex flex-col text-xs text-on-surface-faint">
-            Amount ({currency})
+            {gt("Amount ({currency})", { currency })}
             <input
               type="number"
               className={inputClass}
@@ -540,7 +560,7 @@ function AdjustmentRow({
 
         {adjustment.kind === "recurring" && (
           <label className="flex flex-col text-xs text-on-surface-faint">
-            Every
+            {gt("Every")}
             <select
               className={inputClass}
               value={adjustment.period ?? "monthly"}
@@ -558,7 +578,7 @@ function AdjustmentRow({
         )}
 
         <label className="flex flex-col text-xs text-on-surface-faint">
-          {adjustment.kind === "one_off" ? "On" : "From"}
+          {adjustment.kind === "one_off" ? gt("On") : gt("From")}
           <input
             type="date"
             className={inputClass}
@@ -569,7 +589,7 @@ function AdjustmentRow({
 
         {adjustment.kind !== "one_off" && (
           <label className="flex flex-col text-xs text-on-surface-faint">
-            Until (optional)
+            {gt("Until (optional)")}
             <input
               type="date"
               className={inputClass}
@@ -585,7 +605,11 @@ function AdjustmentRow({
       </p>
 
       <div>
-        <span className={labelClass}>Scope (optional &mdash; empty is the whole organization)</span>
+        <T>
+          <span className={labelClass}>
+            Scope (optional &mdash; empty is the whole organization)
+          </span>
+        </T>
         <CostFilterEditor
           filters={adjustment.scope}
           onChange={(scope: CostFilter[]) => onChange({ scope })}

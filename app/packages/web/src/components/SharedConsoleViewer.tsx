@@ -21,6 +21,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
+import { useGT } from "gt-react";
 
 import {
   attachTerminalClipboard,
@@ -72,11 +73,12 @@ export function SharedConsoleViewer({
   youParticipantId,
   onLeave,
 }: SharedConsoleViewerProps) {
+  const gt = useGT();
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [share, setShare] = useState(initialShare);
   const [participants, setParticipants] = useState(initialParticipants);
-  const [status, setStatus] = useState("Connecting…");
+  const [status, setStatus] = useState(() => gt("Connecting…"));
   const [detached, setDetached] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -153,7 +155,7 @@ export function SharedConsoleViewer({
           };
           switch (msg.type) {
             case "console:attached":
-              setStatus("Watching");
+              setStatus(gt("Watching"));
               amDriver = msg.role === "driver";
               if (msg.ptySize) {
                 ptySize = msg.ptySize;
@@ -181,31 +183,33 @@ export function SharedConsoleViewer({
               break;
             case "console:detached":
             case "console:ended":
-              setDetached(msg.message ?? "This session ended.");
-              setStatus("Disconnected");
+              setDetached(msg.message ?? gt("This session ended."));
+              setStatus(gt("Disconnected"));
               break;
             case "console:error":
               if (msg.code === "console_not_here" && attempts < MAX_ATTACH_ATTEMPTS) {
                 // Reconnect on a fresh token, which rehashes at the ingress.
-                setStatus("Finding this session…");
+                setStatus(gt("Finding this session…"));
                 void apiPost<{ token: string }>(`/api/org/${orgId}/ws-token`, {})
                   .then(({ token }) => {
                     if (!disposed) openSocket(token);
                   })
-                  .catch(() => setDetached("Could not reach this session."));
+                  .catch(() => setDetached(gt("Could not reach this session.")));
                 return;
               }
               setDetached(
                 msg.code === "console_not_here"
-                  ? "This session is being served by a server instance we could not reach. Ask the sharer to reopen the terminal and send a new link."
-                  : (msg.error ?? "Could not join that session."),
+                  ? gt(
+                      "This session is being served by a server instance we could not reach. Ask the sharer to reopen the terminal and send a new link.",
+                    )
+                  : (msg.error ?? gt("Could not join that session.")),
               );
-              setStatus("Disconnected");
+              setStatus(gt("Disconnected"));
               break;
           }
         };
 
-        ws.onerror = () => setStatus("Connection failed");
+        ws.onerror = () => setStatus(gt("Connection failed"));
       };
 
       openSocket(wsToken);
@@ -257,7 +261,10 @@ export function SharedConsoleViewer({
           {share.username}@{share.host}
         </span>
         <span className="text-[11px] text-on-surface-tertiary">
-          shared by {share.ownerName ?? "a colleague"} · {status}
+          {gt("shared by {ownerName} · {status}", {
+            ownerName: share.ownerName ?? gt("a colleague"),
+            status,
+          })}
         </span>
         <div className="flex-1" />
         <div className="flex items-center gap-2">
@@ -269,7 +276,7 @@ export function SharedConsoleViewer({
                 className="flex items-center gap-1 text-[11px] text-on-surface-muted"
               >
                 {p.userName ?? p.userId}
-                {p.id === youParticipantId ? " (you)" : ""}
+                {p.id === youParticipantId ? gt(" (you)") : ""}
                 <RoleBadge role={p.role} />
               </span>
             ))}
@@ -281,7 +288,7 @@ export function SharedConsoleViewer({
             disabled={busy || Boolean(you.driverRequestedAt)}
             className="px-2 py-1 text-[11px] border border-border rounded-lg text-on-surface-secondary hover:bg-surface-overlay disabled:opacity-50"
           >
-            {you.driverRequestedAt ? "Asked for keyboard" : "Ask for keyboard"}
+            {you.driverRequestedAt ? gt("Asked for keyboard") : gt("Ask for keyboard")}
           </button>
         )}
         <button
@@ -290,7 +297,7 @@ export function SharedConsoleViewer({
           disabled={busy}
           className="px-2 py-1 text-[11px] border border-border rounded-lg text-on-surface-secondary hover:bg-surface-overlay disabled:opacity-50"
         >
-          Leave
+          {gt("Leave")}
         </button>
       </div>
 
@@ -298,8 +305,9 @@ export function SharedConsoleViewer({
           that is dropping the keystrokes, not this page. */}
       {!youAreDriver && !detached && (
         <div className="shrink-0 px-3 py-1 text-[11px] text-on-surface-tertiary bg-surface/60 border-b border-border/40">
-          Read-only — your keystrokes are dropped by the server, and the terminal below is shown at
-          the driver&rsquo;s window size.
+          {gt(
+            "Read-only — your keystrokes are dropped by the server, and the terminal below is shown at the driver’s window size.",
+          )}
         </div>
       )}
 
@@ -317,7 +325,7 @@ export function SharedConsoleViewer({
                 onClick={onLeave}
                 className="px-3 py-1.5 text-sm font-medium border border-border rounded-lg text-on-surface-secondary hover:bg-surface-overlay"
               >
-                Back to the dashboard
+                {gt("Back to the dashboard")}
               </button>
             </div>
           </div>

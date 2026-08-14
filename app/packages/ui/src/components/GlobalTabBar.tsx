@@ -1,4 +1,5 @@
 import { useRef, type KeyboardEvent } from "react";
+import { T, useGT } from "gt-react";
 import type { WorkspaceTab } from "../store/ui.store.js";
 import { workspaceTabDomId, workspaceTabPanelDomId } from "../workspace/tab-dom-ids.js";
 
@@ -29,6 +30,7 @@ export function GlobalTabBar({
   rootRef,
   showEmptyHint = false,
 }: GlobalTabBarProps) {
+  const gt = useGT();
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   if (!showEmptyHint && tabs.length === 0) return null;
@@ -62,14 +64,14 @@ export function GlobalTabBar({
     <div
       ref={rootRef}
       role="tablist"
-      aria-label="Workspace tabs"
+      aria-label={gt("Workspace tabs")}
       aria-orientation="horizontal"
       className={`h-9 shrink-0 border-b border-border bg-surface flex items-end gap-0 overflow-x-auto overflow-y-hidden ${className ?? ""}`}
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
     >
       {tabs.length === 0 && showEmptyHint ? (
         <div className="px-4 pb-2 text-xs text-on-surface-faint">
-          Drag dashboards, accounts, or resources here to pin tabs
+          <T>Drag dashboards, accounts, or resources here to pin tabs</T>
         </div>
       ) : (
         tabs.map((tab, index) => {
@@ -100,8 +102,8 @@ export function GlobalTabBar({
         type="button"
         onClick={onNew}
         className="ml-1 self-center size-5 flex items-center justify-center rounded text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-colors text-base leading-none"
-        aria-label="New tab"
-        title="New tab"
+        aria-label={gt("New tab")}
+        title={gt("New tab")}
       >
         +
       </button>
@@ -130,6 +132,7 @@ function TabBarItem({
   onKeyDown: (e: KeyboardEvent<HTMLButtonElement>) => void;
   buttonRef: (el: HTMLButtonElement | null) => void;
 }) {
+  const gt = useGT();
   // Outer container preserves drag wrapper hooks; the inner button carries
   // tab semantics so screen-reader and keyboard semantics are correct.
   return (
@@ -163,8 +166,8 @@ function TabBarItem({
           onClose(tab.id);
         }}
         className="shrink-0 mr-2 size-3.5 flex items-center justify-center rounded text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-colors opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
-        aria-label={`Close tab ${tab.title}`}
-        title={`Close ${tab.title}`}
+        aria-label={gt("Close tab {title}", { title: tab.title })}
+        title={gt("Close {title}", { title: tab.title })}
       >
         &times;
       </button>

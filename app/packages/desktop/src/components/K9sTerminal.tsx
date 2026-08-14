@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
@@ -28,6 +29,7 @@ interface K9sTerminalProps {
 }
 
 export function K9sTerminal({ kubeconfig, cloudContext, namespace }: K9sTerminalProps) {
+  const gt = useGT();
   const containerRef = useRef<HTMLDivElement>(null);
   const [nativeK9sInstalled, setNativeK9sInstalled] = useState<boolean | null>(null);
 
@@ -77,7 +79,7 @@ export function K9sTerminal({ kubeconfig, cloudContext, namespace }: K9sTerminal
     requestAnimationFrame(() => {
       if (disposed) return;
       fitAddon.fit();
-      term.write("\x1b[90mLaunching k9s…\x1b[0m\r\n");
+      term.write(`\x1b[90m${gt("Launching k9s…")}\x1b[0m\r\n`);
 
       const openPromise =
         isCloud && cloudOrgId && cloudAccountId && cloudResourceId && cloudPeerPluginId
@@ -107,11 +109,11 @@ export function K9sTerminal({ kubeconfig, cloudContext, namespace }: K9sTerminal
           }
           session = handle;
           handle.onData((data) => term.write(data));
-          handle.onExit(() => term.write("\r\n\x1b[90m[Session closed]\x1b[0m\r\n"));
+          handle.onExit(() => term.write(`\r\n\x1b[90m${gt("[Session closed]")}\x1b[0m\r\n`));
           handle.onError((err) => term.write(`\r\n\x1b[31m${err}\x1b[0m\r\n`));
         })
         .catch((err: unknown) => {
-          term.write(`\r\n\x1b[31mFailed: ${String(err)}\x1b[0m\r\n`);
+          term.write(`\r\n\x1b[31m${gt("Failed: {error}", { error: String(err) })}\x1b[0m\r\n`);
         });
     });
 
@@ -144,12 +146,13 @@ export function K9sTerminal({ kubeconfig, cloudContext, namespace }: K9sTerminal
     cloudAccountId,
     cloudResourceId,
     cloudPeerPluginId,
+    gt,
   ]);
 
   if (k9sInstalled === null) {
     return (
       <div className="h-full w-full flex items-center justify-center bg-[var(--color-terminal-bg)] text-sm text-on-surface-muted">
-        Checking for k9s…
+        {gt("Checking for k9s…")}
       </div>
     );
   }
@@ -158,16 +161,16 @@ export function K9sTerminal({ kubeconfig, cloudContext, namespace }: K9sTerminal
     return (
       <div className="h-full w-full flex items-center justify-center bg-[var(--color-terminal-bg)] p-6">
         <div className="max-w-sm text-center space-y-3">
-          <p className="text-base font-medium text-on-surface-secondary">k9s not found</p>
+          <p className="text-base font-medium text-on-surface-secondary">{gt("k9s not found")}</p>
           <p className="text-sm text-on-surface-muted">
-            Install `k9s` locally to use the embedded Kubernetes terminal view.
+            {gt("Install `k9s` locally to use the embedded Kubernetes terminal view.")}
           </p>
           <button
             type="button"
             onClick={() => void invoke("open_external_url", { url: K9S_INSTALL_URL })}
             className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-medium text-white transition-colors"
           >
-            Open install guide
+            {gt("Open install guide")}
           </button>
         </div>
       </div>

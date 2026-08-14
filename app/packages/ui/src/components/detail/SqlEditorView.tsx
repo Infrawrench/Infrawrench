@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { T, Var, useGT } from "gt-react";
+import { useDataString } from "../../i18n/data-strings.js";
 import type { QueryCostEstimate, SqlTableMeta } from "@infrawrench/plugin-base";
 
 export interface QueryResult {
@@ -106,6 +108,8 @@ export function SqlEditorView({
   onExecute,
   onEstimateQueryCost,
 }: Props) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [query, setQuery] = useState(defaultQuery);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -276,8 +280,8 @@ export function SqlEditorView({
         <div className="px-3 py-2 border-b border-border">
           <input
             type="text"
-            aria-label="Search tables"
-            placeholder="Search tables…"
+            aria-label={gt("Search tables")}
+            placeholder={gt("Search tables…")}
             value={tableSearch}
             onChange={(e) => setTableSearch(e.target.value)}
             className="w-full bg-surface-raised border border-border-strong rounded-md px-2 py-1 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
@@ -285,9 +289,9 @@ export function SqlEditorView({
         </div>
         <div className="flex-1 overflow-y-auto py-1">
           {tables.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-on-surface-faint">No tables found</p>
+            <p className="px-3 py-2 text-xs text-on-surface-faint">{gt("No tables found")}</p>
           ) : filteredTables.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-on-surface-faint">No matches</p>
+            <p className="px-3 py-2 text-xs text-on-surface-faint">{gt("No matches")}</p>
           ) : (
             filteredTables.map((table) => {
               const expanded = expandedTables.has(table.name);
@@ -299,7 +303,10 @@ export function SqlEditorView({
                       type="button"
                       onClick={() => toggleTableExpand(table.name)}
                       aria-expanded={expanded}
-                      aria-label={`${expanded ? "Collapse" : "Expand"} ${table.name} columns`}
+                      aria-label={gt("{action} {name} columns", {
+                        action: expanded ? gt("Collapse") : gt("Expand"),
+                        name: table.name,
+                      })}
                       className="w-4 h-6 flex items-center justify-center text-on-surface-faint hover:text-on-surface-tertiary shrink-0"
                     >
                       {table.columns.length > 0 && (
@@ -333,8 +340,8 @@ export function SqlEditorView({
                           {pks.has(col.name) && (
                             <span
                               className="text-warning text-xs leading-none"
-                              title="Primary key"
-                              aria-label="Primary key"
+                              title={gt("Primary key")}
+                              aria-label={gt("Primary key")}
                             >
                               ⚿
                             </span>
@@ -365,7 +372,7 @@ export function SqlEditorView({
         >
           <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-surface">
             <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">
-              Query
+              {gt("Query")}
             </span>
             <div className="ml-auto flex items-center gap-2">
               {estimateError && (
@@ -379,7 +386,7 @@ export function SqlEditorView({
               {estimate && !estimateError && (
                 <span className="text-xs text-on-surface-tertiary font-mono">
                   {estimate.cacheHit ? (
-                    <>cache hit · free</>
+                    <>{gt("cache hit · free")}</>
                   ) : (
                     <>
                       {formatBytes(estimate.bytesProcessed)}
@@ -391,10 +398,12 @@ export function SqlEditorView({
                 </span>
               )}
               {result && (
-                <span className="text-xs text-on-surface-faint">
-                  {result.rows.length} row{result.rows.length !== 1 ? "s" : ""} ·{" "}
-                  {result.durationMs}ms
-                </span>
+                <T>
+                  <span className="text-xs text-on-surface-faint">
+                    <Var>{result.rows.length}</Var> row{result.rows.length !== 1 ? "s" : ""} ·{" "}
+                    <Var>{result.durationMs}</Var>ms
+                  </span>
+                </T>
               )}
               {result && result.rows.length > 0 && (
                 <button
@@ -405,10 +414,10 @@ export function SqlEditorView({
                     const ts = new Date().toISOString().replace(/[:.]/g, "-");
                     downloadCsv(`${name}-${ts}.csv`, rowsToCsv(result.rows, cols));
                   }}
-                  title="Download results as CSV"
+                  title={gt("Download results as CSV")}
                   className="px-3 py-1 text-xs font-medium border border-border-strong hover:border-blue-500 text-on-surface-secondary rounded-md transition-colors whitespace-nowrap"
                 >
-                  Export CSV
+                  {gt("Export CSV")}
                 </button>
               )}
               {onEstimateQueryCost && (
@@ -417,11 +426,13 @@ export function SqlEditorView({
                   onClick={() => runEstimate(query)}
                   disabled={estimating}
                   title={
-                    estimate?.pricingNote ?? "Dry-run query to estimate scanned bytes and cost"
+                    estimate?.pricingNote
+                      ? gtData(estimate.pricingNote)
+                      : gt("Dry-run query to estimate scanned bytes and cost")
                   }
                   className="px-3 py-1 text-xs font-medium border border-border-strong hover:border-blue-500 disabled:opacity-50 text-on-surface-secondary rounded-md transition-colors whitespace-nowrap"
                 >
-                  {estimating ? "Estimating…" : "Estimate"}
+                  {estimating ? gt("Estimating…") : gt("Estimate")}
                 </button>
               )}
               <button
@@ -430,13 +441,13 @@ export function SqlEditorView({
                 disabled={running}
                 className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-md transition-colors whitespace-nowrap"
               >
-                {running ? "Running…" : "Run  ⌘↵"}
+                {running ? gt("Running…") : gt("Run  ⌘↵")}
               </button>
             </div>
           </div>
           <textarea
             ref={textareaRef}
-            aria-label="SQL query"
+            aria-label={gt("SQL query")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -452,11 +463,13 @@ export function SqlEditorView({
             <div className="p-4 text-xs text-danger font-mono whitespace-pre-wrap">{error}</div>
           )}
           {!error && !result && !running && (
-            <div className="p-4 text-xs text-on-surface-faint">Run a query to see results.</div>
+            <div className="p-4 text-xs text-on-surface-faint">
+              {gt("Run a query to see results.")}
+            </div>
           )}
-          {running && <div className="p-4 text-xs text-on-surface-faint">Running…</div>}
+          {running && <div className="p-4 text-xs text-on-surface-faint">{gt("Running…")}</div>}
           {result && result.rows.length === 0 && !error && (
-            <div className="p-4 text-xs text-on-surface-faint">Query returned no rows.</div>
+            <div className="p-4 text-xs text-on-surface-faint">{gt("Query returned no rows.")}</div>
           )}
 
           {result && result.rows.length > 0 && (
@@ -467,14 +480,14 @@ export function SqlEditorView({
                 </div>
               )}
               <table className="w-full text-xs border-collapse">
-                <caption className="sr-only">Query results</caption>
+                <caption className="sr-only">{gt("Query results")}</caption>
                 <thead className="sticky top-0 bg-surface-raised z-10">
                   <tr>
                     {canEdit && (
                       <th
                         scope="col"
                         className="w-8 border-b border-border"
-                        aria-label="Row actions"
+                        aria-label={gt("Row actions")}
                       />
                     )}
                     {columns.map((col) => (
@@ -492,7 +505,7 @@ export function SqlEditorView({
                         >
                           {col}
                           {pkCols.includes(col) && (
-                            <span className="ml-1 text-warning text-xs">PK</span>
+                            <span className="ml-1 text-warning text-xs">{gt("PK")}</span>
                           )}
                         </span>
                       </th>
@@ -516,7 +529,7 @@ export function SqlEditorView({
                                   onClick={() => saveEdit(row)}
                                   disabled={saving}
                                   className="text-accent hover:text-accent-on-muted text-xs leading-none disabled:opacity-40"
-                                  title="Save"
+                                  title={gt("Save")}
                                 >
                                   {saving ? "…" : "✓"}
                                 </button>
@@ -524,7 +537,7 @@ export function SqlEditorView({
                                   type="button"
                                   onClick={cancelEdit}
                                   className="text-on-surface-muted hover:text-on-surface-secondary text-xs leading-none"
-                                  title="Cancel"
+                                  title={gt("Cancel")}
                                 >
                                   ✕
                                 </button>
@@ -534,8 +547,8 @@ export function SqlEditorView({
                                 type="button"
                                 onClick={() => startEdit(i, row)}
                                 className="text-on-surface-faint hover:text-on-surface-secondary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-all text-xs"
-                                title="Edit row"
-                                aria-label="Edit row"
+                                title={gt("Edit row")}
+                                aria-label={gt("Edit row")}
                               >
                                 ✎
                               </button>
@@ -549,7 +562,7 @@ export function SqlEditorView({
                             return (
                               <td key={col} className="px-1 py-0.5">
                                 <input
-                                  aria-label={`Edit ${col}`}
+                                  aria-label={gt("Edit {column}", { column: col })}
                                   value={editValues[col] ?? ""}
                                   onChange={(e) =>
                                     setEditValues((prev) => ({ ...prev, [col]: e.target.value }))

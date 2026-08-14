@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { T, Var, useGT, useMessages } from "gt-react";
 import {
   budgetInputSchema,
   type BudgetInput,
@@ -29,6 +30,8 @@ export interface BudgetConfigModalProps {
 }
 
 export function BudgetConfigModal({ initialInput, api, onSave, onClose }: BudgetConfigModalProps) {
+  const gt = useGT();
+  const m = useMessages();
   const uid = useId();
   const [input, setInput] = useState<BudgetInput>(initialInput);
   const [amountText, setAmountText] = useState(() => (initialInput.amountCents / 100).toString());
@@ -48,12 +51,12 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
 
   const save = async () => {
     if (filterError) {
-      setError("Fix the scope query before saving.");
+      setError(gt("Fix the scope query before saving."));
       return;
     }
     const amount = Number(amountText);
     if (!Number.isFinite(amount) || amount <= 0) {
-      setError("Enter a budget amount greater than zero");
+      setError(gt("Enter a budget amount greater than zero"));
       return;
     }
     const cleaned = {
@@ -63,7 +66,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
     };
     const parsed = budgetInputSchema.safeParse(cleaned);
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "Invalid budget");
+      setError(parsed.error.issues[0]?.message ?? gt("Invalid budget"));
       return;
     }
     setSaving(true);
@@ -72,29 +75,31 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
       await onSave(parsed.data);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
+      setError(e instanceof Error ? e.message : gt("Failed to save"));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Modal onClose={onClose} ariaLabel="Budget">
+    <Modal onClose={onClose} ariaLabel={gt("Budget")}>
       <div className="w-[32rem] max-w-[90vw] rounded-2xl border border-border bg-surface-raised p-5 max-h-[85vh] overflow-y-auto">
-        <h2 className="text-lg font-semibold text-on-surface mb-1">Budget</h2>
+        <h2 className="text-lg font-semibold text-on-surface mb-1">{gt("Budget")}</h2>
         <p className="text-xs text-on-surface-faint mb-4">
-          Monthly spend threshold over a cost scope. Alerts fire once per month per threshold.
+          {gt(
+            "Monthly spend threshold over a cost scope. Alerts fire once per month per threshold.",
+          )}
         </p>
 
         <div className="space-y-4">
           <div>
             <label htmlFor={`${uid}-name`} className={labelClass}>
-              Name
+              {gt("Name")}
             </label>
             <input
               id={`${uid}-name`}
               className={inputClass}
-              placeholder="e.g. Production AWS"
+              placeholder={gt("e.g. Production AWS")}
               value={input.name}
               onChange={(e) => set({ name: e.target.value })}
             />
@@ -103,7 +108,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor={`${uid}-amount`} className={labelClass}>
-                Monthly amount
+                {gt("Monthly amount")}
               </label>
               <input
                 id={`${uid}-amount`}
@@ -117,7 +122,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
             </div>
             <div>
               <label htmlFor={`${uid}-currency`} className={labelClass}>
-                Currency
+                {gt("Currency")}
               </label>
               <input
                 id={`${uid}-currency`}
@@ -134,12 +139,12 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
             value={input.costBasis}
             onChange={(costBasis) => set({ costBasis })}
             available={basis.available}
-            hint={COST_BASIS_UNAVAILABLE_HINT}
+            hint={m(COST_BASIS_UNAVAILABLE_HINT)}
           />
 
           <div role="group" aria-labelledby={`${uid}-scope-label`}>
             <span id={`${uid}-scope-label`} className={labelClass}>
-              Scope (all spend when empty)
+              {gt("Scope (all spend when empty)")}
             </span>
             <CostFilterEditor
               filters={input.filters as CostFilter[]}
@@ -163,13 +168,13 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
 
           <div role="group" aria-labelledby={`${uid}-thresholds-label`}>
             <span id={`${uid}-thresholds-label`} className={labelClass}>
-              Alert thresholds
+              {gt("Alert thresholds")}
             </span>
             <div className="space-y-2">
               {input.thresholds.map((t, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <select
-                    aria-label="Threshold type"
+                    aria-label={gt("Threshold type")}
                     className={`${inputClass} w-32`}
                     value={t.type}
                     onChange={(e) =>
@@ -180,12 +185,12 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
                       })
                     }
                   >
-                    <option value="actual">Actual spend</option>
-                    <option value="forecast">Forecast</option>
+                    <option value="actual">{gt("Actual spend")}</option>
+                    <option value="forecast">{gt("Forecast")}</option>
                   </select>
-                  <span className="text-xs text-on-surface-secondary">reaches</span>
+                  <span className="text-xs text-on-surface-secondary">{gt("reaches")}</span>
                   <input
-                    aria-label="Threshold percent"
+                    aria-label={gt("Threshold percent")}
                     type="number"
                     min={1}
                     max={1000}
@@ -212,7 +217,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
                         set({ thresholds: input.thresholds.filter((_, j) => j !== i) })
                       }
                       className="text-on-surface-faint hover:text-on-surface-secondary text-xs"
-                      title="Remove threshold"
+                      title={gt("Remove threshold")}
                     >
                       ✕
                     </button>
@@ -227,7 +232,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
                   }
                   className="text-xs text-info hover:text-info-strong"
                 >
-                  + Add threshold
+                  {gt("+ Add threshold")}
                 </button>
               )}
             </div>
@@ -241,7 +246,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
               onClick={onClose}
               className="px-3 py-1.5 rounded-lg text-sm text-on-surface-secondary hover:bg-surface-sunken transition-colors"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -249,7 +254,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
               disabled={saving || filterError !== null}
               className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? gt("Saving…") : gt("Save")}
             </button>
           </div>
         </div>
@@ -283,6 +288,7 @@ function BudgetScenarioField({
   hasForecastThreshold: boolean;
   onChange: (scenarioModelId: string | null) => void;
 }) {
+  const gt = useGT();
   const [models, setModels] = useState<CostScenarioModel[] | null>(null);
   const load = api.listScenarioModels;
 
@@ -307,7 +313,7 @@ function BudgetScenarioField({
   return (
     <div>
       <label htmlFor={id} className={labelClass}>
-        Scenario (forecast thresholds only)
+        {gt("Scenario (forecast thresholds only)")}
       </label>
       <select
         id={id}
@@ -315,7 +321,7 @@ function BudgetScenarioField({
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value || null)}
       >
-        <option value="">None — measure the bare trend</option>
+        <option value="">{gt("None — measure the bare trend")}</option>
         {models.map((model) => (
           <option key={model.id} value={model.id}>
             {model.name}
@@ -325,14 +331,21 @@ function BudgetScenarioField({
       <p className="mt-1 text-[11px] text-on-surface-faint">
         {selected ? (
           <>
-            Forecast thresholds are judged against the trend <strong>plus</strong> “{selected.name}
-            ”, and alerts say so. Actual-spend thresholds are unaffected — they measure money
-            already spent.
-            {!hasForecastThreshold &&
-              " This budget has no forecast threshold, so nothing uses it yet."}
+            <T>
+              <>
+                Forecast thresholds are judged against the trend <strong>plus</strong> “
+                <Var>{selected.name}</Var>”, and alerts say so. Actual-spend thresholds are
+                unaffected — they measure money already spent.
+              </>
+            </T>
+            {!hasForecastThreshold && (
+              <> {gt("This budget has no forecast threshold, so nothing uses it yet.")}</>
+            )}
           </>
         ) : (
-          "Forecast thresholds measure the unadjusted trend. Pick a model to have this budget — and only this budget — alert on assumptions you have written down."
+          gt(
+            "Forecast thresholds measure the unadjusted trend. Pick a model to have this budget — and only this budget — alert on assumptions you have written down.",
+          )
         )}
       </p>
     </div>

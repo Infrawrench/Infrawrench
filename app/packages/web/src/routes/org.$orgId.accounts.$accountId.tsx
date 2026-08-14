@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useGT } from "gt-react";
 import {
   useUIStore,
   useTabId,
@@ -66,6 +67,7 @@ export function AccountPanel({
   initialActiveType,
   initialSearchQuery,
 }: AccountPanelProps) {
+  const gt = useGT();
   const tabId = useTabId();
 
   const [activeType, setActiveTypeState] = useState<string | null>(initialActiveType ?? null);
@@ -131,13 +133,13 @@ export function AccountPanel({
         setCategories((prev) =>
           prev.map((cat) =>
             cat.typeDef.id === typeId
-              ? { ...cat, error: err instanceof Error ? err.message : "Failed to refresh" }
+              ? { ...cat, error: err instanceof Error ? err.message : gt("Failed to refresh") }
               : cat,
           ),
         );
       }
     },
-    [orgId, accountId],
+    [orgId, accountId, gt],
   );
 
   // Refresh on RESOURCES_CHANGED_EVENT. If a resourceTypeId is supplied, re-sync that
@@ -213,8 +215,8 @@ export function AccountPanel({
     : undefined;
 
   if (initialLoading)
-    return <div className="p-6 text-on-surface-muted text-sm animate-pulse">Loading…</div>;
-  if (!meta) return <div className="p-6 text-danger text-sm">Failed to load account.</div>;
+    return <div className="p-6 text-on-surface-muted text-sm animate-pulse">{gt("Loading…")}</div>;
+  if (!meta) return <div className="p-6 text-danger text-sm">{gt("Failed to load account.")}</div>;
 
   // Account-root plugins (UploadThing) hold exactly one instance of their root
   // type, and that instance *is* the account — so the account opens straight

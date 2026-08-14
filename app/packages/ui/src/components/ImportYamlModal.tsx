@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { T, useGT } from "gt-react";
 import { formatErrorMessage } from "../utils.js";
 import { ErrorNotice } from "./ErrorNotice.js";
 import { Modal } from "./Modal.js";
@@ -11,6 +12,7 @@ export interface ImportYamlModalProps {
 }
 
 export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportYamlModalProps) {
+  const gt = useGT();
   const [yamlText, setYamlText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +27,7 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
 
   async function handleApply() {
     if (!yamlText.trim()) {
-      setError("YAML is empty");
+      setError(gt("YAML is empty"));
       return;
     }
     setBusy(true);
@@ -47,16 +49,16 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
       onClose={() => {
         if (!busy) onClose();
       }}
-      ariaLabel={title ?? "Import YAML"}
+      ariaLabel={title ?? gt("Import YAML")}
     >
       <div className="w-[min(900px,92vw)] h-[min(700px,85vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-on-surface">{title ?? "Import YAML"}</h2>
+          <h2 className="text-sm font-semibold text-on-surface">{title ?? gt("Import YAML")}</h2>
           <button
             type="button"
             onClick={onClose}
             disabled={busy}
-            aria-label="Close"
+            aria-label={gt("Close")}
             className="text-on-surface-muted hover:text-on-surface-secondary disabled:opacity-50 text-xl leading-none"
           >
             ×
@@ -67,7 +69,7 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
           <input
             ref={fileInputRef}
             type="file"
-            aria-label="Load YAML file"
+            aria-label={gt("Load YAML file")}
             accept=".yaml,.yml,text/yaml,application/x-yaml"
             className="hidden"
             onChange={handleFilePick}
@@ -77,15 +79,17 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
             onClick={() => fileInputRef.current?.click()}
             className="px-2.5 py-1 rounded-lg border border-border-strong bg-surface-overlay text-xs text-on-surface-secondary hover:bg-surface-sunken transition-colors"
           >
-            Load from file
+            {gt("Load from file")}
           </button>
-          <p className="text-xs text-on-surface-muted">
-            Multi-document YAML supported (separate with <code>---</code>).
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-muted">
+              Multi-document YAML supported (separate with <code>---</code>).
+            </p>
+          </T>
         </div>
 
         <textarea
-          aria-label="YAML content"
+          aria-label={gt("YAML content")}
           value={yamlText}
           onChange={(e) => setYamlText(e.target.value)}
           disabled={busy}
@@ -99,7 +103,10 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
             {error && <ErrorNotice message={error} />}
             {result && (
               <p className="text-xs text-success">
-                Applied {result.applied} document{result.applied === 1 ? "" : "s"}.
+                {gt("Applied {count} document{plural}.", {
+                  count: result.applied,
+                  plural: result.applied === 1 ? "" : "s",
+                })}
               </p>
             )}
           </div>
@@ -112,7 +119,7 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
             disabled={busy}
             className="px-3 py-1.5 rounded-lg border border-border-strong bg-surface-overlay text-sm text-on-surface-secondary hover:bg-surface-sunken disabled:opacity-50 transition-colors"
           >
-            {result ? "Close" : "Cancel"}
+            {result ? gt("Close") : gt("Cancel")}
           </button>
           <button
             type="button"
@@ -120,7 +127,7 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
             disabled={busy || !yamlText.trim()}
             className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-surface-overlay disabled:text-on-surface-tertiary text-sm font-medium text-white transition-colors"
           >
-            {busy ? "Applying…" : "Apply"}
+            {busy ? gt("Applying…") : gt("Apply")}
           </button>
         </div>
       </div>

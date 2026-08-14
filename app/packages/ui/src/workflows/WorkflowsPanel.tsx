@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
+import { T, Var, msg, useGT, useMessages } from "gt-react";
 import { useDraggable } from "@dnd-kit/core";
 import {
   isValidCronTimezone,
@@ -260,6 +261,7 @@ export function WorkflowsPanel({
   gitIntegration,
   budgetIntegration,
 }: WorkflowsPanelProps) {
+  const gt = useGT();
   const [list, setList] = useState<WorkflowSummary[]>([]);
   const [listed, setListed] = useState(false);
   const [search, setSearch] = useState("");
@@ -574,14 +576,14 @@ export function WorkflowsPanel({
       {/* Workflow list */}
       <div className="w-64 border-r border-white/10 flex flex-col min-h-0">
         <div className="p-3 border-b border-white/10 flex items-center justify-between">
-          <span className="font-semibold text-sm">Workflows</span>
+          <span className="font-semibold text-sm">{gt("Workflows")}</span>
           <button
             type="button"
             onClick={() => void createWorkflow()}
             disabled={busy}
             className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50"
           >
-            + New
+            {gt("+ New")}
           </button>
         </div>
         <div className="p-2 border-b border-white/10">
@@ -589,18 +591,18 @@ export function WorkflowsPanel({
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search workflows…"
-            aria-label="Search workflows"
+            placeholder={gt("Search workflows…")}
+            aria-label={gt("Search workflows")}
             className="w-full bg-transparent border border-white/15 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500"
           />
         </div>
         <div className="flex-1 overflow-auto">
           {list.length === 0 ? (
             <div className="p-4 text-xs opacity-60">
-              No workflows yet. Create one to get started.
+              {gt("No workflows yet. Create one to get started.")}
             </div>
           ) : filteredList.length === 0 ? (
-            <div className="p-4 text-xs opacity-60">No workflows match your search.</div>
+            <div className="p-4 text-xs opacity-60">{gt("No workflows match your search.")}</div>
           ) : (
             filteredList.map((wf) => (
               <WorkflowListRow
@@ -625,8 +627,8 @@ export function WorkflowsPanel({
               value={draft.name}
               onChange={(e) => patch({ name: e.target.value })}
               className="bg-transparent border border-white/15 rounded px-2 py-1 text-sm flex-1 min-w-40"
-              placeholder="Workflow name"
-              aria-label="Workflow name"
+              placeholder={gt("Workflow name")}
+              aria-label={gt("Workflow name")}
             />
             <label className="text-xs flex items-center gap-1">
               <input
@@ -634,7 +636,7 @@ export function WorkflowsPanel({
                 checked={draft.enabled}
                 onChange={(e) => patch({ enabled: e.target.checked })}
               />
-              Enabled
+              {gt("Enabled")}
             </label>
             <button
               type="button"
@@ -642,7 +644,7 @@ export function WorkflowsPanel({
               disabled={busy}
               className="text-xs px-3 py-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-50"
             >
-              Save
+              {gt("Save")}
             </button>
             <button
               type="button"
@@ -652,9 +654,9 @@ export function WorkflowsPanel({
             >
               {session.running
                 ? session.pausedLine != null
-                  ? `Paused : ${session.pausedLine}`
-                  : "Running…"
-                : "Run"}
+                  ? gt("Paused : {line}", { line: session.pausedLine })
+                  : gt("Running…")
+                : gt("Run")}
             </button>
             {session.running && session.pausedLine != null && (
               <>
@@ -662,17 +664,17 @@ export function WorkflowsPanel({
                   type="button"
                   onClick={resumeRun}
                   className="text-xs px-3 py-1 rounded bg-amber-600 hover:bg-amber-500"
-                  title="Continue to the next breakpoint"
+                  title={gt("Continue to the next breakpoint")}
                 >
-                  Resume
+                  {gt("Resume")}
                 </button>
                 <button
                   type="button"
                   onClick={stepRun}
                   className="text-xs px-3 py-1 rounded bg-white/10 hover:bg-white/20"
-                  title="Run the next line, then pause"
+                  title={gt("Run the next line, then pause")}
                 >
-                  Step
+                  {gt("Step")}
                 </button>
               </>
             )}
@@ -681,9 +683,9 @@ export function WorkflowsPanel({
                 type="button"
                 onClick={stopRun}
                 className="text-xs px-3 py-1 rounded bg-red-600/80 hover:bg-red-500"
-                title="Abort the run"
+                title={gt("Abort the run")}
               >
-                Stop
+                {gt("Stop")}
               </button>
             )}
             <button
@@ -692,7 +694,7 @@ export function WorkflowsPanel({
               disabled={busy}
               className="text-xs px-3 py-1 rounded bg-red-600/80 hover:bg-red-500 disabled:opacity-50"
             >
-              Delete
+              {gt("Delete")}
             </button>
           </div>
 
@@ -768,7 +770,7 @@ export function WorkflowsPanel({
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-sm opacity-50">
-          Select or create a workflow.
+          {gt("Select or create a workflow.")}
         </div>
       )}
     </div>
@@ -790,6 +792,7 @@ function WorkflowListRow({
   selected: boolean;
   onClick: () => void;
 }) {
+  const gt = useGT();
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `sidebar-workflow:${workflow.id}`,
     data: { workflow: { id: workflow.id, name: workflow.name }, dragLabel: workflow.name },
@@ -808,7 +811,7 @@ function WorkflowListRow({
         <div className="truncate">{workflow.name}</div>
         <div className="text-[10px] opacity-50">
           {workflow.trigger.kind}
-          {workflow.enabled ? "" : " · disabled"}
+          {workflow.enabled ? "" : gt(" · disabled")}
         </div>
       </button>
     </div>
@@ -816,43 +819,70 @@ function WorkflowListRow({
 }
 
 const CRON_PRESETS: { label: string; value: string }[] = [
-  { label: "Every minute", value: "* * * * *" },
-  { label: "Every 5 minutes", value: "*/5 * * * *" },
-  { label: "Every 15 minutes", value: "*/15 * * * *" },
-  { label: "Every 30 minutes", value: "*/30 * * * *" },
-  { label: "Hourly", value: "0 * * * *" },
-  { label: "Every 6 hours", value: "0 */6 * * *" },
-  { label: "Daily at midnight", value: "0 0 * * *" },
-  { label: "Daily at 9am", value: "0 9 * * *" },
-  { label: "Weekly (Mon 9am)", value: "0 9 * * 1" },
-  { label: "Monthly (1st)", value: "0 0 1 * *" },
+  { label: msg("Every minute"), value: "* * * * *" },
+  { label: msg("Every 5 minutes"), value: "*/5 * * * *" },
+  { label: msg("Every 15 minutes"), value: "*/15 * * * *" },
+  { label: msg("Every 30 minutes"), value: "*/30 * * * *" },
+  { label: msg("Hourly"), value: "0 * * * *" },
+  { label: msg("Every 6 hours"), value: "0 */6 * * *" },
+  { label: msg("Daily at midnight"), value: "0 0 * * *" },
+  { label: msg("Daily at 9am"), value: "0 9 * * *" },
+  { label: msg("Weekly (Mon 9am)"), value: "0 9 * * 1" },
+  { label: msg("Monthly (1st)"), value: "0 0 1 * *" },
 ];
 
-const CRON_DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
+/** Translated weekday name for a cron `dow` field (0 = Sunday, per POSIX cron). */
+function cronDayLabel(gt: ReturnType<typeof useGT>, dow: number): string {
+  switch (dow % 7) {
+    case 0:
+      return gt("Sunday");
+    case 1:
+      return gt("Monday");
+    case 2:
+      return gt("Tuesday");
+    case 3:
+      return gt("Wednesday");
+    case 4:
+      return gt("Thursday");
+    case 5:
+      return gt("Friday");
+    default:
+      return gt("Saturday");
+  }
+}
+
 /** A best-effort plain-English summary of a 5-field cron expression. */
-function describeCron(expr: string): string {
+function describeCron(
+  expr: string,
+  gt: ReturnType<typeof useGT>,
+  m: ReturnType<typeof useMessages>,
+): string {
   const t = expr.trim();
   const preset = CRON_PRESETS.find((p) => p.value === t);
-  if (preset) return `Runs ${preset.label.toLowerCase()}.`;
+  if (preset) return gt("Runs {label}.", { label: m(preset.label).toLowerCase() });
   const parts = t.split(/\s+/);
-  if (parts.length !== 5) return "Enter 5 fields: minute hour day month weekday.";
+  if (parts.length !== 5) return gt("Enter 5 fields: minute hour day month weekday.");
   const [min, hour, dom, mon, dow] = parts as [string, string, string, string, string];
   const isNum = (s: string) => /^\d+$/.test(s);
   const everyMin = /^\*\/(\d+)$/.exec(min);
   const everyHour = /^\*\/(\d+)$/.exec(hour);
   const allDate = dom === "*" && mon === "*";
   if (everyMin && hour === "*" && allDate && dow === "*")
-    return `Runs every ${everyMin[1]} minutes.`;
+    return gt("Runs every {n} minutes.", { n: everyMin[1] });
   if (min === "0" && everyHour && allDate && dow === "*")
-    return `Runs every ${everyHour[1]} hours.`;
+    return gt("Runs every {n} hours.", { n: everyHour[1] });
   if (isNum(min) && isNum(hour) && allDate && dow === "*")
-    return `Runs daily at ${pad2(+hour)}:${pad2(+min)}.`;
+    return gt("Runs daily at {time}.", { time: `${pad2(+hour)}:${pad2(+min)}` });
   if (isNum(min) && isNum(hour) && allDate && isNum(dow))
-    return `Runs weekly on ${CRON_DAYS[+dow % 7]} at ${pad2(+hour)}:${pad2(+min)}.`;
-  if (isNum(min) && hour === "*" && allDate && dow === "*") return `Runs hourly at :${pad2(+min)}.`;
-  return "Runs on a custom schedule.";
+    return gt("Runs weekly on {day} at {time}.", {
+      day: cronDayLabel(gt, +dow),
+      time: `${pad2(+hour)}:${pad2(+min)}`,
+    });
+  if (isNum(min) && hour === "*" && allDate && dow === "*")
+    return gt("Runs hourly at :{min}.", { min: pad2(+min) });
+  return gt("Runs on a custom schedule.");
 }
 
 /** Default threshold for a new budget trigger — "goes over budget". */
@@ -892,12 +922,13 @@ function TriggerEditor({
   webhookSecret?: string | null;
   onWebhookSecretChange?: (value: string | null) => void;
 }) {
+  const gt = useGT();
   const kind = trigger.kind;
   const triggerSelectId = useId();
   return (
     <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2 flex-wrap text-xs">
       <label htmlFor={triggerSelectId} className="opacity-60">
-        Trigger
+        {gt("Trigger")}
       </label>
       <select
         id={triggerSelectId}
@@ -917,18 +948,18 @@ function TriggerEditor({
         }}
         className="bg-transparent border border-white/15 rounded px-2 py-1"
       >
-        <option value="manual">Manual</option>
-        <option value="cron">Cron</option>
+        <option value="manual">{gt("Manual")}</option>
+        <option value="cron">{gt("Cron")}</option>
         {/* Git triggers need an always-on host to watch the repo — web/proxy only. */}
-        {(gitTriggers || kind === "git") && <option value="git">Git</option>}
+        {(gitTriggers || kind === "git") && <option value="git">{gt("Git")}</option>}
         {/* Budgets are a cloud feature; the crossing is evaluated server-side. */}
-        {(budgetIntegration || kind === "budget") && <option value="budget">Budget</option>}
+        {(budgetIntegration || kind === "budget") && <option value="budget">{gt("Budget")}</option>}
       </select>
       {trigger.kind === "cron" && <CronTriggerFields trigger={trigger} onChange={onChange} />}
       {trigger.kind === "git" && (
         <div className="flex flex-wrap items-center gap-2">
           {!gitIntegration?.configured ? (
-            <span className="opacity-60">GitHub isn’t configured on this server.</span>
+            <span className="opacity-60">{gt("GitHub isn’t configured on this server.")}</span>
           ) : gitIntegration.repos.length === 0 ? (
             <>
               <button
@@ -936,10 +967,12 @@ function TriggerEditor({
                 onClick={gitIntegration.onConnect}
                 className="px-2 py-1 rounded bg-white/10 hover:bg-white/20"
               >
-                Connect GitHub
+                {gt("Connect GitHub")}
               </button>
               <span className="opacity-50">
-                {gitIntegration.loading ? "Loading…" : "Install the app and pick repos to watch."}
+                {gitIntegration.loading
+                  ? gt("Loading…")
+                  : gt("Install the app and pick repos to watch.")}
               </span>
             </>
           ) : (
@@ -962,9 +995,9 @@ function TriggerEditor({
                   );
                 }}
                 className="bg-transparent border border-white/15 rounded px-2 py-1 max-w-56"
-                aria-label="Repository"
+                aria-label={gt("Repository")}
               >
-                <option value="">Select a repo…</option>
+                <option value="">{gt("Select a repo…")}</option>
                 {gitIntegration.repos.map((r) => (
                   <option key={`${r.installationId}:${r.fullName}`} value={r.fullName}>
                     {r.fullName}
@@ -974,19 +1007,19 @@ function TriggerEditor({
               <input
                 value={trigger.branch ?? ""}
                 onChange={(e) => onChange({ ...trigger, branch: e.target.value })}
-                placeholder="branch"
+                placeholder={gt("branch")}
                 className="bg-transparent border border-white/15 rounded px-2 py-1 w-28 font-mono"
-                aria-label="Branch"
+                aria-label={gt("Branch")}
               />
               <button
                 type="button"
                 onClick={gitIntegration.onConnect}
-                title="Add or remove repositories on GitHub"
+                title={gt("Add or remove repositories on GitHub")}
                 className="opacity-60 hover:opacity-100 px-1.5 py-1 rounded hover:bg-white/10"
               >
-                + repos
+                {gt("+ repos")}
               </button>
-              <span className="opacity-50">Runs on each new commit to the branch.</span>
+              <span className="opacity-50">{gt("Runs on each new commit to the branch.")}</span>
             </>
           )}
           <WebhookSecretField
@@ -1004,7 +1037,7 @@ function TriggerEditor({
           onChange={onChange}
         />
       )}
-      {kind === "manual" && <span className="opacity-50">infra.prompt() available</span>}
+      {kind === "manual" && <span className="opacity-50">{gt("infra.prompt() available")}</span>}
     </div>
   );
 }
@@ -1022,13 +1055,18 @@ function CronTriggerFields({
   trigger: Extract<WorkflowTrigger, { kind: "cron" }>;
   onChange: (t: WorkflowTrigger) => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const expression = trigger.expression;
   const timezone = trigger.timezone?.trim() ?? "";
 
   const cronError = useMemo(() => validateCronExpression(expression), [expression]);
   const timezoneError = useMemo(
-    () => (timezone && !isValidCronTimezone(timezone) ? `Unknown timezone "${timezone}"` : null),
-    [timezone],
+    () =>
+      timezone && !isValidCronTimezone(timezone)
+        ? gt('Unknown timezone "{timezone}"', { timezone })
+        : null,
+    [timezone, gt],
   );
 
   const nextRuns = useMemo(() => {
@@ -1068,14 +1106,14 @@ function CronTriggerFields({
           if (e.target.value !== "custom") onChange({ ...trigger, expression: e.target.value });
         }}
         className="bg-transparent border border-white/15 rounded px-2 py-1"
-        aria-label="Schedule preset"
+        aria-label={gt("Schedule preset")}
       >
         {CRON_PRESETS.map((p) => (
           <option key={p.value} value={p.value}>
-            {p.label}
+            {m(p.label)}
           </option>
         ))}
-        <option value="custom">Custom…</option>
+        <option value="custom">{gt("Custom…")}</option>
       </select>
       <div className="flex flex-col items-center leading-none">
         <input
@@ -1083,11 +1121,19 @@ function CronTriggerFields({
           onChange={(e) => onChange({ ...trigger, expression: e.target.value })}
           placeholder="* * * * *"
           spellCheck={false}
-          aria-label="Cron expression"
+          aria-label={gt("Cron expression")}
           className="bg-surface-overlay border border-white/15 rounded px-2 py-1 font-mono w-36 text-center tracking-[0.3em]"
         />
         <span className="mt-0.5 text-[9px] text-on-surface-faint tracking-tight">
-          min&nbsp;&nbsp;hour&nbsp;&nbsp;day&nbsp;&nbsp;mon&nbsp;&nbsp;wkday
+          {gt("min")}
+          &nbsp;&nbsp;
+          {gt("hour")}
+          &nbsp;&nbsp;
+          {gt("day")}
+          &nbsp;&nbsp;
+          {gt("mon")}
+          &nbsp;&nbsp;
+          {gt("wkday")}
         </span>
       </div>
       <input
@@ -1100,23 +1146,23 @@ function CronTriggerFields({
         }}
         placeholder="UTC"
         spellCheck={false}
-        aria-label="Timezone (IANA name, defaults to UTC)"
-        title="IANA timezone the schedule runs in, e.g. Europe/London. Leave empty for UTC."
+        aria-label={gt("Timezone (IANA name, defaults to UTC)")}
+        title={gt("IANA timezone the schedule runs in, e.g. Europe/London. Leave empty for UTC.")}
         className="bg-transparent border border-white/15 rounded px-2 py-1 w-32 font-mono"
       />
       {cronError || timezoneError ? (
         <span className="text-[11px] text-danger">{cronError ?? timezoneError}</span>
       ) : (
         <span className="text-[11px] text-info/80" title={expression}>
-          {describeCron(expression)}
+          {describeCron(expression, gt, m)}
           {nextRuns.length > 0 && (
             <>
               {" "}
-              Next: {nextRuns.map(formatRun).join(" · ")}
-              {timezone ? ` (${timezone})` : " (UTC)"}
+              {gt("Next:")} {nextRuns.map(formatRun).join(" · ")}
+              {gt(" ({zone})", { zone: timezone || "UTC" })}
             </>
           )}
-          {nextRuns.length === 0 && " This schedule never matches a run time."}
+          {nextRuns.length === 0 && gt(" This schedule never matches a run time.")}
         </span>
       )}
     </div>
@@ -1140,6 +1186,7 @@ function BudgetTriggerFields({
   loading: boolean;
   onChange: (t: WorkflowTrigger) => void;
 }) {
+  const gt = useGT();
   const percent = trigger.percent ?? DEFAULT_BUDGET_PERCENT;
   const metric = trigger.metric ?? "actual";
   const selected = budgets.find((b) => b.id === trigger.budgetId);
@@ -1147,7 +1194,7 @@ function BudgetTriggerFields({
   if (budgets.length === 0) {
     return (
       <span className="opacity-60">
-        {loading ? "Loading budgets…" : "No budgets yet — create one on a dashboard first."}
+        {loading ? gt("Loading budgets…") : gt("No budgets yet — create one on a dashboard first.")}
       </span>
     );
   }
@@ -1158,16 +1205,16 @@ function BudgetTriggerFields({
         value={trigger.budgetId}
         onChange={(e) => onChange({ ...trigger, budgetId: e.target.value })}
         className="bg-transparent border border-white/15 rounded px-2 py-1 max-w-56"
-        aria-label="Budget"
+        aria-label={gt("Budget")}
       >
-        <option value="">Select a budget…</option>
+        <option value="">{gt("Select a budget…")}</option>
         {budgets.map((b) => (
           <option key={b.id} value={b.id}>
             {b.name}
           </option>
         ))}
       </select>
-      <span className="opacity-60">goes over</span>
+      <span className="opacity-60">{gt("goes over")}</span>
       <input
         type="number"
         min={1}
@@ -1177,29 +1224,34 @@ function BudgetTriggerFields({
           onChange({ ...trigger, percent: next > 0 ? next : DEFAULT_BUDGET_PERCENT });
         }}
         className="bg-surface-overlay border border-white/15 rounded px-2 py-1 w-16 text-right font-mono"
-        aria-label="Budget threshold percent"
+        aria-label={gt("Budget threshold percent")}
       />
-      <span className="opacity-60">% of</span>
+      <span className="opacity-60">{gt("% of")}</span>
       <select
         value={metric}
         onChange={(e) =>
           onChange({ ...trigger, metric: e.target.value === "forecast" ? "forecast" : "actual" })
         }
         className="bg-transparent border border-white/15 rounded px-2 py-1"
-        aria-label="Budget measure"
+        aria-label={gt("Budget measure")}
       >
-        <option value="actual">spend so far</option>
-        <option value="forecast">forecast spend</option>
+        <option value="actual">{gt("spend so far")}</option>
+        <option value="forecast">{gt("forecast spend")}</option>
       </select>
       {selected && (
-        <span className="text-[11px] text-info/80">
-          Runs once a month, when {metric === "actual" ? "spend" : "the month-end forecast"} reaches{" "}
-          {formatBudgetAmount(
-            Math.round((selected.amountCents * percent) / 100),
-            selected.currency,
-          )}{" "}
-          of {formatBudgetAmount(selected.amountCents, selected.currency)}.
-        </span>
+        <T>
+          <span className="text-[11px] text-info/80">
+            Runs once a month, when{" "}
+            <Var>{metric === "actual" ? gt("spend") : gt("the month-end forecast")}</Var> reaches{" "}
+            <Var>
+              {formatBudgetAmount(
+                Math.round((selected.amountCents * percent) / 100),
+                selected.currency,
+              )}
+            </Var>{" "}
+            of <Var>{formatBudgetAmount(selected.amountCents, selected.currency)}</Var>.
+          </span>
+        </T>
       )}
     </div>
   );
@@ -1219,6 +1271,7 @@ function WebhookSecretField({
   webhookSecret: string | null;
   onChange?: ((value: string | null) => void) | undefined;
 }) {
+  const gt = useGT();
   const fieldId = useId();
   if (!onChange) return null;
 
@@ -1226,15 +1279,15 @@ function WebhookSecretField({
   if (hasWebhookSecret && webhookSecret === null) {
     return (
       <span className="flex items-center gap-1.5">
-        <span className="text-success/80" title="Deliveries must carry a valid signature">
-          Signed ✓
+        <span className="text-success/80" title={gt("Deliveries must carry a valid signature")}>
+          {gt("Signed ✓")}
         </span>
         <button
           type="button"
           onClick={() => onChange("")}
           className="opacity-60 hover:opacity-100 px-1.5 py-1 rounded hover:bg-white/10"
         >
-          Replace
+          {gt("Replace")}
         </button>
       </span>
     );
@@ -1243,14 +1296,14 @@ function WebhookSecretField({
   return (
     <span className="flex items-center gap-1.5">
       <label htmlFor={fieldId} className="opacity-60">
-        Signing secret
+        {gt("Signing secret")}
       </label>
       <input
         id={fieldId}
         type="password"
         value={webhookSecret ?? ""}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="optional, but recommended"
+        placeholder={gt("optional, but recommended")}
         autoComplete="off"
         spellCheck={false}
         className="bg-surface-overlay border border-white/15 rounded px-2 py-1 w-44 font-mono"
@@ -1261,7 +1314,7 @@ function WebhookSecretField({
           onClick={() => onChange(null)}
           className="opacity-60 hover:opacity-100 px-1.5 py-1 rounded hover:bg-white/10"
         >
-          Cancel
+          {gt("Cancel")}
         </button>
       )}
     </span>
@@ -1277,6 +1330,7 @@ function MetricsEditor({
   values: WorkflowMetricRow[];
   onChange: (defs: WorkflowMetricDef[]) => void;
 }) {
+  const gt = useGT();
   const valueByKey = useMemo(() => {
     const m = new Map<string, unknown>();
     for (const v of values) m.set(v.key, v.value);
@@ -1290,43 +1344,45 @@ function MetricsEditor({
   return (
     <div className="px-3 py-2 border-b border-white/10 text-xs">
       <div className="flex items-center justify-between mb-1">
-        <span className="opacity-60">Metrics</span>
+        <span className="opacity-60">{gt("Metrics")}</span>
         <button
           type="button"
           onClick={() =>
             onChange([
               ...defs,
-              { key: `metric${defs.length + 1}`, label: "Metric", type: "number" },
+              { key: `metric${defs.length + 1}`, label: gt("Metric"), type: "number" },
             ])
           }
           className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20"
         >
-          + Add metric
+          {gt("+ Add metric")}
         </button>
       </div>
       {defs.length === 0 && (
-        <div className="opacity-50">No metrics. Add one to read/write it from the workflow.</div>
+        <div className="opacity-50">
+          {gt("No metrics. Add one to read/write it from the workflow.")}
+        </div>
       )}
       {defs.map((d, i) => (
         <div key={i} className="flex items-center gap-1 mb-1 flex-wrap">
           <input
             value={d.key}
             onChange={(e) => update(i, { key: e.target.value })}
-            placeholder="key"
-            aria-label="Metric key"
+            placeholder={gt("key")}
+            aria-label={gt("Metric key")}
             className="bg-transparent border border-white/15 rounded px-1 py-0.5 w-28 font-mono"
           />
           <input
             value={d.label}
             onChange={(e) => update(i, { label: e.target.value })}
-            placeholder="label"
-            aria-label="Metric label"
+            placeholder={gt("label")}
+            aria-label={gt("Metric label")}
             className="bg-transparent border border-white/15 rounded px-1 py-0.5 w-32"
           />
           <select
             value={d.type}
             onChange={(e) => update(i, { type: e.target.value as WorkflowMetricDef["type"] })}
-            aria-label="Metric type"
+            aria-label={gt("Metric type")}
             className="bg-transparent border border-white/15 rounded px-1 py-0.5"
           >
             <option value="number">number</option>
@@ -1336,16 +1392,16 @@ function MetricsEditor({
           <input
             value={d.unit ?? ""}
             onChange={(e) => update(i, { unit: e.target.value })}
-            placeholder="unit"
-            aria-label="Metric unit"
+            placeholder={gt("unit")}
+            aria-label={gt("Metric unit")}
             className="bg-transparent border border-white/15 rounded px-1 py-0.5 w-16"
           />
           <span className="opacity-60">= {String(valueByKey.get(d.key) ?? "—")}</span>
           <button
             type="button"
             onClick={() => onChange(defs.filter((_, idx) => idx !== i))}
-            aria-label={`Remove metric ${d.key || d.label || i + 1}`}
-            title={`Remove metric ${d.key || d.label || i + 1}`}
+            aria-label={gt("Remove metric {name}", { name: d.key || d.label || String(i + 1) })}
+            title={gt("Remove metric {name}", { name: d.key || d.label || String(i + 1) })}
             className="px-1 opacity-60 hover:opacity-100"
           >
             ✕
@@ -1376,6 +1432,7 @@ function SecretsEditor({
   onDelete: (id: string) => Promise<void>;
   onError: (message: string) => void;
 }) {
+  const gt = useGT();
   const nameId = useId();
   const valueId = useId();
   const [name, setName] = useState("");
@@ -1390,12 +1447,14 @@ function SecretsEditor({
     const trimmedName = name.trim();
     if (!SECRET_PATH_RE.test(trimmedName)) {
       setValidationError(
-        "Secret names must be JavaScript identifiers, optionally separated by dots (for example API_TOKEN or stripe.apiKey).",
+        gt(
+          "Secret names must be JavaScript identifiers, optionally separated by dots (for example API_TOKEN or stripe.apiKey).",
+        ),
       );
       return;
     }
     if (!value) {
-      setValidationError("Enter an initial secret value.");
+      setValidationError(gt("Enter an initial secret value."));
       return;
     }
     setValidationError(null);
@@ -1414,7 +1473,7 @@ function SecretsEditor({
 
   const rotate = async (secret: WorkflowSecretSummary) => {
     if (!rotationValue) {
-      setValidationError("Enter a replacement value.");
+      setValidationError(gt("Enter a replacement value."));
       return;
     }
     setValidationError(null);
@@ -1433,15 +1492,15 @@ function SecretsEditor({
   return (
     <div className="px-3 py-2 border-b border-white/10 text-xs">
       <div className="mb-2">
-        <span className="opacity-60">Secrets</span>
+        <span className="opacity-60">{gt("Secrets")}</span>
         <span className="ml-2 opacity-50">
-          Assigned values are available as readonly infra.secrets properties.
+          {gt("Assigned values are available as readonly infra.secrets properties.")}
         </span>
       </div>
 
       <div className="flex items-end gap-2 flex-wrap">
         <label className="flex flex-col gap-1" htmlFor={nameId}>
-          <span className="opacity-60">Name</span>
+          <span className="opacity-60">{gt("Name")}</span>
           <input
             id={nameId}
             value={name}
@@ -1453,7 +1512,7 @@ function SecretsEditor({
           />
         </label>
         <label className="flex flex-col gap-1" htmlFor={valueId}>
-          <span className="opacity-60">Initial value</span>
+          <span className="opacity-60">{gt("Initial value")}</span>
           <input
             id={valueId}
             type="password"
@@ -1470,7 +1529,7 @@ function SecretsEditor({
           disabled={busyId !== null}
           className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-50"
         >
-          Add and assign
+          {gt("Add and assign")}
         </button>
       </div>
 
@@ -1482,9 +1541,9 @@ function SecretsEditor({
 
       <div className="mt-2 space-y-1">
         {loading ? (
-          <div className="opacity-50">Loading secrets…</div>
+          <div className="opacity-50">{gt("Loading secrets…")}</div>
         ) : secrets.length === 0 ? (
-          <div className="opacity-50">No reusable secrets yet.</div>
+          <div className="opacity-50">{gt("No reusable secrets yet.")}</div>
         ) : (
           secrets.map((secret) => {
             const rotationId = `workflow-secret-rotation-${secret.id}`;
@@ -1505,19 +1564,19 @@ function SecretsEditor({
                   <code>{secret.name}</code>
                 </label>
                 <span className={secret.hasValue ? "text-success/80" : "text-warning"}>
-                  {secret.hasValue ? "Value set" : "No value"}
+                  {secret.hasValue ? gt("Value set") : gt("No value")}
                 </span>
                 {rotatingId === secret.id ? (
                   <>
                     <label htmlFor={rotationId} className="sr-only">
-                      Replacement value for {secret.name}
+                      {gt("Replacement value for {name}", { name: secret.name })}
                     </label>
                     <input
                       id={rotationId}
                       type="password"
                       value={rotationValue}
                       onChange={(e) => setRotationValue(e.target.value)}
-                      placeholder="Replacement value"
+                      placeholder={gt("Replacement value")}
                       autoComplete="new-password"
                       spellCheck={false}
                       className="bg-surface-overlay border border-white/15 rounded px-2 py-1 w-44 font-mono"
@@ -1528,7 +1587,7 @@ function SecretsEditor({
                       disabled={busyId !== null}
                       className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 disabled:opacity-50"
                     >
-                      Save value
+                      {gt("Save value")}
                     </button>
                     <button
                       type="button"
@@ -1538,7 +1597,7 @@ function SecretsEditor({
                       }}
                       className="px-2 py-0.5 opacity-60 hover:opacity-100"
                     >
-                      Cancel
+                      {gt("Cancel")}
                     </button>
                   </>
                 ) : (
@@ -1550,7 +1609,7 @@ function SecretsEditor({
                     }}
                     className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20"
                   >
-                    {secret.hasValue ? "Rotate value" : "Set value"}
+                    {secret.hasValue ? gt("Rotate value") : gt("Set value")}
                   </button>
                 )}
                 <button
@@ -1558,7 +1617,12 @@ function SecretsEditor({
                   onClick={() => {
                     if (
                       !window.confirm(
-                        `Delete workflow secret "${secret.name}"? It will be unassigned from workflows.`,
+                        gt(
+                          'Delete workflow secret "{name}"? It will be unassigned from workflows.',
+                          {
+                            name: secret.name,
+                          },
+                        ),
                       )
                     )
                       return;
@@ -1568,10 +1632,10 @@ function SecretsEditor({
                       .finally(() => setBusyId(null));
                   }}
                   disabled={busyId !== null}
-                  aria-label={`Delete workflow secret ${secret.name}`}
+                  aria-label={gt("Delete workflow secret {name}", { name: secret.name })}
                   className="px-2 py-0.5 text-danger opacity-80 hover:opacity-100 disabled:opacity-50"
                 >
-                  Delete
+                  {gt("Delete")}
                 </button>
               </div>
             );
@@ -1610,6 +1674,7 @@ function PendingApprovalsPanel({
 }
 
 function RunResultPanel({ run }: { run: WorkflowRunResult }) {
+  const gt = useGT();
   return (
     <div className="h-48 border-t border-white/10 flex flex-col min-h-0">
       <div className="px-3 py-1 text-xs border-b border-white/10 flex items-center gap-2">
@@ -1631,7 +1696,11 @@ function RunResultPanel({ run }: { run: WorkflowRunResult }) {
             {l.message}
           </div>
         ))}
-        {run.error && <div className="text-danger">Error: {run.error.message}</div>}
+        {run.error && (
+          <div className="text-danger">
+            {gt("Error: {message}", { message: run.error.message })}
+          </div>
+        )}
         {run.output !== undefined && run.output !== null && (
           <pre className="mt-2 opacity-80">{JSON.stringify(run.output, null, 2)}</pre>
         )}
@@ -1642,10 +1711,11 @@ function RunResultPanel({ run }: { run: WorkflowRunResult }) {
 
 /** Logs streamed live while a run is in progress (same colour-by-level styling). */
 function LiveLogPanel({ logs }: { logs: WorkflowRunLog[] }) {
+  const gt = useGT();
   return (
     <div className="h-48 border-t border-white/10 flex flex-col min-h-0">
       <div className="px-3 py-1 text-xs border-b border-white/10 flex items-center gap-2">
-        <span className="font-semibold text-warning">running…</span>
+        <span className="font-semibold text-warning">{gt("running…")}</span>
       </div>
       <div className="flex-1 overflow-auto p-2 font-mono text-[11px] leading-relaxed">
         {logs.map((l, i) => (

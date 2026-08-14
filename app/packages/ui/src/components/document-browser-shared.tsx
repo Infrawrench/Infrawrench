@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { T, Var, useGT } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 import { formatErrorMessage } from "../utils.js";
 
 /**
@@ -36,26 +38,28 @@ export function CollectionListItem({
   onConfirmRemove: () => void;
   onCancelRemove: () => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   return (
     <div className="group relative">
       {confirming ? (
         <div className="flex items-center gap-1 px-2 py-1.5">
           <span className="text-xs text-danger truncate flex-1">
-            {verb} {name}?
+            {gt("{verb} {name}?", { verb: gtData(verb), name })}
           </span>
           <button
             type="button"
             onClick={onConfirmRemove}
             className="px-1.5 py-0.5 rounded bg-red-600 text-xs text-white hover:bg-red-500 transition-colors flex-shrink-0"
           >
-            {verb}
+            {gtData(verb)}
           </button>
           <button
             type="button"
             onClick={onCancelRemove}
             className="px-1.5 py-0.5 rounded text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors flex-shrink-0"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
         </div>
       ) : (
@@ -78,8 +82,8 @@ export function CollectionListItem({
               onRequestRemove();
             }}
             className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-on-surface-faint hover:text-danger transition-all text-xs px-1"
-            title={`${verb} collection`}
-            aria-label={`${verb} collection`}
+            title={gt("{verb} collection", { verb: gtData(verb) })}
+            aria-label={gt("{verb} collection", { verb: gtData(verb) })}
           >
             ×
           </button>
@@ -105,25 +109,31 @@ export function InsertDocumentPanel({
   onCancel: () => void;
   onSubmit: () => void;
 }) {
+  const gt = useGT();
   return (
     <div className="p-3 border-b border-border/60 bg-surface/80">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-on-surface-tertiary font-medium">
-          Insert Document into <span className="text-on-surface-secondary">{collection}</span>
-        </span>
+        <T>
+          <span className="text-xs text-on-surface-tertiary font-medium">
+            Insert Document into{" "}
+            <Var>
+              <span className="text-on-surface-secondary">{collection}</span>
+            </Var>
+          </span>
+        </T>
         <button
           type="button"
           onClick={onCancel}
           className="text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
         >
-          Cancel
+          {gt("Cancel")}
         </button>
       </div>
       <textarea
         value={text}
         onChange={(e) => onTextChange(e.target.value)}
         rows={6}
-        aria-label="Document JSON to insert"
+        aria-label={gt("Document JSON to insert")}
         className="w-full bg-surface-raised border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500 resize-y"
         spellCheck={false}
         placeholder='{ "key": "value" }'
@@ -135,7 +145,7 @@ export function InsertDocumentPanel({
           onClick={onSubmit}
           className="px-3 py-1.5 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 transition-colors"
         >
-          Insert Document
+          {gt("Insert Document")}
         </button>
       </div>
     </div>
@@ -175,6 +185,7 @@ export function DocumentRow({
   onDelete: () => void;
   onSave: (docJson: string) => Promise<void>;
 }) {
+  const gt = useGT();
   const previewFields = Object.entries(doc)
     .filter(([k]) => k !== hiddenKey)
     .slice(0, 4);
@@ -197,7 +208,7 @@ export function DocumentRow({
     try {
       parsed = JSON.parse(editText);
     } catch {
-      setEditError("Invalid JSON");
+      setEditError(gt("Invalid JSON"));
       return;
     }
     setSaving(true);
@@ -254,10 +265,12 @@ export function DocumentRow({
             if (!expanded) onToggle();
           }}
           className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-xs text-on-surface-faint hover:text-info px-1 transition-all flex-shrink-0"
-          title="Edit document"
-          aria-label={idLabel ? `Edit document ${idLabel}` : "Edit document"}
+          title={gt("Edit document")}
+          aria-label={
+            idLabel ? gt("Edit document {label}", { label: idLabel }) : gt("Edit document")
+          }
         >
-          Edit
+          {gt("Edit")}
         </button>
         <button
           type="button"
@@ -266,10 +279,12 @@ export function DocumentRow({
             onDelete();
           }}
           className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-xs text-on-surface-faint hover:text-danger px-1 transition-all flex-shrink-0"
-          title="Delete document"
-          aria-label={idLabel ? `Delete document ${idLabel}` : "Delete document"}
+          title={gt("Delete document")}
+          aria-label={
+            idLabel ? gt("Delete document {label}", { label: idLabel }) : gt("Delete document")
+          }
         >
-          Delete
+          {gt("Delete")}
         </button>
       </div>
       {expanded && (
@@ -280,7 +295,7 @@ export function DocumentRow({
                 value={editText}
                 onChange={(e) => setEditText(e.target.value)}
                 rows={10}
-                aria-label="Document JSON"
+                aria-label={gt("Document JSON")}
                 className="w-full bg-surface-raised border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary font-mono focus:outline-none focus:border-blue-500 resize-y"
                 spellCheck={false}
               />
@@ -291,7 +306,7 @@ export function DocumentRow({
                   onClick={() => setEditing(false)}
                   className="px-2.5 py-1 rounded text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
                 >
-                  Cancel
+                  {gt("Cancel")}
                 </button>
                 <button
                   type="button"
@@ -299,7 +314,7 @@ export function DocumentRow({
                   disabled={saving}
                   className="px-3 py-1 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 disabled:opacity-50 transition-colors"
                 >
-                  {saving ? "Saving…" : "Save"}
+                  {saving ? gt("Saving…") : gt("Save")}
                 </button>
               </div>
             </div>

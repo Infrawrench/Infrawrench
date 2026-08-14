@@ -1,13 +1,14 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
+import { t } from "gt-react";
 import { Toaster, toast } from "@infrawrench/ui";
 import { routeTree } from "./routeTree.gen";
 import "./globals.css";
 
 window.addEventListener("unhandledrejection", (event) => {
   const reason = event.reason;
-  toast.error("Something went wrong", {
+  toast.error(t("Something went wrong"), {
     description: reason instanceof Error ? reason.message : String(reason),
   });
 });

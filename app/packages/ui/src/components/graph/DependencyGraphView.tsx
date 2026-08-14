@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useGT } from "gt-react";
 import {
   buildDependencyGraph,
   collapseIdenticalNodes,
@@ -9,6 +10,7 @@ import {
   type DependencyGraphEdge,
   type DependencyGraphNode,
 } from "@infrawrench/client-core";
+import { useDataString } from "../../i18n/data-strings.js";
 
 interface DependencyGraphViewProps {
   data: DependencyGraphData;
@@ -50,6 +52,8 @@ function isExplicit(edge: DependencyGraphEdge): boolean {
  * through the app versus what the provider already had.
  */
 export function DependencyGraphView({ data, onOpenResource }: DependencyGraphViewProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [showInferred, setShowInferred] = useState(true);
   const [groupIdentical, setGroupIdentical] = useState(true);
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
@@ -88,27 +92,31 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
       <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-center">
         {inferredCount > 0 && !showInferred ? (
           <>
-            <p className="text-sm text-on-surface-secondary">No output references yet.</p>
+            <p className="text-sm text-on-surface-secondary">{gt("No output references yet.")}</p>
             <p className="text-xs text-on-surface-muted max-w-md">
-              Nothing here is wired through an output reference, but {inferredCount} link
-              {inferredCount === 1 ? " was" : "s were"} found in your synced cloud data.
+              {gt(
+                "Nothing here is wired through an output reference, but {count} link{suffix} found in your synced cloud data.",
+                {
+                  count: inferredCount,
+                  suffix: inferredCount === 1 ? " was" : "s were",
+                },
+              )}
             </p>
             <button
               type="button"
               onClick={() => setShowInferred(true)}
               className="mt-1 px-3 py-1 text-xs text-on-surface-secondary border border-border-strong rounded-lg hover:border-accent transition-colors"
             >
-              Show links from cloud data
+              {gt("Show links from cloud data")}
             </button>
           </>
         ) : (
           <>
-            <p className="text-sm text-on-surface-secondary">No connections yet.</p>
+            <p className="text-sm text-on-surface-secondary">{gt("No connections yet.")}</p>
             <p className="text-xs text-on-surface-muted max-w-md">
-              The graph is built from your synced cloud data — resources that sit inside another or
-              whose fields name another resource — plus output references you wire yourself. Add an
-              account and let it sync, or pick "Output reference" on a secret field when creating a
-              resource.
+              {gt(
+                'The graph is built from your synced cloud data — resources that sit inside another or whose fields name another resource — plus output references you wire yourself. Add an account and let it sync, or pick "Output reference" on a secret field when creating a resource.',
+              )}
             </p>
           </>
         )}
@@ -133,10 +141,15 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
             <span className="text-on-surface truncate">{selected.displayName}</span>
             <span className="text-xs text-on-surface-muted truncate">
               {selectedGroup
-                ? `${selectedGroup.length} identical resources, wired the same way.`
+                ? gt("{count} identical resources, wired the same way.", {
+                    count: selectedGroup.length,
+                  })
                 : dependentCount === 0
-                  ? "Nothing depends on this resource."
-                  : `Blast radius: ${dependentCount} dependent resource${dependentCount === 1 ? "" : "s"} highlighted.`}
+                  ? gt("Nothing depends on this resource.")
+                  : gt("Blast radius: {count} dependent resource{suffix} highlighted.", {
+                      count: dependentCount,
+                      suffix: dependentCount === 1 ? "" : "s",
+                    })}
             </span>
             <span className="flex-1" />
             {selectedGroup && (
@@ -145,7 +158,7 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
                 onClick={() => setExpandedIds((ids) => [...ids, selected.id])}
                 className="px-3 py-1 text-xs text-on-surface-secondary border border-border-strong rounded-lg hover:border-accent transition-colors flex-shrink-0"
               >
-                Show all {selectedGroup.length}
+                {gt("Show all {count}", { count: selectedGroup.length })}
               </button>
             )}
             <button
@@ -153,21 +166,22 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
               onClick={() => onOpenResource(selected)}
               className="px-3 py-1 text-xs text-on-surface-secondary border border-border-strong rounded-lg hover:border-accent transition-colors flex-shrink-0"
             >
-              Open resource →
+              {gt("Open resource →")}
             </button>
             <button
               type="button"
               onClick={() => setSelectedId(null)}
               className="px-3 py-1 text-xs text-on-surface-muted border border-border rounded-lg hover:border-border-strong transition-colors flex-shrink-0"
             >
-              Clear
+              {gt("Clear")}
             </button>
           </>
         ) : (
           <>
             <span className="text-xs text-on-surface-muted truncate">
-              Arrows point at what a resource depends on. Click a resource to highlight its blast
-              radius; click it again to open it.
+              {gt(
+                "Arrows point at what a resource depends on. Click a resource to highlight its blast radius; click it again to open it.",
+              )}
             </span>
             <span className="flex-1" />
             <Legend />
@@ -179,7 +193,7 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
                   onChange={(e) => setShowInferred(e.target.checked)}
                   className="accent-[var(--color-accent)]"
                 />
-                From cloud data ({inferredCount})
+                {gt("From cloud data ({count})", { count: inferredCount })}
               </label>
             )}
             {(collapsed.collapsedCount > 0 || !groupIdentical) && (
@@ -193,8 +207,10 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
                   }}
                   className="accent-[var(--color-accent)]"
                 />
-                Group identical
-                {collapsed.collapsedCount > 0 ? ` (${collapsed.collapsedCount} merged)` : ""}
+                {gt("Group identical")}
+                {collapsed.collapsedCount > 0
+                  ? gt(" ({count} merged)", { count: collapsed.collapsedCount })
+                  : ""}
               </label>
             )}
             {expandedIds.length > 0 && (
@@ -203,12 +219,15 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
                 onClick={() => setExpandedIds([])}
                 className="px-3 py-1 text-xs text-on-surface-muted border border-border rounded-lg hover:border-border-strong transition-colors flex-shrink-0"
               >
-                Regroup
+                {gt("Regroup")}
               </button>
             )}
             {explicitCount > 0 && (
               <span className="text-xs text-on-surface-faint flex-shrink-0">
-                {explicitCount} output reference{explicitCount === 1 ? "" : "s"}
+                {gt("{count} output reference{suffix}", {
+                  count: explicitCount,
+                  suffix: explicitCount === 1 ? "" : "s",
+                })}
               </span>
             )}
           </>
@@ -217,8 +236,9 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
 
       {data.truncated && (
         <div className="shrink-0 px-4 py-1.5 border-b border-border text-xs text-warning">
-          Too many links to draw them all — showing a partial graph. Open a single resource's
-          Dependencies tab for its full neighbourhood.
+          {gt(
+            "Too many links to draw them all — showing a partial graph. Open a single resource's Dependencies tab for its full neighbourhood.",
+          )}
         </div>
       )}
 
@@ -234,7 +254,7 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
           height={layout.height}
           viewBox={`0 0 ${layout.width} ${layout.height}`}
           role="group"
-          aria-label="Resource dependency graph"
+          aria-label={gt("Resource dependency graph")}
           onKeyDown={(e) => {
             if (e.key === "Escape") setSelectedId(null);
           }}
@@ -309,7 +329,7 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
                 opacity={blastRadius && !active ? 0.35 : 1}
                 markerEnd={active ? "url(#dep-arrow-active)" : "url(#dep-arrow)"}
               >
-                <title>{dependencyEdgeLabel(edge)}</title>
+                <title>{gtData(dependencyEdgeLabel(edge))}</title>
               </path>
             );
           })}
@@ -329,8 +349,15 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
                 tabIndex={0}
                 aria-label={
                   groupSize > 1
-                    ? `${node.displayName} (${node.resourceTypeLabel}), ${groupSize} identical resources`
-                    : `${node.displayName} (${node.resourceTypeLabel})`
+                    ? gt("{name} ({type}), {count} identical resources", {
+                        name: node.displayName,
+                        type: gtData(node.resourceTypeLabel),
+                        count: groupSize,
+                      })
+                    : gt("{name} ({type})", {
+                        name: node.displayName,
+                        type: gtData(node.resourceTypeLabel),
+                      })
                 }
                 // theme.css's global :focus-visible outline is invisible here:
                 // Firefox and Safari do not paint CSS `outline` on SVG
@@ -354,8 +381,17 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
               >
                 <title>
                   {groupSize > 1
-                    ? `${groupSize} × ${node.displayName} — ${node.resourceTypeLabel} · ${node.accountName}`
-                    : `${node.displayName} — ${node.resourceTypeLabel} · ${node.accountName}`}
+                    ? gt("{count} × {name} — {type} · {account}", {
+                        count: groupSize,
+                        name: node.displayName,
+                        type: gtData(node.resourceTypeLabel),
+                        account: node.accountName,
+                      })
+                    : gt("{name} — {type} · {account}", {
+                        name: node.displayName,
+                        type: gtData(node.resourceTypeLabel),
+                        account: node.accountName,
+                      })}
                 </title>
                 {/* Offset backing tiles: a stack reads as "several" before
                     the count is read. */}
@@ -437,7 +473,7 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
                   fill="var(--color-on-surface-muted)"
                   style={{ userSelect: "none" }}
                 >
-                  {truncate(`${node.resourceTypeLabel} · ${node.accountName}`, 27)}
+                  {truncate(`${gtData(node.resourceTypeLabel)} · ${node.accountName}`, 27)}
                 </text>
                 {groupSize > 1 && (
                   <>
@@ -474,13 +510,14 @@ export function DependencyGraphView({ data, onOpenResource }: DependencyGraphVie
 
 /** Line-style key: what a solid, dotted or dashed arrow means. */
 function Legend() {
+  const gt = useGT();
   return (
     <span className="hidden lg:flex items-center gap-3 text-xs text-on-surface-faint flex-shrink-0">
       {(
         [
-          ["output-ref", "Reference or provider link"],
-          ["containment", "Belongs to"],
-          ["field-match", "Named in a field"],
+          ["output-ref", gt("Reference or provider link")],
+          ["containment", gt("Belongs to")],
+          ["field-match", gt("Named in a field")],
         ] as const
       ).map(([kind, label]) => (
         <span key={kind} className="flex items-center gap-1.5">

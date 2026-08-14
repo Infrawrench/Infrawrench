@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useGT } from "gt-react";
 
 /**
  * Structured, no-code JSON Schema builder. Each row is one top-level
@@ -31,6 +32,7 @@ interface JsonSchemaEditorProps {
 }
 
 export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
+  const gt = useGT();
   const parsed = useMemo(() => parseSchema(value), [value]);
   const [rows, setRows] = useState<PropertyRow[]>(() => parsed);
 
@@ -61,14 +63,14 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
     <div className="space-y-2 rounded-lg border border-border-strong bg-surface-overlay/40 p-3">
       {rows.length === 0 && (
         <p className="text-xs text-on-surface-faint">
-          No properties yet. Add one to describe the function's fields.
+          {gt("No properties yet. Add one to describe the function's fields.")}
         </p>
       )}
       {rows.length > 0 && (
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-on-surface-faint">
-          <span className="flex-1">Property</span>
-          <span className="w-24">Type</span>
-          <span className="w-16 text-center">Required</span>
+          <span className="flex-1">{gt("Property")}</span>
+          <span className="w-24">{gt("Type")}</span>
+          <span className="w-16 text-center">{gt("Required")}</span>
           <span className="w-5" />
         </div>
       )}
@@ -79,15 +81,15 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
               type="text"
               value={row.name}
               onChange={(e) => update(i, { name: e.target.value })}
-              placeholder="property name"
-              aria-label="Property name"
+              placeholder={gt("property name")}
+              aria-label={gt("Property name")}
               spellCheck={false}
               className="flex-1 min-w-0 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
             />
             <select
               value={row.type}
               onChange={(e) => update(i, { type: e.target.value as PropertyType })}
-              aria-label="Property type"
+              aria-label={gt("Property type")}
               className="w-24 bg-surface-overlay border border-border-strong rounded-lg px-2 py-1.5 text-sm text-on-surface-secondary focus:outline-none focus:border-blue-500"
             >
               {PROPERTY_TYPES.map((t) => (
@@ -96,12 +98,12 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
                 </option>
               ))}
             </select>
-            <label className="w-16 flex justify-center" title="Required">
+            <label className="w-16 flex justify-center" title={gt("Required")}>
               <input
                 type="checkbox"
                 checked={row.required}
                 onChange={(e) => update(i, { required: e.target.checked })}
-                aria-label="Required"
+                aria-label={gt("Required")}
                 className="accent-blue-500"
               />
             </label>
@@ -109,8 +111,8 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
               type="button"
               onClick={() => removeRow(i)}
               className="w-5 flex-shrink-0 text-on-surface-faint hover:text-danger transition-colors text-sm leading-none"
-              aria-label="Remove property"
-              title="Remove property"
+              aria-label={gt("Remove property")}
+              title={gt("Remove property")}
             >
               ✕
             </button>
@@ -119,8 +121,8 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
             type="text"
             value={row.description}
             onChange={(e) => update(i, { description: e.target.value })}
-            placeholder="description (optional)"
-            aria-label="Property description"
+            placeholder={gt("description (optional)")}
+            aria-label={gt("Property description")}
             spellCheck={false}
             className="w-full bg-surface-overlay/60 border border-border rounded-lg px-3 py-1 text-xs text-on-surface-tertiary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
           />
@@ -131,7 +133,7 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
         onClick={addRow}
         className="text-xs text-on-surface-faint hover:text-accent transition-colors"
       >
-        + Add property
+        {gt("+ Add property")}
       </button>
     </div>
   );

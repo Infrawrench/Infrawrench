@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useGT } from "gt-react";
 import { useUIStore } from "@infrawrench/ui";
 import { MetricAlertsPanel } from "@infrawrench/ui/metric-alerts";
 import { DeclareIncidentModal, type IncidentSeed } from "@infrawrench/ui/incidents";
@@ -18,6 +19,7 @@ import { incidentsTabTarget, navigateToWorkspaceTarget } from "@/lib/workspace-t
  * it. Declaring lands them on the new incident.
  */
 export function DesktopMetricAlertsPanel() {
+  const gt = useGT();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const navigate = useNavigate();
   const client = useMemo(() => createDesktopMetricAlertsClient(), []);
@@ -27,7 +29,7 @@ export function DesktopMetricAlertsPanel() {
   if (!activeCloudOrgId) {
     return (
       <div className="p-6 text-sm text-on-surface-faint">
-        Metric alerts require cloud mode — sign in to sync.
+        {gt("Metric alerts require cloud mode — sign in to sync.")}
       </div>
     );
   }

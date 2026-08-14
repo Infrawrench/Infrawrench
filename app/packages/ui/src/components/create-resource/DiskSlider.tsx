@@ -1,3 +1,5 @@
+import { useGT } from "gt-react";
+
 export function DiskSlider({
   value,
   min,
@@ -11,14 +13,17 @@ export function DiskSlider({
   step: number;
   onChange: (n: number) => void;
 }) {
+  const gt = useGT();
   const pct = ((value - min) / (max - min)) * 100;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-on-surface-muted">{min} GB</span>
-        <span className="text-sm font-medium text-on-surface-secondary">{value} GB</span>
-        <span className="text-xs text-on-surface-muted">{max} GB</span>
+        <span className="text-xs text-on-surface-muted">{gt("{value} GB", { value: min })}</span>
+        <span className="text-sm font-medium text-on-surface-secondary">
+          {gt("{value} GB", { value })}
+        </span>
+        <span className="text-xs text-on-surface-muted">{gt("{value} GB", { value: max })}</span>
       </div>
       <div className="relative h-6 flex items-center">
         <div className="absolute w-full h-1.5 bg-surface-sunken rounded-full">
@@ -26,7 +31,7 @@ export function DiskSlider({
         </div>
         <input
           type="range"
-          aria-label="Disk size in GB"
+          aria-label={gt("Disk size in GB")}
           min={min}
           max={max}
           step={step}

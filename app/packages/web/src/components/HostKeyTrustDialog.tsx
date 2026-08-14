@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import { Modal, formatErrorMessage } from "@infrawrench/ui";
 import { trustHostKey, type HostKeyTrustPayload } from "@/lib/host-key-trust";
 
@@ -23,6 +24,7 @@ export function HostKeyTrustDialog({
   onAccepted,
   onCanceled,
 }: HostKeyTrustDialogProps) {
+  const gt = useGT();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [current, setCurrent] = useState<HostKeyTrustPayload>(payload);
@@ -54,7 +56,7 @@ export function HostKeyTrustDialog({
   return (
     <Modal
       onClose={submitting ? () => {} : onCanceled}
-      ariaLabel={isMismatch ? "Host key has changed!" : "Verify SSH host key"}
+      ariaLabel={isMismatch ? gt("Host key has changed!") : gt("Verify SSH host key")}
     >
       <div className="bg-surface-raised border border-border-strong rounded-2xl shadow-2xl w-[520px] max-h-[90vh] overflow-auto">
         <div
@@ -65,48 +67,55 @@ export function HostKeyTrustDialog({
           <h2
             className={`text-base font-semibold ${isMismatch ? "text-danger" : "text-on-surface"}`}
           >
-            {isMismatch ? "Host key has changed!" : "Verify SSH host key"}
+            {isMismatch ? gt("Host key has changed!") : gt("Verify SSH host key")}
           </h2>
-          <p className="text-xs text-on-surface-muted mt-1">
-            Host: <span className="text-on-surface-secondary font-mono">{hostLabel}</span>
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-muted mt-1">
+              Host:{" "}
+              <span className="text-on-surface-secondary font-mono">
+                <Var>{hostLabel}</Var>
+              </span>
+            </p>
+          </T>
         </div>
 
         <div className="p-6 space-y-4">
           {isMismatch ? (
             <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 space-y-2">
               <p className="text-xs text-danger font-medium">
-                The fingerprint of this host's SSH key does not match the one you previously
-                trusted.
+                {gt(
+                  "The fingerprint of this host's SSH key does not match the one you previously trusted.",
+                )}
               </p>
               <p className="text-xs text-danger/80">
-                This can happen if the server was rebuilt or its key was rotated, but it can also
-                indicate a man-in-the-middle attack. Only continue if you are certain the new key is
-                legitimate (for example, you rotated it yourself or it matches the fingerprint your
-                provider published).
+                {gt(
+                  "This can happen if the server was rebuilt or its key was rotated, but it can also indicate a man-in-the-middle attack. Only continue if you are certain the new key is legitimate (for example, you rotated it yourself or it matches the fingerprint your provider published).",
+                )}
               </p>
             </div>
           ) : (
             <div className="rounded-lg border border-border-strong bg-surface-overlay/50 p-3">
-              <p className="text-xs text-on-surface-tertiary">
-                You haven't connected to this host before. Confirm that the fingerprint below
-                matches what you expect (for example, the value printed by your cloud provider or
-                shown when you ran
-                <span className="font-mono"> ssh-keygen -lf </span>
-                on the host).
-              </p>
+              <T>
+                <p className="text-xs text-on-surface-tertiary">
+                  You haven't connected to this host before. Confirm that the fingerprint below
+                  matches what you expect (for example, the value printed by your cloud provider or
+                  shown when you ran
+                  <span className="font-mono"> ssh-keygen -lf </span>
+                  on the host).
+                </p>
+              </T>
             </div>
           )}
 
           {current.storedFingerprint && (
             <FingerprintRow
-              label="Previously trusted"
+              label={gt("Previously trusted")}
               value={current.storedFingerprint}
               tone="muted"
             />
           )}
           <FingerprintRow
-            label={current.storedFingerprint ? "Now presented" : "Presented fingerprint"}
+            label={current.storedFingerprint ? gt("Now presented") : gt("Presented fingerprint")}
             value={current.presentedFingerprint}
             tone={isMismatch ? "danger" : "neutral"}
           />
@@ -125,7 +134,7 @@ export function HostKeyTrustDialog({
             disabled={submitting}
             className="px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors disabled:opacity-50"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -136,10 +145,10 @@ export function HostKeyTrustDialog({
             }`}
           >
             {submitting
-              ? "Trusting..."
+              ? gt("Trusting...")
               : isMismatch
-                ? "Replace key and continue"
-                : "Trust this key and continue"}
+                ? gt("Replace key and continue")
+                : gt("Trust this key and continue")}
           </button>
         </div>
       </div>
@@ -156,6 +165,7 @@ function FingerprintRow({
   value: string;
   tone: "neutral" | "danger" | "muted";
 }) {
+  const gt = useGT();
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -184,7 +194,7 @@ function FingerprintRow({
           onClick={() => void copy()}
           className="text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
         >
-          {copied ? "Copied" : "Copy"}
+          {copied ? gt("Copied") : gt("Copy")}
         </button>
       </div>
       <div

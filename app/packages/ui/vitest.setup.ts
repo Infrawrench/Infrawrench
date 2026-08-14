@@ -1,6 +1,16 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach } from "vitest";
 import { cleanup } from "@testing-library/react";
+import { initializeGTSPA } from "gt-react";
+
+// gt-react hooks (useGT, <T>) read a singleton that the app entrypoints
+// initialize before rendering. Give tests the same singleton, English-only and
+// offline, so shared components render their source strings.
+await initializeGTSPA({
+  defaultLocale: "en",
+  locales: ["en"],
+  loadTranslations: async () => ({}),
+});
 
 // jsdom doesn't implement matchMedia; components that read the preferred color
 // scheme (e.g. chart theming) rely on it. Provide a no-op default that tests

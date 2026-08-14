@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import {
   OWNERSHIP_LIMITS,
   formatTicketRef,
@@ -59,6 +60,7 @@ export function ResourceOwnershipPanel({
   resourceId,
   resourceName,
 }: ResourceOwnershipPanelProps) {
+  const gt = useGT();
   const [record, setRecord] = useState<ResourceOwnership | null>(null);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(null));
   const [members, setMembers] = useState<OwnershipCandidate[]>([]);
@@ -154,7 +156,8 @@ export function ResourceOwnershipPanel({
   };
 
   const clear = async () => {
-    if (!window.confirm(`Remove the ownership record for ${resourceName}?`)) return;
+    if (!window.confirm(gt("Remove the ownership record for {name}?", { name: resourceName })))
+      return;
     setBusy(true);
     setProblem(null);
     try {
@@ -172,7 +175,7 @@ export function ResourceOwnershipPanel({
   if (!loaded) {
     return (
       <p role="status" className="p-4 text-sm text-on-surface-faint">
-        Loading ownership…
+        {gt("Loading ownership…")}
       </p>
     );
   }
@@ -181,31 +184,35 @@ export function ResourceOwnershipPanel({
     <div className="flex flex-col gap-4 p-4">
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          Couldn&apos;t load ownership — {error}{" "}
-          <button type="button" onClick={() => void refresh()} className="underline">
-            Retry
-          </button>
+          <T>
+            Couldn&apos;t load ownership — <Var>{error}</Var>{" "}
+            <button type="button" onClick={() => void refresh()} className="underline">
+              Retry
+            </button>
+          </T>
         </div>
       )}
 
       <div>
-        <h3 className="text-sm font-semibold text-on-surface">Ownership</h3>
-        <p className="mt-1 text-xs text-on-surface-secondary">
-          Who to ask about this resource, and why it exists. The orphan finder shows the owner
-          against every resource it flags, and alerts about this resource go to them as well as to
-          the org.
-        </p>
+        <h3 className="text-sm font-semibold text-on-surface">{gt("Ownership")}</h3>
+        <T>
+          <p className="mt-1 text-xs text-on-surface-secondary">
+            Who to ask about this resource, and why it exists. The orphan finder shows the owner
+            against every resource it flags, and alerts about this resource go to them as well as to
+            the org.
+          </p>
+        </T>
       </div>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-on-surface-secondary">Owner</span>
+        <span className="text-xs font-medium text-on-surface-secondary">{gt("Owner")}</span>
         <select
           value={draft.ownerUserId}
           onChange={(e) => update({ ownerUserId: e.target.value })}
           disabled={busy}
           className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-on-surface"
         >
-          <option value="">No owner</option>
+          <option value="">{gt("No owner")}</option>
           {members.map((member) => (
             <option key={member.userId} value={member.userId}>
               {member.name}
@@ -216,18 +223,22 @@ export function ResourceOwnershipPanel({
               doesn't silently discard the owner. */}
           {record?.ownerUserId && !members.some((m) => m.userId === record.ownerUserId) && (
             <option value={record.ownerUserId}>
-              {record.ownerName ?? record.ownerEmail ?? "Former member"} (no longer a member)
+              {gt("{name} (no longer a member)", {
+                name: record.ownerName ?? record.ownerEmail ?? gt("Former member"),
+              })}
             </option>
           )}
         </select>
         <span className="text-xs text-on-surface-faint">
-          Alerts about this resource are delivered to this person as well as to the org.
+          {gt("Alerts about this resource are delivered to this person as well as to the org.")}
         </span>
       </label>
 
       <label className="flex flex-col gap-1">
         <span className="text-xs font-medium text-on-surface-secondary">
-          Or a team <span className="font-normal text-on-surface-faint">(optional)</span>
+          <T>
+            Or a team <span className="font-normal text-on-surface-faint">(optional)</span>
+          </T>
         </span>
         <input
           type="text"
@@ -235,30 +246,31 @@ export function ResourceOwnershipPanel({
           onChange={(e) => update({ ownerLabel: e.target.value })}
           disabled={busy}
           maxLength={OWNERSHIP_LIMITS.maxOwnerLabelLength}
-          placeholder="Platform team"
+          placeholder={gt("Platform team")}
           className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-on-surface"
         />
         <span className="text-xs text-on-surface-faint">
-          Shown wherever the owner is, but nothing can be sent to it — set a person above if you
-          want the alerts to reach someone.
+          {gt(
+            "Shown wherever the owner is, but nothing can be sent to it — set a person above if you want the alerts to reach someone.",
+          )}
         </span>
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-on-surface-secondary">Purpose</span>
+        <span className="text-xs font-medium text-on-surface-secondary">{gt("Purpose")}</span>
         <textarea
           value={draft.purpose}
           onChange={(e) => update({ purpose: e.target.value })}
           disabled={busy}
           rows={3}
           maxLength={OWNERSHIP_LIMITS.maxPurposeLength}
-          placeholder="Staging load tests for the checkout rewrite"
+          placeholder={gt("Staging load tests for the checkout rewrite")}
           className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-on-surface"
         />
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-on-surface-secondary">Ticket</span>
+        <span className="text-xs font-medium text-on-surface-secondary">{gt("Ticket")}</span>
         <input
           type="url"
           value={draft.ticketUrl}
@@ -275,7 +287,7 @@ export function ResourceOwnershipPanel({
             rel="noreferrer noopener"
             className="text-xs text-on-surface-tertiary underline hover:text-on-surface"
           >
-            Open {formatTicketRef(record.ticketUrl)}
+            {gt("Open {ref}", { ref: formatTicketRef(record.ticketUrl) })}
           </a>
         )}
       </label>
@@ -287,7 +299,7 @@ export function ResourceOwnershipPanel({
       )}
       {saved && !dirty && (
         <p role="status" className="text-sm text-on-surface-secondary">
-          {record ? "Ownership saved." : "Ownership cleared — nothing was left to record."}
+          {record ? gt("Ownership saved.") : gt("Ownership cleared — nothing was left to record.")}
         </p>
       )}
 
@@ -298,7 +310,7 @@ export function ResourceOwnershipPanel({
           disabled={busy || !dirty}
           className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
         >
-          {busy ? "Saving…" : "Save"}
+          {busy ? gt("Saving…") : gt("Save")}
         </button>
         {dirty && (
           <button
@@ -310,7 +322,7 @@ export function ResourceOwnershipPanel({
             disabled={busy}
             className="rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary hover:text-on-surface"
           >
-            Discard changes
+            {gt("Discard changes")}
           </button>
         )}
         {record && !dirty && (
@@ -320,7 +332,7 @@ export function ResourceOwnershipPanel({
             disabled={busy}
             className="ml-auto rounded-lg px-3 py-1.5 text-sm text-on-surface-tertiary hover:text-danger"
           >
-            Remove
+            {gt("Remove")}
           </button>
         )}
       </div>

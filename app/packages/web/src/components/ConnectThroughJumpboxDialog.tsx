@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import { Modal } from "@infrawrench/ui";
 import { apiGet } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
@@ -40,6 +41,7 @@ export function ConnectThroughJumpboxDialog({
   onClose,
   onAdded,
 }: Props) {
+  const gt = useGT();
   const orgId = useOrgId();
   const [sshAccounts, setSshAccounts] = useState<AccountListItem[] | null>(null);
   const [accountsError, setAccountsError] = useState<string | null>(null);
@@ -48,7 +50,7 @@ export function ConnectThroughJumpboxDialog({
     privateHost ? "private" : "public",
   );
   const [showAddAccount, setShowAddAccount] = useState(false);
-  const [name, setName] = useState(`${sourceDisplayName} via jumpbox`);
+  const [name, setName] = useState(() => gt("{name} via jumpbox", { name: sourceDisplayName }));
 
   useEffect(() => {
     apiGet<AccountListItem[]>(`/api/org/${orgId}/accounts`)
@@ -56,7 +58,7 @@ export function ConnectThroughJumpboxDialog({
       // A failed load must not read as "no SSH accounts yet" — that message
       // sends the user off to create an account they may already have.
       .catch((e: unknown) =>
-        setAccountsError(e instanceof Error ? e.message : "Failed to load accounts"),
+        setAccountsError(e instanceof Error ? e.message : gt("Failed to load accounts")),
       );
   }, [orgId]);
 
@@ -79,35 +81,38 @@ export function ConnectThroughJumpboxDialog({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel="Connect through jumpbox">
+    <Modal onClose={onClose} ariaLabel={gt("Connect through jumpbox")}>
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-on-surface-secondary">
-            Connect through jumpbox
+            {gt("Connect through jumpbox")}
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg leading-none"
-            aria-label="Close"
+            aria-label={gt("Close")}
           >
             &#215;
           </button>
         </div>
         <div className="p-5 space-y-4">
-          <p className="text-xs text-on-surface-faint">
-            Creates a new SSH target that routes through the selected jumpbox. The jumpbox itself
-            can also be configured to route through another SSH account, allowing multi-hop chains.
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-faint">
+              Creates a new SSH target that routes through the selected jumpbox. The jumpbox itself
+              can also be configured to route through another SSH account, allowing multi-hop
+              chains.
+            </p>
+          </T>
 
           <div>
             <label htmlFor="ctj-name" className="block text-xs text-on-surface-tertiary mb-1">
-              New SSH account name
+              {gt("New SSH account name")}
             </label>
             <input
               id="ctj-name"
               type="text"
-              aria-label="New SSH account name"
+              aria-label={gt("New SSH account name")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary focus:outline-none focus:border-border-strong"
@@ -116,17 +121,21 @@ export function ConnectThroughJumpboxDialog({
 
           <div>
             <label htmlFor="ctj-jumpbox" className="block text-xs text-on-surface-tertiary mb-1">
-              Jumpbox
+              {gt("Jumpbox")}
             </label>
             {accountsError !== null ? (
-              <p className="text-xs text-danger">Failed to load SSH accounts: {accountsError}</p>
-            ) : sshAccounts === null ? (
-              <p className="text-xs text-on-surface-faint">Loading…</p>
-            ) : sshAccounts.length === 0 ? (
-              <p className="text-xs text-on-surface-faint">
-                No SSH accounts yet. Add one from the sidebar first; that account becomes the
-                jumpbox.
+              <p className="text-xs text-danger">
+                {gt("Failed to load SSH accounts: {error}", { error: accountsError })}
               </p>
+            ) : sshAccounts === null ? (
+              <p className="text-xs text-on-surface-faint">{gt("Loading…")}</p>
+            ) : sshAccounts.length === 0 ? (
+              <T>
+                <p className="text-xs text-on-surface-faint">
+                  No SSH accounts yet. Add one from the sidebar first; that account becomes the
+                  jumpbox.
+                </p>
+              </T>
             ) : (
               <select
                 id="ctj-jumpbox"
@@ -134,7 +143,7 @@ export function ConnectThroughJumpboxDialog({
                 onChange={(e) => setJumpboxId(e.target.value)}
                 className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary focus:outline-none focus:border-border-strong"
               >
-                <option value="">Select jumpbox…</option>
+                <option value="">{gt("Select jumpbox…")}</option>
                 {sshAccounts.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.displayName}
@@ -147,32 +156,44 @@ export function ConnectThroughJumpboxDialog({
           {privateHost && (
             <div>
               <div className="block text-xs text-on-surface-tertiary mb-1">
-                Connect to {sourceDisplayName} via
+                {gt("Connect to {name} via", { name: sourceDisplayName })}
               </div>
               <div className="space-y-1.5">
                 <label className="flex items-center gap-2 text-sm text-on-surface-secondary">
                   <input
                     type="radio"
                     name="ctj-address"
-                    aria-label={`Private address (${privateHost})`}
+                    aria-label={gt("Private address ({host})", { host: privateHost })}
                     checked={useAddress === "private"}
                     onChange={() => setUseAddress("private")}
                   />
-                  <span>
-                    Private address (<span className="font-mono">{privateHost}</span>)
-                  </span>
+                  <T>
+                    <span>
+                      Private address (
+                      <Var>
+                        <span className="font-mono">{privateHost}</span>
+                      </Var>
+                      )
+                    </span>
+                  </T>
                 </label>
                 <label className="flex items-center gap-2 text-sm text-on-surface-secondary">
                   <input
                     type="radio"
                     name="ctj-address"
-                    aria-label={`Public address (${publicHost})`}
+                    aria-label={gt("Public address ({host})", { host: publicHost })}
                     checked={useAddress === "public"}
                     onChange={() => setUseAddress("public")}
                   />
-                  <span>
-                    Public address (<span className="font-mono">{publicHost}</span>)
-                  </span>
+                  <T>
+                    <span>
+                      Public address (
+                      <Var>
+                        <span className="font-mono">{publicHost}</span>
+                      </Var>
+                      )
+                    </span>
+                  </T>
                 </label>
               </div>
             </div>
@@ -184,7 +205,7 @@ export function ConnectThroughJumpboxDialog({
               onClick={onClose}
               className="flex-1 px-3 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong rounded-lg hover:border-border-strong transition-colors"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -192,7 +213,7 @@ export function ConnectThroughJumpboxDialog({
               disabled={!jumpboxId || !name.trim()}
               className="flex-1 px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
             >
-              Add account
+              {gt("Add account")}
             </button>
           </div>
         </div>

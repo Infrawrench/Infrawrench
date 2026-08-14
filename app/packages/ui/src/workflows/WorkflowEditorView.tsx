@@ -1,5 +1,6 @@
 import type { OnMount } from "@monaco-editor/react";
 import { lazy, Suspense, useCallback, useEffect, useRef } from "react";
+import { useGT } from "gt-react";
 
 const Editor = lazy(() => import("@monaco-editor/react"));
 
@@ -64,6 +65,7 @@ export function WorkflowEditorView({
   currentLine,
   pausedLine,
 }: WorkflowEditorViewProps) {
+  const gt = useGT();
   type Monaco = Parameters<OnMount>[1];
   type Editor = Parameters<OnMount>[0];
   // Keep references so we can re-inject typings/decorations when props change.
@@ -106,7 +108,7 @@ export function WorkflowEditorView({
         range: new monaco.Range(line, 1, line, 1),
         options: {
           glyphMarginClassName: "iw-wf-breakpoint-glyph iw-wf-breakpoint-margin",
-          glyphMarginHoverMessage: { value: "Breakpoint" },
+          glyphMarginHoverMessage: { value: gt("Breakpoint") },
         },
       });
     }
@@ -142,7 +144,7 @@ export function WorkflowEditorView({
       // Cmd/Ctrl+S → save
       editor.addAction({
         id: "workflow-save",
-        label: "Save workflow",
+        label: gt("Save workflow"),
         keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
         run: () => onSaveRef.current?.(),
       });
@@ -156,7 +158,7 @@ export function WorkflowEditorView({
         }
       });
     },
-    [applyTypings, applyDecorations, dts],
+    [applyTypings, applyDecorations, dts, gt],
   );
 
   // Re-inject typings when the generated dts changes (accounts/metrics edited).
@@ -170,7 +172,9 @@ export function WorkflowEditorView({
   }, [applyDecorations]);
 
   return (
-    <Suspense fallback={<div className="flex-1 p-4 text-sm opacity-60">Loading editor…</div>}>
+    <Suspense
+      fallback={<div className="flex-1 p-4 text-sm opacity-60">{gt("Loading editor…")}</div>}
+    >
       <Editor
         defaultLanguage="typescript"
         value={value}

@@ -1,4 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useGT } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 
 export interface MultiSelectOption {
   value: string;
@@ -50,11 +52,14 @@ export function MultiSelect({
   value,
   onChange,
   label,
-  placeholder = "Any",
+  placeholder,
   status,
   onOpen,
   className = "",
 }: MultiSelectProps) {
+  const gt = useGT();
+  const gtData = useDataString();
+  const effectivePlaceholder = placeholder ?? gt("Any");
   const uid = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -183,10 +188,10 @@ export function MultiSelect({
             key={v}
             className="inline-flex max-w-full items-center gap-1 rounded border border-border bg-surface-raised px-1.5 py-0.5 text-xs"
           >
-            <span className="truncate">{labelByValue.get(v) ?? v}</span>
+            <span className="truncate">{gtData(labelByValue.get(v) ?? v)}</span>
             <button
               type="button"
-              aria-label={`Remove ${labelByValue.get(v) ?? v}`}
+              aria-label={gt("Remove {name}", { name: gtData(labelByValue.get(v) ?? v) })}
               className="text-on-surface-faint hover:text-on-surface"
               onClick={() => onChange(value.filter((x) => x !== v))}
             >
@@ -195,7 +200,9 @@ export function MultiSelect({
           </span>
         ))}
         {overflow > 0 && (
-          <span className="text-xs text-on-surface-secondary">+{overflow} more</span>
+          <span className="text-xs text-on-surface-secondary">
+            {gt("+{count} more", { count: overflow })}
+          </span>
         )}
         <button
           ref={buttonRef}
@@ -206,7 +213,9 @@ export function MultiSelect({
           className="flex min-w-[3rem] flex-1 items-center text-left"
           onClick={() => (open ? close() : openPanel())}
         >
-          {value.length === 0 && <span className="text-on-surface-faint">{placeholder}</span>}
+          {value.length === 0 && (
+            <span className="text-on-surface-faint">{effectivePlaceholder}</span>
+          )}
           <span className="ml-auto pl-1 text-on-surface-faint">▾</span>
         </button>
       </div>
@@ -223,8 +232,8 @@ export function MultiSelect({
             {...(filtered[activeIndex]
               ? { "aria-activedescendant": `${uid}-opt-${activeIndex}` }
               : {})}
-            aria-label={`Filter ${label}`}
-            placeholder="Type to filter…"
+            aria-label={gt("Filter {label}", { label })}
+            placeholder={gt("Type to filter…")}
             className="w-full rounded border border-border bg-surface-sunken px-2 py-1 text-sm text-on-surface focus:outline-none focus:border-blue-500"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -233,7 +242,9 @@ export function MultiSelect({
 
           <div className="mt-1 flex items-center justify-between px-1 text-[11px] text-on-surface-faint">
             <span>
-              {value.length > 0 ? `${value.length} selected` : `${options.length} available`}
+              {value.length > 0
+                ? gt("{count} selected", { count: value.length })
+                : gt("{count} available", { count: options.length })}
             </span>
             {value.length > 0 && (
               <button
@@ -241,7 +252,7 @@ export function MultiSelect({
                 className="text-info hover:text-info-strong"
                 onClick={() => onChange([])}
               >
-                Clear
+                {gt("Clear")}
               </button>
             )}
           </div>
@@ -293,7 +304,7 @@ export function MultiSelect({
                   >
                     {isSelected ? "✓" : ""}
                   </span>
-                  <span className="truncate">{o.label}</span>
+                  <span className="truncate">{gtData(o.label)}</span>
                 </li>
               );
             })}
@@ -301,11 +312,13 @@ export function MultiSelect({
 
           <div role="status">
             {filtered.length === 0 && options.length > 0 && (
-              <p className="px-2 py-1 text-sm text-on-surface-faint">No matches for “{query}”</p>
+              <p className="px-2 py-1 text-sm text-on-surface-faint">
+                {gt("No matches for “{query}”", { query })}
+              </p>
             )}
 
             {options.length === 0 && status?.kind === "loading" && (
-              <p className="px-2 py-1 text-sm text-on-surface-faint">Loading values…</p>
+              <p className="px-2 py-1 text-sm text-on-surface-faint">{gt("Loading values…")}</p>
             )}
             {options.length === 0 && status?.kind === "empty" && (
               <p className="px-2 py-1 text-sm text-on-surface-faint">{status.message}</p>
@@ -319,7 +332,7 @@ export function MultiSelect({
                     className="text-info hover:text-info-strong"
                     onClick={status.onRetry}
                   >
-                    Retry
+                    {gt("Retry")}
                   </button>
                 )}
               </p>

@@ -1,5 +1,6 @@
 import type React from "react";
 import { useState, useEffect, useRef } from "react";
+import { T, Var, useGT } from "gt-react";
 import { Modal } from "./Modal.js";
 import { formatErrorMessage } from "../utils.js";
 
@@ -32,6 +33,7 @@ export function ConfirmDeleteModal({
   onClose,
   summary,
 }: ConfirmDeleteModalProps) {
+  const gt = useGT();
   const [typed, setTyped] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,23 +58,30 @@ export function ConfirmDeleteModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel={`Delete ${kind}`}>
+    <Modal onClose={onClose} ariaLabel={gt("Delete {kind}", { kind })}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[420px] p-6">
-        <h2 className="text-sm font-semibold text-on-surface mb-1">Delete {kind}</h2>
-        <p className="text-xs text-on-surface-tertiary mb-4">
-          This action cannot be undone. To confirm, type{" "}
-          <span className="text-white font-medium select-all">{name}</span> below.
-        </p>
+        <h2 className="text-sm font-semibold text-on-surface mb-1">
+          {gt("Delete {kind}", { kind })}
+        </h2>
+        <T>
+          <p className="text-xs text-on-surface-tertiary mb-4">
+            This action cannot be undone. To confirm, type{" "}
+            <Var>
+              <span className="text-white font-medium select-all">{name}</span>
+            </Var>{" "}
+            below.
+          </p>
+        </T>
 
         {summary}
 
         <label htmlFor="confirm-delete-input" className="sr-only">
-          Type {name} to confirm
+          {gt("Type {name} to confirm", { name })}
         </label>
         <input
           id="confirm-delete-input"
           ref={inputRef}
-          aria-label={`Type ${name} to confirm`}
+          aria-label={gt("Type {name} to confirm", { name })}
           type="text"
           value={typed}
           onChange={(e) => setTyped(e.target.value)}
@@ -93,7 +102,7 @@ export function ConfirmDeleteModal({
             disabled={deleting}
             className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary transition-colors rounded-lg"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -101,7 +110,7 @@ export function ConfirmDeleteModal({
             disabled={!matches || deleting}
             className="px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:hover:bg-red-600 text-white rounded-lg transition-colors"
           >
-            {deleting ? "Deleting…" : `Delete ${kind}`}
+            {deleting ? gt("Deleting…") : gt("Delete {kind}", { kind })}
           </button>
         </div>
       </div>

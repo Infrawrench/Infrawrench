@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
+import { useGT } from "gt-react";
 import { invoke } from "../lib/invoke";
 import { getPlugin } from "../plugins/loader";
 import { sshExecCommand } from "../lib/ssh-tunnel";
-import { Modal, formatErrorMessage } from "@infrawrench/ui";
+import { Modal, formatErrorMessage, useDataString } from "@infrawrench/ui";
 import { ErrorNotice } from "./ErrorNotice";
 import { SshKeyPicker } from "./SshKeyPicker";
 import type { DraggableResource } from "../lib/pins";
@@ -27,6 +28,8 @@ export function SshEnvDeployModal({
   onClose,
   onDeployed,
 }: SshEnvDeployModalProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [sshUser, setSshUser] = useState(defaultUsername ?? "root");
   const [sshPort, setSshPort] = useState(22);
   const [privateKey, setPrivateKey] = useState("");
@@ -64,7 +67,7 @@ export function SshEnvDeployModal({
         const tpls = resourceType?.secretExportTemplates ?? [];
         if (tpls.length === 0) {
           if (!cancelled)
-            setLoadError("This resource type doesn't have any exportable credentials.");
+            setLoadError(gt("This resource type doesn't have any exportable credentials."));
           return;
         }
         if (!cancelled && resourceType) setEffectiveTypeId(resourceType.id);
@@ -108,7 +111,9 @@ export function SshEnvDeployModal({
 
     try {
       const sourceLoaded = await getPlugin(source.pluginId);
-      if (!sourceLoaded) throw new Error(`Plugin "${source.pluginId}" not loaded`);
+      if (!sourceLoaded) {
+        throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId: source.pluginId }));
+      }
 
       const sourceCreds = await invoke<Record<string, string>>("account_get_credentials", {
         accountId: source.accountId,
@@ -159,7 +164,12 @@ export function SshEnvDeployModal({
 
       const result = await sshExecCommand(sshConfig, cmd);
       if (result.code !== 0) {
-        throw new Error(`Failed to write to ${filePath}: ${result.stderr || result.stdout}`);
+        throw new Error(
+          gt("Failed to write to {filePath}: {details}", {
+            filePath,
+            details: result.stderr || result.stdout,
+          }),
+        );
       }
 
       onDeployed();
@@ -172,10 +182,12 @@ export function SshEnvDeployModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel="Deploy credentials to VM">
+    <Modal onClose={onClose} ariaLabel={gt("Deploy credentials to VM")}>
       <div className="bg-surface-raised border border-border-strong rounded-2xl shadow-2xl w-[520px] max-h-[90vh] overflow-auto">
         <div className="p-6 border-b border-border">
-          <h2 className="text-base font-semibold text-on-surface">Deploy credentials to VM</h2>
+          <h2 className="text-base font-semibold text-on-surface">
+            {gt("Deploy credentials to VM")}
+          </h2>
           <p className="text-xs text-on-surface-muted mt-1">
             <span className="text-on-surface-secondary font-medium">{source.displayName}</span> →{" "}
             <span className="text-on-surface-secondary font-mono">{sshHost}</span>
@@ -199,7 +211,7 @@ export function SshEnvDeployModal({
                   htmlFor="ssh-env-deploy-port"
                   className="text-xs text-on-surface-muted w-20 shrink-0"
                 >
-                  SSH Port
+                  {gt("SSH Port")}
                 </label>
                 <input
                   id="ssh-env-deploy-port"
@@ -214,7 +226,7 @@ export function SshEnvDeployModal({
               {/* Template picker */}
               {templates.length > 1 && (
                 <div className="space-y-2">
-                  <span className="text-xs text-on-surface-muted">Template</span>
+                  <span className="text-xs text-on-surface-muted">{gt("Template")}</span>
                   <div className="space-y-1">
                     {templates.map((tpl) => (
                       <button
@@ -227,9 +239,11 @@ export function SshEnvDeployModal({
                             : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong"
                         }`}
                       >
-                        <div className="font-medium">{tpl.displayName}</div>
+                        <div className="font-medium">{gtData(tpl.displayName)}</div>
                         {tpl.description && (
-                          <div className="text-on-surface-faint mt-0.5">{tpl.description}</div>
+                          <div className="text-on-surface-faint mt-0.5">
+                            {gtData(tpl.description)}
+                          </div>
                         )}
                       </button>
                     ))}
@@ -241,14 +255,16 @@ export function SshEnvDeployModal({
               {selectedTemplate && (
                 <div className="space-y-2">
                   <span className="text-xs text-on-surface-muted">
-                    Variables ({selectedTemplate.entries.length})
+                    {gt("Variables ({count})", { count: selectedTemplate.entries.length })}
                   </span>
                   <div className="rounded-lg border border-border-strong divide-y divide-border">
                     {selectedTemplate.entries.map((entry) => (
                       <div key={entry.outputKey} className="flex items-center gap-3 px-3 py-2">
                         <input
                           type="text"
-                          aria-label={`Environment variable name for ${camelToTitle(entry.outputKey)}`}
+                          aria-label={gt("Environment variable name for {label}", {
+                            label: gtData(camelToTitle(entry.outputKey)),
+                          })}
                           value={editableKeys[entry.outputKey] ?? entry.envKey}
                           onChange={(e) =>
                             setEditableKeys((prev) => ({
@@ -258,9 +274,9 @@ export function SshEnvDeployModal({
                           }
                           className="flex-1 bg-transparent text-sm font-mono text-on-surface outline-none"
                         />
-                        <span className="text-xs text-on-surface-faint">from</span>
+                        <span className="text-xs text-on-surface-faint">{gt("from")}</span>
                         <span className="text-xs text-on-surface-muted font-mono">
-                          {camelToTitle(entry.outputKey)}
+                          {gtData(camelToTitle(entry.outputKey))}
                         </span>
                       </div>
                     ))}
@@ -270,7 +286,7 @@ export function SshEnvDeployModal({
 
               {/* Format */}
               <div className="space-y-2">
-                <span className="text-xs text-on-surface-muted">Format</span>
+                <span className="text-xs text-on-surface-muted">{gt("Format")}</span>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -299,7 +315,7 @@ export function SshEnvDeployModal({
                         : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong"
                     }`}
                   >
-                    <div className="font-medium">Shell profile</div>
+                    <div className="font-medium">{gt("Shell profile")}</div>
                     <div className="text-on-surface-faint mt-0.5">export KEY=value</div>
                   </button>
                 </div>
@@ -312,7 +328,7 @@ export function SshEnvDeployModal({
                   htmlFor="ssh-env-deploy-file-path"
                   className="text-xs text-on-surface-muted w-20 shrink-0"
                 >
-                  File path
+                  {gt("File path")}
                 </label>
                 <input
                   id="ssh-env-deploy-file-path"
@@ -326,7 +342,7 @@ export function SshEnvDeployModal({
 
               {/* Append toggle */}
               <div className="flex items-center gap-3">
-                <span className="text-xs text-on-surface-muted w-20 shrink-0">Mode</span>
+                <span className="text-xs text-on-surface-muted w-20 shrink-0">{gt("Mode")}</span>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -337,7 +353,7 @@ export function SshEnvDeployModal({
                         : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong"
                     }`}
                   >
-                    Append
+                    {gt("Append")}
                   </button>
                   <button
                     type="button"
@@ -348,7 +364,7 @@ export function SshEnvDeployModal({
                         : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong"
                     }`}
                   >
-                    Overwrite
+                    {gt("Overwrite")}
                   </button>
                 </div>
               </div>
@@ -372,7 +388,7 @@ export function SshEnvDeployModal({
               disabled={deploying}
               className="px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -380,7 +396,7 @@ export function SshEnvDeployModal({
               disabled={deploying || !privateKey.trim() || !selectedTemplate || !filePath.trim()}
               className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"
             >
-              {resolving ? "Resolving..." : deploying ? "Deploying..." : "Deploy"}
+              {resolving ? gt("Resolving...") : deploying ? gt("Deploying...") : gt("Deploy")}
             </button>
           </div>
         )}

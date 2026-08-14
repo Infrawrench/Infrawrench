@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { useGT } from "gt-react";
 import type { DescribeCapability } from "@infrawrench/plugin-base";
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export function DescribeView({ capability, onGetDescribe }: Props) {
+  const gt = useGT();
   const [text, setText] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,7 @@ export function DescribeView({ capability, onGetDescribe }: Props) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-        Loading describe…
+        {gt("Loading describe…")}
       </div>
     );
   }
@@ -48,7 +50,7 @@ export function DescribeView({ capability, onGetDescribe }: Props) {
           onClick={() => void fetchDescribe()}
           className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
         >
-          Retry
+          {gt("Retry")}
         </button>
       </div>
     );
@@ -58,7 +60,7 @@ export function DescribeView({ capability, onGetDescribe }: Props) {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-surface shrink-0">
         <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">
-          Describe
+          {gt("Describe")}
         </span>
         <span className="text-xs text-on-surface-faint bg-surface-overlay rounded px-1.5 py-0.5">
           {language}
@@ -71,14 +73,14 @@ export function DescribeView({ capability, onGetDescribe }: Props) {
             }}
             className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
           >
-            Copy
+            {gt("Copy")}
           </button>
           <button
             type="button"
             onClick={() => void fetchDescribe()}
             className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
           >
-            Reload
+            {gt("Reload")}
           </button>
         </div>
       </div>

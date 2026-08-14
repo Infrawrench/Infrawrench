@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import type {
   PublishPanelCapability,
   PublishPanelField,
@@ -27,8 +28,9 @@ interface SendEntry {
 }
 
 export function PublishPanel({ capability, onPublish }: Props) {
+  const gt = useGT();
   const bodyFormat = capability.bodyFormat ?? "json";
-  const submitLabel = capability.submitLabel ?? "Send";
+  const submitLabel = capability.submitLabel ?? gt("Send");
   const extraFields = capability.extraFields ?? [];
   const disabled = !!capability.disabledReason;
 
@@ -50,14 +52,14 @@ export function PublishPanel({ capability, onPublish }: Props) {
   const entryIdRef = useRef(0);
 
   const validate = useCallback((): string | null => {
-    if (!body.trim()) return "Message body is required.";
+    if (!body.trim()) return gt("Message body is required.");
     if (bodyFormat === "json") {
       try {
         JSON.parse(body);
       } catch (e) {
         return e instanceof Error
-          ? `Body is not valid JSON: ${e.message}`
-          : "Body is not valid JSON.";
+          ? gt("Body is not valid JSON: {msg}", { msg: e.message })
+          : gt("Body is not valid JSON.");
       }
     }
     for (const field of extraFields) {
@@ -68,10 +70,10 @@ export function PublishPanel({ capability, onPublish }: Props) {
         continue;
       }
       if (typeof value !== "string" || !value.trim()) {
-        return `${field.label} is required.`;
+        return gt("{label} is required.", { label: field.label });
       }
       if (field.kind === "number" && Number.isNaN(Number(value))) {
-        return `${field.label} must be a number.`;
+        return gt("{label} must be a number.", { label: field.label });
       }
     }
     return null;
@@ -96,7 +98,9 @@ export function PublishPanel({ capability, onPublish }: Props) {
           body: snapshot.body,
           extras: snapshot.extras,
           status: "ok",
-          message: result.summary ?? (result.id ? `Sent — id ${result.id}` : "Message sent."),
+          message:
+            result.summary ??
+            (result.id ? gt("Sent — id {id}", { id: result.id }) : gt("Message sent.")),
           at: Date.now(),
         },
         ...prev,
@@ -127,7 +131,7 @@ export function PublishPanel({ capability, onPublish }: Props) {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-surface shrink-0">
         <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">
-          {capability.tabLabel ?? "Publish"}
+          {capability.tabLabel ?? gt("Publish")}
         </span>
         {capability.subtitle && (
           <span className="text-xs text-on-surface-tertiary truncate">{capability.subtitle}</span>
@@ -138,7 +142,7 @@ export function PublishPanel({ capability, onPublish }: Props) {
             onClick={() => setHistory([])}
             className="ml-auto px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
           >
-            Clear history
+            {gt("Clear history")}
           </button>
         )}
       </div>
@@ -169,13 +173,14 @@ export function PublishPanel({ capability, onPublish }: Props) {
 
             <label className="block">
               <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">
-                Message body{bodyFormat === "json" ? " (JSON)" : ""}
+                {gt("Message body")}
+                {bodyFormat === "json" ? gt(" (JSON)") : ""}
               </span>
               <textarea
-                aria-label="Message body"
+                aria-label={gt("Message body")}
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                placeholder={bodyFormat === "json" ? '{ "hello": "world" }' : "Message text…"}
+                placeholder={bodyFormat === "json" ? '{ "hello": "world" }' : gt("Message text…")}
                 rows={10}
                 spellCheck={false}
                 className="mt-1 w-full resize-y bg-surface-overlay text-on-surface text-sm font-mono border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent-blue placeholder:text-on-surface-faint"
@@ -195,17 +200,17 @@ export function PublishPanel({ capability, onPublish }: Props) {
                 disabled={sending}
                 className="px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-md hover:bg-accent-blue/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
               >
-                {sending ? "Sending…" : submitLabel}
+                {sending ? gt("Sending…") : submitLabel}
               </button>
               <span className="text-[11px] text-on-surface-faint">
-                {sending ? "Publishing…" : "One message per click"}
+                {sending ? gt("Publishing…") : gt("One message per click")}
               </span>
             </div>
 
             {history.length > 0 && (
               <div className="pt-4 border-t border-border">
                 <h3 className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide mb-2">
-                  Recent sends
+                  {gt("Recent sends")}
                 </h3>
                 <ul className="space-y-2">
                   {history.map((entry) => (
@@ -228,6 +233,7 @@ interface ExtraFieldInputProps {
 }
 
 function ExtraFieldInput({ field, value, onChange }: ExtraFieldInputProps) {
+  const gt = useGT();
   if (field.kind === "key-value-list") {
     const obj = (value && typeof value === "object" ? value : {}) as Record<string, string>;
     return (
@@ -238,7 +244,7 @@ function ExtraFieldInput({ field, value, onChange }: ExtraFieldInputProps) {
           {field.label}
           {field.optional && (
             <span className="ml-2 text-[10px] text-on-surface-faint normal-case font-normal">
-              optional
+              {gt("optional")}
             </span>
           )}
         </span>
@@ -259,7 +265,7 @@ function ExtraFieldInput({ field, value, onChange }: ExtraFieldInputProps) {
           {field.label}
           {field.optional && (
             <span className="ml-2 text-[10px] text-on-surface-faint normal-case font-normal">
-              optional
+              {gt("optional")}
             </span>
           )}
         </span>
@@ -268,7 +274,7 @@ function ExtraFieldInput({ field, value, onChange }: ExtraFieldInputProps) {
           onChange={(e) => onChange(e.target.value)}
           className="mt-1 w-full bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent-blue"
         >
-          {!stringValue && <option value="">Select…</option>}
+          {!stringValue && <option value="">{gt("Select…")}</option>}
           {(field.options ?? []).map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
@@ -288,7 +294,7 @@ function ExtraFieldInput({ field, value, onChange }: ExtraFieldInputProps) {
         {field.label}
         {field.optional && (
           <span className="ml-2 text-[10px] text-on-surface-faint normal-case font-normal">
-            optional
+            {gt("optional")}
           </span>
         )}
       </span>
@@ -310,6 +316,7 @@ interface KeyValueListEditorProps {
 }
 
 function KeyValueListEditor({ value, onChange }: KeyValueListEditorProps) {
+  const gt = useGT();
   const entries = useMemo(() => Object.entries(value), [value]);
 
   const setKey = (oldKey: string, newKey: string) => {
@@ -339,30 +346,32 @@ function KeyValueListEditor({ value, onChange }: KeyValueListEditorProps) {
 
   return (
     <div className="space-y-1">
-      {entries.length === 0 && <p className="text-[11px] text-on-surface-faint">No entries.</p>}
+      {entries.length === 0 && (
+        <p className="text-[11px] text-on-surface-faint">{gt("No entries.")}</p>
+      )}
       {entries.map(([k, v]) => (
         <div key={k} className="flex items-center gap-2">
           <input
             type="text"
             value={k}
             onChange={(e) => setKey(k, e.target.value)}
-            placeholder="name"
-            aria-label="Entry name"
+            placeholder={gt("name")}
+            aria-label={gt("Entry name")}
             className="flex-1 bg-surface-overlay text-on-surface text-xs border border-border-strong rounded-md px-2 py-1 focus:outline-none focus:border-accent-blue"
           />
           <input
             type="text"
             value={v}
             onChange={(e) => setValue(k, e.target.value)}
-            placeholder="value"
-            aria-label="Entry value"
+            placeholder={gt("value")}
+            aria-label={gt("Entry value")}
             className="flex-1 bg-surface-overlay text-on-surface text-xs border border-border-strong rounded-md px-2 py-1 focus:outline-none focus:border-accent-blue"
           />
           <button
             type="button"
             onClick={() => remove(k)}
             className="text-xs text-on-surface-faint hover:text-danger px-2"
-            aria-label={`Remove ${k}`}
+            aria-label={gt("Remove {key}", { key: k })}
           >
             ×
           </button>
@@ -373,7 +382,7 @@ function KeyValueListEditor({ value, onChange }: KeyValueListEditorProps) {
         onClick={add}
         className="text-xs text-on-surface-faint hover:text-accent transition-colors"
       >
-        + Add entry
+        {gt("+ Add entry")}
       </button>
     </div>
   );

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useCallback } from "react";
+import { useGT } from "gt-react";
 import {
   useUIStore,
   useTabId,
@@ -154,6 +155,7 @@ export function ResourcePanel({
   initialCwd,
   titleOverride,
 }: ResourcePanelProps) {
+  const gt = useGT();
   const tabId = useTabId();
   const [store, setStore] = useState<{
     forKey: string;
@@ -262,7 +264,7 @@ export function ResourcePanel({
         }
         refreshFromProvider();
       } catch (err) {
-        window.alert(err instanceof Error ? err.message : "Action failed");
+        window.alert(err instanceof Error ? err.message : gt("Action failed"));
       }
     }
     function handlePromptNoSqlCommand(e: Event) {
@@ -295,7 +297,8 @@ export function ResourcePanel({
     );
   }
 
-  if (!data) return <div className="p-6 text-on-surface-muted text-sm animate-pulse">Loading…</div>;
+  if (!data)
+    return <div className="p-6 text-on-surface-muted text-sm animate-pulse">{gt("Loading…")}</div>;
 
   return (
     <>
@@ -360,7 +363,7 @@ export function ResourcePanel({
             : {})}
           {...(promptModal.blocked ? { blocked: promptModal.blocked } : {})}
           fields={promptModal.fields}
-          submitLabel={promptModal.submitLabel ?? "Submit"}
+          submitLabel={promptModal.submitLabel ?? gt("Submit")}
           danger={!!promptModal.danger}
           resourcePickerProps={{
             accountId,

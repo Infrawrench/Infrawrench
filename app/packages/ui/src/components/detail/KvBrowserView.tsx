@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import type { KvBrowserCapability, KvKeyEntry, KvListResult } from "@infrawrench/plugin-base";
 import { Modal } from "../Modal.js";
+import { useDataString } from "../../i18n/data-strings.js";
 
 export interface KvBrowserListParams {
   prefix?: string;
@@ -43,6 +45,8 @@ export function KvBrowserView({
   onPutValue,
   onDeleteKey,
 }: Props) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [prefix, setPrefix] = useState("");
   const [items, setItems] = useState<KvKeyEntry[]>([]);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
@@ -138,7 +142,7 @@ export function KvBrowserView({
     try {
       await onPutValue(selectedKey, value);
       setOriginalValue(value);
-      setSavedNote("Saved");
+      setSavedNote(gt("Saved"));
       // Auto-clear the saved note after a beat so the user knows the next
       // edit is dirty again without manually dismissing it.
       window.setTimeout(() => setSavedNote(null), 2500);
@@ -151,7 +155,7 @@ export function KvBrowserView({
 
   async function submitAdd() {
     if (!newKey.trim()) {
-      setAddError("Key name is required.");
+      setAddError(gt("Key name is required."));
       return;
     }
     setAdding(true);
@@ -209,8 +213,8 @@ export function KvBrowserView({
           onKeyDown={(e) => {
             if (e.key === "Enter") void load({ reset: true });
           }}
-          placeholder="Filter by prefix…"
-          aria-label="Filter keys by prefix"
+          placeholder={gt("Filter by prefix…")}
+          aria-label={gt("Filter keys by prefix")}
           className="flex-1 px-3 py-1.5 rounded text-sm bg-surface-overlay border border-border text-on-surface placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
         />
         <button
@@ -219,7 +223,7 @@ export function KvBrowserView({
           disabled={loading}
           className="px-3 py-1.5 text-xs font-medium rounded-md bg-surface-overlay hover:bg-surface-sunken text-on-surface-secondary border border-border disabled:opacity-50 transition-colors"
         >
-          {loading ? "Loading…" : "Reload"}
+          {loading ? gt("Loading…") : gt("Reload")}
         </button>
         <button
           type="button"
@@ -231,13 +235,13 @@ export function KvBrowserView({
           }}
           className="px-3 py-1.5 text-xs font-medium rounded-md bg-accent/90 hover:bg-accent text-white transition-colors"
         >
-          + Add key
+          {gt("+ Add key")}
         </button>
       </div>
 
       {capability.helpText && (
         <div className="shrink-0 px-4 py-2 border-b border-border text-xs text-on-surface-tertiary">
-          {capability.helpText}
+          {gtData(capability.helpText)}
         </div>
       )}
 
@@ -253,15 +257,15 @@ export function KvBrowserView({
           <div className="flex-1 overflow-auto">
             {!initialized && loading ? (
               <div className="flex items-center justify-center py-16 text-on-surface-faint text-sm">
-                Loading keys…
+                {gt("Loading keys…")}
               </div>
             ) : items.length === 0 && !loading ? (
               <div className="flex flex-col items-center justify-center py-16 px-4 text-on-surface-faint text-sm text-center gap-2">
-                <p>No keys found.</p>
-                <p className="text-xs">Use "+ Add key" to create one.</p>
+                <p>{gt("No keys found.")}</p>
+                <p className="text-xs">{gt('Use "+ Add key" to create one.')}</p>
               </div>
             ) : (
-              <div role="listbox" aria-label="KV keys" className="py-1">
+              <div role="listbox" aria-label={gt("KV keys")} className="py-1">
                 {items.map((item) => {
                   const isActive = selectedKey === item.name;
                   return (
@@ -281,7 +285,9 @@ export function KvBrowserView({
                         {item.name}
                         {item.expiration ? (
                           <span className="ml-2 text-on-surface-faint text-[10px]">
-                            exp {new Date(item.expiration * 1000).toLocaleDateString()}
+                            {gt("exp {date}", {
+                              date: new Date(item.expiration * 1000).toLocaleDateString(),
+                            })}
                           </span>
                         ) : null}
                       </button>
@@ -299,7 +305,7 @@ export function KvBrowserView({
                 disabled={loadingMore}
                 className="w-full px-3 py-1.5 text-xs font-medium rounded-md bg-surface-overlay hover:bg-surface-sunken text-on-surface-secondary border border-border disabled:opacity-50 transition-colors"
               >
-                {loadingMore ? "Loading…" : "Load more"}
+                {loadingMore ? gt("Loading…") : gt("Load more")}
               </button>
             </div>
           )}
@@ -309,7 +315,7 @@ export function KvBrowserView({
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           {!selectedKey ? (
             <div className="flex-1 flex items-center justify-center text-on-surface-faint text-sm">
-              Pick a key on the left to view or edit its value.
+              {gt("Pick a key on the left to view or edit its value.")}
             </div>
           ) : (
             <>
@@ -331,14 +337,14 @@ export function KvBrowserView({
                   disabled={!dirty || savingValue || valueLoading || binary}
                   className="px-3 py-1.5 text-xs font-medium rounded-md bg-accent/90 hover:bg-accent text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {savingValue ? "Saving…" : "Save"}
+                  {savingValue ? gt("Saving…") : gt("Save")}
                 </button>
                 <button
                   type="button"
                   onClick={() => setConfirmDelete(selectedKey)}
                   className="px-3 py-1.5 text-xs font-medium rounded-md bg-surface-overlay hover:bg-red-500/20 text-danger border border-border transition-colors"
                 >
-                  Delete
+                  {gt("Delete")}
                 </button>
               </div>
 
@@ -350,22 +356,23 @@ export function KvBrowserView({
 
               {binary && !valueLoading && (
                 <div className="shrink-0 px-4 py-2 border-b border-border bg-yellow-500/10 text-warning text-xs">
-                  This value looks binary, editing has been disabled to avoid corrupting it. Delete
-                  the key if you need to replace it.
+                  {gt(
+                    "This value looks binary, editing has been disabled to avoid corrupting it. Delete the key if you need to replace it.",
+                  )}
                 </div>
               )}
 
               <div className="flex-1 overflow-hidden min-h-0">
                 {valueLoading ? (
                   <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-                    Loading value…
+                    {gt("Loading value…")}
                   </div>
                 ) : (
                   <textarea
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
                     readOnly={binary}
-                    aria-label={`Value for ${selectedKey}`}
+                    aria-label={gt("Value for {key}", { key: selectedKey })}
                     spellCheck={false}
                     className="w-full h-full px-4 py-3 bg-surface-sunken text-on-surface font-mono text-xs resize-none focus:outline-none"
                   />
@@ -378,14 +385,17 @@ export function KvBrowserView({
 
       {/* Add-key modal */}
       {showAdd && (
-        <Modal onClose={() => (adding ? undefined : setShowAdd(false))} ariaLabel="Add KV pair">
+        <Modal
+          onClose={() => (adding ? undefined : setShowAdd(false))}
+          ariaLabel={gt("Add KV pair")}
+        >
           <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl p-5 w-[480px] max-w-[90vw]">
-            <h2 className="text-base font-semibold text-on-surface mb-3">Add KV pair</h2>
+            <h2 className="text-base font-semibold text-on-surface mb-3">{gt("Add KV pair")}</h2>
             <label
               className="block text-xs font-medium text-on-surface-muted mb-1"
               htmlFor="kv-new-key"
             >
-              Key
+              {gt("Key")}
             </label>
             <input
               id="kv-new-key"
@@ -400,7 +410,7 @@ export function KvBrowserView({
               className="block text-xs font-medium text-on-surface-muted mb-1"
               htmlFor="kv-new-value"
             >
-              Value
+              {gt("Value")}
             </label>
             <textarea
               id="kv-new-value"
@@ -422,7 +432,7 @@ export function KvBrowserView({
                 disabled={adding}
                 className="px-3 py-1.5 text-xs font-medium rounded-md bg-surface-overlay hover:bg-surface-sunken text-on-surface-secondary border border-border disabled:opacity-50 transition-colors"
               >
-                Cancel
+                {gt("Cancel")}
               </button>
               <button
                 type="button"
@@ -430,7 +440,7 @@ export function KvBrowserView({
                 disabled={adding}
                 className="px-3 py-1.5 text-xs font-medium rounded-md bg-accent/90 hover:bg-accent text-white disabled:opacity-50 transition-colors"
               >
-                {adding ? "Saving…" : "Save"}
+                {adding ? gt("Saving…") : gt("Save")}
               </button>
             </div>
           </div>
@@ -441,14 +451,18 @@ export function KvBrowserView({
       {confirmDelete && (
         <Modal
           onClose={() => (deleting ? undefined : setConfirmDelete(null))}
-          ariaLabel="Delete key"
+          ariaLabel={gt("Delete key")}
         >
           <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl p-5 w-[420px] max-w-[90vw]">
-            <h2 className="text-base font-semibold text-on-surface mb-2">Delete key?</h2>
-            <p className="text-sm text-on-surface-secondary mb-4">
-              <code className="font-mono text-xs">{confirmDelete}</code> will be permanently removed
-              from the namespace.
-            </p>
+            <h2 className="text-base font-semibold text-on-surface mb-2">{gt("Delete key?")}</h2>
+            <T>
+              <p className="text-sm text-on-surface-secondary mb-4">
+                <Var>
+                  <code className="font-mono text-xs">{confirmDelete}</code>
+                </Var>{" "}
+                will be permanently removed from the namespace.
+              </p>
+            </T>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
@@ -456,7 +470,7 @@ export function KvBrowserView({
                 disabled={deleting}
                 className="px-3 py-1.5 text-xs font-medium rounded-md bg-surface-overlay hover:bg-surface-sunken text-on-surface-secondary border border-border disabled:opacity-50 transition-colors"
               >
-                Cancel
+                {gt("Cancel")}
               </button>
               <button
                 type="button"
@@ -464,7 +478,7 @@ export function KvBrowserView({
                 disabled={deleting}
                 className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-500/90 hover:bg-red-500 text-white disabled:opacity-50 transition-colors"
               >
-                {deleting ? "Deleting…" : "Delete"}
+                {deleting ? gt("Deleting…") : gt("Delete")}
               </button>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import { summarizeStatusIncident, type OrgStatusIncident } from "@infrawrench/client-core";
 import type { StatusIncidentsClient } from "./types.js";
 
@@ -24,6 +25,7 @@ export interface ProviderIncidentBannerProps {
  * banner. The feature is advisory; it must never add noise of its own.
  */
 export function ProviderIncidentBanner({ client, onOpenUrl }: ProviderIncidentBannerProps) {
+  const gt = useGT();
   const [incidents, setIncidents] = useState<OrgStatusIncident[]>([]);
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
 
@@ -70,7 +72,10 @@ export function ProviderIncidentBanner({ client, onOpenUrl }: ProviderIncidentBa
         {relevant.length > 1 && (
           <span className="opacity-80">
             {" "}
-            (+{relevant.length - 1} more provider {relevant.length === 2 ? "incident" : "incidents"}
+            (
+            {relevant.length === 2
+              ? gt("+1 more provider incident")
+              : gt("+{count} more provider incidents", { count: relevant.length - 1 })}
             )
           </span>
         )}
@@ -82,12 +87,12 @@ export function ProviderIncidentBanner({ client, onOpenUrl }: ProviderIncidentBa
             onClick={() => onOpenUrl(top.url as string)}
             className="underline underline-offset-2"
           >
-            Provider status
+            {gt("Provider status")}
           </button>
         )}
         <button
           type="button"
-          aria-label="Dismiss provider incident banner"
+          aria-label={gt("Dismiss provider incident banner")}
           onClick={() => setDismissedIds((ids) => [...ids, ...relevant.map((i) => i.id)])}
           className="opacity-70 hover:opacity-100"
         >

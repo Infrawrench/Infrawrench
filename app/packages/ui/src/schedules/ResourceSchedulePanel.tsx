@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import { formatDaysOfWeek, formatMoney } from "@infrawrench/client-core";
 import { ScheduleEditorModal, type ScheduleEditorTarget } from "./ScheduleEditorModal.js";
 import type { SchedulesClient, SleepSchedule } from "./types.js";
@@ -15,6 +16,7 @@ export interface ResourceSchedulePanelProps {
  * start/stop actions (`schedulable` on the detail payload).
  */
 export function ResourceSchedulePanel({ client, target }: ResourceSchedulePanelProps) {
+  const gt = useGT();
   const [schedule, setSchedule] = useState<SleepSchedule | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +62,9 @@ export function ResourceSchedulePanel({ client, target }: ResourceSchedulePanelP
     if (!schedule) return;
     if (
       !window.confirm(
-        `Delete the sleep schedule for ${target.resourceName}? The resource stays in whatever state it is in.`,
+        gt("Delete the sleep schedule for {name}? The resource stays in whatever state it is in.", {
+          name: target.resourceName,
+        }),
       )
     ) {
       return;
@@ -79,10 +83,11 @@ export function ResourceSchedulePanel({ client, target }: ResourceSchedulePanelP
   return (
     <div className="flex flex-col gap-3 p-4">
       <div>
-        <h2 className="text-sm font-semibold text-on-surface">Sleep schedule</h2>
+        <h2 className="text-sm font-semibold text-on-surface">{gt("Sleep schedule")}</h2>
         <p className="mt-1 text-xs text-on-surface-secondary">
-          Stop this resource outside working hours and start it back up automatically. Executed
-          server-side; transitions respect change freezes and show up in the change timeline.
+          {gt(
+            "Stop this resource outside working hours and start it back up automatically. Executed server-side; transitions respect change freezes and show up in the change timeline.",
+          )}
         </p>
       </div>
 
@@ -90,13 +95,13 @@ export function ResourceSchedulePanel({ client, target }: ResourceSchedulePanelP
         <div role="alert" className="text-sm text-danger">
           {error}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
-            Retry
+            {gt("Retry")}
           </button>
         </div>
       )}
       {!loaded && error === null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Loading…
+          {gt("Loading…")}
         </p>
       )}
 
@@ -107,7 +112,7 @@ export function ResourceSchedulePanel({ client, target }: ResourceSchedulePanelP
             onClick={() => setEditorOpen(true)}
             className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
           >
-            Add sleep schedule…
+            {gt("Add sleep schedule…")}
           </button>
         </div>
       )}
@@ -116,39 +121,48 @@ export function ResourceSchedulePanel({ client, target }: ResourceSchedulePanelP
         <div className="rounded-xl border border-border bg-surface-sunken px-4 py-3 text-sm text-on-surface">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium">
-              {formatDaysOfWeek(schedule.daysOfWeek)} · off {schedule.stopTime} → on{" "}
-              {schedule.startTime}
+              {gt("{days} · off {stop} → on {start}", {
+                days: formatDaysOfWeek(schedule.daysOfWeek),
+                stop: schedule.stopTime,
+                start: schedule.startTime,
+              })}
             </span>
             <span className="text-xs text-on-surface-faint">{schedule.timezone}</span>
             {schedule.paused && (
               <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
-                Paused
+                {gt("Paused")}
               </span>
             )}
           </div>
           <div className="mt-1 text-xs text-on-surface-secondary">
             {schedule.projectedMonthlySaving != null && schedule.currency && (
               <>
-                Projected saving {formatMoney(schedule.projectedMonthlySaving, schedule.currency)}
-                /mo ·{" "}
+                {gt("Projected saving {amount}/mo · ", {
+                  amount: formatMoney(schedule.projectedMonthlySaving, schedule.currency),
+                })}
               </>
             )}
             {schedule.lastRunStatus === "failed" && (
               <span className="text-danger">
-                Last run failed: {schedule.lastRunError ?? "unknown error"} ·{" "}
+                {gt("Last run failed: {error} · ", {
+                  error: schedule.lastRunError ?? gt("unknown error"),
+                })}
               </span>
             )}
             {schedule.lastRunStatus === "skipped_freeze" && (
-              <span className="text-warning">Last transition skipped (change freeze) · </span>
+              <span className="text-warning">
+                {gt("Last transition skipped (change freeze) · ")}
+              </span>
             )}
-            {schedule.nextTransitionAt && !schedule.paused ? (
-              <>
-                Next {schedule.nextTransitionAction === "stop" ? "off" : "on"} at{" "}
-                {new Date(schedule.nextTransitionAt).toLocaleString()}
-              </>
-            ) : (
-              <>No transition scheduled</>
-            )}
+            {schedule.nextTransitionAt && !schedule.paused
+              ? schedule.nextTransitionAction === "stop"
+                ? gt("Next off at {date}", {
+                    date: new Date(schedule.nextTransitionAt).toLocaleString(),
+                  })
+                : gt("Next on at {date}", {
+                    date: new Date(schedule.nextTransitionAt).toLocaleString(),
+                  })
+              : gt("No transition scheduled")}
           </div>
           <div className="mt-2 flex gap-2">
             <button
@@ -157,7 +171,7 @@ export function ResourceSchedulePanel({ client, target }: ResourceSchedulePanelP
               onClick={() => void togglePause()}
               className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-on-surface hover:border-border-strong disabled:opacity-50"
             >
-              {schedule.paused ? "Resume" : "Pause"}
+              {schedule.paused ? gt("Resume") : gt("Pause")}
             </button>
             <button
               type="button"
@@ -165,7 +179,7 @@ export function ResourceSchedulePanel({ client, target }: ResourceSchedulePanelP
               onClick={() => setEditorOpen(true)}
               className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-on-surface hover:border-border-strong disabled:opacity-50"
             >
-              Edit
+              {gt("Edit")}
             </button>
             <button
               type="button"
@@ -173,7 +187,7 @@ export function ResourceSchedulePanel({ client, target }: ResourceSchedulePanelP
               onClick={() => void remove()}
               className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-danger hover:border-red-500/50 disabled:opacity-50"
             >
-              Delete
+              {gt("Delete")}
             </button>
           </div>
         </div>

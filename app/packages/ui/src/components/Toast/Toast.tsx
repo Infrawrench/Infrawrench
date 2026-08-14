@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import type { Toast as ToastT } from "./types.js";
 import { useToastStore } from "./useToast.js";
 
@@ -34,6 +35,7 @@ interface ToastRowProps {
 }
 
 export function ToastRow({ toast }: ToastRowProps) {
+  const gt = useGT();
   const dismiss = useToastStore((s) => s.dismiss);
   // Auto-dismiss pauses while hovered or while any element inside the toast
   // (action button, dismiss button) has keyboard focus.
@@ -95,7 +97,7 @@ export function ToastRow({ toast }: ToastRowProps) {
       <button
         type="button"
         onClick={() => dismiss(toast.id)}
-        aria-label="Dismiss"
+        aria-label={gt("Dismiss")}
         className="shrink-0 text-on-surface-tertiary hover:text-on-surface transition-colors text-sm leading-none"
       >
         ✕

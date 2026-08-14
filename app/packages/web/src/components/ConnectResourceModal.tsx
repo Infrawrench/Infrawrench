@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { Modal, formatErrorMessage, toast, SshKeyRadioGroup } from "@infrawrench/ui";
+import { T, Var, useGT } from "gt-react";
+import { Modal, formatErrorMessage, toast, SshKeyRadioGroup, useDataString } from "@infrawrench/ui";
 import type { SpotlightResult } from "@infrawrench/ui";
 import type { SecretExportTemplate } from "@infrawrench/plugin-base";
 import { camelToTitle } from "@infrawrench/plugin-base";
@@ -42,6 +43,8 @@ export function ConnectResourceModal({
   onClose,
   onConnected,
 }: ConnectResourceModalProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const orgId = useOrgId();
 
   const templatesKey = `${orgId}/${source.pluginId}/${source.resourceTypeId}/${targetAccountId}/${targetPluginId}`;
@@ -118,7 +121,7 @@ export function ConnectResourceModal({
         if (data.templates.length === 0) {
           setTemplateStore({
             ...base,
-            loadError: "This resource type doesn't have any exportable credentials.",
+            loadError: gt("This resource type doesn't have any exportable credentials."),
           });
           return;
         }
@@ -144,7 +147,9 @@ export function ConnectResourceModal({
         } else {
           setTemplateStore({
             ...base,
-            loadError: "The target resource doesn't support secret import or SSH — cannot connect.",
+            loadError: gt(
+              "The target resource doesn't support secret import or SSH — cannot connect.",
+            ),
           });
         }
       })
@@ -173,7 +178,9 @@ export function ConnectResourceModal({
         setSshKeys(keys);
         if (keys.length > 0) setSelectedKeyId(keys[0]!.id);
       })
-      .catch((err) => toast.error(`Couldn't load SSH keys: ${formatErrorMessage(err)}`));
+      .catch((err) =>
+        toast.error(gt("Couldn't load SSH keys: {error}", { error: formatErrorMessage(err) })),
+      );
   }, [mode, orgId]);
 
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
@@ -212,7 +219,7 @@ export function ConnectResourceModal({
           keyOverrides: editableKeys,
         });
       } else if (mode === "env-deploy") {
-        if (!selectedKeyId) throw new Error("Select an SSH key");
+        if (!selectedKeyId) throw new Error(gt("Select an SSH key"));
         await apiPost(`/api/org/${orgId}/connect/env-deploy`, {
           sourceAccountId: source.accountId,
           sourceResourceId: source.id,
@@ -257,7 +264,7 @@ export function ConnectResourceModal({
 
   const canSwitchMode = supportsSecretImport && !!sshHost;
   const modalTitle =
-    mode === "secret-export" ? "Create Kubernetes Secret" : "Deploy Credentials via SSH";
+    mode === "secret-export" ? gt("Create Kubernetes Secret") : gt("Deploy Credentials via SSH");
 
   return (
     <Modal onClose={onClose} ariaLabel={modalTitle}>
@@ -268,8 +275,8 @@ export function ConnectResourceModal({
           <button
             type="button"
             onClick={onClose}
-            aria-label={`Close ${modalTitle}`}
-            title={`Close ${modalTitle}`}
+            aria-label={gt("Close {title}", { title: modalTitle })}
+            title={gt("Close {title}", { title: modalTitle })}
             className="text-on-surface-muted hover:text-on-surface-secondary transition-colors text-lg leading-none"
           >
             x
@@ -278,15 +285,20 @@ export function ConnectResourceModal({
 
         <div className="px-5 py-4 space-y-5">
           {loadingTemplates ? (
-            <div className="text-sm text-on-surface-muted animate-pulse">Loading…</div>
+            <div className="text-sm text-on-surface-muted animate-pulse">{gt("Loading…")}</div>
           ) : loadError ? (
             <p className="text-sm text-danger">{loadError}</p>
           ) : (
             <>
               {/* Source info */}
               <div className="text-sm text-on-surface-tertiary">
-                Connecting <span className="text-on-surface font-medium">{source.displayName}</span>
-                {" to this resource"}
+                <T>
+                  Connecting{" "}
+                  <Var>
+                    <span className="text-on-surface font-medium">{source.displayName}</span>
+                  </Var>
+                  {" to this resource"}
+                </T>
               </div>
 
               {/* Mode switcher (only when both options available) */}
@@ -301,7 +313,7 @@ export function ConnectResourceModal({
                         : "border-border-strong text-on-surface-muted hover:text-on-surface-secondary"
                     }`}
                   >
-                    K8s Secret
+                    {gt("K8s Secret")}
                   </button>
                   <button
                     type="button"
@@ -312,7 +324,7 @@ export function ConnectResourceModal({
                         : "border-border-strong text-on-surface-muted hover:text-on-surface-secondary"
                     }`}
                   >
-                    SSH Env Deploy
+                    {gt("SSH Env Deploy")}
                   </button>
                 </div>
               )}
@@ -321,7 +333,7 @@ export function ConnectResourceModal({
               {templates.length > 1 && (
                 <div className="space-y-2">
                   <span className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
-                    Template
+                    {gt("Template")}
                   </span>
                   <div className="space-y-1.5">
                     {templates.map((tpl) => (
@@ -340,15 +352,15 @@ export function ConnectResourceModal({
                           checked={selectedTemplateId === tpl.id}
                           onChange={() => handleTemplateChange(tpl.id)}
                           className="mt-0.5 accent-blue-500"
-                          aria-label={tpl.displayName}
+                          aria-label={gtData(tpl.displayName)}
                         />
                         <div>
                           <div className="text-sm font-medium text-on-surface">
-                            {tpl.displayName}
+                            {gtData(tpl.displayName)}
                           </div>
                           {tpl.description && (
                             <div className="text-xs text-on-surface-muted mt-0.5">
-                              {tpl.description}
+                              {gtData(tpl.description)}
                             </div>
                           )}
                         </div>
@@ -362,7 +374,7 @@ export function ConnectResourceModal({
               {selectedTemplate && (
                 <div className="space-y-2">
                   <span className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
-                    Keys ({selectedTemplate.entries.length})
+                    {gt("Keys ({count})", { count: selectedTemplate.entries.length })}
                   </span>
                   <div className="rounded-lg border border-border-strong divide-y divide-border">
                     {selectedTemplate.entries.map((entry) => (
@@ -377,11 +389,13 @@ export function ConnectResourceModal({
                             }))
                           }
                           className="flex-1 bg-transparent text-sm font-mono text-on-surface outline-none"
-                          aria-label={`Environment variable key for ${camelToTitle(entry.outputKey)}`}
+                          aria-label={gt("Environment variable key for {label}", {
+                            label: gtData(camelToTitle(entry.outputKey)),
+                          })}
                         />
-                        <span className="text-xs text-on-surface-faint">from</span>
+                        <span className="text-xs text-on-surface-faint">{gt("from")}</span>
                         <span className="text-xs text-on-surface-muted font-mono">
-                          {camelToTitle(entry.outputKey)}
+                          {gtData(camelToTitle(entry.outputKey))}
                         </span>
                       </div>
                     ))}
@@ -394,14 +408,14 @@ export function ConnectResourceModal({
                 <>
                   <div className="space-y-1.5">
                     <span className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
-                      Namespace
+                      {gt("Namespace")}
                     </span>
                     {namespaces.length > 0 ? (
                       <select
                         value={namespace}
                         onChange={(e) => setNamespace(e.target.value)}
                         className="w-full rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm text-on-surface outline-none focus:border-blue-500"
-                        aria-label="Namespace"
+                        aria-label={gt("Namespace")}
                       >
                         {namespaces.map((ns) => (
                           <option key={ns} value={ns}>
@@ -416,7 +430,7 @@ export function ConnectResourceModal({
                         onChange={(e) => setNamespace(e.target.value)}
                         placeholder="default"
                         className="w-full rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm text-on-surface outline-none focus:border-blue-500"
-                        aria-label="Namespace"
+                        aria-label={gt("Namespace")}
                       />
                     )}
                   </div>
@@ -426,7 +440,7 @@ export function ConnectResourceModal({
                       htmlFor="connect-resource-secret-name"
                       className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider"
                     >
-                      Secret Name
+                      {gt("Secret Name")}
                     </label>
                     <input
                       id="connect-resource-secret-name"
@@ -447,15 +461,15 @@ export function ConnectResourceModal({
                   {/* SSH key picker */}
                   <div className="space-y-1.5">
                     <span className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
-                      SSH Key
+                      {gt("SSH Key")}
                     </span>
                     {sshKeys.length === 0 ? (
                       <p className="text-xs text-on-surface-faint">
-                        No SSH keys found. Go to Settings to add one.
+                        {gt("No SSH keys found. Go to Settings to add one.")}
                       </p>
                     ) : (
                       <SshKeyRadioGroup
-                        ariaLabel="SSH Key"
+                        ariaLabel={gt("SSH Key")}
                         selectedId={selectedKeyId}
                         onChange={(id) => setSelectedKeyId(id)}
                         keys={sshKeys.map((k) => ({
@@ -474,7 +488,7 @@ export function ConnectResourceModal({
                       htmlFor="connect-resource-ssh-username"
                       className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider"
                     >
-                      SSH Username
+                      {gt("SSH Username")}
                     </label>
                     <input
                       id="connect-resource-ssh-username"
@@ -493,7 +507,7 @@ export function ConnectResourceModal({
                       htmlFor="connect-resource-format"
                       className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider"
                     >
-                      Format
+                      {gt("Format")}
                     </label>
                     <select
                       id="connect-resource-format"
@@ -501,8 +515,8 @@ export function ConnectResourceModal({
                       onChange={(e) => setFormat(e.target.value as "dotenv" | "profile")}
                       className="rounded-lg border border-border-strong bg-surface-overlay px-3 py-1.5 text-sm text-on-surface outline-none focus:border-blue-500"
                     >
-                      <option value="dotenv">.env (KEY=value)</option>
-                      <option value="profile">Shell (export KEY=value)</option>
+                      <option value="dotenv">{gt(".env (KEY=value)")}</option>
+                      <option value="profile">{gt("Shell (export KEY=value)")}</option>
                     </select>
                   </div>
 
@@ -513,7 +527,7 @@ export function ConnectResourceModal({
                       htmlFor="connect-resource-file-path"
                       className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider"
                     >
-                      File Path
+                      {gt("File Path")}
                     </label>
                     <div className="flex gap-2 items-center">
                       <input
@@ -531,9 +545,9 @@ export function ConnectResourceModal({
                           checked={append}
                           onChange={(e) => setAppend(e.target.checked)}
                           className="accent-blue-500"
-                          aria-label="Append"
+                          aria-label={gt("Append")}
                         />
-                        Append
+                        {gt("Append")}
                       </label>
                     </div>
                   </div>
@@ -556,7 +570,7 @@ export function ConnectResourceModal({
               onClick={onClose}
               className="px-4 py-2 rounded-lg text-sm text-on-surface-secondary hover:text-on-surface transition-colors"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -572,7 +586,11 @@ export function ConnectResourceModal({
               {submitting && (
                 <span className="animate-spin inline-block size-3.5 rounded-full border-2 border-border-strong border-t-white" />
               )}
-              {submitting ? "Connecting..." : mode === "secret-export" ? "Create Secret" : "Deploy"}
+              {submitting
+                ? gt("Connecting...")
+                : mode === "secret-export"
+                  ? gt("Create Secret")
+                  : gt("Deploy")}
             </button>
           </div>
         )}

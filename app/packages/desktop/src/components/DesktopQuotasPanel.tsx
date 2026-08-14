@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import { QuotasSection, useUIStore, type QuotaListResponse } from "@infrawrench/ui";
 import { invoke } from "@/lib/invoke";
 
@@ -13,6 +14,7 @@ import { invoke } from "@/lib/invoke";
  * the tab explains rather than fetching.
  */
 export function DesktopQuotasPanel() {
+  const gt = useGT();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const [data, setData] = useState<QuotaListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +25,7 @@ export function DesktopQuotasPanel() {
       setData(await invoke<QuotaListResponse>("cloud_quotas", { orgId: activeCloudOrgId }));
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Request failed");
+      setError(err instanceof Error ? err.message : gt("Request failed"));
     }
   }, [activeCloudOrgId]);
 
@@ -36,8 +38,9 @@ export function DesktopQuotasPanel() {
   if (!activeCloudOrgId) {
     return (
       <div className="p-6 text-sm text-on-surface-faint">
-        The quota radar requires cloud mode — sign in to sync. Readings are collected by the cloud
-        poller on a schedule, and the trend needs the history it keeps.
+        {gt(
+          "The quota radar requires cloud mode — sign in to sync. Readings are collected by the cloud poller on a schedule, and the trend needs the history it keeps.",
+        )}
       </div>
     );
   }

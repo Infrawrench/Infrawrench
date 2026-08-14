@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { T, Var, useGT } from "gt-react";
 import type { DriftAlertSettings } from "@infrawrench/client-core";
 import { DRIFT_ALERT_LIMITS } from "@infrawrench/client-core";
 import { useSettingsHost } from "../host.js";
@@ -20,6 +21,7 @@ interface AccountOption {
  * between a digest and a muted integration.
  */
 export function DriftAlertsSection({ orgId }: { orgId: string }) {
+  const gt = useGT();
   const { api, openWorkspace } = useSettingsHost();
   const [settings, setSettings] = useState<DriftAlertSettings | null>(null);
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
@@ -62,7 +64,7 @@ export function DriftAlertsSection({ orgId }: { orgId: string }) {
       setSettings(saved);
     } catch (e) {
       setSettings(previous);
-      setError(e instanceof Error ? e.message : "Failed to save drift alert settings");
+      setError(e instanceof Error ? e.message : gt("Failed to save drift alert settings"));
     }
   }
 
@@ -82,16 +84,20 @@ export function DriftAlertsSection({ orgId }: { orgId: string }) {
   return (
     <section className="border border-border rounded-xl p-5 space-y-4">
       <div>
-        <h2 className="text-sm font-semibold text-on-surface-secondary">Resource drift alerts</h2>
-        <p className="text-xs text-on-surface-muted mt-1">
-          One batched digest of the{" "}
-          <button type="button" onClick={() => openWorkspace("changes")} className="underline">
-            change timeline
-          </button>{" "}
-          per organization per cooldown window — never one message per change. Turn the{" "}
-          <strong>Drift</strong> trigger on for a Slack channel, a Teams channel or your phone above
-          to receive it; it is off by default everywhere.
-        </p>
+        <h2 className="text-sm font-semibold text-on-surface-secondary">
+          {gt("Resource drift alerts")}
+        </h2>
+        <T>
+          <p className="text-xs text-on-surface-muted mt-1">
+            One batched digest of the{" "}
+            <button type="button" onClick={() => openWorkspace("changes")} className="underline">
+              change timeline
+            </button>{" "}
+            per organization per cooldown window — never one message per change. Turn the{" "}
+            <strong>Drift</strong> trigger on for a Slack channel, a Teams channel or your phone
+            above to receive it; it is off by default everywhere.
+          </p>
+        </T>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-on-surface-secondary">
@@ -101,7 +107,7 @@ export function DriftAlertsSection({ orgId }: { orgId: string }) {
             checked={settings.notifyCreated}
             onChange={(e) => void save({ notifyCreated: e.target.checked })}
           />
-          <span>Resources appearing</span>
+          <span>{gt("Resources appearing")}</span>
         </label>
         <label className="flex items-center gap-2">
           <input
@@ -109,7 +115,7 @@ export function DriftAlertsSection({ orgId }: { orgId: string }) {
             checked={settings.notifyDeleted}
             onChange={(e) => void save({ notifyDeleted: e.target.checked })}
           />
-          <span>Resources disappearing</span>
+          <span>{gt("Resources disappearing")}</span>
         </label>
         <label className="flex items-center gap-2">
           <input
@@ -117,18 +123,22 @@ export function DriftAlertsSection({ orgId }: { orgId: string }) {
             checked={settings.notifyUpdated}
             onChange={(e) => void save({ notifyUpdated: e.target.checked })}
           />
-          <span>Field changes</span>
+          <span>{gt("Field changes")}</span>
         </label>
       </div>
       <p className="text-xs text-on-surface-tertiary">
-        Field changes are off by default: they are the bulk of the volume and are usually a provider
-        restating a value rather than someone changing something.
+        {gt(
+          "Field changes are off by default: they are the bulk of the volume and are usually a provider restating a value rather than someone changing something.",
+        )}
       </p>
 
       <div className="grid grid-cols-2 gap-4">
         <Field
-          label="Cooldown (minutes)"
-          hint={`At most one drift message per ${cooldownMin}–${cooldownMax} minute window.`}
+          label={gt("Cooldown (minutes)")}
+          hint={gt("At most one drift message per {min}–{max} minute window.", {
+            min: cooldownMin,
+            max: cooldownMax,
+          })}
         >
           <input
             type="number"
@@ -149,7 +159,7 @@ export function DriftAlertsSection({ orgId }: { orgId: string }) {
             className={inputClass}
           />
         </Field>
-        <Field label="Minimum changes" hint="Skip windows smaller than this.">
+        <Field label={gt("Minimum changes")} hint={gt("Skip windows smaller than this.")}>
           <input
             type="number"
             min={minChangesMin}
@@ -174,7 +184,10 @@ export function DriftAlertsSection({ orgId }: { orgId: string }) {
       {accounts.length > 0 && (
         <div>
           <p className="text-xs text-on-surface-tertiary mb-2">
-            Accounts to watch — leave every box unchecked to watch all {accounts.length}.
+            <T>
+              Accounts to watch — leave every box unchecked to watch all{" "}
+              <Var>{accounts.length}</Var>.
+            </T>
           </p>
           <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-on-surface-secondary">
             {accounts.map((a) => (
@@ -193,7 +206,9 @@ export function DriftAlertsSection({ orgId }: { orgId: string }) {
 
       {settings.lastNotifiedAt && (
         <p className="text-xs text-on-surface-tertiary">
-          Last drift digest sent {new Date(settings.lastNotifiedAt).toLocaleString()}.
+          <T>
+            Last drift digest sent <Var>{new Date(settings.lastNotifiedAt).toLocaleString()}</Var>.
+          </T>
         </p>
       )}
       {error && <p className="text-xs text-danger">{error}</p>}

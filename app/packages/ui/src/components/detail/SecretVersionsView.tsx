@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useGT } from "gt-react";
 import type {
   SecretVersion,
   SecretVersionMutation,
@@ -30,6 +31,7 @@ function fmt(iso: string | undefined) {
 }
 
 export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModify }: Props) {
+  const gt = useGT();
   const [versions, setVersions] = useState<SecretVersion[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +102,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
 
   async function handleAdd() {
     if (!capability.valuelessAdd && !newValue) {
-      setAddError("Value is required");
+      setAddError(gt("Value is required"));
       return;
     }
     setAdding(true);
@@ -125,7 +127,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-        Loading versions…
+        {gt("Loading versions…")}
       </div>
     );
   }
@@ -134,7 +136,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-surface shrink-0">
         <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">
-          Versions
+          {gt("Versions")}
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button
@@ -142,14 +144,14 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
             onClick={() => void fetchVersions()}
             className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
           >
-            Reload
+            {gt("Reload")}
           </button>
           <button
             type="button"
             onClick={() => setShowAdd(true)}
             className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
           >
-            + Add version
+            {gt("+ Add version")}
           </button>
         </div>
       </div>
@@ -163,32 +165,32 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
 
         <div className="overflow-x-auto rounded border border-border bg-surface-overlay/40">
           <table className="w-full text-sm border-collapse">
-            <caption className="sr-only">Secret versions</caption>
+            <caption className="sr-only">{gt("Secret versions")}</caption>
             <thead>
               <tr className="border-b border-border bg-surface-overlay/60">
                 <th
                   scope="col"
                   className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-on-surface-muted w-24"
                 >
-                  Version
+                  {gt("Version")}
                 </th>
                 <th
                   scope="col"
                   className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-on-surface-muted w-32"
                 >
-                  State
+                  {gt("State")}
                 </th>
                 <th
                   scope="col"
                   className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-on-surface-muted"
                 >
-                  Created
+                  {gt("Created")}
                 </th>
                 <th
                   scope="col"
                   className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-on-surface-muted"
                 >
-                  Actions
+                  {gt("Actions")}
                 </th>
               </tr>
             </thead>
@@ -196,7 +198,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
               {sorted.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-3 py-6 text-center text-xs text-on-surface-muted">
-                    No versions yet, click “Add version” to create one.
+                    {gt("No versions yet, click “Add version” to create one.")}
                   </td>
                 </tr>
               ) : (
@@ -212,7 +214,9 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                         <span className="font-mono text-on-surface">
                           {v.id}
                           {v.isLatest && (
-                            <span className="ml-1.5 text-xs text-on-surface-muted">(latest)</span>
+                            <span className="ml-1.5 text-xs text-on-surface-muted">
+                              {gt("(latest)")}
+                            </span>
                           )}
                         </span>
                       </td>
@@ -229,7 +233,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                         {fmt(v.createdAt)}
                         {destroyed && v.destroyedAt && (
                           <span className="ml-2 text-xs text-on-surface-muted">
-                            destroyed {fmt(v.destroyedAt)}
+                            {gt("destroyed {date}", { date: fmt(v.destroyedAt) })}
                           </span>
                         )}
                       </td>
@@ -242,7 +246,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                               onClick={() => void handleAccess(v)}
                               className="px-2 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors disabled:opacity-40"
                             >
-                              Reveal
+                              {gt("Reveal")}
                             </button>
                           )}
                           {v.state === "enabled" && (
@@ -252,7 +256,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                               onClick={() => void handleModify(v, "disable")}
                               className="px-2 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors disabled:opacity-40"
                             >
-                              Disable
+                              {gt("Disable")}
                             </button>
                           )}
                           {v.state === "disabled" && (
@@ -262,7 +266,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                               onClick={() => void handleModify(v, "enable")}
                               className="px-2 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors disabled:opacity-40"
                             >
-                              Enable
+                              {gt("Enable")}
                             </button>
                           )}
                           <button
@@ -271,7 +275,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                             onClick={() => setConfirm({ version: v, action: "destroy" })}
                             className="px-2 py-1 text-xs text-danger hover:text-danger-strong border border-red-900/60 rounded-md transition-colors disabled:opacity-40"
                           >
-                            Destroy
+                            {gt("Destroy")}
                           </button>
                         </div>
                       </td>
@@ -285,26 +289,28 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
       </div>
 
       {reveal && (
-        <Modal onClose={() => setReveal(null)} ariaLabel={`Version ${reveal.id}`}>
+        <Modal onClose={() => setReveal(null)} ariaLabel={gt("Version {id}", { id: reveal.id })}>
           <div className="w-[560px] max-w-[92vw] bg-surface-raised border border-border-strong rounded-lg shadow-2xl p-5 space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-sm font-semibold text-on-surface">Version {reveal.id}</h2>
+                <h2 className="text-sm font-semibold text-on-surface">
+                  {gt("Version {id}", { id: reveal.id })}
+                </h2>
                 <p className="text-xs text-on-surface-muted mt-0.5">
-                  Plaintext secret value, close when done.
+                  {gt("Plaintext secret value, close when done.")}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setReveal(null)}
                 className="text-on-surface-faint hover:text-on-surface-tertiary text-sm"
-                aria-label="Close"
+                aria-label={gt("Close")}
               >
                 ✕
               </button>
             </div>
             <pre className="max-h-80 overflow-auto rounded border border-border bg-surface-sunken/60 text-xs font-mono p-3 whitespace-pre-wrap break-all text-on-surface">
-              {reveal.value || <span className="text-on-surface-muted">(empty)</span>}
+              {reveal.value || <span className="text-on-surface-muted">{gt("(empty)")}</span>}
             </pre>
             <div className="flex items-center justify-end gap-2">
               <button
@@ -312,14 +318,14 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                 onClick={() => void navigator.clipboard.writeText(reveal.value)}
                 className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
               >
-                Copy
+                {gt("Copy")}
               </button>
               <button
                 type="button"
                 onClick={() => setReveal(null)}
                 className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
               >
-                Close
+                {gt("Close")}
               </button>
             </div>
           </div>
@@ -327,9 +333,9 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
       )}
 
       {revealError && (
-        <Modal onClose={() => setRevealError(null)} ariaLabel="Cannot reveal">
+        <Modal onClose={() => setRevealError(null)} ariaLabel={gt("Cannot reveal")}>
           <div className="w-[480px] max-w-[92vw] bg-surface-raised border border-border-strong rounded-lg shadow-2xl p-5 space-y-4">
-            <h2 className="text-sm font-semibold text-on-surface">Cannot reveal</h2>
+            <h2 className="text-sm font-semibold text-on-surface">{gt("Cannot reveal")}</h2>
             <p className="text-xs text-danger font-mono whitespace-pre-wrap">{revealError}</p>
             <div className="flex items-center justify-end">
               <button
@@ -337,7 +343,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                 onClick={() => setRevealError(null)}
                 className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
               >
-                Close
+                {gt("Close")}
               </button>
             </div>
           </div>
@@ -345,34 +351,37 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
       )}
 
       {showAdd && (
-        <Modal onClose={() => (adding ? undefined : setShowAdd(false))} ariaLabel="Add new version">
+        <Modal
+          onClose={() => (adding ? undefined : setShowAdd(false))}
+          ariaLabel={gt("Add new version")}
+        >
           <div className="w-[560px] max-w-[92vw] bg-surface-raised border border-border-strong rounded-lg shadow-2xl p-5 space-y-4">
             <div>
-              <h2 className="text-sm font-semibold text-on-surface">Add new version</h2>
+              <h2 className="text-sm font-semibold text-on-surface">{gt("Add new version")}</h2>
               <p className="text-xs text-on-surface-muted mt-0.5">
-                The new version becomes the latest enabled version.
+                {gt("The new version becomes the latest enabled version.")}
               </p>
             </div>
             {!capability.valuelessAdd && (
               <textarea
                 value={newValue}
                 onChange={(e) => setNewValue(e.target.value)}
-                placeholder="Paste the secret value here…"
-                aria-label="Secret value"
+                placeholder={gt("Paste the secret value here…")}
+                aria-label={gt("Secret value")}
                 rows={8}
                 className="w-full rounded border border-border-strong bg-surface-sunken/60 text-xs font-mono p-3 text-on-surface focus:outline-none focus:border-blue-500"
               />
             )}
             {!capability.valuelessAdd && capability.supportsFileUpload && (
               <label className="flex items-center gap-2 text-xs text-on-surface-tertiary cursor-pointer">
-                <span>Or load from file:</span>
+                <span>{gt("Or load from file:")}</span>
                 <input
                   type="file"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) void handleFile(file);
                   }}
-                  aria-label="Load secret value from file"
+                  aria-label={gt("Load secret value from file")}
                   className="text-xs"
                 />
               </label>
@@ -387,7 +396,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                 onClick={() => setShowAdd(false)}
                 className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors disabled:opacity-40"
               >
-                Cancel
+                {gt("Cancel")}
               </button>
               <button
                 type="button"
@@ -395,7 +404,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                 onClick={() => void handleAdd()}
                 className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors disabled:opacity-40"
               >
-                {adding ? "Adding…" : "Add version"}
+                {adding ? gt("Adding…") : gt("Add version")}
               </button>
             </div>
           </div>
@@ -403,13 +412,16 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
       )}
 
       {confirm && (
-        <Modal onClose={() => setConfirm(null)} ariaLabel={`Destroy version ${confirm.version.id}`}>
+        <Modal
+          onClose={() => setConfirm(null)}
+          ariaLabel={gt("Destroy version {id}", { id: confirm.version.id })}
+        >
           <div className="w-[460px] max-w-[92vw] bg-surface-raised border border-border-strong rounded-lg shadow-2xl p-5 space-y-4">
             <h2 className="text-sm font-semibold text-on-surface">
-              Destroy version {confirm.version.id}?
+              {gt("Destroy version {id}?", { id: confirm.version.id })}
             </h2>
             <p className="text-xs text-on-surface-muted">
-              This permanently destroys the version and its data. It cannot be recovered.
+              {gt("This permanently destroys the version and its data. It cannot be recovered.")}
             </p>
             <div className="flex items-center justify-end gap-2">
               <button
@@ -417,14 +429,14 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                 onClick={() => setConfirm(null)}
                 className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
               >
-                Cancel
+                {gt("Cancel")}
               </button>
               <button
                 type="button"
                 onClick={() => void handleModify(confirm.version, confirm.action)}
                 className="px-3 py-1.5 text-xs font-medium bg-red-600 hover:bg-red-500 text-white rounded-md transition-colors"
               >
-                Destroy
+                {gt("Destroy")}
               </button>
             </div>
           </div>

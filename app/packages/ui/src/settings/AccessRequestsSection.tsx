@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import {
   formatElevationCountdown,
   formatGrantDuration,
@@ -8,6 +9,7 @@ import {
 } from "@infrawrench/client-core";
 
 import { useSettingsHost } from "./host.js";
+import { useDataString } from "../i18n/data-strings.js";
 import { CARD, INPUT, LABEL, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles.js";
 
 /**
@@ -36,6 +38,7 @@ const STATUS_LABELS: Record<AccessRequestStatus, string> = {
  * what they granted last week, which is exactly the review nobody then does.
  */
 export function AccessRequestsSection() {
+  const gt = useGT();
   const { orgId, api, has, permissionsLoading } = useSettingsHost();
   const canRead = has("access:read");
   const canRequest = has("access:request");
@@ -53,7 +56,7 @@ export function AccessRequestsSection() {
       setRequests(await api.get<AccessRequest[]>(base));
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load access requests");
+      setError(e instanceof Error ? e.message : gt("Could not load access requests"));
     }
   }, [api, base]);
 
@@ -86,7 +89,7 @@ export function AccessRequestsSection() {
       await api.post(path, body);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "That did not work");
+      setError(e instanceof Error ? e.message : gt("That did not work"));
     }
   }
 
@@ -99,16 +102,21 @@ export function AccessRequestsSection() {
     };
   }, [requests]);
 
-  if (permissionsLoading) return <p className="text-sm text-on-surface-faint">Loading…</p>;
+  if (permissionsLoading) return <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>;
 
   if (!canRead) {
     return (
       <div>
         <Header />
-        <p className="text-sm text-on-surface-muted">
-          Your role does not include <code>access:read</code>, so you cannot see the
-          organization&rsquo;s access requests.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-muted">
+            Your role does not include{" "}
+            <Var>
+              <code>access:read</code>
+            </Var>
+            , so you cannot see the organization’s access requests.
+          </p>
+        </T>
       </div>
     );
   }
@@ -132,18 +140,19 @@ export function AccessRequestsSection() {
                   setShowForm(false);
                   await load();
                 } catch (e) {
-                  setError(e instanceof Error ? e.message : "Could not raise the request");
+                  setError(e instanceof Error ? e.message : gt("Could not raise the request"));
                 }
               }}
             />
           ) : (
             <div className="flex items-center justify-between gap-4">
               <p className="text-sm text-on-surface-muted">
-                Need something your role does not grant? Ask for exactly that, for as long as you
-                need it — not a permanent promotion.
+                {gt(
+                  "Need something your role does not grant? Ask for exactly that, for as long as you need it — not a permanent promotion.",
+                )}
               </p>
               <button type="button" className={PRIMARY_BUTTON} onClick={() => setShowForm(true)}>
-                Request access
+                {gt("Request access")}
               </button>
             </div>
           )}
@@ -152,7 +161,9 @@ export function AccessRequestsSection() {
 
       {active.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-on-surface-secondary">Active elevations</h2>
+          <h2 className="text-sm font-semibold text-on-surface-secondary">
+            {gt("Active elevations")}
+          </h2>
           <ul className="border border-amber-500/40 rounded-xl divide-y divide-border overflow-hidden">
             {active.map((request) => (
               <RequestRow
@@ -169,11 +180,13 @@ export function AccessRequestsSection() {
       )}
 
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-on-surface-secondary">Waiting for a decision</h2>
+        <h2 className="text-sm font-semibold text-on-surface-secondary">
+          {gt("Waiting for a decision")}
+        </h2>
         {requests === null ? (
-          <p className="text-sm text-on-surface-faint">Loading…</p>
+          <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
         ) : pending.length === 0 ? (
-          <p className="text-sm text-on-surface-muted">Nothing is waiting.</p>
+          <p className="text-sm text-on-surface-muted">{gt("Nothing is waiting.")}</p>
         ) : (
           <ul className="border border-border rounded-xl divide-y divide-border overflow-hidden">
             {pending.map((request) => (
@@ -189,15 +202,21 @@ export function AccessRequestsSection() {
           </ul>
         )}
         {!canApprove && pending.length > 0 && (
-          <p className="text-xs text-on-surface-muted">
-            You can see what is waiting, but deciding needs <code>access:approve</code>.
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-muted">
+              You can see what is waiting, but deciding needs{" "}
+              <Var>
+                <code>access:approve</code>
+              </Var>
+              .
+            </p>
+          </T>
         )}
       </section>
 
       {history.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-on-surface-secondary">History</h2>
+          <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("History")}</h2>
           <ul className="border border-border rounded-xl divide-y divide-border overflow-hidden">
             {history.map((request) => (
               <RequestRow
@@ -217,14 +236,14 @@ export function AccessRequestsSection() {
 }
 
 function Header() {
+  const gt = useGT();
   return (
     <div className="mb-6">
-      <h1 className="text-xl font-semibold">Break-glass access</h1>
+      <h1 className="text-xl font-semibold">{gt("Break-glass access")}</h1>
       <p className="text-sm text-on-surface-muted mt-1">
-        Time-boxed permission elevation. Ask for the specific permissions you need, for a specific
-        number of minutes, with a reason; someone else approves; the elevation lapses on its own.
-        The usual alternative — making somebody an admin — is how an organization ends up with ten
-        admins and no record of why.
+        {gt(
+          "Time-boxed permission elevation. Ask for the specific permissions you need, for a specific number of minutes, with a reason; someone else approves; the elevation lapses on its own. The usual alternative — making somebody an admin — is how an organization ends up with ten admins and no record of why.",
+        )}
       </p>
     </div>
   );
@@ -243,15 +262,19 @@ function RequestRow({
   onAction: (path: string, body?: unknown) => Promise<void>;
   base: string;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const id = encodeURIComponent(request.id);
   return (
     <li className="p-3 space-y-2">
       <div className="flex items-start gap-3 flex-wrap">
         <div className="min-w-0 flex-1">
           <p className="text-sm text-on-surface-secondary">
-            <span className="font-medium">{request.userName ?? "A member"}</span>{" "}
+            <span className="font-medium">{request.userName ?? gt("A member")}</span>{" "}
             <span className="text-on-surface-muted">
-              asked for {formatGrantDuration(request.durationMinutes)} of
+              {gt("asked for {duration} of", {
+                duration: formatGrantDuration(request.durationMinutes),
+              })}
             </span>{" "}
             {request.permissions.map((p) => (
               <code key={p} className="mr-1">
@@ -262,10 +285,15 @@ function RequestRow({
           <p className="text-xs text-on-surface-muted mt-0.5">{request.reason}</p>
           <p className="text-xs text-on-surface-faint mt-0.5">
             {request.active && request.grantExpiresAt
-              ? `Live — ${formatElevationCountdown(request.grantExpiresAt)}`
+              ? gt("Live — {countdown}", {
+                  countdown: formatElevationCountdown(request.grantExpiresAt),
+                })
               : request.status === "pending"
-                ? `Raised ${new Date(request.createdAt).toLocaleString()} — ${formatElevationCountdown(request.expiresAt)}`
-                : describeOutcome(request)}
+                ? gt("Raised {when} — {countdown}", {
+                    when: new Date(request.createdAt).toLocaleString(),
+                    countdown: formatElevationCountdown(request.expiresAt),
+                  })
+                : describeOutcome(gt, request)}
           </p>
         </div>
 
@@ -280,7 +308,7 @@ function RequestRow({
                   : "text-on-surface-tertiary bg-surface-overlay"
           }`}
         >
-          {request.active ? "Live" : STATUS_LABELS[request.status]}
+          {request.active ? gt("Live") : gtData(STATUS_LABELS[request.status])}
         </span>
       </div>
 
@@ -292,14 +320,14 @@ function RequestRow({
               className={PRIMARY_BUTTON}
               onClick={() => void onAction(`${base}/${id}/approve`)}
             >
-              Approve
+              {gt("Approve")}
             </button>
             <button
               type="button"
               className={SECONDARY_BUTTON}
               onClick={() => void onAction(`${base}/${id}/deny`)}
             >
-              Deny
+              {gt("Deny")}
             </button>
           </>
         )}
@@ -313,7 +341,7 @@ function RequestRow({
             className={SECONDARY_BUTTON}
             onClick={() => void onAction(`${base}/${id}/withdraw`)}
           >
-            Withdraw
+            {gt("Withdraw")}
           </button>
         )}
         {request.active && (
@@ -322,7 +350,7 @@ function RequestRow({
             className={SECONDARY_BUTTON}
             onClick={() => void onAction(`${base}/${id}/revoke`)}
           >
-            End now
+            {gt("End now")}
           </button>
         )}
       </div>
@@ -330,17 +358,35 @@ function RequestRow({
   );
 }
 
-function describeOutcome(request: AccessRequest): string {
+function describeOutcome(gt: ReturnType<typeof useGT>, request: AccessRequest): string {
   if (request.revokedAt) {
-    return `Ended early${request.revokedByName ? ` by ${request.revokedByName}` : ""} on ${new Date(request.revokedAt).toLocaleString()}`;
+    const when = new Date(request.revokedAt).toLocaleString();
+    return request.revokedByName
+      ? gt("Ended early by {name} on {when}", { name: request.revokedByName, when })
+      : gt("Ended early on {when}", { when });
   }
   if (request.status === "approved" && request.grantExpiresAt) {
-    return `Approved${request.decidedByName ? ` by ${request.decidedByName}` : ""}; lapsed ${new Date(request.grantExpiresAt).toLocaleString()}`;
+    const when = new Date(request.grantExpiresAt).toLocaleString();
+    return request.decidedByName
+      ? gt("Approved by {name}; lapsed {when}", { name: request.decidedByName, when })
+      : gt("Approved; lapsed {when}", { when });
   }
   if (request.status === "denied") {
-    return `Denied${request.decidedByName ? ` by ${request.decidedByName}` : ""}${request.decisionNote ? ` — ${request.decisionNote}` : ""}`;
+    if (request.decidedByName && request.decisionNote) {
+      return gt("Denied by {name} — {note}", {
+        name: request.decidedByName,
+        note: request.decisionNote,
+      });
+    }
+    if (request.decidedByName) {
+      return gt("Denied by {name}", { name: request.decidedByName });
+    }
+    if (request.decisionNote) {
+      return gt("Denied — {note}", { note: request.decisionNote });
+    }
+    return gt("Denied");
   }
-  return request.decisionNote ?? "Expired without a decision";
+  return request.decisionNote ?? gt("Expired without a decision");
 }
 
 function RequestForm({
@@ -356,6 +402,7 @@ function RequestForm({
     durationMinutes: number;
   }) => Promise<void>;
 }) {
+  const gt = useGT();
   const [selected, setSelected] = useState<string[]>([]);
   const [reason, setReason] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(60);
@@ -385,7 +432,7 @@ function RequestForm({
       }}
     >
       <div>
-        <span className={LABEL}>Permissions</span>
+        <span className={LABEL}>{gt("Permissions")}</span>
         <div className="max-h-48 overflow-y-auto border border-border rounded-lg p-2 grid grid-cols-2 gap-1">
           {available.map((permission) => {
             const alreadyHeld = held.has(permission);
@@ -395,7 +442,7 @@ function RequestForm({
                 className={`flex items-center gap-2 text-xs ${
                   alreadyHeld ? "text-on-surface-faint" : "text-on-surface-secondary"
                 }`}
-                title={alreadyHeld ? "Your role already grants this" : undefined}
+                title={alreadyHeld ? gt("Your role already grants this") : undefined}
               >
                 <input
                   type="checkbox"
@@ -419,7 +466,7 @@ function RequestForm({
 
       <div>
         <label className={LABEL} htmlFor="access-reason">
-          Why (this is what the approver reads, and what a reviewer reads later)
+          {gt("Why (this is what the approver reads, and what a reviewer reads later)")}
         </label>
         <textarea
           id="access-reason"
@@ -428,12 +475,12 @@ function RequestForm({
           minLength={10}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="Restoring the prod database from last night's snapshot — INC-4417"
+          placeholder={gt("Restoring the prod database from last night's snapshot — INC-4417")}
         />
       </div>
 
       <div>
-        <span className={LABEL}>For how long</span>
+        <span className={LABEL}>{gt("For how long")}</span>
         <div className="flex items-center gap-1 flex-wrap">
           {durations.map((minutes) => (
             <button
@@ -459,10 +506,10 @@ function RequestForm({
           className={PRIMARY_BUTTON}
           disabled={submitting || selected.length === 0 || reason.trim().length < 10}
         >
-          {submitting ? "Requesting…" : "Request"}
+          {submitting ? gt("Requesting…") : gt("Request")}
         </button>
         <button type="button" className={SECONDARY_BUTTON} onClick={onCancel}>
-          Cancel
+          {gt("Cancel")}
         </button>
       </div>
     </form>

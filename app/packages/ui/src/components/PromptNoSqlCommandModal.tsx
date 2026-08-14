@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import type { CreateFieldConfig } from "@infrawrench/plugin-base";
 import { FieldRenderer, type ResourcePickerCallbacks } from "./create-resource/FieldRenderer.js";
 import { buildDefaultFields, evaluateShowWhen } from "../utils.js";
@@ -42,12 +43,14 @@ export function PromptNoSqlCommandModal({
   descriptionVariant = "info",
   blocked = false,
   fields,
-  submitLabel = "Submit",
+  submitLabel: submitLabelProp,
   danger = false,
   resourcePickerProps,
   onSubmit,
   onCancel,
 }: PromptNoSqlCommandModalProps) {
+  const gt = useGT();
+  const submitLabel = submitLabelProp ?? gt("Submit");
   const [values, setValues] = useState<Record<string, string>>(() => buildDefaultFields(fields));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +82,7 @@ export function PromptNoSqlCommandModal({
 
     for (const f of visibleFields) {
       if (f.required && !(values[f.key] ?? "").trim()) {
-        setError(`${f.label} is required`);
+        setError(gt("{label} is required", { label: f.label }));
         return;
       }
     }
@@ -90,7 +93,7 @@ export function PromptNoSqlCommandModal({
       for (const f of submittedFields) payload[f.key] = values[f.key] ?? "";
       await onSubmit(payload);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed");
+      setError(err instanceof Error ? err.message : gt("Failed"));
       setSubmitting(false);
     }
   }
@@ -173,7 +176,7 @@ export function PromptNoSqlCommandModal({
               onClick={onCancel}
               className="px-3 py-1.5 rounded text-xs text-on-surface-secondary hover:bg-surface-overlay transition-colors"
             >
-              Close
+              {gt("Close")}
             </button>
           ) : (
             <>
@@ -183,7 +186,7 @@ export function PromptNoSqlCommandModal({
                 disabled={submitting}
                 className="px-3 py-1.5 rounded text-xs text-on-surface-secondary hover:bg-surface-overlay transition-colors disabled:opacity-50"
               >
-                Cancel
+                {gt("Cancel")}
               </button>
               <button
                 type="button"
@@ -191,7 +194,7 @@ export function PromptNoSqlCommandModal({
                 disabled={submitting}
                 className={submitClasses}
               >
-                {submitting ? "Working…" : submitLabel}
+                {submitting ? gt("Working…") : submitLabel}
               </button>
             </>
           )}

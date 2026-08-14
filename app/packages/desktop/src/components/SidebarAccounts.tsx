@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useGT } from "gt-react";
 import { invoke } from "../lib/invoke";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import {
@@ -41,6 +42,7 @@ interface AccountResourcesState {
 }
 
 export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
+  const gt = useGT();
   const [groups, setGroups] = useState<PluginGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -223,7 +225,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           );
       } catch (e) {
         console.error("SidebarAccounts load error:", e);
-        toast.error("Couldn't load sidebar accounts", {
+        toast.error(gt("Couldn't load sidebar accounts"), {
           description: e instanceof Error ? e.message : String(e),
         });
       } finally {
@@ -247,7 +249,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     try {
       let allResources: ResourceInstance[] = [];
       if (account.cloudManaged) {
-        if (!activeCloudOrgId) throw new Error("No active cloud workspace");
+        if (!activeCloudOrgId) throw new Error(gt("No active cloud workspace"));
         const cloudRows = await listCloudAccountResources(activeCloudOrgId, id);
         allResources = cloudRows.map((r) => ({
           id: r.id,
@@ -268,7 +270,8 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           accountId: account.id,
         });
         const loaded = await getPlugin(account.pluginId);
-        if (!loaded) throw new Error(`Plugin "${account.pluginId}" not loaded`);
+        if (!loaded)
+          throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId: account.pluginId }));
         const { plugin } = loaded;
         const services = buildPluginHostServices(plugin.manifest, credentials);
         const client = plugin.createClient(credentials, services);
@@ -447,7 +450,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
             });
           } catch (err) {
             console.error("Failed to resolve credentials for secret drop:", err);
-            toast.error("Couldn't resolve credentials", {
+            toast.error(gt("Couldn't resolve credentials"), {
               description: err instanceof Error ? err.message : String(err),
             });
           }
@@ -518,7 +521,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
             });
           } catch (err) {
             console.error("Failed to resolve kubeconfig for secret drop:", err);
-            toast.error("Couldn't resolve kubeconfig", {
+            toast.error(gt("Couldn't resolve kubeconfig"), {
               description: err instanceof Error ? err.message : String(err),
             });
           }
@@ -572,7 +575,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
   }
 
   if (loading) {
-    return <div className="px-3 py-2 text-xs text-on-surface-faint">Loading…</div>;
+    return <div className="px-3 py-2 text-xs text-on-surface-faint">{gt("Loading…")}</div>;
   }
 
   if (groups.length === 0) {
@@ -618,14 +621,16 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
                   {isExpanded && (
                     <div className="pl-8 pb-1">
                       {resourceState?.loading && (
-                        <div className="px-3 py-1 text-xs text-on-surface-faint">Loading…</div>
+                        <div className="px-3 py-1 text-xs text-on-surface-faint">
+                          {gt("Loading…")}
+                        </div>
                       )}
                       {resourceState?.error && (
                         <div
                           className="px-3 py-1 text-xs text-danger truncate"
                           title={resourceState.error}
                         >
-                          Error loading resources
+                          {gt("Error loading resources")}
                         </div>
                       )}
                       {resourceState &&
@@ -633,7 +638,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
                         !resourceState.error &&
                         resourceState.resources.length === 0 && (
                           <div className="px-3 py-1 text-xs text-on-surface-faint">
-                            No resources
+                            {gt("No resources")}
                           </div>
                         )}
                       {resourceState?.resources.map((resource) => {
@@ -699,7 +704,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         <div
           ref={contextMenuRef}
           role="menu"
-          aria-label={`Actions for ${contextMenu.displayName}`}
+          aria-label={gt("Actions for {name}", { name: contextMenu.displayName })}
           onKeyDown={handleContextMenuKeyDown}
           style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 50 }}
           className="bg-surface-overlay border border-border-strong rounded-lg shadow-xl py-1 min-w-[200px]"
@@ -721,7 +726,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
               }}
             >
               <span>⇢</span>
-              Connect to service via SSH…
+              {gt("Connect to service via SSH…")}
             </button>
           )}
           {contextMenu.sshHost && (
@@ -741,7 +746,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
               }}
             >
               <span>🐳</span>
-              Setup Docker on VM…
+              {gt("Setup Docker on VM…")}
             </button>
           )}
           {contextMenu.supportsMetrics && (
@@ -761,7 +766,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
               }}
             >
               <span>🔔</span>
-              Add or remove metric ping…
+              {gt("Add or remove metric ping…")}
             </button>
           )}
         </div>

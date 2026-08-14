@@ -1095,3 +1095,6 @@ export {
 export * from "./custom-graphs/index.js";
 
 export * from "./chat/index.js";
+
+export { getStoredLocale, setStoredLocale } from "./i18n/locale-preference.js";
+export { useDataString } from "./i18n/data-strings.js";

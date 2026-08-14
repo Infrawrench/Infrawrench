@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { T, useGT } from "gt-react";
 import { Link } from "@tanstack/react-router";
 import { DeploymentsPanel, type BillingStatus, type DeploymentClient } from "@infrawrench/ui";
 import { apiGet } from "@/lib/api";
@@ -69,33 +70,36 @@ export function WebDeploymentsPanel({
 }
 
 function DeploymentsUpsell({ orgId }: { orgId: string }) {
+  const gt = useGT();
   return (
     <div className="flex h-full min-h-0 items-center justify-center p-8 text-on-surface">
       <div className="max-w-md w-full border border-border rounded-xl p-6">
         <span className="inline-block text-xs font-medium px-2 py-1 rounded-full bg-blue-500/10 text-info mb-4">
-          Pro feature
+          {gt("Pro feature")}
         </span>
-        <h1 className="text-lg font-semibold mb-2">Deploy from GitHub</h1>
+        <h1 className="text-lg font-semibold mb-2">{gt("Deploy from GitHub")}</h1>
         <p className="text-sm text-on-surface-secondary mb-4">
-          Connect a repository with an Infrafile and ship it from here: pick a branch and
-          environment, preview the plan, and watch the build and deploy live. Deploy-on-push keeps
-          it shipping after every merge.
+          {gt(
+            "Connect a repository with an Infrafile and ship it from here: pick a branch and environment, preview the plan, and watch the build and deploy live. Deploy-on-push keeps it shipping after every merge.",
+          )}
         </p>
         <ul className="space-y-2 text-sm text-on-surface-tertiary mb-6">
-          <li>Hosted builds — no local Docker needed</li>
-          <li>Deploy-on-push from GitHub</li>
-          <li>Full run history with rollbacks</li>
+          <li>{gt("Hosted builds — no local Docker needed")}</li>
+          <li>{gt("Deploy-on-push from GitHub")}</li>
+          <li>{gt("Full run history with rollbacks")}</li>
         </ul>
         <Link
           to="/org/$orgId/settings/billing"
           params={{ orgId }}
           className="inline-block px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
         >
-          Upgrade to Pro
+          {gt("Upgrade to Pro")}
         </Link>
-        <p className="text-xs text-on-surface-muted mt-3">
-          $20/seat/month. Local deploys with the <code>infrawrench</code> CLI stay free.
-        </p>
+        <T>
+          <p className="text-xs text-on-surface-muted mt-3">
+            $20/seat/month. Local deploys with the <code>infrawrench</code> CLI stay free.
+          </p>
+        </T>
       </div>
     </div>
   );

@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
+import { useGT } from "gt-react";
 import type { ChildTableColumn, ChildTableSchema } from "@infrawrench/plugin-base";
 import { dnsRecordBadgeColor, formatDnsTtl } from "@infrawrench/plugin-base";
 import type { ChildResource, ChildResourceGroup } from "./detail-types.js";
 import { EditResourceModal } from "../EditResourceModal.js";
 import { badgeClass } from "../schema-tokens.js";
+import { useDataString } from "../../i18n/data-strings.js";
 
 /**
  * Fixed pixel widths per column preset. `wide` returns undefined so the column
@@ -50,22 +52,25 @@ function applySuffixStrip(value: string, suffix: string): string {
 }
 
 function ProxyIndicator({ proxied }: { proxied: boolean }) {
+  const gt = useGT();
   return (
     <span
       className={`inline-flex items-center gap-1.5 text-xs ${
         proxied ? "text-severe" : "text-on-surface-faint"
       }`}
-      title={proxied ? "Proxied through the CDN" : "DNS only"}
+      title={proxied ? gt("Proxied through the CDN") : gt("DNS only")}
     >
       <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
         <path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
       </svg>
-      {proxied ? "Proxied" : "DNS only"}
+      {proxied ? gt("Proxied") : gt("DNS only")}
     </span>
   );
 }
 
 function CellContent({ col, child }: { col: ChildTableColumn; child: ChildResource }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const raw = rawCellValue(col, child);
 
   // A value-map hit (e.g. Cloudflare's Worker placeholder 100::) renders as a
@@ -74,7 +79,7 @@ function CellContent({ col, child }: { col: ChildTableColumn; child: ChildResour
   if (mapped !== undefined) {
     return (
       <span className="inline-block px-2 py-0.5 rounded text-[11px] bg-surface-overlay text-on-surface-tertiary border border-border-strong">
-        {mapped}
+        {gtData(mapped)}
       </span>
     );
   }
@@ -103,7 +108,7 @@ function CellContent({ col, child }: { col: ChildTableColumn; child: ChildResour
       );
     }
     case "boolean-yesno":
-      return <span>{raw === "true" || raw === "1" ? "Yes" : "No"}</span>;
+      return <span>{raw === "true" || raw === "1" ? gt("Yes") : gt("No")}</span>;
     // mono + plain text truncate to a single line within the fixed column
     // width; the full value is available on hover.
     case "mono":
@@ -148,6 +153,8 @@ export function ChildResourceTable({
   onDelete,
   onEdit,
 }: ChildResourceTableProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const rows = group?.resources ?? [];
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editing, setEditing] = useState<ChildResource | null>(null);
@@ -187,15 +194,20 @@ export function ChildResourceTable({
   };
 
   const createLabel = useMemo(
-    () => spec.createLabel ?? `+ Create ${group?.displayName ?? "record"}`,
-    [spec.createLabel, group?.displayName],
+    () =>
+      spec.createLabel
+        ? gtData(spec.createLabel)
+        : gt("+ Create {name}", {
+            name: group?.displayName ? gtData(group.displayName) : gt("record"),
+          }),
+    [spec.createLabel, group?.displayName, gt, gtData],
   );
 
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
-          {spec.title}
+          {gtData(spec.title)}
         </h3>
         {canCreate && (
           <button
@@ -208,7 +220,9 @@ export function ChildResourceTable({
         )}
       </div>
       {rows.length === 0 ? (
-        <p className="text-xs text-on-surface-faint">{spec.emptyText ?? "No items yet."}</p>
+        <p className="text-xs text-on-surface-faint">
+          {spec.emptyText ? gtData(spec.emptyText) : gt("No items yet.")}
+        </p>
       ) : (
         <div className="border border-border rounded-lg overflow-x-auto">
           <table className="w-full text-sm table-fixed">
@@ -227,10 +241,10 @@ export function ChildResourceTable({
                     scope="col"
                     className="text-left font-medium text-on-surface-muted text-xs px-3 py-2 whitespace-nowrap"
                   >
-                    {col.label}
+                    {gtData(col.label)}
                   </th>
                 ))}
-                {canDelete && <th scope="col" className="px-3 py-2" aria-label="Actions" />}
+                {canDelete && <th scope="col" className="px-3 py-2" aria-label={gt("Actions")} />}
               </tr>
             </thead>
             <tbody>
@@ -261,7 +275,11 @@ export function ChildResourceTable({
                           <button
                             type="button"
                             onClick={() => handleRowClick(child)}
-                            aria-label={`${editMode ? "Edit" : "Open"} ${child.displayName}`}
+                            aria-label={
+                              editMode
+                                ? gt("Edit {name}", { name: child.displayName })
+                                : gt("Open {name}", { name: child.displayName })
+                            }
                             className="block w-full cursor-pointer text-left hover:underline"
                           >
                             <CellContent col={col} child={child} />
@@ -278,9 +296,9 @@ export function ChildResourceTable({
                           disabled={deleting === child.id}
                           onClick={() => void handleDelete(child)}
                           className="text-xs text-on-surface-faint hover:text-danger transition-colors disabled:opacity-50"
-                          title="Delete"
+                          title={gt("Delete")}
                         >
-                          {deleting === child.id ? "…" : "Delete"}
+                          {deleting === child.id ? "…" : gt("Delete")}
                         </button>
                       </td>
                     )}

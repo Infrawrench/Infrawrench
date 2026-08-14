@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { useGT } from "gt-react";
 import type { CostEstimate } from "@infrawrench/plugin-base";
 import { formatMonthlyEstimate } from "@infrawrench/client-core";
 
@@ -20,6 +21,7 @@ export interface CostEstimateBreakdownProps {
 
 /** The line items and notes behind a total. */
 export function CostEstimateBreakdown({ estimate }: CostEstimateBreakdownProps) {
+  const gt = useGT();
   return (
     <div className="space-y-2">
       <ul className="space-y-1">
@@ -39,9 +41,13 @@ export function CostEstimateBreakdown({ estimate }: CostEstimateBreakdownProps) 
         ))}
       </ul>
       <div className="flex items-baseline justify-between gap-4 border-t border-border pt-2 font-medium">
-        <span className="text-on-surface-secondary">{estimate.partial ? "At least" : "Total"}</span>
+        <span className="text-on-surface-secondary">
+          {estimate.partial ? gt("At least") : gt("Total")}
+        </span>
         <span className="tabular-nums text-on-surface">
-          {formatMonthlyEstimate(estimate.monthlyAmount, estimate.currency)}/mo
+          {gt("{amount}/mo", {
+            amount: formatMonthlyEstimate(estimate.monthlyAmount, estimate.currency),
+          })}
         </span>
       </div>
       {estimate.notes?.map((note) => (
@@ -67,17 +73,18 @@ export interface CostEstimateChipProps {
 }
 
 export function CostEstimateChip({ label, estimate, caption }: CostEstimateChipProps) {
+  const gt = useGT();
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const expandable = !!estimate && estimate.lineItems.length > 0;
   const heading = (
     <>
       <p className="text-[10px] uppercase tracking-wide text-success">
-        {caption ?? "Estimated cost"}
+        {caption ?? gt("Estimated cost")}
       </p>
       <p className="text-sm font-semibold text-success">
-        {estimate?.partial && <span className="font-normal">at least </span>}
-        {label}/mo
+        {estimate?.partial && <span className="font-normal">{gt("at least")} </span>}
+        {gt("{amount}/mo", { amount: label })}
       </p>
     </>
   );

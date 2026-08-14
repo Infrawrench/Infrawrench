@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useGT } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 import {
   statusPageUrl,
   type StatusPage,
@@ -23,6 +25,8 @@ export interface StatusPagesPanelProps {
  * is never "what does this measure" — it is "who can see it".
  */
 export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [pages, setPages] = useState<StatusPage[] | null>(null);
   const [probes, setProbes] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -74,8 +78,14 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
     if (
       !page.published &&
       !window.confirm(
-        `Publish "${page.title}"? Anyone with its link will be able to see the state of its ` +
-          `${page.components.length} component${page.components.length === 1 ? "" : "s"}, without signing in.`,
+        gt(
+          'Publish "{title}"? Anyone with its link will be able to see the state of its {count} component{plural}, without signing in.',
+          {
+            title: gtData(page.title),
+            count: page.components.length,
+            plural: page.components.length === 1 ? "" : "s",
+          },
+        ),
       )
     ) {
       return;
@@ -94,8 +104,10 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
   const rotate = async (page: StatusPage) => {
     if (
       !window.confirm(
-        `Issue a new link for "${page.title}"? The current link stops working immediately, ` +
-          `and anyone who needs access will have to be sent the new one.`,
+        gt(
+          'Issue a new link for "{title}"? The current link stops working immediately, and anyone who needs access will have to be sent the new one.',
+          { title: gtData(page.title) },
+        ),
       )
     ) {
       return;
@@ -112,7 +124,13 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
   };
 
   const remove = async (page: StatusPage) => {
-    if (!window.confirm(`Delete "${page.title}"? Its link stops working. The probes are kept.`)) {
+    if (
+      !window.confirm(
+        gt('Delete "{title}"? Its link stops working. The probes are kept.', {
+          title: gtData(page.title),
+        }),
+      )
+    ) {
       return;
     }
     setBusyId(page.id);
@@ -134,7 +152,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
       window.setTimeout(() => setCopiedId(null), 2_000);
     } catch {
       // Clipboard access can be denied; the URL is on screen either way.
-      setError("Couldn't copy — select the link and copy it manually.");
+      setError(gt("Couldn't copy — select the link and copy it manually."));
     }
   };
 
@@ -142,10 +160,11 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
     <section className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-on-surface">Status pages</h2>
+          <h2 className="text-sm font-semibold text-on-surface">{gt("Status pages")}</h2>
           <p className="mt-1 text-xs text-on-surface-secondary">
-            Publish the probes above at a public link — the monitoring you already run, pointed at
-            your users. Nothing is reachable until you publish it.
+            {gt(
+              "Publish the probes above at a public link — the monitoring you already run, pointed at your users. Nothing is reachable until you publish it.",
+            )}
           </p>
         </div>
         <button
@@ -153,7 +172,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
           onClick={() => setEditing({ page: null })}
           className="shrink-0 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
         >
-          New page
+          {gt("New page")}
         </button>
       </div>
 
@@ -161,33 +180,38 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
         <div role="alert" className="text-sm text-danger">
           {error}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
-            Retry
+            {gt("Retry")}
           </button>
         </div>
       )}
       {pages === null && error === null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Loading status pages…
+          {gt("Loading status pages…")}
         </p>
       )}
       {pages !== null && pages.length === 0 && (
         <p className="text-sm text-on-surface-faint">
-          No status pages yet.{" "}
+          {gt("No status pages yet.")}{" "}
           {probes.length === 0 ? (
             <>
-              Create a probe first — a status page publishes probes, so there is nothing to show
-              until at least one exists.
+              {gt(
+                "Create a probe first — a status page publishes probes, so there is nothing to show until at least one exists.",
+              )}
               {onOpenProbes && (
                 <>
                   {" "}
                   <button type="button" onClick={onOpenProbes} className="underline">
-                    Add a probe
+                    {gt("Add a probe")}
                   </button>
                 </>
               )}
             </>
           ) : (
-            <>A page picks from your {probes.length} probes and gives them public names.</>
+            <>
+              {gt("A page picks from your {count} probes and gives them public names.", {
+                count: probes.length,
+              })}
+            </>
           )}
         </p>
       )}
@@ -200,22 +224,25 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h3 className="flex items-center gap-2 text-sm font-medium text-on-surface">
-                  {page.title}
+                  {gtData(page.title)}
                   {page.published ? (
                     <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-success">
-                      Live
+                      {gt("Live")}
                     </span>
                   ) : (
                     <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-faint">
-                      Draft
+                      {gt("Draft")}
                     </span>
                   )}
                 </h3>
                 <p className="mt-1 text-xs text-on-surface-tertiary">
-                  {page.components.length} component{page.components.length === 1 ? "" : "s"}
+                  {gt("{count} component{plural}", {
+                    count: page.components.length,
+                    plural: page.components.length === 1 ? "" : "s",
+                  })}
                   {page.components.some((c) => !c.probeEnabled) && (
                     <span className="ml-2 text-warning">
-                      Some probes are paused — those show as “No data”.
+                      {gt("Some probes are paused — those show as “No data”.")}
                     </span>
                   )}
                 </p>
@@ -226,7 +253,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                 disabled={busy}
                 className="shrink-0 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
               >
-                {page.published ? "Unpublish" : "Publish"}
+                {page.published ? gt("Unpublish") : gt("Publish")}
               </button>
             </div>
 
@@ -239,7 +266,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                 onClick={() => void copyLink(page)}
                 className="text-on-surface-tertiary underline hover:text-on-surface"
               >
-                {copiedId === page.id ? "Copied" : "Copy"}
+                {copiedId === page.id ? gt("Copied") : gt("Copy")}
               </button>
               {page.published && (
                 <a
@@ -248,12 +275,14 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                   rel="noreferrer noopener"
                   className="text-on-surface-tertiary underline hover:text-on-surface"
                 >
-                  Open
+                  {gt("Open")}
                 </a>
               )}
             </div>
             <p className="text-xs text-on-surface-faint">
-              The link is the only thing protecting this page. Anyone who has it can read it.
+              {gt(
+                "The link is the only thing protecting this page. Anyone who has it can read it.",
+              )}
             </p>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -263,7 +292,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                 disabled={busy}
                 className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
               >
-                Edit
+                {gt("Edit")}
               </button>
               <button
                 type="button"
@@ -271,7 +300,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                 disabled={busy}
                 className="rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary hover:text-on-surface disabled:opacity-50"
               >
-                New link
+                {gt("New link")}
               </button>
               <button
                 type="button"
@@ -279,7 +308,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                 disabled={busy}
                 className="ml-auto rounded-lg px-3 py-1.5 text-sm text-on-surface-tertiary hover:text-danger disabled:opacity-50"
               >
-                Delete
+                {gt("Delete")}
               </button>
             </div>
           </div>

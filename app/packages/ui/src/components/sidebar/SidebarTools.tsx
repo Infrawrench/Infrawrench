@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import { ToolsIcon } from "../icons/ToolsIcon.js";
 
 /**
@@ -22,6 +23,7 @@ export interface SidebarToolDef {
 const GRID_COLUMNS = 4;
 
 export function SidebarToolsButton({ tools }: { tools: SidebarToolDef[] }) {
+  const gt = useGT();
   const [open, setOpen] = useState(false);
   if (tools.length === 0) return null;
   return (
@@ -34,7 +36,7 @@ export function SidebarToolsButton({ tools }: { tools: SidebarToolDef[] }) {
         <span className="flex items-center justify-center opacity-60" aria-hidden="true">
           <ToolsIcon />
         </span>
-        Tools
+        {gt("Tools")}
       </button>
       {open && <SidebarToolsLauncher tools={tools} onClose={() => setOpen(false)} />}
     </>
@@ -55,6 +57,7 @@ export function SidebarToolsLauncher({
   tools: SidebarToolDef[];
   onClose: () => void;
 }) {
+  const gt = useGT();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -124,7 +127,7 @@ export function SidebarToolsLauncher({
   return (
     <dialog
       ref={dialogRef}
-      aria-label="Tools"
+      aria-label={gt("Tools")}
       onCancel={(e) => {
         e.preventDefault();
         onClose();
@@ -144,8 +147,8 @@ export function SidebarToolsLauncher({
             setSelectedIndex(0);
           }}
           onKeyDown={handleKeyDown}
-          placeholder={"Search tools…"}
-          aria-label="Search tools"
+          placeholder={gt("Search tools…")}
+          aria-label={gt("Search tools")}
           role="combobox"
           aria-expanded={filtered.length > 0}
           aria-controls="sidebar-tools-grid"
@@ -155,23 +158,23 @@ export function SidebarToolsLauncher({
           }
           className="flex-1 bg-transparent text-on-surface placeholder:text-on-surface-faint text-sm focus:outline-none"
         />
-        <kbd className="text-xs text-on-surface-faint flex-shrink-0">esc</kbd>
+        <kbd className="text-xs text-on-surface-faint flex-shrink-0">{gt("esc")}</kbd>
       </div>
 
       <div role="status" aria-live="polite" className="sr-only">
-        {filtered.length === 1 ? "1 tool" : `${filtered.length} tools`}
+        {filtered.length === 1 ? gt("1 tool") : gt("{n} tools", { n: filtered.length })}
       </div>
 
       {filtered.length === 0 && (
         <div className="flex flex-1 items-center justify-center py-12 text-sm text-on-surface-faint">
-          {`No tools match “${query}”`}
+          {gt("No tools match “{query}”", { query })}
         </div>
       )}
       <div
         ref={gridRef}
         id="sidebar-tools-grid"
         role="listbox"
-        aria-label="Tools"
+        aria-label={gt("Tools")}
         className={
           filtered.length === 0
             ? "hidden"
@@ -212,9 +215,9 @@ export function SidebarToolsLauncher({
 
       {filtered.length > 0 && (
         <div className="px-4 py-2 border-t border-border flex items-center gap-4 text-xs text-on-surface-faint">
-          <span>&uarr;&darr;&larr;&rarr; navigate</span>
-          <span>&#8629; open</span>
-          <span>esc close</span>
+          <span>&uarr;&darr;&larr;&rarr; {gt("navigate")}</span>
+          <span>&#8629; {gt("open")}</span>
+          <span>{gt("esc close")}</span>
         </div>
       )}
     </dialog>

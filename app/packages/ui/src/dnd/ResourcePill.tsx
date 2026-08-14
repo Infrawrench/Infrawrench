@@ -1,4 +1,6 @@
 import { useDraggable, useDroppable, useDndContext } from "@dnd-kit/core";
+import { useGT } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 import type { DraggableResource } from "./types.js";
 
 export interface ResourcePillProps {
@@ -37,6 +39,8 @@ export function ResourcePill({
   droppableId,
   isDropDisabled,
 }: ResourcePillProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const {
     attributes,
     listeners,
@@ -77,7 +81,11 @@ export function ResourcePill({
   });
 
   const showDropHint = isOver && isDropTarget && !isDragging;
-  const dropHintLabel = attachDropOk ? (attachMatch?.verb ?? "Attach") : "Drop";
+  const dropHintLabel = attachDropOk
+    ? attachMatch?.verb
+      ? gtData(attachMatch.verb)
+      : gt("Attach")
+    : gt("Drop");
 
   return (
     <div ref={setDropRef} className="inline-flex">
@@ -132,8 +140,8 @@ export function ResourcePill({
                   e.stopPropagation();
                   onPin();
                 }}
-                title={pinned ? "Unpin" : "Pin to dashboard"}
-                aria-label={pinned ? "Unpin" : "Pin to dashboard"}
+                title={pinned ? gt("Unpin") : gt("Pin to dashboard")}
+                aria-label={pinned ? gt("Unpin") : gt("Pin to dashboard")}
                 className={`ml-1 p-1 rounded-full text-xs transition-all ${
                   pinned
                     ? "text-accent hover:text-accent-on-muted"
@@ -150,8 +158,8 @@ export function ResourcePill({
                 e.stopPropagation();
                 onOpen();
               }}
-              title="Open detail view"
-              aria-label="Open detail view"
+              title={gt("Open detail view")}
+              aria-label={gt("Open detail view")}
               className="p-1 rounded-full text-on-surface-faint hover:text-on-surface-secondary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-all text-xs"
             >
               →

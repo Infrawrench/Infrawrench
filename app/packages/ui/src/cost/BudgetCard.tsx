@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { formatBudgetMonth, formatMoney } from "./transform.js";
 import type { BudgetWithStatus } from "./types.js";
 
@@ -14,6 +15,7 @@ export interface BudgetCardProps {
  * approaching / over) — never used as series colors.
  */
 export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
+  const gt = useGT();
   const amount = budget.amountCents / 100;
   const actual = budget.actualCents / 100;
   /**
@@ -48,8 +50,8 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
           <button
             type="button"
             onClick={onEdit}
-            title="Edit budget"
-            aria-label="Edit budget"
+            title={gt("Edit budget")}
+            aria-label={gt("Edit budget")}
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
             ✎
@@ -59,8 +61,8 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
           <button
             type="button"
             onClick={onRemove}
-            title="Remove from dashboard"
-            aria-label="Remove from dashboard"
+            title={gt("Remove from dashboard")}
+            aria-label={gt("Remove from dashboard")}
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
             ✕
@@ -80,10 +82,15 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
             <span
               className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-red-500/15 text-danger"
               title={budget.currentMonthEvents
-                .map((e) => `${e.thresholdType} ≥ ${e.thresholdPercent}%`)
+                .map((e) =>
+                  gt("{type} ≥ {percent}%", {
+                    type: e.thresholdType,
+                    percent: e.thresholdPercent,
+                  }),
+                )
                 .join(", ")}
             >
-              ⚠ Alert
+              {gt("⚠ Alert")}
             </span>
           )}
         </div>
@@ -94,7 +101,10 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
               {formatMoney(actual, budget.currency)}
             </span>
             <span className="text-xs text-on-surface-faint">
-              of {formatMoney(amount, budget.currency)} · {monthLabel}
+              {gt("of {amount} · {month}", {
+                amount: formatMoney(amount, budget.currency),
+                month: monthLabel,
+              })}
             </span>
           </div>
 
@@ -107,7 +117,9 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
               <div
                 className="absolute inset-y-0 border-r-2 border-dashed border-on-surface-faint"
                 style={{ left: `${Math.min(100, forecastPct)}%` }}
-                title={`Forecast: ${formatMoney(forecast!, budget.currency)}`}
+                title={gt("Forecast: {amount}", {
+                  amount: formatMoney(forecast!, budget.currency),
+                })}
               />
             )}
             {budget.thresholds.map((t, i) => (
@@ -115,23 +127,36 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
                 key={i}
                 className="absolute -top-0.5 -bottom-0.5 w-px bg-on-surface-faint/60"
                 style={{ left: `${Math.min(100, t.percent)}%` }}
-                title={`${t.type === "actual" ? "Actual" : "Forecast"} threshold at ${t.percent}%`}
+                title={gt("{type} threshold at {percent}%", {
+                  type: t.type === "actual" ? gt("Actual") : gt("Forecast"),
+                  percent: t.percent,
+                })}
               />
             ))}
           </div>
 
           <div className="flex items-center justify-between mt-1.5 text-[11px] text-on-surface-faint">
-            <span>{actualPct.toFixed(0)}% used</span>
+            <span>{gt("{percent}% used", { percent: actualPct.toFixed(0) })}</span>
             {forecast !== null && (
               <span
                 title={
                   budget.scenarioModelName
-                    ? `Projected month-end total, including scenario "${budget.scenarioModelName}". Trend alone: ${trendForecast !== null ? formatMoney(trendForecast, budget.currency) : "—"}`
-                    : "Projected month-end total based on the recent trend"
+                    ? gt(
+                        'Projected month-end total, including scenario "{scenario}". Trend alone: {trend}',
+                        {
+                          scenario: budget.scenarioModelName,
+                          trend:
+                            trendForecast !== null
+                              ? formatMoney(trendForecast, budget.currency)
+                              : "—",
+                        },
+                      )
+                    : gt("Projected month-end total based on the recent trend")
                 }
               >
-                Forecast {formatMoney(forecast, budget.currency)}
-                {amount > 0 && ` (${((forecast / amount) * 100).toFixed(0)}%)`}
+                {gt("Forecast {amount}", { amount: formatMoney(forecast, budget.currency) })}
+                {amount > 0 &&
+                  gt(" ({percent}%)", { percent: ((forecast / amount) * 100).toFixed(0) })}
               </span>
             )}
             {/* Named on the card, not just in the tooltip: the figure the
@@ -139,9 +164,11 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
                 has to be visible without hovering. */}
             {budget.scenarioModelName && (
               <span className="text-warning">
-                incl. scenario &ldquo;{budget.scenarioModelName}&rdquo;
+                {gt("incl. scenario “{scenario}”", { scenario: budget.scenarioModelName })}
                 {trendForecast !== null &&
-                  ` · trend ${formatMoney(trendForecast, budget.currency)}`}
+                  gt(" · trend {amount}", {
+                    amount: formatMoney(trendForecast, budget.currency),
+                  })}
               </span>
             )}
           </div>
@@ -164,10 +191,11 @@ export interface BudgetWidgetCardProps {
  * position — and its drag handle — until the row arrives.
  */
 export function BudgetWidgetCard({ budget, onEdit, onRemove }: BudgetWidgetCardProps) {
+  const gt = useGT();
   if (!budget) {
     return (
       <div className="rounded-2xl border border-border bg-surface-raised flex items-center justify-center text-xs text-on-surface-faint min-h-[140px]">
-        Loading budget…
+        {gt("Loading budget…")}
       </div>
     );
   }

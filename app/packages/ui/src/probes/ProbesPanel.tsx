@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import { formatUptime, type SyntheticProbe } from "@infrawrench/client-core";
 import { MetricChart } from "../components/charts/MetricChart.js";
@@ -40,15 +41,15 @@ function statusDotClass(probe: SyntheticProbe): string {
   }
 }
 
-function statusTitle(probe: SyntheticProbe): string {
-  if (!probe.enabled) return "Disabled";
+function statusTitle(probe: SyntheticProbe, gt: ReturnType<typeof useGT>): string {
+  if (!probe.enabled) return gt("Disabled");
   switch (probe.status) {
     case "up":
-      return "Up";
+      return gt("Up");
     case "down":
-      return "Down";
+      return gt("Down");
     default:
-      return "No results yet";
+      return gt("No results yet");
   }
 }
 
@@ -73,6 +74,7 @@ function formatWhen(iso: string): string {
  * chart, read from the same metric store the plugin charts use.
  */
 export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
+  const gt = useGT();
   // null = loading, [] = loaded-empty.
   const [probes, setProbes] = useState<SyntheticProbe[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +90,7 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
     client
       .listProbes()
       .then(setProbes)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load probes"));
+      .catch((e) => setError(e instanceof Error ? e.message : gt("Failed to load probes")));
   }, [client]);
 
   useEffect(() => {
@@ -117,17 +119,17 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
       await client.updateProbe?.(probe.id, { enabled: !probe.enabled });
       reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update the probe");
+      setError(e instanceof Error ? e.message : gt("Failed to update the probe"));
     }
   };
 
   const remove = async (probe: SyntheticProbe) => {
-    if (!window.confirm(`Delete probe "${probe.name}"?`)) return;
+    if (!window.confirm(gt('Delete probe "{name}"?', { name: probe.name }))) return;
     try {
       await client.deleteProbe?.(probe.id);
       reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete the probe");
+      setError(e instanceof Error ? e.message : gt("Failed to delete the probe"));
     }
   };
 
@@ -136,10 +138,11 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
       <section>
         <div className="flex items-center justify-between mb-2">
           <div>
-            <h2 className="text-base font-semibold text-on-surface">Synthetic probes</h2>
+            <h2 className="text-base font-semibold text-on-surface">{gt("Synthetic probes")}</h2>
             <p className="text-xs text-on-surface-faint">
-              Uptime and latency checks run on an interval from outside your infrastructure — the
-              view your users get. Alerts fire after consecutive failures.
+              {gt(
+                "Uptime and latency checks run on an interval from outside your infrastructure — the view your users get. Alerts fire after consecutive failures.",
+              )}
             </p>
           </div>
           {canWrite && (
@@ -148,7 +151,7 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
               onClick={() => setEditing({ existing: null })}
               className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors"
             >
-              New probe
+              {gt("New probe")}
             </button>
           )}
         </div>
@@ -157,17 +160,18 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
           <p className="text-sm text-danger">
             {error}{" "}
             <button type="button" onClick={reload} className="underline hover:text-danger">
-              Retry
+              {gt("Retry")}
             </button>
           </p>
         )}
         {probes === null && !error && (
-          <p className="text-sm text-on-surface-faint">Loading probes…</p>
+          <p className="text-sm text-on-surface-faint">{gt("Loading probes…")}</p>
         )}
         {probes !== null && probes.length === 0 && (
           <p className="text-sm text-on-surface-faint">
-            No probes yet. Create one to watch an endpoint from the outside — the editor suggests
-            URLs from your synced resources.
+            {gt(
+              "No probes yet. Create one to watch an endpoint from the outside — the editor suggests URLs from your synced resources.",
+            )}
           </p>
         )}
 
@@ -192,38 +196,44 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
                       <div className="flex items-center gap-2">
                         <span
                           className={`inline-block h-2 w-2 rounded-full ${statusDotClass(probe)}`}
-                          title={statusTitle(probe)}
+                          title={statusTitle(probe, gt)}
                         />
                         <span className="text-sm font-medium text-on-surface truncate">
                           {probe.name}
                         </span>
                         {probe.status === "down" && (
                           <span className="text-xs text-danger">
-                            down{probe.lastError ? ` · ${probe.lastError}` : ""}
+                            {gt("down")}
+                            {probe.lastError ? gt(" · {error}", { error: probe.lastError }) : ""}
                           </span>
                         )}
                         {!probe.enabled && (
-                          <span className="text-xs text-on-surface-faint">disabled</span>
+                          <span className="text-xs text-on-surface-faint">{gt("disabled")}</span>
                         )}
                       </div>
                       <p className="text-xs text-on-surface-secondary truncate">
-                        {probe.method} {probe.url} · every {probe.intervalSeconds}s
+                        {probe.method} {probe.url}{" "}
+                        {gt("· every {interval}s", { interval: probe.intervalSeconds })}
                         {probe.uptime24h !== null &&
-                          ` · ${formatUptime(probe.uptime24h)} uptime (24h)`}
-                        {probe.lastLatencyMs !== null && ` · ${probe.lastLatencyMs}ms`}
+                          gt(" · {uptime} uptime (24h)", { uptime: formatUptime(probe.uptime24h) })}
+                        {probe.lastLatencyMs !== null &&
+                          gt(" · {latency}ms", { latency: probe.lastLatencyMs })}
                         {probe.lastProbeAt !== null &&
-                          ` · checked ${formatWhen(probe.lastProbeAt)}`}
+                          gt(" · checked {when}", { when: formatWhen(probe.lastProbeAt) })}
                       </p>
                     </button>
                     {latency !== undefined && !expanded && (
-                      <SparklineChart points={latency.points} label={`${probe.name} latency`} />
+                      <SparklineChart
+                        points={latency.points}
+                        label={gt("{name} latency", { name: probe.name })}
+                      />
                     )}
                     {onDeclareIncident && probe.status === "down" && probe.enabled && (
                       <button
                         type="button"
                         onClick={() =>
                           onDeclareIncident({
-                            title: `${probe.name} is down`,
+                            title: gt("{name} is down", { name: probe.name }),
                             ...(probe.lastError ? { summary: probe.lastError } : {}),
                             ...(probe.resourceId ? { resourceIds: [probe.resourceId] } : {}),
                             ...(probe.lastStateChangeAt
@@ -233,7 +243,7 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
                         }
                         className="shrink-0 px-2 py-1 rounded-lg text-xs text-danger hover:bg-surface-sunken transition-colors"
                       >
-                        Declare incident
+                        {gt("Declare incident")}
                       </button>
                     )}
                     {canWrite && (
@@ -243,21 +253,21 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
                           onClick={() => void toggleEnabled(probe)}
                           className="px-2 py-1 rounded-lg text-xs text-on-surface-secondary hover:bg-surface-sunken transition-colors"
                         >
-                          {probe.enabled ? "Disable" : "Enable"}
+                          {probe.enabled ? gt("Disable") : gt("Enable")}
                         </button>
                         <button
                           type="button"
                           onClick={() => setEditing({ existing: probe })}
                           className="px-2 py-1 rounded-lg text-xs text-on-surface-secondary hover:bg-surface-sunken transition-colors"
                         >
-                          Edit
+                          {gt("Edit")}
                         </button>
                         <button
                           type="button"
                           onClick={() => void remove(probe)}
                           className="px-2 py-1 rounded-lg text-xs text-danger hover:bg-surface-sunken transition-colors"
                         >
-                          Delete
+                          {gt("Delete")}
                         </button>
                       </div>
                     )}
@@ -266,28 +276,29 @@ export function ProbesPanel({ client, onDeclareIncident }: ProbesPanelProps) {
                   {expanded && (
                     <div className="mt-3 border-t border-border pt-3">
                       {series === undefined && (
-                        <p className="text-sm text-on-surface-faint">Loading history…</p>
+                        <p className="text-sm text-on-surface-faint">{gt("Loading history…")}</p>
                       )}
                       {series === null && (
                         <p className="text-sm text-on-surface-faint">
-                          No history available — the metric store is unreachable or the probe hasn't
-                          produced results yet.
+                          {gt(
+                            "No history available — the metric store is unreachable or the probe hasn't produced results yet.",
+                          )}
                         </p>
                       )}
                       {series && latency && latency.points.length > 0 ? (
                         <MetricChart
                           node={{
                             kind: "metric-chart",
-                            title: "Latency",
+                            title: gt("Latency"),
                             series: [latency],
-                            timeRangeLabel: "Last 24 hours, probed from the edge",
+                            timeRangeLabel: gt("Last 24 hours, probed from the edge"),
                           }}
                         />
                       ) : (
                         series !== undefined &&
                         series !== null && (
                           <p className="text-sm text-on-surface-faint">
-                            No latency samples in the last 24 hours.
+                            {gt("No latency samples in the last 24 hours.")}
                           </p>
                         )
                       )}

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
+import { useGT } from "gt-react";
 import { PlanRequiredClientError, SeatLimitReachedClientError } from "@infrawrench/client-core";
 import type { InvitationSummary, TeamMember } from "../api-types.js";
+import { useDataString } from "../i18n/data-strings.js";
 import { useSettingsHost, SettingsCan } from "./host.js";
 
 interface RoleOption {
@@ -11,6 +13,8 @@ interface RoleOption {
 }
 
 export function TeamSection() {
+  const gt = useGT();
+  const gtData = useDataString();
   const { orgId, api, has, openSection } = useSettingsHost();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [invites, setInvites] = useState<InvitationSummary[]>([]);
@@ -65,19 +69,32 @@ export function TeamSection() {
         // so there is nothing to retry — the org has to buy another slot first.
         if (e.payload.canAddSeat === false) {
           setError(
-            `All ${seatCount} prepaid seats are in use. Buy another capacity slot under Billing to invite more teammates.`,
+            gt(
+              "All {seatCount} prepaid seats are in use. Buy another capacity slot under Billing to invite more teammates.",
+              { seatCount },
+            ),
           );
           return;
         }
         if (!has("billing:write")) {
           setError(
-            `All ${seatCount} seats are in use. Ask someone with billing access to add a seat first.`,
+            gt(
+              "All {seatCount} seats are in use. Ask someone with billing access to add a seat first.",
+              {
+                seatCount,
+              },
+            ),
           );
           return;
         }
         if (
           !window.confirm(
-            `All ${seatCount} seats are in use. Add a seat for $20/month and send the invitation?`,
+            gt(
+              "All {seatCount} seats are in use. Add a seat for $20/month and send the invitation?",
+              {
+                seatCount,
+              },
+            ),
           )
         ) {
           return;
@@ -88,7 +105,7 @@ export function TeamSection() {
       await load();
     } catch (e) {
       if (e instanceof PlanRequiredClientError) setPlanRequired(true);
-      setError(e instanceof Error ? e.message : "Failed to send invitation");
+      setError(e instanceof Error ? e.message : gt("Failed to send invitation"));
     } finally {
       setInviting(false);
     }
@@ -114,30 +131,32 @@ export function TeamSection() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold mb-6">Team</h1>
+      <h1 className="text-xl font-semibold mb-6">{gt("Team")}</h1>
 
       {/* Invite form */}
       <SettingsCan permission="team:invite">
         <div className="border border-border rounded-xl p-4 mb-6">
-          <h2 className="text-sm font-medium text-on-surface-secondary mb-3">Invite a member</h2>
+          <h2 className="text-sm font-medium text-on-surface-secondary mb-3">
+            {gt("Invite a member")}
+          </h2>
           <div className="flex gap-3">
             <input
               type="email"
               value={inviteEmail}
               onChange={(e) => setInviteEmail(e.target.value)}
               placeholder="email@example.com"
-              aria-label="Invite email address"
+              aria-label={gt("Invite email address")}
               className="flex-1 bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
             />
             <select
               value={inviteRoleId}
               onChange={(e) => setInviteRoleId(e.target.value)}
-              aria-label="Invite role"
+              aria-label={gt("Invite role")}
               className="bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary"
             >
               {assignableRoles.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.name}
+                  {gtData(r.name)}
                 </option>
               ))}
             </select>
@@ -147,7 +166,7 @@ export function TeamSection() {
               disabled={inviting}
               className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
             >
-              {inviting ? "Inviting..." : "Invite"}
+              {inviting ? gt("Inviting...") : gt("Invite")}
             </button>
           </div>
           {error && (
@@ -161,7 +180,7 @@ export function TeamSection() {
                     onClick={() => openSection("billing")}
                     className="text-info hover:text-info-strong underline"
                   >
-                    Upgrade to Pro
+                    {gt("Upgrade to Pro")}
                   </button>
                 </>
               )}
@@ -172,26 +191,26 @@ export function TeamSection() {
 
       {/* Members list */}
       <h2 className="text-sm font-medium text-on-surface-secondary mb-3">
-        Members ({members.length})
+        {gt("Members ({count})", { count: members.length })}
       </h2>
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
       ) : (
         <div className="border border-border rounded-xl overflow-hidden mb-6">
           <table className="w-full">
             <thead>
               <tr className="border-b border-border text-xs text-on-surface-muted">
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Name
+                  {gt("Name")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Email
+                  {gt("Email")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Role
+                  {gt("Role")}
                 </th>
                 <th scope="col" className="text-right px-4 py-2 font-medium">
-                  Actions
+                  {gt("Actions")}
                 </th>
               </tr>
             </thead>
@@ -214,18 +233,18 @@ export function TeamSection() {
                         <select
                           value={currentRoleId}
                           onChange={(e) => void handleRoleChange(member.id, e.target.value)}
-                          aria-label={`Role for ${member.email}`}
+                          aria-label={gt("Role for {email}", { email: member.email })}
                           className="bg-surface-overlay border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary"
                         >
                           {assignableRoles.map((r) => (
                             <option key={r.id} value={r.id}>
-                              {r.name}
+                              {gtData(r.name)}
                             </option>
                           ))}
                         </select>
                       ) : (
                         <span className="text-xs text-on-surface-tertiary">
-                          {member.roleName ?? member.role}
+                          {gtData(member.roleName ?? member.role)}
                         </span>
                       )}
                     </td>
@@ -236,7 +255,7 @@ export function TeamSection() {
                           onClick={() => void handleRemove(member.id)}
                           className="text-xs text-danger hover:text-danger-strong"
                         >
-                          Remove
+                          {gt("Remove")}
                         </button>
                       )}
                     </td>
@@ -252,23 +271,25 @@ export function TeamSection() {
       {invites.filter((i) => !i.acceptedAt).length > 0 && (
         <>
           <h2 className="text-sm font-medium text-on-surface-secondary mb-3">
-            Pending invitations ({invites.filter((i) => !i.acceptedAt).length})
+            {gt("Pending invitations ({count})", {
+              count: invites.filter((i) => !i.acceptedAt).length,
+            })}
           </h2>
           <div className="border border-border rounded-xl overflow-hidden">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border text-xs text-on-surface-muted">
                   <th scope="col" className="text-left px-4 py-2 font-medium">
-                    Email
+                    {gt("Email")}
                   </th>
                   <th scope="col" className="text-left px-4 py-2 font-medium">
-                    Role
+                    {gt("Role")}
                   </th>
                   <th scope="col" className="text-left px-4 py-2 font-medium">
-                    Expires
+                    {gt("Expires")}
                   </th>
                   <th scope="col" className="text-right px-4 py-2 font-medium">
-                    Actions
+                    {gt("Actions")}
                   </th>
                 </tr>
               </thead>
@@ -285,7 +306,7 @@ export function TeamSection() {
                         {invite.email}
                       </td>
                       <td className="px-4 py-2 text-xs text-on-surface-tertiary">
-                        {invite.roleName ?? invite.role}
+                        {gtData(invite.roleName ?? invite.role)}
                       </td>
                       <td className="px-4 py-2 text-xs text-on-surface-muted">
                         {new Date(invite.expiresAt).toLocaleDateString()}
@@ -297,7 +318,7 @@ export function TeamSection() {
                             onClick={() => void handleRevokeInvite(invite.id)}
                             className="text-xs text-danger hover:text-danger-strong"
                           >
-                            Revoke
+                            {gt("Revoke")}
                           </button>
                         )}
                       </td>

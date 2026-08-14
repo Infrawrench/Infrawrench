@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import {
   ORG_CONFIG_SECTIONS,
   ORG_CONFIG_SECTION_LABELS,
@@ -25,6 +26,7 @@ import { useSettingsHost } from "./host.js";
  * having seen the list first.
  */
 export function ConfigAsCodeSection() {
+  const gt = useGT();
   const { orgId, api, has } = useSettingsHost();
   const canExport = has("config:read");
   const canApply = has("config:write");
@@ -32,20 +34,31 @@ export function ConfigAsCodeSection() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold">Config as Code</h1>
-        <p className="text-sm text-on-surface-muted mt-1">
-          Your dashboards, workflows, custom graphs, budgets, metric alerts, probes, cost centres,
-          tag policy and alert settings as one JSON document. Keep it in git for disaster recovery,
-          seed a staging organization from it, or clone a whole setup for a new client. Accounts,
-          credentials and resources are never included.
-        </p>
+        <h1 className="text-xl font-semibold">{gt("Config as Code")}</h1>
+        <T>
+          <p className="text-sm text-on-surface-muted mt-1">
+            Your dashboards, workflows, custom graphs, budgets, metric alerts, probes, cost centres,
+            tag policy and alert settings as one JSON document. Keep it in git for disaster
+            recovery, seed a staging organization from it, or clone a whole setup for a new client.
+            Accounts, credentials and resources are never included.
+          </p>
+        </T>
       </div>
 
       {!canExport && !canApply ? (
-        <p className="text-sm text-on-surface-muted">
-          You need the <code>config:read</code> permission to export, and <code>config:write</code>{" "}
-          to import.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-muted">
+            You need the{" "}
+            <Var>
+              <code>config:read</code>
+            </Var>{" "}
+            permission to export, and{" "}
+            <Var>
+              <code>config:write</code>
+            </Var>{" "}
+            to import.
+          </p>
+        </T>
       ) : (
         <div className="space-y-8">
           {canExport && <ExportCard orgId={orgId} api={api} has={has} />}
@@ -81,6 +94,7 @@ function ErrorBanner({ message }: { message: string }) {
 /* ---------------------------------- export --------------------------------- */
 
 function ExportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPermission }) {
+  const gt = useGT();
   const readable = useMemo(() => allowedSections(has, ORG_CONFIG_SECTION_READ_PERMISSIONS), [has]);
   const [selected, setSelected] = useState<Set<OrgConfigSection>>(new Set(readable));
   const [busy, setBusy] = useState(false);
@@ -114,7 +128,7 @@ function ExportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
       link.remove();
       URL.revokeObjectURL(url);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to export the configuration");
+      setError(e instanceof Error ? e.message : gt("Failed to export the configuration"));
     } finally {
       setBusy(false);
     }
@@ -129,7 +143,7 @@ function ExportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to copy the configuration");
+      setError(e instanceof Error ? e.message : gt("Failed to copy the configuration"));
     } finally {
       setBusy(false);
     }
@@ -145,12 +159,14 @@ function ExportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
 
   return (
     <section className={CARD}>
-      <h2 className="text-sm font-semibold">Export</h2>
-      <p className="text-xs text-on-surface-muted">
-        Entities are addressed by a stable key derived from their name, not by database id, so the
-        document applies to any organization. Ordering is stable too — re-exporting an unchanged
-        organization produces the same file, which is what makes the git diff meaningful.
-      </p>
+      <h2 className="text-sm font-semibold">{gt("Export")}</h2>
+      <T>
+        <p className="text-xs text-on-surface-muted">
+          Entities are addressed by a stable key derived from their name, not by database id, so the
+          document applies to any organization. Ordering is stable too — re-exporting an unchanged
+          organization produces the same file, which is what makes the git diff meaningful.
+        </p>
+      </T>
 
       {error && <ErrorBanner message={error} />}
 
@@ -172,7 +188,9 @@ function ExportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
 
       {missing.length > 0 && (
         <p className="text-xs text-on-surface-muted">
-          Not available to you: {missing.map((s) => ORG_CONFIG_SECTION_LABELS[s]).join(", ")}.
+          {gt("Not available to you: {sections}.", {
+            sections: missing.map((s) => ORG_CONFIG_SECTION_LABELS[s]).join(", "),
+          })}
         </p>
       )}
 
@@ -183,7 +201,7 @@ function ExportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
           disabled={busy || selected.size === 0}
           className={PRIMARY_BUTTON}
         >
-          {busy ? "Working…" : "Download infrawrench.json"}
+          {busy ? gt("Working…") : gt("Download infrawrench.json")}
         </button>
         <button
           type="button"
@@ -191,7 +209,7 @@ function ExportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
           disabled={busy || selected.size === 0}
           className={SECONDARY_BUTTON}
         >
-          {copied ? "Copied" : "Copy JSON"}
+          {copied ? gt("Copied") : gt("Copy JSON")}
         </button>
       </div>
     </section>
@@ -201,6 +219,7 @@ function ExportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
 /* ---------------------------------- import --------------------------------- */
 
 function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPermission }) {
+  const gt = useGT();
   const [text, setText] = useState("");
   const [prune, setPrune] = useState(false);
   const [plan, setPlan] = useState<OrgConfigPlan | null>(null);
@@ -214,10 +233,10 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
 
   /** Parse the pasted text, reporting a bad document before any round trip. */
   const parse = useCallback((): unknown => {
-    if (!text.trim()) throw new Error("Paste a document, or choose a file.");
+    if (!text.trim()) throw new Error(gt("Paste a document, or choose a file."));
     const parsed: unknown = JSON.parse(text);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("Expected a config document object at the top level.");
+      throw new Error(gt("Expected a config document object at the top level."));
     }
     return parsed;
   }, [text]);
@@ -236,7 +255,7 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
       );
     } catch (e) {
       setPlan(null);
-      setError(e instanceof Error ? e.message : "Failed to preview the changes");
+      setError(e instanceof Error ? e.message : gt("Failed to preview the changes"));
     } finally {
       setBusy(false);
     }
@@ -254,7 +273,7 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
       setApplied(result);
       setPlan(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to apply the configuration");
+      setError(e instanceof Error ? e.message : gt("Failed to apply the configuration"));
     } finally {
       setBusy(false);
     }
@@ -270,7 +289,7 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
       setPlan(null);
       setApplied(null);
     };
-    reader.onerror = () => setError("Failed to read that file");
+    reader.onerror = () => setError(gt("Failed to read that file"));
     reader.readAsText(file);
     event.target.value = "";
   }
@@ -280,16 +299,22 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
 
   return (
     <section className={CARD}>
-      <h2 className="text-sm font-semibold">Import</h2>
-      <p className="text-xs text-on-surface-muted">
-        Sections the document leaves out are never touched. Everything in it is applied in one
-        transaction — if any part fails, nothing changes.
-      </p>
+      <h2 className="text-sm font-semibold">{gt("Import")}</h2>
+      <T>
+        <p className="text-xs text-on-surface-muted">
+          Sections the document leaves out are never touched. Everything in it is applied in one
+          transaction — if any part fails, nothing changes.
+        </p>
+      </T>
 
       {missing.length > 0 && (
         <p className="text-xs text-on-surface-muted">
-          You cannot import these sections, and a document carrying one will be refused:{" "}
-          {missing.map((s) => ORG_CONFIG_SECTION_LABELS[s]).join(", ")}.
+          {gt(
+            "You cannot import these sections, and a document carrying one will be refused: {sections}.",
+            {
+              sections: missing.map((s) => ORG_CONFIG_SECTION_LABELS[s]).join(", "),
+            },
+          )}
         </p>
       )}
 
@@ -305,7 +330,7 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
         rows={8}
         spellCheck={false}
         placeholder='{ "version": 1, "budgets": [ … ] }'
-        aria-label="Configuration document"
+        aria-label={gt("Configuration document")}
         className="w-full px-3 py-2 text-xs font-mono bg-surface border border-border rounded-lg focus:outline-none focus:border-border-strong"
       />
 
@@ -315,14 +340,14 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
           onClick={() => fileInput.current?.click()}
           className={SECONDARY_BUTTON}
         >
-          Choose file…
+          {gt("Choose file…")}
         </button>
         <input
           ref={fileInput}
           type="file"
           accept="application/json,.json"
           onChange={chooseFile}
-          aria-label="Configuration document file"
+          aria-label={gt("Configuration document file")}
           className="hidden"
         />
         <label className="flex items-center gap-2 text-sm text-on-surface-secondary">
@@ -334,7 +359,7 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
               setPlan(null);
             }}
           />
-          Delete anything the document doesn&rsquo;t name
+          {gt("Delete anything the document doesn't name")}
         </label>
         <button
           type="button"
@@ -342,7 +367,7 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
           disabled={busy || !text.trim()}
           className={PRIMARY_BUTTON}
         >
-          {busy ? "Working…" : "Preview changes"}
+          {busy ? gt("Working…") : gt("Preview changes")}
         </button>
       </div>
 
@@ -360,17 +385,19 @@ function ImportCard({ orgId, api, has }: { orgId: string; api: Api; has: HasPerm
             }
           >
             {nothingToDo
-              ? "Already up to date"
+              ? gt("Already up to date")
               : plan.counts.delete > 0
-                ? `Apply — ${plan.counts.delete} will be deleted`
-                : `Apply ${pending} change${pending === 1 ? "" : "s"}`}
+                ? gt("Apply — {count} will be deleted", { count: plan.counts.delete })
+                : pending === 1
+                  ? gt("Apply {count} change", { count: pending })
+                  : gt("Apply {count} changes", { count: pending })}
           </button>
         </div>
       )}
 
       {applied && (
         <div className="space-y-3 pt-1">
-          <p className="text-sm text-success">Applied.</p>
+          <p className="text-sm text-success">{gt("Applied.")}</p>
           <PlanView plan={applied} />
         </div>
       )}
@@ -393,6 +420,7 @@ const ACTION_SIGN: Record<OrgConfigChange["action"], string> = {
 };
 
 function PlanView({ plan }: { plan: OrgConfigPlan }) {
+  const gt = useGT();
   const interesting = plan.changes.filter((change) => change.action !== "unchanged");
   const bySection = new Map<OrgConfigSection, OrgConfigChange[]>();
   for (const change of interesting) {
@@ -405,7 +433,7 @@ function PlanView({ plan }: { plan: OrgConfigPlan }) {
     <div className="border border-border rounded-lg p-3 space-y-3 bg-surface">
       {interesting.length === 0 ? (
         <p className="text-sm text-on-surface-muted">
-          No changes — this organization already matches.
+          {gt("No changes — this organization already matches.")}
         </p>
       ) : (
         [...bySection.entries()].map(([section, changes]) => (
@@ -433,13 +461,20 @@ function PlanView({ plan }: { plan: OrgConfigPlan }) {
       )}
 
       <p className="text-xs text-on-surface-muted">
-        {plan.counts.create} to create · {plan.counts.update} to update · {plan.counts.delete} to
-        delete · {plan.counts.unchanged} unchanged
+        {gt(
+          "{create} to create · {update} to update · {delete} to delete · {unchanged} unchanged",
+          {
+            create: plan.counts.create,
+            update: plan.counts.update,
+            delete: plan.counts.delete,
+            unchanged: plan.counts.unchanged,
+          },
+        )}
       </p>
 
       {plan.unresolved.length > 0 && (
         <div className="border-t border-border/50 pt-2">
-          <h3 className="text-xs font-semibold text-warning mb-1">Not applied</h3>
+          <h3 className="text-xs font-semibold text-warning mb-1">{gt("Not applied")}</h3>
           <ul className="space-y-1">
             {plan.unresolved.map((item, i) => (
               <li key={i} className="text-xs text-on-surface-muted">

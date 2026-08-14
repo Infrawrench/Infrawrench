@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import {
   formatCreditAmount,
   type CommitmentHolding,
@@ -15,12 +16,20 @@ const STATE_CLASS: Record<CommitmentState, string> = {
   expired: "text-on-surface-tertiary bg-surface-overlay",
 };
 
-const REASON_LABEL: Record<string, string> = {
-  unit_denominated: "not measurable from spend (unit-denominated)",
-  no_active_days: "not active in the window",
-  no_data_days: "no cost data collected on active days",
-  unattributed_rows: "provider rows carry no commitment attribution",
-};
+function reasonLabel(gt: ReturnType<typeof useGT>, reason: string | undefined): string {
+  switch (reason) {
+    case "unit_denominated":
+      return gt("not measurable from spend (unit-denominated)");
+    case "no_active_days":
+      return gt("not active in the window");
+    case "no_data_days":
+      return gt("no cost data collected on active days");
+    case "unattributed_rows":
+      return gt("provider rows carry no commitment attribution");
+    default:
+      return gt("not measurable");
+  }
+}
 
 function pct(value: number): string {
   return `${Math.round(value * 100)}%`;
@@ -46,6 +55,7 @@ export interface CommitmentsSectionProps {
  * itself entirely when the host client lacks the capability.
  */
 export function CommitmentsSection({ client }: CommitmentsSectionProps) {
+  const gt = useGT();
   const [feed, setFeed] = useState<CommitmentsFeed | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -89,11 +99,13 @@ export function CommitmentsSection({ client }: CommitmentsSectionProps) {
   return (
     <section className="space-y-3">
       <div>
-        <h2 className="text-sm font-semibold text-on-surface-secondary">Commitments</h2>
-        <p className="text-xs text-on-surface-muted mt-1">
-          Reserved instances, savings plans and committed-use discounts — the largest lever on a
-          large bill. Utilization is measured only over days with collected cost data.
-        </p>
+        <h2 className="text-sm font-semibold text-on-surface-secondary">{gt("Commitments")}</h2>
+        <T>
+          <p className="text-xs text-on-surface-muted mt-1">
+            Reserved instances, savings plans and committed-use discounts — the largest lever on a
+            large bill. Utilization is measured only over days with collected cost data.
+          </p>
+        </T>
       </div>
 
       {error && <p className="text-sm text-danger">{error}</p>}
@@ -111,7 +123,9 @@ export function CommitmentsSection({ client }: CommitmentsSectionProps) {
       {feed && feed.planner.recommendations.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-xs font-semibold text-on-surface-secondary">
-            Savings planner — commit at the floor of {feed.plannerWindowDays}-day uncovered spend
+            {gt("Savings planner — commit at the floor of {days}-day uncovered spend", {
+              days: feed.plannerWindowDays,
+            })}
           </h3>
           <ul className="border border-border rounded-xl divide-y divide-border overflow-hidden">
             {feed.planner.recommendations.map((rec) => (
@@ -121,10 +135,12 @@ export function CommitmentsSection({ client }: CommitmentsSectionProps) {
               />
             ))}
           </ul>
-          <p className="text-xs text-on-surface-muted">
-            Recommendations only — nothing is purchased automatically. Savings quote the
-            provider&rsquo;s published &ldquo;up to&rdquo; rates.
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-muted">
+              Recommendations only — nothing is purchased automatically. Savings quote the
+              provider&rsquo;s published &ldquo;up to&rdquo; rates.
+            </p>
+          </T>
         </div>
       )}
 
@@ -135,10 +151,12 @@ export function CommitmentsSection({ client }: CommitmentsSectionProps) {
       ))}
 
       {feed && feed.pendingAccountIds.length > 0 && (
-        <p className="text-xs text-on-surface-muted">
-          {feed.pendingAccountIds.length} account
-          {feed.pendingAccountIds.length === 1 ? "" : "s"} awaiting first commitment collection.
-        </p>
+        <T>
+          <p className="text-xs text-on-surface-muted">
+            <Var>{feed.pendingAccountIds.length}</Var> account
+            {feed.pendingAccountIds.length === 1 ? "" : "s"} awaiting first commitment collection.
+          </p>
+        </T>
       )}
     </section>
   );
@@ -153,10 +171,12 @@ function CoverageLine({ feed }: { feed: CommitmentsFeed }) {
   if (!coverage.available) {
     if (coverage.excludedAccountIds.length === 0) return null;
     return (
-      <p className="text-xs text-on-surface-muted">
-        Coverage unavailable: no connected account&rsquo;s provider distinguishes covered from
-        uncovered usage.
-      </p>
+      <T>
+        <p className="text-xs text-on-surface-muted">
+          Coverage unavailable: no connected account&rsquo;s provider distinguishes covered from
+          uncovered usage.
+        </p>
+      </T>
     );
   }
   const lines = coverage.currencies.filter((c) => c.broadRatio !== null);
@@ -164,44 +184,55 @@ function CoverageLine({ feed }: { feed: CommitmentsFeed }) {
   return (
     <div className="text-xs text-on-surface-muted space-y-0.5">
       {lines.map((c) => (
-        <p key={c.currency}>
-          <span className="text-on-surface-secondary font-medium">
-            {c.broadRatio !== null && c.narrowRatio !== null
-              ? c.broadRatio === c.narrowRatio
-                ? pct(c.broadRatio)
-                : `${pct(c.broadRatio)}–${pct(c.narrowRatio)}`
-              : "—"}
-          </span>{" "}
-          of {c.currency} usage spend covered by commitments over the last{" "}
-          {feed.utilizationWindowDays} days
-          {/* The range is the honest answer: the low end counts egress and
-              per-request charges that can never be committed against, the
-              high end only cells where a commitment demonstrably landed. */}
-        </p>
+        <T key={c.currency}>
+          <p>
+            <span className="text-on-surface-secondary font-medium">
+              <Var>
+                {c.broadRatio !== null && c.narrowRatio !== null
+                  ? c.broadRatio === c.narrowRatio
+                    ? pct(c.broadRatio)
+                    : `${pct(c.broadRatio)}–${pct(c.narrowRatio)}`
+                  : "—"}
+              </Var>
+            </span>{" "}
+            of <Var>{c.currency}</Var> usage spend covered by commitments over the last{" "}
+            <Var>{feed.utilizationWindowDays}</Var> days
+            {/* The range is the honest answer: the low end counts egress and
+                per-request charges that can never be committed against, the
+                high end only cells where a commitment demonstrably landed. */}
+          </p>
+        </T>
       ))}
       {coverage.excludedAccountIds.length > 0 && (
-        <p>
-          {coverage.excludedAccountIds.length} account
-          {coverage.excludedAccountIds.length === 1 ? "" : "s"} excluded (provider cannot
-          distinguish charge types).
-        </p>
+        <T>
+          <p>
+            <Var>{coverage.excludedAccountIds.length}</Var> account
+            {coverage.excludedAccountIds.length === 1 ? "" : "s"} excluded (provider cannot
+            distinguish charge types).
+          </p>
+        </T>
       )}
     </div>
   );
 }
 
 function HoldingRow({ holding }: { holding: CommitmentHolding }) {
+  const gt = useGT();
   const { utilization } = holding;
   const money =
     holding.hourlyCommitmentAmount !== null && holding.currency
-      ? `${formatCreditAmount(holding.hourlyCommitmentAmount, holding.currency)}/hour committed`
+      ? gt("{amount}/hour committed", {
+          amount: formatCreditAmount(holding.hourlyCommitmentAmount, holding.currency),
+        })
       : holding.upfrontAmount !== null && holding.currency
-        ? `${formatCreditAmount(holding.upfrontAmount, holding.currency)} upfront`
+        ? gt("{amount} upfront", {
+            amount: formatCreditAmount(holding.upfrontAmount, holding.currency),
+          })
         : holding.unitCommitments && holding.unitCommitments.length > 0
           ? holding.unitCommitments.map((u) => `${u.amount} ${u.unit}`).join(", ")
           : // "Not reported" (Azure reports no price on its list API), which
             // is a different fact from $0.
-            "price not reported";
+            gt("price not reported");
 
   return (
     <li className="p-3 flex items-center gap-3 flex-wrap">
@@ -210,27 +241,34 @@ function HoldingRow({ holding }: { holding: CommitmentHolding }) {
           <span className="font-medium">{holding.description}</span>
         </p>
         <p className="text-xs text-on-surface-muted mt-0.5">
-          {holding.accountName} · {holding.region ?? "All regions"} · {money}
-          {holding.endDate && <> · ends {holding.endDate.slice(0, 10)}</>}
+          {holding.accountName} · {holding.region ?? gt("All regions")} · {money}
+          {holding.endDate && <> · {gt("ends {date}", { date: holding.endDate.slice(0, 10) })}</>}
         </p>
         <p className="text-xs text-on-surface-muted mt-0.5">
           {utilization.utilization !== null ? (
             <>
-              {pct(utilization.utilization)} utilized over {utilization.measuredDays} measured day
-              {utilization.measuredDays === 1 ? "" : "s"}
+              {utilization.measuredDays === 1
+                ? gt("{pct} utilized over {days} measured day", {
+                    pct: pct(utilization.utilization),
+                    days: utilization.measuredDays,
+                  })
+                : gt("{pct} utilized over {days} measured days", {
+                    pct: pct(utilization.utilization),
+                    days: utilization.measuredDays,
+                  })}
               {utilization.missingDays > 0 && (
                 // A day collection never ran is reported, never counted as
                 // idle commitment — that miscount cancels healthy plans.
-                <> · {utilization.missingDays} days without cost data</>
+                <> · {gt("{days} days without cost data", { days: utilization.missingDays })}</>
               )}
             </>
           ) : (
-            <>Utilization: {REASON_LABEL[utilization.reason ?? ""] ?? "not measurable"}</>
+            <>{gt("Utilization: {reason}", { reason: reasonLabel(gt, utilization.reason) })}</>
           )}
           {holding.providerUtilization && holding.providerUtilization.length > 0 && (
             <>
               {" "}
-              · provider-reported:{" "}
+              · {gt("provider-reported:")}{" "}
               {holding.providerUtilization
                 .map((u) => `${u.percentage}% / ${u.grainDays}d`)
                 .join(", ")}
@@ -248,13 +286,16 @@ function HoldingRow({ holding }: { holding: CommitmentHolding }) {
 }
 
 function RecommendationRow({ rec }: { rec: CommitmentRecommendationView }) {
+  const gt = useGT();
   const saving =
     rec.savingBasis === "range" && rec.estimatedAnnualSavingMin !== undefined
-      ? `${formatCreditAmount(rec.estimatedAnnualSavingMin, rec.currency)}–${formatCreditAmount(
-          rec.estimatedAnnualSavingMax,
-          rec.currency,
-        )}/yr`
-      : `up to ${formatCreditAmount(rec.estimatedAnnualSavingMax, rec.currency)}/yr`;
+      ? gt("{min}–{max}/yr", {
+          min: formatCreditAmount(rec.estimatedAnnualSavingMin, rec.currency),
+          max: formatCreditAmount(rec.estimatedAnnualSavingMax, rec.currency),
+        })
+      : gt("up to {max}/yr", {
+          max: formatCreditAmount(rec.estimatedAnnualSavingMax, rec.currency),
+        });
   return (
     <li className="p-3">
       <p className="text-sm text-on-surface-secondary">
@@ -263,18 +304,26 @@ function RecommendationRow({ rec }: { rec: CommitmentRecommendationView }) {
           {rec.region ? ` · ${rec.region}` : ""}
         </span>{" "}
         <span className="text-on-surface-muted">
-          — commit {formatCreditAmount(rec.recommendedHourlyCommitment, rec.currency)}/hour, save{" "}
-          {saving}
+          {gt("— commit {amount}/hour, save {saving}", {
+            amount: formatCreditAmount(rec.recommendedHourlyCommitment, rec.currency),
+            saving,
+          })}
         </span>
       </p>
       <p className="text-xs text-on-surface-muted mt-0.5">
-        Break-even at {pct(rec.breakEvenUtilization)} utilization — this workload can shrink by{" "}
-        {pct(rec.discountRateMax)} before the commitment loses money.
+        {gt(
+          "Break-even at {breakEven} utilization — this workload can shrink by {discount} before the commitment loses money.",
+          {
+            breakEven: pct(rec.breakEvenUtilization),
+            discount: pct(rec.discountRateMax),
+          },
+        )}
         {rec.annualLossIfUsageHalves > 0 && (
           <>
             {" "}
-            If usage halves: up to {formatCreditAmount(rec.annualLossIfUsageHalves, rec.currency)}
-            /yr lost.
+            {gt("If usage halves: up to {loss}/yr lost.", {
+              loss: formatCreditAmount(rec.annualLossIfUsageHalves, rec.currency),
+            })}
           </>
         )}
       </p>

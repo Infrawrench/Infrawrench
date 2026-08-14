@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import { Modal } from "./Modal.js";
 import { RegionPicker } from "./create-resource/RegionPicker.js";
 import { formatErrorMessage } from "../utils.js";
+import { useDataString } from "../i18n/data-strings.js";
 import type { PluginInfo } from "./AddAccountModal.js";
 
 interface EditCredentialsModalProps {
@@ -39,6 +41,8 @@ export function EditCredentialsModal({
   onClose,
   onOpenExternal,
 }: EditCredentialsModalProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +74,7 @@ export function EditCredentialsModal({
     for (const f of plugin.credentialFields) {
       if (f.optional) continue;
       if (!next[f.key]?.trim()) {
-        setError(`${f.label} is required.`);
+        setError(gt("{label} is required.", { label: gtData(f.label) }));
         return;
       }
     }
@@ -88,7 +92,10 @@ export function EditCredentialsModal({
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel={`Update credentials: ${accountDisplayName}`}>
+    <Modal
+      onClose={onClose}
+      ariaLabel={gt("Update credentials: {name}", { name: accountDisplayName })}
+    >
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2 min-w-0">
@@ -98,34 +105,37 @@ export function EditCredentialsModal({
               dangerouslySetInnerHTML={{ __html: plugin.logoSvg }}
             />
             <h2 className="text-sm font-semibold text-on-surface-secondary truncate">
-              Update credentials: {accountDisplayName}
+              {gt("Update credentials: {name}", { name: accountDisplayName })}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg leading-none"
-            aria-label="Close"
+            aria-label={gt("Close")}
           >
             &#215;
           </button>
         </div>
 
         <div className="p-5 space-y-4">
-          <p className="text-xs text-on-surface-faint">
-            Rotate the credentials this account uses to talk to {plugin.displayName}. Leave
-            sensitive fields blank to keep their current value.
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-faint">
+              Rotate the credentials this account uses to talk to{" "}
+              <Var>{gtData(plugin.displayName)}</Var>. Leave sensitive fields blank to keep their
+              current value.
+            </p>
+          </T>
 
           {plugin.credentialFields.map((f) => {
             const fieldId = `edit-account-field-${f.key}`;
             return (
               <div key={f.key}>
                 <label htmlFor={fieldId} className="block text-xs text-on-surface-tertiary mb-1">
-                  {f.label}
+                  {gtData(f.label)}
                 </label>
                 {f.description && (
-                  <p className="text-xs text-on-surface-faint mb-1">{f.description}</p>
+                  <p className="text-xs text-on-surface-faint mb-1">{gtData(f.description)}</p>
                 )}
                 {f.helpLink && (
                   <a
@@ -142,7 +152,7 @@ export function EditCredentialsModal({
                     }
                     className="inline-flex items-center gap-1 text-xs text-info hover:text-info-strong mb-1"
                   >
-                    {f.helpLink.label}
+                    {gtData(f.helpLink.label)}
                     <span aria-hidden="true">↗</span>
                   </a>
                 )}
@@ -157,10 +167,16 @@ export function EditCredentialsModal({
                     id={fieldId}
                     value={fieldValues[f.key] ?? ""}
                     onChange={(e) => setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))}
-                    placeholder={f.sensitive ? "Leave blank to keep current value" : f.placeholder}
+                    placeholder={
+                      f.sensitive
+                        ? gt("Leave blank to keep current value")
+                        : f.placeholder
+                          ? gtData(f.placeholder)
+                          : undefined
+                    }
                     rows={6}
                     className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong font-mono resize-none"
-                    aria-label={f.label}
+                    aria-label={gtData(f.label)}
                   />
                 ) : (
                   <input
@@ -168,10 +184,16 @@ export function EditCredentialsModal({
                     type={f.sensitive ? "password" : "text"}
                     value={fieldValues[f.key] ?? ""}
                     onChange={(e) => setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))}
-                    placeholder={f.sensitive ? "Leave blank to keep current value" : f.placeholder}
+                    placeholder={
+                      f.sensitive
+                        ? gt("Leave blank to keep current value")
+                        : f.placeholder
+                          ? gtData(f.placeholder)
+                          : undefined
+                    }
                     autoComplete="off"
                     className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
-                    aria-label={f.label}
+                    aria-label={gtData(f.label)}
                   />
                 )}
               </div>
@@ -187,7 +209,7 @@ export function EditCredentialsModal({
               disabled={saving}
               className="flex-1 px-3 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong rounded-lg hover:border-border-strong transition-colors"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -195,7 +217,7 @@ export function EditCredentialsModal({
               disabled={saving}
               className="flex-1 px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
             >
-              {saving ? "Saving…" : "Save credentials"}
+              {saving ? gt("Saving…") : gt("Save credentials")}
             </button>
           </div>
         </div>

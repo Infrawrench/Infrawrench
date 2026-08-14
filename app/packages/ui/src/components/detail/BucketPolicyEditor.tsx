@@ -1,4 +1,6 @@
 import { lazy, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { T, Var, useGT } from "gt-react";
+import { useDataString } from "../../i18n/data-strings.js";
 
 const Editor = lazy(() => import("@monaco-editor/react"));
 import type { BucketPolicyEditorCapability } from "@infrawrench/plugin-base";
@@ -29,6 +31,7 @@ interface Props {
 type Mode = "visual" | "json";
 
 export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest }: Props) {
+  const gt = useGT();
   const [doc, setDoc] = useState<BucketPolicyDoc>({ Version: "2012-10-17", Statement: [] });
   const [mode, setMode] = useState<Mode>("visual");
   const [jsonText, setJsonText] = useState<string>("");
@@ -154,7 +157,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
       const parsed = parsePolicy(jsonText);
       if (parsed.parseError) {
         setJsonParseError(parsed.parseError);
-        setApplyError("JSON has parse errors — fix them before applying.");
+        setApplyError(gt("JSON has parse errors — fix them before applying."));
         return;
       }
       payload = serializePolicy(parsed.doc);
@@ -162,7 +165,9 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
       payload = serializePolicy(doc);
     }
     if (lintErrors.length > 0) {
-      setApplyError(`Fix ${lintErrors.length} validation error(s) before applying.`);
+      setApplyError(
+        gt("Fix {count} validation error(s) before applying.", { count: lintErrors.length }),
+      );
       return;
     }
 
@@ -182,7 +187,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-        Loading bucket policy…
+        {gt("Loading bucket policy…")}
       </div>
     );
   }
@@ -198,7 +203,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
           onClick={() => void fetchPolicy()}
           className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
         >
-          Retry
+          {gt("Retry")}
         </button>
       </div>
     );
@@ -209,7 +214,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface shrink-0 flex-wrap">
         <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">
-          Bucket Policy
+          {gt("Bucket Policy")}
         </span>
         <span
           className="text-xs text-on-surface-faint font-mono ml-2 truncate"
@@ -228,7 +233,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
                 : "text-on-surface-tertiary hover:text-on-surface-secondary"
             }`}
           >
-            Visual
+            {gt("Visual")}
           </button>
           <button
             type="button"
@@ -244,8 +249,8 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          {dirty && <span className="text-xs text-warning">Unsaved changes</span>}
-          {applySuccess && <span className="text-xs text-success">Applied</span>}
+          {dirty && <span className="text-xs text-warning">{gt("Unsaved changes")}</span>}
+          {applySuccess && <span className="text-xs text-success">{gt("Applied")}</span>}
           {applyError && (
             <span className="text-xs text-danger max-w-xs truncate" title={applyError}>
               {applyError}
@@ -257,7 +262,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
             disabled={applying}
             className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded transition-colors disabled:opacity-50"
           >
-            Reload
+            {gt("Reload")}
           </button>
           {onApplyManifest && (
             <button
@@ -266,7 +271,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
               disabled={applying || !dirty || lintErrors.length > 0}
               className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors whitespace-nowrap"
             >
-              {applying ? "Applying…" : "Apply"}
+              {applying ? gt("Applying…") : gt("Apply")}
             </button>
           )}
         </div>
@@ -303,9 +308,11 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
           <>
             <div className="flex-1 min-w-0 overflow-y-auto p-3 space-y-2">
               {doc.Statement.length === 0 && (
-                <div className="text-on-surface-faint text-sm border border-dashed border-border rounded-lg p-6 text-center">
-                  No statements yet. Click <strong>+ Add statement</strong> or pick a template.
-                </div>
+                <T>
+                  <div className="text-on-surface-faint text-sm border border-dashed border-border rounded-lg p-6 text-center">
+                    No statements yet. Click <strong>+ Add statement</strong> or pick a template.
+                  </div>
+                </T>
               )}
               {doc.Statement.map((stmt, i) => (
                 <StatementCard
@@ -330,14 +337,14 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
                   onClick={addBlankStatement}
                   className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded transition-colors"
                 >
-                  + Add statement
+                  {gt("+ Add statement")}
                 </button>
                 <button
                   type="button"
                   onClick={() => setTemplatePickerOpen(true)}
                   className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded transition-colors"
                 >
-                  + From template…
+                  {gt("+ From template…")}
                 </button>
               </div>
             </div>
@@ -345,21 +352,25 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
             {/* Summary side panel */}
             <div className="w-80 border-l border-border bg-surface flex flex-col overflow-hidden shrink-0">
               <div className="px-3 py-2 border-b border-border text-xs font-semibold text-on-surface-muted uppercase tracking-wide">
-                Plain English
+                {gt("Plain English")}
               </div>
               <div className="flex-1 overflow-y-auto p-3 space-y-2 text-xs">
                 {doc.Statement.length === 0 ? (
-                  <div className="text-on-surface-faint italic">No effect: no policy is set.</div>
+                  <div className="text-on-surface-faint italic">
+                    {gt("No effect: no policy is set.")}
+                  </div>
                 ) : (
                   doc.Statement.map((stmt, i) => (
                     <div
                       key={i}
                       className="border border-border/60 rounded p-2 bg-surface-overlay/40"
                     >
-                      <div className="text-on-surface-faint text-[10px] font-mono mb-1">
-                        Statement #{i + 1}
-                        {stmt.Sid ? ` · ${stmt.Sid}` : ""}
-                      </div>
+                      <T>
+                        <div className="text-on-surface-faint text-[10px] font-mono mb-1">
+                          Statement #<Var>{i + 1}</Var>
+                          {stmt.Sid ? <Var>{` · ${stmt.Sid}`}</Var> : ""}
+                        </div>
+                      </T>
                       <SummaryText
                         text={summarizeStatement(stmt, capability.bucketName)}
                         denyish={stmt.Effect === "Deny"}
@@ -373,9 +384,11 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
         ) : (
           <div className="flex-1 min-h-0 flex flex-col">
             {jsonParseError && (
-              <div className="px-3 py-1.5 text-xs text-danger border-b border-border bg-red-500/10">
-                JSON parse error: {jsonParseError}
-              </div>
+              <T>
+                <div className="px-3 py-1.5 text-xs text-danger border-b border-border bg-red-500/10">
+                  JSON parse error: <Var>{jsonParseError}</Var>
+                </div>
+              </T>
             )}
             <Editor
               defaultLanguage="json"
@@ -453,6 +466,7 @@ function StatementCard({
   onMoveUp,
   onMoveDown,
 }: StatementCardProps) {
+  const gt = useGT();
   const effectColor =
     statement.Effect === "Deny" ? "text-danger bg-red-500/10" : "text-success bg-green-500/10";
 
@@ -465,7 +479,11 @@ function StatementCard({
           type="button"
           onClick={onToggle}
           aria-expanded={expanded}
-          aria-label={`${expanded ? "Collapse" : "Expand"} statement ${index + 1}`}
+          aria-label={
+            expanded
+              ? gt("Collapse statement {number}", { number: index + 1 })
+              : gt("Expand statement {number}", { number: index + 1 })
+          }
           className="absolute inset-0 cursor-pointer"
         />
         <span className="text-on-surface-faint text-xs font-mono">#{index + 1}</span>
@@ -489,7 +507,7 @@ function StatementCard({
             }}
             disabled={index === 0}
             className="relative text-on-surface-faint hover:text-on-surface-secondary disabled:opacity-30 px-1 text-xs"
-            title="Move up"
+            title={gt("Move up")}
           >
             ↑
           </button>
@@ -501,7 +519,7 @@ function StatementCard({
             }}
             disabled={index === total - 1}
             className="relative text-on-surface-faint hover:text-on-surface-secondary disabled:opacity-30 px-1 text-xs"
-            title="Move down"
+            title={gt("Move down")}
           >
             ↓
           </button>
@@ -512,7 +530,7 @@ function StatementCard({
               onDelete();
             }}
             className="relative text-on-surface-faint hover:text-danger px-1 text-xs"
-            title="Delete"
+            title={gt("Delete")}
           >
             ✕
           </button>
@@ -538,6 +556,7 @@ interface StatementFormProps {
 }
 
 function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
+  const gt = useGT();
   const editablePrincipal = principalToEditable(statement.Principal);
   const actions = normalizeStringList(statement.Action);
   const resources = normalizeStringList(statement.Resource);
@@ -553,17 +572,17 @@ function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
 
   return (
     <div className="border-t border-border bg-surface-overlay/30 p-3 space-y-3 text-xs">
-      <Row label="Sid (optional)">
+      <Row label={gt("Sid (optional)")}>
         <input
           value={statement.Sid ?? ""}
           onChange={(e) => patch("Sid", e.target.value || undefined)}
           placeholder="MyStatement"
-          aria-label="Statement ID (Sid)"
+          aria-label={gt("Statement ID (Sid)")}
           className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
         />
       </Row>
 
-      <Row label="Effect">
+      <Row label={gt("Effect")}>
         <div className="flex items-center rounded border border-border-strong overflow-hidden w-fit">
           {(["Allow", "Deny"] as const).map((e) => (
             <button
@@ -584,7 +603,7 @@ function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
         </div>
       </Row>
 
-      <Row label="Principal">
+      <Row label={gt("Principal")}>
         <div className="space-y-1.5">
           <select
             value={editablePrincipal.mode}
@@ -594,24 +613,24 @@ function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
                 editablePrincipal.values,
               )
             }
-            aria-label="Principal type"
+            aria-label={gt("Principal type")}
             className="bg-surface border border-border-strong rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500"
           >
-            <option value="everyone">Everyone (*)</option>
-            <option value="aws">Specific AWS principal(s)</option>
-            <option value="service">AWS service principal(s)</option>
-            <option value="federated">Federated identity provider(s)</option>
-            <option value="canonical">Canonical user ID(s)</option>
+            <option value="everyone">{gt("Everyone (*)")}</option>
+            <option value="aws">{gt("Specific AWS principal(s)")}</option>
+            <option value="service">{gt("AWS service principal(s)")}</option>
+            <option value="federated">{gt("Federated identity provider(s)")}</option>
+            <option value="canonical">{gt("Canonical user ID(s)")}</option>
           </select>
           {editablePrincipal.mode !== "everyone" && (
             <textarea
               value={editablePrincipal.values}
               onChange={(e) => setPrincipal(editablePrincipal.mode, e.target.value)}
-              aria-label="Principal ARNs"
+              aria-label={gt("Principal ARNs")}
               placeholder={
                 editablePrincipal.mode === "aws"
                   ? "arn:aws:iam::123456789012:root\narn:aws:iam::123456789012:role/MyRole"
-                  : "one ARN per line"
+                  : gt("one ARN per line")
               }
               rows={3}
               className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
@@ -620,14 +639,14 @@ function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
         </div>
       </Row>
 
-      <Row label="Action">
+      <Row label={gt("Action")}>
         <ActionPicker
           values={actions}
           onChange={(arr) => patch("Action", arr.length === 1 ? arr[0]! : arr)}
         />
       </Row>
 
-      <Row label="Resource">
+      <Row label={gt("Resource")}>
         <ResourceEditor
           values={resources}
           bucketArn={bucketArn}
@@ -635,7 +654,7 @@ function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
         />
       </Row>
 
-      <Row label="Condition">
+      <Row label={gt("Condition")}>
         <ConditionEditor
           condition={statement.Condition}
           onChange={(cond) => patch("Condition", cond)}
@@ -667,6 +686,7 @@ function ActionPicker({
   values: string[];
   onChange: (next: string[]) => void;
 }) {
+  const gt = useGT();
   const [input, setInput] = useState("");
   const [open, setOpen] = useState(false);
 
@@ -702,7 +722,7 @@ function ActionPicker({
               type="button"
               onClick={() => remove(a)}
               className="text-on-surface-faint hover:text-danger"
-              title="Remove"
+              title={gt("Remove")}
             >
               ×
             </button>
@@ -725,7 +745,7 @@ function ActionPicker({
             }
           }}
           placeholder="s3:GetObject…"
-          aria-label="Add an action"
+          aria-label={gt("Add an action")}
           className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
         />
         {open && suggestions.length > 0 && (
@@ -765,6 +785,7 @@ function ResourceEditor({
   bucketArn: string;
   onChange: (next: string[]) => void;
 }) {
+  const gt = useGT();
   function toggle(arn: string) {
     if (values.includes(arn)) onChange(values.filter((v) => v !== arn));
     else onChange([...values, arn]);
@@ -798,7 +819,9 @@ function ResourceEditor({
               : "border-border-strong text-on-surface-tertiary hover:text-white"
           }`}
         >
-          Bucket (`{bucketArn.split(":::").pop()}`)
+          <T>
+            Bucket (`<Var>{bucketArn.split(":::").pop()}</Var>`)
+          </T>
         </button>
         <button
           type="button"
@@ -809,7 +832,7 @@ function ResourceEditor({
               : "border-border-strong text-on-surface-tertiary hover:text-white"
           }`}
         >
-          All objects (`/*`)
+          {gt("All objects (`/*`)")}
         </button>
       </div>
       {values.map((v, i) => (
@@ -818,14 +841,14 @@ function ResourceEditor({
             value={v}
             onChange={(e) => updateAt(i, e.target.value)}
             placeholder={`${bucketArn}/some/prefix/*`}
-            aria-label="Resource ARN"
+            aria-label={gt("Resource ARN")}
             className="flex-1 bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
           />
           <button
             type="button"
             onClick={() => removeAt(i)}
             className="text-on-surface-faint hover:text-danger text-xs px-1"
-            title="Remove"
+            title={gt("Remove")}
           >
             ✕
           </button>
@@ -836,7 +859,7 @@ function ResourceEditor({
         onClick={add}
         className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
       >
-        + Add resource ARN
+        {gt("+ Add resource ARN")}
       </button>
     </div>
   );
@@ -908,6 +931,7 @@ function ConditionEditor({
   condition?: Record<string, Record<string, string | string[]>> | undefined;
   onChange: (cond?: Record<string, Record<string, string | string[]>>) => void;
 }) {
+  const gt = useGT();
   const rows = flattenCondition(condition);
 
   function update(idx: number, patch: Partial<ConditionRow>) {
@@ -927,14 +951,14 @@ function ConditionEditor({
   return (
     <div className="space-y-1">
       {rows.length === 0 && (
-        <div className="text-on-surface-faint italic text-xs">No conditions.</div>
+        <div className="text-on-surface-faint italic text-xs">{gt("No conditions.")}</div>
       )}
       {rows.map((row, i) => (
         <div key={i} className="grid grid-cols-[140px_1fr_1fr_auto] gap-1 items-center">
           <select
             value={row.op}
             onChange={(e) => update(i, { op: e.target.value })}
-            aria-label="Condition operator"
+            aria-label={gt("Condition operator")}
             className="bg-surface border border-border-strong rounded px-1.5 py-1 text-xs focus:outline-none focus:border-blue-500"
           >
             {CONDITION_OPS.includes(row.op) ? null : <option value={row.op}>{row.op}</option>}
@@ -948,21 +972,21 @@ function ConditionEditor({
             value={row.key}
             onChange={(e) => update(i, { key: e.target.value })}
             placeholder="aws:SecureTransport"
-            aria-label="Condition key"
+            aria-label={gt("Condition key")}
             className="bg-surface border border-border-strong rounded px-1.5 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
           />
           <input
             value={row.value}
             onChange={(e) => update(i, { value: e.target.value })}
-            placeholder="false  (comma-separated for multiple values)"
-            aria-label="Condition value"
+            placeholder={gt("false  (comma-separated for multiple values)")}
+            aria-label={gt("Condition value")}
             className="bg-surface border border-border-strong rounded px-1.5 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
           />
           <button
             type="button"
             onClick={() => remove(i)}
             className="text-on-surface-faint hover:text-danger text-xs px-1"
-            title="Remove"
+            title={gt("Remove")}
           >
             ✕
           </button>
@@ -973,7 +997,7 @@ function ConditionEditor({
         onClick={add}
         className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
       >
-        + Add condition
+        {gt("+ Add condition")}
       </button>
     </div>
   );
@@ -998,18 +1022,20 @@ function TemplatePickerModal({
   onClose: () => void;
   onApply: (t: PolicyTemplate, inputs: Record<string, string>) => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const templates = templatesForVendor(vendor);
   const fieldIdPrefix = useId();
 
   return (
-    <Modal onClose={onClose} ariaLabel="Choose a policy template">
+    <Modal onClose={onClose} ariaLabel={gt("Choose a policy template")}>
       <div className="bg-surface border border-border rounded-lg shadow-2xl w-[42rem] max-w-[90vw] max-h-[80vh] flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-          <h2 className="text-sm font-semibold">Choose a template</h2>
+          <h2 className="text-sm font-semibold">{gt("Choose a template")}</h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={gt("Close")}
             className="text-on-surface-faint hover:text-on-surface-secondary text-sm"
           >
             <span aria-hidden="true">✕</span>
@@ -1035,9 +1061,11 @@ function TemplatePickerModal({
                   }}
                 >
                   <span className="block text-sm font-medium text-on-surface-secondary">
-                    {t.label}
+                    {gtData(t.label)}
                   </span>
-                  <span className="block text-xs text-on-surface-faint mt-1">{t.description}</span>
+                  <span className="block text-xs text-on-surface-faint mt-1">
+                    {gtData(t.description)}
+                  </span>
                 </button>
               </li>
             ))}
@@ -1046,10 +1074,10 @@ function TemplatePickerModal({
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             <div>
               <div className="text-sm font-medium text-on-surface-secondary">
-                {pending.template.label}
+                {gtData(pending.template.label)}
               </div>
               <div className="text-xs text-on-surface-faint mt-1">
-                {pending.template.description}
+                {gtData(pending.template.description)}
               </div>
             </div>
             {pending.template.inputs?.map((field) => (
@@ -1058,7 +1086,7 @@ function TemplatePickerModal({
                   htmlFor={`${fieldIdPrefix}-${field.key}`}
                   className="text-xs text-on-surface-tertiary"
                 >
-                  {field.label}
+                  {gtData(field.label)}
                 </label>
                 <input
                   id={`${fieldIdPrefix}-${field.key}`}
@@ -1069,8 +1097,8 @@ function TemplatePickerModal({
                       inputs: { ...pending.inputs, [field.key]: e.target.value },
                     })
                   }
-                  placeholder={field.placeholder}
-                  aria-label={field.label}
+                  placeholder={field.placeholder ? gtData(field.placeholder) : field.placeholder}
+                  aria-label={gtData(field.label)}
                   className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-blue-500"
                 />
               </div>
@@ -1081,14 +1109,14 @@ function TemplatePickerModal({
                 onClick={() => onPendingChange(null)}
                 className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded"
               >
-                Back
+                {gt("Back")}
               </button>
               <button
                 type="button"
                 onClick={() => onApply(pending.template, pending.inputs)}
                 className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded"
               >
-                Add statement
+                {gt("Add statement")}
               </button>
             </div>
           </div>

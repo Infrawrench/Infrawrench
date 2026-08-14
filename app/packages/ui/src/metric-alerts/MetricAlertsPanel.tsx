@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import {
   DEFAULT_METRIC_ALERT_INPUT,
   describeMetricAlertCondition,
@@ -48,6 +49,7 @@ function formatWhen(iso: string): string {
  * the client exposing the write methods (the `CostsPanel` convention).
  */
 export function MetricAlertsPanel({ client, onDeclareIncident }: MetricAlertsPanelProps) {
+  const gt = useGT();
   // null = loading, [] = loaded-empty.
   const [rules, setRules] = useState<MetricAlertRuleWithStatus[] | null>(null);
   const [events, setEvents] = useState<MetricAlertEvent[] | null>(null);
@@ -90,7 +92,7 @@ export function MetricAlertsPanel({ client, onDeclareIncident }: MetricAlertsPan
   };
 
   const remove = async (rule: MetricAlertRuleWithStatus) => {
-    if (!window.confirm(`Delete metric alert rule "${rule.name}"?`)) return;
+    if (!window.confirm(gt('Delete metric alert rule "{name}"?', { name: rule.name }))) return;
     await client.deleteRule?.(rule.id);
     reload();
   };
@@ -100,10 +102,11 @@ export function MetricAlertsPanel({ client, onDeclareIncident }: MetricAlertsPan
       <section>
         <div className="flex items-center justify-between mb-2">
           <div>
-            <h2 className="text-base font-semibold text-on-surface">Metric alerts</h2>
+            <h2 className="text-base font-semibold text-on-surface">{gt("Metric alerts")}</h2>
             <p className="text-xs text-on-surface-faint">
-              Threshold rules over collected metrics — "CPU &gt; 90% for 15 minutes". Rules select
-              resources by query, so new resources are covered automatically.
+              {gt(
+                'Threshold rules over collected metrics — "CPU > 90% for 15 minutes". Rules select resources by query, so new resources are covered automatically.',
+              )}
             </p>
           </div>
           {canWrite && (
@@ -112,18 +115,18 @@ export function MetricAlertsPanel({ client, onDeclareIncident }: MetricAlertsPan
               onClick={() => setEditing({ ruleId: null, initial: DEFAULT_METRIC_ALERT_INPUT })}
               className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors"
             >
-              New rule
+              {gt("New rule")}
             </button>
           )}
         </div>
 
         {error && <p className="text-sm text-danger">{error}</p>}
         {rules === null && !error && (
-          <p className="text-sm text-on-surface-faint">Loading rules…</p>
+          <p className="text-sm text-on-surface-faint">{gt("Loading rules…")}</p>
         )}
         {rules !== null && rules.length === 0 && (
           <p className="text-sm text-on-surface-faint">
-            No rules yet. Create one to get paged when a metric crosses a threshold.
+            {gt("No rules yet. Create one to get paged when a metric crosses a threshold.")}
           </p>
         )}
 
@@ -145,7 +148,11 @@ export function MetricAlertsPanel({ client, onDeclareIncident }: MetricAlertsPan
                             : "bg-neutral-500"
                       }`}
                       title={
-                        rule.firingCount > 0 ? "Firing" : rule.enabled ? "Healthy" : "Disabled"
+                        rule.firingCount > 0
+                          ? gt("Firing")
+                          : rule.enabled
+                            ? gt("Healthy")
+                            : gt("Disabled")
                       }
                     />
                     <span className="text-sm font-medium text-on-surface truncate">
@@ -153,17 +160,18 @@ export function MetricAlertsPanel({ client, onDeclareIncident }: MetricAlertsPan
                     </span>
                     {rule.firingCount > 0 && (
                       <span className="text-xs text-danger">
-                        firing on {rule.firingCount} resource{rule.firingCount === 1 ? "" : "s"}
+                        {gt("firing on {count} resource", { count: rule.firingCount })}
+                        {rule.firingCount === 1 ? "" : gt("s")}
                       </span>
                     )}
                     {!rule.enabled && (
-                      <span className="text-xs text-on-surface-faint">disabled</span>
+                      <span className="text-xs text-on-surface-faint">{gt("disabled")}</span>
                     )}
                   </div>
                   <p className="text-xs text-on-surface-secondary truncate">
-                    {describeMetricAlertCondition(rule)} · {describeMetricAlertSelector(rule)} ·
-                    matches {rule.matchingResourceCount} resource
-                    {rule.matchingResourceCount === 1 ? "" : "s"}
+                    {describeMetricAlertCondition(rule)} · {describeMetricAlertSelector(rule)} ·{" "}
+                    {gt("matches {count} resource", { count: rule.matchingResourceCount })}
+                    {rule.matchingResourceCount === 1 ? "" : gt("s")}
                   </p>
                 </div>
                 {canWrite && (
@@ -173,21 +181,21 @@ export function MetricAlertsPanel({ client, onDeclareIncident }: MetricAlertsPan
                       onClick={() => void toggle(rule)}
                       className="px-2 py-1 rounded-lg text-xs text-on-surface-secondary hover:bg-surface-sunken transition-colors"
                     >
-                      {rule.enabled ? "Disable" : "Enable"}
+                      {rule.enabled ? gt("Disable") : gt("Enable")}
                     </button>
                     <button
                       type="button"
                       onClick={() => setEditing({ ruleId: rule.id, initial: ruleToInput(rule) })}
                       className="px-2 py-1 rounded-lg text-xs text-on-surface-secondary hover:bg-surface-sunken transition-colors"
                     >
-                      Edit
+                      {gt("Edit")}
                     </button>
                     <button
                       type="button"
                       onClick={() => void remove(rule)}
                       className="px-2 py-1 rounded-lg text-xs text-danger hover:bg-surface-sunken transition-colors"
                     >
-                      Delete
+                      {gt("Delete")}
                     </button>
                   </div>
                 )}
@@ -198,10 +206,10 @@ export function MetricAlertsPanel({ client, onDeclareIncident }: MetricAlertsPan
       </section>
 
       <section>
-        <h3 className="text-sm font-semibold text-on-surface mb-2">Recent firings</h3>
-        {events === null && <p className="text-sm text-on-surface-faint">Loading…</p>}
+        <h3 className="text-sm font-semibold text-on-surface mb-2">{gt("Recent firings")}</h3>
+        {events === null && <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>}
         {events !== null && events.length === 0 && (
-          <p className="text-sm text-on-surface-faint">No firings yet.</p>
+          <p className="text-sm text-on-surface-faint">{gt("No firings yet.")}</p>
         )}
         {events !== null && events.length > 0 && (
           <div className="overflow-x-auto">
@@ -209,23 +217,23 @@ export function MetricAlertsPanel({ client, onDeclareIncident }: MetricAlertsPan
               <thead>
                 <tr className="text-left text-xs text-on-surface-faint">
                   <th scope="col" className="py-1.5 pr-3 font-medium">
-                    Rule
+                    {gt("Rule")}
                   </th>
                   <th scope="col" className="py-1.5 pr-3 font-medium">
-                    Resource
+                    {gt("Resource")}
                   </th>
                   <th scope="col" className="py-1.5 pr-3 font-medium">
-                    Observed
+                    {gt("Observed")}
                   </th>
                   <th scope="col" className="py-1.5 pr-3 font-medium">
-                    Fired
+                    {gt("Fired")}
                   </th>
                   <th scope="col" className="py-1.5 font-medium">
-                    Status
+                    {gt("Status")}
                   </th>
                   {onDeclareIncident && (
                     <th scope="col" className="py-1.5 font-medium sr-only">
-                      Declare
+                      {gt("Declare")}
                     </th>
                   )}
                 </tr>
@@ -243,10 +251,11 @@ export function MetricAlertsPanel({ client, onDeclareIncident }: MetricAlertsPan
                     </td>
                     <td className="py-1.5">
                       {e.status === "firing" ? (
-                        <span className="text-danger">firing</span>
+                        <span className="text-danger">{gt("firing")}</span>
                       ) : (
                         <span className="text-success">
-                          resolved{e.resolvedAt ? ` ${formatWhen(e.resolvedAt)}` : ""}
+                          {gt("resolved")}
+                          {e.resolvedAt ? ` ${formatWhen(e.resolvedAt)}` : ""}
                         </span>
                       )}
                     </td>
@@ -256,15 +265,21 @@ export function MetricAlertsPanel({ client, onDeclareIncident }: MetricAlertsPan
                           type="button"
                           onClick={() =>
                             onDeclareIncident({
-                              title: `${e.ruleName} firing on ${e.resourceName}`,
-                              summary: `Metric alert "${e.ruleName}" fired at ${Number(e.observedValue.toFixed(2))}.`,
+                              title: gt("{rule} firing on {resource}", {
+                                rule: e.ruleName,
+                                resource: e.resourceName,
+                              }),
+                              summary: gt('Metric alert "{rule}" fired at {value}.', {
+                                rule: e.ruleName,
+                                value: Number(e.observedValue.toFixed(2)),
+                              }),
                               resourceIds: [e.resourceId],
                               startedAt: e.firedAt,
                             })
                           }
                           className="px-2 py-1 rounded-lg text-xs text-danger hover:bg-surface-sunken transition-colors"
                         >
-                          Declare incident
+                          {gt("Declare incident")}
                         </button>
                       </td>
                     )}

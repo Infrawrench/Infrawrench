@@ -1,4 +1,5 @@
 import { useState, useEffect, useId } from "react";
+import { useGT } from "gt-react";
 import { deriveSSHUsername, useUIStore, SshKeyRadioItem } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
@@ -19,6 +20,7 @@ export function SshKeyPicker({
   onKeyResolved,
   selectedKeyRef,
 }: SshKeyPickerProps) {
+  const gt = useGT();
   const [systemKeys, setSystemKeys] = useState<SystemKey[]>([]);
   const [appKeys, setAppKeys] = useState<AppKey[]>([]);
   const [cloudKeys, setCloudKeys] = useState<CloudKey[]>([]);
@@ -180,7 +182,7 @@ export function SshKeyPicker({
           htmlFor="ssh-key-picker-username"
           className="text-xs text-on-surface-muted w-20 shrink-0"
         >
-          Username
+          {gt("Username")}
         </label>
         <input
           id="ssh-key-picker-username"
@@ -195,23 +197,23 @@ export function SshKeyPicker({
 
       {/* Key picker */}
       <div className="flex items-start gap-3">
-        <span className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</span>
+        <span className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">{gt("SSH Key")}</span>
         <div className="flex-1 space-y-1">
           {systemKeys.length === 0 &&
           appKeys.length === 0 &&
           !pageantAvailable &&
           !onePasswordAvailable ? (
-            <p className="text-xs text-on-surface-faint py-1">No keys found.</p>
+            <p className="text-xs text-on-surface-faint py-1">{gt("No keys found.")}</p>
           ) : (
             <>
               {onePasswordAvailable && (
                 <div className="space-y-0.5">
-                  <p className="text-xs text-on-surface-faint px-1 pb-0.5">SSH agent</p>
+                  <p className="text-xs text-on-surface-faint px-1 pb-0.5">{gt("SSH agent")}</p>
                   <KeyRow
                     groupName={radioGroupName}
                     value="1password"
                     label="1Password"
-                    sublabel="running — "
+                    sublabel={gt("running — ")}
                     selected={selectedKey?.type === "1password"}
                     onSelect={() => void selectKey({ type: "1password" })}
                   />
@@ -219,12 +221,14 @@ export function SshKeyPicker({
               )}
               {pageantAvailable && (
                 <div className="space-y-0.5">
-                  <p className="text-xs text-on-surface-faint px-1 pb-0.5">Windows SSH Agent</p>
+                  <p className="text-xs text-on-surface-faint px-1 pb-0.5">
+                    {gt("Windows SSH Agent")}
+                  </p>
                   <KeyRow
                     groupName={radioGroupName}
                     value="pageant"
                     label="Pageant"
-                    sublabel="running — "
+                    sublabel={gt("running — ")}
                     selected={selectedKey?.type === "pageant"}
                     onSelect={() => void selectKey({ type: "pageant" })}
                   />
@@ -232,7 +236,9 @@ export function SshKeyPicker({
               )}
               {systemKeys.length > 0 && (
                 <div className="space-y-0.5">
-                  <p className="text-xs text-on-surface-faint px-1 pb-0.5">System (~/.ssh)</p>
+                  <p className="text-xs text-on-surface-faint px-1 pb-0.5">
+                    {gt("System (~/.ssh)")}
+                  </p>
                   {systemKeys.map((k) => (
                     <KeyRow
                       key={k.name}
@@ -248,7 +254,7 @@ export function SshKeyPicker({
               )}
               {appKeys.length > 0 && (
                 <div className="space-y-0.5 mt-1.5">
-                  <p className="text-xs text-on-surface-faint px-1 pb-0.5">Saved keys</p>
+                  <p className="text-xs text-on-surface-faint px-1 pb-0.5">{gt("Saved keys")}</p>
                   {appKeys.map((k) => (
                     <KeyRow
                       key={k.id}
@@ -264,7 +270,7 @@ export function SshKeyPicker({
               )}
               {cloudKeys.length > 0 && (
                 <div className="space-y-0.5 mt-1.5">
-                  <p className="text-xs text-on-surface-faint px-1 pb-0.5">Cloud keys</p>
+                  <p className="text-xs text-on-surface-faint px-1 pb-0.5">{gt("Cloud keys")}</p>
                   {cloudKeys.map((k) => (
                     <KeyRow
                       key={k.id}
@@ -289,16 +295,16 @@ export function SshKeyPicker({
                 value={newKeyName}
                 onChange={(e) => setNewKeyName(e.target.value)}
                 className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
-                placeholder="Key name (e.g. my-droplet-key)"
+                placeholder={gt("Key name (e.g. my-droplet-key)")}
                 spellCheck={false}
-                aria-label="Key name"
+                aria-label={gt("Key name")}
               />
               <textarea
                 value={newKeyPem}
                 onChange={(e) => setNewKeyPem(e.target.value)}
                 className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-xs text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong resize-none"
                 rows={5}
-                aria-label="Private key (PEM)"
+                aria-label={gt("Private key (PEM)")}
                 placeholder={
                   "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"
                 }
@@ -314,7 +320,7 @@ export function SshKeyPicker({
                   }}
                   className="px-3 py-1 text-xs text-on-surface-muted hover:text-on-surface-secondary transition-colors"
                 >
-                  Cancel
+                  {gt("Cancel")}
                 </button>
                 <button
                   type="button"
@@ -322,7 +328,7 @@ export function SshKeyPicker({
                   disabled={saving || !newKeyName.trim() || !newKeyPem.trim()}
                   className="px-3 py-1 rounded bg-surface-sunken hover:bg-surface-sunken text-xs text-on-surface-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
-                  {saving ? "Saving..." : "Save Key"}
+                  {saving ? gt("Saving...") : gt("Save Key")}
                 </button>
               </div>
             </div>
@@ -332,7 +338,7 @@ export function SshKeyPicker({
               onClick={() => setShowAddKey(true)}
               className="mt-1 text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
             >
-              + Add key to registry
+              {gt("+ Add key to registry")}
             </button>
           )}
         </div>
@@ -358,6 +364,7 @@ function KeyRow({
   onSelect: () => void;
   onDelete?: () => void;
 }) {
+  const gt = useGT();
   return (
     <SshKeyRadioItem
       name={groupName}
@@ -376,8 +383,8 @@ function KeyRow({
               onDelete();
             }}
             className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-on-surface-faint hover:text-danger text-xs px-1 transition-all"
-            title="Remove key"
-            aria-label="Remove key"
+            title={gt("Remove key")}
+            aria-label={gt("Remove key")}
           >
             ✕
           </button>

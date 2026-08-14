@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import { ChatMarkdown } from "./ChatMarkdown.js";
 import { useUIStore } from "../store/ui.store.js";
 import {
@@ -51,6 +52,7 @@ function conversationViewReducer(
 }
 
 export function ConversationView({ client, conversationId }: Props): React.ReactElement {
+  const gt = useGT();
   const [state, dispatch] = useReducer(conversationViewReducer, {
     conversation: null,
     messages: [],
@@ -225,8 +227,14 @@ export function ConversationView({ client, conversationId }: Props): React.React
                 streaming: {
                   ...current.streaming,
                   error: ev["freeTier"]
-                    ? `Free-tier chat limit reached ($${cap}/month). Add a payment method in Settings → Billing to keep chatting, or wait for next month.`
-                    : `Monthly chat spend cap reached ($${cap}). Increase the cap in org settings or wait for next month.`,
+                    ? gt(
+                        "Free-tier chat limit reached (${cap}/month). Add a payment method in Settings → Billing to keep chatting, or wait for next month.",
+                        { cap },
+                      )
+                    : gt(
+                        "Monthly chat spend cap reached (${cap}). Increase the cap in org settings or wait for next month.",
+                        { cap },
+                      ),
                 },
               }),
             });
@@ -245,7 +253,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
           update: (current) => ({
             streaming: {
               ...current.streaming,
-              error: e instanceof Error ? e.message : "Chat stream failed",
+              error: e instanceof Error ? e.message : gt("Chat stream failed"),
             },
           }),
         });
@@ -287,7 +295,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
         if (!unresolved && !secretUnresolved) await startStream({ resume: true });
       }
     },
-    [client, conversationId, reload],
+    [client, conversationId, reload, gt],
   );
 
   async function handleSend(): Promise<void> {
@@ -310,7 +318,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
           conversation,
           streaming: {
             ...current.streaming,
-            error: e instanceof Error ? e.message : "Failed to change model",
+            error: e instanceof Error ? e.message : gt("Failed to change model"),
           },
         }),
       });
@@ -408,13 +416,13 @@ export function ConversationView({ client, conversationId }: Props): React.React
     <div className="flex flex-col h-full">
       <header className="border-b border-border px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-sm font-semibold truncate">{conversation?.title ?? "Chat"}</h1>
+          <h1 className="text-sm font-semibold truncate">{conversation?.title ?? gt("Chat")}</h1>
           {conversation && (
             <select
               value={conversation.model}
               onChange={(e) => void handleModelChange(e.target.value)}
               disabled={streaming.active}
-              aria-label="Model"
+              aria-label={gt("Model")}
               className="bg-surface-overlay border border-border rounded-md px-2 py-1 text-xs text-on-surface-secondary focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
             >
               {CHAT_MODELS.map((m) => (
@@ -423,18 +431,24 @@ export function ConversationView({ client, conversationId }: Props): React.React
                 </option>
               ))}
               {!CHAT_MODELS.some((m) => m.id === conversation.model) && (
-                <option value={conversation.model}>{conversation.model} (legacy)</option>
+                <option value={conversation.model}>
+                  {conversation.model} {gt("(legacy)")}
+                </option>
               )}
             </select>
           )}
         </div>
         <div className="text-xs text-on-surface-muted text-right">
           <div>
-            Spend: ${spend ? microsToUsd(spend.monthToDateMicros) : "0.00"}
+            {gt("Spend:")} ${spend ? microsToUsd(spend.monthToDateMicros) : gt("0.00")}
             {spend?.monthlyCapMicros != null ? ` / $${microsToUsd(spend.monthlyCapMicros)}` : ""}
-            {spend?.freeTier ? " (free tier)" : spend?.complimentary ? " (complimentary)" : ""}
+            {spend?.freeTier
+              ? ` ${gt("(free tier)")}`
+              : spend?.complimentary
+                ? ` ${gt("(complimentary)")}`
+                : ""}
           </div>
-          {spend?.exceeded && <div className="text-warning font-medium">Cap reached</div>}
+          {spend?.exceeded && <div className="text-warning font-medium">{gt("Cap reached")}</div>}
         </div>
       </header>
 
@@ -471,18 +485,21 @@ export function ConversationView({ client, conversationId }: Props): React.React
                 >
                   <span className="font-mono text-on-surface-secondary">{t.name}</span>
                   <span className={t.executed ? "text-success" : "text-on-surface-muted"}>
-                    {t.executed ? "Done" : "Running…"}
+                    {t.executed ? gt("Done") : gt("Running…")}
                   </span>
                 </div>
               ))}
               {!streaming.text && streaming.toolUses.length === 0 && (
-                <div className="text-on-surface-faint text-sm animate-pulse">Thinking…</div>
+                <div className="text-on-surface-faint text-sm animate-pulse">{gt("Thinking…")}</div>
               )}
             </div>
           )}
           {sleeping != null && (
             <div className="text-on-surface-faint text-sm animate-pulse">
-              Sleeping {sleeping} second{sleeping === 1 ? "" : "s"}…
+              {gt("Sleeping {n} second{suffix}…", {
+                n: sleeping,
+                suffix: sleeping === 1 ? "" : "s",
+              })}
             </div>
           )}
           {streaming.error && (
@@ -504,10 +521,10 @@ export function ConversationView({ client, conversationId }: Props): React.React
               }
             }}
             disabled={streaming.active || sleeping != null}
-            placeholder="Ask anything about your infrastructure…"
+            placeholder={gt("Ask anything about your infrastructure…")}
             rows={2}
             className="flex-1 bg-surface-overlay border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-            aria-label="Message"
+            aria-label={gt("Message")}
           />
           <button
             type="button"
@@ -515,7 +532,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
             disabled={streaming.active || sleeping != null || input.trim().length === 0}
             className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
           >
-            Send
+            {gt("Send")}
           </button>
         </div>
       </footer>
@@ -611,6 +628,7 @@ function BlockView({
   onSubmitSecret,
   onAnswerQuestion,
 }: BlockProps): React.ReactElement | null {
+  const gt = useGT();
   // Approve executes the tool synchronously server-side (a workflow run can
   // take minutes), so the buttons must lock and the label must say the action
   // is underway — otherwise the card looks hung and invites a second click.
@@ -640,7 +658,7 @@ function BlockView({
       const secs = Number(block.input["seconds"]);
       return (
         <div className="text-xs text-on-surface-faint italic">
-          Slept {Number.isFinite(secs) ? secs : "a few"} seconds
+          {gt("Slept {n} seconds", { n: Number.isFinite(secs) ? secs : gt("a few") })}
         </div>
       );
     }
@@ -663,17 +681,17 @@ function BlockView({
     const statusLabel =
       status === "pending"
         ? resolving === "approve"
-          ? "Running…"
+          ? gt("Running…")
           : resolving === "reject"
-            ? "Rejecting…"
-            : "Pending approval"
+            ? gt("Rejecting…")
+            : gt("Pending approval")
         : status === "approved"
-          ? "Running…"
+          ? gt("Running…")
           : status === "rejected"
-            ? "Rejected"
+            ? gt("Rejected")
             : status === "errored"
-              ? "Errored"
-              : "Done";
+              ? gt("Errored")
+              : gt("Done");
     const statusColor =
       status === "pending" && !resolving
         ? "text-warning"
@@ -698,7 +716,7 @@ function BlockView({
               onClick={() => void resolve("approve")}
               className="px-2.5 py-1 text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded transition-colors disabled:opacity-50 disabled:pointer-events-none"
             >
-              Approve
+              {gt("Approve")}
             </button>
             <button
               type="button"
@@ -706,7 +724,7 @@ function BlockView({
               onClick={() => void resolve("reject")}
               className="px-2.5 py-1 text-xs font-medium bg-red-600 hover:bg-red-500 text-white rounded transition-colors disabled:opacity-50 disabled:pointer-events-none"
             >
-              Reject
+              {gt("Reject")}
             </button>
           </div>
         )}
@@ -716,10 +734,12 @@ function BlockView({
           // deciding whether to run it. Otherwise collapsed by default.
           {...(status === "pending" ? { open: true } : {})}
         >
-          <summary className="cursor-pointer text-on-surface-faint select-none">Details</summary>
+          <summary className="cursor-pointer text-on-surface-faint select-none">
+            {gt("Details")}
+          </summary>
           <div className="mt-1 space-y-2 pb-1">
             <div>
-              <div className="text-on-surface-faint mb-0.5">Input</div>
+              <div className="text-on-surface-faint mb-0.5">{gt("Input")}</div>
               <pre className="whitespace-pre-wrap break-words text-on-surface-muted font-mono text-[11px]">
                 {JSON.stringify(block.input, null, 2)}
               </pre>
@@ -727,7 +747,8 @@ function BlockView({
             {resultText != null && (
               <div>
                 <div className="text-on-surface-faint mb-0.5">
-                  Result{(pending?.isError ?? result?.isError) ? " (error)" : ""}
+                  {gt("Result")}
+                  {(pending?.isError ?? result?.isError) ? ` ${gt("(error)")}` : ""}
                 </div>
                 <pre className="whitespace-pre-wrap break-words text-on-surface-muted font-mono text-[11px]">
                   {resultText}
@@ -751,6 +772,7 @@ function SecretRequestCard({
   request: ChatPendingSecretRequest;
   onSubmit(id: string, value: string): Promise<void>;
 }): React.ReactElement {
+  const gt = useGT();
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -765,7 +787,7 @@ function SecretRequestCard({
     try {
       await onSubmit(request.id, submittedValue);
     } catch {
-      setError("Secret could not be stored. Try again.");
+      setError(gt("Secret could not be stored. Try again."));
     } finally {
       setSubmitting(false);
     }
@@ -776,10 +798,10 @@ function SecretRequestCard({
       <div className="px-3 py-2">
         <div className="flex items-center justify-between gap-3">
           <span className="font-medium text-on-surface-secondary">
-            {request.title ?? `Enter ${request.name}`}
+            {request.title ?? gt("Enter {name}", { name: request.name })}
           </span>
           <span className={resolved ? "text-success" : "text-warning"}>
-            {resolved ? "Stored" : submitting ? "Storing…" : "Value required"}
+            {resolved ? gt("Stored") : submitting ? gt("Storing…") : gt("Value required")}
           </span>
         </div>
         {request.description && <p className="mt-1 text-on-surface-muted">{request.description}</p>}
@@ -799,7 +821,7 @@ function SecretRequestCard({
               }}
               disabled={submitting || request.status === "submitting"}
               autoComplete="new-password"
-              aria-label={request.title ?? `Secret value for ${request.name}`}
+              aria-label={request.title ?? gt("Secret value for {name}", { name: request.name })}
               className="min-w-0 flex-1 bg-surface border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <button
@@ -808,12 +830,12 @@ function SecretRequestCard({
               onClick={() => void submit()}
               className="px-2.5 py-1 font-medium bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-50 disabled:pointer-events-none"
             >
-              {submitting ? "Storing…" : "Store"}
+              {submitting ? gt("Storing…") : gt("Store")}
             </button>
           </div>
           {error && <div className="text-danger">{error}</div>}
           <div className="text-on-surface-faint">
-            Sent directly to encrypted secret storage. It is never shown to the model.
+            {gt("Sent directly to encrypted secret storage. It is never shown to the model.")}
           </div>
         </div>
       )}
@@ -846,6 +868,7 @@ function QuestionCard({
   result: { text: string; isError: boolean } | undefined;
   onAnswer(id: string, answers: AskQuestionAnswer[]): Promise<void>;
 }): React.ReactElement {
+  const gt = useGT();
   const questions = questionsFromInput(pending, blockInput);
   const [draft, setDraft] = useState<Record<string, QuestionDraft>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -879,7 +902,7 @@ function QuestionCard({
         }),
       );
     } catch {
-      setError("Could not send answers. Try again.");
+      setError(gt("Could not send answers. Try again."));
     } finally {
       setSubmitting(false);
     }
@@ -889,10 +912,10 @@ function QuestionCard({
     <div className="border border-border rounded-lg bg-surface-overlay text-xs">
       <div className="flex items-center justify-between gap-3 px-3 py-2">
         <span className="font-medium text-on-surface-secondary">
-          {questions.length === 1 ? "Question" : `${questions.length} questions`}
+          {questions.length === 1 ? gt("Question") : gt("{n} questions", { n: questions.length })}
         </span>
         <span className={resolved ? "text-success" : "text-warning"}>
-          {resolved ? "Answered" : submitting ? "Sending…" : "Waiting for answer"}
+          {resolved ? gt("Answered") : submitting ? gt("Sending…") : gt("Waiting for answer")}
         </span>
       </div>
       {waiting && questions.length > 0 && (
@@ -913,7 +936,7 @@ function QuestionCard({
               onClick={() => void submit()}
               className="px-2.5 py-1 font-medium bg-blue-600 hover:bg-blue-500 text-white rounded disabled:opacity-50 disabled:pointer-events-none"
             >
-              {submitting ? "Sending…" : "Submit"}
+              {submitting ? gt("Sending…") : gt("Submit")}
             </button>
             {error && <div className="text-danger">{error}</div>}
           </div>
@@ -926,7 +949,7 @@ function QuestionCard({
       )}
       {!resolved && questions.length === 0 && (
         <div className="border-t border-border px-3 py-2 text-danger">
-          Could not read this question.
+          {gt("Could not read this question.")}
         </div>
       )}
     </div>
@@ -944,6 +967,7 @@ function QuestionField({
   disabled: boolean;
   onChange(next: QuestionDraft): void;
 }): React.ReactElement {
+  const gt = useGT();
   if (question.type === "text") {
     return (
       <label className="block space-y-1">
@@ -1000,7 +1024,7 @@ function QuestionField({
             onClick={() => onChange(questionDraft(ASK_QUESTION_OTHER_ID, value.text))}
             className="text-left w-full text-on-surface-secondary disabled:opacity-50"
           >
-            Other
+            {gt("Other")}
           </button>
           <input
             type="text"
@@ -1011,8 +1035,8 @@ function QuestionField({
             onFocus={() => onChange(questionDraft(ASK_QUESTION_OTHER_ID, value.text))}
             disabled={disabled}
             maxLength={ASK_QUESTION_LIMITS.maxAnswerLength}
-            placeholder="Type another answer…"
-            aria-label={`Other answer for ${question.prompt}`}
+            placeholder={gt("Type another answer…")}
+            aria-label={gt("Other answer for {prompt}", { prompt: question.prompt })}
             className="w-full bg-surface border border-border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>

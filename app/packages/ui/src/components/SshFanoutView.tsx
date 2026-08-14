@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import {
   groupFanoutResults,
   diffLines,
@@ -81,6 +82,7 @@ export function SshFanoutView({
   onSaveSnippet,
   onDeleteSnippet,
 }: SshFanoutViewProps) {
+  const gt = useGT();
   const [search, setSearch] = useState("");
   const [pluginFilter, setPluginFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -200,11 +202,13 @@ export function SshFanoutView({
   return (
     <div className="flex flex-col gap-3 p-3 h-full overflow-y-auto">
       <div>
-        <h2 className="text-sm font-semibold text-on-surface">Fan-out SSH</h2>
-        <p className="text-xs text-on-surface-muted">
-          Run one command across many hosts. Identical output is collapsed so the odd one out stands
-          out.
-        </p>
+        <h2 className="text-sm font-semibold text-on-surface">{gt("Fan-out SSH")}</h2>
+        <T>
+          <p className="text-xs text-on-surface-muted">
+            Run one command across many hosts. Identical output is collapsed so the odd one out
+            stands out.
+          </p>
+        </T>
       </div>
 
       {/* Filters */}
@@ -213,17 +217,17 @@ export function SshFanoutView({
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search hosts…"
-          aria-label="Search hosts"
+          placeholder={gt("Search hosts…")}
+          aria-label={gt("Search hosts")}
           className={`${INPUT_CLASSES} w-48`}
         />
         <select
           value={pluginFilter}
           onChange={(e) => setPluginFilter(e.target.value)}
-          aria-label="Filter by plugin"
+          aria-label={gt("Filter by plugin")}
           className={INPUT_CLASSES}
         >
-          <option value="">All plugins</option>
+          <option value="">{gt("All plugins")}</option>
           {plugins.map((p) => (
             <option key={p} value={p}>
               {p}
@@ -234,10 +238,10 @@ export function SshFanoutView({
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            aria-label="Filter by resource type"
+            aria-label={gt("Filter by resource type")}
             className={INPUT_CLASSES}
           >
-            <option value="">All types</option>
+            <option value="">{gt("All types")}</option>
             {types.map((t) => (
               <option key={t} value={t}>
                 {t}
@@ -249,10 +253,10 @@ export function SshFanoutView({
           <select
             value={tagFilter}
             onChange={(e) => setTagFilter(e.target.value)}
-            aria-label="Filter by tag"
+            aria-label={gt("Filter by tag")}
             className={INPUT_CLASSES}
           >
-            <option value="">All tags</option>
+            <option value="">{gt("All tags")}</option>
             {tags.map((t) => (
               <option key={t} value={t}>
                 {t}
@@ -261,22 +265,29 @@ export function SshFanoutView({
           </select>
         )}
         <button type="button" onClick={selectAllFiltered} className={BTN_SECONDARY}>
-          Toggle all shown
+          {gt("Toggle all shown")}
         </button>
         <span className="text-xs text-on-surface-muted">
-          {selectedTargets.length} of {targets.length} selected
+          {gt("{selected} of {total} selected", {
+            selected: selectedTargets.length,
+            total: targets.length,
+          })}
         </span>
       </div>
 
       {/* Host list */}
       <div className="border border-border rounded max-h-64 overflow-y-auto divide-y divide-border">
-        {targetsLoading && <div className="p-3 text-sm text-on-surface-muted">Loading hosts…</div>}
+        {targetsLoading && (
+          <div className="p-3 text-sm text-on-surface-muted">{gt("Loading hosts…")}</div>
+        )}
         {targetsError && <div className="p-3 text-sm text-danger">{targetsError}</div>}
         {!targetsLoading && !targetsError && filtered.length === 0 && (
-          <div className="p-3 text-sm text-on-surface-muted">
-            No SSH-capable hosts match. SSH accounts and running VMs with an SSH endpoint appear
-            here.
-          </div>
+          <T>
+            <div className="p-3 text-sm text-on-surface-muted">
+              No SSH-capable hosts match. SSH accounts and running VMs with an SSH endpoint appear
+              here.
+            </div>
+          </T>
         )}
         {filtered.map((t) => {
           const key = `${t.kind}:${t.id}`;
@@ -298,7 +309,7 @@ export function SshFanoutView({
                 {t.pluginId}
                 {t.resourceTypeId ? ` · ${t.resourceTypeId}` : ""}
                 {t.host ? ` · ${t.host}` : ""}
-                {t.running ? "" : " · stopped"}
+                {t.running ? "" : gt(" · stopped")}
               </span>
               {t.tags.length > 0 && (
                 <span className="ml-auto text-[10px] text-on-surface-faint truncate">
@@ -314,7 +325,7 @@ export function SshFanoutView({
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <label className="text-xs text-on-surface-muted" htmlFor="fanout-command">
-            Command
+            {gt("Command")}
           </label>
           {snippets.length > 0 && (
             <select
@@ -323,10 +334,10 @@ export function SshFanoutView({
                 const s = snippets.find((sn) => sn.id === e.target.value);
                 if (s) setCommand(s.command);
               }}
-              aria-label="Insert saved snippet"
+              aria-label={gt("Insert saved snippet")}
               className={INPUT_CLASSES}
             >
-              <option value="">Insert snippet…</option>
+              <option value="">{gt("Insert snippet…")}</option>
               {snippets.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -341,7 +352,7 @@ export function SshFanoutView({
               disabled={!command.trim()}
               className={`${BTN_SECONDARY} disabled:opacity-50`}
             >
-              Save as snippet
+              {gt("Save as snippet")}
             </button>
           )}
           {onDeleteSnippet && snippets.length > 0 && (
@@ -350,13 +361,13 @@ export function SshFanoutView({
               onChange={(e) => {
                 const s = snippets.find((sn) => sn.id === e.target.value);
                 if (!s) return;
-                if (!window.confirm(`Delete snippet "${s.name}"?`)) return;
+                if (!window.confirm(gt('Delete snippet "{name}"?', { name: s.name }))) return;
                 onDeleteSnippet(s.id).catch((err) => setRunError(formatErrorMessage(err)));
               }}
-              aria-label="Delete saved snippet"
+              aria-label={gt("Delete saved snippet")}
               className={INPUT_CLASSES}
             >
-              <option value="">Delete snippet…</option>
+              <option value="">{gt("Delete snippet…")}</option>
               {snippets.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -371,8 +382,8 @@ export function SshFanoutView({
               type="text"
               value={snippetName}
               onChange={(e) => setSnippetName(e.target.value)}
-              placeholder="Snippet name"
-              aria-label="Snippet name"
+              placeholder={gt("Snippet name")}
+              aria-label={gt("Snippet name")}
               className={`${INPUT_CLASSES} w-56`}
             />
             <button
@@ -381,10 +392,10 @@ export function SshFanoutView({
               disabled={!snippetName.trim()}
               className={BTN_PRIMARY}
             >
-              Save
+              {gt("Save")}
             </button>
             <button type="button" onClick={() => setSavingSnippet(false)} className={BTN_SECONDARY}>
-              Cancel
+              {gt("Cancel")}
             </button>
           </div>
         )}
@@ -402,7 +413,7 @@ export function SshFanoutView({
       {needsKey && (
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-xs text-on-surface-muted" htmlFor="fanout-key">
-            SSH key
+            {gt("SSH key")}
           </label>
           <select
             id="fanout-key"
@@ -410,7 +421,7 @@ export function SshFanoutView({
             onChange={(e) => setSshKeyId(e.target.value)}
             className={INPUT_CLASSES}
           >
-            <option value="">Select a key…</option>
+            <option value="">{gt("Select a key…")}</option>
             {sshKeys.map((k) => (
               <option key={k.id} value={k.id}>
                 {k.name}
@@ -421,13 +432,15 @@ export function SshFanoutView({
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="Username override (optional)"
-            aria-label="Username override"
+            placeholder={gt("Username override (optional)")}
+            aria-label={gt("Username override")}
             className={`${INPUT_CLASSES} w-56`}
           />
-          <span className="text-xs text-on-surface-faint">
-            Applies to VM hosts; SSH accounts use their own credentials.
-          </span>
+          <T>
+            <span className="text-xs text-on-surface-faint">
+              Applies to VM hosts; SSH accounts use their own credentials.
+            </span>
+          </T>
         </div>
       )}
 
@@ -437,7 +450,9 @@ export function SshFanoutView({
       {phase === "confirm" || phase === "running" ? (
         <div className="border border-border rounded p-3 bg-surface-raised flex flex-col gap-2">
           <div className="text-sm font-medium text-on-surface">
-            Run on {selectedTargets.length} host{selectedTargets.length === 1 ? "" : "s"}?
+            {selectedTargets.length === 1
+              ? gt("Run on 1 host?")
+              : gt("Run on {count} hosts?", { count: selectedTargets.length })}
           </div>
           <pre className="text-xs font-mono text-on-surface-secondary whitespace-pre-wrap bg-surface rounded p-2 max-h-24 overflow-y-auto">
             {command.trim()}
@@ -447,7 +462,9 @@ export function SshFanoutView({
               .slice(0, 8)
               .map((t) => t.label)
               .join(", ")}
-            {selectedTargets.length > 8 ? ` and ${selectedTargets.length - 8} more` : ""}
+            {selectedTargets.length > 8
+              ? gt(" and {count} more", { count: selectedTargets.length - 8 })
+              : ""}
           </div>
           {freezeMessage && (
             <div className="text-xs text-warning border border-amber-500/40 rounded p-2">
@@ -462,7 +479,7 @@ export function SshFanoutView({
                 disabled={phase === "running"}
                 className={BTN_PRIMARY}
               >
-                {phase === "running" ? "Running…" : "Override freeze and run"}
+                {phase === "running" ? gt("Running…") : gt("Override freeze and run")}
               </button>
             ) : (
               <button
@@ -472,8 +489,12 @@ export function SshFanoutView({
                 className={BTN_PRIMARY}
               >
                 {phase === "running"
-                  ? `Running on ${selectedTargets.length} host${selectedTargets.length === 1 ? "" : "s"}…`
-                  : `Run on ${selectedTargets.length} host${selectedTargets.length === 1 ? "" : "s"}`}
+                  ? selectedTargets.length === 1
+                    ? gt("Running on 1 host…")
+                    : gt("Running on {count} hosts…", { count: selectedTargets.length })
+                  : selectedTargets.length === 1
+                    ? gt("Run on 1 host")
+                    : gt("Run on {count} hosts", { count: selectedTargets.length })}
               </button>
             )}
             <button
@@ -485,7 +506,7 @@ export function SshFanoutView({
               disabled={phase === "running"}
               className={BTN_SECONDARY}
             >
-              Cancel
+              {gt("Cancel")}
             </button>
           </div>
         </div>
@@ -497,7 +518,7 @@ export function SshFanoutView({
             disabled={!canRun}
             className={BTN_PRIMARY}
           >
-            Run command…
+            {gt("Run command…")}
           </button>
         </div>
       )}
@@ -515,6 +536,7 @@ function FanoutResults({
   command: string;
   onBack: () => void;
 }) {
+  const gt = useGT();
   const groups = useMemo(() => groupFanoutResults(results), [results]);
   const majority = groups.find((g) => g.isMajority);
   const okCount = results.filter((r) => r.status === "done" && (r.exitCode ?? 0) === 0).length;
@@ -523,15 +545,19 @@ function FanoutResults({
     <div className="flex flex-col gap-3 p-3 h-full overflow-y-auto">
       <div className="flex items-center gap-3">
         <button type="button" onClick={onBack} className={BTN_SECONDARY}>
-          ← New run
+          {gt("← New run")}
         </button>
         <div className="min-w-0">
           <div className="text-sm font-mono text-on-surface truncate">{command}</div>
-          <div className="text-xs text-on-surface-muted">
-            {results.length} host{results.length === 1 ? "" : "s"} · {okCount} succeeded ·{" "}
-            {results.length - okCount} failed or differing exit · {groups.length} distinct output
-            {groups.length === 1 ? "" : "s"}
-          </div>
+          <T>
+            <div className="text-xs text-on-surface-muted">
+              <Var>{results.length}</Var> host
+              <Var>{results.length === 1 ? "" : "s"}</Var> · <Var>{okCount}</Var> succeeded ·{" "}
+              <Var>{results.length - okCount}</Var> failed or differing exit ·{" "}
+              <Var>{groups.length}</Var> distinct output
+              <Var>{groups.length === 1 ? "" : "s"}</Var>
+            </div>
+          </T>
         </div>
       </div>
 
@@ -557,6 +583,7 @@ function FanoutGroup({
   majority: FanoutOutputGroup | null;
   total: number;
 }) {
+  const gt = useGT();
   const [showRaw, setShowRaw] = useState(false);
   const isOutlier = majority !== null;
   const diff = useMemo(
@@ -581,25 +608,29 @@ function FanoutGroup({
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
         <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${badge}`}>
           {group.isFailure
-            ? "failed"
+            ? gt("failed")
             : group.isMajority
               ? total === group.results.length
-                ? "all hosts"
-                : "majority"
-              : "outlier"}
+                ? gt("all hosts")
+                : gt("majority")
+              : gt("outlier")}
         </span>
         <span className="text-sm text-on-surface">
-          {group.results.length} host{group.results.length === 1 ? "" : "s"}
+          {group.results.length === 1
+            ? gt("1 host")
+            : gt("{count} hosts", { count: group.results.length })}
         </span>
         {!group.isFailure && (
-          <span className="text-xs text-on-surface-muted">exit {group.exitCode ?? 0}</span>
+          <span className="text-xs text-on-surface-muted">
+            {gt("exit {code}", { code: group.exitCode ?? 0 })}
+          </span>
         )}
         <button
           type="button"
           onClick={() => setShowRaw((v) => !v)}
           className="ml-auto text-xs text-on-surface-muted hover:text-on-surface"
         >
-          {showRaw ? "Hide output" : "Show output"}
+          {showRaw ? gt("Hide output") : gt("Show output")}
         </button>
       </div>
 
@@ -611,7 +642,9 @@ function FanoutGroup({
             className="text-[11px] px-1.5 py-0.5 rounded bg-surface-overlay text-on-surface-secondary"
           >
             {r.label}
-            {r.exitCode !== null && r.exitCode !== 0 ? ` (exit ${r.exitCode})` : ""}
+            {r.exitCode !== null && r.exitCode !== 0
+              ? gt(" (exit {code})", { code: r.exitCode })
+              : ""}
           </span>
         ))}
       </div>
@@ -619,14 +652,19 @@ function FanoutGroup({
       {/* Outlier diff against the majority output */}
       {diff && diff.length > 0 && (
         <div className="border-t border-border px-3 py-2 overflow-x-auto">
-          <div className="text-[11px] text-on-surface-faint mb-1">
-            Diff vs majority output (green = only on these hosts, red = missing here)
-          </div>
+          <T>
+            <div className="text-[11px] text-on-surface-faint mb-1">
+              Diff vs majority output (green = only on these hosts, red = missing here)
+            </div>
+          </T>
           <pre className="text-xs font-mono leading-5">
             {diff.map((line, i) =>
               "skipped" in line ? (
                 <div key={i} className="text-on-surface-faint">
-                  ⋯ {line.skipped} unchanged line{line.skipped === 1 ? "" : "s"} ⋯
+                  <T>
+                    ⋯ <Var>{line.skipped}</Var> unchanged line
+                    <Var>{line.skipped === 1 ? "" : "s"}</Var> ⋯
+                  </T>
                 </div>
               ) : (
                 <div
@@ -657,7 +695,7 @@ function FanoutGroup({
       {showRaw && !group.isFailure && (
         <div className="border-t border-border px-3 py-2 overflow-x-auto">
           <pre className="text-xs font-mono text-on-surface-secondary whitespace-pre-wrap max-h-64 overflow-y-auto">
-            {group.output || "(no output)"}
+            {group.output || gt("(no output)")}
           </pre>
         </div>
       )}

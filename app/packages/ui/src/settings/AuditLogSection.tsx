@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import { useGT } from "gt-react";
 import { useSettingsHost } from "./host.js";
+import { useDataString } from "../i18n/data-strings.js";
 
 interface AuditLogEntry {
   id: string;
@@ -46,6 +48,8 @@ const ENTITY_TYPES = ["account", "resource", "dashboard", "api_key", "member", "
 
 export function AuditLogSection() {
   const { orgId, api } = useSettingsHost();
+  const gt = useGT();
+  const gtData = useDataString();
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -71,11 +75,11 @@ export function AuditLogSection() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold mb-6">Audit Log</h1>
+      <h1 className="text-xl font-semibold mb-6">{gt("Audit Log")}</h1>
 
       <div className="flex gap-3 mb-4">
         <label htmlFor="audit-entity-filter" className="sr-only">
-          Filter by type
+          {gt("Filter by type")}
         </label>
         <select
           id="audit-entity-filter"
@@ -86,7 +90,7 @@ export function AuditLogSection() {
           }}
           className="bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary"
         >
-          <option value="">All types</option>
+          <option value="">{gt("All types")}</option>
           {ENTITY_TYPES.map((t) => (
             <option key={t} value={t}>
               {t}
@@ -100,16 +104,16 @@ export function AuditLogSection() {
           <thead>
             <tr className="border-b border-border text-xs text-on-surface-muted">
               <th scope="col" className="text-left px-4 py-2 font-medium">
-                Time
+                {gt("Time")}
               </th>
               <th scope="col" className="text-left px-4 py-2 font-medium">
-                User
+                {gt("User")}
               </th>
               <th scope="col" className="text-left px-4 py-2 font-medium">
-                Action
+                {gt("Action")}
               </th>
               <th scope="col" className="text-left px-4 py-2 font-medium">
-                Entity
+                {gt("Entity")}
               </th>
             </tr>
           </thead>
@@ -117,13 +121,13 @@ export function AuditLogSection() {
             {loading ? (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-sm text-on-surface-faint">
-                  Loading…
+                  {gt("Loading…")}
                 </td>
               </tr>
             ) : entries.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-sm text-on-surface-faint">
-                  No audit events found.
+                  {gt("No audit events found.")}
                 </td>
               </tr>
             ) : (
@@ -133,10 +137,12 @@ export function AuditLogSection() {
                     {new Date(entry.createdAt).toLocaleString()}
                   </td>
                   <td className="px-4 py-2 text-sm text-on-surface-secondary">
-                    {entry.userName ?? entry.userEmail ?? (entry.apiKeyId ? `API Key` : "System")}
+                    {entry.userName ??
+                      entry.userEmail ??
+                      (entry.apiKeyId ? gt("API Key") : gt("System"))}
                   </td>
                   <td className="px-4 py-2 text-sm text-on-surface-secondary">
-                    {ACTION_LABELS[entry.action] ?? entry.action}
+                    {gtData(ACTION_LABELS[entry.action] ?? entry.action)}
                   </td>
                   <td className="px-4 py-2 text-xs text-on-surface-muted font-mono">
                     {entry.entityType}:{entry.entityId.slice(0, 12)}...
@@ -150,32 +156,32 @@ export function AuditLogSection() {
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-4">
-          <p className="text-xs text-on-surface-muted">{total} events</p>
+          <p className="text-xs text-on-surface-muted">{gt("{count} events", { count: total })}</p>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              aria-label="Previous page"
+              aria-label={gt("Previous page")}
               className="px-3 py-1 text-sm border border-border-strong rounded-lg text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-30"
             >
-              Previous
+              {gt("Previous")}
             </button>
             <span
               aria-current="page"
-              aria-label={`Page ${page} of ${totalPages}`}
+              aria-label={gt("Page {page} of {total}", { page, total: totalPages })}
               className="px-3 py-1 text-sm text-on-surface-tertiary"
             >
-              {page} / {totalPages}
+              {gt("{page} / {total}", { page, total: totalPages })}
             </span>
             <button
               type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              aria-label="Next page"
+              aria-label={gt("Next page")}
               className="px-3 py-1 text-sm border border-border-strong rounded-lg text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-30"
             >
-              Next
+              {gt("Next")}
             </button>
           </div>
         </div>

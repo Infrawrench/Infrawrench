@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
+import { T, Var, useGT } from "gt-react";
 import { ConfirmDeleteModal } from "../components/ConfirmDeleteModal.js";
+import { LanguageCard } from "./LanguageCard.js";
 import { Modal } from "../components/Modal.js";
 import {
   describeUserAgent,
@@ -15,6 +17,7 @@ import { useSettingsHost, type SettingsApi } from "./host.js";
 import { CARD, INPUT, LABEL, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles.js";
 
 export function GeneralSection() {
+  const gt = useGT();
   const { orgId, api } = useSettingsHost();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +26,7 @@ export function GeneralSection() {
     try {
       setProfile(await api.get<Profile>("/api/profile"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load your profile");
+      setError(e instanceof Error ? e.message : gt("Failed to load your profile"));
     }
   }, [api]);
 
@@ -32,23 +35,29 @@ export function GeneralSection() {
   }, [loadProfile]);
 
   if (error) return <p className="text-sm text-danger">{error}</p>;
-  if (!profile) return <div className="text-on-surface-muted text-sm animate-pulse">Loading…</div>;
+  if (!profile)
+    return <div className="text-on-surface-muted text-sm animate-pulse">{gt("Loading…")}</div>;
 
   return (
     <div className="max-w-3xl">
-      <h1 className="text-xl font-semibold mb-1">General</h1>
-      <p className="text-sm text-on-surface-muted mb-6">
-        Your personal account. These settings follow you across every organization you belong to.
-      </p>
+      <h1 className="text-xl font-semibold mb-1">{gt("General")}</h1>
+      <T>
+        <p className="text-sm text-on-surface-muted mb-6">
+          Your personal account. These settings follow you across every organization you belong to.
+        </p>
+      </T>
 
       <div className="space-y-4">
         <ProfileCard profile={profile} onSaved={loadProfile} />
+        <LanguageCard />
         <PasswordCard />
         <TwoFactorCard />
         <SessionsCard />
         <div className={CARD}>
-          <h2 className="text-sm font-semibold text-on-surface-secondary mb-3">Organization</h2>
-          <span className={LABEL}>Organization ID</span>
+          <h2 className="text-sm font-semibold text-on-surface-secondary mb-3">
+            {gt("Organization")}
+          </h2>
+          <span className={LABEL}>{gt("Organization ID")}</span>
           <p className="text-sm text-on-surface-secondary font-mono">{orgId}</p>
         </div>
         <DeleteAccountCard email={profile.email} />
@@ -58,6 +67,7 @@ export function GeneralSection() {
 }
 
 function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Promise<void> }) {
+  const gt = useGT();
   const { api } = useSettingsHost();
   const [firstName, setFirstName] = useState(profile.firstName ?? "");
   const [lastName, setLastName] = useState(profile.lastName ?? "");
@@ -75,9 +85,9 @@ function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Pr
     try {
       await api.patch("/api/profile", { firstName, lastName });
       await onSaved();
-      setStatus("Saved");
+      setStatus(gt("Saved"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
+      setError(e instanceof Error ? e.message : gt("Failed to save"));
     } finally {
       setSaving(false);
     }
@@ -88,15 +98,15 @@ function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Pr
     setStatus(null);
     try {
       await api.post("/api/profile/send-verification-email");
-      setStatus("Verification email sent");
+      setStatus(gt("Verification email sent"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send verification email");
+      setError(e instanceof Error ? e.message : gt("Failed to send verification email"));
     }
   }
 
   return (
     <div className={CARD}>
-      <h2 className="text-sm font-semibold text-on-surface-secondary mb-4">Profile</h2>
+      <h2 className="text-sm font-semibold text-on-surface-secondary mb-4">{gt("Profile")}</h2>
 
       <div className="flex items-start gap-4">
         {profile.profilePictureUrl ? (
@@ -111,7 +121,7 @@ function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Pr
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="profile-first-name" className={LABEL}>
-                First name
+                {gt("First name")}
               </label>
               <input
                 id="profile-first-name"
@@ -123,7 +133,7 @@ function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Pr
             </div>
             <div>
               <label htmlFor="profile-last-name" className={LABEL}>
-                Last name
+                {gt("Last name")}
               </label>
               <input
                 id="profile-last-name"
@@ -136,41 +146,45 @@ function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Pr
           </div>
 
           <div>
-            <span className={LABEL}>Email</span>
+            <span className={LABEL}>{gt("Email")}</span>
             <div className="flex items-center gap-2 flex-wrap">
               <p className="text-sm text-on-surface-secondary">{profile.email}</p>
               {profile.emailVerified ? (
-                <span className="text-xs text-success">Verified</span>
+                <span className="text-xs text-success">{gt("Verified")}</span>
               ) : (
                 <>
-                  <span className="text-xs text-warning">Unverified</span>
+                  <span className="text-xs text-warning">{gt("Unverified")}</span>
                   <button
                     type="button"
                     onClick={() => void handleResendVerification()}
                     className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary underline"
                   >
-                    Resend verification email
+                    {gt("Resend verification email")}
                   </button>
                 </>
               )}
             </div>
             <p className="text-xs text-on-surface-muted mt-1">
               {profile.identities.length > 0
-                ? `Comes from ${profile.identities.map((i) => formatProvider(i.provider)).join(" / ")}, where you sign in.`
-                : "The address you sign in with."}{" "}
+                ? gt("Comes from {providers}, where you sign in.", {
+                    providers: profile.identities
+                      .map((i) => formatProvider(i.provider))
+                      .join(" / "),
+                  })
+                : gt("The address you sign in with.")}{" "}
               <button
                 type="button"
                 onClick={() => setChangingEmail(true)}
                 className="text-on-surface-tertiary hover:text-on-surface-secondary underline"
               >
-                Change email
+                {gt("Change email")}
               </button>
             </p>
           </div>
 
           {profile.identities.length > 0 && (
             <div>
-              <span className={LABEL}>Connected accounts</span>
+              <span className={LABEL}>{gt("Connected accounts")}</span>
               <p className="text-sm text-on-surface-secondary">
                 {profile.identities.map((i) => formatProvider(i.provider)).join(", ")}
               </p>
@@ -178,9 +192,17 @@ function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Pr
           )}
 
           <div className="flex gap-6 text-xs text-on-surface-muted">
-            <span>Member since {new Date(profile.createdAt).toLocaleDateString()}</span>
+            <span>
+              {gt("Member since {date}", {
+                date: new Date(profile.createdAt).toLocaleDateString(),
+              })}
+            </span>
             {profile.lastSignInAt && (
-              <span>Last sign-in {new Date(profile.lastSignInAt).toLocaleString()}</span>
+              <span>
+                {gt("Last sign-in {date}", {
+                  date: new Date(profile.lastSignInAt).toLocaleString(),
+                })}
+              </span>
             )}
           </div>
 
@@ -191,7 +213,7 @@ function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Pr
               disabled={saving || !dirty}
               className={PRIMARY_BUTTON}
             >
-              {saving ? "Saving…" : "Save changes"}
+              {saving ? gt("Saving…") : gt("Save changes")}
             </button>
             {status && <span className="text-xs text-success">{status}</span>}
             {error && <span className="text-xs text-danger">{error}</span>}
@@ -233,6 +255,7 @@ function ChangeEmailModal({
   onClose: () => void;
   onChanged: () => Promise<void>;
 }) {
+  const gt = useGT();
   const [newEmail, setNewEmail] = useState("");
   const [pending, setPending] = useState<PendingEmailChange | null>(null);
   const [code, setCode] = useState("");
@@ -250,7 +273,7 @@ function ChangeEmailModal({
       );
       setCode("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't send the confirmation code");
+      setError(e instanceof Error ? e.message : gt("Couldn't send the confirmation code"));
     } finally {
       setBusy(false);
     }
@@ -263,21 +286,23 @@ function ChangeEmailModal({
       await api.post("/api/profile/email-change/confirm", { code: code.trim() });
       await onChanged();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "That code isn't valid");
+      setError(e instanceof Error ? e.message : gt("That code isn't valid"));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel="Change email address">
+    <Modal onClose={onClose} ariaLabel={gt("Change email address")}>
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-on-surface-secondary">Change email address</h2>
+          <h2 className="text-sm font-semibold text-on-surface-secondary">
+            {gt("Change email address")}
+          </h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={gt("Close")}
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg"
           >
             &#215;
@@ -286,20 +311,26 @@ function ChangeEmailModal({
         <div className="p-5 space-y-4">
           {!pending ? (
             <>
-              <p className="text-xs text-on-surface-muted">
-                We&apos;ll send a confirmation code to the new address. Your account stays on{" "}
-                <span className="text-on-surface-secondary">{currentEmail}</span> until you enter
-                it.
-              </p>
-              {hasIdentities && (
-                <p className="text-xs text-warning">
-                  You sign in with a connected account. Changing this address here won&apos;t change
-                  it there, so make sure you can still sign in afterwards.
+              <T>
+                <p className="text-xs text-on-surface-muted">
+                  We&apos;ll send a confirmation code to the new address. Your account stays on{" "}
+                  <Var>
+                    <span className="text-on-surface-secondary">{currentEmail}</span>
+                  </Var>{" "}
+                  until you enter it.
                 </p>
+              </T>
+              {hasIdentities && (
+                <T>
+                  <p className="text-xs text-warning">
+                    You sign in with a connected account. Changing this address here won&apos;t
+                    change it there, so make sure you can still sign in afterwards.
+                  </p>
+                </T>
               )}
               <div>
                 <label htmlFor="new-email" className={LABEL}>
-                  New email address
+                  {gt("New email address")}
                 </label>
                 <input
                   id="new-email"
@@ -318,19 +349,23 @@ function ChangeEmailModal({
                 disabled={busy || !newEmail.trim()}
                 className={`${PRIMARY_BUTTON} w-full`}
               >
-                {busy ? "Sending…" : "Send confirmation code"}
+                {busy ? gt("Sending…") : gt("Send confirmation code")}
               </button>
             </>
           ) : (
             <>
-              <p className="text-xs text-on-surface-muted">
-                Enter the code we sent to{" "}
-                <span className="text-on-surface-secondary">{pending.newEmail}</span>. It expires{" "}
-                {new Date(pending.expiresAt).toLocaleTimeString()}.
-              </p>
+              <T>
+                <p className="text-xs text-on-surface-muted">
+                  Enter the code we sent to{" "}
+                  <Var>
+                    <span className="text-on-surface-secondary">{pending.newEmail}</span>
+                  </Var>
+                  . It expires <Var>{new Date(pending.expiresAt).toLocaleTimeString()}</Var>.
+                </p>
+              </T>
               <div>
                 <label htmlFor="email-change-code" className={LABEL}>
-                  Confirmation code
+                  {gt("Confirmation code")}
                 </label>
                 <input
                   id="email-change-code"
@@ -350,7 +385,7 @@ function ChangeEmailModal({
                 disabled={busy || !code.trim()}
                 className={`${PRIMARY_BUTTON} w-full`}
               >
-                {busy ? "Confirming…" : "Confirm new email"}
+                {busy ? gt("Confirming…") : gt("Confirm new email")}
               </button>
               <button
                 type="button"
@@ -360,7 +395,7 @@ function ChangeEmailModal({
                 }}
                 className="w-full text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
               >
-                Use a different address
+                {gt("Use a different address")}
               </button>
             </>
           )}
@@ -371,6 +406,7 @@ function ChangeEmailModal({
 }
 
 function PasswordCard() {
+  const gt = useGT();
   const { api, openExternal } = useSettingsHost();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -384,7 +420,7 @@ function PasswordCard() {
       );
       openExternal(passwordResetUrl);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create a reset link");
+      setError(e instanceof Error ? e.message : gt("Failed to create a reset link"));
     } finally {
       setBusy(false);
     }
@@ -394,11 +430,13 @@ function PasswordCard() {
     <div className={CARD}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-sm font-semibold text-on-surface-secondary mb-1">Password</h2>
-          <p className="text-xs text-on-surface-muted max-w-md">
-            Opens a one-time link where you can set a new password. Use it to add a password to an
-            account that only signs in with Google or SSO.
-          </p>
+          <h2 className="text-sm font-semibold text-on-surface-secondary mb-1">{gt("Password")}</h2>
+          <T>
+            <p className="text-xs text-on-surface-muted max-w-md">
+              Opens a one-time link where you can set a new password. Use it to add a password to an
+              account that only signs in with Google or SSO.
+            </p>
+          </T>
           {error && <p className="text-xs text-danger mt-2">{error}</p>}
         </div>
         <button
@@ -407,7 +445,7 @@ function PasswordCard() {
           disabled={busy}
           className={`${SECONDARY_BUTTON} flex-shrink-0`}
         >
-          {busy ? "Opening…" : "Change password"}
+          {busy ? gt("Opening…") : gt("Change password")}
         </button>
       </div>
     </div>
@@ -415,6 +453,7 @@ function PasswordCard() {
 }
 
 function TwoFactorCard() {
+  const gt = useGT();
   const { api } = useSettingsHost();
   const [factors, setFactors] = useState<AuthFactor[] | null>(null);
   const [enrolling, setEnrolling] = useState(false);
@@ -424,7 +463,7 @@ function TwoFactorCard() {
     try {
       setFactors(await api.get<AuthFactor[]>("/api/profile/mfa"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load two-factor settings");
+      setError(e instanceof Error ? e.message : gt("Failed to load two-factor settings"));
     }
   }, [api]);
 
@@ -438,7 +477,7 @@ function TwoFactorCard() {
       await api.delete(`/api/profile/mfa/${encodeURIComponent(factorId)}`);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to remove");
+      setError(e instanceof Error ? e.message : gt("Failed to remove"));
     }
   }
 
@@ -447,40 +486,44 @@ function TwoFactorCard() {
       <div className="flex items-start justify-between gap-4 mb-3">
         <div>
           <h2 className="text-sm font-semibold text-on-surface-secondary mb-1">
-            Two-factor authentication
+            {gt("Two-factor authentication")}
           </h2>
-          <p className="text-xs text-on-surface-muted max-w-md">
-            Add a time-based one-time code from an authenticator app as a second step when you sign
-            in.
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-muted max-w-md">
+              Add a time-based one-time code from an authenticator app as a second step when you
+              sign in.
+            </p>
+          </T>
         </div>
         <button
           type="button"
           onClick={() => setEnrolling(true)}
           className={`${PRIMARY_BUTTON} flex-shrink-0`}
         >
-          Add authenticator app
+          {gt("Add authenticator app")}
         </button>
       </div>
 
       {error && <p className="text-xs text-danger mb-2">{error}</p>}
 
       {factors === null ? (
-        <p className="text-xs text-on-surface-faint">Loading…</p>
+        <p className="text-xs text-on-surface-faint">{gt("Loading…")}</p>
       ) : factors.length === 0 ? (
-        <p className="text-sm text-on-surface-muted">
-          No authenticator apps yet. Your account is protected by your sign-in method alone.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-muted">
+            No authenticator apps yet. Your account is protected by your sign-in method alone.
+          </p>
+        </T>
       ) : (
         <ul className="divide-y divide-border/50 border border-border rounded-lg">
           {factors.map((factor) => (
             <li key={factor.id} className="flex items-center justify-between px-3 py-2">
               <div>
                 <p className="text-sm text-on-surface-secondary">
-                  {factor.totpUser ?? "Authenticator app"}
+                  {factor.totpUser ?? gt("Authenticator app")}
                 </p>
                 <p className="text-xs text-on-surface-muted">
-                  {factor.type.toUpperCase()} · added{" "}
+                  {factor.type.toUpperCase()} · {gt("added")}{" "}
                   {new Date(factor.createdAt).toLocaleDateString()}
                 </p>
               </div>
@@ -489,7 +532,7 @@ function TwoFactorCard() {
                 onClick={() => void handleRemove(factor.id)}
                 className="text-xs text-danger hover:text-danger-strong"
               >
-                Remove
+                {gt("Remove")}
               </button>
             </li>
           ))}
@@ -523,6 +566,7 @@ interface Enrollment {
  * in the list indistinguishable from a working one.
  */
 function EnrollTotpModal({ api, onClose }: { api: SettingsApi; onClose: () => void }) {
+  const gt = useGT();
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [code, setCode] = useState("");
   const [verifying, setVerifying] = useState(false);
@@ -542,7 +586,7 @@ function EnrollTotpModal({ api, onClose }: { api: SettingsApi; onClose: () => vo
         }
         setEnrollment(result);
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to start enrolment");
+        if (!cancelled) setError(e instanceof Error ? e.message : gt("Failed to start enrolment"));
       }
     })();
     return () => {
@@ -571,7 +615,7 @@ function EnrollTotpModal({ api, onClose }: { api: SettingsApi; onClose: () => vo
       setDone(true);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Verification failed");
+      setError(e instanceof Error ? e.message : gt("Verification failed"));
       // The challenge is spent either way — get a fresh one so the next
       // attempt isn't rejected for the wrong reason.
       try {
@@ -588,14 +632,16 @@ function EnrollTotpModal({ api, onClose }: { api: SettingsApi; onClose: () => vo
   }
 
   return (
-    <Modal onClose={handleCancel} ariaLabel="Add authenticator app">
+    <Modal onClose={handleCancel} ariaLabel={gt("Add authenticator app")}>
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-on-surface-secondary">Add authenticator app</h2>
+          <h2 className="text-sm font-semibold text-on-surface-secondary">
+            {gt("Add authenticator app")}
+          </h2>
           <button
             type="button"
             onClick={handleCancel}
-            aria-label="Close"
+            aria-label={gt("Close")}
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg"
           >
             &#215;
@@ -604,23 +650,26 @@ function EnrollTotpModal({ api, onClose }: { api: SettingsApi; onClose: () => vo
         <div className="p-5 space-y-4">
           {!enrollment ? (
             <p className="text-sm text-on-surface-muted">
-              {error ?? "Preparing your authenticator setup…"}
+              {error ?? gt("Preparing your authenticator setup…")}
             </p>
           ) : (
             <>
-              <p className="text-xs text-on-surface-muted">
-                Scan this code with your authenticator app, then enter the six-digit code it shows.
-              </p>
+              <T>
+                <p className="text-xs text-on-surface-muted">
+                  Scan this code with your authenticator app, then enter the six-digit code it
+                  shows.
+                </p>
+              </T>
               {enrollment.qrCode && (
                 <img
                   src={enrollment.qrCode}
-                  alt="Two-factor enrolment QR code"
+                  alt={gt("Two-factor enrolment QR code")}
                   className="w-40 h-40 mx-auto bg-white rounded-lg p-2"
                 />
               )}
               {enrollment.secret && (
                 <div>
-                  <span className={LABEL}>Or enter this key manually</span>
+                  <span className={LABEL}>{gt("Or enter this key manually")}</span>
                   <div className="bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 font-mono text-xs text-on-surface-secondary break-all select-all">
                     {enrollment.secret}
                   </div>
@@ -628,7 +677,7 @@ function EnrollTotpModal({ api, onClose }: { api: SettingsApi; onClose: () => vo
               )}
               <div>
                 <label htmlFor="totp-code" className={LABEL}>
-                  Six-digit code
+                  {gt("Six-digit code")}
                 </label>
                 <input
                   id="totp-code"
@@ -649,7 +698,7 @@ function EnrollTotpModal({ api, onClose }: { api: SettingsApi; onClose: () => vo
                 disabled={verifying || code.length !== 6}
                 className={`${PRIMARY_BUTTON} w-full`}
               >
-                {verifying ? "Verifying…" : "Turn on two-factor"}
+                {verifying ? gt("Verifying…") : gt("Turn on two-factor")}
               </button>
             </>
           )}
@@ -660,6 +709,7 @@ function EnrollTotpModal({ api, onClose }: { api: SettingsApi; onClose: () => vo
 }
 
 function SessionsCard() {
+  const gt = useGT();
   const { api } = useSettingsHost();
   const [sessions, setSessions] = useState<UserSession[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -669,7 +719,7 @@ function SessionsCard() {
     try {
       setSessions(await api.get<UserSession[]>("/api/profile/sessions"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load sessions");
+      setError(e instanceof Error ? e.message : gt("Failed to load sessions"));
     }
   }, [api]);
 
@@ -683,7 +733,7 @@ function SessionsCard() {
       await api.delete(`/api/profile/sessions/${encodeURIComponent(sessionId)}`);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to revoke");
+      setError(e instanceof Error ? e.message : gt("Failed to revoke"));
     }
   }
 
@@ -694,7 +744,7 @@ function SessionsCard() {
       await api.post("/api/profile/sessions/revoke-others");
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to revoke");
+      setError(e instanceof Error ? e.message : gt("Failed to revoke"));
     } finally {
       setBusy(false);
     }
@@ -706,11 +756,15 @@ function SessionsCard() {
     <div className={CARD}>
       <div className="flex items-start justify-between gap-4 mb-3">
         <div>
-          <h2 className="text-sm font-semibold text-on-surface-secondary mb-1">Active sessions</h2>
-          <p className="text-xs text-on-surface-muted max-w-md">
-            Everywhere you&apos;re currently signed in — the web app, the desktop app, the CLI and
-            mobile.
-          </p>
+          <h2 className="text-sm font-semibold text-on-surface-secondary mb-1">
+            {gt("Active sessions")}
+          </h2>
+          <T>
+            <p className="text-xs text-on-surface-muted max-w-md">
+              Everywhere you&apos;re currently signed in — the web app, the desktop app, the CLI and
+              mobile.
+            </p>
+          </T>
         </div>
         {others.length > 0 && (
           <button
@@ -719,7 +773,7 @@ function SessionsCard() {
             disabled={busy}
             className={`${SECONDARY_BUTTON} flex-shrink-0`}
           >
-            {busy ? "Signing out…" : "Sign out other sessions"}
+            {busy ? gt("Signing out…") : gt("Sign out other sessions")}
           </button>
         )}
       </div>
@@ -727,9 +781,9 @@ function SessionsCard() {
       {error && <p className="text-xs text-danger mb-2">{error}</p>}
 
       {sessions === null ? (
-        <p className="text-xs text-on-surface-faint">Loading…</p>
+        <p className="text-xs text-on-surface-faint">{gt("Loading…")}</p>
       ) : sessions.length === 0 ? (
-        <p className="text-sm text-on-surface-muted">No active sessions.</p>
+        <p className="text-sm text-on-surface-muted">{gt("No active sessions.")}</p>
       ) : (
         <ul className="divide-y divide-border/50 border border-border rounded-lg">
           {sessions.map((session) => (
@@ -738,12 +792,12 @@ function SessionsCard() {
                 <p className="text-sm text-on-surface-secondary truncate">
                   {describeUserAgent(session.userAgent)}
                   {session.current && (
-                    <span className="ml-2 text-xs text-success">This device</span>
+                    <span className="ml-2 text-xs text-success">{gt("This device")}</span>
                   )}
                 </p>
                 <p className="text-xs text-on-surface-muted truncate">
-                  {session.ipAddress ?? "Unknown IP"} · {formatAuthMethod(session.authMethod)} ·
-                  started {new Date(session.createdAt).toLocaleString()}
+                  {session.ipAddress ?? gt("Unknown IP")} · {formatAuthMethod(session.authMethod)} ·{" "}
+                  {gt("started")} {new Date(session.createdAt).toLocaleString()}
                 </p>
               </div>
               {!session.current && (
@@ -752,7 +806,7 @@ function SessionsCard() {
                   onClick={() => void handleRevoke(session.id)}
                   className="text-xs text-danger hover:text-danger-strong flex-shrink-0"
                 >
-                  Sign out
+                  {gt("Sign out")}
                 </button>
               )}
             </li>
@@ -774,6 +828,7 @@ function SessionsCard() {
  * the same cases again on DELETE, so a stale preview is safe.
  */
 function DeleteAccountCard({ email }: { email: string }) {
+  const gt = useGT();
   const { api, onAccountDeleted } = useSettingsHost();
   const [preview, setPreview] = useState<AccountDeletionPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -783,7 +838,7 @@ function DeleteAccountCard({ email }: { email: string }) {
     api
       .get<AccountDeletionPreview>("/api/profile/deletion-preview")
       .then(setPreview)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load"));
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : gt("Failed to load")));
   }, [api]);
 
   async function handleDelete() {
@@ -797,27 +852,35 @@ function DeleteAccountCard({ email }: { email: string }) {
 
   return (
     <div className="border border-red-500/30 rounded-xl p-5">
-      <h2 className="text-sm font-semibold text-on-surface-secondary mb-1">Delete account</h2>
-      <p className="text-xs text-on-surface-tertiary mb-3">
-        Permanently deletes your account, your SSH and API keys, your chat history, and your
-        membership of every organization. This cannot be undone.
-      </p>
+      <h2 className="text-sm font-semibold text-on-surface-secondary mb-1">
+        {gt("Delete account")}
+      </h2>
+      <T>
+        <p className="text-xs text-on-surface-tertiary mb-3">
+          Permanently deletes your account, your SSH and API keys, your chat history, and your
+          membership of every organization. This cannot be undone.
+        </p>
+      </T>
 
       {error && <p className="text-xs text-danger mb-3">{error}</p>}
 
       {preview && blocked && (
         <div className="mb-3 rounded-lg border border-border bg-surface-overlay p-3">
-          <p className="text-xs text-on-surface-secondary mb-2">
-            You are the only owner of{" "}
-            {preview.blockers.length === 1 ? "an organization" : "these organizations"} that other
-            people belong to. Promote another owner in <strong>Settings → Team</strong>, then come
-            back.
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-secondary mb-2">
+              You are the only owner of{" "}
+              <Var>
+                {preview.blockers.length === 1 ? gt("an organization") : gt("these organizations")}
+              </Var>{" "}
+              that other people belong to. Promote another owner in <strong>Settings → Team</strong>
+              , then come back.
+            </p>
+          </T>
           <ul className="text-xs text-on-surface-tertiary space-y-1">
             {preview.blockers.map((b) => (
               <li key={b.id}>
                 <span className="text-on-surface-secondary">{b.name}</span> — {b.memberCount}{" "}
-                members
+                {gt("members")}
               </li>
             ))}
           </ul>
@@ -826,15 +889,19 @@ function DeleteAccountCard({ email }: { email: string }) {
 
       {preview && !blocked && preview.organizationsToDelete.length > 0 && (
         <div className="mb-3 rounded-lg border border-border bg-surface-overlay p-3">
-          <p className="text-xs text-on-surface-secondary mb-2">
-            You are the only member of{" "}
-            {preview.organizationsToDelete.length === 1
-              ? "this organization, so it"
-              : "these organizations, so they"}{" "}
-            will be deleted too, along with everything in{" "}
-            {preview.organizationsToDelete.length === 1 ? "it" : "them"}. Any active subscription is
-            cancelled.
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-secondary mb-2">
+              You are the only member of{" "}
+              <Var>
+                {preview.organizationsToDelete.length === 1
+                  ? gt("this organization, so it")
+                  : gt("these organizations, so they")}
+              </Var>{" "}
+              will be deleted too, along with everything in{" "}
+              <Var>{preview.organizationsToDelete.length === 1 ? gt("it") : gt("them")}</Var>. Any
+              active subscription is cancelled.
+            </p>
+          </T>
           <ul className="text-xs text-on-surface-tertiary space-y-1">
             {preview.organizationsToDelete.map((o) => (
               <li key={o.id}>{o.name}</li>
@@ -849,12 +916,12 @@ function DeleteAccountCard({ email }: { email: string }) {
         disabled={!preview || blocked}
         className="px-3 py-1.5 text-sm font-medium bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:hover:bg-red-600 text-white rounded-lg transition-colors"
       >
-        Delete account
+        {gt("Delete account")}
       </button>
 
       {confirming && (
         <ConfirmDeleteModal
-          kind="account"
+          kind={gt("account")}
           name={email}
           onConfirm={handleDelete}
           onClose={() => setConfirming(false)}

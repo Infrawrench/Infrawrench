@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import type { ArtifactEntry, ArtifactRegistryCapability } from "@infrawrench/plugin-base";
 import { formatBytes } from "@infrawrench/plugin-base";
 
@@ -31,6 +32,7 @@ function truncateDigest(digest: string | undefined): string {
 }
 
 export function ArtifactRegistryView({ capability, onListArtifacts }: Props) {
+  const gt = useGT();
   const [prefix, setPrefix] = useState(capability.defaultPrefix ?? "");
   const [items, setItems] = useState<ArtifactEntry[]>([]);
   const [nextPageToken, setNextPageToken] = useState<string | undefined>(undefined);
@@ -72,7 +74,7 @@ export function ArtifactRegistryView({ capability, onListArtifacts }: Props) {
   }, []);
 
   const showTagsColumn = capability.supportsTags ?? false;
-  const versionHeader = showTagsColumn ? "Tags" : "Version";
+  const versionHeader = showTagsColumn ? gt("Tags") : gt("Version");
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -84,8 +86,8 @@ export function ArtifactRegistryView({ capability, onListArtifacts }: Props) {
           onKeyDown={(e) => {
             if (e.key === "Enter") void load({ reset: true });
           }}
-          placeholder="Filter by prefix…"
-          aria-label="Filter by prefix"
+          placeholder={gt("Filter by prefix…")}
+          aria-label={gt("Filter by prefix")}
           className="flex-1 px-3 py-1.5 rounded text-sm bg-surface-overlay border border-border text-on-surface placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
         />
         <button
@@ -94,7 +96,7 @@ export function ArtifactRegistryView({ capability, onListArtifacts }: Props) {
           disabled={loading}
           className="px-3 py-1.5 text-xs font-medium rounded-md bg-surface-overlay hover:bg-surface-sunken text-on-surface-secondary border border-border disabled:opacity-50 transition-colors"
         >
-          {loading ? "Loading…" : "Reload"}
+          {loading ? gt("Loading…") : gt("Reload")}
         </button>
       </div>
 
@@ -107,22 +109,22 @@ export function ArtifactRegistryView({ capability, onListArtifacts }: Props) {
       <div className="flex-1 overflow-auto">
         {!initialized && loading ? (
           <div className="flex items-center justify-center py-16 text-on-surface-faint text-sm">
-            Loading artifacts…
+            {gt("Loading artifacts…")}
           </div>
         ) : items.length === 0 && !loading ? (
           <div className="flex items-center justify-center py-16 text-on-surface-faint text-sm">
-            No artifacts found.
+            {gt("No artifacts found.")}
           </div>
         ) : (
           <table className="w-full text-sm">
-            <caption className="sr-only">Artifacts</caption>
+            <caption className="sr-only">{gt("Artifacts")}</caption>
             <thead className="sticky top-0 bg-surface-sunken border-b border-border z-10">
               <tr>
                 <th
                   scope="col"
                   className="px-4 py-2 text-left font-medium text-on-surface-muted uppercase text-xs tracking-wide"
                 >
-                  Name
+                  {gt("Name")}
                 </th>
                 <th
                   scope="col"
@@ -134,19 +136,19 @@ export function ArtifactRegistryView({ capability, onListArtifacts }: Props) {
                   scope="col"
                   className="px-4 py-2 text-left font-medium text-on-surface-muted uppercase text-xs tracking-wide"
                 >
-                  Size
+                  {gt("Size")}
                 </th>
                 <th
                   scope="col"
                   className="px-4 py-2 text-left font-medium text-on-surface-muted uppercase text-xs tracking-wide"
                 >
-                  Digest
+                  {gt("Digest")}
                 </th>
                 <th
                   scope="col"
                   className="px-4 py-2 text-left font-medium text-on-surface-muted uppercase text-xs tracking-wide"
                 >
-                  Updated
+                  {gt("Updated")}
                 </th>
               </tr>
             </thead>

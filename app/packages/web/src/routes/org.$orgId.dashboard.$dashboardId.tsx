@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { useGT } from "gt-react";
 import { useUIStore, useTabId, RESOURCES_CHANGED_EVENT } from "@infrawrench/ui";
 import type { DashboardWidget } from "@infrawrench/ui/cost/config";
 import { DashboardView, type WorkflowPin } from "@/components/DashboardView";
@@ -33,6 +34,7 @@ interface DashboardPanelProps {
 }
 
 export function DashboardPanel({ orgId, dashboardId }: DashboardPanelProps) {
+  const gt = useGT();
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const tabId = useTabId();
   const [data, setData] = useState<DashboardPanelData | null>(null);
@@ -62,11 +64,12 @@ export function DashboardPanel({ orgId, dashboardId }: DashboardPanelProps) {
   if (!data && loadFailed) {
     return (
       <div className="p-6 text-on-surface-muted text-sm">
-        This dashboard no longer exists or could not be loaded.
+        {gt("This dashboard no longer exists or could not be loaded.")}
       </div>
     );
   }
-  if (!data) return <div className="p-6 text-on-surface-muted text-sm animate-pulse">Loading…</div>;
+  if (!data)
+    return <div className="p-6 text-on-surface-muted text-sm animate-pulse">{gt("Loading…")}</div>;
 
   return (
     <DashboardView

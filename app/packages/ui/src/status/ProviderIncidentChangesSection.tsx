@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import { summarizeStatusIncident, type OrgStatusIncident } from "@infrawrench/client-core";
 import type { StatusIncidentsClient } from "./types.js";
 
@@ -25,6 +26,7 @@ export function ProviderIncidentChangesSection({
   client,
   onOpenUrl,
 }: ProviderIncidentChangesSectionProps) {
+  const gt = useGT();
   const [incidents, setIncidents] = useState<OrgStatusIncident[]>([]);
 
   useEffect(() => {
@@ -48,11 +50,12 @@ export function ProviderIncidentChangesSection({
   if (relevant.length === 0) return null;
 
   return (
-    <section aria-label="Provider incidents" className="mb-6">
-      <h2 className="text-sm font-semibold mb-1">Is it you, or is it them?</h2>
+    <section aria-label={gt("Provider incidents")} className="mb-6">
+      <h2 className="text-sm font-semibold mb-1">{gt("Is it you, or is it them?")}</h2>
       <p className="text-xs text-on-surface-muted mb-3">
-        Provider status pages report incidents overlapping your resources. Changes recorded during
-        an incident window may be the provider, not you.
+        {gt(
+          "Provider status pages report incidents overlapping your resources. Changes recorded during an incident window may be the provider, not you.",
+        )}
       </p>
       <ul className="border border-border rounded-xl overflow-hidden">
         {relevant.map((incident) => (
@@ -63,7 +66,7 @@ export function ProviderIncidentChangesSection({
             <span
               className={`text-[11px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wide shrink-0 ${IMPACT_TONE[incident.impact] ?? IMPACT_TONE["minor"]}`}
             >
-              {incident.resolvedAt ? "resolved" : incident.impact}
+              {incident.resolvedAt ? gt("resolved") : incident.impact}
             </span>
             <span className="min-w-0">
               <span className="text-sm text-on-surface-secondary block truncate">
@@ -75,9 +78,11 @@ export function ProviderIncidentChangesSection({
                   <>
                     {" · "}
                     <span className="font-medium">
-                      {incident.overlappingChangeCount}{" "}
-                      {incident.overlappingChangeCount === 1 ? "change" : "changes"} during this
-                      incident
+                      {gt("{count} {changeLabel} during this incident", {
+                        count: incident.overlappingChangeCount,
+                        changeLabel:
+                          incident.overlappingChangeCount === 1 ? gt("change") : gt("changes"),
+                      })}
                     </span>
                   </>
                 )}
@@ -89,7 +94,7 @@ export function ProviderIncidentChangesSection({
                 onClick={() => onOpenUrl(incident.url as string)}
                 className="ml-auto text-xs underline underline-offset-2 text-on-surface-tertiary hover:text-on-surface-secondary shrink-0"
               >
-                Provider status
+                {gt("Provider status")}
               </button>
             )}
           </li>

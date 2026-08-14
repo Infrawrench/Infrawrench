@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useGT } from "gt-react";
 import { ChangesPanel, useUIStore } from "@infrawrench/ui";
 import { createDesktopChangesClient } from "@/lib/changes-client";
 import { createDesktopStatusIncidentsClient } from "@/lib/status-incidents-client";
@@ -15,6 +16,7 @@ import { invoke } from "@/lib/invoke";
  * org.
  */
 export function DesktopChangesPanel() {
+  const gt = useGT();
   const navigate = useNavigate();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const client = useMemo(() => createDesktopChangesClient(), []);
@@ -23,11 +25,11 @@ export function DesktopChangesPanel() {
   if (!activeCloudOrgId) {
     return (
       <div className="flex-1 overflow-auto p-6">
-        <h1 className="text-xl font-semibold mb-1">Changes</h1>
+        <h1 className="text-xl font-semibold mb-1">{gt("Changes")}</h1>
         <p className="text-sm text-on-surface-muted">
-          The change timeline is recorded by Infrawrench Cloud&apos;s poller as it syncs your
-          accounts. Local-only mode has no poller, so there is no feed — sign in to an organization
-          to see one.
+          {gt(
+            "The change timeline is recorded by Infrawrench Cloud's poller as it syncs your accounts. Local-only mode has no poller, so there is no feed — sign in to an organization to see one.",
+          )}
         </p>
       </div>
     );

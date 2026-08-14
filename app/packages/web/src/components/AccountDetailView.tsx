@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useGT } from "gt-react";
 import {
   ResourcePill,
   ConfirmDeleteModal,
@@ -14,6 +15,7 @@ import {
   useUIStore,
   formatErrorMessage,
   toast,
+  useDataString,
 } from "@infrawrench/ui";
 import type { TerraformExportOutcome } from "@infrawrench/plugin-base";
 import type {
@@ -70,6 +72,8 @@ export function AccountDetailView({
   onActiveSectionIdChange,
   onAccountUpdated,
 }: Props) {
+  const gt = useGT();
+  const gtData = useDataString();
   const navigate = useNavigate();
   const orgId = useOrgId();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -127,10 +131,12 @@ export function AccountDetailView({
         apiGet<Record<string, string>>(`/api/org/${orgId}/accounts/${account.id}/credentials`),
       ]);
       const plugin = plugins.find((p) => p.id === account.pluginId);
-      if (!plugin) throw new Error(`Plugin "${account.pluginId}" not loaded`);
+      if (!plugin) {
+        throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId: account.pluginId }));
+      }
       setEditCredsState({ plugin, current });
     } catch (e) {
-      toast.error(`Couldn't open credentials: ${formatErrorMessage(e)}`);
+      toast.error(gt("Couldn't open credentials: {message}", { message: formatErrorMessage(e) }));
     }
   }
 
@@ -138,7 +144,7 @@ export function AccountDetailView({
     // The button only renders once the declaration is loaded; this guard is
     // defensive for the instant around a plugin change.
     if (!preflightDeclaration) {
-      toast.error("Couldn't open credential check: this plugin doesn't support it yet");
+      toast.error(gt("Couldn't open credential check: this plugin doesn't support it yet"));
       return;
     }
     setPreflightOpen(true);
@@ -146,7 +152,7 @@ export function AccountDetailView({
 
   async function saveCredentials(credentials: Record<string, string>) {
     await apiPut(`/api/org/${orgId}/accounts/${account.id}/credentials`, { credentials });
-    toast.success("Credentials updated");
+    toast.success(gt("Credentials updated"));
     dispatchResourcesChanged({ accountId: account.id });
   }
 
@@ -165,7 +171,7 @@ export function AccountDetailView({
       onAccountUpdated?.(result.displayName);
       setIsEditing(false);
     } catch (e) {
-      toast.error(`Couldn't rename account: ${formatErrorMessage(e)}`);
+      toast.error(gt("Couldn't rename account: {message}", { message: formatErrorMessage(e) }));
     } finally {
       setIsSaving(false);
     }
@@ -197,7 +203,7 @@ export function AccountDetailView({
                     setIsEditing(false);
                   }
                 }}
-                aria-label="Account name"
+                aria-label={gt("Account name")}
                 className="px-2 py-1 text-lg font-semibold bg-transparent border border-border rounded focus:outline-none focus:border-accent"
                 disabled={isSaving}
               />
@@ -207,7 +213,7 @@ export function AccountDetailView({
                 disabled={isSaving}
                 className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
               >
-                Save
+                {gt("Save")}
               </button>
               <button
                 type="button"
@@ -218,13 +224,13 @@ export function AccountDetailView({
                 disabled={isSaving}
                 className="px-2 py-1 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded"
               >
-                Cancel
+                {gt("Cancel")}
               </button>
             </div>
           ) : (
             <h1 className="text-xl font-semibold">{account.displayName}</h1>
           )}
-          <p className="text-xs text-on-surface-muted">{pluginDisplayName}</p>
+          <p className="text-xs text-on-surface-muted">{gtData(pluginDisplayName)}</p>
         </div>
         <div className="flex items-center gap-1">
           {!isEditing && (
@@ -234,21 +240,21 @@ export function AccountDetailView({
                 onClick={() => setIsEditing(true)}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded transition-colors"
               >
-                Rename
+                {gt("Rename")}
               </button>
               <button
                 type="button"
                 onClick={() => void openEditCredentials()}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded transition-colors"
               >
-                Update credentials
+                {gt("Update credentials")}
               </button>
               <button
                 type="button"
                 onClick={() => setShowTerraformExport(true)}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded transition-colors"
               >
-                Export to Terraform
+                {gt("Export to Terraform")}
               </button>
               {preflightDeclaration && (
                 <button
@@ -256,7 +262,7 @@ export function AccountDetailView({
                   onClick={openPreflight}
                   className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded transition-colors"
                 >
-                  Check credentials
+                  {gt("Check credentials")}
                 </button>
               )}
             </>
@@ -266,7 +272,7 @@ export function AccountDetailView({
             onClick={() => setConfirmDelete(true)}
             className="px-3 py-1.5 text-xs text-danger hover:text-danger-strong hover:bg-red-100 dark:hover:bg-red-950/50 rounded transition-colors"
           >
-            Delete
+            {gt("Delete")}
           </button>
         </div>
       </div>
@@ -282,7 +288,7 @@ export function AccountDetailView({
 
       {showTerraformExport && (
         <TerraformExportModal
-          subjectDisplayName={`${account.displayName} — full inventory`}
+          subjectDisplayName={gt("{name} — full inventory", { name: account.displayName })}
           generate={() =>
             apiGet<TerraformExportOutcome>(
               `/api/org/${orgId}/accounts/${account.id}/export-terraform`,
@@ -371,7 +377,7 @@ export function AccountDetailView({
             className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-border-strong text-on-surface-faint hover:border-blue-600 hover:text-accent transition-colors text-sm"
           >
             <span className="text-base leading-none">+</span>
-            <span>Create {typeDef.displayName}</span>
+            <span>{gt("Create {type}", { type: gtData(typeDef.displayName) })}</span>
           </button>
         )}
       />

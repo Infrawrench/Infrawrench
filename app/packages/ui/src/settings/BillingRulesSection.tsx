@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { T, Var, useGT } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 import {
   BILLING_RULE_FIXED_PERIODS,
   BILLING_RULE_KIND_DESCRIPTIONS,
@@ -53,6 +55,8 @@ function labelFor(options: CostDimensionOption[], value: string): string {
  * adjusted figure unauditable. Writing is `org:settings:write`.
  */
 export function BillingRulesSection() {
+  const gt = useGT();
+  const gtData = useDataString();
   const { orgId, api, has, openSection } = useSettingsHost();
   const canRead = has("costs:read");
   const canEdit = has("org:settings:write");
@@ -75,7 +79,7 @@ export function BillingRulesSection() {
       setRules(ruleRows);
       setCentres(centreRows);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load billing rules");
+      setError(e instanceof Error ? e.message : gt("Failed to load billing rules"));
     }
   }, [api, orgId]);
 
@@ -120,15 +124,17 @@ export function BillingRulesSection() {
       });
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update rule");
+      setError(e instanceof Error ? e.message : gt("Failed to update rule"));
     }
   }
 
   async function remove(rule: BillingRule) {
     if (
       !window.confirm(
-        `Delete the billing rule "${rule.name}"?\n\nNothing is restated — collected spend was ` +
-          "never changed — but every adjusted figure will recompute without it.",
+        gt(
+          'Delete the billing rule "{name}"?\n\nNothing is restated — collected spend was never changed — but every adjusted figure will recompute without it.',
+          { name: rule.name },
+        ),
       )
     ) {
       return;
@@ -137,53 +143,61 @@ export function BillingRulesSection() {
       await api.delete(`/api/org/${orgId}/billing-rules/${rule.id}`);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete rule");
+      setError(e instanceof Error ? e.message : gt("Failed to delete rule"));
     }
   }
 
   if (!canRead) {
     return (
-      <div className="text-sm text-on-surface-secondary">
-        You need the <code>costs:read</code> permission to see the organisation&rsquo;s billing
-        rules.
-      </div>
+      <T>
+        <div className="text-sm text-on-surface-secondary">
+          You need the <code>costs:read</code> permission to see the organisation&rsquo;s billing
+          rules.
+        </div>
+      </T>
     );
   }
 
   return (
     <section className="flex flex-col gap-4 max-w-3xl">
       <div className="flex flex-col gap-1">
-        <h2 className="text-base font-semibold text-on-surface">Billing rules</h2>
-        <p className="text-sm text-on-surface-secondary">
-          Adjustments the organisation applies to collected spend when it reports internally: a
-          markup that recovers shared overhead, a discount negotiated outside the provider&rsquo;s
-          pricing, a fixed charge per period, or a reallocation that moves a shared cluster&rsquo;s
-          cost onto the teams that use it.
-        </p>
-        <p className="text-sm text-on-surface-muted">
-          Rules are applied when a report is run and are <strong>never</strong> written into
-          collected spend, so what the providers charged stays exactly as collected and can still be
-          reconciled against an invoice. Every adjusted figure is shown beside the collected one and
-          names the rules that moved it.
-        </p>
+        <h2 className="text-base font-semibold text-on-surface">{gt("Billing rules")}</h2>
+        <T>
+          <p className="text-sm text-on-surface-secondary">
+            Adjustments the organisation applies to collected spend when it reports internally: a
+            markup that recovers shared overhead, a discount negotiated outside the provider&rsquo;s
+            pricing, a fixed charge per period, or a reallocation that moves a shared
+            cluster&rsquo;s cost onto the teams that use it.
+          </p>
+        </T>
+        <T>
+          <p className="text-sm text-on-surface-muted">
+            Rules are applied when a report is run and are <strong>never</strong> written into
+            collected spend, so what the providers charged stays exactly as collected and can still
+            be reconciled against an invoice. Every adjusted figure is shown beside the collected
+            one and names the rules that moved it.
+          </p>
+        </T>
       </div>
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
           {error}{" "}
           <button type="button" onClick={() => void load()} className="underline">
-            Retry
+            {gt("Retry")}
           </button>
         </div>
       )}
 
-      {rules === null && <div className="text-sm text-on-surface-muted">Loading&hellip;</div>}
+      {rules === null && <div className="text-sm text-on-surface-muted">{gt("Loading…")}</div>}
 
       {rules !== null && rules.length === 0 && (
-        <p className="text-sm text-on-surface-muted">
-          No billing rules. Every figure the organisation reports is exactly what the providers
-          charged.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-muted">
+            No billing rules. Every figure the organisation reports is exactly what the providers
+            charged.
+          </p>
+        </T>
       )}
 
       {rules !== null && rules.length > 0 && (
@@ -204,18 +218,23 @@ export function BillingRulesSection() {
                   >
                     {rule.name}
                   </span>
-                  <span className="text-on-surface-muted">
-                    {" "}
-                    — {describeBillingRuleAdjustment(rule.adjustment)}
-                    {target ? ` → ${target}` : ""} on {describeBillingRuleMatch(rule.match)}
-                  </span>
+                  <T>
+                    <span className="text-on-surface-muted">
+                      {" "}
+                      — <Var>{describeBillingRuleAdjustment(rule.adjustment)}</Var>
+                      <Var>{target ? ` → ${target}` : ""}</Var> on{" "}
+                      <Var>{describeBillingRuleMatch(rule.match)}</Var>
+                    </span>
+                  </T>
                   {rule.description && (
                     <span className="block text-xs text-on-surface-muted">{rule.description}</span>
                   )}
                   {!rule.enabled && (
-                    <span className="block text-xs text-on-surface-muted">
-                      Disabled — affects nothing.
-                    </span>
+                    <T>
+                      <span className="block text-xs text-on-surface-muted">
+                        Disabled — affects nothing.
+                      </span>
+                    </T>
                   )}
                 </span>
                 {canEdit && (
@@ -225,14 +244,14 @@ export function BillingRulesSection() {
                       onClick={() => void toggle(rule)}
                       className="text-xs text-on-surface-secondary hover:text-on-surface underline"
                     >
-                      {rule.enabled ? "Disable" : "Enable"}
+                      {rule.enabled ? gt("Disable") : gt("Enable")}
                     </button>
                     <button
                       type="button"
                       onClick={() => void remove(rule)}
                       className="text-xs text-danger hover:text-danger-strong"
                     >
-                      Remove
+                      {gt("Remove")}
                     </button>
                   </span>
                 )}
@@ -243,11 +262,13 @@ export function BillingRulesSection() {
       )}
 
       {rules !== null && rules.length > 0 && (
-        <p className="text-xs text-on-surface-muted">
-          Lower numbers evaluate first. Every matching markup or discount applies, so two 10%
-          markups compound to 21% rather than 20%. Reallocation is first-match-wins, so a row moves
-          exactly once and the organisation&rsquo;s total is unchanged by it.
-        </p>
+        <T>
+          <p className="text-xs text-on-surface-muted">
+            Lower numbers evaluate first. Every matching markup or discount applies, so two 10%
+            markups compound to 21% rather than 20%. Reallocation is first-match-wins, so a row
+            moves exactly once and the organisation&rsquo;s total is unchanged by it.
+          </p>
+        </T>
       )}
 
       {canEdit && (
@@ -267,10 +288,12 @@ export function BillingRulesSection() {
       )}
 
       {!canEdit && rules !== null && (
-        <p className="text-xs text-on-surface-muted">
-          Changing these needs the <code>org:settings:write</code> permission — a markup changes
-          every number the organisation reports about itself.
-        </p>
+        <T>
+          <p className="text-xs text-on-surface-muted">
+            Changing these needs the <code>org:settings:write</code> permission — a markup changes
+            every number the organisation reports about itself.
+          </p>
+        </T>
       )}
     </section>
   );
@@ -306,6 +329,8 @@ function NewRuleForm({
   onError: (message: string) => void;
   onManageCentres: () => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [name, setName] = useState("");
   const [kind, setKind] = useState<BillingRuleKind>("percentage");
   const [percent, setPercent] = useState("10");
@@ -382,7 +407,7 @@ function NewRuleForm({
       setTargetId("");
       await onCreated();
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Failed to create rule");
+      onError(e instanceof Error ? e.message : gt("Failed to create rule"));
     } finally {
       setSubmitting(false);
     }
@@ -395,26 +420,26 @@ function NewRuleForm({
 
   return (
     <div className="flex flex-col gap-2 pt-3 border-t border-border">
-      <h3 className="text-sm font-medium text-on-surface">Add a rule</h3>
+      <h3 className="text-sm font-medium text-on-surface">{gt("Add a rule")}</h3>
 
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Rule name"
-          aria-label="Rule name"
+          placeholder={gt("Rule name")}
+          aria-label={gt("Rule name")}
           className={selectClass}
         />
         <select
           value={kind}
           onChange={(e) => setKind(e.target.value as BillingRuleKind)}
-          aria-label="Adjustment"
+          aria-label={gt("Adjustment")}
           className={selectClass}
         >
           {BILLING_RULE_KINDS.map((k) => (
             <option key={k} value={k}>
-              {BILLING_RULE_KIND_LABELS[k]}
+              {gtData(BILLING_RULE_KIND_LABELS[k])}
             </option>
           ))}
         </select>
@@ -424,7 +449,7 @@ function NewRuleForm({
             type="number"
             value={percent}
             onChange={(e) => setPercent(e.target.value)}
-            aria-label="Percent"
+            aria-label={gt("Percent")}
             className={`${selectClass} w-24`}
           />
         )}
@@ -434,25 +459,25 @@ function NewRuleForm({
               type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              aria-label="Amount"
+              aria-label={gt("Amount")}
               className={`${selectClass} w-28`}
             />
             <input
               type="text"
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
-              aria-label="Currency"
+              aria-label={gt("Currency")}
               className={`${selectClass} w-20`}
             />
             <select
               value={period}
               onChange={(e) => setPeriod(e.target.value as "daily" | "monthly")}
-              aria-label="Period"
+              aria-label={gt("Period")}
               className={selectClass}
             >
               {BILLING_RULE_FIXED_PERIODS.map((p) => (
                 <option key={p} value={p}>
-                  per {p === "daily" ? "day" : "month"}
+                  {p === "daily" ? gt("per day") : gt("per month")}
                 </option>
               ))}
             </select>
@@ -464,24 +489,24 @@ function NewRuleForm({
             <select
               value={targetKind}
               onChange={(e) => setTargetKind(e.target.value as "cost_centre" | "account")}
-              aria-label="Target kind"
+              aria-label={gt("Target kind")}
               className={selectClass}
             >
-              <option value="cost_centre">to cost centre</option>
-              <option value="account">to account</option>
+              <option value="cost_centre">{gt("to cost centre")}</option>
+              <option value="account">{gt("to account")}</option>
             </select>
             <select
               value={targetId}
               onChange={(e) => setTargetId(e.target.value)}
-              aria-label="Target"
+              aria-label={gt("Target")}
               className={selectClass}
             >
               <option value="">
-                {kind === "fixed" ? "unallocated (org-level)" : "pick a target…"}
+                {kind === "fixed" ? gt("unallocated (org-level)") : gt("pick a target…")}
               </option>
               {targetOptions.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.label}
+                  {gtData(o.label)}
                 </option>
               ))}
             </select>
@@ -489,20 +514,22 @@ function NewRuleForm({
         )}
       </div>
 
-      <p className="text-xs text-on-surface-muted">{BILLING_RULE_KIND_DESCRIPTIONS[kind]}</p>
+      <p className="text-xs text-on-surface-muted">
+        {gtData(BILLING_RULE_KIND_DESCRIPTIONS[kind])}
+      </p>
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-on-surface-secondary">applies to</span>
+        <span className="text-xs text-on-surface-secondary">{gt("applies to")}</span>
         <select
           value={tagKey}
           onChange={(e) => setTagKey(e.target.value)}
-          aria-label="Tag key"
+          aria-label={gt("Tag key")}
           className={selectClass}
         >
-          <option value="">Any tag</option>
+          <option value="">{gt("Any tag")}</option>
           {tagKeys.map((key) => (
             <option key={key} value={key}>
-              tag: {key}
+              {gt("tag: {key}", { key })}
             </option>
           ))}
         </select>
@@ -511,60 +538,60 @@ function NewRuleForm({
             type="text"
             value={tagValue}
             onChange={(e) => setTagValue(e.target.value)}
-            placeholder="value (blank = any)"
-            aria-label="Tag value"
+            placeholder={gt("value (blank = any)")}
+            aria-label={gt("Tag value")}
             className={selectClass}
           />
         )}
         <select
           value={accountId}
           onChange={(e) => setAccountId(e.target.value)}
-          aria-label="Account"
+          aria-label={gt("Account")}
           className={selectClass}
         >
-          <option value="">Any account</option>
+          <option value="">{gt("Any account")}</option>
           {accounts.map((a) => (
             <option key={a.value} value={a.value}>
-              {a.label}
+              {gtData(a.label)}
             </option>
           ))}
         </select>
         <select
           value={pluginId}
           onChange={(e) => setPluginId(e.target.value)}
-          aria-label="Provider"
+          aria-label={gt("Provider")}
           className={selectClass}
         >
-          <option value="">Any provider</option>
+          <option value="">{gt("Any provider")}</option>
           {providers.map((p) => (
             <option key={p.value} value={p.value}>
-              {p.label}
+              {gtData(p.label)}
             </option>
           ))}
         </select>
         <select
           value={service}
           onChange={(e) => setService(e.target.value)}
-          aria-label="Service"
+          aria-label={gt("Service")}
           className={selectClass}
         >
-          <option value="">Any service</option>
+          <option value="">{gt("Any service")}</option>
           {services.map((s) => (
             <option key={s.value} value={s.value}>
-              {s.label}
+              {gtData(s.label)}
             </option>
           ))}
         </select>
         <select
           value={chargeType}
           onChange={(e) => setChargeType(e.target.value as CostChargeType | "")}
-          aria-label="Charge type"
+          aria-label={gt("Charge type")}
           className={selectClass}
         >
-          <option value="">Any charge type</option>
+          <option value="">{gt("Any charge type")}</option>
           {COST_CHARGE_TYPES.map((t) => (
             <option key={t} value={t}>
-              {COST_CHARGE_TYPE_LABELS[t]}
+              {gtData(COST_CHARGE_TYPE_LABELS[t])}
             </option>
           ))}
         </select>
@@ -577,7 +604,7 @@ function NewRuleForm({
           disabled={submitting || blocker !== null}
           className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
         >
-          Add rule
+          {gt("Add rule")}
         </button>
         {blocker !== null && name.length > 0 && (
           <span className="text-xs text-warning">{blocker}</span>
@@ -587,7 +614,7 @@ function NewRuleForm({
           onClick={onManageCentres}
           className="text-xs text-on-surface-secondary hover:text-on-surface underline"
         >
-          Manage cost centres →
+          {gt("Manage cost centres →")}
         </button>
       </div>
     </div>

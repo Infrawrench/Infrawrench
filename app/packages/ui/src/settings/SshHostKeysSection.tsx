@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { T, Var, useGT } from "gt-react";
 import { Modal } from "../components/Modal.js";
 import { useSettingsHost } from "./host.js";
 
@@ -11,6 +12,7 @@ interface HostKeyPin {
 }
 
 export function SshHostKeysSection() {
+  const gt = useGT();
   const { orgId, api } = useSettingsHost();
   const [pins, setPins] = useState<HostKeyPin[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,7 +27,7 @@ export function SshHostKeysSection() {
       const result = await api.get<{ pins: HostKeyPin[] }>(`/api/org/${orgId}/ssh-host-keys`);
       setPins(result.pins);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load trusted host keys");
+      setError(e instanceof Error ? e.message : gt("Failed to load trusted host keys"));
     } finally {
       setLoading(false);
     }
@@ -44,7 +46,7 @@ export function SshHostKeysSection() {
       setConfirmId(null);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to remove pin");
+      setError(e instanceof Error ? e.message : gt("Failed to remove pin"));
     } finally {
       setDeletingId(null);
     }
@@ -53,11 +55,13 @@ export function SshHostKeysSection() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold">Trusted SSH Hosts</h1>
-        <p className="text-sm text-on-surface-muted mt-1">
-          SSH server fingerprints your organization has trusted. The next connection to a removed
-          host will prompt for re-verification.
-        </p>
+        <h1 className="text-xl font-semibold">{gt("Trusted SSH Hosts")}</h1>
+        <T>
+          <p className="text-sm text-on-surface-muted mt-1">
+            SSH server fingerprints your organization has trusted. The next connection to a removed
+            host will prompt for re-verification.
+          </p>
+        </T>
       </div>
 
       {error && (
@@ -67,31 +71,33 @@ export function SshHostKeysSection() {
       )}
 
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
       ) : pins.length === 0 ? (
-        <p className="text-sm text-on-surface-muted">
-          No SSH hosts trusted yet. The first time you connect to a host, you&apos;ll be asked to
-          verify its fingerprint; the trusted pin will appear here.
-        </p>
+        <T>
+          <p className="text-sm text-on-surface-muted">
+            No SSH hosts trusted yet. The first time you connect to a host, you&apos;ll be asked to
+            verify its fingerprint; the trusted pin will appear here.
+          </p>
+        </T>
       ) : (
         <div className="border border-border rounded-xl overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-border text-xs text-on-surface-muted">
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Host
+                  {gt("Host")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Port
+                  {gt("Port")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Fingerprint
+                  {gt("Fingerprint")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Trusted
+                  {gt("Trusted")}
                 </th>
                 <th scope="col" className="text-right px-4 py-2 font-medium">
-                  Actions
+                  {gt("Actions")}
                 </th>
               </tr>
             </thead>
@@ -119,7 +125,7 @@ export function SshHostKeysSection() {
                         }}
                         className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
                       >
-                        Copy fingerprint
+                        {gt("Copy fingerprint")}
                       </button>
                       <button
                         type="button"
@@ -127,7 +133,7 @@ export function SshHostKeysSection() {
                         disabled={deletingId === pin.id}
                         className="text-xs text-danger hover:text-danger-strong disabled:opacity-50"
                       >
-                        Revoke
+                        {gt("Revoke")}
                       </button>
                     </div>
                   </td>
@@ -161,27 +167,36 @@ function RevokePinConfirm({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const gt = useGT();
   return (
     <Modal
       onClose={() => {
         if (!submitting) onCancel();
       }}
-      ariaLabel="Revoke trusted host"
+      ariaLabel={gt("Revoke trusted host")}
     >
       <div className="bg-surface-raised border border-border-strong rounded-xl w-[min(28rem,92vw)] shadow-2xl">
         <div className="px-5 py-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-on-surface-secondary">Revoke trusted host</h2>
+          <h2 className="text-sm font-semibold text-on-surface-secondary">
+            {gt("Revoke trusted host")}
+          </h2>
         </div>
         <div className="p-5 space-y-3">
-          <p className="text-sm text-on-surface-tertiary">
-            The next connection to{" "}
-            <span className="font-mono text-on-surface-secondary">
-              {pin.host}:{pin.port}
-            </span>{" "}
-            will prompt for fingerprint re-verification.
-          </p>
+          <T>
+            <p className="text-sm text-on-surface-tertiary">
+              The next connection to{" "}
+              <Var>
+                <span className="font-mono text-on-surface-secondary">
+                  {pin.host}:{pin.port}
+                </span>
+              </Var>{" "}
+              will prompt for fingerprint re-verification.
+            </p>
+          </T>
           <div>
-            <div className="text-xs text-on-surface-muted mb-1">Currently trusted fingerprint</div>
+            <div className="text-xs text-on-surface-muted mb-1">
+              {gt("Currently trusted fingerprint")}
+            </div>
             <div className="bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 font-mono text-xs text-on-surface-secondary break-all select-all">
               {pin.fingerprint}
             </div>
@@ -193,7 +208,7 @@ function RevokePinConfirm({
               disabled={submitting}
               className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay text-on-surface-secondary rounded-lg transition-colors disabled:opacity-50"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -201,7 +216,7 @@ function RevokePinConfirm({
               disabled={submitting}
               className="px-3 py-1.5 text-sm font-medium bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg transition-colors"
             >
-              {submitting ? "Revoking..." : "Revoke pin"}
+              {submitting ? gt("Revoking...") : gt("Revoke pin")}
             </button>
           </div>
         </div>

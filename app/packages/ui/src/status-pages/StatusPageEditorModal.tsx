@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { useGT } from "gt-react";
 import {
   STATUS_PAGE_LIMITS,
   validateStatusPageInput,
@@ -43,6 +44,7 @@ export function StatusPageEditorModal({
   onCancel,
   onSave,
 }: StatusPageEditorModalProps) {
+  const gt = useGT();
   const [title, setTitle] = useState(page?.title ?? "");
   const [description, setDescription] = useState(page?.description ?? "");
   const [supportUrl, setSupportUrl] = useState(page?.supportUrl ?? "");
@@ -125,38 +127,40 @@ export function StatusPageEditorModal({
   };
 
   return (
-    <Modal onClose={onCancel} ariaLabel={page ? "Edit status page" : "New status page"}>
+    <Modal onClose={onCancel} ariaLabel={page ? gt("Edit status page") : gt("New status page")}>
       <div className="flex max-h-[85vh] w-[42rem] max-w-[90vw] flex-col gap-4 overflow-auto rounded-2xl border border-border bg-surface p-5">
         <h2 className="text-sm font-semibold text-on-surface">
-          {page ? "Edit status page" : "New status page"}
+          {page ? gt("Edit status page") : gt("New status page")}
         </h2>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-on-surface-secondary">Title</span>
+          <span className="text-xs font-medium text-on-surface-secondary">{gt("Title")}</span>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             maxLength={STATUS_PAGE_LIMITS.maxTitleLength}
-            placeholder="Acme API status"
+            placeholder={gt("Acme API status")}
             className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-on-surface"
           />
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-on-surface-secondary">Description</span>
+          <span className="text-xs font-medium text-on-surface-secondary">{gt("Description")}</span>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={2}
             maxLength={STATUS_PAGE_LIMITS.maxDescriptionLength}
-            placeholder="Live status of the Acme public API and dashboard."
+            placeholder={gt("Live status of the Acme public API and dashboard.")}
             className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-on-surface"
           />
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-on-surface-secondary">Support link</span>
+          <span className="text-xs font-medium text-on-surface-secondary">
+            {gt("Support link")}
+          </span>
           <input
             type="url"
             value={supportUrl}
@@ -167,14 +171,16 @@ export function StatusPageEditorModal({
         </label>
 
         <fieldset className="flex flex-col gap-2">
-          <legend className="text-xs font-medium text-on-surface-secondary">What to show</legend>
+          <legend className="text-xs font-medium text-on-surface-secondary">
+            {gt("What to show")}
+          </legend>
           <label className="flex items-center gap-2 text-sm text-on-surface">
             <input
               type="checkbox"
               checked={showUptime}
               onChange={(e) => setShowUptime(e.target.checked)}
             />
-            Show 24-hour uptime percentages
+            {gt("Show 24-hour uptime percentages")}
           </label>
           <label className="flex items-center gap-2 text-sm text-on-surface">
             <input
@@ -182,16 +188,18 @@ export function StatusPageEditorModal({
               checked={showHistory}
               onChange={(e) => setShowHistory(e.target.checked)}
             />
-            Show {STATUS_PAGE_LIMITS.historyDays}-day uptime history
+            {gt("Show {days}-day uptime history", { days: STATUS_PAGE_LIMITS.historyDays })}
           </label>
         </fieldset>
 
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-medium text-on-surface-secondary">Components</span>
+            <span className="text-xs font-medium text-on-surface-secondary">
+              {gt("Components")}
+            </span>
             <select
               value=""
-              aria-label="Add a probe"
+              aria-label={gt("Add a probe")}
               onChange={(e) => {
                 if (e.target.value) addProbe(e.target.value);
               }}
@@ -199,7 +207,7 @@ export function StatusPageEditorModal({
               className="rounded-lg border border-border bg-surface-raised px-2 py-1 text-xs text-on-surface disabled:opacity-50"
             >
               <option value="">
-                {available.length === 0 ? "All probes added" : "Add a probe…"}
+                {available.length === 0 ? gt("All probes added") : gt("Add a probe…")}
               </option>
               {available.map((probe) => (
                 <option key={probe.id} value={probe.id}>
@@ -211,8 +219,9 @@ export function StatusPageEditorModal({
 
           {components.length === 0 ? (
             <p className="text-xs text-on-surface-faint">
-              A page with no components publishes nothing. Add the probes whose state you want
-              visitors to see.
+              {gt(
+                "A page with no components publishes nothing. Add the probes whose state you want visitors to see.",
+              )}
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -228,7 +237,7 @@ export function StatusPageEditorModal({
                         type="button"
                         onClick={() => move(index, -1)}
                         disabled={index === 0}
-                        aria-label={`Move ${component.probeName} up`}
+                        aria-label={gt("Move {probe} up", { probe: component.probeName })}
                         className="rounded px-2 py-0.5 text-xs text-on-surface-secondary hover:text-on-surface disabled:opacity-30"
                       >
                         ↑
@@ -237,7 +246,7 @@ export function StatusPageEditorModal({
                         type="button"
                         onClick={() => move(index, 1)}
                         disabled={index === components.length - 1}
-                        aria-label={`Move ${component.probeName} down`}
+                        aria-label={gt("Move {probe} down", { probe: component.probeName })}
                         className="rounded px-2 py-0.5 text-xs text-on-surface-secondary hover:text-on-surface disabled:opacity-30"
                       >
                         ↓
@@ -245,17 +254,17 @@ export function StatusPageEditorModal({
                       <button
                         type="button"
                         onClick={() => removeComponent(index)}
-                        aria-label={`Remove ${component.probeName}`}
+                        aria-label={gt("Remove {probe}", { probe: component.probeName })}
                         className="rounded px-2 py-0.5 text-xs text-on-surface-tertiary hover:text-danger"
                       >
-                        Remove
+                        {gt("Remove")}
                       </button>
                     </span>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <label htmlFor={`${uid}-label-${component.probeId}`} className="flex-1">
                       <span className="mb-1 block text-xs text-on-surface-tertiary">
-                        Public name
+                        {gt("Public name")}
                       </span>
                       <input
                         id={`${uid}-label-${component.probeId}`}
@@ -263,19 +272,23 @@ export function StatusPageEditorModal({
                         value={component.label ?? ""}
                         onChange={(e) => updateComponent(index, { label: e.target.value })}
                         maxLength={STATUS_PAGE_LIMITS.maxLabelLength}
-                        placeholder={`Public name (default: ${component.probeName})`}
+                        placeholder={gt("Public name (default: {probe})", {
+                          probe: component.probeName,
+                        })}
                         className="w-full rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface"
                       />
                     </label>
                     <label htmlFor={`${uid}-group-${component.probeId}`} className="flex-1">
-                      <span className="mb-1 block text-xs text-on-surface-tertiary">Group</span>
+                      <span className="mb-1 block text-xs text-on-surface-tertiary">
+                        {gt("Group")}
+                      </span>
                       <input
                         id={`${uid}-group-${component.probeId}`}
                         type="text"
                         value={component.groupName ?? ""}
                         onChange={(e) => updateComponent(index, { groupName: e.target.value })}
                         maxLength={STATUS_PAGE_LIMITS.maxGroupNameLength}
-                        placeholder="Group (optional)"
+                        placeholder={gt("Group (optional)")}
                         className="w-full rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface"
                       />
                     </label>
@@ -285,8 +298,9 @@ export function StatusPageEditorModal({
             </ul>
           )}
           <p className="text-xs text-on-surface-faint">
-            Visitors see the public name and the current state. Probe URLs, accounts and error
-            detail are never published.
+            {gt(
+              "Visitors see the public name and the current state. Probe URLs, accounts and error detail are never published.",
+            )}
           </p>
         </div>
 
@@ -303,7 +317,7 @@ export function StatusPageEditorModal({
             disabled={busy}
             className="rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary hover:text-on-surface"
           >
-            Cancel
+            {gt("Cancel")}
           </button>
           <button
             type="button"
@@ -311,7 +325,7 @@ export function StatusPageEditorModal({
             disabled={busy}
             className="rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
           >
-            {busy ? "Saving…" : page ? "Save changes" : "Create page"}
+            {busy ? gt("Saving…") : page ? gt("Save changes") : gt("Create page")}
           </button>
         </div>
       </div>

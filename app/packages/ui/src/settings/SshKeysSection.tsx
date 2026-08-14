@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
+import { T, useGT } from "gt-react";
 import { Modal } from "../components/Modal.js";
 import type { SshKey } from "../api-types.js";
 import { useSettingsHost } from "./host.js";
 
 export function SshKeysSection() {
   const { orgId, api } = useSettingsHost();
+  const gt = useGT();
   const [keys, setKeys] = useState<SshKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [showGenerate, setShowGenerate] = useState(false);
@@ -35,9 +37,9 @@ export function SshKeysSection() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-semibold">SSH Keys</h1>
+          <h1 className="text-xl font-semibold">{gt("SSH Keys")}</h1>
           <p className="text-sm text-on-surface-muted mt-1">
-            SSH keys shared across your organization for connecting to resources.
+            {gt("SSH keys shared across your organization for connecting to resources.")}
           </p>
         </div>
         <div className="flex gap-2">
@@ -46,23 +48,23 @@ export function SshKeysSection() {
             onClick={() => setShowImport(true)}
             className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay text-on-surface-secondary rounded-lg transition-colors"
           >
-            Import Key
+            {gt("Import Key")}
           </button>
           <button
             type="button"
             onClick={() => setShowGenerate(true)}
             className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
           >
-            Generate Key
+            {gt("Generate Key")}
           </button>
         </div>
       </div>
 
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading…</p>
+        <p className="text-sm text-on-surface-faint">{gt("Loading…")}</p>
       ) : keys.length === 0 ? (
         <p className="text-sm text-on-surface-muted">
-          No SSH keys yet. Generate a new keypair or import an existing public key.
+          {gt("No SSH keys yet. Generate a new keypair or import an existing public key.")}
         </p>
       ) : (
         <div className="border border-border rounded-xl overflow-hidden">
@@ -70,25 +72,25 @@ export function SshKeysSection() {
             <thead>
               <tr className="border-b border-border text-xs text-on-surface-muted">
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Name
+                  {gt("Name")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Type
+                  {gt("Type")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Fingerprint
+                  {gt("Fingerprint")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Source
+                  {gt("Source")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Owner
+                  {gt("Owner")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
-                  Added
+                  {gt("Added")}
                 </th>
                 <th scope="col" className="text-right px-4 py-2 font-medium">
-                  Actions
+                  {gt("Actions")}
                 </th>
               </tr>
             </thead>
@@ -104,9 +106,9 @@ export function SshKeysSection() {
                   </td>
                   <td className="px-4 py-2">
                     {key.isImported ? (
-                      <span className="text-xs text-on-surface-tertiary">Imported</span>
+                      <span className="text-xs text-on-surface-tertiary">{gt("Imported")}</span>
                     ) : (
-                      <span className="text-xs text-on-surface-tertiary">Generated</span>
+                      <span className="text-xs text-on-surface-tertiary">{gt("Generated")}</span>
                     )}
                   </td>
                   <td className="px-4 py-2 text-xs text-on-surface-muted">{key.ownerName}</td>
@@ -122,14 +124,14 @@ export function SshKeysSection() {
                         }}
                         className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
                       >
-                        Copy public key
+                        {gt("Copy public key")}
                       </button>
                       <button
                         type="button"
                         onClick={() => void handleDelete(key.id)}
                         className="text-xs text-danger hover:text-danger-strong"
                       >
-                        Delete
+                        {gt("Delete")}
                       </button>
                     </div>
                   </td>
@@ -162,21 +164,25 @@ export function SshKeysSection() {
       )}
 
       {generatedKey && (
-        <Modal onClose={() => setGeneratedKey(null)} ariaLabel="Key Generated">
+        <Modal onClose={() => setGeneratedKey(null)} ariaLabel={gt("Key Generated")}>
           <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-lg shadow-2xl p-5">
-            <h2 className="text-sm font-semibold text-on-surface-secondary mb-3">Key Generated</h2>
+            <h2 className="text-sm font-semibold text-on-surface-secondary mb-3">
+              {gt("Key Generated")}
+            </h2>
             <p className="text-xs text-on-surface-tertiary mb-3">
-              Copy the private key now. You won&apos;t be able to see it again.
+              {gt("Copy the private key now. You won't be able to see it again.")}
             </p>
             <div className="space-y-3">
               <div>
-                <span className="block text-xs text-on-surface-muted mb-1">Public Key</span>
+                <span className="block text-xs text-on-surface-muted mb-1">{gt("Public Key")}</span>
                 <div className="bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 font-mono text-xs text-on-surface-secondary break-all select-all max-h-20 overflow-auto">
                   {generatedKey.publicKey}
                 </div>
               </div>
               <div>
-                <span className="block text-xs text-on-surface-muted mb-1">Private Key</span>
+                <span className="block text-xs text-on-surface-muted mb-1">
+                  {gt("Private Key")}
+                </span>
                 <div className="bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 font-mono text-xs text-on-surface-secondary break-all select-all max-h-32 overflow-auto whitespace-pre">
                   {generatedKey.privateKey}
                 </div>
@@ -189,7 +195,7 @@ export function SshKeysSection() {
               }}
               className="mt-3 w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
             >
-              Copy private key to clipboard
+              {gt("Copy private key to clipboard")}
             </button>
           </div>
         </Modal>
@@ -206,13 +212,14 @@ function GenerateKeyModal({
   onCreated: (result: { publicKey: string; privateKey: string }) => void;
 }) {
   const { orgId, api } = useSettingsHost();
+  const gt = useGT();
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleCreate() {
     if (!name.trim()) {
-      setError("Name is required");
+      setError(gt("Name is required"));
       return;
     }
     setSaving(true);
@@ -225,21 +232,23 @@ function GenerateKeyModal({
       }>(`/api/org/${orgId}/ssh-keys`, { name: name.trim() });
       onCreated({ publicKey: result.publicKey, privateKey: result.privateKey });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to generate key");
+      setError(e instanceof Error ? e.message : gt("Failed to generate key"));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel="Generate SSH Key">
+    <Modal onClose={onClose} ariaLabel={gt("Generate SSH Key")}>
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-on-surface-secondary">Generate SSH Key</h2>
+          <h2 className="text-sm font-semibold text-on-surface-secondary">
+            {gt("Generate SSH Key")}
+          </h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={gt("Close")}
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg"
           >
             &#215;
@@ -252,7 +261,7 @@ function GenerateKeyModal({
               htmlFor="generate-ssh-key-name"
               className="block text-xs text-on-surface-tertiary mb-1"
             >
-              Key name
+              {gt("Key name")}
             </label>
             <input
               id="generate-ssh-key-name"
@@ -265,8 +274,9 @@ function GenerateKeyModal({
             />
           </div>
           <p className="text-xs text-on-surface-muted">
-            An Ed25519 keypair will be generated. The private key is only shown once. The public key
-            will be shared with all organization members.
+            {gt(
+              "An Ed25519 keypair will be generated. The private key is only shown once. The public key will be shared with all organization members.",
+            )}
           </p>
           {error && <p className="text-xs text-danger">{error}</p>}
           <button
@@ -275,7 +285,7 @@ function GenerateKeyModal({
             disabled={saving}
             className="w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
           >
-            {saving ? "Generating..." : "Generate key"}
+            {saving ? gt("Generating...") : gt("Generate key")}
           </button>
         </div>
       </div>
@@ -285,6 +295,7 @@ function GenerateKeyModal({
 
 function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const { orgId, api } = useSettingsHost();
+  const gt = useGT();
   const [name, setName] = useState("");
   const [publicKey, setPublicKey] = useState("");
   const [saving, setSaving] = useState(false);
@@ -292,11 +303,11 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
 
   async function handleImport() {
     if (!name.trim()) {
-      setError("Name is required");
+      setError(gt("Name is required"));
       return;
     }
     if (!publicKey.trim()) {
-      setError("Public key is required");
+      setError(gt("Public key is required"));
       return;
     }
     setSaving(true);
@@ -308,21 +319,23 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
       });
       onImported();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to import key");
+      setError(e instanceof Error ? e.message : gt("Failed to import key"));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Modal onClose={onClose} ariaLabel="Import SSH Key">
+    <Modal onClose={onClose} ariaLabel={gt("Import SSH Key")}>
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-lg shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-on-surface-secondary">Import SSH Key</h2>
+          <h2 className="text-sm font-semibold text-on-surface-secondary">
+            {gt("Import SSH Key")}
+          </h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={gt("Close")}
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg"
           >
             &#215;
@@ -335,7 +348,7 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
               htmlFor="import-ssh-key-name"
               className="block text-xs text-on-surface-tertiary mb-1"
             >
-              Key name
+              {gt("Key name")}
             </label>
             <input
               id="import-ssh-key-name"
@@ -353,7 +366,7 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
               htmlFor="import-ssh-public-key"
               className="block text-xs text-on-surface-tertiary mb-1"
             >
-              Public key
+              {gt("Public key")}
             </label>
             <textarea
               id="import-ssh-public-key"
@@ -365,11 +378,13 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
               className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong font-mono resize-none"
             />
           </div>
-          <p className="text-xs text-on-surface-muted">
-            Paste your public key (e.g. from{" "}
-            <code className="text-on-surface-tertiary">~/.ssh/id_ed25519.pub</code>). Only the
-            public key is stored. The key will be shared with all organization members.
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-muted">
+              Paste your public key (e.g. from{" "}
+              <code className="text-on-surface-tertiary">~/.ssh/id_ed25519.pub</code>). Only the
+              public key is stored. The key will be shared with all organization members.
+            </p>
+          </T>
           {error && <p className="text-xs text-danger">{error}</p>}
           <button
             type="button"
@@ -377,7 +392,7 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
             disabled={saving}
             className="w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
           >
-            {saving ? "Importing..." : "Import key"}
+            {saving ? gt("Importing...") : gt("Import key")}
           </button>
         </div>
       </div>

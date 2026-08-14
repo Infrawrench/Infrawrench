@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import type { LogsCapability, LogsFetchParams, LogsFetchResult } from "@infrawrench/plugin-base";
 
 interface Props {
@@ -11,6 +12,7 @@ const TAIL_OPTIONS = [100, 500, 1000, 5000];
 const FOLLOW_INTERVAL_MS = 3000;
 
 export function LogsView({ capability, onGetLogs }: Props) {
+  const gt = useGT();
   const [text, setText] = useState<string>("");
   const [containers, setContainers] = useState<string[]>([]);
   const [container, setContainer] = useState<string | null>(null);
@@ -64,7 +66,7 @@ export function LogsView({ capability, onGetLogs }: Props) {
   if (loading && !text) {
     return (
       <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-        Loading logs…
+        {gt("Loading logs…")}
       </div>
     );
   }
@@ -73,15 +75,15 @@ export function LogsView({ capability, onGetLogs }: Props) {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-surface shrink-0">
         <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">
-          Logs
+          {gt("Logs")}
         </span>
         {containers.length > 1 && (
           <select
             value={container ?? ""}
             onChange={(e) => setContainer(e.target.value)}
             className="text-xs bg-surface-overlay text-on-surface border border-border-strong rounded px-2 py-0.5"
-            title="Container"
-            aria-label="Container"
+            title={gt("Container")}
+            aria-label={gt("Container")}
           >
             {containers.map((c) => (
               <option key={c} value={c}>
@@ -94,12 +96,12 @@ export function LogsView({ capability, onGetLogs }: Props) {
           value={tailLines}
           onChange={(e) => setTailLines(Number(e.target.value))}
           className="text-xs bg-surface-overlay text-on-surface border border-border-strong rounded px-2 py-0.5"
-          title="Tail lines"
-          aria-label="Tail lines"
+          title={gt("Tail lines")}
+          aria-label={gt("Tail lines")}
         >
           {TAIL_OPTIONS.map((n) => (
             <option key={n} value={n}>
-              Last {n}
+              {gt("Last {n}", { n })}
             </option>
           ))}
         </select>
@@ -109,9 +111,9 @@ export function LogsView({ capability, onGetLogs }: Props) {
               type="checkbox"
               checked={previous}
               onChange={(e) => setPrevious(e.target.checked)}
-              aria-label="Previous"
+              aria-label={gt("Previous")}
             />
-            Previous
+            {gt("Previous")}
           </label>
         )}
         <label className="flex items-center gap-1 text-xs text-on-surface-tertiary cursor-pointer">
@@ -119,9 +121,9 @@ export function LogsView({ capability, onGetLogs }: Props) {
             type="checkbox"
             checked={follow}
             onChange={(e) => setFollow(e.target.checked)}
-            aria-label="Follow"
+            aria-label={gt("Follow")}
           />
-          Follow
+          {gt("Follow")}
         </label>
         <div className="ml-auto flex items-center gap-2">
           <button
@@ -131,7 +133,7 @@ export function LogsView({ capability, onGetLogs }: Props) {
             }}
             className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
           >
-            Copy
+            {gt("Copy")}
           </button>
           <button
             type="button"
@@ -140,7 +142,7 @@ export function LogsView({ capability, onGetLogs }: Props) {
             }}
             className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
           >
-            Reload
+            {gt("Reload")}
           </button>
         </div>
       </div>
@@ -153,7 +155,7 @@ export function LogsView({ capability, onGetLogs }: Props) {
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-auto bg-surface-sunken/40 text-on-surface text-xs font-mono p-4 whitespace-pre leading-relaxed"
       >
-        {text || (loading ? "" : "<no output>")}
+        {text || (loading ? "" : gt("<no output>"))}
       </pre>
     </div>
   );

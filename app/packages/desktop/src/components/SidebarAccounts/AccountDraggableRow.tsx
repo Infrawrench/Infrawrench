@@ -1,4 +1,5 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { useGT } from "gt-react";
 import type { DraggableResource } from "@infrawrench/ui";
 import { accountTabTarget } from "../../lib/workspace-tabs";
 import type { Account, PluginGroup } from "./types";
@@ -22,6 +23,7 @@ export function AccountDraggableRow({
   onNavigate: () => void;
   onDelete?: (() => void) | undefined;
 }) {
+  const gt = useGT();
   const draggableData: DraggableResource = {
     id: account.id,
     pluginId: account.pluginId,
@@ -75,7 +77,7 @@ export function AccountDraggableRow({
           e.stopPropagation();
           onToggleExpand();
         }}
-        title={isExpanded ? "Collapse" : "Expand resources"}
+        title={isExpanded ? gt("Collapse") : gt("Expand resources")}
         className="size-4 flex items-center justify-center flex-shrink-0 text-on-surface-faint hover:text-on-surface-tertiary transition-colors mr-1"
       >
         <span
@@ -99,7 +101,7 @@ export function AccountDraggableRow({
         />
         <span className="truncate">{account.displayName}</span>
       </button>
-      {showDropHint && <span className="text-xs text-accent flex-shrink-0">Drop</span>}
+      {showDropHint && <span className="text-xs text-accent flex-shrink-0">{gt("Drop")}</span>}
       {!showDropHint && onDelete && (
         <button
           type="button"
@@ -108,8 +110,8 @@ export function AccountDraggableRow({
             e.stopPropagation();
             onDelete();
           }}
-          title="Delete account"
-          aria-label="Delete account"
+          title={gt("Delete account")}
+          aria-label={gt("Delete account")}
           className="flex-shrink-0 size-5 flex items-center justify-center rounded text-on-surface-faint opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:text-danger hover:bg-red-500/10 transition-all"
         >
           ✕

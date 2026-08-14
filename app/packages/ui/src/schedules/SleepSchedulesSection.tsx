@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import { formatDaysOfWeek, formatMoney } from "@infrawrench/client-core";
 import { ScheduleEditorModal } from "./ScheduleEditorModal.js";
 import type { SchedulesClient, SleepSchedule } from "./types.js";
@@ -25,13 +26,16 @@ function formatInstant(iso: string, timezone: string): string {
 }
 
 function LastRunBadge({ schedule }: { schedule: SleepSchedule }) {
+  const gt = useGT();
   if (!schedule.lastRunStatus) return null;
   const label =
     schedule.lastRunStatus === "ok"
-      ? `${schedule.lastRunAction === "stop" ? "Stopped" : "Started"} ok`
+      ? schedule.lastRunAction === "stop"
+        ? gt("Stopped ok")
+        : gt("Started ok")
       : schedule.lastRunStatus === "skipped_freeze"
-        ? "Skipped: freeze"
-        : "Failed";
+        ? gt("Skipped: freeze")
+        : gt("Failed");
   const tone =
     schedule.lastRunStatus === "ok"
       ? "border-border text-on-surface-tertiary"
@@ -56,6 +60,7 @@ function LastRunBadge({ schedule }: { schedule: SleepSchedule }) {
  * page's Schedule tab, where the resource is already in front of the user.
  */
 export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedulesSectionProps) {
+  const gt = useGT();
   const [schedules, setSchedules] = useState<SleepSchedule[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<SleepSchedule | null>(null);
@@ -92,7 +97,9 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
   const remove = async (schedule: SleepSchedule) => {
     if (
       !window.confirm(
-        `Delete the sleep schedule for ${schedule.resourceName}? The resource stays in whatever state it is in.`,
+        gt("Delete the sleep schedule for {name}? The resource stays in whatever state it is in.", {
+          name: schedule.resourceName,
+        }),
       )
     ) {
       return;
@@ -119,49 +126,54 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
     <section className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-on-surface">Sleep schedules</h2>
-          <p className="mt-1 text-xs text-on-surface-secondary">
-            Off-at/on-at windows for non-prod resources — stopped and started for you on schedule.
-            {totalSaving.size > 0 && (
-              <>
-                {" "}
-                Projected saving{" "}
-                <span className="font-medium text-on-surface">
-                  {[...totalSaving.entries()]
-                    .map(([currency, amount]) => `${formatMoney(amount, currency)}/mo`)
-                    .join(" + ")}
-                </span>
-                .
-              </>
-            )}
-          </p>
+          <h2 className="text-sm font-semibold text-on-surface">{gt("Sleep schedules")}</h2>
+          <T>
+            <p className="mt-1 text-xs text-on-surface-secondary">
+              Off-at/on-at windows for non-prod resources — stopped and started for you on schedule.
+              {totalSaving.size > 0 && (
+                <>
+                  {" "}
+                  Projected saving{" "}
+                  <Var>
+                    <span className="font-medium text-on-surface">
+                      {[...totalSaving.entries()]
+                        .map(([currency, amount]) => `${formatMoney(amount, currency)}/mo`)
+                        .join(" + ")}
+                    </span>
+                  </Var>
+                  .
+                </>
+              )}
+            </p>
+          </T>
         </div>
         <button
           type="button"
           onClick={() => void refresh()}
           className="shrink-0 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-on-surface hover:border-border-strong"
         >
-          Refresh
+          {gt("Refresh")}
         </button>
       </div>
 
       {error !== null && (
         <div role="alert" className="text-sm text-danger">
-          Couldn&apos;t load sleep schedules — {error}{" "}
+          {gt("Couldn't load sleep schedules — {error}", { error })}{" "}
           <button type="button" onClick={() => void refresh()} className="underline">
-            Retry
+            {gt("Retry")}
           </button>
         </div>
       )}
       {schedules === null && error === null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Loading schedules…
+          {gt("Loading schedules…")}
         </p>
       )}
       {schedules !== null && schedules.length === 0 && (
         <p className="text-sm text-on-surface-faint">
-          No schedules yet. Open a stoppable resource (VMs, database instances, dedicated
-          endpoints…) and use its Schedule tab to put it to sleep outside working hours.
+          {gt(
+            "No schedules yet. Open a stoppable resource (VMs, database instances, dedicated endpoints…) and use its Schedule tab to put it to sleep outside working hours.",
+          )}
         </p>
       )}
 
@@ -182,19 +194,23 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
                     <div className="text-xs text-on-surface-faint">{s.accountName}</div>
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap text-on-surface-secondary">
-                    {formatDaysOfWeek(s.daysOfWeek)} · off {s.stopTime} → on {s.startTime}
+                    {gt("{days} · off {stopTime} → on {startTime}", {
+                      days: formatDaysOfWeek(s.daysOfWeek),
+                      stopTime: s.stopTime,
+                      startTime: s.startTime,
+                    })}
                     <div className="text-xs text-on-surface-faint">{s.timezone}</div>
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap text-on-surface-secondary">
                     {s.paused ? (
                       <span className="rounded-full border border-border px-2 py-0.5 text-xs text-on-surface-tertiary">
-                        Paused
+                        {gt("Paused")}
                       </span>
                     ) : s.nextTransitionAt ? (
-                      <>
-                        {s.nextTransitionAction === "stop" ? "Off" : "On"}{" "}
-                        {formatInstant(s.nextTransitionAt, s.timezone)}
-                      </>
+                      gt("{action} {time}", {
+                        action: s.nextTransitionAction === "stop" ? gt("Off") : gt("On"),
+                        time: formatInstant(s.nextTransitionAt, s.timezone),
+                      })
                     ) : (
                       <span className="text-on-surface-faint">—</span>
                     )}
@@ -206,7 +222,7 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
                     {s.projectedMonthlySaving != null && s.currency ? (
                       <>
                         {formatMoney(s.projectedMonthlySaving, s.currency)}
-                        <span className="ml-1 text-xs text-on-surface-faint">/mo</span>
+                        <span className="ml-1 text-xs text-on-surface-faint">{gt("/mo")}</span>
                       </>
                     ) : (
                       <span className="text-on-surface-faint">—</span>
@@ -220,7 +236,7 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
                         onClick={() => void togglePause(s)}
                         className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-on-surface hover:border-border-strong disabled:opacity-50"
                       >
-                        {s.paused ? "Resume" : "Pause"}
+                        {s.paused ? gt("Resume") : gt("Pause")}
                       </button>
                       <button
                         type="button"
@@ -228,7 +244,7 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
                         onClick={() => setEditing(s)}
                         className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-on-surface hover:border-border-strong disabled:opacity-50"
                       >
-                        Edit
+                        {gt("Edit")}
                       </button>
                       <button
                         type="button"
@@ -236,7 +252,7 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
                         onClick={() => void remove(s)}
                         className="rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs text-danger hover:border-red-500/50 disabled:opacity-50"
                       >
-                        Delete
+                        {gt("Delete")}
                       </button>
                     </div>
                   </td>
@@ -249,9 +265,9 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
 
       {schedules !== null && schedules.length > 0 && (
         <p className="text-xs text-on-surface-faint">
-          Savings are projected from each resource&apos;s trailing per-resource billing rows and the
-          weekly off-hours fraction; some providers keep billing stopped resources. Transitions are
-          skipped (and shown here) while a change freeze is in effect.
+          {gt(
+            "Savings are projected from each resource's trailing per-resource billing rows and the weekly off-hours fraction; some providers keep billing stopped resources. Transitions are skipped (and shown here) while a change freeze is in effect.",
+          )}
         </p>
       )}
 

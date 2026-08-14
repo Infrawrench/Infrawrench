@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useGT } from "gt-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useUIStore } from "@infrawrench/ui";
 import { ProbesPanel } from "@infrawrench/ui/probes";
@@ -18,6 +19,7 @@ import { incidentsTabTarget, navigateToWorkspaceTarget } from "@/lib/workspace-t
  * it. Declaring lands them on the new incident.
  */
 export function DesktopProbesPanel() {
+  const gt = useGT();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const navigate = useNavigate();
   const client = useMemo(() => createDesktopProbesClient(), []);
@@ -27,7 +29,7 @@ export function DesktopProbesPanel() {
   if (!activeCloudOrgId) {
     return (
       <div className="p-6 text-sm text-on-surface-faint">
-        Synthetic probes require cloud mode — sign in to sync.
+        {gt("Synthetic probes require cloud mode — sign in to sync.")}
       </div>
     );
   }
@@ -43,7 +45,7 @@ export function DesktopProbesPanel() {
           onDeclared={(incident) => {
             setSeed(null);
             void navigateToWorkspaceTarget(navigate, incidentsTabTarget(incident.id), {
-              label: "Incidents",
+              label: gt("Incidents"),
             });
           }}
           onClose={() => setSeed(null)}

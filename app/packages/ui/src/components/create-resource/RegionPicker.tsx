@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { useGT } from "gt-react";
 
 export function RegionPicker({
   regions,
@@ -21,6 +22,7 @@ export function RegionPicker({
    */
   filterValue?: string;
 }) {
+  const gt = useGT();
   const [search, setSearch] = useState("");
   const scoped = useMemo(() => {
     if (!filterValue) return regions;
@@ -65,9 +67,9 @@ export function RegionPicker({
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by location or zone…"
+          placeholder={gt("Search by location or zone…")}
           className="flex-1 bg-transparent text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none"
-          aria-label="Search regions"
+          aria-label={gt("Search regions")}
         />
         {selected && !search && (
           <span className="text-xs text-accent flex-shrink-0 flex items-center gap-1">
@@ -77,7 +79,7 @@ export function RegionPicker({
           </span>
         )}
       </div>
-      <div className="max-h-44 overflow-y-auto" role="listbox" aria-label="Regions">
+      <div className="max-h-44 overflow-y-auto" role="listbox" aria-label={gt("Regions")}>
         {filtered.map((r) => (
           <button
             key={r.id}
@@ -107,7 +109,9 @@ export function RegionPicker({
             </span>
           </button>
         ))}
-        {filtered.length === 0 && <p className="p-3 text-xs text-on-surface-faint">No matches</p>}
+        {filtered.length === 0 && (
+          <p className="p-3 text-xs text-on-surface-faint">{gt("No matches")}</p>
+        )}
       </div>
     </div>
   );

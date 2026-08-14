@@ -1,4 +1,6 @@
 import { useState, useEffect, useId, lazy, Suspense } from "react";
+import { useGT } from "gt-react";
+import { useDataString } from "../../i18n/data-strings.js";
 import type { CreateFieldConfig, AssociationSource } from "@infrawrench/plugin-base";
 import { DatetimePicker } from "./DatetimePicker.js";
 import { SelectPicker } from "./SelectPicker.js";
@@ -102,6 +104,8 @@ export function FieldRenderer({
   fieldActionProps,
   formValues,
 }: FieldRendererProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   // Associates the visible label with the native input kinds; picker kinds are
   // composite widgets that carry their own accessible names.
   const inputId = useId();
@@ -119,10 +123,10 @@ export function FieldRenderer({
                 type="button"
                 disabled={actionRunning}
                 onClick={() => void fieldActionProps.runAction(field.key, a.id)}
-                title={a.description}
+                title={a.description ? gtData(a.description) : undefined}
                 className="px-3 py-1.5 rounded-md text-xs font-medium border border-border-strong bg-surface-overlay/50 hover:border-blue-500 hover:bg-accent-muted hover:text-accent-on-muted text-on-surface-tertiary transition-colors disabled:opacity-50 disabled:cursor-wait"
               >
-                {actionRunning ? "Working…" : a.label}
+                {actionRunning ? gt("Working…") : gtData(a.label)}
               </button>
             ),
           )}
@@ -155,15 +159,19 @@ export function FieldRenderer({
         <div className="flex items-baseline justify-between px-3 py-2 border-b border-border bg-surface flex-shrink-0">
           {/* Monaco isn't reachable by htmlFor; the editor is named via options.ariaLabel. */}
           <span className="text-xs font-medium text-on-surface-tertiary">
-            {field.label}
+            {gtData(field.label)}
             {field.required && <span className="text-danger ml-1">*</span>}
           </span>
           {field.description && (
-            <p className="text-[11px] text-on-surface-faint ml-3 truncate">{field.description}</p>
+            <p className="text-[11px] text-on-surface-faint ml-3 truncate">
+              {gtData(field.description)}
+            </p>
           )}
         </div>
         <div className="flex-1 min-h-0">
-          <Suspense fallback={<p className="text-xs text-on-surface-faint p-3">Loading editor…</p>}>
+          <Suspense
+            fallback={<p className="text-xs text-on-surface-faint p-3">{gt("Loading editor…")}</p>}
+          >
             <Editor
               language={field.codeLanguage ?? "plaintext"}
               value={value}
@@ -180,7 +188,7 @@ export function FieldRenderer({
                 renderWhitespace: "boundary",
                 bracketPairColorization: { enabled: true },
                 padding: { top: 8 },
-                ariaLabel: field.label,
+                ariaLabel: gtData(field.label),
               }}
             />
           </Suspense>
@@ -198,11 +206,11 @@ export function FieldRenderer({
         htmlFor={hasNativeInput ? inputId : undefined}
         className="block text-xs font-medium text-on-surface-tertiary mb-2"
       >
-        {field.label}
+        {gtData(field.label)}
         {field.required && <span className="text-danger ml-1">*</span>}
       </label>
       {field.description && (
-        <p className="text-xs text-on-surface-faint mb-2">{field.description}</p>
+        <p className="text-xs text-on-surface-faint mb-2">{gtData(field.description)}</p>
       )}
 
       {field.kind === "text" &&
@@ -211,7 +219,7 @@ export function FieldRenderer({
             id={inputId}
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={field.placeholder ?? field.label}
+            placeholder={gtData(field.placeholder ?? field.label)}
             rows={8}
             spellCheck={false}
             className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-xs font-mono text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500 resize-y"
@@ -222,7 +230,7 @@ export function FieldRenderer({
             type="text"
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={field.placeholder ?? field.label}
+            placeholder={gtData(field.placeholder ?? field.label)}
             className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
           />
         ))}
@@ -244,7 +252,7 @@ export function FieldRenderer({
           type="password"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={field.placeholder ?? field.label}
+          placeholder={gtData(field.placeholder ?? field.label)}
           autoComplete="new-password"
           spellCheck={false}
           className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
@@ -267,7 +275,7 @@ export function FieldRenderer({
           inputMode="numeric"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={field.label}
+          placeholder={gtData(field.label)}
           min={field.minValue}
           max={field.maxValue}
           step={field.stepValue ?? 1}
@@ -291,7 +299,7 @@ export function FieldRenderer({
                     : "border-border-strong bg-surface-overlay/50 text-on-surface-tertiary hover:border-border-strong"
                 }`}
               >
-                {opt.label}
+                {gtData(opt.label)}
               </button>
             ))}
           </div>
@@ -362,10 +370,10 @@ export function FieldRenderer({
           />
         ) : (
           <textarea
-            aria-label={field.label}
+            aria-label={gtData(field.label)}
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder="Paste SSH public key..."
+            placeholder={gt("Paste SSH public key...")}
             rows={3}
             className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500 font-mono resize-none"
           />
@@ -391,7 +399,7 @@ export function FieldRenderer({
 
       {field.kind === "resource-picker" &&
         (!field.associationSources || !resourcePickerProps || !resourcePickerProps.accountId) && (
-          <p className="text-xs text-on-surface-faint">Resource picker not available</p>
+          <p className="text-xs text-on-surface-faint">{gt("Resource picker not available")}</p>
         )}
 
       {field.kind === "policy-picker" && field.policies && (
@@ -460,6 +468,7 @@ function ResourcePickerResolver({
    */
   referenceMode: boolean;
 }) {
+  const gt = useGT();
   // Re-run only when the *content* of `sources` changes — the array literal
   // is recreated every render in some callers, which would otherwise cause
   // an infinite reload loop.
@@ -510,13 +519,13 @@ function ResourcePickerResolver({
   }, [sourcesKey, accountId, loadResources, regionHint, refreshKey, referenceMode]);
 
   if (loading) {
-    return <p className="text-xs text-on-surface-faint py-1">Loading resources…</p>;
+    return <p className="text-xs text-on-surface-faint py-1">{gt("Loading resources…")}</p>;
   }
 
   if (error) {
     return (
       <p className="text-xs text-danger py-1" title={error}>
-        Couldn&apos;t load options: {error}
+        {gt("Couldn't load options: {error}", { error })}
       </p>
     );
   }
@@ -525,8 +534,8 @@ function ResourcePickerResolver({
     return (
       <p className="text-xs text-on-surface-faint py-1">
         {referenceMode
-          ? "No matching resources found across your accounts. Switch to a custom value."
-          : "No matching resources found in this account."}
+          ? gt("No matching resources found across your accounts. Switch to a custom value.")
+          : gt("No matching resources found in this account.")}
       </p>
     );
   }
@@ -563,6 +572,8 @@ function ActionFormPanel({
   ) => Promise<void>;
   running: boolean;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const formFields = action.formFields ?? [];
   const initialValues = (): Record<string, string> => {
     const init: Record<string, string> = {};
@@ -592,10 +603,10 @@ function ActionFormPanel({
         type="button"
         onClick={() => setOpen(true)}
         disabled={running}
-        title={action.description}
+        title={action.description ? gtData(action.description) : undefined}
         className="px-3 py-1.5 rounded-md text-xs font-medium border border-border-strong bg-surface-overlay/50 hover:border-blue-500 hover:bg-accent-muted hover:text-accent-on-muted text-on-surface-tertiary transition-colors disabled:opacity-50 disabled:cursor-wait"
       >
-        {action.label}
+        {gtData(action.label)}
       </button>
     );
   }
@@ -603,18 +614,20 @@ function ActionFormPanel({
   return (
     <div className="mt-2 rounded-lg border border-border-strong bg-surface-overlay/30 p-3 space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-on-surface-tertiary">{action.label}</p>
+        <p className="text-xs font-semibold text-on-surface-tertiary">{gtData(action.label)}</p>
         <button
           type="button"
           onClick={() => setOpen(false)}
           className="text-on-surface-faint hover:text-on-surface-secondary text-xs"
-          aria-label="Close"
+          aria-label={gt("Close")}
         >
           &times;
         </button>
       </div>
       {action.description && (
-        <p className="text-[11px] text-on-surface-faint leading-snug">{action.description}</p>
+        <p className="text-[11px] text-on-surface-faint leading-snug">
+          {gtData(action.description)}
+        </p>
       )}
       {formFields.map((f) => (
         <FieldRenderer
@@ -631,7 +644,7 @@ function ActionFormPanel({
           disabled={running}
           className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary bg-surface-overlay hover:bg-surface-sunken rounded-md transition-colors disabled:opacity-50"
         >
-          Cancel
+          {gt("Cancel")}
         </button>
         <button
           type="button"
@@ -639,7 +652,11 @@ function ActionFormPanel({
           disabled={running || !isValid}
           className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-md transition-colors"
         >
-          {running ? "Working…" : (action.submitLabel ?? "Create")}
+          {running
+            ? gt("Working…")
+            : action.submitLabel
+              ? gtData(action.submitLabel)
+              : gt("Create")}
         </button>
       </div>
     </div>
@@ -671,6 +688,8 @@ function HostnameField({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   // Seed an untouched field with a valid default: the apex, plus "/*" when a
   // path is part of the value (route patterns require one). Runs unconditionally
   // (before any early return) so hook order stays stable; only seeds when a
@@ -685,10 +704,10 @@ function HostnameField({
     return (
       <input
         type="text"
-        aria-label={label}
+        aria-label={gtData(label)}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder ?? label}
+        placeholder={gtData(placeholder ?? label)}
         className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
       />
     );
@@ -714,10 +733,10 @@ function HostnameField({
     <div className="flex items-stretch">
       <input
         type="text"
-        aria-label={label}
+        aria-label={gtData(label)}
         value={sub}
         onChange={(e) => compose(e.target.value, path)}
-        placeholder={placeholder ?? "subdomain (blank = root)"}
+        placeholder={placeholder ? gtData(placeholder) : gt("subdomain (blank = root)")}
         className="flex-1 min-w-0 bg-surface-overlay border border-border-strong rounded-l-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
       />
       <span
@@ -730,7 +749,7 @@ function HostnameField({
       {withPath && (
         <input
           type="text"
-          aria-label={`${label} path`}
+          aria-label={gt("{label} path", { label: gtData(label) })}
           value={path}
           onChange={(e) => compose(sub, e.target.value)}
           placeholder="/*"

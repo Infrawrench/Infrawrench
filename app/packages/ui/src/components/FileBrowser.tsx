@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { T, Var, useGT } from "gt-react";
 import type { StorageObject } from "@infrawrench/plugin-base";
 import { formatSize, formatDate, formatErrorMessage } from "../utils.js";
 import type { TransferEntry } from "../utils.js";
@@ -43,6 +44,7 @@ export function FileBrowser({
   showFolderUpload = true,
   initialPrefix,
 }: FileBrowserProps) {
+  const gt = useGT();
   const isAbsolute = pathMode === "absolute";
   const defaultPrefix = initialPrefix ?? (isAbsolute ? "/" : "");
   const [prefix, setPrefix] = useState(defaultPrefix);
@@ -313,12 +315,12 @@ export function FileBrowser({
           htmlFor="file-browser-path"
           className="text-xs text-on-surface-muted font-medium flex-shrink-0"
         >
-          Path
+          {gt("Path")}
         </label>
         <input
           id="file-browser-path"
           type="text"
-          aria-label="Path"
+          aria-label={gt("Path")}
           value={pathInput}
           onChange={(e) => setPathInput(e.target.value)}
           onFocus={() => setPathEditing(true)}
@@ -344,10 +346,10 @@ export function FileBrowser({
 
         <input
           type="text"
-          aria-label="Filter files"
+          aria-label={gt("Filter files")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Filter…"
+          placeholder={gt("Filter…")}
           className="w-36 bg-surface-overlay border border-border-strong rounded px-2 py-0.5 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
         />
 
@@ -363,7 +365,7 @@ export function FileBrowser({
                 }}
                 className="px-2 py-0.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong hover:border-border-strong rounded transition-colors"
               >
-                + Folder
+                {gt("+ Folder")}
               </button>
             )}
             {onUpload && (
@@ -373,7 +375,7 @@ export function FileBrowser({
                   onClick={() => fileInputRef.current?.click()}
                   className="px-2 py-0.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong hover:border-border-strong rounded transition-colors"
                 >
-                  ↑ Files
+                  {gt("↑ Files")}
                 </button>
                 {showFolderUpload && (
                   <button
@@ -381,13 +383,13 @@ export function FileBrowser({
                     onClick={() => folderInputRef.current?.click()}
                     className="px-2 py-0.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong hover:border-border-strong rounded transition-colors"
                   >
-                    ↑ Folder
+                    {gt("↑ Folder")}
                   </button>
                 )}
                 <input
                   ref={fileInputRef}
                   type="file"
-                  aria-label="Upload files"
+                  aria-label={gt("Upload files")}
                   multiple
                   className="hidden"
                   onChange={(e) => {
@@ -401,7 +403,7 @@ export function FileBrowser({
                   <input
                     ref={folderInputRef}
                     type="file"
-                    aria-label="Upload folder"
+                    aria-label={gt("Upload folder")}
                     // @ts-expect-error webkitdirectory non-standard
                     webkitdirectory=""
                     multiple
@@ -423,7 +425,11 @@ export function FileBrowser({
       {/* ── Selection toolbar ── */}
       {selected.size > 0 && (
         <div className="flex items-center gap-3 px-4 py-1.5 bg-accent-muted/40 border-b border-accent-muted-border/40 flex-shrink-0">
-          <span className="text-xs text-accent-on-muted font-medium">{selected.size} selected</span>
+          <T>
+            <span className="text-xs text-accent-on-muted font-medium">
+              <Var>{selected.size}</Var> selected
+            </span>
+          </T>
           <div className="flex items-center gap-2 ml-auto">
             {onBatchDownload && (
               <button
@@ -432,29 +438,31 @@ export function FileBrowser({
                 disabled={bulkWorking}
                 className="px-2.5 py-1 text-xs text-on-surface-secondary hover:text-white border border-border-strong hover:border-border-strong rounded transition-colors disabled:opacity-40"
               >
-                ↓ Download
+                {gt("↓ Download")}
               </button>
             )}
             {onDelete &&
               (confirmBulkDelete ? (
                 <span className="flex items-center gap-2">
-                  <span className="text-xs text-on-surface-tertiary">
-                    Delete {selected.size} item{selected.size !== 1 ? "s" : ""}?
-                  </span>
+                  <T>
+                    <span className="text-xs text-on-surface-tertiary">
+                      Delete <Var>{selected.size}</Var> item{selected.size !== 1 ? "s" : ""}?
+                    </span>
+                  </T>
                   <button
                     type="button"
                     onClick={() => void handleBulkDelete()}
                     disabled={bulkWorking}
                     className="px-2.5 py-1 text-xs bg-red-600 hover:bg-red-500 text-white rounded transition-colors disabled:opacity-40"
                   >
-                    {bulkWorking ? "Deleting…" : "Confirm"}
+                    {bulkWorking ? gt("Deleting…") : gt("Confirm")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmBulkDelete(false)}
                     className="px-2 py-1 text-xs text-on-surface-muted hover:text-on-surface-secondary transition-colors"
                   >
-                    Cancel
+                    {gt("Cancel")}
                   </button>
                 </span>
               ) : (
@@ -464,7 +472,7 @@ export function FileBrowser({
                   disabled={bulkWorking}
                   className="px-2.5 py-1 text-xs text-danger hover:text-danger-strong border border-red-300 dark:border-red-900/50 hover:border-red-400 dark:hover:border-red-700/50 rounded transition-colors disabled:opacity-40"
                 >
-                  Delete
+                  {gt("Delete")}
                 </button>
               ))}
             <button
@@ -472,7 +480,7 @@ export function FileBrowser({
               onClick={() => setSelected(new Set())}
               className="text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
             >
-              Clear
+              {gt("Clear")}
             </button>
           </div>
         </div>
@@ -480,18 +488,18 @@ export function FileBrowser({
 
       {/* ── File list ── */}
       <div className="flex-1 overflow-y-auto min-h-0">
-        {loading && <div className="px-4 py-3 text-xs text-on-surface-faint">Loading…</div>}
+        {loading && <div className="px-4 py-3 text-xs text-on-surface-faint">{gt("Loading…")}</div>}
         {error && <div className="px-4 py-3 text-xs text-danger">{error}</div>}
 
         {!loading && !error && (
           <table className="w-full text-xs">
-            <caption className="sr-only">Files and folders</caption>
+            <caption className="sr-only">{gt("Files and folders")}</caption>
             <thead className="sticky top-0 bg-surface z-10">
               <tr className="text-on-surface-faint border-b border-border/50">
                 <th scope="col" className="px-3 py-1.5 w-8">
                   <input
                     type="checkbox"
-                    aria-label="Select all items"
+                    aria-label={gt("Select all items")}
                     checked={allSelected}
                     ref={(el) => {
                       if (el) el.indeterminate = someSelected;
@@ -501,13 +509,13 @@ export function FileBrowser({
                   />
                 </th>
                 <th scope="col" className="text-left px-2 py-1.5 font-medium">
-                  Name
+                  {gt("Name")}
                 </th>
                 <th scope="col" className="text-right px-4 py-1.5 font-medium w-24">
-                  Size
+                  {gt("Size")}
                 </th>
                 <th scope="col" className="text-right px-4 py-1.5 font-medium w-48">
-                  Last modified
+                  {gt("Last modified")}
                 </th>
               </tr>
             </thead>
@@ -515,13 +523,13 @@ export function FileBrowser({
               {/* New folder row */}
               {newFolderActive && (
                 <tr className="border-b border-border/30">
-                  <td aria-label="Select" />
+                  <td aria-label={gt("Select")} />
                   <td className="px-2 py-1.5" colSpan={3}>
                     <div className="flex items-center gap-2">
                       <span className="text-warning">▶</span>
                       <input
                         ref={newFolderInputRef}
-                        aria-label="Folder name"
+                        aria-label={gt("Folder name")}
                         value={newFolderName}
                         onChange={(e) => setNewFolderName(e.target.value)}
                         onKeyDown={(e) => {
@@ -531,7 +539,7 @@ export function FileBrowser({
                             setNewFolderName("");
                           }
                         }}
-                        placeholder="Folder name"
+                        placeholder={gt("Folder name")}
                         className="bg-surface-overlay border border-border-strong rounded px-2 py-0.5 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
                       />
                       <button
@@ -539,7 +547,7 @@ export function FileBrowser({
                         onClick={() => void handleMakeFolder()}
                         className="px-2 py-0.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
                       >
-                        Create
+                        {gt("Create")}
                       </button>
                       <button
                         type="button"
@@ -549,7 +557,7 @@ export function FileBrowser({
                         }}
                         className="text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
                       >
-                        Cancel
+                        {gt("Cancel")}
                       </button>
                       {newFolderError && (
                         <span className="text-xs text-danger">{newFolderError}</span>
@@ -564,7 +572,7 @@ export function FileBrowser({
                 <tr
                   role="button"
                   tabIndex={0}
-                  aria-label="Go to parent folder"
+                  aria-label={gt("Go to parent folder")}
                   className="hover:bg-surface-overlay/50 cursor-pointer transition-colors"
                   onClick={() => {
                     if (isAbsolute) {
@@ -592,7 +600,7 @@ export function FileBrowser({
                     }
                   }}
                 >
-                  <td aria-label="Select" />
+                  <td aria-label={gt("Select")} />
                   <td
                     className="px-2 py-1.5 text-on-surface-muted flex items-center gap-2"
                     colSpan={3}
@@ -617,7 +625,7 @@ export function FileBrowser({
                     <td className="px-3 py-1.5">
                       <input
                         type="checkbox"
-                        aria-label={`Select folder ${d.name}`}
+                        aria-label={gt("Select folder {name}", { name: d.name })}
                         checked={isSel}
                         onChange={(e) =>
                           toggleSelect(
@@ -635,7 +643,7 @@ export function FileBrowser({
                       <button
                         type="button"
                         onClick={() => navigateTo(d.key)}
-                        aria-label={`Open folder ${d.name}`}
+                        aria-label={gt("Open folder {name}", { name: d.name })}
                         className="flex items-center gap-2 min-w-0 w-full text-left cursor-pointer"
                       >
                         <span aria-hidden="true" className="text-warning flex-shrink-0">
@@ -649,21 +657,23 @@ export function FileBrowser({
                       {onDelete &&
                         (confirmDeleteKey === d.key ? (
                           <span className="flex items-center justify-end gap-1.5">
-                            <span className="text-on-surface-muted text-xs">Delete folder?</span>
+                            <span className="text-on-surface-muted text-xs">
+                              {gt("Delete folder?")}
+                            </span>
                             <button
                               type="button"
                               onClick={() => void handleDelete(d.key, true)}
                               disabled={deleting}
                               className="text-xs text-danger hover:text-danger-strong disabled:opacity-40"
                             >
-                              {deleting ? "…" : "Yes"}
+                              {deleting ? "…" : gt("Yes")}
                             </button>
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteKey(null)}
                               className="text-xs text-on-surface-faint hover:text-on-surface-tertiary"
                             >
-                              Cancel
+                              {gt("Cancel")}
                             </button>
                           </span>
                         ) : (
@@ -674,8 +684,8 @@ export function FileBrowser({
                               setConfirmDeleteKey(d.key);
                             }}
                             className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-on-surface-faint hover:text-danger transition-all px-1"
-                            title="Delete folder"
-                            aria-label={`Delete folder ${d.name}`}
+                            title={gt("Delete folder")}
+                            aria-label={gt("Delete folder {name}", { name: d.name })}
                           >
                             ✕
                           </button>
@@ -697,7 +707,7 @@ export function FileBrowser({
                     <td className="px-3 py-1.5">
                       <input
                         type="checkbox"
-                        aria-label={`Select file ${f.name}`}
+                        aria-label={gt("Select file {name}", { name: f.name })}
                         checked={isSel}
                         onChange={(e) =>
                           toggleSelect(
@@ -735,14 +745,14 @@ export function FileBrowser({
                             disabled={deleting}
                             className="text-xs text-danger hover:text-danger-strong disabled:opacity-40"
                           >
-                            {deleting ? "…" : "Delete"}
+                            {deleting ? "…" : gt("Delete")}
                           </button>
                           <button
                             type="button"
                             onClick={() => setConfirmDeleteKey(null)}
                             className="text-xs text-on-surface-faint hover:text-on-surface-tertiary"
                           >
-                            Cancel
+                            {gt("Cancel")}
                           </button>
                         </span>
                       ) : (
@@ -756,8 +766,8 @@ export function FileBrowser({
                                 type="button"
                                 onClick={() => void handleDownload([f.key])}
                                 className="text-on-surface-faint hover:text-accent transition-colors px-1"
-                                title="Download"
-                                aria-label={`Download ${f.name}`}
+                                title={gt("Download")}
+                                aria-label={gt("Download {name}", { name: f.name })}
                               >
                                 ↓
                               </button>
@@ -767,8 +777,8 @@ export function FileBrowser({
                                 type="button"
                                 onClick={() => setConfirmDeleteKey(f.key)}
                                 className="text-on-surface-faint hover:text-danger transition-colors px-1"
-                                title="Delete"
-                                aria-label={`Delete ${f.name}`}
+                                title={gt("Delete")}
+                                aria-label={gt("Delete {name}", { name: f.name })}
                               >
                                 ✕
                               </button>
@@ -784,7 +794,7 @@ export function FileBrowser({
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-4 py-3 text-on-surface-faint">
-                    {search ? "No matches" : "Empty folder"}
+                    {search ? gt("No matches") : gt("Empty folder")}
                   </td>
                 </tr>
               )}
@@ -824,13 +834,21 @@ export function FileBrowser({
         {!loading && !error && (
           <div className="px-4 py-1.5 text-xs text-on-surface-faint">
             {search
-              ? `${filtered.length} match${filtered.length !== 1 ? "es" : ""}`
+              ? filtered.length !== 1
+                ? gt("{n} matches", { n: filtered.length })
+                : gt("{n} match", { n: filtered.length })
               : [
-                  dirs.length > 0 && `${dirs.length} folder${dirs.length !== 1 ? "s" : ""}`,
-                  files.length > 0 && `${files.length} file${files.length !== 1 ? "s" : ""}`,
+                  dirs.length > 0 &&
+                    (dirs.length !== 1
+                      ? gt("{n} folders", { n: dirs.length })
+                      : gt("{n} folder", { n: dirs.length })),
+                  files.length > 0 &&
+                    (files.length !== 1
+                      ? gt("{n} files", { n: files.length })
+                      : gt("{n} file", { n: files.length })),
                 ]
                   .filter(Boolean)
-                  .join(", ") || "Empty"}
+                  .join(", ") || gt("Empty")}
           </div>
         )}
       </div>
