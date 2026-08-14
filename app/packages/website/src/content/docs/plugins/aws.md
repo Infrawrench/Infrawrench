@@ -54,9 +54,9 @@ The probe resolves the caller with `sts:GetCallerIdentity` (needs no permission)
 - **Bedrock playground** on Bedrock foundation models — the list shows on-demand, text-output models in your account's region; open one and use the **Playground** tab to chat with it through the Converse API. Replies arrive as a single whole message (non-streaming), and the full conversation history is sent on each turn. Models that require an inference profile or provisioned throughput are filtered out, since they can't be called by bare model ID.
 - **Read-only manifest view** for most resources.
 
-<insert [DynamoDB detail page showing the Schema & indexes tab with a primary key section, an attribute definitions table, and a GSI pill with status / keys / projection / throughput stats] here>
+![DynamoDB detail page showing the Schema & indexes tab with a primary key section, an attribute definitions table, and the global secondary index pills with their build status](https://agent-assets.infrawrench.com/docs-screenshots/plugins/aws/dynamodb-schema-indexes.png)
 
-<insert [DynamoDB Create resource form with the optional "Secondary indexes (optional)" textarea expanded showing an example JSON value] here>
+![DynamoDB Create resource form with the optional "Secondary indexes (optional)" textarea expanded showing an example JSON value](https://agent-assets.infrawrench.com/docs-screenshots/plugins/aws/dynamodb-create-secondary-indexes.png)
 
 ## Tips & limits
 

@@ -36,7 +36,7 @@ Everything else is shown. An instance class, an engine version, a replica count,
 
 Open **Env diff** in the sidebar, pick a baseline account and a comparison account, and read the result. The second dropdown only offers accounts of the same provider as the first — a Droplet has no counterpart in an AWS account, so comparing across providers would produce nothing but noise.
 
-<insert [The Env diff screen with a staging and a production account selected, showing the inventory table with a count delta and one resource type flagged as missing, and a field divergence below it] here>
+![The Env diff screen with a staging and a production account selected, showing the inventory table with a count delta and one resource type flagged as missing, and a field divergence below it](https://agent-assets.infrawrench.com/docs-screenshots/features/environment-diff/staging-vs-production.png)
 
 The pair you chose is recorded in the URL, so a comparison can be bookmarked or pasted into a chat. Resource names link through to the resource, which is usually the next thing you want.
 

@@ -8,7 +8,7 @@ The [environment diff](./environment-diff.md) tells you that staging and product
 
 Everything about a template is built from the plugin's own create form. Infrawrench has no per-provider recipe book; if a plugin can create a resource type, that type can be captured, and if it can't, the capture says so instead of pretending.
 
-<insert [The Environments page with two live environments counting down and three templates listed below them] here>
+![The Environments page with two live environments counting down and three templates listed below them](https://agent-assets.infrawrench.com/docs-screenshots/features/ephemeral-environments/environments-overview.png)
 
 ## Capture a template
 
@@ -23,7 +23,7 @@ Infrawrench reads the selected resources and shows you a draft:
 
 Give the template a name and save it. Capture writes nothing until you do.
 
-<insert [The capture preview showing four captured resources, one skipped with its reason, and a Region checkbox under "What should vary?"] here>
+![The capture preview showing four captured resources, one skipped with its reason, and a Region checkbox under "What should vary?"](https://agent-assets.infrawrench.com/docs-screenshots/features/ephemeral-environments/capture-preview.png)
 
 ## Stamp one out
 
@@ -35,7 +35,7 @@ Press **Stamp out** on a template and fill in three things:
 
 Before you commit, the form shows a **cost estimate** for the whole environment, drawn from the same [forward-looking estimates](./cost-estimates.md) the create form uses, plus what the chosen TTL works out to. A resource the provider cannot price is reported as unpriced rather than counted as free — "at least $X/month" is an honest answer, `$0` is not.
 
-<insert [The stamp-out dialog with a TTL of 3 days selected, a Region parameter, and the estimated cost line showing "At least $214.60/month"] here>
+![The stamp-out dialog with a TTL of 3 days selected, a Region parameter, and the estimated cost line showing "At least $214.60/month"](https://agent-assets.infrawrench.com/docs-screenshots/features/ephemeral-environments/stamp-out-dialog.png)
 
 Infrawrench then creates the resources **in dependency order**: anything referenced by something else is created first, and the reference is filled in with the freshly created resource's real id or output. Each resource is created through exactly the same path the create form uses, so plugins, permissions, tag policies and audit logging all behave identically.
 

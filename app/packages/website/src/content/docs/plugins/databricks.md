@@ -41,7 +41,7 @@ Open a Model Serving endpoint and switch to the **Playground** tab to chat with 
 
 The Playground is disabled until the endpoint is `READY` — wait for it to come online and reload the tab.
 
-<insert [Databricks Model Serving endpoint detail page with the Playground tab open, showing a streamed assistant reply] here>
+![Databricks Model Serving endpoint detail page with the Playground tab open, showing a streamed assistant reply](https://agent-assets.infrawrench.com/docs-screenshots/plugins/databricks/serving-endpoint-playground.png)
 
 ## Tips & limits
 

@@ -8,7 +8,7 @@ The right steady-state role for most people is narrower than the widest thing th
 
 Break-glass access is the other answer. A member asks for **specific permissions**, for a **specific number of minutes**, with a **reason**. Someone else approves. The elevation lapses on its own.
 
-<insert [The Break-glass Access settings page showing the request form open: permission checkboxes with several already-held ones greyed out, a filled-in reason field, and the duration presets with "1h" selected] here>
+![The Break-glass Access settings page showing the request form open: permission checkboxes with several already-held ones greyed out, a filled-in reason field, and the duration presets with "1h" selected](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/break-glass-access/request-form.png)
 
 ## Asking
 
@@ -43,7 +43,7 @@ The window is **evaluated, not swept**. There is no job that goes around expirin
 
 **End now** revokes a live elevation immediately. Anyone with `access:approve` can do it — and so can the holder, because giving back access you no longer need should never require finding an approver.
 
-<insert [The Break-glass Access page with one live elevation at the top showing "Live — expires in 42m" and an "End now" button, and two rows in History beneath] here>
+![The Break-glass Access page with one live elevation at the top showing "Live — expires in 42m" and an "End now" button, and two rows in History beneath](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/break-glass-access/live-elevation-and-history.png)
 
 ## API keys never inherit an elevation
 

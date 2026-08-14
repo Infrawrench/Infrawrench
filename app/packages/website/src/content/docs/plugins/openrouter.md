@@ -25,7 +25,7 @@ OpenRouter needs **two keys**, because neither one can do the other's job.
 
 Open any model and scroll to **Provider endpoints**. Every provider serving that model is listed with its prompt and completion price per million tokens, context window, 1-day uptime, p50 and p99 latency, and p50 throughput — the whole routing decision on one line each.
 
-<insert [OpenRouter model detail page with the Provider endpoints table showing several providers, their prices, uptime and latency percentiles side by side] here>
+![OpenRouter model detail page with the Provider endpoints table showing several providers, their prices, uptime and latency percentiles side by side](https://agent-assets.infrawrench.com/docs-screenshots/plugins/openrouter/provider-endpoints.png)
 
 The top-level **Model Endpoints** list is capped to the most popular models, because listing endpoints for the entire catalogue would be one API call per model. A model's own page always shows all of its endpoints regardless.
 

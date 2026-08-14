@@ -11,7 +11,7 @@ Translation covers provider content too: the resource type names, field labels a
 
 Open **Settings → General** and pick a language in the **Language** card. The choice applies immediately — the app reloads with every visible string re-resolved in the new locale.
 
-<insert [Settings → General page with the Language card visible, the dropdown open showing the six languages with their native names (English, Español, Français, Deutsch, 日本語, 中文)] here>
+![Settings → General page with the Language card visible, the dropdown open showing the six languages with their native names (Deutsch, English, español, français, 中文, 日本語)](https://agent-assets.infrawrench.com/docs-screenshots/features/interface-language/language-picker.png)
 
 A few things to know:
 

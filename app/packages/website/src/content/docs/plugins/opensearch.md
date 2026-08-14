@@ -20,7 +20,7 @@ For provider-managed OpenSearch (DigitalOcean, AWS, OVH), you don't normally add
 - **Snapshot repositories** — register an S3 repository, take snapshots on demand, restore, delete
 - **Dashboard stats + metrics** — cluster status, total nodes/indices/docs, store size, JVM heap %, disk used %
 
-<insert [OpenSearch cluster detail page showing Cluster, Health, Nodes, and Indices sections with per-row action buttons] here>
+![OpenSearch cluster detail page showing Cluster, Health, Nodes, and Indices sections with per-row action buttons](https://agent-assets.infrawrench.com/docs-screenshots/plugins/opensearch/cluster-detail.png)
 
 ## Credentials
 

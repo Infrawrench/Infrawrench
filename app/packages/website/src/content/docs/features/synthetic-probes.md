@@ -27,7 +27,7 @@ Choose one and the URL and name fill themselves in, and the probe remembers whic
 (and which output) it came from. There is a custom-URL option for anything Infrawrench
 doesn't know about; bare hostnames are normalized to `https://`.
 
-<insert [The probe editor modal with the endpoint dropdown open, listing suggested URLs labelled with their resource names, and the Custom URL option at the bottom] here>
+![The probe editor modal with the endpoint dropdown open, listing suggested URLs labelled with their resource names, and the Custom URL option at the bottom](https://agent-assets.infrawrench.com/docs-screenshots/features/synthetic-probes/probe-editor-endpoint-picker.png)
 
 A probe's settings:
 

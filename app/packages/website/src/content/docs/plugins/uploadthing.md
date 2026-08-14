@@ -47,7 +47,7 @@ field — Infrawrench works out which one you gave it:
 - **Failed uploads** show up on the Potential savings page — an upload that
   never completed cannot be served and is safe to delete.
 
-<insert [UploadThing app detail page showing the storage quota section and the Files table] here>
+![UploadThing app detail page showing the storage quota section, with the file listing on its own Files tab](https://agent-assets.infrawrench.com/docs-screenshots/plugins/uploadthing/app-detail-storage.png)
 
 ## Tips & limits
 

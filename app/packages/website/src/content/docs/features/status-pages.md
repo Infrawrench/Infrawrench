@@ -12,7 +12,7 @@ publish them at a link anyone can open without an account.
 Nothing new is measured. A status page is a second read of probe results you already have, so it
 costs no extra checks and cannot disagree with what your Probes tab says.
 
-<insert [A published status page as a visitor sees it — a green "All systems operational" banner, three components grouped under "Core services" with uptime percentages, and a row of 90 daily uptime bars under each] here>
+![A published status page as a visitor sees it — a green "All systems operational" banner, three components grouped under "Core services" with uptime percentages, and a row of 90 daily uptime bars under each](https://agent-assets.infrawrench.com/docs-screenshots/features/status-pages/public-page-visitor.png)
 
 Find it on the **Status pages** tab of the web and desktop apps (its own sidebar entry, next to
 **Probes**). The mobile app shows a read-only list of your pages and whether each is live, and the
