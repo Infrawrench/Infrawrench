@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import type { TerraformExportOutcome } from "@infrawrench/plugin-base";
 import { Modal } from "./Modal.js";
 import { formatErrorMessage } from "../utils.js";
@@ -30,6 +31,7 @@ export function TerraformExportModal({
   filename = "main.tf",
   onDownload,
 }: TerraformExportModalProps) {
+  const gt = useGT();
   const [result, setResult] = useState<TerraformExportOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -80,11 +82,11 @@ export function TerraformExportModal({
   const hasHcl = !!result && result.hcl.length > 0;
 
   return (
-    <Modal onClose={onClose} ariaLabel="Export to Terraform">
+    <Modal onClose={onClose} ariaLabel={gt("Export to Terraform")}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[min(860px,92vw)] max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
-            <h2 className="text-base font-semibold text-on-surface">Export to Terraform</h2>
+            <h2 className="text-base font-semibold text-on-surface">{gt("Export to Terraform")}</h2>
             <p className="text-xs text-on-surface-faint mt-0.5 truncate max-w-[640px]">
               {subjectDisplayName}
             </p>
@@ -93,7 +95,7 @@ export function TerraformExportModal({
             type="button"
             onClick={onClose}
             className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
-            aria-label="Close"
+            aria-label={gt("Close")}
           >
             &times;
           </button>
@@ -105,16 +107,19 @@ export function TerraformExportModal({
               {error}
             </div>
           )}
-          {!result && !error && <p className="text-xs text-on-surface-faint">Generating…</p>}
+          {!result && !error && (
+            <p className="text-xs text-on-surface-faint">{gt("Generating…")}</p>
+          )}
 
           {result && (
             <>
               {result.unsupported.length > 0 && (
                 <div className="rounded-lg bg-amber-500/10 border border-amber-500/40 px-3 py-2.5">
                   <p className="text-xs font-medium text-warning">
-                    {result.unsupported.length} resource
-                    {result.unsupported.length === 1 ? " has" : "s have"} no Terraform mapping yet
-                    and {result.unsupported.length === 1 ? "was" : "were"} left out:
+                    {gt("{count} resource", { count: result.unsupported.length })}
+                    {result.unsupported.length === 1 ? gt(" has") : gt("s have")}{" "}
+                    {gt("no Terraform mapping yet and")}{" "}
+                    {result.unsupported.length === 1 ? gt("was") : gt("were")} {gt("left out:")}
                   </p>
                   <ul className="mt-1.5 space-y-0.5">
                     {result.unsupported.map((u) => (
@@ -132,11 +137,13 @@ export function TerraformExportModal({
               {hasHcl ? (
                 <>
                   <p className="text-xs text-on-surface-faint">
-                    {result.exported.length} resource{result.exported.length === 1 ? "" : "s"}{" "}
-                    exported. Secrets are referenced as <code>var.*</code> input variables — fill
-                    them in locally (e.g. via a <code>terraform.tfvars</code> you keep out of git),
-                    then use the <code>terraform import</code> hints to adopt the live resources
-                    into state.
+                    <T>
+                      <Var>{result.exported.length}</Var> resource
+                      <Var>{result.exported.length === 1 ? "" : "s"}</Var> exported. Secrets are
+                      referenced as <code>var.*</code> input variables — fill them in locally (e.g.
+                      via a <code>terraform.tfvars</code> you keep out of git), then use the{" "}
+                      <code>terraform import</code> hints to adopt the live resources into state.
+                    </T>
                   </p>
                   <pre className="max-h-[45vh] overflow-auto text-[11px] font-mono bg-surface-sunken border border-border-strong rounded-lg p-3 text-on-surface-secondary whitespace-pre">
                     {result.hcl}
@@ -144,7 +151,7 @@ export function TerraformExportModal({
                 </>
               ) : (
                 <p className="text-xs text-on-surface-faint">
-                  Nothing to export — none of these resources have a Terraform mapping yet.
+                  {gt("Nothing to export — none of these resources have a Terraform mapping yet.")}
                 </p>
               )}
             </>
@@ -157,7 +164,7 @@ export function TerraformExportModal({
             onClick={onClose}
             className="flex-1 px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary bg-surface-overlay hover:bg-surface-sunken rounded-lg transition-colors"
           >
-            Close
+            {gt("Close")}
           </button>
           <button
             type="button"
@@ -165,7 +172,7 @@ export function TerraformExportModal({
             disabled={!hasHcl}
             className="flex-1 px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary bg-surface-overlay hover:bg-surface-sunken disabled:opacity-50 rounded-lg transition-colors"
           >
-            {copied ? "Copied" : "Copy HCL"}
+            {copied ? gt("Copied") : gt("Copy HCL")}
           </button>
           <button
             type="button"
@@ -173,7 +180,7 @@ export function TerraformExportModal({
             disabled={!hasHcl}
             className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
           >
-            Download {filename}
+            {gt("Download {filename}", { filename })}
           </button>
         </div>
       </div>
