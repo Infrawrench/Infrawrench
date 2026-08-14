@@ -50,7 +50,7 @@ Press **Verify** and Infrawrench makes one authenticated call to Linear and tell
 user answered. Do this before you rely on it — a mistyped or revoked key otherwise stays
 invisible until the first time somebody tries to file something.
 
-<insert [Settings → Linear with the API key field filled in, the default team picker populated, and a green "Connected to Linear as ..." confirmation under the Verify button] here>
+![Settings → Linear with the API key field filled in, the default team picker populated, and a green "Connected to Linear as Acme Ops Bot." confirmation shown after pressing Verify](https://agent-assets.infrawrench.com/docs-screenshots/features/linear/settings-connected-verified.png)
 
 The key is encrypted before it is stored and is never sent back to any client — the settings
 page shows only the last few characters of it. Leaving the key field blank when you save
@@ -89,7 +89,7 @@ links are kept, so a reconnection picks up where you left off.
 
 Settings → Linear also lists everything filed from this organization, newest first.
 
-<insert [Settings → Linear "Filed issues" list showing several rows with Linear identifiers, source kinds like "cost anomaly" and "posture finding", and dates] here>
+![Settings → Linear "Filed issues" list showing several rows with Linear identifiers, source kinds like "cost anomaly" and "posture finding", and dates](https://agent-assets.infrawrench.com/docs-screenshots/features/linear/settings-filed-issues.png)
 
 ## Desktop and mobile
 

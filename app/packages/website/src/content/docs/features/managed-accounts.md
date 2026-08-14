@@ -23,7 +23,7 @@ Two consequences worth stating outright:
 
 If a customer has their own dedicated cloud account, you can name the **account** instead. An account in scope claims that account's spend _only where no cost centre already claimed it_, which is what keeps every cost row resolving exactly once.
 
-<insert [The Invoices tab's Customers section, showing two managed accounts with their billing currency and the cost centres in each one's scope] here>
+![The Invoices tab's Customers section, showing two managed accounts with their billing currency and the cost centres in each one's scope](https://agent-assets.infrawrench.com/docs-screenshots/features/managed-accounts/customers-section.png)
 
 ## Setting up a customer
 
@@ -33,7 +33,7 @@ If a customer has their own dedicated cloud account, you can name the **account*
 4. Tick the cost centres — and any cloud accounts — whose spend is theirs.
 5. Choose the **cost basis** and whether your **billing rules** apply.
 
-<insert [The New customer modal with the cost-centre picker showing an indented tree and two centres ticked] here>
+![The New customer modal with the cost-centre picker showing an indented tree and two centres ticked](https://agent-assets.infrawrench.com/docs-screenshots/features/managed-accounts/new-customer-modal.png)
 
 ### Cost basis
 
@@ -51,7 +51,7 @@ Fixed-amount rules become their own invoice lines rather than being folded into 
 
 A draft is a working document. Its figures are **recomputed from live spend every time you open it**, which is exactly what you want while you are still deciding what to bill: cost data restates for days after a month ends, and a draft showing a stale number would be worse than useless.
 
-<insert [A draft invoice's detail view, with the amber "these figures are recomputed" notice above the line table] here>
+![A draft invoice's detail view, with the "these figures are recomputed" notice above the line table](https://agent-assets.infrawrench.com/docs-screenshots/features/managed-accounts/draft-invoice.png)
 
 ## Approving freezes the numbers
 
@@ -82,7 +82,7 @@ Ticking **Raise a corrective draft** when you void does both in one step, and th
 
 One void gets one correction. If a corrective invoice already exists, raising a second is refused: two corrections for one void would leave the link pointing at only one of them, and the customer holding two bills for the same period.
 
-<insert [The Void modal with a reason typed in and "Raise a corrective draft for the same period" ticked] here>
+![The Void modal with a reason typed in and "Raise a corrective draft for the same period" ticked](https://agent-assets.infrawrench.com/docs-screenshots/features/managed-accounts/void-modal.png)
 
 ## Every invoice shows its derivation
 
@@ -98,7 +98,7 @@ An invoice a customer cannot reconcile is an invoice a customer does not pay, so
 
 `collected + adjustment = subtotal` holds on every line and in every total. Underneath, the invoice spells out which cost centres were in scope, which billing rules applied and what each one does, the exchange rates used, and **the date those rates were read** — always the last day of the period, so "January, at the 31 January rate" is a sentence you can reproduce.
 
-<insert [An approved invoice showing the line table with Collected, Adjustment, Subtotal, Rate and Invoiced columns, and the "How this total was reached" block underneath] here>
+![An approved invoice showing the line table with Collected, Adjustment, Subtotal, Rate and Invoiced columns, and the "How this total was reached" block underneath](https://agent-assets.infrawrench.com/docs-screenshots/features/managed-accounts/approved-invoice.png)
 
 ### Downloading it
 
@@ -135,7 +135,7 @@ A partial delivery is never retried automatically, and that is deliberate: the m
 
 Sending again never rewrites who released the invoice, and never touches a figure. The document was frozen at approval; delivery only records where it went.
 
-<insert [A sent invoice's detail view showing a red "Delivery failed" line with the recipient addresses and the transport's error, and a "Retry delivery" button] here>
+![A sent invoice's detail view showing a red "Delivery failed" line with the recipient addresses and the transport's error, and a "Retry delivery" button](https://agent-assets.infrawrench.com/docs-screenshots/features/managed-accounts/delivery-failed.png)
 
 ## Permissions
 

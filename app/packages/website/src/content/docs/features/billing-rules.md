@@ -23,7 +23,7 @@ Two rules make that split trustworthy:
 
 **An adjusted figure is never shown without the collected one.** Every adjusted answer carries the collected total beside it and names the rules that moved it. A chart that shows adjusted spend wears an **Adjusted** badge next to its total and a caption underneath giving the collected figure and each rule in force. A report that silently showed marked-up spend would be a report nobody could reconcile against a bill, which is the failure this design exists to prevent.
 
-<insert [A cost graph with an "Adjusted" badge beside the total and the amber caption underneath reading "Billing rules applied — collected spend $84,120. In force: Platform overhead (+15% on tag team=platform)."] here>
+![A cost graph with an "Adjusted" badge beside the total and the amber caption underneath reading "Billing rules applied — collected spend $84,120. In force: Platform overhead (+15% on tag team=platform)."](https://agent-assets.infrawrench.com/docs-screenshots/features/billing-rules/adjusted-cost-graph.png)
 
 ## What a rule is
 
@@ -61,7 +61,7 @@ Markups and reallocations are order-independent with respect to each other, beca
 
 That is deliberate. `costs:write` is the "name a report, define a cost centre, save a filter" permission: acts that add another view of your spend. A billing rule is not another view — a markup changes every internal figure your organization reports, including an opted-in budget's thresholds and the chargeback statements finance sends to other departments. It is the same class of act as [stating an exchange rate](./cloud-costs.md#currency) or [creating a cost export](./cost-exports.md), and it sits behind the same permission. Every create, edit and delete is [audit-logged](../team-and-billing/audit-log.md).
 
-<insert [The Settings → Billing Rules page showing three rules — a +15% platform overhead markup, a disabled -8% discount, and a reallocation moving AmazonEKS spend to the Data cost centre — with the priority number and one-line summary on each row] here>
+![The Settings → Billing Rules page showing three rules — a +15% platform overhead markup, a disabled -8% discount, and a reallocation moving AmazonEKS spend to the Data cost centre — with the priority number and one-line summary on each row](https://agent-assets.infrawrench.com/docs-screenshots/features/billing-rules/settings-rules-list.png)
 
 Rules are kept when you switch them off rather than deleted. A markup paused for one quarter and switched back on for the next is the normal life of these objects, and deleting it would lose the wording finance agreed to.
 

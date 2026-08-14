@@ -29,9 +29,9 @@ When it's done you get the way to reach it:
 - **SSH** — `ssh -o ProxyCommand="cloudflared access ssh --hostname app.example.com" user@app.example.com`
 - **TCP** — `cloudflared access tcp --hostname app.example.com --url localhost:<port>`
 
-<insert [Dragging a Cloudflare Tunnel onto a server resource in the sidebar, showing the "Set up SSH tunnel" drop hint] here>
+![Dragging a Cloudflare Tunnel onto a server resource in the sidebar, showing the "Set up SSH tunnel" drop hint](https://agent-assets.infrawrench.com/docs-screenshots/features/cloudflare-tunnel-ssh/drag-drop-hint.png)
 
-<insert [The Set up SSH over tunnel modal with hostname, zone, SSH username, SSH key fields and the install-script preview] here>
+![The Set up SSH over tunnel modal with hostname, zone, SSH username, SSH key fields and the install-script preview](https://agent-assets.infrawrench.com/docs-screenshots/features/cloudflare-tunnel-ssh/expose-over-tunnel-modal.png)
 
 ## Requirements & caveats
 
