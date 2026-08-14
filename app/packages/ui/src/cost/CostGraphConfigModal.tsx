@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { T, Var, t, useGT } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 import {
   COST_BASES,
   COST_BASIS_LABELS,
@@ -107,10 +109,12 @@ export function CostBasisField({
   available: boolean;
   hint: string;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   return (
     <div>
       <label htmlFor={id} className={labelClass}>
-        Cost basis
+        {gt("Cost basis")}
       </label>
       <select
         id={id}
@@ -121,7 +125,7 @@ export function CostBasisField({
       >
         {COST_BASES.map((b) => (
           <option key={b} value={b}>
-            {COST_BASIS_LABELS[b]}
+            {gtData(COST_BASIS_LABELS[b])}
           </option>
         ))}
       </select>
@@ -131,8 +135,9 @@ export function CostBasisField({
 }
 
 /** Why the basis select is disabled — one sentence, same words everywhere. */
-export const COST_BASIS_UNAVAILABLE_HINT =
-  "No connected provider reports amortized cost, so every amount here is what was charged.";
+export const COST_BASIS_UNAVAILABLE_HINT = t(
+  "No connected provider reports amortized cost, so every amount here is what was charged.",
+);
 
 /**
  * Options plus any selected value the load didn't return, so a filter saved
@@ -152,16 +157,19 @@ function mergeSelected(options: CostDimensionOption[], values: string[]): CostDi
 function dimensionStatus(
   state: CostDimensionOption[] | null | undefined,
   onRetry: () => void,
+  gt: (message: string) => string,
 ): MultiSelectStatus {
   if (state === undefined) return { kind: "loading" };
   if (state === null) {
-    return { kind: "error", message: "Couldn’t load values.", onRetry };
+    return { kind: "error", message: gt("Couldn’t load values."), onRetry };
   }
-  return { kind: "empty", message: "No values in cost data yet" };
+  return { kind: "empty", message: gt("No values in cost data yet") };
 }
 
 /** Filter rule rows shared by the graph and budget editors. */
 export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   // Loaded options per "dimension" / "dimension:tagKey" key. Missing = load
   // not finished (in flight or not started), null = load failed (focus
   // retries via loadOptions).
@@ -220,7 +228,7 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
         return (
           <div key={i} className="flex items-start gap-2">
             <select
-              aria-label="Filter dimension"
+              aria-label={gt("Filter dimension")}
               className={`${selectBaseClass} w-28 flex-shrink-0`}
               value={filter.dimension}
               onChange={(e) => {
@@ -235,47 +243,47 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
             >
               {COST_DIMENSIONS.map((d) => (
                 <option key={d} value={d}>
-                  {DIMENSION_LABELS[d]}
+                  {gtData(DIMENSION_LABELS[d])}
                 </option>
               ))}
             </select>
             {filter.dimension === "tag" && (
               <input
-                aria-label="Tag key"
+                aria-label={gt("Tag key")}
                 className={`${selectBaseClass} w-24 flex-shrink-0`}
-                placeholder="tag key"
+                placeholder={gt("tag key")}
                 value={filter.tagKey ?? ""}
                 onChange={(e) => update(i, { tagKey: e.target.value })}
                 onBlur={() => filter.tagKey && loadOptions("tag", filter.tagKey)}
               />
             )}
             <select
-              aria-label="Filter operator"
+              aria-label={gt("Filter operator")}
               className={`${selectBaseClass} w-24 flex-shrink-0`}
               value={filter.op}
               onChange={(e) => update(i, { op: e.target.value as CostFilter["op"] })}
             >
-              <option value="in">is</option>
-              <option value="not_in">is not</option>
+              <option value="in">{gt("is")}</option>
+              <option value="not_in">{gt("is not")}</option>
             </select>
             <MultiSelect
               className="flex-1"
-              label="Filter values"
-              placeholder="Any value"
+              label={gt("Filter values")}
+              placeholder={gt("Any value")}
               // A saved filter can reference values the current load hasn't
               // returned (or hasn't finished returning); surface them as
               // options so they stay selectable rather than silently vanishing.
               options={mergeSelected(options, filter.values)}
               value={filter.values}
               onChange={(values) => update(i, { values })}
-              status={dimensionStatus(optionsState, () => retryOptions(filter))}
+              status={dimensionStatus(optionsState, () => retryOptions(filter), gt)}
               onOpen={() => retryOptions(filter)}
             />
             <button
               type="button"
               onClick={() => onChange(filters.filter((_, j) => j !== i))}
               className="mt-1.5 text-on-surface-faint hover:text-on-surface-secondary text-xs"
-              title="Remove filter"
+              title={gt("Remove filter")}
             >
               ✕
             </button>
@@ -287,7 +295,7 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
         onClick={() => onChange([...filters, { dimension: "provider", op: "in", values: [] }])}
         className="text-xs text-info hover:text-info-strong"
       >
-        + Add filter
+        {gt("+ Add filter")}
       </button>
     </div>
   );
@@ -343,6 +351,8 @@ function SavedFilterPicker({
   /** "Save these rows…" only makes sense while the rows are on screen. */
   rowsMode: boolean;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   // undefined = loading, null = load failed.
   const [saved, setSaved] = useState<SavedCostFilter[] | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
@@ -368,7 +378,7 @@ function SavedFilterPicker({
 
   const saveRowsAsFilter = async () => {
     if (!api.createSavedFilter) return;
-    const name = window.prompt("Save these rows as a filter named…");
+    const name = window.prompt(gt("Save these rows as a filter named…"));
     if (name === null || !name.trim()) return;
     setBusy(true);
     setError(null);
@@ -381,7 +391,7 @@ function SavedFilterPicker({
       onChange([]);
       setSaved((prev) => (Array.isArray(prev) ? [...prev, created] : prev));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn’t save the filter.");
+      setError(e instanceof Error ? e.message : gt("Couldn’t save the filter."));
     } finally {
       setBusy(false);
     }
@@ -393,18 +403,20 @@ function SavedFilterPicker({
         <div className="flex items-center gap-2">
           <span
             className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-sunken px-2.5 py-1 text-xs text-on-surface"
-            title="Applied by reference and combined (AND) with the rows below. Edit it in the Costs panel to change every graph, report and budget using it."
+            title={gt(
+              "Applied by reference and combined (AND) with the rows below. Edit it in the Costs panel to change every graph, report and budget using it.",
+            )}
           >
-            <span className="text-on-surface-faint">Saved filter</span>
+            <span className="text-on-surface-faint">{gt("Saved filter")}</span>
             <span className="font-medium">
-              {applied ? applied.name : saved === undefined ? "…" : savedFilterId}
+              {applied ? gtData(applied.name) : saved === undefined ? "…" : savedFilterId}
             </span>
             <button
               type="button"
               onClick={() => onSavedFilterChange(undefined)}
               className="text-on-surface-faint hover:text-on-surface-secondary"
-              title="Remove the saved filter from this config (the filter itself is untouched)"
-              aria-label="Remove saved filter"
+              title={gt("Remove the saved filter from this config (the filter itself is untouched)")}
+              aria-label={gt("Remove saved filter")}
             >
               ✕
             </button>
@@ -413,24 +425,23 @@ function SavedFilterPicker({
       )}
       {savedFilterId && Array.isArray(saved) && !applied && (
         <p className="text-xs text-warning">
-          This saved filter no longer resolves — queries will fail until it is removed here or
-          restored.
+          {gt("This saved filter no longer resolves — queries will fail until it is removed here or restored.")}
         </p>
       )}
       <div className="flex items-center gap-3">
         {!savedFilterId && Array.isArray(saved) && saved.length > 0 && (
           <select
-            aria-label="Apply saved filter"
+            aria-label={gt("Apply saved filter")}
             className={`${selectBaseClass} max-w-56 text-xs`}
             value=""
             onChange={(e) => {
               if (e.target.value) onSavedFilterChange(e.target.value);
             }}
           >
-            <option value="">Apply saved filter…</option>
+            <option value="">{gt("Apply saved filter…")}</option>
             {saved.map((f) => (
               <option key={f.id} value={f.id}>
-                {f.name}
+                {gtData(f.name)}
               </option>
             ))}
           </select>
@@ -442,7 +453,7 @@ function SavedFilterPicker({
             disabled={busy}
             className="text-xs text-info hover:text-info-strong disabled:opacity-50"
           >
-            Save these rows as a filter…
+            {gt("Save these rows as a filter…")}
           </button>
         )}
       </div>
@@ -478,6 +489,7 @@ export function CostFilterEditor({
   savedFilterId,
   onSavedFilterChange,
 }: CostFilterEditorProps) {
+  const gt = useGT();
   const uid = useId();
   const [mode, setMode] = useState<"rows" | "text">("rows");
   const [text, setText] = useState("");
@@ -508,8 +520,8 @@ export function CostFilterEditor({
     } catch (e) {
       report(
         e instanceof CostQueryFormatError
-          ? `${e.message} (filter ${e.index + 1})`
-          : "This filter can’t be written as text.",
+          ? gt("{message} (filter {index})", { message: e.message, index: e.index + 1 })
+          : gt("This filter can’t be written as text."),
       );
     }
   };
@@ -520,7 +532,7 @@ export function CostFilterEditor({
       onChange(parseCostQuery(next));
       report(null);
     } catch (e) {
-      report(e instanceof CostQueryParseError ? e.annotated() : "Invalid query.");
+      report(e instanceof CostQueryParseError ? e.annotated() : gt("Invalid query."));
     }
   };
 
@@ -552,11 +564,11 @@ export function CostFilterEditor({
           onClick={toRows}
           title={
             mode === "text" && error !== null
-              ? "Fix the query first — switching now would discard it"
+              ? gt("Fix the query first — switching now would discard it")
               : undefined
           }
         >
-          Rows
+          {gt("Rows")}
         </button>
         <button
           type="button"
@@ -564,7 +576,7 @@ export function CostFilterEditor({
           className={tabClass(mode === "text")}
           onClick={toText}
         >
-          Query
+          {gt("Query")}
         </button>
       </div>
 
@@ -574,7 +586,7 @@ export function CostFilterEditor({
         <div className="space-y-1">
           <textarea
             id={`${uid}-query`}
-            aria-label="Cost filter query"
+            aria-label={gt("Cost filter query")}
             aria-invalid={error !== null}
             spellCheck={false}
             rows={2}
@@ -584,12 +596,14 @@ export function CostFilterEditor({
             value={text}
             onChange={(e) => onTextChange(e.target.value)}
           />
-          <p className="text-xs text-on-surface-faint">
-            Terms joined by AND: <code>= &apos;value&apos;</code>, <code>!= &apos;value&apos;</code>
-            , <code>IN (&apos;a&apos;, &apos;b&apos;)</code>,{" "}
-            <code>NOT IN (&apos;a&apos;, &apos;b&apos;)</code>,{" "}
-            <code>tag[&apos;owner&apos;] = &apos;platform&apos;</code>.
-          </p>
+          <T>
+            <p className="text-xs text-on-surface-faint">
+              Terms joined by AND: <code>= &apos;value&apos;</code>,{" "}
+              <code>!= &apos;value&apos;</code>, <code>IN (&apos;a&apos;, &apos;b&apos;)</code>,{" "}
+              <code>NOT IN (&apos;a&apos;, &apos;b&apos;)</code>,{" "}
+              <code>tag[&apos;owner&apos;] = &apos;platform&apos;</code>.
+            </p>
+          </T>
         </div>
       )}
 
@@ -616,6 +630,8 @@ export function CostGraphConfigModal({
   onSave,
   onClose,
 }: CostGraphConfigModalProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const uid = useId();
   const [title, setTitle] = useState(initialTitle);
   const [config, setConfig] = useState<CostGraphConfig>(initialConfig);
@@ -667,7 +683,7 @@ export function CostGraphConfigModal({
 
   const save = async () => {
     if (filterError) {
-      setError("Fix the filter query before saving.");
+      setError(gt("Fix the filter query before saving."));
       return;
     }
     const cleaned = {
@@ -676,11 +692,11 @@ export function CostGraphConfigModal({
     };
     const parsed = costGraphConfigSchema.safeParse(cleaned);
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "Invalid configuration");
+      setError(parsed.error.issues[0]?.message ?? gt("Invalid configuration"));
       return;
     }
     if (parsed.data.groupBy === "tag" && !parsed.data.groupByTagKey) {
-      setError("Choose a tag key to group by");
+      setError(gt("Choose a tag key to group by"));
       return;
     }
     setSaving(true);
@@ -689,26 +705,26 @@ export function CostGraphConfigModal({
       await onSave(title, parsed.data);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
+      setError(e instanceof Error ? e.message : gt("Failed to save"));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Modal onClose={onClose} ariaLabel="Cost graph">
+    <Modal onClose={onClose} ariaLabel={gt("Cost graph")}>
       <div className="w-[32rem] max-w-[90vw] rounded-2xl border border-border bg-surface-raised p-5 max-h-[85vh] overflow-y-auto">
-        <h2 className="text-lg font-semibold text-on-surface mb-4">Cost graph</h2>
+        <h2 className="text-lg font-semibold text-on-surface mb-4">{gt("Cost graph")}</h2>
 
         <div className="space-y-4">
           <div>
             <label htmlFor={`${uid}-title`} className={labelClass}>
-              Title
+              {gt("Title")}
             </label>
             <input
               id={`${uid}-title`}
               className={selectClass}
-              placeholder="e.g. Cloud spend by provider"
+              placeholder={gt("e.g. Cloud spend by provider")}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
@@ -717,7 +733,7 @@ export function CostGraphConfigModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor={`${uid}-chart-type`} className={labelClass}>
-                Chart type
+                {gt("Chart type")}
               </label>
               <select
                 id={`${uid}-chart-type`}
@@ -727,14 +743,14 @@ export function CostGraphConfigModal({
               >
                 {COST_CHART_TYPES.map((t) => (
                   <option key={t} value={t}>
-                    {CHART_TYPE_LABELS[t]}
+                    {gtData(CHART_TYPE_LABELS[t])}
                   </option>
                 ))}
               </select>
             </div>
             <div>
               <label htmlFor={`${uid}-binning`} className={labelClass}>
-                Binning
+                {gt("Binning")}
               </label>
               <select
                 id={`${uid}-binning`}
@@ -744,14 +760,14 @@ export function CostGraphConfigModal({
               >
                 {COST_BINNINGS.map((b) => (
                   <option key={b} value={b}>
-                    {BINNING_LABELS[b]}
+                    {gtData(BINNING_LABELS[b])}
                   </option>
                 ))}
               </select>
             </div>
             <div>
               <label htmlFor={`${uid}-date-range`} className={labelClass}>
-                Date range
+                {gt("Date range")}
               </label>
               <select
                 id={`${uid}-date-range`}
@@ -774,15 +790,15 @@ export function CostGraphConfigModal({
               >
                 {COST_RANGE_PRESETS.map((p) => (
                   <option key={p} value={p}>
-                    {PRESET_LABELS[p]}
+                    {gtData(PRESET_LABELS[p])}
                   </option>
                 ))}
-                <option value="custom">Custom…</option>
+                <option value="custom">{gt("Custom…")}</option>
               </select>
             </div>
             <div>
               <label htmlFor={`${uid}-group-by`} className={labelClass}>
-                Group by
+                {gt("Group by")}
               </label>
               <select
                 id={`${uid}-group-by`}
@@ -790,10 +806,10 @@ export function CostGraphConfigModal({
                 value={config.groupBy}
                 onChange={(e) => set({ groupBy: e.target.value as CostGraphConfig["groupBy"] })}
               >
-                <option value="none">None</option>
+                <option value="none">{gt("None")}</option>
                 {COST_DIMENSIONS.map((d) => (
                   <option key={d} value={d}>
-                    {DIMENSION_LABELS[d]}
+                    {gtData(DIMENSION_LABELS[d])}
                   </option>
                 ))}
               </select>
@@ -817,7 +833,7 @@ export function CostGraphConfigModal({
           {metrics !== null && metrics.length > 0 && (
             <div className="rounded-lg border border-border p-3">
               <label htmlFor={`${uid}-unit-metric`} className={labelClass}>
-                Divide by a business metric
+                {gt("Divide by a business metric")}
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <select
@@ -835,17 +851,17 @@ export function CostGraphConfigModal({
                     )
                   }
                 >
-                  <option value="">No — show spend</option>
+                  <option value="">{gt("No — show spend")}</option>
                   {metrics.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.name} (per {m.unit})
+                      {gt("{name} (per {unit})", { name: gtData(m.name), unit: gtData(m.unit) })}
                     </option>
                   ))}
                 </select>
                 {config.unitCostMetricId && (
                   <select
                     className={selectClass}
-                    aria-label="Unit cost mode"
+                    aria-label={gt("Unit cost mode")}
                     value={config.unitCostMode ?? "unit_cost"}
                     onChange={(e) =>
                       set({ unitCostMode: e.target.value as CostGraphConfig["unitCostMode"] })
@@ -861,25 +877,29 @@ export function CostGraphConfigModal({
                         // refused by the server as well.
                         disabled={mode === "margin" && unitCostMetric?.kind !== "currency"}
                       >
-                        {UNIT_COST_MODE_LABELS[mode]}
+                        {gtData(UNIT_COST_MODE_LABELS[mode])}
                       </option>
                     ))}
                   </select>
                 )}
               </div>
               {config.unitCostMetricId && (
-                <p className="mt-2 text-[11px] text-on-surface-faint">
-                  The chart shows{" "}
-                  {config.unitCostMode === "margin"
-                    ? "margin against this metric"
-                    : `cost per ${unitCostMetric?.unit ?? "unit"}`}
-                  . Group by, top groups, comparison and forecast don&rsquo;t apply — a per-group
-                  ratio would need a per-group metric, and a period with no reported value is drawn
-                  as a gap rather than as zero.
-                  {unitCostMetric && unitCostMetric.kind !== "currency" && (
-                    <> Margin needs a revenue metric, so it is unavailable for this one.</>
-                  )}
-                </p>
+                <T>
+                  <p className="mt-2 text-[11px] text-on-surface-faint">
+                    The chart shows{" "}
+                    <Var>
+                      {config.unitCostMode === "margin"
+                        ? gt("margin against this metric")
+                        : gt("cost per {unit}", { unit: gtData(unitCostMetric?.unit ?? "unit") })}
+                    </Var>
+                    . Group by, top groups, comparison and forecast don&rsquo;t apply — a per-group
+                    ratio would need a per-group metric, and a period with no reported value is
+                    drawn as a gap rather than as zero.
+                    {unitCostMetric && unitCostMetric.kind !== "currency" && (
+                      <> Margin needs a revenue metric, so it is unavailable for this one.</>
+                    )}
+                  </p>
+                </T>
               )}
             </div>
           )}
@@ -888,7 +908,7 @@ export function CostGraphConfigModal({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor={`${uid}-from`} className={labelClass}>
-                  From
+                  {gt("From")}
                 </label>
                 <input
                   id={`${uid}-from`}
@@ -911,7 +931,7 @@ export function CostGraphConfigModal({
               </div>
               <div>
                 <label htmlFor={`${uid}-to`} className={labelClass}>
-                  To
+                  {gt("To")}
                 </label>
                 <input
                   id={`${uid}-to`}
@@ -938,7 +958,7 @@ export function CostGraphConfigModal({
           {config.groupBy === "tag" && (
             <div>
               <label htmlFor={`${uid}-tag-key`} className={labelClass}>
-                Tag key
+                {gt("Tag key")}
               </label>
               <select
                 id={`${uid}-tag-key`}
@@ -946,10 +966,10 @@ export function CostGraphConfigModal({
                 value={config.groupByTagKey ?? ""}
                 onChange={(e) => set({ groupByTagKey: e.target.value })}
               >
-                <option value="">Choose a tag key…</option>
+                <option value="">{gt("Choose a tag key…")}</option>
                 {tagKeys.map((k) => (
                   <option key={k.value} value={k.value}>
-                    {k.label}
+                    {gtData(k.label)}
                   </option>
                 ))}
               </select>
@@ -958,7 +978,7 @@ export function CostGraphConfigModal({
 
           <div role="group" aria-labelledby={`${uid}-filters-label`}>
             <span id={`${uid}-filters-label`} className={labelClass}>
-              Filters
+              {gt("Filters")}
             </span>
             <CostFilterEditor
               filters={config.filters}
@@ -973,7 +993,7 @@ export function CostGraphConfigModal({
           <div className="flex items-center gap-5">
             <div className="flex items-center gap-2">
               <label htmlFor={`${uid}-top-n`} className="text-xs text-on-surface-secondary">
-                Top groups
+                {gt("Top groups")}
               </label>
               <input
                 id={`${uid}-top-n`}
@@ -993,7 +1013,7 @@ export function CostGraphConfigModal({
                 checked={config.comparePreviousPeriod}
                 onChange={(e) => set({ comparePreviousPeriod: e.target.checked })}
               />
-              Compare previous period
+              {gt("Compare previous period")}
             </label>
             <label className="flex items-center gap-2 text-xs text-on-surface-secondary cursor-pointer">
               <input
@@ -1001,7 +1021,7 @@ export function CostGraphConfigModal({
                 checked={config.showForecast}
                 onChange={(e) => set({ showForecast: e.target.checked })}
               />
-              Forecast
+              {gt("Forecast")}
             </label>
           </div>
 
@@ -1026,7 +1046,7 @@ export function CostGraphConfigModal({
               onClick={onClose}
               className="px-3 py-1.5 rounded-lg text-sm text-on-surface-secondary hover:bg-surface-sunken transition-colors"
             >
-              Cancel
+              {gt("Cancel")}
             </button>
             <button
               type="button"
@@ -1034,7 +1054,7 @@ export function CostGraphConfigModal({
               disabled={saving || filterError !== null}
               className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-colors"
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? gt("Saving…") : gt("Save")}
             </button>
           </div>
         </div>
@@ -1066,6 +1086,8 @@ function ScenarioModelPicker({
   enabled: boolean;
   onChange: (scenarioModelId: string | null) => void;
 }) {
+  const gt = useGT();
+  const gtData = useDataString();
   const uid = useId();
   const [models, setModels] = useState<CostScenarioModel[] | null>(null);
   const load = api.listScenarioModels;
@@ -1097,7 +1119,7 @@ function ScenarioModelPicker({
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor={`${uid}-scenario`} className="text-xs text-on-surface-secondary">
-        Scenario
+        {gt("Scenario")}
       </label>
       <select
         id={`${uid}-scenario`}
@@ -1106,19 +1128,26 @@ function ScenarioModelPicker({
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value || null)}
       >
-        <option value="">None — trend only</option>
+        <option value="">{gt("None — trend only")}</option>
         {models.map((model) => (
           <option key={model.id} value={model.id}>
-            {model.name}
+            {gtData(model.name)}
           </option>
         ))}
       </select>
       <p className="text-[11px] text-on-surface-faint">
         {!enabled
-          ? "Turn on Forecast to overlay a scenario — there is no projection to adjust otherwise."
+          ? gt(
+              "Turn on Forecast to overlay a scenario — there is no projection to adjust otherwise.",
+            )
           : selected
-            ? `The card draws the trend and "${selected.name}" as two separate dashed lines, and says so under its title.`
-            : "Known future cost the trend can\u2019t see, drawn beside the forecast rather than instead of it."}
+            ? gt(
+                'The card draws the trend and "{name}" as two separate dashed lines, and says so under its title.',
+                { name: gtData(selected.name) },
+              )
+            : gt(
+                "Known future cost the trend can\u2019t see, drawn beside the forecast rather than instead of it.",
+              )}
       </p>
     </div>
   );

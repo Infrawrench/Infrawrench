@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useGT } from "gt-react";
 import {
   compileLogSearch,
   computeAppendedLines,
@@ -75,6 +76,7 @@ function optionKey(option: {
  * poller evaluates server-side.
  */
 export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelProps) {
+  const gt = useGT();
   const [options, setOptions] = useState<LogResourceOption[]>([]);
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [optionsLoading, setOptionsLoading] = useState(true);
@@ -382,7 +384,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
       {savedQueriesClient && (
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-surface shrink-0 flex-wrap">
           <span className="text-xs font-semibold text-on-surface-muted uppercase tracking-wide">
-            Log workspace
+            {gt("Log workspace")}
           </span>
           <select
             value={activeQueryId ?? ""}
@@ -392,14 +394,14 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
               else resetToNewQuery();
             }}
             className="text-xs bg-surface-overlay text-on-surface border border-border-strong rounded px-2 py-0.5"
-            title="Saved queries"
-            aria-label="Saved queries"
+            title={gt("Saved queries")}
+            aria-label={gt("Saved queries")}
           >
-            <option value="">New workspace…</option>
+            <option value="">{gt("New workspace…")}</option>
             {saved.map((q) => (
               <option key={q.id} value={q.id}>
                 {q.name}
-                {q.alertEnabled ? " (alert)" : ""}
+                {q.alertEnabled ? gt(" (alert)") : ""}
               </option>
             ))}
           </select>
@@ -407,23 +409,25 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
             type="text"
             value={queryName}
             onChange={(e) => setQueryName(e.target.value)}
-            placeholder="Query name"
-            aria-label="Query name"
+            placeholder={gt("Query name")}
+            aria-label={gt("Query name")}
             maxLength={LOG_WORKSPACE_LIMITS.maxNameLength}
             className="text-xs bg-surface-overlay text-on-surface border border-border-strong rounded px-2 py-0.5 w-40"
           />
           <label
             className="flex items-center gap-1 text-xs text-on-surface-tertiary cursor-pointer"
-            title="Evaluate this query server-side every few minutes and notify when a line matches (requires a non-empty search)"
+            title={gt(
+              "Evaluate this query server-side every few minutes and notify when a line matches (requires a non-empty search)",
+            )}
           >
             <input
               type="checkbox"
               checked={alertEnabled}
               onChange={(e) => setAlertEnabled(e.target.checked)}
               disabled={search.trim().length === 0 && !alertEnabled}
-              aria-label="Alert on match"
+              aria-label={gt("Alert on match")}
             />
-            Alert on match
+            {gt("Alert on match")}
           </label>
           <button
             type="button"
@@ -431,7 +435,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
             disabled={saveBusy || streams.length === 0 || queryName.trim().length === 0}
             className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors disabled:opacity-50"
           >
-            {activeQueryId ? "Save" : "Save query"}
+            {activeQueryId ? gt("Save") : gt("Save query")}
           </button>
           {activeQueryId && (
             <>
@@ -440,9 +444,9 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
                 onClick={resetToNewQuery}
                 disabled={saveBusy}
                 className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
-                title="Keep the streams but save under a new name"
+                title={gt("Keep the streams but save under a new name")}
               >
-                Save as new…
+                {gt("Save as new…")}
               </button>
               <button
                 type="button"
@@ -450,7 +454,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
                 disabled={saveBusy}
                 className="px-3 py-1 text-xs text-danger hover:text-danger-strong border border-border-strong rounded-md transition-colors"
               >
-                Delete
+                {gt("Delete")}
               </button>
             </>
           )}
@@ -458,12 +462,14 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
           {!saveError && activeQuery?.alertEnabled && (
             <span className="text-xs text-on-surface-faint">
               {activeQuery.lastEvalError
-                ? `Alert error: ${activeQuery.lastEvalError}`
+                ? gt("Alert error: {error}", { error: activeQuery.lastEvalError })
                 : activeQuery.lastMatchAt
-                  ? `Last match ${new Date(activeQuery.lastMatchAt).toLocaleString()}`
+                  ? gt("Last match {date}", {
+                      date: new Date(activeQuery.lastMatchAt).toLocaleString(),
+                    })
                   : activeQuery.lastEvalAt
-                    ? "No matches yet"
-                    : "Alert pending first evaluation"}
+                    ? gt("No matches yet")
+                    : gt("Alert pending first evaluation")}
             </span>
           )}
         </div>
@@ -478,17 +484,17 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
           }}
           disabled={optionsLoading || addableOptions.length === 0}
           className="text-xs bg-surface-overlay text-on-surface border border-border-strong rounded px-2 py-0.5 max-w-64"
-          title="Add a log stream"
-          aria-label="Add a log stream"
+          title={gt("Add a log stream")}
+          aria-label={gt("Add a log stream")}
         >
           <option value="">
             {optionsLoading
-              ? "Loading resources…"
+              ? gt("Loading resources…")
               : addableOptions.length === 0
                 ? options.length === 0
-                  ? "No log-capable resources"
-                  : "All resources added"
-                : "+ Add resource…"}
+                  ? gt("No log-capable resources")
+                  : gt("All resources added")
+                : gt("+ Add resource…")}
           </option>
           {addableOptions.map((o) => (
             <option key={optionKey(o)} value={optionKey(o)}>
@@ -500,21 +506,21 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder='Search all streams — terms, "phrases", -not, /regex/'
+          placeholder={gt('Search all streams — terms, "phrases", -not, /regex/')}
           maxLength={LOG_WORKSPACE_LIMITS.maxSearchLength}
           className="text-xs bg-surface-overlay text-on-surface border border-border-strong rounded px-2 py-0.5 flex-1 min-w-40 font-mono"
-          aria-label="Search across all streams"
+          aria-label={gt("Search across all streams")}
         />
         <select
           value={tailLines}
           onChange={(e) => setTailLines(Number(e.target.value))}
           className="text-xs bg-surface-overlay text-on-surface border border-border-strong rounded px-2 py-0.5"
-          title="Tail lines per stream"
-          aria-label="Tail lines per stream"
+          title={gt("Tail lines per stream")}
+          aria-label={gt("Tail lines per stream")}
         >
           {TAIL_OPTIONS.map((n) => (
             <option key={n} value={n}>
-              Last {n}
+              {gt("Last {count}", { count: n })}
             </option>
           ))}
         </select>
@@ -528,15 +534,15 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
             paused ? "text-warning" : "text-on-surface-tertiary hover:text-white"
           }`}
         >
-          {paused ? "Resume" : "Pause"}
+          {paused ? gt("Resume") : gt("Pause")}
         </button>
         <button
           type="button"
           onClick={() => setView((v) => (v === "interleaved" ? "split" : "interleaved"))}
           className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
-          title="Toggle between one merged stream and stacked per-resource panes"
+          title={gt("Toggle between one merged stream and stacked per-resource panes")}
         >
-          {view === "interleaved" ? "Split view" : "Interleaved"}
+          {view === "interleaved" ? gt("Split view") : gt("Interleaved")}
         </button>
         <button
           type="button"
@@ -547,7 +553,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
           }}
           className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
         >
-          Clear
+          {gt("Clear")}
         </button>
       </div>
 
@@ -576,8 +582,8 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
                     value={stream.selector.container ?? stream.containers[0]}
                     onChange={(e) => setStreamContainer(key, e.target.value)}
                     className="text-xs bg-surface text-on-surface border border-border rounded px-1"
-                    title="Container"
-                    aria-label={`Container for ${stream.label}`}
+                    title={gt("Container")}
+                    aria-label={gt("Container for {label}", { label: stream.label })}
                   >
                     {stream.containers.map((c) => (
                       <option key={c} value={c}>
@@ -595,7 +601,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
                   type="button"
                   onClick={() => removeStream(key)}
                   className="text-on-surface-faint hover:text-white px-1"
-                  aria-label={`Remove ${stream.label}`}
+                  aria-label={gt("Remove {label}", { label: stream.label })}
                 >
                   ×
                 </button>
@@ -604,7 +610,10 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
           })}
           {!compiled.matchAll && !compiled.error && (
             <span className="text-xs text-on-surface-faint ml-auto">
-              {visible.length} of {merged.length} lines match
+              {gt("{visible} of {total} lines match", {
+                visible: visible.length,
+                total: merged.length,
+              })}
             </span>
           )}
         </div>
@@ -624,10 +633,12 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
       {streams.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-on-surface-faint text-sm p-8 text-center">
           {optionsLoading
-            ? "Loading log-capable resources…"
+            ? gt("Loading log-capable resources…")
             : options.length === 0
-              ? "No resources with log support were found. Pods, deployments, Cloud Run services and managed databases are typical sources."
-              : "Add resources above to start tailing their logs side by side."}
+              ? gt(
+                  "No resources with log support were found. Pods, deployments, Cloud Run services and managed databases are typical sources.",
+                )
+              : gt("Add resources above to start tailing their logs side by side.")}
         </div>
       ) : view === "interleaved" ? (
         <div
@@ -636,7 +647,7 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
         >
           {visible.length === 0 ? (
             <span className="text-on-surface-faint">
-              {merged.length === 0 ? "<no output yet>" : "<no lines match the search>"}
+              {merged.length === 0 ? gt("<no output yet>") : gt("<no lines match the search>")}
             </span>
           ) : (
             visible.map((line) => {
@@ -667,10 +678,10 @@ export function LogWorkspacePanel({ client, onOpenResource }: LogWorkspacePanelP
                 paused={paused}
                 empty={
                   !stream.loaded
-                    ? "Loading…"
+                    ? gt("Loading…")
                     : merged.some((l) => l.streamKey === key)
-                      ? "<no lines match the search>"
-                      : "<no output yet>"
+                      ? gt("<no lines match the search>")
+                      : gt("<no output yet>")
                 }
               />
             );

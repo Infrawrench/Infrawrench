@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { T, Var, useGT, t } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 import {
   EXPIRY_KIND_LABELS,
   EXPIRY_SEVERITIES,
@@ -59,9 +61,9 @@ const SEVERITY_TEXT_CLASSES: Record<ExpirySeverity, string> = {
 
 /** "in 12d" / "due today" / "expired 3d ago" — the row's countdown text. */
 export function formatDaysRemaining(daysRemaining: number): string {
-  if (daysRemaining < 0) return `expired ${-daysRemaining}d ago`;
-  if (daysRemaining === 0) return "due today";
-  return `in ${daysRemaining}d`;
+  if (daysRemaining < 0) return t("expired {days}d ago", { days: -daysRemaining });
+  if (daysRemaining === 0) return t("due today");
+  return t("in {days}d", { days: daysRemaining });
 }
 
 interface ExpiryGroup {
@@ -73,9 +75,14 @@ interface ExpiryGroup {
 }
 
 /** Chip text for the summary header; the lead bucket names the org's window. */
-function severitySummaryLabel(severity: ExpirySeverity, leadDays: number): string {
-  if (severity === "upcoming") return `Within ${leadDays}d lead`;
-  return SEVERITY_LABELS[severity];
+function severitySummaryLabel(
+  severity: ExpirySeverity,
+  leadDays: number,
+  gt: ReturnType<typeof useGT>,
+  gtData: ReturnType<typeof useDataString>,
+): string {
+  if (severity === "upcoming") return gt("Within {leadDays}d lead", { leadDays });
+  return gtData(SEVERITY_LABELS[severity]);
 }
 
 function buildGroups(items: ExpiryItem[], groupBy: GroupBy, soonestFirst: boolean): ExpiryGroup[] {
@@ -130,6 +137,8 @@ function buildGroups(items: ExpiryItem[], groupBy: GroupBy, soonestFirst: boolea
  * and desktop Expiring screens; the CLI prints the same feed as text.
  */
 export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySectionProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [groupBy, setGroupBy] = useState<GroupBy>("kind");
   const [soonestFirst, setSoonestFirst] = useState(true);
 
@@ -140,31 +149,36 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
 
   return (
     <div className="flex-1 overflow-auto p-6">
-      <h1 className="text-xl font-semibold mb-1">Expiring</h1>
+      <h1 className="text-xl font-semibold mb-1">{gt("Expiring")}</h1>
       <p className="text-sm text-on-surface-muted mb-6">
-        Certificates, domains, tokens and keys approaching their deadlines, across every provider —
-        read from the state your accounts last synced.
+        {gt(
+          "Certificates, domains, tokens and keys approaching their deadlines, across every provider — read from the state your accounts last synced.",
+        )}
       </p>
 
       {error != null && data === null && (
-        <div role="alert" className="text-sm text-danger">
-          Couldn&apos;t load the expiry feed — {error}{" "}
-          {onRetry && (
-            <button type="button" onClick={onRetry} className="underline">
-              Retry
-            </button>
-          )}
-        </div>
+        <T>
+          <div role="alert" className="text-sm text-danger">
+            Couldn&apos;t load the expiry feed — <Var>{error}</Var>{" "}
+            {onRetry && (
+              <button type="button" onClick={onRetry} className="underline">
+                Retry
+              </button>
+            )}
+          </div>
+        </T>
       )}
       {data === null && error == null && (
         <p role="status" className="text-sm text-on-surface-faint">
-          Scanning synced resources…
+          {gt("Scanning synced resources…")}
         </p>
       )}
       {error != null && data !== null && (
-        <p role="alert" className="mb-4 text-xs text-danger">
-          Couldn&apos;t refresh — showing the last loaded feed. {error}
-        </p>
+        <T>
+          <p role="alert" className="mb-4 text-xs text-danger">
+            Couldn&apos;t refresh — showing the last loaded feed. <Var>{error}</Var>
+          </p>
+        </T>
       )}
 
       {data !== null && (
@@ -176,27 +190,26 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
                 className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${SEVERITY_BADGE_CLASSES[severity]}`}
               >
                 <span className="tabular-nums">{data.counts[severity]}</span>
-                {severitySummaryLabel(severity, data.leadDays)}
+                {severitySummaryLabel(severity, data.leadDays, gt, gtData)}
               </span>
             ))}
           </div>
 
           {data.items.length === 0 ? (
             <p className="text-sm text-on-surface-faint">
-              Nothing is on the clock. Deadlines appear when a plugin marks a synced field as
-              expiry-bearing — a certificate&apos;s not-after date, a domain&apos;s renewal date, a
-              token&apos;s expiration or an access key&apos;s age — so an empty list means nothing
-              tracked is due.
+              {gt(
+                "Nothing is on the clock. Deadlines appear when a plugin marks a synced field as expiry-bearing — a certificate's not-after date, a domain's renewal date, a token's expiration or an access key's age — so an empty list means nothing tracked is due.",
+              )}
             </p>
           ) : (
             <>
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div
                   role="group"
-                  aria-label="Group items by"
+                  aria-label={gt("Group items by")}
                   className="flex items-center gap-1 text-xs"
                 >
-                  <span className="text-on-surface-faint mr-1">Group by</span>
+                  <span className="text-on-surface-faint mr-1">{gt("Group by")}</span>
                   <div className="flex rounded-lg border border-border overflow-hidden">
                     {GROUP_OPTIONS.map((option) => (
                       <button
@@ -210,7 +223,7 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
                             : "text-on-surface-tertiary hover:text-on-surface-secondary"
                         }`}
                       >
-                        {option.label}
+                        {gtData(option.label)}
                       </button>
                     ))}
                   </div>
@@ -220,7 +233,7 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
                   onClick={() => setSoonestFirst((v) => !v)}
                   className="rounded-lg border border-border px-2.5 py-1 text-xs text-on-surface-tertiary hover:text-on-surface-secondary transition-colors"
                 >
-                  {soonestFirst ? "Soonest first" : "Latest first"}
+                  {soonestFirst ? gt("Soonest first") : gt("Latest first")}
                 </button>
               </div>
 
@@ -229,16 +242,19 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
                   <div key={group.key} className="flex flex-col gap-2">
                     <div className="flex items-baseline justify-between gap-3">
                       <h2 className="text-sm font-medium text-on-surface">
-                        {group.title}
+                        {gtData(group.title)}
                         {group.subtitle && (
                           <span className="ml-2 font-normal text-on-surface-tertiary">
                             {group.subtitle}
                           </span>
                         )}
                       </h2>
-                      <span className="text-xs text-on-surface-faint">
-                        {group.items.length} deadline{group.items.length === 1 ? "" : "s"}
-                      </span>
+                      <T>
+                        <span className="text-xs text-on-surface-faint">
+                          <Var>{group.items.length}</Var> deadline
+                          <Var>{group.items.length === 1 ? "" : "s"}</Var>
+                        </span>
+                      </T>
                     </div>
                     <div className="border border-border rounded-xl overflow-hidden">
                       <table className="w-full text-sm">
@@ -274,22 +290,26 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
                                 <span className="text-on-surface-faint"> · {item.accountName}</span>
                               </td>
                               <td className="px-3 py-2.5 w-full text-on-surface-secondary">
-                                {item.label}
+                                {gtData(item.label)}
                                 {item.leaseAutoDelete === true && (
                                   <span
                                     className="ml-2 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-danger"
-                                    title="This lease opted into auto-delete: the resource is deleted at expiry, after two warnings (change freezes pause deletion)."
+                                    title={gt(
+                                      "This lease opted into auto-delete: the resource is deleted at expiry, after two warnings (change freezes pause deletion).",
+                                    )}
                                   >
-                                    auto-delete
+                                    {gt("auto-delete")}
                                   </span>
                                 )}
                                 {item.basis === "age" && (
                                   <span
                                     className="text-xs text-on-surface-faint"
-                                    title="Deadline derived from a creation or rotation date plus an age budget, not a provider expiry date."
+                                    title={gt(
+                                      "Deadline derived from a creation or rotation date plus an age budget, not a provider expiry date.",
+                                    )}
                                   >
                                     {" "}
-                                    · age budget
+                                    · {gt("age budget")}
                                   </span>
                                 )}
                               </td>
@@ -305,7 +325,7 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
                                 <span
                                   className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${SEVERITY_BADGE_CLASSES[item.severity]}`}
                                 >
-                                  {SEVERITY_LABELS[item.severity]}
+                                  {gtData(SEVERITY_LABELS[item.severity])}
                                 </span>
                               </td>
                             </tr>
@@ -317,11 +337,14 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
                 ))}
               </div>
 
-              <p className="mt-4 text-xs text-on-surface-faint">
-                Deadlines come from fields your plugins mark as expiry-bearing on already-synced
-                resources — nothing here contacts a provider. &ldquo;Within {data.leadDays}d
-                lead&rdquo; follows the organization&apos;s expiry-alert lead time.
-              </p>
+              <T>
+                <p className="mt-4 text-xs text-on-surface-faint">
+                  Deadlines come from fields your plugins mark as expiry-bearing on already-synced
+                  resources — nothing here contacts a provider. &ldquo;Within{" "}
+                  <Var>{data.leadDays}</Var>d lead&rdquo; follows the organization&apos;s
+                  expiry-alert lead time.
+                </p>
+              </T>
             </>
           )}
         </>
