@@ -10,7 +10,7 @@ So Infrawrench derives it. Node capacity, times what that node costs per hour, t
 
 > **These are derived allocations, not billed amounts.** Nobody invoices you per namespace. Everything on this page is the node bill, re-cut. Do not add a Kubernetes account's numbers to its parent cloud account's numbers — that double-counts the same money.
 
-<insert [Kubernetes peer pane on a DOKS cluster showing the Namespaces group ordered by cost, each pill's subtitle reading "Active · ~$4.20/day · 18% CPU"] here>
+![Kubernetes peer pane on a DOKS cluster showing the Namespaces group ordered by cost, with each workload pill's subtitle reading "payments · 2/2 ready · ~$1.71/day · 18% mem"](https://agent-assets.infrawrench.com/docs-screenshots/features/kubernetes-costs/peer-pane-costs.png)
 
 ## What it needs
 
@@ -82,7 +82,7 @@ Everything here is optional and independent. Fill in only the node prices and yo
 
 **If a price is not available, none is invented.** You get capacity, volume sizes, load-balancer counts, requests, and (with metrics-server) efficiency, and the pane explains what to do about the missing money. A fabricated number is worse than no number, because it gets believed.
 
-<insert [Kubernetes peer pane showing the amber "Showing capacity and efficiency without cost" banner above the workload groups, with the three suggestions listed] here>
+![Kubernetes peer pane showing the amber "Showing capacity and efficiency without cost" banner above the workload groups, with the suggestions listed](https://agent-assets.infrawrench.com/docs-screenshots/features/kubernetes-costs/peer-pane-unpriced.png)
 
 ## How attribution works
 
@@ -116,7 +116,7 @@ Neither is spread across the namespaces. Doing that would overcharge every tenan
 
 Two more buckets join them for the same reason: the **control-plane fee** and **unattached volumes**. All four sit at the bottom of the cluster's cost table, labelled as capacity rather than as anyone's spend.
 
-<insert [Cluster detail view showing the "Cost by namespace" table with per-namespace rows and the four distinct bucket rows at the bottom — "(idle · unallocated capacity)", "(system reserved · kubelet)", "(control plane · managed cluster fee)" and "(unattached volumes · mounted by nothing)"] here>
+![Cluster detail view showing the "Cost by namespace" table with per-namespace rows and the four distinct bucket rows at the bottom — "(idle · unallocated capacity)", "(system reserved · kubelet)", "(control plane · managed cluster fee)" and "(unattached volumes · mounted by nothing)"](https://agent-assets.infrawrench.com/docs-screenshots/features/kubernetes-costs/cost-by-namespace.png)
 
 ### Efficiency is used ÷ requested
 
@@ -173,7 +173,7 @@ The Kubernetes API exposes no per-workload byte counters. `metrics.k8s.io` carri
 
 Per-workload egress therefore needs a flow-log source outside the cluster API — a CNI that records it (Cilium's Hubble, Calico), or the cloud's own VPC flow logs. Until one of those is wired in, Infrawrench reports **no** egress figure rather than dividing the cluster's network bill by pod count, or by CPU share, or by any other proxy that would look precise and be wrong.
 
-<insert [Cluster detail view "What the cluster costs" section showing the per-component breakdown — Nodes, Control plane, Persistent volumes, Unattached volumes, Load balancers, Total] here>
+![Cluster detail view "What the cluster costs" section showing the per-component breakdown — Nodes, Control plane, Persistent volumes, Unattached volumes, Load balancers, Total](https://agent-assets.infrawrench.com/docs-screenshots/features/kubernetes-costs/what-the-cluster-costs.png)
 
 ## The efficiency report
 
@@ -181,7 +181,7 @@ Efficiency used to be a percentage on a pill. It is now a report you can open, s
 
 It shows, per namespace and per workload: what was requested, what is actually used, the CPU and memory ratios, **what the unused portion costs**, and the total attributed cost. Worst offenders first.
 
-<insert [Cluster Efficiency tab showing the summary key-values above the "By workload — worst first" table, with the top row's wasted-per-day figure highlighted and a row further down reading "unknown"] here>
+![Cluster Efficiency tab showing the summary key-values above the "By workload — worst first" table, with the worst workload's wasted-per-day figure at the top and a row further down reading "unknown"](https://agent-assets.infrawrench.com/docs-screenshots/features/kubernetes-costs/efficiency-tab.png)
 
 **The money is the point.** The percentage is the diagnosis; the money is the argument. Nobody schedules an afternoon of work off a ratio, so the ordering is by cost of waste, not by percentage — a workload at 4% efficiency on a tiny request matters less than one at 40% on half a node, and sorting by ratio would put them the wrong way round.
 

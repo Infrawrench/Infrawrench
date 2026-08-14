@@ -7,7 +7,7 @@ description: Manage your name, password, two-factor authentication, and active s
 
 Your identity is managed by WorkOS, the same service that handles sign-in. infrawrench never stores your password.
 
-<insert [Settings → General showing the Profile, Password, Two-factor authentication, and Active sessions cards] here>
+![Settings → General showing the Profile, Password, Two-factor authentication, and Active sessions cards](https://agent-assets.infrawrench.com/docs-screenshots/features/account-settings/general-cards.png)
 
 ## Confirming it's you
 
@@ -53,7 +53,7 @@ Add a time-based one-time password (TOTP) from an authenticator app as a second 
 2. Scan the QR code with your authenticator app, or copy the setup key and enter it manually.
 3. Type the six-digit code the app shows and press **Turn on two-factor**.
 
-<insert [Add authenticator app dialog showing the QR code, manual setup key, and six-digit code field] here>
+![Add authenticator app dialog showing the QR code, manual setup key, and six-digit code field](https://agent-assets.infrawrench.com/docs-screenshots/features/account-settings/add-authenticator-app.png)
 
 The factor is only active once you've entered a valid code — closing the dialog before that discards it. You can enrol more than one app (for example a phone and a desktop client) so losing one device doesn't lock you out.
 
@@ -84,7 +84,7 @@ That last case is the only thing standing between one person leaving and a team 
 
 Your entries in an organization's [audit log](../team-and-billing/audit-log.md) stay, since they're that organization's record rather than yours — they just stop showing a name. The deletion itself is recorded in every organization you were a member of.
 
-<insert [Settings → General Delete account card showing the "you are the only member of Acme, so it will be deleted too" warning above the confirmation field] here>
+![Settings → General Delete account card showing the "you are the only member of this organization, so it will be deleted too" warning above the Delete account button](https://agent-assets.infrawrench.com/docs-screenshots/features/account-settings/delete-account-card.png)
 
 ## On mobile
 

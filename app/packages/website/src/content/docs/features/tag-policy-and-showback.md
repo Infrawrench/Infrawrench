@@ -16,7 +16,7 @@ The policy lives in **Settings → Tag Policy**. Anyone with `org:settings:write
 - **Allowed values** (optional, per key) — e.g. `env` must be one of `prod`, `staging`, `dev`. Values are compared exactly.
 - **Enforce at create time** — off by default; see [enforcement](#enforcement-at-create-time).
 
-<insert [Settings → Tag Policy page with two required tags (owner with no allowed values, env with prod/staging/dev), the "Enforce at create time" checkbox ticked, and the per-account compliance table below] here>
+![Settings → Tag Policy page with two required tags (owner with no allowed values, env with prod/staging/dev), the "Enforce at create time" checkbox ticked, and the per-account compliance table below](https://agent-assets.infrawrench.com/docs-screenshots/features/tag-policy-and-showback/tag-policy-settings.png)
 
 ## How a resource "carries" a tag
 
@@ -48,7 +48,7 @@ Every block and every override is recorded in the [audit log](../team-and-billin
 
 The payoff for the policy is on the money side: the **Tags & allocation** section of the Costs panel reports how much of the org's spend (from provider billing data) sits on rows missing at least one required tag key — overall, per key, and as a top list of the (account, service) buckets responsible. That's the spend nobody can allocate; the top list is the shortest path to fixing it.
 
-<insert [Costs panel "Tags & allocation" section showing the untagged spend card with "$1,234 of $9,876 missing a required tag", the per-account compliance bars, and the showback list below] here>
+![Costs panel "Tags & allocation" section showing the untagged spend card with "$1,234 of $9,876 missing a required tag", the per-account compliance bars, and the showback list below](https://agent-assets.infrawrench.com/docs-screenshots/features/tag-policy-and-showback/tags-allocation-section.png)
 
 ## Cost centres & showback
 
@@ -65,7 +65,7 @@ Rules evaluate top-down by priority and the first match wins, so put specific ru
 
 Cost centres **nest**. A division holds teams, a team holds products, and "what does Engineering cost" is answered by the whole subtree rather than by one bucket. The tree is built in **Settings → Cost Centres** (create, rename, move, delete) and is at most **four levels** deep.
 
-<insert [Settings → Cost Centres page showing a three-level tree — Engineering containing Platform and Data, Platform containing Search — with the move dropdown open on one row and the deeper targets greyed out] here>
+![Settings → Cost Centres page showing a three-level tree — Engineering containing Platform and Data, Platform containing Search — with the move dropdown open on one row and the deeper targets greyed out](https://agent-assets.infrawrench.com/docs-screenshots/features/tag-policy-and-showback/cost-centres-move.png)
 
 Every centre reports **two** numbers on the Costs panel and in the API:
 
@@ -96,7 +96,7 @@ Deleting a centre **never deletes its children and never touches spend history**
 
 The confirmation dialog spells out both, along with how many children and rules are affected.
 
-<insert [Costs panel "Tags & allocation" section showing the showback tree indented two levels, with a parent row displaying its subtree total and a smaller "own" figure beneath it, and the italic Unallocated row last] here>
+![Costs panel "Tags & allocation" section showing the showback tree indented two levels, with a parent row displaying its subtree total and a smaller "own" figure beneath it, and the italic Unallocated row last](https://agent-assets.infrawrench.com/docs-screenshots/features/tag-policy-and-showback/showback-tree.png)
 
 ## CLI
 

@@ -8,9 +8,9 @@ sidebar_order: 12
 
 Infrawrench ships an in-app **AI chat**, running on Google Gemini or Anthropic Claude — your pick per conversation. The model has access to the same tools your UI uses — listing resources, inspecting outputs, running SQL queries, executing Docker commands, rotating secrets, attaching disks, applying manifests — and routes every destructive action through a UI approval step.
 
-<insert [Chat page with a streamed assistant reply and a pending-approval card for a delete-resource tool use] here>
+![Chat page with a streamed assistant reply and a pending-approval card for a delete-resource tool use](https://agent-assets.infrawrench.com/docs-screenshots/features/ai-chat/pending-delete-approval.png)
 
-<insert [Sidebar Chat section showing several recent chat sessions with the + new-chat button] here>
+![Sidebar Chat section showing several recent chat sessions with the + new-chat button](https://agent-assets.infrawrench.com/docs-screenshots/features/ai-chat/sidebar-chat-sessions.png)
 
 <insert [Desktop app with a chat conversation open as a workspace tab, cloud org selected in the org switcher] here>
 
@@ -67,7 +67,7 @@ Searches cost a small amount per query on top of tokens, and show up in your [ch
 
 If the deployment has no search backend or no egress proxy configured, the matching tool simply isn't offered and the agent will tell you what it would have looked up. Self-hosters: see `INFRAWRENCH_CHAT_SEARCH_BACKEND` and `WORKFLOW_FETCH_PROXY_URL` in `.env.example`.
 
-<insert [A chat turn where the agent used web_search: the tool card, and the reply below it citing linked sources] here>
+![A chat turn where the agent used web_search: the tool card, and the reply below it citing linked sources](https://agent-assets.infrawrench.com/docs-screenshots/features/ai-chat/web-search-turn.png)
 
 ## Asking you a question
 
@@ -80,7 +80,7 @@ Each question is one of:
 
 The agent can mix both in one form. Submit sends every answer together and the conversation resumes. This is not the destructive-action approval card — deletes, exec, and the rest still go through Approve / Reject.
 
-<insert [AI chat conversation paused on an ask-question card with a region selection, an Other text field, and a notes textarea] here>
+![AI chat conversation paused on an ask-question card with a region selection, an Other text field, and a notes textarea](https://agent-assets.infrawrench.com/docs-screenshots/features/ai-chat/ask-question-card.png)
 
 ## Destructive-action approval
 
@@ -96,7 +96,7 @@ When the agent calls `write_workflow_secret`, the conversation pauses on a passw
 
 Only a signed-in human with `secrets:write` can submit the field. The permission is checked when the agent requests it and again when you submit, so a role change cannot leave a stale prompt with more authority than you have. The agent receives only the secret id/name and `stored: true`, then can assign that id to a workflow.
 
-<insert [AI chat conversation paused on the secure workflow-secret password field, showing the requested title and secret name] here>
+![AI chat conversation paused on the secure workflow-secret password field, showing the requested title and secret name](https://agent-assets.infrawrench.com/docs-screenshots/features/ai-chat/workflow-secret-prompt.png)
 
 ## Waiting on slow operations
 
@@ -104,7 +104,7 @@ The chat agent has a `sleep` tool (chat-only — the [MCP server](./mcp.md) does
 
 API clients see pending actions in the conversation fetch response and POST `{action: "approve" | "reject"}` to `/api/org/{orgId}/chat/conversations/{id}/pending/{pendingId}` to drive the same flow.
 
-<insert [Pending-action card with Approve/Reject buttons and the JSON tool input expanded] here>
+![Pending-action card with Approve/Reject buttons and the JSON tool input expanded](https://agent-assets.infrawrench.com/docs-screenshots/features/ai-chat/pending-action-json.png)
 
 ## Audit
 

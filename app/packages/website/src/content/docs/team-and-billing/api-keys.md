@@ -17,7 +17,7 @@ API keys let scripts and CI jobs list resources, create them, and read outputs p
 
 The token is shown once. Copy it now; you cannot see it again.
 
-<insert [API key create dialog with copy-once warning] here>
+![API key create dialog with copy-once warning](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/api-keys/create-copy-once.png)
 
 ## Using a key
 
