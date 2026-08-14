@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { useGT } from "gt-react";
+import { useDataString } from "../i18n/data-strings.js";
 import { groupBy, formatErrorMessage } from "../utils.js";
 import { toast } from "./Toast/useToast.js";
 
@@ -62,6 +64,8 @@ export function SpotlightSearch({
   groupKey = (r) => r.pluginId,
   footer,
 }: SpotlightSearchProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SpotlightResult[]>([]);
   const [loading, setLoading] = useState(!!loadResults || !!externalLoading);
@@ -97,7 +101,8 @@ export function SpotlightSearch({
         }
       })
       .catch((err) => {
-        if (!cancelled) toast.error(`Search failed: ${formatErrorMessage(err)}`);
+        if (!cancelled)
+          toast.error(gt("Search failed: {message}", { message: formatErrorMessage(err) }));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -105,7 +110,7 @@ export function SpotlightSearch({
     return () => {
       cancelled = true;
     };
-  }, [query, loadResults]);
+  }, [query, loadResults, gt]);
 
   // Client-side filtering (desktop pattern)
   useEffect(() => {
@@ -163,7 +168,7 @@ export function SpotlightSearch({
   return (
     <dialog
       ref={dialogRef}
-      aria-label="Search"
+      aria-label={gt("Search")}
       onCancel={(e) => {
         e.preventDefault();
         onClose();
@@ -183,12 +188,12 @@ export function SpotlightSearch({
           onKeyDown={handleKeyDown}
           placeholder={
             mode === "navigate"
-              ? "Jump to resource\u2026"
+              ? gt("Jump to resource…")
               : mode === "drop"
-                ? "Search resources to connect\u2026"
-                : "Search resources to add\u2026"
+                ? gt("Search resources to connect…")
+                : gt("Search resources to add…")
           }
-          aria-label="Search"
+          aria-label={gt("Search")}
           role="combobox"
           aria-expanded={results.length > 0}
           aria-controls="spotlight-results"
@@ -200,12 +205,12 @@ export function SpotlightSearch({
         />
         {loading && results.length === 0 && (
           <span className="text-xs text-on-surface-faint animate-pulse flex-shrink-0">
-            {"Loading\u2026"}
+            {gt("Loading…")}
           </span>
         )}
         {loading && results.length > 0 && (
           <span className="w-3 h-3 border-2 border-on-surface-faint/30 border-t-on-surface-faint rounded-full animate-spin flex-shrink-0">
-            <span className="sr-only">Loading</span>
+            <span className="sr-only">{gt("Loading")}</span>
           </span>
         )}
         <kbd className="text-xs text-on-surface-faint flex-shrink-0">esc</kbd>
@@ -214,10 +219,10 @@ export function SpotlightSearch({
       {/* Screen-reader announcement of the result count */}
       <div role="status" aria-live="polite" className="sr-only">
         {loading
-          ? "Loading results"
+          ? gt("Loading results")
           : results.length === 1
-            ? "1 result"
-            : `${results.length} results`}
+            ? gt("1 result")
+            : gt("{count} results", { count: results.length })}
       </div>
 
       {/*
@@ -238,14 +243,14 @@ export function SpotlightSearch({
       */}
       {results.length === 0 && !loading && (
         <div className="flex flex-1 items-center justify-center py-12 text-sm text-on-surface-faint">
-          {query ? `No results for \u201c${query}\u201d` : "No resources found"}
+          {query ? gt("No results for “{query}”", { query }) : gt("No resources found")}
         </div>
       )}
       <div
         ref={listRef}
         id="spotlight-results"
         role="listbox"
-        aria-label="Results"
+        aria-label={gt("Results")}
         className={results.length === 0 ? "hidden" : "overflow-y-auto flex-1"}
       >
         {Object.entries(grouped).map(([key, items]) => {
@@ -267,7 +272,7 @@ export function SpotlightSearch({
                   />
                 ) : null}
                 <span className="text-xs font-medium text-on-surface-muted">
-                  {first.pluginDisplayName}
+                  {gtData(first.pluginDisplayName)}
                 </span>
                 {first.accountName && (
                   <span className="text-xs text-on-surface-faint">
@@ -306,15 +311,15 @@ export function SpotlightSearch({
                     <span
                       className={`text-xs flex-shrink-0 ${isSelected ? "text-accent" : "text-on-surface-faint"}`}
                     >
-                      {result.resourceTypeLabel}
+                      {gtData(result.resourceTypeLabel)}
                     </span>
                     {isSelected && (
                       <kbd className="text-xs text-accent flex-shrink-0">
                         {mode === "navigate"
-                          ? "\u21b5 open"
+                          ? gt("↵ open")
                           : mode === "drop"
-                            ? "\u21b5 connect"
-                            : "\u21b5 add"}
+                            ? gt("↵ connect")
+                            : gt("↵ add")}
                       </kbd>
                     )}
                   </div>
@@ -327,15 +332,15 @@ export function SpotlightSearch({
 
       {results.length > 0 && (
         <div className="px-4 py-2 border-t border-border flex items-center gap-4 text-xs text-on-surface-faint">
-          <span>&uarr;&darr; navigate</span>
+          <span>{gt("↑↓ navigate")}</span>
           <span>
             {mode === "navigate"
-              ? "\u21b5 open"
+              ? gt("↵ open")
               : mode === "drop"
-                ? "\u21b5 connect to current resource"
-                : "\u21b5 pin to dashboard"}
+                ? gt("↵ connect to current resource")
+                : gt("↵ pin to dashboard")}
           </span>
-          <span>esc close</span>
+          <span>{gt("esc close")}</span>
         </div>
       )}
 

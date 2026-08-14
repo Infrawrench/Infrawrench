@@ -100,6 +100,7 @@
     "@infrawrench/client-core": "workspace:*",
     "@infrawrench/plugin-base": "workspace:*",
     "@monaco-editor/react": "^4.7.0",
+    "gt-react": "^11.1.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",

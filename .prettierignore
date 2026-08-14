@@ -23,6 +23,12 @@ routeTree.gen.ts
 app/packages/web/openapi.json
 app/packages/web/src/db/migrations/
 
+# Translation catalogs written wholesale by the gt CLI (`pnpm translate`),
+# keyed by content hashes. Formatting them guarantees a spurious diff on the
+# next regeneration.
+app/packages/web/src/_gt/
+app/packages/desktop/src/_gt/
+
 # Terraform Registry documentation, written wholesale by `tfplugindocs generate`
 # from the provider's schemas. Formatting it would put Prettier and the
 # generator in a loop: format:check passes, the CI drift check then fails

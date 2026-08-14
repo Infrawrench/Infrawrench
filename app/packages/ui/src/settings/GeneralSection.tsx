@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
+import { T, useGT } from "gt-react";
 import { ConfirmDeleteModal } from "../components/ConfirmDeleteModal.js";
+import { LanguageCard } from "./LanguageCard.js";
 import { Modal } from "../components/Modal.js";
 import {
   describeUserAgent,
@@ -15,6 +17,7 @@ import { useSettingsHost, type SettingsApi } from "./host.js";
 import { CARD, INPUT, LABEL, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./styles.js";
 
 export function GeneralSection() {
+  const gt = useGT();
   const { orgId, api } = useSettingsHost();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -23,32 +26,38 @@ export function GeneralSection() {
     try {
       setProfile(await api.get<Profile>("/api/profile"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load your profile");
+      setError(e instanceof Error ? e.message : gt("Failed to load your profile"));
     }
-  }, [api]);
+  }, [api, gt]);
 
   useEffect(() => {
     void loadProfile();
   }, [loadProfile]);
 
   if (error) return <p className="text-sm text-danger">{error}</p>;
-  if (!profile) return <div className="text-on-surface-muted text-sm animate-pulse">Loading…</div>;
+  if (!profile)
+    return <div className="text-on-surface-muted text-sm animate-pulse">{gt("Loading…")}</div>;
 
   return (
     <div className="max-w-3xl">
-      <h1 className="text-xl font-semibold mb-1">General</h1>
-      <p className="text-sm text-on-surface-muted mb-6">
-        Your personal account. These settings follow you across every organization you belong to.
-      </p>
+      <h1 className="text-xl font-semibold mb-1">{gt("General")}</h1>
+      <T>
+        <p className="text-sm text-on-surface-muted mb-6">
+          Your personal account. These settings follow you across every organization you belong to.
+        </p>
+      </T>
 
       <div className="space-y-4">
         <ProfileCard profile={profile} onSaved={loadProfile} />
+        <LanguageCard />
         <PasswordCard />
         <TwoFactorCard />
         <SessionsCard />
         <div className={CARD}>
-          <h2 className="text-sm font-semibold text-on-surface-secondary mb-3">Organization</h2>
-          <span className={LABEL}>Organization ID</span>
+          <h2 className="text-sm font-semibold text-on-surface-secondary mb-3">
+            {gt("Organization")}
+          </h2>
+          <span className={LABEL}>{gt("Organization ID")}</span>
           <p className="text-sm text-on-surface-secondary font-mono">{orgId}</p>
         </div>
         <DeleteAccountCard email={profile.email} />

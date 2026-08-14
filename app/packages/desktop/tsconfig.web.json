@@ -6,6 +6,7 @@
     "types": ["node"],
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
+    "resolveJsonModule": true,
     "outDir": "dist",
     "rootDir": ".",
     "paths": {

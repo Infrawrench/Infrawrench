@@ -3391,3 +3391,37 @@ provider's message — a server error is not evidence a scope is granted or miss
 text permission-group list + the documented
 `dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=…` deep link (same mechanism as the
 manifest's create-token helpLink).
+
+## UI translations (General Translation / gt-react)
+
+The web and desktop UIs are internationalized with [gt-react](https://generaltranslation.com/docs/react) (General Translation). English is the source language; the shipped locales are es, fr, de, ja and zh. Adoption is incremental: converted so far are the shared shell components in `ui` (GlobalTabBar, SpotlightSearch, ConfirmDeleteModal, OrgSwitcher, ErrorNotice), the Settings → General header/organization card plus the new LanguageCard, and both apps' global error toasts. Everything else renders its English source text until it is converted — an untranslated string is never an error, just English.
+
+### How it is wired
+
+- **Boot**: `src/index.ts` in web and desktop is the entry (`index.html` points at it, not `main.tsx`). It runs `initializeGTSPA()` and only then dynamically imports `./main` — gt-react's SPA mode has **no provider component**; hooks read a singleton that must be initialized before the first render. The init is wrapped in an async IIFE because the production browser targets predate top-level await.
+- **Locale persistence** is `localStorage["infrawrench-locale"]` via `getStoredLocale`/`setStoredLocale` from `@infrawrench/ui` (`ui/src/i18n/locale-preference.ts`), passed to `initializeGTSPA` as the first locale candidate. Do **not** rely on gt-react's own locale cookie: the packaged desktop renderer runs on a `file://` origin where Chromium drops cookie writes. The picker is `ui/src/settings/LanguageCard.tsx` (Settings → General on both platforms); it writes localStorage first, then `setLocale()`, which reloads the window.
+- **Marking strings**: `const gt = useGT()` + `gt("Plain string")` / `gt("With {value}", { value })` for strings and attributes; `<T>…</T>` around translatable JSX, with dynamic children wrapped in `<Var>`. `gt` is a hook product — include it in effect dep arrays. Outside components (module-scope event handlers like the unhandledrejection toast), `import { t } from "gt-react"` and call `t("…")` at event time, after init.
+- **Catalogs**: per app — `gt.config.json` + `src/_gt/<locale>.json` + `src/loadTranslations.ts` in both `web` and `desktop`. Both configs' `src` globs also cover `../ui/src`, so shared-component strings are extracted into **both** apps' catalogs (they are content-hash keyed; duplication is by design). The `_gt` files are CLI-owned and in `.prettierignore`.
+- **Compiler plugin**: `@generaltranslation/compiler`'s vite plugin is wired into `web/vite.config.ts` and the renderer section of `desktop/electron.vite.config.ts`, wrapped in a local `scopedGtCompiler()`. The wrapper matters, twice over: (1) the plugin's own include filter is extension-only and its build checks hard-fail on third-party dists (@tanstack/react-router), so it is scoped to the app's `src`; (2) `devHotReload` is forced off for builds because it injects top-level `await` into every module that translates strings. `@infrawrench/ui` is consumed as built dist and is deliberately _not_ compiled — its `<T>`/`useGT` calls resolve through gt-react's runtime hashing, which produces the same content hashes the CLI computes from `ui/src`.
+- **Tests**: `ui/vitest.setup.ts` calls `initializeGTSPA` (English-only, offline) so converted components render source strings; `ui/vitest.config.ts` sets `resolve.conditions: ["browser"]` because gt-react's default export condition is a server build whose `initializeGTSPA` refuses to run.
+
+### Plugin (data) strings
+
+Plugin metadata — display names, resource type labels, field/output labels, descriptions — is data consumed by the server, CLI and API as well as the UI, so the plugin packages are **never marked up for translation**. The pipeline instead has two halves that meet on gt's content hash (extraction `hashSource({source, dataFormat: "ICU"})` === runtime `hashMessage` — pinned by `ui/src/__tests__/i18n/plugin-data-strings.test.tsx`, which fails loudly if a gt upgrade changes either side's scheme):
+
+- `app/packages/web/scripts/generate-plugin-strings.ts` walks `BUNDLED_PLUGINS` (server-core's registry) and writes `ui/src/i18n/plugin-strings.gen.ts` — ~3.2k deduped `msg("…")` calls that exist purely for CLI extraction (the module is never imported at runtime; it's a knip entry for that reason). Strings containing `{}` or `<>` are skipped: they read as ICU variables/tags and could never round-trip. Regenerate + commit whenever plugin metadata changes; `pnpm --filter @infrawrench/web translate` runs it automatically first.
+- Render sites translate the _data value_ with `useDataString()` (`ui/src/i18n/data-strings.ts`, exported from `@infrawrench/ui`) — a wrapper over `useGT` under a name the gt CLI does not scan. This matters: the CLI **hard-errors** on non-literal arguments to the names it recognizes (`useGT`'s product, `msg`, `t`), so never call those with a variable in extracted sources — use `useDataString` for anything data-driven. SpotlightSearch's plugin name + resource type label are the reference conversions. An unknown value renders as-is.
+
+The extraction globs in both `gt.config.json`s exclude `**/*.test.*` and `__tests__/` for the same reason — test fixtures may call `msg()`/`gt()` dynamically.
+
+### Workflows
+
+- **Translating new strings**: `pnpm --filter @infrawrench/web translate` (which regenerates the plugin-strings manifest first) and `…/desktop translate` run `gt translate`, which rewrites `src/_gt/*.json`; commit the result. Needs `GT_API_KEY` (gtx-api-…) + `GT_PROJECT_ID` (`npx gt auth`). Builds are otherwise fully offline — nothing breaks if the catalogs lag behind the source strings. Note the catalog is ~3.3k strings, most of it plugin metadata — the first real `gt translate` run prices accordingly.
+- **Live dev translation** (optional): set `VITE_GT_PROJECT_ID` + `VITE_GT_DEV_API_KEY` (gtx-dev-…, never a production key) and untranslated strings are machine-translated in the browser during `pnpm dev`. Documented in `web/.env.example`; these are client build-time vars, deliberately **not** in the terraform `app_env` map.
+- **Adding a locale**: add it to both `gt.config.json` files, create empty `src/_gt/<locale>.json` stubs (`{}`) in both apps, run translate, and update the docs page (`website/src/content/docs/features/interface-language.md`).
+
+### Deliberate omissions
+
+- **Mobile is not translated.** `gt-react-native` is experimental, ships a native module, and does not run in Expo Go; revisit when it stabilizes. When it lands, the catalogs/config pattern should mirror web/desktop.
+- The website (Astro) is untouched — if ever localized it should use Astro's native i18n routing, separately from gt-react.
+- Locale-aware date/number formatting is not switched over: the many existing `toLocaleString(undefined, …)` call sites still format in the _browser_ locale, not the chosen UI language.

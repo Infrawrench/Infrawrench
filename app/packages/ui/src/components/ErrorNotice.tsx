@@ -1,15 +1,19 @@
-function getActionLabel(url: string): string {
+import { useGT } from "gt-react";
+
+type TranslateFn = (message: string, variables?: Record<string, string>) => string;
+
+function getActionLabel(gt: TranslateFn, url: string): string {
   try {
     const { hostname } = new URL(url);
     if (
       hostname.includes("console.developers.google.com") ||
       hostname.includes("console.cloud.google.com")
     ) {
-      return "Open Google Cloud Console";
+      return gt("Open Google Cloud Console");
     }
-    return `Open ${hostname}`;
+    return gt("Open {hostname}", { hostname });
   } catch {
-    return "Open link";
+    return gt("Open link");
   }
 }
 
@@ -44,6 +48,7 @@ export function ErrorNotice({
   textClassName = "",
   onOpenLink,
 }: ErrorNoticeProps) {
+  const gt = useGT();
   const { lines, links } = parseErrorContent(message);
 
   function openLink(url: string) {
@@ -70,7 +75,7 @@ export function ErrorNotice({
               onClick={() => openLink(link)}
               className="inline-flex items-center rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-danger hover:bg-red-500/20 transition-colors"
             >
-              {getActionLabel(link)}
+              {getActionLabel(gt, link)}
             </button>
           ))}
         </div>

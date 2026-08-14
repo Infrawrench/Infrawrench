@@ -15,7 +15,7 @@ describe("OrgSwitcher", () => {
 
   it("shows a loading label when no active org and loading", () => {
     render(<OrgSwitcher orgs={[]} activeOrgId={null} onSwitch={vi.fn()} loading />);
-    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
   });
 
   it("shows Select organization when nothing is active and not loading", () => {

@@ -36,3 +36,6 @@ allowBuilds:
   # up with "SyntaxError: Invalid or unexpected token". The JS shim +
   # optional @esbuild/* platform packages work fine without postinstall.
   esbuild: false
+  # The gt CLI pulls this in for parsing Python sources, which this repo never
+  # feeds it — TS/TSX parsing doesn't touch it, so skip the native build.
+  tree-sitter-python: false
