@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { T, Var, useGT } from "gt-react";
 import type { MetricSeries } from "@infrawrench/plugin-base";
-import { Modal, formatErrorMessage } from "@infrawrench/ui";
+import { Modal, formatErrorMessage, useDataString } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getPlugin } from "../plugins/loader";
 import { getDb } from "../db/client";
@@ -31,6 +32,8 @@ export function MetricPingModal({
   resourceDisplayName,
   onClose,
 }: MetricPingModalProps) {
+  const gt = useGT();
+  const gtData = useDataString();
   const [series, setSeries] = useState<MetricSeries[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -65,11 +68,11 @@ export function MetricPingModal({
           accountId,
         });
         const loaded = await getPlugin(pluginId);
-        if (!loaded) throw new Error(`Plugin "${pluginId}" not loaded`);
+        if (!loaded) throw new Error(gt('Plugin "{pluginId}" not loaded', { pluginId }));
         const services = buildPluginHostServices(loaded.plugin.manifest, credentials);
         const client = loaded.plugin.createClient(credentials, services);
         if (!client.fetchMetricSeries) {
-          throw new Error("This plugin does not expose metric series");
+          throw new Error(gt("This plugin does not expose metric series"));
         }
         const result = await client.fetchMetricSeries(resourceTypeId, resourceId, accountId);
         if (cancelled) return;
@@ -87,26 +90,26 @@ export function MetricPingModal({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accountId, pluginId, resourceId, resourceTypeId]);
+  }, [accountId, pluginId, resourceId, resourceTypeId, gt]);
 
   async function handleSave() {
     setError(null);
     if (!selectedLabel) {
-      setError("Pick a metric");
+      setError(gt("Pick a metric"));
       return;
     }
     const min = minStr === "" ? null : Number(minStr);
     const max = maxStr === "" ? null : Number(maxStr);
     if (min === null && max === null) {
-      setError("Set at least one of min or max");
+      setError(gt("Set at least one of min or max"));
       return;
     }
     if (min !== null && Number.isNaN(min)) {
-      setError("Min must be a number");
+      setError(gt("Min must be a number"));
       return;
     }
     if (max !== null && Number.isNaN(max)) {
-      setError("Max must be a number");
+      setError(gt("Max must be a number"));
       return;
     }
     setSaving(true);
@@ -149,14 +152,17 @@ export function MetricPingModal({
   const latestPoint = selected?.points.at(-1);
 
   return (
-    <Modal onClose={onClose} ariaLabel={`Ping when out of range: ${resourceDisplayName}`}>
+    <Modal
+      onClose={onClose}
+      ariaLabel={gt("Ping when out of range: {name}", { name: resourceDisplayName })}
+    >
       <div className="bg-surface-overlay border border-border rounded-xl shadow-2xl p-5 w-[28rem] max-w-[90vw]">
         <h2 className="text-sm font-semibold text-on-surface mb-3">
-          Ping when out of range: {resourceDisplayName}
+          {gt("Ping when out of range: {name}", { name: resourceDisplayName })}
         </h2>
         {existing.length > 0 && (
           <div className="flex flex-col gap-1 mb-3">
-            <span className="text-xs text-on-surface-muted">Active pings</span>
+            <span className="text-xs text-on-surface-muted">{gt("Active pings")}</span>
             <ul className="flex flex-col gap-1">
               {existing.map((p) => {
                 const range =
@@ -178,7 +184,7 @@ export function MetricPingModal({
                       onClick={() => void handleRemove(p.id)}
                       className="text-xs text-danger hover:text-danger-strong px-2 py-0.5 rounded hover:bg-surface-overlay"
                     >
-                      Remove
+                      {gt("Remove")}
                     </button>
                   </li>
                 );
@@ -186,17 +192,19 @@ export function MetricPingModal({
             </ul>
           </div>
         )}
-        {loading && <div className="text-sm text-on-surface-muted px-1 py-2">Loading metrics…</div>}
+        {loading && (
+          <div className="text-sm text-on-surface-muted px-1 py-2">{gt("Loading metrics…")}</div>
+        )}
         {loadError && <div className="text-sm text-danger px-1 py-2">{loadError}</div>}
         {!loading && !loadError && series.length === 0 && (
           <div className="text-sm text-on-surface-muted px-1 py-2">
-            No metrics available for this resource.
+            {gt("No metrics available for this resource.")}
           </div>
         )}
         {!loading && !loadError && series.length > 0 && (
           <div className="flex flex-col gap-3">
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-on-surface-muted">Metric</span>
+              <span className="text-xs text-on-surface-muted">{gt("Metric")}</span>
               <select
                 value={selectedLabel}
                 onChange={(e) => setSelectedLabel(e.target.value)}
@@ -204,39 +212,41 @@ export function MetricPingModal({
               >
                 {series.map((s) => (
                   <option key={s.label} value={s.label}>
-                    {s.label}
-                    {s.unit ? ` (${s.unit})` : ""}
+                    {gtData(s.label)}
+                    {s.unit ? ` (${gtData(s.unit)})` : ""}
                   </option>
                 ))}
               </select>
             </label>
             {latestPoint && (
-              <div className="text-xs text-on-surface-faint">
-                Latest value: {latestPoint.value}
-                {selected?.unit ? ` ${selected.unit}` : ""}
-              </div>
+              <T>
+                <div className="text-xs text-on-surface-faint">
+                  Latest value: <Var>{latestPoint.value}</Var>
+                  <Var>{selected?.unit ? ` ${gtData(selected.unit)}` : ""}</Var>
+                </div>
+              </T>
             )}
             <div className="flex gap-2">
               <label className="flex flex-col gap-1 flex-1">
-                <span className="text-xs text-on-surface-muted">Min (alert when below)</span>
+                <span className="text-xs text-on-surface-muted">{gt("Min (alert when below)")}</span>
                 <input
                   type="number"
                   value={minStr}
                   onChange={(e) => setMinStr(e.target.value)}
                   placeholder="—"
                   className="bg-surface-sunken border border-border rounded px-2 py-1.5 text-sm text-on-surface"
-                  aria-label="Min (alert when below)"
+                  aria-label={gt("Min (alert when below)")}
                 />
               </label>
               <label className="flex flex-col gap-1 flex-1">
-                <span className="text-xs text-on-surface-muted">Max (alert when above)</span>
+                <span className="text-xs text-on-surface-muted">{gt("Max (alert when above)")}</span>
                 <input
                   type="number"
                   value={maxStr}
                   onChange={(e) => setMaxStr(e.target.value)}
                   placeholder="—"
                   className="bg-surface-sunken border border-border rounded px-2 py-1.5 text-sm text-on-surface"
-                  aria-label="Max (alert when above)"
+                  aria-label={gt("Max (alert when above)")}
                 />
               </label>
             </div>
@@ -247,7 +257,7 @@ export function MetricPingModal({
                 onClick={onClose}
                 className="px-3 py-1.5 text-sm text-on-surface-secondary rounded hover:bg-surface-sunken transition-colors"
               >
-                Cancel
+                {gt("Cancel")}
               </button>
               <button
                 type="button"
@@ -255,7 +265,7 @@ export function MetricPingModal({
                 disabled={saving}
                 className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors disabled:opacity-50"
               >
-                {saving ? "Saving…" : "Save ping"}
+                {saving ? gt("Saving…") : gt("Save ping")}
               </button>
             </div>
           </div>
