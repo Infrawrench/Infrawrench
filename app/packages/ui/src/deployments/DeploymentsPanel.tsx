@@ -4,8 +4,10 @@ import { T, Var, useGT } from "gt-react";
 import {
   CHANGE_IMPACT_CONFIDENCE_LABELS,
   costBasisLabel,
+  createDeployStopController,
   formatSignedPerDay,
   type DeploymentCostImpact,
+  type DeployStopController,
 } from "@infrawrench/client-core";
 import { useDataString } from "../i18n/data-strings.js";
 import { ChangeCostImpactFootnote, ChangeCostImpactLine } from "../cost/ChangeCostImpactLine.js";
@@ -57,7 +59,12 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
   const [liveLogs, setLiveLogs] = useState<WorkflowRunLog[]>([]);
   const [result, setResult] = useState<DeployRunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [stopFn, setStopFn] = useState<(() => void) | null>(null);
+  /**
+   * The running deploy's stop channel, or null when nothing is running. Created
+   * here rather than read back off the session: see `DeploySession.stopper`.
+   */
+  const [stopper, setStopper] = useState<DeployStopController | null>(null);
+  const [stopRequested, setStopRequested] = useState(false);
 
   const [runs, setRuns] = useState<DeploymentRunRow[]>([]);
 
@@ -150,20 +157,27 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
     setResult(null);
     setLiveLogs([]);
     setStage(null);
+    setStopRequested(false);
+    // Held outside the state setter so `finally` can end it even if this render
+    // never committed (an unmount mid-deploy, say). A plan gets one too and
+    // simply never offers it: plan() is a single HTTP call with nothing to stop.
+    const controller = createDeployStopController();
     try {
       const opts = { repo, branch, ...(env ? { env } : {}) };
-      const session: DeploySession = {
-        onLog: (entry) => setLiveLogs((prev) => [...prev, entry]),
-        onStage: setStage,
-      };
       const { result: r } =
         mode === "plan"
           ? await client.plan({ ...opts, planOnly: true })
           : await (() => {
-              const promise = client.deploy(opts, session);
-              // The transport sets `stop` synchronously once the socket opens.
-              if (session.stop) setStopFn(() => session.stop!);
-              return promise;
+              const session: DeploySession = {
+                onLog: (entry) => setLiveLogs((prev) => [...prev, entry]),
+                onStage: setStage,
+                stopper: controller,
+              };
+              // Offered immediately: the controller queues a stop that lands
+              // before the transport's socket is up, so there is no window in
+              // which the button would do nothing.
+              setStopper(controller);
+              return client.deploy(opts, session);
             })();
       setResult(r);
       noteSelectKeys(r.error?.message);
@@ -178,8 +192,13 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
       setError(message);
       noteSelectKeys(message);
     } finally {
+      // Both, and in this order: `finish()` makes a late click a no-op even if
+      // something still holds the controller, and clearing the state takes the
+      // button away.
+      controller.finish();
       setBusy(null);
-      setStopFn(null);
+      setStopper(null);
+      setStopRequested(false);
     }
   };
 
@@ -318,9 +337,20 @@ export function DeploymentsPanel({ client, initialRepo }: DeploymentsPanelProps)
           >
             {busy === "deploy" ? gt("Deploying…") : gt("Deploy")}
           </button>
-          {busy === "deploy" && stopFn && (
-            <button type="button" onClick={stopFn} className={ghostButton}>
-              {gt("Stop")}
+          {busy === "deploy" && stopper && (
+            <button
+              type="button"
+              onClick={() => {
+                stopper.stop();
+                setStopRequested(true);
+              }}
+              // A stop is a request, not a cancel: the run unwinds at its next
+              // checkpoint, so the button stays visible saying so rather than
+              // vanishing while the deploy is plainly still going.
+              disabled={stopRequested}
+              className={ghostButton}
+            >
+              {stopRequested ? gt("Stopping…") : gt("Stop")}
             </button>
           )}
         </div>
