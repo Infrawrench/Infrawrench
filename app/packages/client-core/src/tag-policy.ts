@@ -638,6 +638,29 @@ export function buildShowbackCentres(
   return out;
 }
 
+/**
+ * Whether a showback row has at least one other row nested under it, which is
+ * what decides whether the tree prints the smaller "own" figure beneath the
+ * subtree total.
+ *
+ * `null` is overloaded in `ShowbackReportCentre`: it marks both "no parent"
+ * (`parentId`) and "the synthetic Unallocated row" (`costCentreId`). Naively
+ * testing `other.parentId === centre.costCentreId` lets those meanings
+ * collide — every root's `parentId` is `null`, so the Unallocated row (whose
+ * own `costCentreId` is also `null`) reads every root as its child. Requiring
+ * `centre.costCentreId` to be non-null first closes that hole and, as a side
+ * effect, makes Unallocated correctly report no children at all: its total
+ * and subtree total are always identical (see `buildShowbackCentres`), so it
+ * has nothing smaller to show underneath.
+ */
+export function showbackCentreHasChildren(
+  centres: readonly ShowbackReportCentre[],
+  centre: ShowbackReportCentre,
+): boolean {
+  if (centre.costCentreId === null) return false;
+  return centres.some((other) => other.parentId === centre.costCentreId);
+}
+
 /** Share of spend that carries every required key; null when nothing spent. */
 export function taggedSpendPercent(
   report: Pick<UntaggedSpendReport, "totals" | "untaggedTotals">,

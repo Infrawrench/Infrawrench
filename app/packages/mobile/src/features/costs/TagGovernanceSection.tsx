@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 import {
   formatMoney,
+  showbackCentreHasChildren,
   taggedSpendPercent,
   type AccountTagCompliance,
   type ShowbackReportCentre,
@@ -50,9 +51,7 @@ export function TagGovernanceSection() {
               <ShowbackRow
                 key={centre.costCentreId ?? "__unallocated__"}
                 centre={centre}
-                hasChildren={showbackCentres.some(
-                  (other) => other.parentId === centre.costCentreId,
-                )}
+                hasChildren={showbackCentreHasChildren(showbackCentres, centre)}
               />
             ))}
           </Card>

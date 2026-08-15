@@ -9814,6 +9814,11 @@
       "gelöscht, sofern Sie ihn nicht jetzt übernehmen."
     ]
   },
+  "654c18cbd7fe02fa": "Gelöschter Schlüssel",
+  "7e1def3ae9575bbf": "Nach API-Schlüssel filtern",
+  "7120551a32a0ea21": "Alle API-Schlüssel",
+  "7605071489d4ef01": "Nur diesen API-Schlüssel anzeigen",
+  "c7d9edb952ec842a": "Gehört {owner}",
   "4416d781741b54a0": "Bereiche ({count} ausgewählt)",
   "d9c7b5106e65c3fb": "Bereiche filtern",
   "1dbfd08b30efeba9": "Keine Bereiche entsprechen diesem Filter.",
