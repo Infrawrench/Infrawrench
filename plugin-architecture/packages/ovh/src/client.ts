@@ -14,7 +14,11 @@ import type {
   MetricSeries,
   HostServices,
 } from "@infrawrench/plugin-base";
-import { labeledFieldItems, resourceTypeDisplayName } from "@infrawrench/plugin-base";
+import {
+  labeledFieldItems,
+  resourceTypeDisplayName,
+  withMetricsCapability,
+} from "@infrawrench/plugin-base";
 import { fetchOvhCostData } from "./cost-data.js";
 
 function ovhSshUsername(imageName: string): string {
@@ -1397,6 +1401,19 @@ export class OvhClient implements PluginClient {
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
+    // `managed-db` declares `supportsMetrics` and its OVH metric routes
+    // default to `lastHour`. `managed-kube` has no series of its own — all of
+    // its metrics come from the Kubernetes peer — so it takes the capability
+    // from `exposeMetricsToParent` and no window from us.
+    return withMetricsCapability(
+      this.renderDetailInner(resource),
+      this.resourceTypes,
+      resource.resourceTypeId,
+      3_600_000,
+    );
+  }
+
+  private renderDetailInner(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const statusStr = String(fields["status"] ?? "").toUpperCase();
 

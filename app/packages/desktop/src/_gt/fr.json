@@ -9591,5 +9591,6 @@
   "7605071489d4ef01": "Afficher uniquement cette clé API",
   "c7d9edb952ec842a": "Détenue par {owner}",
   "7161c775bd96511c": "Arrêt en cours…",
-  "5459ec78d19971ff": "Les coûts nécessitent le mode cloud — connectez-vous pour synchroniser."
+  "5459ec78d19971ff": "Les coûts nécessitent le mode cloud — connectez-vous pour synchroniser.",
+  "0fe46c2c3c0518fa": "{hours} dernières heures"
 }

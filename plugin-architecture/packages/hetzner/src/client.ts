@@ -19,6 +19,7 @@ import {
   jsonRestFetch,
   labeledFieldItems,
   resourceTypeDisplayName,
+  withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import { fetchHetznerCostData } from "./cost-data.js";
 import { createRateCardCache, type RateCardCache } from "./pricing.js";
@@ -1110,6 +1111,18 @@ export class HetznerClient implements PluginClient {
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
+    // Servers and load balancers declare `supportsMetrics`; Hetzner's
+    // `/metrics` endpoints default to the last hour when the host asks
+    // without a range.
+    return withMetricsCapability(
+      this.renderDetailInner(resource),
+      this.resourceTypes,
+      resource.resourceTypeId,
+      3_600_000,
+    );
+  }
+
+  private renderDetailInner(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const status =
       resource.resourceTypeId === "server"

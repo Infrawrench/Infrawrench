@@ -73,6 +73,13 @@ const NEON_REGIONS: Record<string, { location: string; flag: string }> = {
 };
 
 /**
+ * `fetchMetricSeries` asks Neon's consumption API for the last 24 hours when
+ * the host does not pass a range, so that is what the chart's time-range label
+ * has to say.
+ */
+const NEON_METRICS = { defaultTimeRangeMs: 24 * 3_600_000 };
+
+/**
  * Neon's credential scopes are fine-grained, but users pick a job to do rather
  * than a scope list — so the create form offers bundles and we expand them here.
  */
@@ -1839,6 +1846,7 @@ export class NeonClient implements PluginClient {
           },
         },
       ],
+      metricsCapability: NEON_METRICS,
     };
   }
 
@@ -1869,6 +1877,10 @@ export class NeonClient implements PluginClient {
         },
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      // Branch metrics are the project's — `fetchMetricSeries` resolves the
+      // parent project id from the branch and asks for the same consumption
+      // series. Both types declare `supportsMetrics`, so both need the tab.
+      metricsCapability: NEON_METRICS,
     };
   }
 

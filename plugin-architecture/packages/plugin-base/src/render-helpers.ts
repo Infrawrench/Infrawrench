@@ -1,5 +1,5 @@
 import type { ResourceTypeDefinition } from "./resource.js";
-import type { KVItem } from "./schema.js";
+import type { DetailViewSchema, KVItem } from "./schema.js";
 
 /**
  * Convert a camelCase or kebab-case key to a human-readable title.
@@ -60,6 +60,65 @@ export function labeledOutputItems(
       value: String(value),
       copyable: true,
     }));
+}
+
+/**
+ * True when the host will fetch metric series for this resource type.
+ *
+ * Mirrors, exactly, the condition the hosts use to decide whether to call
+ * `fetchMetricSeries` (`web/src/api/routes/resource-detail.ts`, the desktop
+ * loaders, the poller): the type's own `supportsMetrics`, **or** a peer
+ * integration that exposes its metrics to the parent. The second half is easy
+ * to forget — a managed-Kubernetes type usually has no series of its own and
+ * gets all of them from the Kubernetes peer, so it leaves `supportsMetrics`
+ * unset and would read as "no metrics" to anything that only checks the flag.
+ */
+export function resourceTypeHasMetrics(typeDef: ResourceTypeDefinition | undefined): boolean {
+  if (!typeDef) return false;
+  return (
+    typeDef.supportsMetrics === true ||
+    (typeDef.peerIntegrations ?? []).some((i) => i.exposeMetricsToParent === true)
+  );
+}
+
+/**
+ * Declare the Metrics tab on a rendered detail view whenever the resource
+ * type actually has metrics behind it.
+ *
+ * The host renders the tab off `DetailViewSchema.metricsCapability` alone, but
+ * it *fetches* off the resource type's `supportsMetrics` (and peer metrics)
+ * declaration. Those are two separate statements of the same fact, and every
+ * time they disagreed the result was the same silent bug: the fetch fires, the
+ * series come back, and there is no tab to put them in. Deriving one from the
+ * other here is what keeps them from drifting — a plugin calls this once at
+ * the end of `renderDetail` and the tab follows the declaration forever after.
+ *
+ * A renderer that already set `metricsCapability` itself wins: some views want
+ * a different default window than the plugin's, and one that deliberately set
+ * it should not have it overwritten.
+ *
+ * `defaultTimeRangeMs` should be the window the plugin's own
+ * `fetchMetricSeries` defaults to when the host asks without a range — it is
+ * what the chart's time-range label is derived from, so a wrong value is a
+ * chart that lies about what it is showing. Omit it when the series are an
+ * instantaneous snapshot rather than a window. It is also ignored for a
+ * peer-only type (one with no `supportsMetrics` of its own), because there the
+ * window belongs to the peer's fetcher and this plugin does not know it.
+ */
+export function withMetricsCapability(
+  schema: DetailViewSchema,
+  resourceTypes: ResourceTypeDefinition[],
+  resourceTypeId: string,
+  defaultTimeRangeMs?: number,
+): DetailViewSchema {
+  if (schema.metricsCapability) return schema;
+  const typeDef = resourceTypes.find((rt) => rt.id === resourceTypeId);
+  if (!resourceTypeHasMetrics(typeDef)) return schema;
+  const ownWindow = typeDef?.supportsMetrics === true ? defaultTimeRangeMs : undefined;
+  return {
+    ...schema,
+    metricsCapability: ownWindow === undefined ? {} : { defaultTimeRangeMs: ownWindow },
+  };
 }
 
 /**

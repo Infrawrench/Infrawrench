@@ -457,6 +457,11 @@ export class KafkaClient implements PluginClient {
         },
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      // `kafka-cluster` declares `supportsMetrics`, so the host fetches broker
+      // / topic / consumer-group counts for this view; without the capability
+      // it had nowhere to put them. No default window — `fetchMetricSeries`
+      // reads the Admin API right now and returns a single point per series.
+      metricsCapability: {},
     };
   }
 

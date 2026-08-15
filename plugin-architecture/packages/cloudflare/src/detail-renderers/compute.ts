@@ -7,6 +7,14 @@ import type {
 } from "@infrawrench/plugin-base";
 import { labeledFieldItems } from "@infrawrench/plugin-base";
 
+/**
+ * Cloudflare's GraphQL analytics look back 24h when the host asks without a
+ * range (`analyticsWindow` in ../metric-series.ts). Renderers that state the
+ * capability themselves have to state the same window, or their chart's
+ * time-range label contradicts the data under it.
+ */
+const CLOUDFLARE_METRICS = { defaultTimeRangeMs: 24 * 3_600_000 };
+
 export function renderWorkerDetail(resource: ResourceInstance): DetailViewSchema {
   const fields = resource.fields;
   return {
@@ -211,7 +219,7 @@ export function renderDurableObjectNamespaceDetail(resource: ResourceInstance): 
       },
       instanceSection,
     ],
-    metricsCapability: {},
+    metricsCapability: CLOUDFLARE_METRICS,
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
   };
 }
@@ -338,7 +346,7 @@ export function renderAiGatewayDetail(
     subtitle: "AI Gateway",
     status: { kind: "status-dot", status: "info" },
     sections,
-    metricsCapability: {},
+    metricsCapability: CLOUDFLARE_METRICS,
     chatPanel: {
       tabLabel: "Playground",
       subtitle: "Workers AI, routed through this gateway",

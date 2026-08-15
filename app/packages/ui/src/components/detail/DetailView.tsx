@@ -319,6 +319,18 @@ export function DetailView({
   // yet". `metricSeriesEmpty` drives the empty-state placeholder below.
   const hasMetrics = !!schema.metricsCapability;
   const metricSeriesEmpty = !metricSeries || metricSeries.length === 0;
+  // Plugins declare their default window in milliseconds because that is what
+  // they pass to their provider. Rendering it as minutes regardless turned a
+  // day-long window — Cloudflare's analytics, Neon's consumption, the
+  // Kubernetes cost series — into "Last 1440 min".
+  // The cut-off is two hours, not one: a one-hour window reads better as
+  // "Last 60 min" than as "Last 1 h", and that is the commonest window there is.
+  const defaultTimeRangeMs = schema.metricsCapability?.defaultTimeRangeMs;
+  const metricsTimeRangeLabel = !defaultTimeRangeMs
+    ? undefined
+    : defaultTimeRangeMs >= 2 * 3_600_000
+      ? gt("Last {hours} h", { hours: Math.round(defaultTimeRangeMs / 3_600_000) })
+      : gt("Last {minutes} min", { minutes: Math.round(defaultTimeRangeMs / 60_000) });
   const hasChangesTab = !!renderChangesTab;
   const hasScheduleTab = !!renderScheduleTab;
   const hasLeaseTab = !!renderLeaseTab;
@@ -899,13 +911,7 @@ export function DetailView({
                   kind: "metric-chart",
                   title: series.label,
                   series: [series],
-                  ...(schema.metricsCapability?.defaultTimeRangeMs
-                    ? {
-                        timeRangeLabel: gt("Last {minutes} min", {
-                          minutes: Math.round(schema.metricsCapability.defaultTimeRangeMs / 60000),
-                        }),
-                      }
-                    : {}),
+                  ...(metricsTimeRangeLabel ? { timeRangeLabel: metricsTimeRangeLabel } : {}),
                 }}
               />
             ))

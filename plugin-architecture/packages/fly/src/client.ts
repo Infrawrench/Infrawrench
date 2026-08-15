@@ -11,7 +11,7 @@ import type {
   HostServices,
   MetricSeries,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch, labeledFieldItems } from "@infrawrench/plugin-base";
+import { jsonRestFetch, labeledFieldItems, withMetricsCapability } from "@infrawrench/plugin-base";
 
 /**
  * Fly.io plugin client.
@@ -694,6 +694,17 @@ export class FlyClient implements PluginClient {
   /* ------------------------------------------------------------------ */
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
+    // Apps and machines declare `supportsMetrics`; the Prometheus range query
+    // in `fetchMetricSeries` defaults to the last hour.
+    return withMetricsCapability(
+      this.renderDetailInner(resource),
+      this.resourceTypes,
+      resource.resourceTypeId,
+      3_600_000,
+    );
+  }
+
+  private renderDetailInner(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
 
     if (resource.resourceTypeId === "app") {

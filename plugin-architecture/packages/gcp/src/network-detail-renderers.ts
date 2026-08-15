@@ -397,14 +397,12 @@ export function renderBackendService(resource: ResourceInstance, base: DetailVie
               : scheme || "—";
   base.subtitle = `Backend Service · ${schemeLabel}${protocol ? ` · ${protocol}` : ""}`;
   base.status = { kind: "status-dot", status: "healthy", label: "Active" };
-  // Only HTTPS-family LBs are wired into fetchMetricSeries; surface metrics
-  // when those metrics are likely to exist.
-  const cdnEligible =
-    (scheme === "EXTERNAL" || scheme === "EXTERNAL_MANAGED") &&
-    (protocol === "HTTP" || protocol === "HTTPS" || protocol === "HTTP2");
-  if (cdnEligible) {
-    base.metricsCapability = { defaultTimeRangeMs: 3_600_000 };
-  }
+  // The Metrics tab comes from the type's `supportsMetrics` declaration (see
+  // `withMetricsCapability` in the client), not from a per-instance guess.
+  // Only HTTPS-family LBs are wired into `fetchMetricSeries`, so a TCP/SSL/UDP
+  // backend service gets the tab with the host's "no data yet" state — the
+  // same treatment as any resource whose series have not arrived, and steadier
+  // than a tab that appears and vanishes with the protocol field.
 
   const cfgItems = [
     { key: "Protocol", value: protocol || "—" },
