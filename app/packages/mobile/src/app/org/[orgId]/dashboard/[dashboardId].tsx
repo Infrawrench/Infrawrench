@@ -344,6 +344,10 @@ function ConfigureBudget({
         // budget's forecast thresholds back to the bare trend — an
         // alert-changing edit nobody made.
         ...(budget.scenarioModelId ? { scenarioModelId: budget.scenarioModelId } : {}),
+        // Same rule: not editable from this sheet, but settable via the API
+        // and the Terraform provider — saving here must not silently move the
+        // budget off the adjusted (billing-rule) figure it was opted into.
+        ...(budget.useAdjustedSpend ? { useAdjustedSpend: budget.useAdjustedSpend } : {}),
       }}
       onClose={onClose}
       onSave={(input) => onSave(budgetId, input)}
