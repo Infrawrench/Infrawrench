@@ -103,6 +103,7 @@ export {
   WorkflowDashboardCard,
   WorkflowEditorView,
   WorkflowIcon,
+  WorkflowRunHistory,
   WorkflowsPanel,
 } from "./workflows/index.js";
 export type {
@@ -128,6 +129,7 @@ export type {
   WorkflowMetricDef,
   WorkflowMetricRow,
   WorkflowSecretSummary,
+  WorkflowRunHistoryProps,
   WorkflowRunLog,
   WorkflowRunResult,
   WorkflowRunRow,

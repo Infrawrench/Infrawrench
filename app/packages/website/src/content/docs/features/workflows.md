@@ -700,6 +700,14 @@ Debugging works on both the desktop app and the web app (the web run streams ove
 
 ## Runs
 
-Each execution records a run with its status, streamed logs, declared output, timings, and any error. The run history is on the workflow's page so you can see what a cron has been doing.
+Each execution records a run with its status, streamed logs, declared output, timings, and any error. The **Run history** section at the bottom of the workflow's page lists them newest first, so you can see what a cron has been doing without going near the API.
+
+Every row shows the run's status (`success`, `failure`, `running`, `pending`, `canceled`), when it started, how long it took, and what started it — Manual, Schedule, Git push, API, or Budget. **Logs** on a row expands it in place to that run's log lines (coloured by level), its error if it failed, and its declared output. Nothing is fetched to expand a row: the logs arrive with the history.
+
+A run that is still going shows **in progress** instead of a duration. The run you just started from the editor isn't listed twice — its row is marked _streaming above_ while the live log panel is following it, and _shown above_ once the result panel has it.
+
+The header counts the runs, and the list shows the ten most recent with a **Show N more** button for the rest. The history holds the **latest 50 runs** — that is what the API returns and there is no paging, so older runs age out of the view.
+
+The same history is on the mobile app's workflow screen (tap a run to expand its logs), and `GET /api/org/:orgId/workflows/:id/runs` returns the same rows if you'd rather read them from a script.
 
 <insert [Screenshot of a workflow's run history list with statuses and durations, one run expanded to show logs] here>

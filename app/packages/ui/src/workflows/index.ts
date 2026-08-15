@@ -7,6 +7,13 @@ export {
   type WorkflowPromptRequest,
 } from "./prompt-bridge.js";
 export { WorkflowEditorView } from "./WorkflowEditorView.js";
+export {
+  WorkflowRunHistory,
+  formatRunDuration,
+  parseRunTimestamp,
+  runStatusClass,
+  type WorkflowRunHistoryProps,
+} from "./RunHistory.js";
 export { WorkflowIcon } from "./WorkflowIcon.js";
 export { WorkflowDashboardCard } from "./WorkflowDashboardCard.js";
 export { ApprovalCard, formatExpiry, type ApprovalCardProps } from "./ApprovalCard.js";
