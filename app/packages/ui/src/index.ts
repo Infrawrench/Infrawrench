@@ -1100,5 +1100,6 @@ export * from "./chat/index.js";
 
 export { getStoredLocale, setStoredLocale } from "./i18n/locale-preference.js";
 export { useDataString } from "./i18n/data-strings.js";
+export { useStableGT } from "./i18n/stable-gt.js";
 // Trial workspaces — the countdown an unclaimed agent trial carries until a
 // person claims it. See server-core/trials for the lifecycle behind it.

@@ -87,9 +87,9 @@ For automation that must survive staff changes, create the key under an account 
 
 ## Audit
 
-Every state-changing call is attributed to the key in the [audit log](./audit-log.md), not just to the person who issued it — the entry carries the key's id, name and prefix alongside the owner. That is the difference between "Alice deleted the database" and "the `ci-deploy` key Alice issued deleted the database", which is the question you actually need answered when a token leaks.
+Every state-changing call is attributed to the key in the [audit log](./audit-log.md), not just to the person who issued it — the entry shows the key's name and prefix as a chip in the actor column, with the owner underneath. That is the difference between "Alice deleted the database" and "the `ci-deploy` key Alice issued deleted the database", which is the question you actually need answered when a token leaks.
 
-Filter the audit log to a single key with `?apiKeyId=<id>` on `GET /api/org/<orgId>/audit-logs`. Filtering by user is not a substitute: a person and every key they ever minted share one user id.
+Click that chip, or pick the key from the audit log's key dropdown, to see everything one credential did; over the API it is `?apiKeyId=<id>` on `GET /api/org/<orgId>/audit-logs`. Filtering by user is not a substitute: a person and every key they ever minted share one user id.
 
 <insert [Audit log filtered to one API key, showing the key name and prefix in the actor column next to the owner's name] here>
 

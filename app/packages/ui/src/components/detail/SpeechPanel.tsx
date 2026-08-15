@@ -211,7 +211,7 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
           onChange={(e) => setText(e.target.value)}
           placeholder={gt("Type something to hear it spoken…")}
           rows={4}
-          className="mt-1 w-full resize-y bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent-blue placeholder:text-on-surface-faint"
+          className="mt-1 w-full resize-y bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent placeholder:text-on-surface-faint"
         />
       </label>
 
@@ -230,7 +230,7 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
           type="button"
           onClick={() => void run()}
           disabled={busy}
-          className="px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-md hover:bg-accent-blue/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
+          className="px-4 py-2 text-sm font-medium text-white bg-accent rounded-md hover:bg-accent/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
         >
           {busy
             ? gt("Synthesizing…")
@@ -251,7 +251,7 @@ function SynthesizeSection({ capability, model, onSynthesize }: SynthesizeSectio
             <a
               href={clip.url}
               download={clip.fileName}
-              className="text-accent-blue hover:underline shrink-0"
+              className="text-accent hover:underline shrink-0"
             >
               {gt("Download")}
             </a>
@@ -446,7 +446,7 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
               type="button"
               onClick={() => void startRecording()}
               disabled={busy}
-              className="px-4 py-2 text-sm font-medium text-on-surface bg-surface-overlay border border-border-strong rounded-md hover:border-accent-blue disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm font-medium text-on-surface bg-surface-overlay border border-border-strong rounded-md hover:border-accent disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
             >
               {gt("● Record")}
             </button>
@@ -456,7 +456,7 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={busy || recording}
-          className="px-4 py-2 text-sm font-medium text-on-surface bg-surface-overlay border border-border-strong rounded-md hover:border-accent-blue disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
+          className="px-4 py-2 text-sm font-medium text-on-surface bg-surface-overlay border border-border-strong rounded-md hover:border-accent disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
         >
           {gt("Upload a clip")}
         </button>
@@ -518,7 +518,7 @@ function TranscribeSection({ capability, model, onTranscribe }: TranscribeSectio
           type="button"
           onClick={() => void run()}
           disabled={busy || !audio || recording}
-          className="px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-md hover:bg-accent-blue/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
+          className="px-4 py-2 text-sm font-medium text-white bg-accent rounded-md hover:bg-accent/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
         >
           {busy
             ? gt("Transcribing…")
@@ -639,7 +639,7 @@ function OptionSelect({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent-blue"
+        className="mt-1 w-full bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent"
       >
         {!value && !hasEmptyOption && <option value="">{gt("Select…")}</option>}
         {options.map((opt) => (

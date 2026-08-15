@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGT } from "gt-react";
+import { tailLineOptions } from "@infrawrench/client-core";
 import type { LogsCapability, LogsFetchParams, LogsFetchResult } from "@infrawrench/plugin-base";
 
 interface Props {
@@ -8,7 +9,6 @@ interface Props {
   onGetLogs: (params: LogsFetchParams) => Promise<LogsFetchResult>;
 }
 
-const TAIL_OPTIONS = [100, 500, 1000, 5000];
 const FOLLOW_INTERVAL_MS = 3000;
 
 export function LogsView({ capability, onGetLogs }: Props) {
@@ -17,6 +17,13 @@ export function LogsView({ capability, onGetLogs }: Props) {
   const [containers, setContainers] = useState<string[]>([]);
   const [container, setContainer] = useState<string | null>(null);
   const [tailLines, setTailLines] = useState<number>(capability.defaultTailLines ?? 500);
+  // The default may fall outside the fixed presets (e.g. a plugin declaring
+  // 200) — include it as an extra option rather than clamp state to the
+  // nearest preset, so the control always shows the value actually requested.
+  const tailOptions = useMemo(
+    () => tailLineOptions(capability.defaultTailLines),
+    [capability.defaultTailLines],
+  );
   const [previous, setPrevious] = useState(false);
   const [follow, setFollow] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -99,7 +106,7 @@ export function LogsView({ capability, onGetLogs }: Props) {
           title={gt("Tail lines")}
           aria-label={gt("Tail lines")}
         >
-          {TAIL_OPTIONS.map((n) => (
+          {tailOptions.map((n) => (
             <option key={n} value={n}>
               {gt("Last {n}", { n })}
             </option>
