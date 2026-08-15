@@ -92,11 +92,11 @@ Tool calls render as compact status cards (`Running…` → `Done`); the input J
 
 ## Secure secret input
 
-When the agent calls `write_workflow_secret`, the conversation pauses on a password field labelled with the requested title, description, and secret name. The value is posted directly from your web, desktop, or mobile client to encrypted workflow-secret storage. It is never added to your user message, the assistant's tool input, pending-action JSON, Slack or push notifications, audit metadata, or the result sent back to the model.
+When the agent calls `write_workflow_secret`, the conversation pauses on a card headed with the title the agent asked for — or `Enter <secret name>` when it gave no title — carrying its description, a **Value required** pill, and a password field with a **Store** button. The value is posted directly from your web, desktop, or mobile client to encrypted workflow-secret storage. It is never added to your user message, the assistant's tool input, pending-action JSON, Slack or push notifications, audit metadata, or the result sent back to the model.
 
 Only a signed-in human with `secrets:write` can submit the field. The permission is checked when the agent requests it and again when you submit, so a role change cannot leave a stale prompt with more authority than you have. The agent receives only the secret id/name and `stored: true`, then can assign that id to a workflow.
 
-![AI chat conversation paused on the secure workflow-secret password field, showing the requested title and secret name](https://agent-assets.infrawrench.com/docs-screenshots/features/ai-chat/workflow-secret-prompt.png)
+![AI chat conversation paused on the secure workflow-secret password field, headed with the requested title and showing the "Value required" pill](https://agent-assets.infrawrench.com/docs-screenshots/features/ai-chat/workflow-secret-prompt.png)
 
 ## Waiting on slow operations
 

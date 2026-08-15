@@ -62,14 +62,14 @@ next check.
 
 ### Create an account
 
-1. Go to the sign-up page.
-2. Sign in with your email, Google, or Microsoft account. Authentication is handled by WorkOS.
-3. On first sign-in you are prompted to create an organization. Pick a name you can live with — it shows up in the workspace switcher.
-4. After creating it you choose a plan: **Free** ($0) or **Pro** ($20 / seat / month). Continuing with Free is fine — you can upgrade later from **Settings → Billing**. See [Billing and plans](../team-and-billing/billing-and-plans.md).
+1. Go to [app.infrawrench.com](https://app.infrawrench.com). There is no separate sign-up page and no login screen in the app — arriving signed out hands you straight to Infrawrench's identity provider, WorkOS AuthKit, on its own domain. That hosted page is where you choose email, Google, or Microsoft.
+2. Sign in or create the account there. You come back to Infrawrench once it succeeds.
+3. On first sign-in you are prompted to **Create your organization**. Pick a name you can live with — it shows up in the workspace switcher.
+4. After creating it you **Choose your plan**: **Free** ($0) or **Pro** ($20 / seat / month). **Continue with Free** is fine — you can upgrade later from **Settings → Billing**. See [Billing and plans](../team-and-billing/billing-and-plans.md).
 
-Finish sign-up in the browser you started it in. Verifying your email can take you through your inbox and back, and if that round trip lands in a different browser — a link opened inside a mail app, say — the sign-in cannot be completed and you will be asked to start again. Taking your time is fine; switching browsers mid-flow is not.
+Finish sign-up in the browser you started it in. Verifying your email can take you through your inbox and back, and if that round trip lands in a different browser — a link opened inside a mail app, say — you land on a **Sign-in could not be completed** page and have to start again. Taking your time is fine; switching browsers mid-flow is not.
 
-<insert [Sign-up page with email / SSO buttons] here>
+<insert [The "Create your organization" onboarding screen, the first thing Infrawrench itself draws after a successful sign-in] here>
 
 ### Your first landing
 

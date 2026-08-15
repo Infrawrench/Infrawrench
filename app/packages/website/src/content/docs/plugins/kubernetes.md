@@ -28,11 +28,13 @@ Cluster-scoped:
 
 ## Credentials
 
-Paste a kubeconfig YAML, or an output reference from an EKS / AKS / GKE / DOKS / Kapsule cluster resource.
+The form has two fields and both are plain text areas. Paste your cluster's kubeconfig YAML into **Kubeconfig**.
 
 There is one optional second field, **Cluster hourly rates**, used only for cost allocation — see [Cost allocation](#cost-allocation) below. Leave it blank unless you are connecting a cluster that has no cloud account behind it in Infrawrench, or you want to price the parts of the cluster that are not node compute.
 
-![Kubernetes Add-account form with kubeconfig textarea and output-ref picker](https://agent-assets.infrawrench.com/docs-screenshots/plugins/kubernetes/add-account.png)
+For a cluster you already have in Infrawrench — EKS, AKS, GKE, DOKS, OVH Managed Kubernetes, Scaleway Kapsule — don't add an account here at all. Open the cluster resource and use its **Kubernetes** tab: the kubeconfig (and, where the provider reports them, the node prices) flow through from the cluster's own outputs as an [output reference](../core-concepts/output-references.md). There is no picker in this credential form.
+
+![Kubernetes Add-account form with the Kubeconfig textarea and the optional Cluster hourly rates field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/kubernetes/add-account.png)
 
 ## Cost allocation
 
@@ -64,7 +66,7 @@ Workloads nothing measured read **unknown** rather than 0% and sort last. The re
 
 ## Notable flows
 
-- **Manifest editor** — every resource type is editable as raw YAML with schema-aware autocomplete. See [Manifest editor](../features/manifest-editor.md).
+- **Manifest editor** — every resource type is editable as raw YAML in Monaco, applied with **Apply ⌘S**. See [Manifest editor](../features/manifest-editor.md).
 - **Ephemeral scratch pods** — click **Launch scratch pod** on any namespace to get a throwaway debugging pod with a terminal, auto-deleted after 15 minutes (configurable up to 24 hours).
 - **Terminal** into any pod (`kubectl exec` equivalent). Pick a container if there is more than one.
 - **Log tail** on pods with follow and grep.

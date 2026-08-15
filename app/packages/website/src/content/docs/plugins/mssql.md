@@ -21,8 +21,8 @@ mssql://user:password@host:1433/dbname?encrypt=true&trustServerCertificate=false
 
 ## Notable flows
 
-- **SQL editor** with autocomplete from `INFORMATION_SCHEMA`.
-- **SSH tunnel** support — if the server is only reachable via a bastion, set up an [SSH tunnel](../features/ssh-tunnels.md) and point the connection string at `127.0.0.1`.
+- **SQL editor** with a schema browser introspected from `INFORMATION_SCHEMA`.
+- **SSH tunnel** support — if the server only listens on a bastion's loopback, use **Connect service via SSH** on that bastion instead of adding an account here; it creates the account for you. See [SSH tunnels](../features/ssh-tunnels.md).
 
 ## Tips & limits
 

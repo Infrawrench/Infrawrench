@@ -8,7 +8,7 @@ sidebar_order: 8
 
 It is not a permission check and it will never stop you deleting anything. It is the thing you wish somebody had said out loud beforehand.
 
-![A resource delete confirmation dialog with the blast radius summary above the type-to-confirm box — reading something like "3 resources depend directly on this, 5 more further down the chain and 4 other references to it", with a customer-visible probe named in red](https://agent-assets.infrawrench.com/docs-screenshots/features/blast-radius/delete-confirm-dialog.png)
+![A resource delete confirmation dialog with the blast radius summary above the type-to-confirm box — reading something like "3 resources depend directly on this, 5 more further down the chain and 4 other references to it. The check was also incomplete.", with a customer-visible probe named in red](https://agent-assets.infrawrench.com/docs-screenshots/features/blast-radius/delete-confirm-dialog.png)
 
 ## What it looks at
 

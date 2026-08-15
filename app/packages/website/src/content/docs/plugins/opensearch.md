@@ -24,7 +24,9 @@ For provider-managed OpenSearch (DigitalOcean, AWS, OVH), you don't normally add
 
 ## Credentials
 
-The plugin supports three auth modes (set the **Auth Mode** credential to one of `basic`, `apiKey`, or `awsSigv4`):
+The plugin supports three auth modes. **Auth Mode** is a plain text field, not a dropdown — type one of `basic`, `apiKey` or `awsSigv4` into it (matching is case-insensitive). Leave it empty and the plugin infers the mode: AWS access key and secret present means SigV4, otherwise an API key means `apiKey`, otherwise basic auth.
+
+The add-account form shows **every** credential field at once — nothing appears or disappears as you change the mode, and the field descriptions are what tell you which ones a given mode reads. The form also treats them all as required, so fill the ones your mode ignores with a placeholder such as `-` to enable the submit button.
 
 ### Basic auth (most clusters, including DigitalOcean / OVH managed)
 
@@ -52,7 +54,7 @@ For IAM-controlled Amazon OpenSearch domains, set:
 
 The plugin signs every request with SigV4 using the same `@smithy/signature-v4` signer the AWS SDK uses, so any IAM policy attached to the user/role flows through unchanged.
 
-![OpenSearch Add-account form with Auth Mode dropdown and the credential fields that appear for the selected mode](https://agent-assets.infrawrench.com/docs-screenshots/plugins/opensearch/add-account.png)
+![OpenSearch Add-account form with the Auth Mode text field and every credential field listed below it](https://agent-assets.infrawrench.com/docs-screenshots/plugins/opensearch/add-account.png)
 
 ## Notable flows
 

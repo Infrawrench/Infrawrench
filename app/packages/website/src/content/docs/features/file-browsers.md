@@ -16,16 +16,21 @@ Several plugins expose a file-browser panel on any resource that holds files. It
 - **Azure Blob Storage** containers
 - **DigitalOcean Spaces** (S3-compatible)
 - **Scaleway Object Storage** (S3-compatible)
-- **SFTP** over SSH — **desktop only**
+- **SFTP** over SSH — on desktop natively, and on web proxied through the cloud
+
+## What you see
+
+One listing, not a tree beside a grid. Across the top is a **Path** box you can type into (Enter to go, Escape to revert) and a **Filter…** box; below it a single table with **Name**, **Size** and **Last modified** columns. Folders are rows in that table, marked `▶` and shown before the files, with a `..` row to go up. The footer counts what you are looking at.
 
 ## What you can do
 
-- Navigate folders and preview common file types (text, images, PDFs).
-- **Upload** from your machine — drag onto the pane or click **Upload**.
-- **Create folder** (for object stores, this creates a zero-byte `.keep`-style marker).
-- **Download** — single files or a selection. Batch downloads stream as a zip.
-- **Delete** with a confirm step.
-- **Copy public URL** for objects that have one.
+- **Navigate** by clicking a folder row, or by typing a path.
+- **Upload** with **↑ Files**, or **↑ Folder** where the backend supports it. There is no drag-and-drop target.
+- **+ Folder** creates one (for object stores, a zero-byte marker).
+- **Download** with the `↓` on a row. Tick several rows and the toolbar offers **↓ Download**, which streams them as a zip — on web that opens one download per batch, so allow pop-ups.
+- **Delete** — the `✕` on a row, or the toolbar's **Delete** for a selection. Both ask to confirm inline.
+
+Shift-click selects a range. Sorting is fixed: folders first, then files.
 
 ## Large uploads
 

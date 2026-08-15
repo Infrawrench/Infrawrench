@@ -12,23 +12,20 @@ The audit log records every state-changing action in the organization — resour
 
 ## What is captured
 
-For each entry:
+The table has four columns:
 
+- **Time** — wall-clock in your timezone.
+- **User** — who did it. When the call came in on an [API key](./api-keys.md) the cell names the key and its `iwk_` prefix alongside its owner, because a key acts as its owner and the owner alone cannot tell you whether a person or a token was at the other end. **System** for automated work.
 - **Action** — verb + object (e.g. “created Droplet”, “started SSH session”).
-- **Actor** — the user that did it, and — when the call came in on an [API key](./api-keys.md) — which key. Both, not one or the other: a key acts as its owner, so the owner alone cannot tell you whether a person or a token was at the other end.
-- **Target** — the resource or account affected, with a link.
-- **Time** — wall-clock in your timezone; hover for UTC.
-- **Source** — web UI, API, or automated (sync, refresh).
+- **Entity** — the type and id of the resource or account affected.
+
+Twenty-five entries to a page, newest first, with **Previous** / **Next** underneath and a count of everything matched.
 
 ## Filtering
 
-In the app, filter by target type or by a single **API key**. The key dropdown lists the organization's keys, and clicking the key chip in an entry's actor column narrows the log to that one credential without leaving the page — pick **All API keys** to go back. A key that has since been deleted still filters: the chip carries its id even when there is no key row left to name.
+The page has two filters. **Filter by type** covers the entity type — account, resource, dashboard, api_key, member, subscription — or **All types**. Beside it, **Filter by API key** narrows the log to a single credential; clicking the key chip in an entry's User column does the same thing without leaving the page, and **All API keys** goes back. A key that has since been deleted still filters, because the chip carries its id even when there is no key row left to name it.
 
-`GET /api/org/<orgId>/audit-logs` takes the same `apiKeyId`, plus `action`, `userId`, `entityType`, `from` and `to`. Everything one credential did is the first thing to pull when a token leaks, and `userId` cannot answer that question on its own, because a person and every key they minted share one user id.
-
-## Export
-
-**Export → CSV** or **JSON**. Exports respect active filters.
+The API is where the finer questions get asked. `GET /api/org/<orgId>/audit-logs` takes the same `apiKeyId`, plus `action`, `entityType`, `userId`, `from` and `to`. Everything one credential did is the first thing to pull when a token leaks, and `userId` cannot answer that question on its own, because a person and every key they minted share one user id.
 
 ## Retention
 
