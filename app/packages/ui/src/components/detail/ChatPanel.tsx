@@ -183,7 +183,7 @@ export function ChatPanel({ capability, onStream }: Props) {
               onChange={(e) => setModel(e.target.value)}
               disabled={streaming}
               aria-label={capability.modelLabel ?? gt("Model")}
-              className="max-w-[18rem] bg-surface-overlay text-on-surface text-xs border border-border-strong rounded-md px-2 py-1 focus:outline-none focus:border-accent-blue disabled:opacity-60"
+              className="max-w-[18rem] bg-surface-overlay text-on-surface text-xs border border-border-strong rounded-md px-2 py-1 focus:outline-none focus:border-accent disabled:opacity-60"
             >
               {capability.models.map((m) => (
                 <option key={m} value={m}>
@@ -245,13 +245,13 @@ export function ChatPanel({ capability, onStream }: Props) {
               onKeyDown={handleKeyDown}
               placeholder={capability.inputPlaceholder ?? gt("Send a message…")}
               rows={1}
-              className="flex-1 resize-none bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent-blue placeholder:text-on-surface-faint"
+              className="flex-1 resize-none bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent placeholder:text-on-surface-faint"
             />
             <button
               type="button"
               onClick={() => void send()}
               disabled={!input.trim() || streaming}
-              className="px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-md hover:bg-accent-blue/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm font-medium text-white bg-accent rounded-md hover:bg-accent/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
             >
               {streaming ? "…" : gt("Send")}
             </button>
@@ -273,7 +273,7 @@ function ChatTurn({ turn }: { turn: Turn }) {
       <div
         className={`max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap leading-relaxed ${
           isUser
-            ? "bg-accent-blue text-white"
+            ? "bg-accent text-white"
             : "bg-surface-overlay text-on-surface border border-border"
         }`}
       >
