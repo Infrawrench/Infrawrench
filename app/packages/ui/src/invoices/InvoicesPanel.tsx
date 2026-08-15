@@ -477,146 +477,148 @@ function CustomerModal({
       ariaLabel={account ? gt("Edit {name}", { name: account.name }) : gt("New customer")}
       onClose={onClose}
     >
-      <div className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-          {gt("Name")}
-          <input className={FIELD} value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <div className="grid grid-cols-2 gap-3">
+      <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[520px] max-w-[92vw] max-h-[85vh] overflow-y-auto p-6">
+        <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-            {gt("Contact name")}
-            <input
+            {gt("Name")}
+            <input className={FIELD} value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
+              {gt("Contact name")}
+              <input
+                className={FIELD}
+                value={contactName}
+                onChange={(e) => setContactName(e.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
+              {gt("Contact email")}
+              <input
+                className={FIELD}
+                value={contactEmail}
+                onChange={(e) => setContactEmail(e.target.value)}
+              />
+            </label>
+          </div>
+          <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
+            {gt("Billing address")}
+            <textarea
               className={FIELD}
-              value={contactName}
-              onChange={(e) => setContactName(e.target.value)}
+              rows={2}
+              value={billingAddress}
+              onChange={(e) => setBillingAddress(e.target.value)}
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-            {gt("Contact email")}
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
+              {gt("Billing currency")}
+              <input
+                className={FIELD}
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                maxLength={3}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
+              {gt("Cost basis")}
+              <select
+                className={FIELD}
+                value={costBasis}
+                onChange={(e) => setCostBasis(e.target.value as "cash" | "amortized")}
+              >
+                <option value="amortized">{gt("Amortized")}</option>
+                <option value="cash">{gt("Cash")}</option>
+              </select>
+            </label>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-on-surface-faint">
             <input
-              className={FIELD}
-              value={contactEmail}
-              onChange={(e) => setContactEmail(e.target.value)}
+              type="checkbox"
+              checked={applyRules}
+              onChange={(e) => setApplyRules(e.target.checked)}
             />
+            {gt(
+              "Apply the organisation’s billing rules (markups, discounts, fixed fees). Off is a pass-through contract: billed exactly what the providers charged.",
+            )}
           </label>
-        </div>
-        <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-          {gt("Billing address")}
-          <textarea
-            className={FIELD}
-            rows={2}
-            value={billingAddress}
-            onChange={(e) => setBillingAddress(e.target.value)}
-          />
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-            {gt("Billing currency")}
-            <input
-              className={FIELD}
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              maxLength={3}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-            {gt("Cost basis")}
-            <select
-              className={FIELD}
-              value={costBasis}
-              onChange={(e) => setCostBasis(e.target.value as "cash" | "amortized")}
-            >
-              <option value="amortized">{gt("Amortized")}</option>
-              <option value="cash">{gt("Cash")}</option>
-            </select>
-          </label>
-        </div>
-        <label className="flex items-center gap-2 text-xs text-on-surface-faint">
-          <input
-            type="checkbox"
-            checked={applyRules}
-            onChange={(e) => setApplyRules(e.target.checked)}
-          />
-          {gt(
-            "Apply the organisation’s billing rules (markups, discounts, fixed fees). Off is a pass-through contract: billed exactly what the providers charged.",
+
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-on-surface-faint">
+              {gt("Cost centres — naming a parent bills its whole subtree")}
+            </span>
+            <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-surface-sunken p-2">
+              {paths.length === 0 ? (
+                <p className="text-xs text-on-surface-faint">
+                  {gt(
+                    "No cost centres defined. Define them in Settings → Tag policy first; a customer references centres rather than matching spend itself.",
+                  )}
+                </p>
+              ) : (
+                paths.map((row) => (
+                  <label
+                    key={row.id}
+                    className="flex items-center gap-2 py-0.5 text-sm text-on-surface"
+                    style={{ paddingLeft: `${row.depth * 12}px` }}
+                    title={row.path}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={centreIdSet.has(row.id)}
+                      onChange={() => setCentreIds((ids) => toggle(ids, row.id))}
+                    />
+                    {row.name}
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-on-surface-faint">
+              {gt("Cloud accounts — claims only spend no cost centre already claimed")}
+            </span>
+            <div className="max-h-32 overflow-y-auto rounded-lg border border-border bg-surface-sunken p-2">
+              {cloudAccounts.length === 0 ? (
+                <p className="text-xs text-on-surface-faint">{gt("No connected accounts.")}</p>
+              ) : (
+                cloudAccounts.map((a) => (
+                  <label
+                    key={a.id}
+                    className="flex items-center gap-2 py-0.5 text-sm text-on-surface"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={accountIdSet.has(a.id)}
+                      onChange={() => setAccountIds((ids) => toggle(ids, a.id))}
+                    />
+                    {a.displayName}
+                    <span className="text-xs text-on-surface-faint">{a.pluginId}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+
+          {error !== null && (
+            <p role="alert" className="text-sm text-danger">
+              {error}
+            </p>
           )}
-        </label>
 
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-on-surface-faint">
-            {gt("Cost centres — naming a parent bills its whole subtree")}
-          </span>
-          <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-surface-sunken p-2">
-            {paths.length === 0 ? (
-              <p className="text-xs text-on-surface-faint">
-                {gt(
-                  "No cost centres defined. Define them in Settings → Tag policy first; a customer references centres rather than matching spend itself.",
-                )}
-              </p>
-            ) : (
-              paths.map((row) => (
-                <label
-                  key={row.id}
-                  className="flex items-center gap-2 py-0.5 text-sm text-on-surface"
-                  style={{ paddingLeft: `${row.depth * 12}px` }}
-                  title={row.path}
-                >
-                  <input
-                    type="checkbox"
-                    checked={centreIdSet.has(row.id)}
-                    onChange={() => setCentreIds((ids) => toggle(ids, row.id))}
-                  />
-                  {row.name}
-                </label>
-              ))
-            )}
+          <div className="flex justify-end gap-2">
+            <button type="button" className={BTN} onClick={onClose}>
+              {gt("Cancel")}
+            </button>
+            <button
+              type="button"
+              className={BTN}
+              disabled={saving || !name.trim()}
+              onClick={() => void submit()}
+            >
+              {saving ? gt("Saving…") : gt("Save")}
+            </button>
           </div>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-on-surface-faint">
-            {gt("Cloud accounts — claims only spend no cost centre already claimed")}
-          </span>
-          <div className="max-h-32 overflow-y-auto rounded-lg border border-border bg-surface-sunken p-2">
-            {cloudAccounts.length === 0 ? (
-              <p className="text-xs text-on-surface-faint">{gt("No connected accounts.")}</p>
-            ) : (
-              cloudAccounts.map((a) => (
-                <label
-                  key={a.id}
-                  className="flex items-center gap-2 py-0.5 text-sm text-on-surface"
-                >
-                  <input
-                    type="checkbox"
-                    checked={accountIdSet.has(a.id)}
-                    onChange={() => setAccountIds((ids) => toggle(ids, a.id))}
-                  />
-                  {a.displayName}
-                  <span className="text-xs text-on-surface-faint">{a.pluginId}</span>
-                </label>
-              ))
-            )}
-          </div>
-        </div>
-
-        {error !== null && (
-          <p role="alert" className="text-sm text-danger">
-            {error}
-          </p>
-        )}
-
-        <div className="flex justify-end gap-2">
-          <button type="button" className={BTN} onClick={onClose}>
-            {gt("Cancel")}
-          </button>
-          <button
-            type="button"
-            className={BTN}
-            disabled={saving || !name.trim()}
-            onClick={() => void submit()}
-          >
-            {saving ? gt("Saving…") : gt("Save")}
-          </button>
         </div>
       </div>
     </Modal>
@@ -642,65 +644,67 @@ function RaiseInvoiceModal({
 
   return (
     <Modal ariaLabel={gt("Raise an invoice for {name}", { name: account.name })} onClose={onClose}>
-      <div className="flex flex-col gap-3">
-        <T>
-          <p className="text-xs text-on-surface-faint">
-            This raises a <strong>draft</strong>. Its figures recompute from live spend every time
-            you open it, and nothing is frozen until you approve it.
-          </p>
-        </T>
-        <div className="grid grid-cols-2 gap-3">
+      <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[440px] max-w-[92vw] p-6">
+        <div className="flex flex-col gap-3">
+          <T>
+            <p className="text-xs text-on-surface-faint">
+              This raises a <strong>draft</strong>. Its figures recompute from live spend every time
+              you open it, and nothing is frozen until you approve it.
+            </p>
+          </T>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
+              {gt("Period from")}
+              <input
+                type="date"
+                className={FIELD}
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
+              {gt("Period to")}
+              <input
+                type="date"
+                className={FIELD}
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+              />
+            </label>
+          </div>
           <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-            {gt("Period from")}
-            <input
-              type="date"
+            {gt("Notes (printed on the invoice)")}
+            <textarea
               className={FIELD}
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-            {gt("Period to")}
-            <input
-              type="date"
-              className={FIELD}
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-            />
-          </label>
-        </div>
-        <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-          {gt("Notes (printed on the invoice)")}
-          <textarea
-            className={FIELD}
-            rows={2}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-        </label>
-        {error !== null && (
-          <p role="alert" className="text-sm text-danger">
-            {error}
-          </p>
-        )}
-        <div className="flex justify-end gap-2">
-          <button type="button" className={BTN} onClick={onClose}>
-            {gt("Cancel")}
-          </button>
-          <button
-            type="button"
-            className={BTN}
-            disabled={busy}
-            onClick={() => {
-              setBusy(true);
-              setError(null);
-              void onRaise(from, to, notes)
-                .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-                .finally(() => setBusy(false));
-            }}
-          >
-            {busy ? gt("Raising…") : gt("Raise draft")}
-          </button>
+          {error !== null && (
+            <p role="alert" className="text-sm text-danger">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <button type="button" className={BTN} onClick={onClose}>
+              {gt("Cancel")}
+            </button>
+            <button
+              type="button"
+              className={BTN}
+              disabled={busy}
+              onClick={() => {
+                setBusy(true);
+                setError(null);
+                void onRaise(from, to, notes)
+                  .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+                  .finally(() => setBusy(false));
+              }}
+            >
+              {busy ? gt("Raising…") : gt("Raise draft")}
+            </button>
+          </div>
         </div>
       </div>
     </Modal>
@@ -1219,41 +1223,43 @@ function VoidModal({
 
   return (
     <Modal ariaLabel={gt("Void this invoice")} onClose={onClose}>
-      <div className="flex flex-col gap-3">
-        <p className="text-xs text-on-surface-faint">
-          {gt(
-            "The invoice keeps every figure it was sent with. Voiding records that it was withdrawn — it does not edit or delete it, because the customer holds a copy.",
-          )}
-        </p>
-        <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
-          {gt("Reason (required — the only record of why)")}
-          <textarea
-            className={FIELD}
-            rows={3}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-          />
-        </label>
-        <label className="flex items-center gap-2 text-xs text-on-surface-faint">
-          <input
-            type="checkbox"
-            checked={supersede}
-            onChange={(e) => setSupersede(e.target.checked)}
-          />
-          {gt("Raise a corrective draft for the same period, linked to this one")}
-        </label>
-        <div className="flex justify-end gap-2">
-          <button type="button" className={BTN} onClick={onClose}>
-            {gt("Cancel")}
-          </button>
-          <button
-            type="button"
-            className={BTN}
-            disabled={!reason.trim()}
-            onClick={() => void onVoid(reason.trim(), supersede)}
-          >
-            {gt("Void invoice")}
-          </button>
+      <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[440px] max-w-[92vw] p-6">
+        <div className="flex flex-col gap-3">
+          <p className="text-xs text-on-surface-faint">
+            {gt(
+              "The invoice keeps every figure it was sent with. Voiding records that it was withdrawn — it does not edit or delete it, because the customer holds a copy.",
+            )}
+          </p>
+          <label className="flex flex-col gap-1 text-xs text-on-surface-faint">
+            {gt("Reason (required — the only record of why)")}
+            <textarea
+              className={FIELD}
+              rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-xs text-on-surface-faint">
+            <input
+              type="checkbox"
+              checked={supersede}
+              onChange={(e) => setSupersede(e.target.checked)}
+            />
+            {gt("Raise a corrective draft for the same period, linked to this one")}
+          </label>
+          <div className="flex justify-end gap-2">
+            <button type="button" className={BTN} onClick={onClose}>
+              {gt("Cancel")}
+            </button>
+            <button
+              type="button"
+              className={BTN}
+              disabled={!reason.trim()}
+              onClick={() => void onVoid(reason.trim(), supersede)}
+            >
+              {gt("Void invoice")}
+            </button>
+          </div>
         </div>
       </div>
     </Modal>
