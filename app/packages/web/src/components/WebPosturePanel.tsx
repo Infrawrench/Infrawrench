@@ -5,7 +5,7 @@ import {
   type PostureFinding,
   type PostureListResponse,
 } from "@infrawrench/ui";
-import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import { usePermissions } from "@/auth/permissions-context";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
 
 interface WebPosturePanelProps {
@@ -23,10 +23,10 @@ export function WebPosturePanel({ orgId, openResource }: WebPosturePanelProps) {
   const [data, setData] = useState<PostureListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  // Read directly rather than through PermissionsProvider: workspace tabs are
-  // mounted by the root viewport, which sits *outside* the org layout route
-  // that provides it. One small GET when the tab opens.
-  const [canDismiss, setCanDismiss] = useState(false);
+  // Until the shell's permission read lands `has()` is false, so the dismiss
+  // buttons stay hidden rather than offering an action that would 403.
+  const { has } = usePermissions();
+  const canDismiss = has("resources:write");
   // The load effect owns the refresh; dismiss/restore need to trigger one
   // without re-running the effect's teardown, so they go through a ref the
   // effect installs.
@@ -57,22 +57,6 @@ export function WebPosturePanel({ orgId, openResource }: WebPosturePanelProps) {
     },
     [orgId],
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    setCanDismiss(false);
-    apiGet<{ permissions: string[] }>(`/api/org/${orgId}/team/me`)
-      .then((me) => {
-        if (!cancelled) setCanDismiss(hasPermission(me.permissions, "resources:write"));
-      })
-      // A failed permission read leaves the buttons hidden. The server
-      // enforces this anyway; guessing "allowed" would only offer an action
-      // that 403s.
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [orgId]);
 
   useEffect(() => {
     let cancelled = false;
