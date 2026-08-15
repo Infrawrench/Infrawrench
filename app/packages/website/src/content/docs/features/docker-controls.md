@@ -10,16 +10,19 @@ The Docker plugin lists containers on any Docker host you point it at — local 
 
 ## What you see
 
-For each container: name, image, status, ports, and create time. Click one to open its detail page with logs and inspect data.
+For each container: name, image, status, ports, networks, and volumes. Click one to open its detail page with logs and inspect data.
 
 ## Actions
 
-- **Start**
-- **Stop** (with grace period)
-- **Restart**
-- **Remove** — asks for confirmation; force flag available
+The container list has no per-row buttons — open a container first. Its detail page carries a **Container Actions** panel with three buttons:
 
-Actions fire immediately against the host. Status in the list updates on the next refresh tick.
+- **Start**
+- **Stop**
+- **Restart**
+
+All three fire immediately against the host, report `Start succeeded` (or the error) underneath, and are disabled while one is in flight. Status in the list updates on the next refresh tick.
+
+Removing a container is the ordinary resource delete rather than an action here, and it is always forced — a running container will not stop you.
 
 ## Connecting to a host
 

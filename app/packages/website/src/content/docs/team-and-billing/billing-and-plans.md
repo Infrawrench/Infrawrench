@@ -27,11 +27,13 @@ The user and account limits are enforced: on the free plan, inviting a teammate 
 
 There are two ways to hold a paid seat, and you can mix them: rent seats by the month at $20 each, or buy them outright as [capacity slots](#prepaid-capacity-slots) at $200 for two years. Either one puts the organization on the paid plan.
 
-Free orgs (no payment method on file) can use the [AI chat](../features/ai-chat.md) up to **$5 of metered usage per month**; after that the agent refuses new turns until the next month or until you upgrade. Paid orgs are billed for chat usage through Stripe with no built-in limit (set your own cap in **Settings → Billing → Chat cap**).
+Free orgs (no payment method on file) can use the [AI chat](../features/ai-chat.md) up to **$5 of metered usage per month**; after that the agent refuses new turns until the next month or until you upgrade. The same allowance covers `infra.ai()` in [workflows](../features/workflows.md) — it is one org-wide AI budget, not one per feature. Paid orgs are billed for that usage through Stripe with no built-in limit; there is no self-serve cap control, so ask us if you want one set.
 
 ## Upgrade
 
-**Settings → Billing → Upgrade**. We use Stripe. Add a card, pick a seat count, and you are on the paid plan immediately.
+**Settings → Billing → Upgrade to Pro - $20/seat/month**. That takes you to Stripe Checkout, which is where the card goes in and where the seat count is set — the quantity starts at 1 and you adjust it there, not on the Billing page. You are on the paid plan as soon as Stripe confirms.
+
+The Billing page itself is a current-plan card (with a status pill and, on a paid plan, the seat breakdown), that upgrade button, a **Manage subscription** button into the Stripe portal, and the **Prepaid capacity** card below. On the free plan it also lists what Pro includes. There are no side-by-side plan cards here — those belong to onboarding.
 
 You are also offered the choice right after creating an organization — the onboarding flow shows the Free and Pro plans side by side. Picking **Continue with Free** costs nothing and you can upgrade later from Settings; picking **Upgrade to Pro** takes you straight to checkout.
 

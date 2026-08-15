@@ -12,23 +12,20 @@ The audit log records every state-changing action in the organization — resour
 
 ## What is captured
 
-For each entry:
+The table has four columns:
 
+- **Time** — wall-clock in your timezone.
+- **User** — who did it, or **API Key** when the call came in on an [API key](./api-keys.md) and **System** for automated work.
 - **Action** — verb + object (e.g. “created Droplet”, “started SSH session”).
-- **Actor** — the user that did it, and — when the call came in on an [API key](./api-keys.md) — which key. Both, not one or the other: a key acts as its owner, so the owner alone cannot tell you whether a person or a token was at the other end.
-- **Target** — the resource or account affected, with a link.
-- **Time** — wall-clock in your timezone; hover for UTC.
-- **Source** — web UI, API, or automated (sync, refresh).
+- **Entity** — the type and id of the resource or account affected.
+
+Twenty-five entries to a page, newest first, with **Previous** / **Next** underneath and a count of everything matched.
 
 ## Filtering
 
-Filter by actor, action type, target type, time range, or text. Combine filters.
+The page has one filter: a **Filter by type** dropdown over the entity type — account, resource, dashboard, api_key, member, subscription — or **All types**.
 
-Over the API, `GET /api/org/<orgId>/audit-logs` also takes `apiKeyId` — everything one credential did, which is the first thing to pull when a token leaks. `userId` cannot answer that question on its own, because a person and every key they minted share one user id.
-
-## Export
-
-**Export → CSV** or **JSON**. Exports respect active filters.
+The API is where the finer questions get asked. `GET /api/org/<orgId>/audit-logs` takes `action`, `entityType`, `userId`, `from` and `to`, and — most usefully — `apiKeyId`, which is everything one credential did and the first thing to pull when a token leaks. `userId` cannot answer that question on its own, because a person and every key they minted share one user id.
 
 ## Retention
 
