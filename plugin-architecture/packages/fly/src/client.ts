@@ -11,7 +11,7 @@ import type {
   HostServices,
   MetricSeries,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch, labeledFieldItems } from "@infrawrench/plugin-base";
+import { joinSubtitle, jsonRestFetch, labeledFieldItems } from "@infrawrench/plugin-base";
 
 /**
  * Fly.io plugin client.
@@ -699,7 +699,7 @@ export class FlyClient implements PluginClient {
     if (resource.resourceTypeId === "app") {
       return {
         title: resource.displayName,
-        subtitle: `app · ${String(fields["organization"] ?? "")}`,
+        subtitle: joinSubtitle("app", fields["organization"]),
         status: {
           kind: "status-dot",
           status: fields["status"] === "deployed" ? "healthy" : "degraded",
@@ -760,7 +760,7 @@ export class FlyClient implements PluginClient {
       }
       return {
         title: resource.displayName,
-        subtitle: `machine · ${formatRegion(String(fields["region"] ?? ""))}`,
+        subtitle: joinSubtitle("machine", formatRegion(String(fields["region"] ?? ""))),
         status: { kind: "status-dot", status: machineStateToDot(state) },
         sections: [
           {
@@ -796,7 +796,7 @@ export class FlyClient implements PluginClient {
     if (resource.resourceTypeId === "certificate") {
       return {
         title: resource.displayName,
-        subtitle: `certificate · ${String(fields["appName"] ?? "")}`,
+        subtitle: joinSubtitle("certificate", fields["appName"]),
         status: {
           kind: "status-dot",
           status: fields["configured"] === true ? "healthy" : "degraded",
@@ -820,7 +820,7 @@ export class FlyClient implements PluginClient {
     // volume or fallback
     return {
       title: resource.displayName,
-      subtitle: `volume · ${formatRegion(String(fields["region"] ?? ""))}`,
+      subtitle: joinSubtitle("volume", formatRegion(String(fields["region"] ?? ""))),
       status: {
         kind: "status-dot",
         status: fields["state"] === "created" ? "healthy" : "error",

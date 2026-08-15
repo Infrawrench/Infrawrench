@@ -9,7 +9,7 @@ import type {
   ResourceStatus,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { joinSubtitle, jsonRestFetch } from "@infrawrench/plugin-base";
 
 const BASE_URL = "https://api.workos.com";
 
@@ -1694,7 +1694,7 @@ export class WorkosClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `SSO connection · ${String(fields["connectionType"] ?? "")}`,
+      subtitle: joinSubtitle("SSO connection", fields["connectionType"]),
       status: { kind: "status-dot", status: connectionStateDot(state) },
       sections: [
         {
@@ -1746,7 +1746,7 @@ export class WorkosClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `Directory · ${String(fields["type"] ?? "")}`,
+      subtitle: joinSubtitle("Directory", fields["type"]),
       status: { kind: "status-dot", status: directoryStateDot(state) },
       sections: [
         {

@@ -297,6 +297,7 @@ export type { OutputRefValue } from "./output-ref.js";
 
 export {
   camelToTitle,
+  joinSubtitle,
   labeledFieldItems,
   labeledOutputItems,
   resourceTypeDisplayName,

@@ -17,7 +17,12 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  joinSubtitle,
+  jsonRestFetch,
+} from "@infrawrench/plugin-base";
 
 const API_BASE = "https://api.together.ai/v1";
 /**
@@ -1912,7 +1917,7 @@ export class TogetherClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `Dedicated endpoint · ${String(fields["model"] ?? "")}`,
+      subtitle: joinSubtitle("Dedicated endpoint", fields["model"]),
       status: { kind: "status-dot", status: mapped.status, label: mapped.label },
       sections: [
         {

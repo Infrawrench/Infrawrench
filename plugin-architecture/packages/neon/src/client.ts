@@ -12,6 +12,7 @@ import type {
   CostFetchRange,
   CostRow,
 } from "@infrawrench/plugin-base";
+import { joinSubtitle } from "@infrawrench/plugin-base";
 import {
   createApiClient,
   type Api,
@@ -1967,7 +1968,7 @@ export class NeonClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `Database · ${String(resource.fields["ownerName"] ?? "")}`,
+      subtitle: joinSubtitle("Database", resource.fields["ownerName"]),
       status: { kind: "status-dot", status: "healthy" },
       sections: [
         {

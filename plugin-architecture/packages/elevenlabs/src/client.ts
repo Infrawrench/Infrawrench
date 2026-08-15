@@ -17,7 +17,12 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  joinSubtitle,
+  jsonRestFetch,
+} from "@infrawrench/plugin-base";
 import { fetchElevenLabsCostData } from "./cost-data.js";
 
 const API_BASE = "https://api.elevenlabs.io";
@@ -1256,7 +1261,7 @@ export class ElevenLabsClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `Speech model · ${String(fields["modelId"] ?? "")}`,
+      subtitle: joinSubtitle("Speech model", fields["modelId"]),
       status: {
         kind: "status-dot",
         status: fields["canDoTextToSpeech"] ? "healthy" : "info",

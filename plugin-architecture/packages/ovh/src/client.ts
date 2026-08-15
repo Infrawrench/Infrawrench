@@ -14,7 +14,7 @@ import type {
   MetricSeries,
   HostServices,
 } from "@infrawrench/plugin-base";
-import { labeledFieldItems, resourceTypeDisplayName } from "@infrawrench/plugin-base";
+import { joinSubtitle, labeledFieldItems, resourceTypeDisplayName } from "@infrawrench/plugin-base";
 import { fetchOvhCostData } from "./cost-data.js";
 
 function ovhSshUsername(imageName: string): string {
@@ -1412,7 +1412,10 @@ export class OvhClient implements PluginClient {
 
     const detail: DetailViewSchema = {
       title: resource.displayName,
-      subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} · ${String(fields["region"] ?? "")}`,
+      subtitle: joinSubtitle(
+        resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId),
+        fields["region"],
+      ),
       status: { kind: "status-dot", status, ...(statusStr ? { label: statusStr } : {}) },
       sections: [
         {

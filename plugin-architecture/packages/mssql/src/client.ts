@@ -8,6 +8,7 @@ import type {
   DashboardStat,
   CreateResourceConfig,
 } from "@infrawrench/plugin-base";
+import { joinSubtitle } from "@infrawrench/plugin-base";
 
 const SYSTEM_DBS = new Set(["master", "tempdb", "model", "msdb"]);
 
@@ -196,7 +197,10 @@ export class MSSQLClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `${String(resource.fields["host"] ?? "SQL Server")} · ${String(resource.fields["database"] ?? "")}`,
+      subtitle: joinSubtitle(
+        String(resource.fields["host"] ?? "SQL Server"),
+        resource.fields["database"],
+      ),
       status: { kind: "status-dot", status: "info" },
       sections: [
         {

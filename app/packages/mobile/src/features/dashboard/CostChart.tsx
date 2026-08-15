@@ -17,7 +17,10 @@ import {
   formatMoney,
   niceAxis,
   totalPerBucket,
+  FORECAST_COLOR,
   OTHER_GROUP_KEY,
+  OTHER_SERIES_COLOR,
+  SCENARIO_COLOR,
   type CostAnnotation,
   type CostAnnotationMarker,
   type CostBinningId,
@@ -52,18 +55,6 @@ import {
  * our categorical order tellable apart.
  */
 
-/** "Other" is always neutral — never a categorical hue. */
-const OTHER_COLOR = "#6b7280";
-/** The forecast overlay reads as the same measure, so it wears series one. */
-const FORECAST_COLOR = SERIES_COLORS[0]!;
-/**
- * The scenario overlay wears a *different* hue from the trend on purpose: the
- * two lines are different claims — one is what the data extrapolates to, the
- * other is what somebody says they know is coming — and a reader has to be able
- * to tell them apart at a glance on a phone.
- */
-const SCENARIO_COLOR = SERIES_COLORS[2]!;
-
 export interface CostChartProps {
   response: CostQueryResponse;
   chartType: CostChartType;
@@ -85,8 +76,18 @@ interface PlotSeries {
   values: number[];
 }
 
+/**
+ * A series' hue is its rank. The overlays deliberately do not come through
+ * here: they use the named `FORECAST_COLOR` / `SCENARIO_COLOR` from the shared
+ * palette, and the scenario wears a *different* hue from the trend on purpose —
+ * the two lines are different claims, one what the data extrapolates to and the
+ * other what somebody says they know is coming, and a reader has to be able to
+ * tell them apart at a glance on a phone.
+ */
 function colorFor(index: number, isOther: boolean): string {
-  return isOther ? OTHER_COLOR : (SERIES_COLORS[index % SERIES_COLORS.length] ?? OTHER_COLOR);
+  return isOther
+    ? OTHER_SERIES_COLOR
+    : (SERIES_COLORS[index % SERIES_COLORS.length] ?? OTHER_SERIES_COLOR);
 }
 
 export function CostChart({ response, chartType, binning, currency, annotations }: CostChartProps) {

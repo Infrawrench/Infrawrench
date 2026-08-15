@@ -27,8 +27,15 @@ import { UnitCostsSection } from "./UnitCostsSection.js";
 import { BudgetConfigModal, DEFAULT_BUDGET_INPUT } from "./BudgetConfigModal.js";
 import { CostGraphCard } from "./CostGraphCard.js";
 import { CostCollectionNotice } from "./CostCollectionNotice.js";
+import { CostConversionNotice } from "./CostConversionNotice.js";
 import { DEFAULT_COST_GRAPH_CONFIG, DIMENSION_LABELS } from "./CostGraphConfigModal.js";
-import type { BudgetInput, CostAccountStatus, CostDimensionId, CostGraphConfig } from "./config.js";
+import type {
+  BudgetInput,
+  CostAccountStatus,
+  CostConversion,
+  CostDimensionId,
+  CostGraphConfig,
+} from "./config.js";
 import type { BudgetWithStatus, CostsClient, CostsPanelDashboard } from "./types.js";
 
 /**
@@ -140,6 +147,14 @@ export function CostsPanel({
   const gtData = useDataString();
   const [budgets, setBudgets] = useState<BudgetWithStatus[] | null>(null);
   const [statuses, setStatuses] = useState<CostAccountStatus[]>([]);
+  /**
+   * The conversion the overview chart's response came back with, reported up by
+   * the card rather than queried again here — the panel would otherwise run the
+   * same `/costs/query` twice to learn something the first answer already said.
+   * `undefined` for every org that has stated no exchange rates, which is what
+   * keeps the notice off the page entirely for them.
+   */
+  const [conversion, setConversion] = useState<CostConversion | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [groupBy, setGroupBy] = useState<CostDimensionId>("provider");
   /**
@@ -241,6 +256,16 @@ export function CostsPanel({
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 py-6 flex flex-col gap-6">
         <CostCollectionNotice statuses={statuses} />
+        {/*
+          Above the figures, beside the collection notice, and for the same
+          reason: both say "the number below is not the plain sum you think it
+          is". The cards carry a one-line footnote, which is all a card has room
+          for; this is where the rates and their effective dates are actually
+          named, and where a currency that could not be converted — and so is
+          missing from the headline total — is called out. Renders nothing for
+          an org that has stated no rates.
+        */}
+        <CostConversionNotice conversion={conversion} />
 
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
@@ -286,7 +311,12 @@ export function CostsPanel({
             trick the dashboard's grid item uses.
           */}
           <div className="h-80 [&>*]:h-full">
-            <CostGraphCard title={gt("Month to date")} config={overview} api={client} />
+            <CostGraphCard
+              title={gt("Month to date")}
+              config={overview}
+              api={client}
+              onConversion={setConversion}
+            />
           </div>
         </section>
 

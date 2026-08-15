@@ -10,7 +10,7 @@ import type {
   CostFetchRange,
   CostRow,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { joinSubtitle, jsonRestFetch } from "@infrawrench/plugin-base";
 import { fetchVercelCostData } from "./cost-data.js";
 
 interface VercelProject {
@@ -1153,7 +1153,7 @@ export class VercelClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `Env Variable · ${String(f["type"] ?? "")}`,
+      subtitle: joinSubtitle("Env Variable", f["type"]),
       status: { kind: "status-dot", status: "healthy" },
       sections: [
         {
@@ -1211,7 +1211,7 @@ export class VercelClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `Team · ${String(f["slug"] ?? "")}`,
+      subtitle: joinSubtitle("Team", f["slug"]),
       status: { kind: "status-dot", status: "healthy" },
       sections: [
         {

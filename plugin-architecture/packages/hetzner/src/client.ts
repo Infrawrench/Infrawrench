@@ -16,6 +16,7 @@ import type {
   CostRow,
 } from "@infrawrench/plugin-base";
 import {
+  joinSubtitle,
   jsonRestFetch,
   labeledFieldItems,
   resourceTypeDisplayName,
@@ -1149,7 +1150,10 @@ export class HetznerClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} · ${String(fields["location"] ?? "")}`,
+      subtitle: joinSubtitle(
+        resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId),
+        fields["location"],
+      ),
       status: { kind: "status-dot", status },
       sections: [
         {
