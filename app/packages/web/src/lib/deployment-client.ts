@@ -43,6 +43,7 @@ export function createWebDeploymentClient(orgId: string): DeploymentClient {
       const finish = (fn: () => void) => {
         if (settled) return;
         settled = true;
+        session.stopper.finish();
         fn();
         try {
           ws.close();
@@ -52,10 +53,7 @@ export function createWebDeploymentClient(orgId: string): DeploymentClient {
       };
       const send = (m: unknown) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(m));
 
-      // Exposed to the panel so its Stop button can reach the running deploy.
-      session.stop = () => send({ type: "deploy:stop" });
-
-      ws.onopen = () =>
+      ws.onopen = () => {
         send({
           type: "deploy:run",
           repo: opts.repo,
@@ -63,6 +61,11 @@ export function createWebDeploymentClient(orgId: string): DeploymentClient {
           ...(opts.env ? { env: opts.env } : {}),
           ...(opts.planOnly ? { planOnly: true } : {}),
         });
+        // After deploy:run, never before: the server routes deploy:stop to the
+        // session that frame creates. Arming here flushes a stop the user asked
+        // for while the socket was still connecting.
+        session.stopper.arm(() => send({ type: "deploy:stop" }));
+      };
       ws.onerror = () => finish(() => reject(new Error("Deploy connection failed")));
       ws.onclose = () => finish(() => reject(new Error("Deploy connection closed")));
       ws.onmessage = (ev) => {

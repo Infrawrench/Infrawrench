@@ -2349,6 +2349,22 @@ the ui barrel — dragging React and Monaco into a Node test until `cloud-api.te
 Data-layer modules import the React-free entry; only components import the barrel. Same
 precedent as `agents/launch-command`.
 
+**The Stop button's handle is created by the caller, never handed back by the transport.**
+`DeploySession.stopper` is a required `DeployStopController` (`client-core/src/deploy-stop.ts`)
+that `DeploymentsPanel` constructs before it calls `deploy()`. It used to be an optional
+`stop?: () => void` the transport assigned and the panel read synchronously on the next line —
+which no transport can satisfy, because every one of them `await`s a websocket token before it
+has a socket at all, so the assignment landed a microtask after the read and the button never
+rendered on **either** web or desktop (#108). Owning the controller removes the ordering
+question: there is nothing to read back, and a transport that forgets to `arm()` leaves the stop
+visibly queued rather than silently never offering the button. Transports `arm(send)` inside
+`onopen` **after** sending `deploy:run` — `server.ts` routes `deploy:stop` to the listener that
+frame registers — and `finish()` in their `finish()` wrapper. A stop clicked while the socket is
+still connecting is queued and flushed on arm rather than being dropped or hidden behind a
+disabled button: that window is short but it is exactly when a user changes their mind, having
+just clicked Deploy. The controller is deliberately not reactive — with the queue there is no
+"not ready yet" state to render.
+
 Permissions are `deployments:read` / `:plan` / `:write` — **not** the `dashboards:*` squat
 workflows took. Three tiers because previewing and shipping are different risks: `read` is the
 history and declared envs (inert), `plan` runs the repo's `plan()` against the org's host so it
