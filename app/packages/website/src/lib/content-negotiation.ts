@@ -50,12 +50,22 @@ const HTML_TYPES = new Set(["text/html", "application/xhtml+xml"]);
 /**
  * True when the caller would rather have markdown than HTML.
  *
- * Strictly comparative, and deliberately so. A browser sends
+ * Comparative, and deliberately so. A browser sends
  * `text/html,application/xhtml+xml,application/xml;q=0.9,*​/*;q=0.8` — the
  * wildcard matches markdown, so "does it accept markdown" is true for every
  * browser alive and would serve plain text to the whole web. The question that
  * gives the right answer is "does it accept markdown *more* than HTML", and a
  * wildcard is not a preference for either.
+ *
+ * On equal quality, position decides, because that is how the clients that
+ * matter here actually express a preference. Claude Code's fetch sends
+ * `Accept: text/markdown, text/html, *​/*` — markdown named first, no weights
+ * anywhere. RFC 9110 §12.5.1 makes `q` the normative mechanism and leaves ties
+ * to the server, so ranking HTML first was conformant; it also meant the one
+ * document written for agents was unreachable by the fetch an agent actually
+ * makes, which is the opposite of the point. Where the caller expresses no
+ * order — a tie it never created — nothing changes, because a browser does not
+ * name markdown at all and loses on `markdown === 0`.
  *
  * `text/plain` counts. Terminal clients (`curl -H 'Accept: text/plain'`, some
  * agent HTTP wrappers) mean the same thing by it here, and markdown is valid
@@ -67,13 +77,25 @@ export function prefersMarkdown(acceptHeader: string | null | undefined): boolea
 
   let markdown = 0;
   let html = 0;
-  for (const { type, q } of entries) {
+  // Position of the entry that set the score above, for the tie-break. A type
+  // named twice at the same weight is pinned to its first mention, so
+  // `text/html, ..., text/html` cannot lose a tie to its own repetition.
+  let markdownAt = Number.POSITIVE_INFINITY;
+  let htmlAt = Number.POSITIVE_INFINITY;
+  for (const [index, { type, q }] of entries.entries()) {
     if (q === 0) continue;
-    if (MARKDOWN_TYPES.has(type)) markdown = Math.max(markdown, q);
-    else if (HTML_TYPES.has(type)) html = Math.max(html, q);
+    if (MARKDOWN_TYPES.has(type)) {
+      if (q > markdown) [markdown, markdownAt] = [q, index];
+      else if (q === markdown) markdownAt = Math.min(markdownAt, index);
+    } else if (HTML_TYPES.has(type)) {
+      if (q > html) [html, htmlAt] = [q, index];
+      else if (q === html) htmlAt = Math.min(htmlAt, index);
+    }
   }
 
-  return markdown > 0 && markdown > html;
+  if (markdown === 0) return false;
+  if (markdown !== html) return markdown > html;
+  return markdownAt < htmlAt;
 }
 
 /** The response headers every markdown representation carries. */
