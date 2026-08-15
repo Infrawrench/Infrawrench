@@ -1811,6 +1811,8 @@ Format: `iwk_` + 32 random bytes (base64url). Stored as an HMAC digest keyed off
 
 Authorization is scopes ∩ the owner's current role permissions, and authentication additionally requires the owner to still be a member of the key's org — see [Permissions](#permissions).
 
+**A key is an actor in its own right in the audit log, not a footnote on its owner.** `GET /audit-logs` left-joins `api_keys` for `apiKeyName`/`apiKeyPrefix` and takes an `apiKeyId` filter — `userId` cannot stand in for it, because a person and every key they minted share one user id, which is precisely the distinction you need after a token leaks. `AuditLogSection` renders that as a chip in the actor column (badge + name + prefix, owner on a second line) and the chip **is** the filter; the key dropdown beside the entity-type filter is best-effort, because listing the org's keys is `apikeys:read` while reading the log is `audit:read` and a reader may hold only the second. Two cases the cell has to word rather than drop: a key row deleted since it acted (id survives, name and prefix are null → "Deleted key", and the filter still works off the id), and a filter pointing at a key absent from the dropdown, which gets a synthesised option so the select is never blank and there is always a way back to the full log. Mobile mirrors the reading half only — no key picker on a phone.
+
 ---
 
 ## OpenAPI spec
