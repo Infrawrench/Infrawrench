@@ -10,6 +10,7 @@
 import type { AgentLaunchDefaults } from "@infrawrench/ui/agents";
 
 export type { AgentLaunchDefaults } from "@infrawrench/ui/agents";
+export { NO_AGENT_LAUNCH_DEFAULTS } from "@infrawrench/ui/agents";
 
 /**
  * Key identifying an agent-launch lookup that still needs server resolution.
