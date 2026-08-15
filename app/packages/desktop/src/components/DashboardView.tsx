@@ -24,6 +24,7 @@ import {
   type CustomGraphSummary,
   type CustomGraphWidgetConfig,
   DashboardAddMenu,
+  useStableGT,
 } from "@infrawrench/ui";
 import { createCloudCustomGraphsClient } from "../lib/cloud-custom-graphs";
 import { getDb } from "../db/client";
@@ -124,6 +125,9 @@ interface DashboardViewProps {
 
 export function DashboardView({ dashboardId }: DashboardViewProps) {
   const gt = useGT();
+  // For memos whose gt() calls are lazy: useGT()'s identity changes every
+  // render, and a client rebuilt every render re-fires its consumers' effects.
+  const lazyGt = useStableGT();
   const navigate = useNavigate();
   const [pinned, setPinned] = useState<PinnedRow[]>([]);
   const [workflowPins, setWorkflowPins] = useState<WorkflowPin[]>([]);
@@ -841,7 +845,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     () => ({
       queryCosts: (req) => {
         const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(gt("Cost graphs require cloud mode")));
+        if (!orgId) return Promise.reject(new Error(lazyGt("Cost graphs require cloud mode")));
         return queryCloudCosts(orgId, req);
       },
       loadDimensionValues: (dimension, tagKey) => {
@@ -863,21 +867,21 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       },
       createCostAnnotation: (input) => {
         const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(gt("Annotations require cloud mode")));
+        if (!orgId) return Promise.reject(new Error(lazyGt("Annotations require cloud mode")));
         return createCloudCostAnnotation(orgId, input);
       },
       updateCostAnnotation: (annotationId, input) => {
         const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(gt("Annotations require cloud mode")));
+        if (!orgId) return Promise.reject(new Error(lazyGt("Annotations require cloud mode")));
         return updateCloudCostAnnotation(orgId, annotationId, input);
       },
       deleteCostAnnotation: (annotationId) => {
         const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(gt("Annotations require cloud mode")));
+        if (!orgId) return Promise.reject(new Error(lazyGt("Annotations require cloud mode")));
         return deleteCloudCostAnnotation(orgId, annotationId);
       },
     }),
-    [gt],
+    [lazyGt],
   );
 
   // Keyed to the active org so an org switch rebuilds it (and with it, every
