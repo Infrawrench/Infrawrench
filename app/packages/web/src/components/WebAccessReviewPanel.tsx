@@ -7,7 +7,7 @@ import {
   type AccessPrincipal,
   type AccessReviewResponse,
 } from "@infrawrench/ui";
-import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import { usePermissions } from "@/auth/permissions-context";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
 
 interface WebAccessReviewPanelProps {
@@ -26,10 +26,10 @@ export function WebAccessReviewPanel({ orgId, openResource }: WebAccessReviewPan
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [staleDays, setStaleDays] = useState(DEFAULT_ACCESS_REVIEW_STALE_DAYS);
-  // Read directly rather than through PermissionsProvider: workspace tabs are
-  // mounted by the root viewport, which sits *outside* the org layout route
-  // that provides it. One small GET when the tab opens.
-  const [canWrite, setCanWrite] = useState(false);
+  // Until the shell's permission read lands `has()` is false, so the write
+  // actions stay hidden rather than offering something that would 403.
+  const { has } = usePermissions();
+  const canWrite = has("resources:write");
   // The load effect owns the refresh; the mutations need to trigger one
   // without re-running the effect's teardown, so they go through a ref.
   const reload = useRef<() => void>(() => {});
@@ -98,22 +98,6 @@ export function WebAccessReviewPanel({ orgId, openResource }: WebAccessReviewPan
     },
     [orgId, staleDays],
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    setCanWrite(false);
-    apiGet<{ permissions: string[] }>(`/api/org/${orgId}/team/me`)
-      .then((me) => {
-        if (!cancelled) setCanWrite(hasPermission(me.permissions, "resources:write"));
-      })
-      // A failed permission read leaves the buttons hidden. The server
-      // enforces this anyway; guessing "allowed" would only offer an action
-      // that 403s.
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [orgId]);
 
   useEffect(() => {
     let cancelled = false;

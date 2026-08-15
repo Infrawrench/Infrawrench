@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { IncidentsPanel } from "@infrawrench/ui/incidents";
-import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
-import { apiGet } from "@/lib/api";
+import { usePermissions } from "@/auth/permissions-context";
 import { createWebIncidentsClient } from "@/lib/incidents-client";
 
 /**
@@ -24,21 +23,10 @@ export function WebIncidentsPanel({
   incidentId?: string | undefined;
   onSelectIncident: (incidentId: string | null) => void;
 }) {
-  // Start read-only and widen once the permission read lands: a failed read
-  // leaves the write actions hidden, and the server enforces regardless.
-  const [canWrite, setCanWrite] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    apiGet<{ permissions: string[] }>(`/api/org/${orgId}/team/me`)
-      .then((me) => {
-        if (!cancelled) setCanWrite(hasPermission(me.permissions, "incidents:write"));
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [orgId]);
+  // Start read-only and widen once the shell's permission read lands: a failed
+  // read leaves the write actions hidden, and the server enforces regardless.
+  const { has } = usePermissions();
+  const canWrite = has("incidents:write");
 
   const client = useMemo(() => createWebIncidentsClient(orgId, canWrite), [orgId, canWrite]);
 

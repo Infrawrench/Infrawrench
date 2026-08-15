@@ -22,6 +22,7 @@ import { ChangeFreezeBanner } from "@/components/ChangeFreezeBanner";
 import { ProviderIncidentShellBanner } from "@/components/ProviderIncidentShellBanner";
 import { SpotlightSearch } from "@/components/SpotlightSearch";
 import { WebWorkspaceTabsViewport } from "@/components/WorkspaceTabsViewport";
+import { OrgProviders } from "@/components/OrgProviders";
 import { apiGet, apiPost } from "@/lib/api";
 import {
   dashboardTabTarget,
@@ -348,75 +349,82 @@ function AuthenticatedShell() {
   }
 
   return (
-    <DndShell
-      onPinToDashboard={handlePinToDashboard}
-      onPinWorkflowToDashboard={handlePinWorkflowToDashboard}
-      onResourceAttach={handleResourceAttach}
-      onTunnelSshAttach={(t, h) => void handleTunnelSshAttach(t, h)}
-    >
-      <div className="flex flex-col h-screen bg-surface text-on-surface">
-        {/* First tab stop on every page: without it a keyboard user walks the
+    // Org-scoped contexts wrap the *whole* shell: the workspace-tab viewport
+    // below is a sibling of the <Outlet/>, so anything provided by the
+    // /org/$orgId layout route would miss every tab. See OrgProviders.
+    <OrgProviders orgId={orgId}>
+      <DndShell
+        onPinToDashboard={handlePinToDashboard}
+        onPinWorkflowToDashboard={handlePinWorkflowToDashboard}
+        onResourceAttach={handleResourceAttach}
+        onTunnelSshAttach={(t, h) => void handleTunnelSshAttach(t, h)}
+      >
+        <div className="flex flex-col h-screen bg-surface text-on-surface">
+          {/* First tab stop on every page: without it a keyboard user walks the
             whole tab strip and sidebar again after each navigation. Mirrors
             desktop's `__root.tsx`. */}
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:px-3 focus:py-1.5 focus:rounded focus:bg-surface-overlay focus:text-on-surface focus:border focus:border-border-strong focus:shadow-lg"
-        >
-          {gt("Skip to content")}
-        </a>
-        <GlobalTabBar
-          tabs={workspaceTabs}
-          activeTabId={activeWorkspaceTabId}
-          onActivate={handleActivateTab}
-          onClose={handleCloseTab}
-          onNew={handleNewTab}
-        />
-        {orgId && <ChangeFreezeBanner orgId={orgId} />}
-        {orgId && <ProviderIncidentShellBanner orgId={orgId} />}
-        <div className="flex flex-1 overflow-hidden">
-          <WebSidebar orgId={orgId} />
-          <main id="main-content" className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            {/* Tabs are rendered via WorkspaceTabsViewport: every open tab
+          <a
+            href="#main-content"
+            className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:px-3 focus:py-1.5 focus:rounded focus:bg-surface-overlay focus:text-on-surface focus:border focus:border-border-strong focus:shadow-lg"
+          >
+            {gt("Skip to content")}
+          </a>
+          <GlobalTabBar
+            tabs={workspaceTabs}
+            activeTabId={activeWorkspaceTabId}
+            onActivate={handleActivateTab}
+            onClose={handleCloseTab}
+            onNew={handleNewTab}
+          />
+          {orgId && <ChangeFreezeBanner orgId={orgId} />}
+          {orgId && <ProviderIncidentShellBanner orgId={orgId} />}
+          <div className="flex flex-1 overflow-hidden">
+            <WebSidebar orgId={orgId} />
+            <main id="main-content" className="flex-1 flex flex-col min-w-0 overflow-hidden">
+              {/* Tabs are rendered via WorkspaceTabsViewport: every open tab
                 stays mounted so SSH sessions / xterm scrollback / websocket
                 subscriptions survive tab switches. <Outlet/> still renders
                 non-tab routes like /onboarding, plus /settings (a tab in the
                 strip whose content is route-rendered); other tab routes'
                 components are no-ops. */}
-            {orgId && <WebWorkspaceTabsViewport orgId={orgId} tabsValidated={tabsValidated} />}
-            <Outlet />
-          </main>
+              {orgId && <WebWorkspaceTabsViewport orgId={orgId} tabsValidated={tabsValidated} />}
+              <Outlet />
+            </main>
+          </div>
         </div>
-      </div>
-      {/* Renders input requests raised by a running workflow or Infrafile. */}
-      <PromptHost />
-      {spotlightOpen && <SpotlightSearch mode="navigate" onClose={() => setSpotlightOpen(false)} />}
-      {tunnelAttach && orgId && (
-        <TunnelSshAttachModal
-          tunnelName={tunnelAttach.tunnel.displayName}
-          hostName={tunnelAttach.host.displayName}
-          zones={tunnelAttach.zones}
-          sshKeys={tunnelAttach.sshKeys}
-          showSshKeyPicker
-          defaultUsername={tunnelAttach.defaultUsername}
-          onClose={() => setTunnelAttach(null)}
-          onRun={(params) =>
-            apiPost<TunnelSshAttachResult>(`/api/org/${orgId}/resources/tunnel-ssh-attach`, {
-              tunnel: {
-                accountId: tunnelAttach.tunnel.accountId,
-                pluginId: tunnelAttach.tunnel.pluginId,
-                resourceId: tunnelAttach.tunnel.id,
-              },
-              host: {
-                accountId: tunnelAttach.host.accountId,
-                pluginId: tunnelAttach.host.pluginId,
-                resourceTypeId: tunnelAttach.host.resourceTypeId,
-                resourceId: tunnelAttach.host.id,
-              },
-              ...params,
-            })
-          }
-        />
-      )}
-    </DndShell>
+        {/* Renders input requests raised by a running workflow or Infrafile. */}
+        <PromptHost />
+        {spotlightOpen && (
+          <SpotlightSearch mode="navigate" onClose={() => setSpotlightOpen(false)} />
+        )}
+        {tunnelAttach && orgId && (
+          <TunnelSshAttachModal
+            tunnelName={tunnelAttach.tunnel.displayName}
+            hostName={tunnelAttach.host.displayName}
+            zones={tunnelAttach.zones}
+            sshKeys={tunnelAttach.sshKeys}
+            showSshKeyPicker
+            defaultUsername={tunnelAttach.defaultUsername}
+            onClose={() => setTunnelAttach(null)}
+            onRun={(params) =>
+              apiPost<TunnelSshAttachResult>(`/api/org/${orgId}/resources/tunnel-ssh-attach`, {
+                tunnel: {
+                  accountId: tunnelAttach.tunnel.accountId,
+                  pluginId: tunnelAttach.tunnel.pluginId,
+                  resourceId: tunnelAttach.tunnel.id,
+                },
+                host: {
+                  accountId: tunnelAttach.host.accountId,
+                  pluginId: tunnelAttach.host.pluginId,
+                  resourceTypeId: tunnelAttach.host.resourceTypeId,
+                  resourceId: tunnelAttach.host.id,
+                },
+                ...params,
+              })
+            }
+          />
+        )}
+      </DndShell>
+    </OrgProviders>
   );
 }
