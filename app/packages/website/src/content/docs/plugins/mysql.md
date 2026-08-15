@@ -24,7 +24,7 @@ Or reference an output from a PlanetScale branch or a managed MySQL resource.
 
 ## Notable flows
 
-- **SQL editor** with autocomplete from `information_schema`.
+- **SQL editor** with a schema browser introspected from `information_schema`.
 - **SSH tunnel** if the host is private.
 
 ## Tips & limits

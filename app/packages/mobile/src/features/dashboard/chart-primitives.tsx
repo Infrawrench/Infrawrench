@@ -1,4 +1,5 @@
 import { G, Line as SvgLine, Rect, Text as SvgText } from "react-native-svg";
+import { SERIES_COLORS } from "@infrawrench/client-core";
 import { colors } from "@/lib/theme";
 
 /**
@@ -12,8 +13,13 @@ import { colors } from "@/lib/theme";
  * a bar on the cost card and a bar on a custom graph land on the same grid.
  */
 
-/** The app-wide categorical order (web `chart-theme.ts`), assigned per series. */
-export const SERIES_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f87171", "#a78bfa", "#fb923c"];
+/**
+ * The app-wide categorical order, assigned per series. Re-exported from
+ * `@infrawrench/client-core` rather than restated, so mobile and the web chart
+ * theme cannot drift — the two held separate copies, and the overlay hues
+ * derived from them had already diverged.
+ */
+export { SERIES_COLORS };
 
 export const CHART_WIDTH = 320;
 export const CHART_HEIGHT = 168;

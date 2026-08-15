@@ -17,7 +17,7 @@ The two answer different questions and are never merged into one number:
 
 Apply a scenario and the chart draws **both** lines. The trend stays exactly where it was, and the adjusted line sits beside it under the model's name. A projection that silently folds in somebody's assumptions is worse than no projection at all, so every surface that draws one says which model is applied and what it added.
 
-![A cost graph with a solid actuals area, a dashed blue trend forecast, and a dotted amber scenario line diverging from it, with the amber "Projection includes scenario" caption visible under the title](https://agent-assets.infrawrench.com/docs-screenshots/features/scenario-models/chart-scenario-overlay.png)
+<insert [A cost graph with a solid actuals area, a dashed blue trend forecast, and a dotted amber scenario line diverging from it, with the amber "Projection includes scenario" caption visible under the title. Re-capture: the previous image was taken while the scenario line was drawn in red, which contradicted both this description and the caption beside it] here>
 
 ## What a model contains
 

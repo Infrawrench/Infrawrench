@@ -490,6 +490,7 @@ export {
   type UnitCostSeries,
 } from "./business-metrics";
 export { niceAxis, type AxisScale } from "./chart-axis";
+export { SERIES_COLORS, OTHER_SERIES_COLOR, FORECAST_COLOR, SCENARIO_COLOR } from "./chart-colors";
 export { createMetricValueFormatter, type MetricValueFormatter } from "./metric-units";
 export {
   dashboardCardId,

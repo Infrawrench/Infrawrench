@@ -11,8 +11,9 @@ import type {
   SectionNode,
 } from "@infrawrench/plugin-base";
 import {
-  jsonRestFetch,
   dnsContentField,
+  joinSubtitle,
+  jsonRestFetch,
   renderDnsRecordDetail,
   renderDnsRecordSidebar,
 } from "@infrawrench/plugin-base";
@@ -1443,7 +1444,7 @@ export class NetlifyClient implements PluginClient {
     const state = String(f["state"] ?? "unknown");
     return {
       title: resource.displayName,
-      subtitle: `${String(f["context"] ?? "deploy")} · ${String(f["branch"] ?? "")}`,
+      subtitle: joinSubtitle(String(f["context"] ?? "deploy"), f["branch"]),
       status: { kind: "status-dot", status: mapDeployState(state), label: state },
       sections: [
         {

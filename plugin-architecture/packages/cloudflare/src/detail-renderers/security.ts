@@ -4,7 +4,7 @@ import type {
   SectionNode,
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
-import { labeledFieldItems } from "@infrawrench/plugin-base";
+import { joinSubtitle, labeledFieldItems } from "@infrawrench/plugin-base";
 import { tunnelStatus } from "./status.js";
 
 export function renderTunnelDetail(resource: ResourceInstance): DetailViewSchema {
@@ -266,7 +266,7 @@ export function renderSpectrumApplicationDetail(resource: ResourceInstance): Det
   const fields = resource.fields;
   return {
     title: String(fields["dns"] ?? resource.displayName),
-    subtitle: `Spectrum · ${String(fields["protocol"] ?? "")}`,
+    subtitle: joinSubtitle("Spectrum", fields["protocol"]),
     status: { kind: "status-dot", status: "healthy", label: String(fields["protocol"] ?? "") },
     sections: [
       {

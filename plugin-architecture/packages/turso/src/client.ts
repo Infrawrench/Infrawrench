@@ -9,7 +9,7 @@ import type {
   CostFetchRange,
   CostRow,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { joinSubtitle, jsonRestFetch } from "@infrawrench/plugin-base";
 import { fetchTursoCostData } from "./cost-data.js";
 import { createClient as createTursoApiClient } from "@tursodatabase/api";
 import type {
@@ -884,7 +884,7 @@ export class TursoClient implements PluginClient {
   private renderDatabaseInstanceDetail(resource: ResourceInstance): DetailViewSchema {
     return {
       title: resource.displayName,
-      subtitle: `Turso Database Instance · ${String(resource.fields["database"] ?? "")}`,
+      subtitle: joinSubtitle("Turso Database Instance", resource.fields["database"]),
       status: {
         kind: "status-dot",
         status: resource.fields["type"] === "primary" ? "healthy" : "info",

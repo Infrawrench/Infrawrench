@@ -22,6 +22,7 @@ import {
   INVOKE_PLUGIN_ACTION_EVENT,
   PROMPT_NOSQL_COMMAND_EVENT,
   REROLL_PARENT_OUTPUT_EVENT,
+  NO_AGENT_LAUNCH_DEFAULTS,
   buildAgentLaunchCommand,
   dispatchResourcesChanged,
   dispatchRefreshResource,
@@ -179,7 +180,8 @@ export function ResourcePanel({
   const [sshHost, setSshHost] = useState<string | null>(null);
   const [sshDefaultUsername, setSshDefaultUsername] = useState<string | null>(null);
   const [quickSshConnection, setQuickSshConnection] = useState<QuickSshConnection | null>(null);
-  const [agentLaunchDefaults, setAgentLaunchDefaults] = useState<AgentLaunchDefaults>({});
+  const [agentLaunchDefaults, setAgentLaunchDefaults] =
+    useState<AgentLaunchDefaults>(NO_AGENT_LAUNCH_DEFAULTS);
   const [resolvedAgentLaunchLookupKey, setResolvedAgentLaunchLookupKey] = useState<string | null>(
     null,
   );
@@ -359,7 +361,11 @@ export function ResourcePanel({
 
   useEffect(() => {
     if (!agentLaunchLookupKey || !agentSessionId) {
-      setAgentLaunchDefaults({});
+      // Shared constant, not a fresh `{}` — see NO_AGENT_LAUNCH_DEFAULTS. A new
+      // object here loops the page forever as soon as any dependency of this
+      // effect becomes referentially unstable, which is what broke Monaco
+      // highlighting on web (issue #123).
+      setAgentLaunchDefaults(NO_AGENT_LAUNCH_DEFAULTS);
       setResolvedAgentLaunchLookupKey(null);
       setAgentLaunchError(null);
       return;
@@ -405,7 +411,7 @@ export function ResourcePanel({
       const session = rows[0];
       if (cancelled) return;
       if (!session) {
-        setAgentLaunchDefaults({});
+        setAgentLaunchDefaults(NO_AGENT_LAUNCH_DEFAULTS);
         setAgentLaunchError(
           gt(
             "This agent session no longer exists. You can still connect to the VM manually below.",
@@ -438,7 +444,7 @@ export function ResourcePanel({
     void resolveAgentLaunchDefaults().catch((err) => {
       console.warn(`Failed to resolve agent SSH launch metadata for ${agentSessionId}`, err);
       if (!cancelled) {
-        setAgentLaunchDefaults({});
+        setAgentLaunchDefaults(NO_AGENT_LAUNCH_DEFAULTS);
         setAgentLaunchError(
           gt(
             "Couldn't prepare the agent SSH session: {error}. You can still connect to the VM manually below.",

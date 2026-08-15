@@ -8,17 +8,21 @@ The dashboard is the first thing you see after sign-in. It is a grid of pinned r
 
 ## Pin a resource
 
-1. Open any resource detail page.
-2. Click the **Pin** icon in the top-right.
-3. It shows up on the dashboard immediately.
+Pinning is done from the dashboard, not from the resource. There are three ways in:
 
-<insert [Resource detail page with pin icon highlighted] here>
+- **The add tile.** An empty dashboard shows a large dashed tile reading _"Click to add to this dashboard"_; once it has cards, the same tile shrinks to a **+** labelled **Add**. Either one opens a menu — choose **Pin a resource** and search for what you want.
+- **Spotlight.** The same menu entry opens the Spotlight picker in pin mode: type a few letters and press Enter to pin the highlighted resource.
+- **Drag.** Drag a resource out of the sidebar (or off an account's detail page) and drop it on the dashboard grid, or onto a dashboard's entry in the sidebar. Workflows can be dragged the same way.
+
+The **desktop app** additionally puts a 📌 **Pin to dashboard** button on each resource pill on an account's detail page, revealed on hover. There is no pin button on a resource's own detail page on either platform.
+
+<insert [The dashboard "+" tile menu open on Pin a resource, with the Spotlight picker searching for a resource] here>
 
 ## Arrange cards
 
 - **Drag** a card to move it. Other cards reflow.
 - **Resize** from the bottom-right corner.
-- **Unpin** from the card’s menu, or from the resource detail page.
+- **Unpin** with the **✕** in the card's top-right corner — it appears on hover, and its tooltip reads "Remove from dashboard".
 
 Every kind of card is draggable and they all share one order, so a cost graph or budget can sit between two resource cards rather than being stuck at the end of the grid. New cards are added at the end. The order is per dashboard and shared with everyone in the org.
 
@@ -30,15 +34,15 @@ Each card shows the same summary the sidebar uses — name, status badge, and on
 
 ## Historical metrics
 
-Pinned resources accumulate metric history. The dashboard sparkline on each card shows the most recent values; opening a pinned resource's **Metrics** tab lets you zoom out to longer windows (1 hour, 24 hours, 7 days, 30 days).
+Pinned resources accumulate metric history. The dashboard sparkline on each card shows the most recent values; a resource's **Metrics** tab draws one chart per reported series, captioned with the window it covers — that window comes from the plugin, and there is no range selector to change it.
 
-Behind the scenes, the poller writes a datapoint every 15 seconds to a time-series store. Raw points are kept for 7 days, 1-minute rollups for 30 days, and 1-hour rollups for a year — so zooming out to longer ranges stays fast.
+Behind the scenes, the poller writes a datapoint every 15 seconds to a time-series store. Raw points are kept for 7 days, 1-minute rollups for 30 days, and 1-hour rollups for a year.
 
 Only **pinned** resources accumulate history. Unpin a resource and its history stops being collected (existing points age out via the retention windows above).
 
-Unpinned resources still get a chart: when a resource has no accumulated history, the Metrics tab fetches the series live from the provider on demand. Pinning is what buys you the long ranges and retention — the live fetch only covers whatever window the provider itself serves.
+Unpinned resources still get a chart: when a resource has no accumulated history, the Metrics tab fetches the series live from the provider on demand. The tab itself only appears for resource types whose plugin reports metrics; where a resource has none yet, it says "No metric data yet."
 
-<insert [Resource Metrics tab with a 7-day range selector showing CPU/memory series] here>
+<insert [Resource Metrics tab showing CPU and memory series, each chart captioned with its "Last N min" window and no range selector anywhere on the tab] here>
 
 ## Cost graphs and budgets
 

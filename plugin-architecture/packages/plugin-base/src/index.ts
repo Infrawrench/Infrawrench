@@ -283,6 +283,7 @@ export type {
   ImageOption,
   DiskOption,
   PolicyOption,
+  SelectOption,
   FieldAction,
   FieldActionResult,
 } from "./create.js";
@@ -297,9 +298,12 @@ export type { OutputRefValue } from "./output-ref.js";
 
 export {
   camelToTitle,
+  joinSubtitle,
   labeledFieldItems,
   labeledOutputItems,
   resourceTypeDisplayName,
+  resourceTypeHasMetrics,
+  withMetricsCapability,
 } from "./render-helpers.js";
 
 export {

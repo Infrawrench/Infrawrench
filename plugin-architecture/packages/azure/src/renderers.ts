@@ -14,6 +14,7 @@ import type {
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import {
+  joinSubtitle,
   labeledFieldItems,
   labeledOutputItems,
   resourceTypeDisplayName,
@@ -106,7 +107,10 @@ export function renderAzureDetail(
 
   const detail: DetailViewSchema = {
     title: resource.displayName,
-    subtitle: `${resourceTypeDisplayName(resourceTypes, resource.resourceTypeId)} · ${String(fields["location"] ?? fields["resourceGroup"] ?? "")}`,
+    subtitle: joinSubtitle(
+      resourceTypeDisplayName(resourceTypes, resource.resourceTypeId),
+      fields["location"] ?? fields["resourceGroup"],
+    ),
     status: state
       ? { kind: "status-dot", status: dotStatus, label: state }
       : { kind: "status-dot", status: dotStatus },

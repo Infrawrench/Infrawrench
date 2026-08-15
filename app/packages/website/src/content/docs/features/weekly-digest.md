@@ -45,11 +45,13 @@ One caveat worth knowing: cost data is collected per day, so a far-from-UTC orga
 
 ### Slack and Teams
 
-Every Slack channel and Teams webhook on the Notifications page has a **Weekly digest** checkbox next to its four alert triggers. The digest goes to every channel with the box ticked — so `#finance` can take the digest and budget alerts while `#ops` keeps only sync failures.
+The digest is delivered through [alert routing](./alert-routing.md) like everything else, under the **Weekly digest** trigger. To send it somewhere specific — `#finance` takes the digest and budget alerts while `#ops` keeps only sync failures — add a rule in the **Alert routing** section of **Settings → Notifications** whose **Trigger** condition names **Weekly digest**, and pick the Slack channels or Teams webhooks under **Send to**.
 
-<insert [A routed Slack channel row on the Notifications page with the five trigger checkboxes visible, Weekly digest highlighted] here>
+<insert [The Alert routing section with a rule whose Trigger condition is Weekly digest and two Slack channels ticked under Send to] here>
 
-The checkbox defaults to on for newly added channels, but nothing sends until the org-level toggle is enabled, so ticking it never surprises a channel with an unrequested message.
+Until you write any rules, the built-in default routes every trigger except Drift to every connected channel, so a new organization's digest reaches all of them. Nothing sends until the org-level toggle is enabled either way, so a channel is never surprised by an unrequested message.
+
+Two properties of the digest are fixed rather than routed. **Mobile push is not a destination** — the digest is channel-only, and a rule that sends it to push silently drops it. And **quiet hours never hold it back**: the digest already has a schedule of its own, so holding it until a window closed would only make it late.
 
 ### Email
 

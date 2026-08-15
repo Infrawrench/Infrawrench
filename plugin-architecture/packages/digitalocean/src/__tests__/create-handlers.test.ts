@@ -227,6 +227,55 @@ describe("doGetCreateConfig — every type produces fields", () => {
     expect(slugs).not.toContain("ams2");
   });
 
+  it("dedicated-inference keeps the GPU size slug as the label and the price beside it", async () => {
+    const ctx = makeCtx();
+    const config = await doGetCreateConfig(ctx, "dedicated-inference");
+    const size = config.fields.find((f) => f.key === "size") as {
+      options: Array<{ id: string; label: string; description?: string }>;
+    };
+    expect(size.options[0]).toEqual({
+      id: "gpu-1",
+      label: "gpu-1",
+      description: "1× GPU · $1500/mo",
+    });
+    // The price has to survive a narrow column, so it must not be packed into
+    // the label alongside the slug.
+    expect(size.options[0]!.label).not.toContain("$");
+  });
+
+  it("dedicated-inference lists a GPU size once even when several regions offer it", async () => {
+    const ctx = makeCtx({
+      fetch: vi.fn(async (path: string) => {
+        if (path === "/dedicated-inferences/sizes")
+          return {
+            regions: [
+              { region: "nyc3", sizes: [{ slug: "gpu-1", gpu_count: 1, price_monthly: 1500 }] },
+              { region: "tor1", sizes: [{ slug: "gpu-1", gpu_count: 1, price_monthly: 1500 }] },
+            ],
+          };
+        return routeFetch(path);
+      }) as Mock,
+    });
+    const config = await doGetCreateConfig(ctx, "dedicated-inference");
+    const size = config.fields.find((f) => f.key === "size") as { options: Array<{ id: string }> };
+    expect(size.options.map((o) => o.id)).toEqual(["gpu-1"]);
+  });
+
+  it("dedicated-inference omits the price when the catalog has none", async () => {
+    const ctx = makeCtx({
+      fetch: vi.fn(async (path: string) => {
+        if (path === "/dedicated-inferences/sizes")
+          return { regions: [{ region: "nyc3", sizes: [{ slug: "gpu-2", gpu_count: 2 }] }] };
+        return routeFetch(path);
+      }) as Mock,
+    });
+    const config = await doGetCreateConfig(ctx, "dedicated-inference");
+    const size = config.fields.find((f) => f.key === "size") as {
+      options: Array<{ description?: string }>;
+    };
+    expect(size.options[0]!.description).toBe("2× GPU");
+  });
+
   it("throws for an unknown type", async () => {
     const ctx = makeCtx();
     await expect(doGetCreateConfig(ctx, "nonsense")).rejects.toThrow(/No create config/);

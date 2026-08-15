@@ -210,7 +210,9 @@ These are the keys used to authenticate against `https://inference.do-ai.run/v1/
 
 For account-wide API access (`/v2/...`) keep using the personal access token you added when you set up the plugin.
 
-<insert [DigitalOcean Model API Key detail page with the reveal-once secret value chip] here>
+The detail page is a listing, not a credential: **Name**, **Created By** and **Last Used**, a **Refresh** action, and delete. There is no secret value to reveal — the key material only ever exists in Model Studio, where it was minted. (The **Agent API Keys** resource is the one with a shown-once secret; the two are easy to confuse.)
+
+<insert [DigitalOcean Model API Key detail page showing the Name / Created By / Last Used details and no secret value] here>
 
 ### Vector Databases (Weaviate / OpenSearch / PostgreSQL)
 

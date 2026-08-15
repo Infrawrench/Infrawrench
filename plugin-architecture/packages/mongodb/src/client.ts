@@ -11,6 +11,7 @@ import type {
   PeerPaneResource,
   CreateResourceConfig,
 } from "@infrawrench/plugin-base";
+import { joinSubtitle } from "@infrawrench/plugin-base";
 
 /**
  * MongoDB plugin client.
@@ -143,7 +144,10 @@ export class MongoDBClient implements PluginClient {
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     return {
       title: resource.displayName,
-      subtitle: `${String(resource.fields["host"] ?? "MongoDB")} · ${String(resource.fields["database"] ?? "")}`,
+      subtitle: joinSubtitle(
+        String(resource.fields["host"] ?? "MongoDB"),
+        resource.fields["database"],
+      ),
       status: { kind: "status-dot", status: "healthy" },
       sections: [
         {
@@ -161,6 +165,11 @@ export class MongoDBClient implements PluginClient {
         },
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      // `mongodb-database` declares `supportsMetrics`, so the host fetches the
+      // `dbStats` series for this view; without the capability it had nowhere
+      // to put them. No default window — `dbStats` is a reading taken now, not
+      // a range.
+      metricsCapability: {},
     };
   }
 

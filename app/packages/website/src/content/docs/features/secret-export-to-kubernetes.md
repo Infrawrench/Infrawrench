@@ -4,17 +4,30 @@ description: Drag a cloud resource onto a cluster to create a K8s secret with it
 sidebar_order: 9
 ---
 
-This is the flagship cross-plugin flow. You have an RDS database, or an S3 bucket, or a Redis cluster, and you want those credentials available inside a Kubernetes pod. Instead of copying them into a YAML file, you drag the resource onto a cluster in the sidebar and infrawrench creates the `Secret` for you.
+This is the flagship cross-plugin flow. You have an RDS database, or an S3 bucket, or a Redis cluster, and you want those credentials available inside a Kubernetes pod. Instead of copying them into a YAML file, you point the two resources at each other and infrawrench creates the `Secret` for you.
 
-<insert [Drag gesture from an RDS database card onto an EKS cluster in the sidebar] here>
+## On the web
 
-## How it works
+You start from the **target** — the cluster or account that will hold the secret — and pick the source:
 
-1. Open the source resource (e.g. an RDS instance).
-2. Drag its sidebar entry onto a Kubernetes cluster (or a namespace inside one).
-3. A dialog opens showing the secret keys and resolved values.
-4. Pick a namespace and (optionally) rename keys.
-5. Click **Create secret**.
+1. Open the Kubernetes resource you want the secret to live in.
+2. Click **Connect resource** in the action bar.
+3. Search for the source resource (e.g. an RDS instance) and press Enter.
+4. The **Create Kubernetes Secret** dialog opens showing the template, the keys and where each one comes from.
+5. Pick a namespace, rename keys if you want, set the secret name.
+6. Click **Create Secret**.
+
+<insert [The Create Kubernetes Secret dialog opened from Connect resource, showing the key rows, namespace picker and secret name] here>
+
+## On the desktop
+
+The desktop app has the same **Connect resource** button, and additionally lets you do it by dragging: pick up the source resource in the sidebar (or off an account's detail page) and drop it on a Kubernetes account or a cluster resource. Namespaces are not drop targets — choose the namespace in the dialog that opens. The dialog is the same one, titled **Create Kubernetes Secret**.
+
+<insert [Desktop drag gesture from an RDS database in the sidebar onto an EKS cluster, with the drop target highlighted] here>
+
+## If the target is a VM instead
+
+Where the target has no Kubernetes behind it but does have an SSH host, the same **Connect resource** button writes the credentials to a file on that host instead — the dialog switches to **Deploy Credentials via SSH**, asking for the SSH key and username, a `.env` or shell `export` format, and a file path. When a target supports both, a **K8s Secret** / **SSH Env Deploy** switcher appears at the top.
 
 ![Secret export dialog with DB_HOST, DB_USER, DB_PASSWORD keys and namespace picker](https://agent-assets.infrawrench.com/docs-screenshots/features/secret-export-to-kubernetes/create-secret-dialog.png)
 

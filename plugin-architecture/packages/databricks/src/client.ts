@@ -992,9 +992,12 @@ export class DatabricksClient implements PluginClient {
         .then((nodes) =>
           nodes
             .filter((n) => !n.fields["isDeprecated"] && !n.fields["isHidden"])
+            // Memory/core detail belongs on the option's second line — appended
+            // to the label it just overruns the picker's column and truncates.
             .map((n) => ({
               id: String(n.fields["nodeTypeId"]),
-              label: `${String(n.fields["nodeTypeId"])}${n.fields["description"] ? ` - ${String(n.fields["description"])}` : ""}`,
+              label: String(n.fields["nodeTypeId"]),
+              ...(n.fields["description"] ? { description: String(n.fields["description"]) } : {}),
             })),
         )
         .catch(() => []);

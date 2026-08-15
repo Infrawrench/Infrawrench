@@ -17,6 +17,7 @@ import {
   CostSetupError,
   base64ToBytes,
   formatBytes,
+  joinSubtitle,
   jsonRestFetch,
 } from "@infrawrench/plugin-base";
 
@@ -1191,7 +1192,7 @@ export class MistralClient implements PluginClient {
     const lines = Number(resource.fields["numLines"] ?? 0);
     return {
       title: resource.displayName,
-      subtitle: `Mistral File · ${String(resource.fields["purpose"] ?? "")}`,
+      subtitle: joinSubtitle("Mistral File", resource.fields["purpose"]),
       status: { kind: "status-dot", status: "healthy" },
       sections: [
         {
@@ -1225,7 +1226,7 @@ export class MistralClient implements PluginClient {
     const trained = Number(resource.fields["trainedTokens"] ?? 0);
     return {
       title: resource.displayName,
-      subtitle: `Mistral Fine-Tuning · ${String(resource.fields["model"] ?? "")}`,
+      subtitle: joinSubtitle("Mistral Fine-Tuning", resource.fields["model"]),
       status: {
         kind: "status-dot",
         status: jobStatusDot(status),
@@ -1296,7 +1297,7 @@ export class MistralClient implements PluginClient {
     const cancellable = ["QUEUED", "RUNNING"].includes(status.toUpperCase());
     return {
       title: resource.displayName,
-      subtitle: `Mistral Batch · ${String(resource.fields["endpoint"] ?? "")}`,
+      subtitle: joinSubtitle("Mistral Batch", resource.fields["endpoint"]),
       status: {
         kind: "status-dot",
         status: jobStatusDot(status),

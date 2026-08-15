@@ -4,7 +4,7 @@ description: Open a shell in any VM you can reach over SSH, without leaving the 
 sidebar_order: 3
 ---
 
-Any resource that represents a VM — EC2 instance, GCP instance, DigitalOcean Droplet, Hetzner server, Scaleway instance, Fly machine, generic SSH host — has an **SSH** button on its detail page. Clicking it opens a terminal right inside the app (xterm.js).
+Any resource that represents a VM — EC2 instance, GCP instance, DigitalOcean Droplet, Hetzner server, Scaleway instance, Fly machine, generic SSH host — has an **Open SSH tab** button on its detail page. Clicking it opens a terminal (xterm.js) in a workspace tab of its own, titled `SSH: <resource>`, alongside the resource's own tab in the strip. The terminal fills that tab; it is not a panel beside the resource view.
 
 ![The Droplet's resource tab and its SSH tab side by side in the tab strip, with a live terminal session open on api-prod-1](https://agent-assets.infrawrench.com/docs-screenshots/features/ssh-terminal/live-session.png)
 
@@ -46,11 +46,11 @@ Terminals are readable by NVDA, JAWS, VoiceOver and Orca. There is nothing to tu
 - **Connection state is spoken.** Connecting, connected, disconnected and host-key prompts are announced through a live region, because those messages are not part of the terminal buffer.
 - **Recorded sessions stay browsable.** The [session recording](./session-recording.md) player is read-only, so it is left in browse mode and you can arrow through the replayed output as ordinary text.
 
-<insert [A terminal focused with a screen reader running, showing the accessible name announced for the session] here>
+None of this is visible on screen, which is the point — there is nothing to turn on and nothing to look at. The name is carried as the accessible name of the terminal itself: an SSH terminal announces `SSH terminal, deploy@web-1` (or just `SSH terminal, web-1` when no username is known), a pod shell announces `Kubernetes exec terminal, pod api-7f9 in namespace prod, container api`, and a recording player announces `Session recording playback terminal`. Connection changes — `Connecting to deploy@web-1:22…`, `Connected`, `Connection closed`, `Connection error` — are spoken from a hidden live region rather than written into the buffer.
 
 ## Agent forwarding
 
-The SSH view has a **Forward SSH agent** checkbox above the terminal. When enabled, the same key you used to log in is exposed back to the remote host via the standard OpenSSH agent protocol. That means `git clone git@github.com:...` (or `ssh user@another-host` from the remote) authenticates with your local key — no need to copy private keys onto the server.
+Before you connect, the SSH tab shows a **Forward SSH agent** checkbox above the key picker, hinted "(forwards your selected key; applies on next connect)". Once a session is open the checkbox is gone — which matches what it does, since the choice is read when the connection is made. When enabled, the same key you used to log in is exposed back to the remote host via the standard OpenSSH agent protocol. That means `git clone git@github.com:...` (or `ssh user@another-host` from the remote) authenticates with your local key — no need to copy private keys onto the server.
 
 - Off by default. The setting is remembered per resource.
 - Takes effect on the next connection; toggling does not kill an active session.
@@ -83,4 +83,4 @@ A terminal is one shell on one box. To ask the same question of a whole fleet �
 ## Not seeing the SSH button?
 
 - The resource type may not be SSH-capable (e.g. managed databases — use the [SQL editor](./sql-editor.md) instead).
-- The instance may not expose a public IP. In that case, set up an [SSH tunnel](./ssh-tunnels.md) through a bastion.
+- The instance may not expose a public IP. In that case, route it through a jump host — see [Jumpbox routing](./ssh-jumpbox.md).

@@ -44,6 +44,7 @@ import type {
   PublishMessagePayload,
   PublishMessageResult,
 } from "@infrawrench/plugin-base";
+import { withMetricsCapability } from "@infrawrench/plugin-base";
 import {
   fetchAccessToken,
   fetchGraphAccessToken,
@@ -468,7 +469,14 @@ export class AzureClient implements PluginClient {
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
-    return renderAzureDetail(resource, this.resourceTypes);
+    // Azure Monitor's default window (see `metrics.ts`) is the last hour;
+    // AKS additionally merges the Kubernetes peer's cost series.
+    return withMetricsCapability(
+      renderAzureDetail(resource, this.resourceTypes),
+      this.resourceTypes,
+      resource.resourceTypeId,
+      3_600_000,
+    );
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {

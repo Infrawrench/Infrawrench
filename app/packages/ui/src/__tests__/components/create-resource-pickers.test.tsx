@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { SelectPicker } from "../../components/create-resource/SelectPicker.js";
+import {
+  selectRendersAsChips,
+  selectPickerColumns,
+  selectOptionSecondaryLines,
+  SELECT_NARROW_LABEL_LIMIT,
+} from "../../components/create-resource/select-layout.js";
 import { RegionPicker } from "../../components/create-resource/RegionPicker.js";
 import { DiskPicker } from "../../components/create-resource/DiskPicker.js";
 import { DiskSlider } from "../../components/create-resource/DiskSlider.js";
@@ -39,6 +45,125 @@ describe("SelectPicker", () => {
     render(<SelectPicker options={options} value="a" onChange={vi.fn()} />);
     fireEvent.change(screen.getByLabelText("Search options"), { target: { value: "zzz" } });
     expect(screen.getByText("No matches")).toBeInTheDocument();
+  });
+
+  it("renders an option description as a second line", () => {
+    render(
+      <SelectPicker
+        options={[
+          { id: "gpu-h100x1-80gb", label: "gpu-h100x1-80gb", description: "1× GPU · $3219/mo" },
+        ]}
+        value=""
+        onChange={vi.fn()}
+      />,
+    );
+    // The price is its own element, so nothing clips it out of the label line.
+    expect(screen.getByText("1× GPU · $3219/mo")).toBeInTheDocument();
+  });
+
+  it("matches a search against the description", () => {
+    render(
+      <SelectPicker
+        options={[
+          { id: "gpu-h100x1-80gb", label: "gpu-h100x1-80gb", description: "1× GPU · $3219/mo" },
+          { id: "gpu-l40sx1-48gb", label: "gpu-l40sx1-48gb", description: "1× GPU · $1099/mo" },
+        ]}
+        value=""
+        onChange={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Search options"), { target: { value: "3219" } });
+    expect(screen.getByText("gpu-h100x1-80gb")).toBeInTheDocument();
+    expect(screen.queryByText("gpu-l40sx1-48gb")).not.toBeInTheDocument();
+  });
+
+  it("gives long labels the full width instead of a half-width column", () => {
+    const { rerender } = render(<SelectPicker options={options} value="a" onChange={vi.fn()} />);
+    const grid = () => screen.getByRole("listbox").firstElementChild!;
+    expect(grid().className).toContain("grid-cols-2");
+
+    rerender(
+      <SelectPicker
+        options={[...options, { id: "c", label: "External Managed (Global Application LB)" }]}
+        value="a"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(grid().className).toContain("grid-cols-1");
+  });
+
+  it("shows the id under the label only when they differ", () => {
+    render(
+      <SelectPicker
+        options={[
+          { id: "same", label: "same" },
+          { id: "id-b", label: "Beta" },
+        ]}
+        value=""
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("id-b")).toBeInTheDocument();
+    expect(screen.getAllByText("same")).toHaveLength(1);
+  });
+});
+
+describe("select-layout", () => {
+  it("keeps short option sets on the chip row", () => {
+    expect(
+      selectRendersAsChips([
+        { id: "a", label: "Alpha" },
+        { id: "b", label: "Beta" },
+      ]),
+    ).toBe(true);
+  });
+
+  it("routes options with a description to the picker, which has room for one", () => {
+    expect(
+      selectRendersAsChips([
+        { id: "a", label: "Alpha", description: "1× GPU · $3219/mo" },
+        { id: "b", label: "Beta" },
+      ]),
+    ).toBe(false);
+  });
+
+  it("routes long or numerous options to the picker", () => {
+    expect(selectRendersAsChips([{ id: "a", label: "a".repeat(40) }])).toBe(false);
+    expect(
+      selectRendersAsChips(
+        Array.from({ length: 5 }, (_, i) => ({ id: String(i), label: `Option ${i}` })),
+      ),
+    ).toBe(false);
+  });
+
+  it("leaves an empty option list on the chip branch so nothing renders", () => {
+    expect(selectRendersAsChips([])).toBe(true);
+  });
+
+  it("picks one column as soon as any label outgrows a narrow cell", () => {
+    expect(selectPickerColumns([{ id: "a", label: "Alpha" }])).toBe(2);
+    expect(
+      selectPickerColumns([
+        { id: "a", label: "Alpha" },
+        { id: "b", label: "b".repeat(SELECT_NARROW_LABEL_LIMIT + 1) },
+      ]),
+    ).toBe(1);
+  });
+
+  it("does not widen the grid for a long description alone", () => {
+    // Descriptions render at 11px on their own line, so they fit a narrow cell.
+    expect(selectPickerColumns([{ id: "a", label: "Alpha", description: "d".repeat(40) }])).toBe(2);
+  });
+
+  it("suppresses the id line when it duplicates the label", () => {
+    expect(selectOptionSecondaryLines({ id: "x", label: "x" })).toEqual({
+      description: null,
+      id: null,
+    });
+    expect(selectOptionSecondaryLines({ id: "x", label: "Ex", description: "d" })).toEqual({
+      description: "d",
+      id: "x",
+    });
   });
 });
 

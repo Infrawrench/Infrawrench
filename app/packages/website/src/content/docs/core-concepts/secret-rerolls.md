@@ -13,11 +13,12 @@ A reroll reassigns a field that was pointing at one output to point at a differe
 ## How to reroll
 
 1. Open the resource that has the referenced field.
-2. Click the field (for example **Connection string**).
-3. Choose **Change source**.
-4. Pick a new output reference, or switch to a literal value.
+2. Find the field (for example **Connection string**). A field holding a secret or a reference shows `•••••`, or `from: <source resource>` when it currently points at an output, with a small **Reroll** link beside it. Some plugins label the link for the field instead — the Postgres account calls it **Reroll Connection**.
+3. Click **Reroll**. A **Reroll `<field>`** dialog opens with two tabs: **From resource** and **Paste literal value**.
+4. Pick the new upstream resource, or switch to the second tab and paste a literal value.
+5. Click **Confirm**.
 
-<insert [Secret field showing the "Change source" option in a dropdown] here>
+<insert [The Reroll dialog open on a connection-string field, showing the From resource / Paste literal value tabs and the Confirm button] here>
 
 Infrawrench will resolve the new source on the next connection. Existing connections are not forcibly dropped.
 

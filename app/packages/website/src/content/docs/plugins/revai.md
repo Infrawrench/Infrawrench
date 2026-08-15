@@ -22,23 +22,24 @@ sidebar_order: 47
 
 Open the account for a **Speech** tab. It is transcription only. See [Speech testing](../features/speech-testing.md) for the panel in general.
 
-The clip is posted to `/jobs` as multipart, then polled for up to two minutes and the transcript fetched — all in one press. Four transcribers are offered, which are the whole documented enum:
+The clip is posted to `/jobs` as multipart, then polled for up to two minutes and the transcript fetched — all in one press. The **Transcriber** picker offers the three automatic tiers:
 
 - **Machine** — the default automatic tier
 - **Low cost** — cheaper, lower accuracy
 - **Fusion** — higher accuracy, better on rare words
-- **Human** — human transcription, US deployment only
+
+Rev AI's fourth transcriber, **Human**, is deliberately left out of this panel. A human job takes hours to come back and bills at human rates the moment it is accepted, so inside a panel that gives up polling after two minutes the only possible outcome would be "timed out, and you were charged". Order human transcription through Rev AI directly.
 
 "Reverb", "Reverb Turbo" and "Whisper" are marketing names for the engines behind these, not valid API values, so they are deliberately absent from the picker — sending one is a rejected job.
 
-<insert [Rev AI Speech tab on the account, with the transcriber picker open showing Machine, Low cost, Fusion and Human] here>
+<insert [Rev AI Speech tab on the account, with the Transcriber picker open showing Machine, Low cost and Fusion] here>
 
 ## Tips & limits
 
 - **Jobs are kept for 30 days.** `GET /jobs` only covers the last 30 days, so the Transcription Jobs list is a rolling month rather than a full history.
 - **Deployments do not share data.** A job submitted to the US host is invisible from the EU host and vice versa, so the deployment you pick when adding the account decides what you can see.
 - **The EU deployment has no saved custom vocabularies and no human transcription.** Frankfurt accepts phrases inline at submit time, but there is no `/vocabularies` collection there, so that section is US-only.
-- **Human transcription will time out in the Speech tab.** It takes hours to come back. Submit it and read the result from the Jobs list instead.
+- **Human transcription cannot be ordered from the Speech tab** — see above. Jobs you submit through Rev AI's own API still show up in the Transcription Jobs list, so that is where you read the result.
 - **The Speech tab caps clips at 25 MB**, well below what Rev AI itself accepts (2 GB and 17 hours). The panel sends audio base64-encoded inside a JSON request, and base64 inflates by a third — 25 MB is what survives that round trip. Send anything larger through Rev AI's own API directly.
 - **`balance_seconds` is deprecated and always returns 0**, so it is deliberately not shown — displaying it would read as "out of credit" on a funded account. The USD balances are the live numbers.
 - **The transcript URL needs an explicit `Accept` header.** Requesting it with `*/*` is rejected with a `406`.
