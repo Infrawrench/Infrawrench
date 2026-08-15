@@ -272,7 +272,7 @@ permissions.
 | Jira / Linear connections                                                                                                                 | `jira:read` / `linear:read` | `jira:write` / `linear:write`                                              |
 | Alert routing, Slack channels, Teams webhooks, digest, drift / expiry / posture alert settings                                            | `org:settings:write`        | `org:settings:write`                                                       |
 
-Three shapes are worth noticing.
+Four shapes are worth noticing.
 
 - **Asymmetric pairs.** Billing rules, cost exports and report notifications read
   with `costs:read` but write with `org:settings:write`: a token holding only
@@ -285,6 +285,12 @@ Three shapes are worth noticing.
   routes because they are separate decisions, and the provider surfaces a
   failure on whichever half a token may not do rather than refusing the whole
   update.
+- **Three scopes cannot be put on a key at all.** `apikeys:read`,
+  `apikeys:write` and `team:role:write` are the permissions behind the two
+  resources in the deny-list above, and the Create API Key dialog does not offer
+  them: a key holding one would be refused anyway, so the checkbox would promise
+  something the server does not deliver. They are listed in the table because a
+  WorkOS access token does need them.
 
 ---
 

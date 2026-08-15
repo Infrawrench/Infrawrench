@@ -9813,5 +9813,9 @@
       " ",
       "gelöscht, sofern Sie ihn nicht jetzt übernehmen."
     ]
-  }
+  },
+  "4416d781741b54a0": "Bereiche ({count} ausgewählt)",
+  "d9c7b5106e65c3fb": "Bereiche filtern",
+  "1dbfd08b30efeba9": "Keine Bereiche entsprechen diesem Filter.",
+  "84399c3ecbb56446": "Wählen Sie die kleinste Menge, die für die Aufgabe ausreicht. Was Sie auch auswählen: Ein Schlüssel kann nie mehr als die Rolle der Person, die ihn erstellt hat, und API-Schlüssel können niemals Schlüssel, die Abrechnung, die Teammitgliedschaft oder Break-Glass-Freigaben verwalten."
 }

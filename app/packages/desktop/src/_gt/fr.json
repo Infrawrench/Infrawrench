@@ -9586,5 +9586,9 @@
       },
       " si personne ne le revendique."
     ]
-  }
+  },
+  "4416d781741b54a0": "Portées ({count} sélectionnées)",
+  "d9c7b5106e65c3fb": "Filtrer les portées",
+  "1dbfd08b30efeba9": "Aucune portée ne correspond à ce filtre.",
+  "84399c3ecbb56446": "Choisissez l'ensemble le plus restreint qui fasse l'affaire. Quel que soit votre choix, une clé ne peut jamais dépasser le rôle de la personne qui l'a créée, et les clés d'API ne peuvent jamais gérer les clés, la facturation, les membres de l'équipe ni les approbations d'accès d'urgence."
 }

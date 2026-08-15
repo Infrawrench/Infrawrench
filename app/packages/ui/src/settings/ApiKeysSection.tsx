@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useGT } from "gt-react";
 import { Modal } from "../components/Modal.js";
 import { useDataString } from "../i18n/data-strings.js";
+import { API_KEY_SCOPE_GROUPS } from "./api-key-scopes.js";
 import { useSettingsHost } from "./host.js";
 
 interface ApiKeySummary {
@@ -14,20 +15,6 @@ interface ApiKeySummary {
   revokedAt: string | null;
   createdAt: string;
 }
-
-const AVAILABLE_SCOPES = [
-  { value: "sync:read", label: "Sync (read)" },
-  { value: "sync:write", label: "Sync (write)" },
-  { value: "resources:read", label: "Resources (read)" },
-  { value: "resources:write", label: "Resources (write)" },
-  { value: "dashboards:read", label: "Dashboards (read)" },
-  { value: "dashboards:write", label: "Dashboards (write)" },
-  { value: "workflows:read", label: "Workflows (read)" },
-  { value: "workflows:write", label: "Workflows (write)" },
-  { value: "workflows:approve", label: "Workflows (approve)" },
-  { value: "chat:read", label: "Chat (read)" },
-  { value: "chat:write", label: "Chat (write)" },
-];
 
 export function ApiKeysSection() {
   const gt = useGT();
@@ -207,8 +194,27 @@ function CreateApiKeyModal({
   const { orgId, api } = useSettingsHost();
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<Set<string>>(new Set());
+  const [scopeFilter, setScopeFilter] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Fifty-five checkboxes is the honest size of the permission catalog, and a
+  // scroll through seven headings is a poor way to find `costs:write`. Match on
+  // the permission string as well as the label so someone who arrived from the
+  // docs (which quote the strings) can paste what they read.
+  const visibleGroups = useMemo(() => {
+    const needle = scopeFilter.trim().toLowerCase();
+    if (!needle) return API_KEY_SCOPE_GROUPS;
+    return API_KEY_SCOPE_GROUPS.map((group) => ({
+      ...group,
+      scopes: group.scopes.filter(
+        (scope) =>
+          scope.value.toLowerCase().includes(needle) ||
+          gtData(scope.label).toLowerCase().includes(needle) ||
+          gtData(group.title).toLowerCase().includes(needle),
+      ),
+    })).filter((group) => group.scopes.length > 0);
+  }, [scopeFilter, gtData]);
 
   async function handleCreate() {
     if (!name.trim()) {
@@ -236,7 +242,7 @@ function CreateApiKeyModal({
 
   return (
     <Modal onClose={onClose} ariaLabel={gt("Create API Key")}>
-      <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
+      <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-lg shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-on-surface-secondary">
             {gt("Create API Key")}
@@ -266,31 +272,66 @@ function CreateApiKeyModal({
             />
           </div>
           <div>
-            <span className="block text-xs text-on-surface-tertiary mb-2">{gt("Scopes")}</span>
-            <div className="space-y-2">
-              {AVAILABLE_SCOPES.map((scope) => (
-                <label
-                  key={scope.value}
-                  className="flex items-center gap-2 text-sm text-on-surface-secondary"
-                >
-                  <input
-                    type="checkbox"
-                    checked={scopes.has(scope.value)}
-                    onChange={(e) => {
-                      setScopes((prev) => {
-                        const next = new Set(prev);
-                        if (e.target.checked) next.add(scope.value);
-                        else next.delete(scope.value);
-                        return next;
-                      });
-                    }}
-                    aria-label={gtData(scope.label)}
-                    className="rounded border-border-strong"
-                  />
-                  {gtData(scope.label)}
-                </label>
-              ))}
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <span className="text-xs text-on-surface-tertiary">
+                {gt("Scopes ({count} selected)", { count: scopes.size })}
+              </span>
+              <input
+                type="search"
+                value={scopeFilter}
+                onChange={(e) => setScopeFilter(e.target.value)}
+                placeholder={gt("Filter scopes")}
+                aria-label={gt("Filter scopes")}
+                className="w-40 bg-surface-overlay border border-border-strong rounded-lg px-2 py-1 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
+              />
             </div>
+            <div className="max-h-72 overflow-y-auto border border-border rounded-lg p-3 space-y-4">
+              {visibleGroups.length === 0 ? (
+                <p className="text-xs text-on-surface-muted">
+                  {gt("No scopes match that filter.")}
+                </p>
+              ) : (
+                visibleGroups.map((group) => (
+                  <fieldset key={group.title}>
+                    <legend className="text-[11px] uppercase tracking-wide text-on-surface-faint mb-1.5">
+                      {gtData(group.title)}
+                    </legend>
+                    <div className="space-y-1.5">
+                      {group.scopes.map((scope) => (
+                        <label
+                          key={scope.value}
+                          className="flex items-start gap-2 text-sm text-on-surface-secondary"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={scopes.has(scope.value)}
+                            onChange={(e) => {
+                              setScopes((prev) => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(scope.value);
+                                else next.delete(scope.value);
+                                return next;
+                              });
+                            }}
+                            aria-label={gtData(scope.label)}
+                            className="mt-1 rounded border-border-strong"
+                          />
+                          <span>
+                            {gtData(scope.label)}{" "}
+                            <code className="text-[11px] text-on-surface-faint">{scope.value}</code>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                ))
+              )}
+            </div>
+            <p className="mt-2 text-[11px] text-on-surface-faint">
+              {gt(
+                "Pick the narrowest set that does the job. Whatever you select, a key can never exceed the role of the person who created it, and API keys can never manage keys, billing, team membership or break-glass approvals.",
+              )}
+            </p>
           </div>
           {error && (
             <p id="api-key-name-error" role="alert" className="text-xs text-danger">
