@@ -9549,5 +9549,42 @@
   "7187d36740a92d47": "la clave del agente",
   "78fc1048b8130a83": "Reenviar agente SSH",
   "809076dbcc310eb3": "Reenvía la misma clave SSH que usaste para iniciar sesión, de modo que comandos como `git clone` en el equipo remoto puedan autenticarse con ella. Un equipo remoto comprometido podría usar la clave reenviada contra otros hosts que la acepten; actívalo solo para hosts en los que confíes. Surte efecto en la próxima conexión.",
-  "2569f497652599d2": "(reenvía la clave seleccionada; se aplica en la próxima conexión)"
+  "2569f497652599d2": "(reenvía la clave seleccionada; se aplica en la próxima conexión)",
+  "d4f86415916c0c73": "No se pudieron cargar los agentes",
+  "077267d10193e3e6": "No se pudo revocar ese agente",
+  "e7ea774dcaad2077": "Agentes que se registraron por sí mismos y fueron reclamados en esta organización. Un agente actúa con los permisos de quien lo reclamó y nunca puede gestionar la facturación, crear claves de API, invitar a personas ni revocar otro agente.",
+  "1f1aa35293f33b64": "Ningún agente ha sido reclamado en esta organización.",
+  "a61a873c554484b7": "Agente sin nombre",
+  "6bd09d230f5ce090": "revocado",
+  "2a51fb903bd634b1": "sin reclamar",
+  "13516a2b6966d0a6": "credencial externa",
+  "f759f5f9cee5031b": "último uso {when}",
+  "278e49f5300b957f": "hace {n} min",
+  "56bad7d650c0beac": "hace {n} h",
+  "48ff474fb25b84f2": "hace {n} d",
+  "1d702661a023c18a": "Reclamado por {email}",
+  "92b6de7e7300c7f0": "Nunca reclamado por una persona",
+  "ada2d20e8028e7d0": "Credenciales de agente",
+  "9521dd28dc2cfc74": "en cualquier momento",
+  "507ccabb0594eff3": "{n} minutos",
+  "9148cf9a6f66c778": "Reclamar este espacio de trabajo",
+  "d2322db18080e6b9": {
+    "t": "span",
+    "i": 1,
+    "c": [
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "Espacio de trabajo de prueba."
+      },
+      " Todo lo que hay aquí se eliminará en",
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " si nadie lo reclama."
+    ]
+  }
 }

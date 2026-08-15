@@ -9549,5 +9549,42 @@
   "7187d36740a92d47": "la clé de l'agent",
   "78fc1048b8130a83": "Transférer l'agent SSH",
   "809076dbcc310eb3": "Transfère la même clé SSH que vous avez utilisée pour la connexion, afin que des commandes comme `git clone` sur la machine distante puissent s'authentifier avec elle. Une machine distante compromise pourrait utiliser la clé transférée contre d'autres hôtes qui l'acceptent — n'activez cette option que pour les hôtes de confiance. Prend effet à la prochaine connexion.",
-  "2569f497652599d2": "(transfère la clé sélectionnée ; s'applique à la prochaine connexion)"
+  "2569f497652599d2": "(transfère la clé sélectionnée ; s'applique à la prochaine connexion)",
+  "d4f86415916c0c73": "Impossible de charger les agents",
+  "077267d10193e3e6": "Impossible de révoquer cet agent",
+  "e7ea774dcaad2077": "Agents qui se sont enregistrés eux-mêmes et ont été revendiqués dans cette organisation. Un agent agit avec les permissions de la personne qui l'a revendiqué et ne peut jamais gérer la facturation, créer des clés d'API, inviter des personnes ni révoquer un autre agent.",
+  "1f1aa35293f33b64": "Aucun agent n'a été revendiqué dans cette organisation.",
+  "a61a873c554484b7": "Agent sans nom",
+  "6bd09d230f5ce090": "révoqué",
+  "2a51fb903bd634b1": "non revendiqué",
+  "13516a2b6966d0a6": "identifiant externe",
+  "f759f5f9cee5031b": "dernière utilisation {when}",
+  "278e49f5300b957f": "il y a {n} min",
+  "56bad7d650c0beac": "il y a {n} h",
+  "48ff474fb25b84f2": "il y a {n} j",
+  "1d702661a023c18a": "Revendiqué par {email}",
+  "92b6de7e7300c7f0": "Jamais revendiqué par une personne",
+  "ada2d20e8028e7d0": "Identifiants d'agent",
+  "9521dd28dc2cfc74": "d'un instant à l'autre",
+  "507ccabb0594eff3": "{n} minutes",
+  "9148cf9a6f66c778": "Revendiquer cet espace de travail",
+  "d2322db18080e6b9": {
+    "t": "span",
+    "i": 1,
+    "c": [
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "Espace de travail d'essai."
+      },
+      " Tout ce qui s'y trouve sera supprimé dans",
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " si personne ne le revendique."
+    ]
+  }
 }
