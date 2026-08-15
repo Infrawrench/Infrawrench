@@ -12,6 +12,7 @@ import type {
   CostFetchRange,
   CostRow,
 } from "@infrawrench/plugin-base";
+import { joinSubtitle } from "@infrawrench/plugin-base";
 import {
   createApiClient,
   type Api,
@@ -71,6 +72,13 @@ const NEON_REGIONS: Record<string, { location: string; flag: string }> = {
   "azure-eastus2": { location: "East US 2 (Azure)", flag: "🇺🇸" },
   "azure-westeurope": { location: "West Europe (Azure)", flag: "🇪🇺" },
 };
+
+/**
+ * `fetchMetricSeries` asks Neon's consumption API for the last 24 hours when
+ * the host does not pass a range, so that is what the chart's time-range label
+ * has to say.
+ */
+const NEON_METRICS = { defaultTimeRangeMs: 24 * 3_600_000 };
 
 /**
  * Neon's credential scopes are fine-grained, but users pick a job to do rather
@@ -1839,6 +1847,7 @@ export class NeonClient implements PluginClient {
           },
         },
       ],
+      metricsCapability: NEON_METRICS,
     };
   }
 
@@ -1869,6 +1878,10 @@ export class NeonClient implements PluginClient {
         },
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      // Branch metrics are the project's — `fetchMetricSeries` resolves the
+      // parent project id from the branch and asks for the same consumption
+      // series. Both types declare `supportsMetrics`, so both need the tab.
+      metricsCapability: NEON_METRICS,
     };
   }
 
@@ -1967,7 +1980,7 @@ export class NeonClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `Database · ${String(resource.fields["ownerName"] ?? "")}`,
+      subtitle: joinSubtitle("Database", resource.fields["ownerName"]),
       status: { kind: "status-dot", status: "healthy" },
       sections: [
         {

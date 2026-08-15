@@ -16,9 +16,11 @@ import type {
   CostRow,
 } from "@infrawrench/plugin-base";
 import {
+  joinSubtitle,
   jsonRestFetch,
   labeledFieldItems,
   resourceTypeDisplayName,
+  withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import { fetchHetznerCostData } from "./cost-data.js";
 import { createRateCardCache, type RateCardCache } from "./pricing.js";
@@ -1110,6 +1112,18 @@ export class HetznerClient implements PluginClient {
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
+    // Servers and load balancers declare `supportsMetrics`; Hetzner's
+    // `/metrics` endpoints default to the last hour when the host asks
+    // without a range.
+    return withMetricsCapability(
+      this.renderDetailInner(resource),
+      this.resourceTypes,
+      resource.resourceTypeId,
+      3_600_000,
+    );
+  }
+
+  private renderDetailInner(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const status =
       resource.resourceTypeId === "server"
@@ -1149,7 +1163,10 @@ export class HetznerClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} · ${String(fields["location"] ?? "")}`,
+      subtitle: joinSubtitle(
+        resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId),
+        fields["location"],
+      ),
       status: { kind: "status-dot", status },
       sections: [
         {

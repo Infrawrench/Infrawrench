@@ -88,6 +88,7 @@ export type {
   AgentTool,
   AgentVmAccount,
 } from "./agents/types.js";
+export { NO_AGENT_LAUNCH_DEFAULTS } from "./agents/types.js";
 export { closeSshTabsForAgentTarget, openAgentSshTerminalTab } from "./agents/open-ssh-tab.js";
 export type { AgentSshTabTarget, OpenAgentSshTerminalTabInput } from "./agents/open-ssh-tab.js";
 

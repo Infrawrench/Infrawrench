@@ -409,7 +409,13 @@ describe("cloud-nat renderer", () => {
 });
 
 describe("backend-service renderer", () => {
-  it("renders managed scheme with cdn metrics + health-check warning when none", () => {
+  // The Metrics tab is no longer decided here — `backend-service` declares
+  // `supportsMetrics`, and the client attaches the capability from that
+  // declaration (see `withMetricsCapability`). This renderer used to attach it
+  // only for HTTPS-family schemes, which made the tab come and go with the
+  // protocol field; the plugin-registry test in server-core owns the
+  // capability invariant now.
+  it("renders managed scheme with a health-check warning when none", () => {
     const out = gcpRenderDetail(
       ctx,
       res({
@@ -423,11 +429,10 @@ describe("backend-service renderer", () => {
       }),
     );
     expect(out.subtitle).toContain("External (managed)");
-    expect(out.metricsCapability).toBeDefined();
     expect(JSON.stringify(out)).toContain("No health check attached");
   });
 
-  it("renders internal scheme without metrics and with health checks", () => {
+  it("renders internal scheme with health checks", () => {
     const out = gcpRenderDetail(
       ctx,
       res({
@@ -440,7 +445,6 @@ describe("backend-service renderer", () => {
       }),
     );
     expect(out.subtitle).toContain("Internal Self-Managed");
-    expect(out.metricsCapability).toBeUndefined();
   });
 });
 

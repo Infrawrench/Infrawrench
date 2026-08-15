@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { AVAILABLE_SCOPES } from "@infrawrench/ui/settings/api-key-scopes";
 
 process.env["DATABASE_URL"] = "postgres://localhost/test";
 process.env["WORKOS_API_KEY"] = "test_workos_api_key";
@@ -405,6 +406,70 @@ describe("routes that stay human-only whatever the key holds", () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ minted: true });
+  });
+});
+
+// ------------------------------------------------------------- costs -----
+
+/**
+ * The cost surface, which is the one the Terraform provider is mostly about.
+ *
+ * Nothing in the deny list touches it, so reachability is decided entirely by
+ * the scope intersection — which means the Create API Key dialog's list is the
+ * real ceiling. It used to offer eleven strings, none of them `costs:*`, so
+ * every key an org could actually mint was refused here. The last case is what
+ * ties the enforcement below to the thing a person clicks.
+ */
+describe("cost routes honour the key's scopes and nothing else", () => {
+  /** Exactly what the dialog offered before the cost scopes were added. */
+  const PRE_FIX_PICKER = [
+    "resources:read",
+    "resources:write",
+    "dashboards:read",
+    "dashboards:write",
+    "workflows:read",
+    "workflows:write",
+    "workflows:approve",
+    "chat:read",
+    "chat:write",
+  ];
+
+  it("refuses a key holding every scope the old dialog could produce", async () => {
+    const app = buildApp();
+    keyAuthenticates(PRE_FIX_PICKER, ["*"]);
+    expect((await app.request(`/api/org/${ORG}/costs`, { headers: KEY_HEADERS })).status).toBe(403);
+    keyAuthenticates(PRE_FIX_PICKER, ["*"]);
+    expect(
+      (await app.request(`/api/org/${ORG}/costs`, { method: "POST", headers: KEY_HEADERS })).status,
+    ).toBe(403);
+  });
+
+  it("allows exactly the cost verb the key was scoped for", async () => {
+    const app = buildApp();
+    keyAuthenticates(["costs:read"], ["*"]);
+    expect((await app.request(`/api/org/${ORG}/costs`, { headers: KEY_HEADERS })).status).toBe(200);
+    keyAuthenticates(["costs:read"], ["*"]);
+    expect(
+      (await app.request(`/api/org/${ORG}/costs`, { method: "POST", headers: KEY_HEADERS })).status,
+    ).toBe(403);
+
+    keyAuthenticates(["costs:read", "costs:write"], ["*"]);
+    expect(
+      (await app.request(`/api/org/${ORG}/costs`, { method: "POST", headers: KEY_HEADERS })).status,
+    ).toBe(200);
+  });
+
+  it("is not reachable by a key that simply omitted the scope", async () => {
+    keyAuthenticates(["resources:read"], ["*"]);
+    const res = await buildApp().request(`/api/org/${ORG}/costs`, { headers: KEY_HEADERS });
+    expect(res.status).toBe(403);
+    expect(seen).toEqual({});
+  });
+
+  it("is mintable from the dialog, which is what makes the above usable", () => {
+    const offered = AVAILABLE_SCOPES.map((s) => s.value);
+    expect(offered).toContain("costs:read");
+    expect(offered).toContain("costs:write");
   });
 });
 

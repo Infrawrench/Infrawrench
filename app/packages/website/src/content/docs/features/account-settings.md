@@ -78,9 +78,11 @@ What happens to your organizations depends on who else is in them, and the page 
 
 - **You're the only member** — the organization is deleted with your account, along with every account, resource, dashboard and workflow in it. An active subscription is cancelled at the same time.
 - **Other people are in it, and another owner exists** — you simply leave. The organization and everything in it carries on.
-- **Other people are in it and you're the only owner** — deletion is refused, and the organizations are named. Promote someone else to owner in [**Settings → Team**](../team-and-billing/roles-and-permissions.md) first. Nothing is deleted in the meantime.
+- **Other people are in it and you're the only owner** — the **Delete account** button is disabled and the organizations are named. Promote someone else to owner in [**Settings → Team**](../team-and-billing/roles-and-permissions.md) first. Nothing is deleted in the meantime.
 
 That last case is the only thing standing between one person leaving and a team losing its organization, so there's no override for it.
+
+The button on the card does not delete anything — it opens a confirmation dialog that asks you to type **your email address**, exactly, before its own **Delete account** button becomes clickable. So the warning is on the card and the typed confirmation is in the dialog that follows it.
 
 Your entries in an organization's [audit log](../team-and-billing/audit-log.md) stay, since they're that organization's record rather than yours — they just stop showing a name. The deletion itself is recorded in every organization you were a member of.
 

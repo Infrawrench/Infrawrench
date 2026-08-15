@@ -141,6 +141,26 @@ export interface AgentLaunchDefaults {
   initialCwd?: string;
 }
 
+/**
+ * The single "nothing rehydrated" value for {@link AgentLaunchDefaults}.
+ *
+ * Both hosts clear these defaults from an effect whose dependency list contains
+ * `gt` (per the project's i18n rule), and `useGT()` does not return a
+ * referentially stable function — so that effect re-runs on *every* render.
+ * Writing a fresh `{}` there is therefore a self-sustaining render loop:
+ * new object → state change → render → new `gt` → effect → new object → …
+ *
+ * A shared frozen constant makes the clear idempotent, because React bails out
+ * of a `setState` whose next value is `Object.is`-equal to the current one.
+ * The loop it prevents is not cosmetic: a permanently re-rendering page never
+ * goes idle, and Monaco tokenises on `requestIdleCallback`, so every editor on
+ * the page renders unhighlighted (see issue #123).
+ *
+ * Always use this for the initial state and for every "no defaults" write.
+ * Never write an inline `{}`.
+ */
+export const NO_AGENT_LAUNCH_DEFAULTS: AgentLaunchDefaults = Object.freeze({});
+
 export interface AgentCreateBody {
   repo: string;
   projectName?: string;

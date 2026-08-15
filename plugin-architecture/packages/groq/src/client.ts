@@ -12,7 +12,13 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { base64ToBytes, bytesToBase64, formatBytes, jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  formatBytes,
+  joinSubtitle,
+  jsonRestFetch,
+} from "@infrawrench/plugin-base";
 
 /**
  * OpenAI-compatible surface: models, batches, files, audio.
@@ -932,7 +938,7 @@ export class GroqClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `Groq Batch · ${String(resource.fields["endpoint"] ?? "")}`,
+      subtitle: joinSubtitle("Groq Batch", resource.fields["endpoint"]),
       status: {
         kind: "status-dot",
         status: batchStatusDot(status),
@@ -1012,7 +1018,7 @@ export class GroqClient implements PluginClient {
     const bytes = Number(resource.fields["bytes"] ?? 0);
     return {
       title: resource.displayName,
-      subtitle: `Groq File · ${String(resource.fields["purpose"] ?? "")}`,
+      subtitle: joinSubtitle("Groq File", resource.fields["purpose"]),
       status: { kind: "status-dot", status: "healthy" },
       sections: [
         {
@@ -1040,7 +1046,7 @@ export class GroqClient implements PluginClient {
     const fineTuned = String(resource.fields["fineTunedModel"] ?? "");
     return {
       title: resource.displayName,
-      subtitle: `Groq LoRA Adapter · ${String(resource.fields["baseModel"] ?? "")}`,
+      subtitle: joinSubtitle("Groq LoRA Adapter", resource.fields["baseModel"]),
       status: {
         kind: "status-dot",
         status: fineTuningStatusDot(String(resource.fields["status"] ?? "")),

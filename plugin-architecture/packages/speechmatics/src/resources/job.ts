@@ -38,5 +38,10 @@ export const JobResourceType = rt({
         "Regional REST URL for the plain-text transcript (GET …/v2/jobs/{id}/transcript?format=txt). Requires the account API key and stops working 7 days after the job ran.",
     }),
   ],
+  // Same account-wide `/usage` series the account type charts — a job's own
+  // Metrics tab shows the usage it contributed to. Declared for the same
+  // reason: without it the host never fetches, and the tab the renderer
+  // already declares stays permanently empty.
+  supportsMetrics: true,
   iconKey: "transcription",
 });

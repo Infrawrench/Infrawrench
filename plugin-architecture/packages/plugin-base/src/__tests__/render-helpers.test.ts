@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   camelToTitle,
+  joinSubtitle,
   labeledFieldItems,
   labeledOutputItems,
   resourceTypeDisplayName,
@@ -120,5 +121,39 @@ describe("resourceTypeDisplayName", () => {
 
   it("falls back to camelToTitle when not found", () => {
     expect(resourceTypeDisplayName(types, "load-balancer")).toBe("Load Balancer");
+  });
+});
+
+describe("joinSubtitle", () => {
+  it("joins the parts it is given with the app-wide separator", () => {
+    expect(joinSubtitle("Droplet", "nyc1")).toBe("Droplet · nyc1");
+  });
+
+  it("drops a missing tail rather than leaving a dangling separator", () => {
+    // A DigitalOcean project has no region; the template literal this replaces
+    // rendered that as "Project ·".
+    const fields: Record<string, string> = { name: "Production" };
+    expect(joinSubtitle("Project", fields["region"])).toBe("Project");
+  });
+
+  it("drops empty and whitespace-only parts wherever they sit", () => {
+    expect(joinSubtitle("", "Droplet", "   ", "nyc1", null, undefined)).toBe("Droplet · nyc1");
+  });
+
+  it("trims the parts it keeps", () => {
+    expect(joinSubtitle(" Droplet ", "\tnyc1\n")).toBe("Droplet · nyc1");
+  });
+
+  it("keeps 0 and false, which are values a field can hold", () => {
+    expect(joinSubtitle("Autoscaler", 0)).toBe("Autoscaler · 0");
+    expect(joinSubtitle("Rule", false)).toBe("Rule · false");
+  });
+
+  it("returns an empty string when nothing survives, so no line is drawn", () => {
+    expect(joinSubtitle(undefined, "", null)).toBe("");
+  });
+
+  it("joins three or more parts without collapsing the middle", () => {
+    expect(joinSubtitle("Database", "postgres", "nyc1")).toBe("Database · postgres · nyc1");
   });
 });

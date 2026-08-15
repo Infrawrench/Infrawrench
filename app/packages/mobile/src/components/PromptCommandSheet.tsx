@@ -138,6 +138,9 @@ function FieldInput({
                 <Text style={selected ? styles.chipTextSelected : styles.chipText}>
                   {opt.label}
                 </Text>
+                {/* Plugins put pricing/spec detail in `description` rather than
+                    the label so it can't be clipped; show it under the chip. */}
+                {opt.description ? <Text style={styles.chipSub}>{opt.description}</Text> : null}
               </Pressable>
             );
           })}
@@ -197,6 +200,7 @@ const styles = StyleSheet.create({
   chipSelected: { borderColor: colors.accent, backgroundColor: colors.surfaceOverlay },
   chipText: { color: colors.textMuted, fontSize: 12 },
   chipTextSelected: { color: colors.text, fontSize: 12, fontWeight: "600" },
+  chipSub: { color: colors.textFaint, fontSize: 10 },
   errorText: { color: colors.danger, fontSize: 12 },
   actions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
 });

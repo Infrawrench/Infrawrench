@@ -23,16 +23,18 @@ import {
   buildCostEstimate,
   deleteS3Object,
   getS3BucketPolicy,
+  joinSubtitle,
   jsonRestFetch,
   labeledFieldItems,
   listS3Objects,
   makeS3Folder,
   putS3BucketPolicy,
-  resourceTypeDisplayName,
   renderDnsRecordSidebar,
+  resourceTypeDisplayName,
   signedS3Fetch,
   uploadS3Object,
   virtualHostedUrl,
+  withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import type { S3StorageConfig, StorageObject } from "@infrawrench/plugin-base";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
@@ -1819,7 +1821,10 @@ export class DigitalOceanClient implements PluginClient {
     const fields = resource.fields;
     const detail: DetailViewSchema = {
       title: resource.displayName,
-      subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} \u00B7 ${String(fields["region"] ?? "")}`,
+      subtitle: joinSubtitle(
+        resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId),
+        fields["region"],
+      ),
       status: doStatusDot(resource),
       sections: [
         {
@@ -1872,7 +1877,11 @@ export class DigitalOceanClient implements PluginClient {
       applyGenAiModelRouterDetail(detail, resource);
     }
 
-    return detail;
+    // Droplets state the capability themselves (see `applyDropletDetail`);
+    // DOKS clusters, managed databases and Gradient AI agents get it from the
+    // type declaration. DO's `/v2/monitoring` endpoints default to the last
+    // hour when the host asks without a range.
+    return withMetricsCapability(detail, this.resourceTypes, resource.resourceTypeId, 3_600_000);
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {

@@ -10,7 +10,7 @@ import type {
   SectionNode,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { joinSubtitle, jsonRestFetch } from "@infrawrench/plugin-base";
 
 const API_BASE = "https://api.replicate.com/v1";
 
@@ -1217,7 +1217,7 @@ export class ReplicateClient implements PluginClient {
     const cancellable = mapped.status === "provisioning";
     return {
       title: resource.displayName,
-      subtitle: `Prediction · ${String(fields["model"] ?? "")}`,
+      subtitle: joinSubtitle("Prediction", fields["model"]),
       status: { kind: "status-dot", status: mapped.status, label: mapped.label },
       sections,
       headerActions: [
@@ -1347,7 +1347,7 @@ export class ReplicateClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `Deployment · ${String(fields["model"] ?? "")}`,
+      subtitle: joinSubtitle("Deployment", fields["model"]),
       status: {
         kind: "status-dot",
         status: min > 0 ? "healthy" : "info",

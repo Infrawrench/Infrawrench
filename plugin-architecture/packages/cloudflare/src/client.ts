@@ -24,6 +24,7 @@ import {
   dnsZoneStatus,
   renderDnsRecordDetail,
   renderDnsRecordSidebar,
+  withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import {
   tunnelStatus,
@@ -365,6 +366,19 @@ export class CloudflareClient implements PluginClient {
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
+    // Cloudflare's GraphQL analytics default to the last 24h (see
+    // `analyticsWindow` in metric-series.ts). Every type that fetcher handles
+    // declares `supportsMetrics`, so the tab follows the declaration instead
+    // of being restated by each of the twelve renderers that need it.
+    return withMetricsCapability(
+      this.renderDetailInner(resource),
+      this.resourceTypes,
+      resource.resourceTypeId,
+      24 * 3_600_000,
+    );
+  }
+
+  private renderDetailInner(resource: ResourceInstance): DetailViewSchema {
     switch (resource.resourceTypeId) {
       case "zone":
         return renderZoneDetail(resource);

@@ -30,7 +30,11 @@ import type {
 } from "@infrawrench/plugin-base";
 import type { HostServices, PreflightResult } from "@infrawrench/plugin-base";
 import { runGcpPreflight } from "./preflight.js";
-import { buildCostEstimate, streamOpenAiSseChat } from "@infrawrench/plugin-base";
+import {
+  buildCostEstimate,
+  streamOpenAiSseChat,
+  withMetricsCapability,
+} from "@infrawrench/plugin-base";
 import {
   fetchAccessToken,
   invalidateAccessToken,
@@ -1021,7 +1025,15 @@ export class GcpClient implements PluginClient {
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
-    return gcpRenderDetail(this.detailCtx, resource);
+    // Cloud Monitoring's default window (see `monitoring-client.ts`) is the
+    // last hour. Renderers that want a different one (Cloud Run, Cloud
+    // Functions: 24h) set `metricsCapability` themselves and are left alone.
+    return withMetricsCapability(
+      gcpRenderDetail(this.detailCtx, resource),
+      this.resourceTypes,
+      resource.resourceTypeId,
+      3_600_000,
+    );
   }
 
   /**

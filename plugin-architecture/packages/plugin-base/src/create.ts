@@ -62,6 +62,19 @@ export interface DiskOption {
   diskType?: string;
 }
 
+export interface SelectOption {
+  /** Value submitted in `createResource` fields */
+  id: string;
+  label: string;
+  /**
+   * Secondary line rendered under the label (e.g. "1× GPU · $3219/mo",
+   * "14 GB Memory, 4 Cores"). Prefer this over packing metadata into `label`:
+   * the option grid gives the label one line and a long single-line label is
+   * what forces the picker into its narrow-column truncation.
+   */
+  description?: string;
+}
+
 export interface PolicyOption {
   /** Value submitted in `createResource` fields (e.g. AWS policy ARN, GCP role name) */
   id: string;
@@ -183,7 +196,7 @@ export interface CreateFieldConfig {
    */
   hostnamePath?: boolean;
   /** `select` options */
-  options?: { id: string; label: string }[];
+  options?: SelectOption[];
   /** `number` input bounds */
   minValue?: number;
   maxValue?: number;

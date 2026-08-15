@@ -17,8 +17,10 @@ Click the **Console** button on:
 
 ## What it supports
 
-- **Redis** — the full command set your server version exposes. Autocomplete on command names.
+- **Redis** — the full command set your server version exposes.
 - **Memcached** — text-protocol commands (`get`, `set`, `delete`, `stats`, etc.).
+
+There is no autocomplete. The empty console suggests a couple of commands for the driver you are on, and **↑** / **↓** walk back through the last hundred commands you ran in that session. **Clear** empties the output.
 
 Replies are rendered with type hints: strings as strings, lists as bulleted lists, hashes as tables.
 

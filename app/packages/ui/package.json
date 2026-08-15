@@ -59,6 +59,11 @@
       "import": "./dist/metric-alerts/config.js",
       "require": "./dist/metric-alerts/config.cjs"
     },
+    "./settings/api-key-scopes": {
+      "types": "./dist/settings/api-key-scopes.d.ts",
+      "import": "./dist/settings/api-key-scopes.js",
+      "require": "./dist/settings/api-key-scopes.cjs"
+    },
     "./probes": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",

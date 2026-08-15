@@ -14,6 +14,10 @@ export default defineConfig({
     "cost/config": "src/cost/config.ts",
     // React-free metric alert rule schemas — same split, same consumer.
     "metric-alerts/config": "src/metric-alerts/config.ts",
+    // React-free API key scope catalog. The web test suite asserts it against
+    // the server's permission catalog, and importing the component barrel into
+    // a Node context to read a data table is not worth Monaco and React.
+    "settings/api-key-scopes": "src/settings/api-key-scopes.ts",
     // React-free prompt bridge. Data-layer modules (the desktop cloud client,
     // the web workflow transport) raise prompts without pulling in the whole
     // component barrel — importing that into a Node context drags Monaco and

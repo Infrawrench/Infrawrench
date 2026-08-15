@@ -26,6 +26,7 @@ import {
   CostSetupError,
   CreditAccessError,
   bytesToBase64,
+  joinSubtitle,
   jsonRestFetch,
 } from "@infrawrench/plugin-base";
 
@@ -1215,7 +1216,7 @@ export class OpenRouterClient implements PluginClient {
 
     const schema: DetailViewSchema = {
       title: resource.displayName,
-      subtitle: `OpenRouter Model · ${String(f["author"] || "")}`.trim(),
+      subtitle: joinSubtitle("OpenRouter Model", f["author"]),
       status: { kind: "status-dot", status: "healthy" },
       sections,
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
@@ -1339,7 +1340,7 @@ export class OpenRouterClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `OpenRouter Endpoint · ${String(f["modelId"] ?? "")}`,
+      subtitle: joinSubtitle("OpenRouter Endpoint", f["modelId"]),
       status: {
         kind: "status-dot",
         status: uptime1d >= 0.99 ? "healthy" : uptime1d >= 0.9 ? "degraded" : "error",

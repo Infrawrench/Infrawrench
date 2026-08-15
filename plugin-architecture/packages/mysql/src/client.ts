@@ -11,6 +11,7 @@ import type {
   PeerPaneResource,
   CreateResourceConfig,
 } from "@infrawrench/plugin-base";
+import { joinSubtitle } from "@infrawrench/plugin-base";
 
 const SYSTEM_DATABASES = new Set(["information_schema", "performance_schema", "mysql", "sys"]);
 
@@ -157,7 +158,10 @@ export class MySQLClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `${String(resource.fields["host"] ?? "MySQL")} · ${String(resource.fields["database"] ?? "")}`,
+      subtitle: joinSubtitle(
+        String(resource.fields["host"] ?? "MySQL"),
+        resource.fields["database"],
+      ),
       status: { kind: "status-dot", status: "info" },
       sections: [
         {

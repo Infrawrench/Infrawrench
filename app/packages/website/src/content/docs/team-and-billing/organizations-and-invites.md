@@ -31,7 +31,7 @@ If your capacity is entirely prepaid slots there is no monthly seat to add, so t
 
 ## Pending invitations
 
-Pending invites show in **Settings → Team** with a **Resend** and **Revoke** button. Invites expire after 7 days.
+Pending invites are listed under **Pending invitations** in **Settings → Team**, with the invitee's email, the role they were offered, and when the invite expires. The only action is **Revoke**, and it is shown only to members who can invite — there is no resend, so an invite that has lapsed is revoked and sent again. Invites expire after 7 days.
 
 ## Removing a member
 

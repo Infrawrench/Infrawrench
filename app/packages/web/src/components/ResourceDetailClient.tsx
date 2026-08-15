@@ -63,6 +63,7 @@ import { createWebAgentClient } from "@/lib/agent-client";
 import {
   agentLaunchLookupKey,
   resolveEffectiveAgentLaunch,
+  NO_AGENT_LAUNCH_DEFAULTS,
   type AgentLaunchDefaults,
 } from "@/lib/agent-launch";
 import {
@@ -402,7 +403,8 @@ export function ResourceDetailClient({
     initialCommand,
     initialCwd,
   });
-  const [agentLaunchDefaults, setAgentLaunchDefaults] = useState<AgentLaunchDefaults>({});
+  const [agentLaunchDefaults, setAgentLaunchDefaults] =
+    useState<AgentLaunchDefaults>(NO_AGENT_LAUNCH_DEFAULTS);
   const [resolvedLaunchLookupKey, setResolvedLaunchLookupKey] = useState<string | null>(null);
   const [agentLaunchError, setAgentLaunchError] = useState<string | null>(null);
   const [autoConnectPending, setAutoConnectPending] = useState(false);
@@ -410,7 +412,10 @@ export function ResourceDetailClient({
 
   useEffect(() => {
     if (!launchLookupKey || !agentSessionId) {
-      setAgentLaunchDefaults({});
+      // Shared constant, not a fresh `{}` — `gt` is in this effect's deps and
+      // is not referentially stable, so the effect re-runs on every render and
+      // a new object here would loop forever. See NO_AGENT_LAUNCH_DEFAULTS.
+      setAgentLaunchDefaults(NO_AGENT_LAUNCH_DEFAULTS);
       setResolvedLaunchLookupKey(null);
       setAgentLaunchError(null);
       return;
@@ -433,7 +438,7 @@ export function ResourceDetailClient({
       .catch((err) => {
         console.warn(`Failed to resolve agent SSH launch metadata for ${agentSessionId}`, err);
         if (cancelled) return;
-        setAgentLaunchDefaults({});
+        setAgentLaunchDefaults(NO_AGENT_LAUNCH_DEFAULTS);
         setAgentLaunchError(
           gt(
             "Couldn't prepare the agent SSH session: {error}. You can still connect to the VM manually below.",

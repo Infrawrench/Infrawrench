@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { SERIES_COLORS } from "@infrawrench/client-core";
 
 interface ChartTheme {
   colors: string[];
@@ -13,7 +14,9 @@ function readChartTheme(): ChartTheme {
   const s = getComputedStyle(document.documentElement);
   const v = (name: string) => s.getPropertyValue(name).trim();
   return {
-    colors: ["#60a5fa", "#34d399", "#fbbf24", "#f87171", "#a78bfa", "#fb923c"],
+    // The categorical rotation is shared with mobile rather than restated
+    // here, so the same series is the same colour on every surface.
+    colors: [...SERIES_COLORS],
     grid: v("--color-chart-grid") || "#374151",
     axis: v("--color-chart-axis") || "#4b5563",
     tick: v("--color-chart-tick") || "#9ca3af",
