@@ -684,6 +684,7 @@ export * from "./status-pages";
 export * from "./ownership";
 export * from "./log-workspaces";
 export * from "./log-discovery";
+export * from "./log-tail-options";
 export * from "./alert-routing";
 export * from "./metric-alerts";
 export * from "./org-config";
