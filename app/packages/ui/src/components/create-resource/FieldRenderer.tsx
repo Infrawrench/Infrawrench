@@ -4,6 +4,7 @@ import { useDataString } from "../../i18n/data-strings.js";
 import type { CreateFieldConfig, AssociationSource } from "@infrawrench/plugin-base";
 import { DatetimePicker } from "./DatetimePicker.js";
 import { SelectPicker } from "./SelectPicker.js";
+import { selectRendersAsChips } from "./select-layout.js";
 import { RegionPicker } from "./RegionPicker.js";
 import { SizePicker } from "./SizePicker.js";
 import { DiskSlider } from "./DiskSlider.js";
@@ -285,8 +286,7 @@ export function FieldRenderer({
 
       {field.kind === "select" &&
         field.options &&
-        (field.options.length <= 4 &&
-        Math.max(...field.options.map((opt) => opt.label.length)) < 28 ? (
+        (selectRendersAsChips(field.options) ? (
           <div className="flex gap-2 flex-wrap">
             {field.options.map((opt) => (
               <button
