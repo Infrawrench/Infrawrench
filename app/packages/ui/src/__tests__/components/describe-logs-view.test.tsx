@@ -105,4 +105,19 @@ describe("LogsView", () => {
     await screen.findByText(/log line 1/);
     expect(screen.queryByLabelText("Previous")).not.toBeInTheDocument();
   });
+
+  it("shows a capability default outside the fixed presets as a selected option (#113)", async () => {
+    // DigitalOcean managed databases declare defaultTailLines: 200, which
+    // isn't one of [100, 500, 1000, 5000] — the select must offer and select
+    // 200 rather than silently display "Last 100" while requesting 200.
+    const onGetLogs = vi.fn().mockResolvedValue(logsResult());
+    render(
+      <LogsView capability={{ defaultTailLines: 200 } as LogsCapability} onGetLogs={onGetLogs} />,
+    );
+    await screen.findByText(/log line 1/);
+    const select = screen.getByTitle("Tail lines") as HTMLSelectElement;
+    expect(select.value).toBe("200");
+    expect(onGetLogs).toHaveBeenCalledWith(expect.objectContaining({ tailLines: 200 }));
+    expect(screen.getByRole("option", { name: "Last 200" })).toBeInTheDocument();
+  });
 });

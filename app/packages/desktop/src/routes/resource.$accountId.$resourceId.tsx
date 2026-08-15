@@ -37,6 +37,7 @@ import {
   type RerollSelection,
   useUIStore,
   useTabId,
+  useStableGT,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
@@ -145,6 +146,9 @@ export function ResourcePanel({
 }: ResourcePanelProps) {
   const tabId = useTabId();
   const gt = useGT();
+  // For callbacks whose gt() calls are lazy and that reach a child's effect
+  // deps: useGT()'s identity changes every render, which would re-fire them.
+  const lazyGt = useStableGT();
   const decodedResourceId = decodeURIComponent(resourceId);
   const currentView = locationHash.replace(/^#/, "");
   const isSshView = currentView === "ssh";
@@ -586,7 +590,7 @@ export function ResourcePanel({
     async (command: string, args: (string | number)[]): Promise<unknown> => {
       const cloud = cloudCtxRef.current;
       const res = resource;
-      if (!res) throw new Error(gt("Resource not loaded"));
+      if (!res) throw new Error(lazyGt("Resource not loaded"));
       if (cloud) {
         return runCloudNoSqlCommand(cloud.orgId, {
           pluginId: cloud.pluginId,
@@ -600,7 +604,7 @@ export function ResourcePanel({
       }
       const client = clientRef.current;
       if (!client?.executeNoSqlCommand) {
-        throw new Error(gt("Plugin does not support NoSQL commands"));
+        throw new Error(lazyGt("Plugin does not support NoSQL commands"));
       }
       return client.executeNoSqlCommand(
         res.resourceTypeId,
@@ -610,7 +614,7 @@ export function ResourcePanel({
         args,
       );
     },
-    [accountId, decodedResourceId, resource, gt],
+    [accountId, decodedResourceId, resource, lazyGt],
   );
 
   // Modal state for prompt-nosql-command. Electron renderer doesn't

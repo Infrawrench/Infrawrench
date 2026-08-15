@@ -9587,5 +9587,10 @@
       ", sofern ihn niemand übernimmt."
     ]
   },
+  "654c18cbd7fe02fa": "Gelöschter Schlüssel",
+  "7e1def3ae9575bbf": "Nach API-Schlüssel filtern",
+  "7120551a32a0ea21": "Alle API-Schlüssel",
+  "7605071489d4ef01": "Nur diesen API-Schlüssel anzeigen",
+  "c7d9edb952ec842a": "Gehört {owner}",
   "0fe46c2c3c0518fa": "Letzte {hours} Std."
 }

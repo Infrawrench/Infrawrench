@@ -24,6 +24,7 @@ import {
   type CustomGraphSummary,
   type CustomGraphWidgetConfig,
   DashboardAddMenu,
+  useStableGT,
 } from "@infrawrench/ui";
 import { createCloudCustomGraphsClient } from "../lib/cloud-custom-graphs";
 import { getDb } from "../db/client";
@@ -124,6 +125,9 @@ interface DashboardViewProps {
 
 export function DashboardView({ dashboardId }: DashboardViewProps) {
   const gt = useGT();
+  // For memos whose gt() calls are lazy: useGT()'s identity changes every
+  // render, and a client rebuilt every render re-fires its consumers' effects.
+  const lazyGt = useStableGT();
   const navigate = useNavigate();
   const [pinned, setPinned] = useState<PinnedRow[]>([]);
   const [workflowPins, setWorkflowPins] = useState<WorkflowPin[]>([]);
@@ -841,7 +845,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     () => ({
       queryCosts: (req) => {
         const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(gt("Cost graphs require cloud mode")));
+        if (!orgId) return Promise.reject(new Error(lazyGt("Cost graphs require cloud mode")));
         return queryCloudCosts(orgId, req);
       },
       loadDimensionValues: (dimension, tagKey) => {
@@ -863,21 +867,21 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       },
       createCostAnnotation: (input) => {
         const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(gt("Annotations require cloud mode")));
+        if (!orgId) return Promise.reject(new Error(lazyGt("Annotations require cloud mode")));
         return createCloudCostAnnotation(orgId, input);
       },
       updateCostAnnotation: (annotationId, input) => {
         const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(gt("Annotations require cloud mode")));
+        if (!orgId) return Promise.reject(new Error(lazyGt("Annotations require cloud mode")));
         return updateCloudCostAnnotation(orgId, annotationId, input);
       },
       deleteCostAnnotation: (annotationId) => {
         const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(gt("Annotations require cloud mode")));
+        if (!orgId) return Promise.reject(new Error(lazyGt("Annotations require cloud mode")));
         return deleteCloudCostAnnotation(orgId, annotationId);
       },
     }),
-    [gt],
+    [lazyGt],
   );
 
   // Keyed to the active org so an org switch rebuilds it (and with it, every
@@ -1022,6 +1026,17 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       // Round-tripped, or editing a budget's name would quietly move it back to
       // the cash basis it was deliberately taken off.
       ...(budget.costBasis ? { costBasis: budget.costBasis } : {}),
+      // Same rule: a rename must not silently detach the saved filter scoping
+      // this budget — updates are full replaces.
+      ...(budget.savedFilterId ? { savedFilterId: budget.savedFilterId } : {}),
+      // Same rule: a rename must not silently detach the scenario model whose
+      // forecast this budget's thresholds were opted into.
+      ...(budget.scenarioModelId ? { scenarioModelId: budget.scenarioModelId } : {}),
+      // Same rule: not exposed as a toggle in this editor, but settable via
+      // the API and the Terraform provider — a save here must not silently
+      // move a budget back off the adjusted (billing-rule) figure it was
+      // opted into.
+      ...(budget.useAdjustedSpend ? { useAdjustedSpend: budget.useAdjustedSpend } : {}),
     };
   }
 

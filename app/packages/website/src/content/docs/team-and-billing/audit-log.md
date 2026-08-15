@@ -22,9 +22,9 @@ For each entry:
 
 ## Filtering
 
-Filter by actor, action type, target type, time range, or text. Combine filters.
+In the app, filter by target type or by a single **API key**. The key dropdown lists the organization's keys, and clicking the key chip in an entry's actor column narrows the log to that one credential without leaving the page — pick **All API keys** to go back. A key that has since been deleted still filters: the chip carries its id even when there is no key row left to name.
 
-Over the API, `GET /api/org/<orgId>/audit-logs` also takes `apiKeyId` — everything one credential did, which is the first thing to pull when a token leaks. `userId` cannot answer that question on its own, because a person and every key they minted share one user id.
+`GET /api/org/<orgId>/audit-logs` takes the same `apiKeyId`, plus `action`, `userId`, `entityType`, `from` and `to`. Everything one credential did is the first thing to pull when a token leaks, and `userId` cannot answer that question on its own, because a person and every key they minted share one user id.
 
 ## Export
 
