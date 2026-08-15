@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
 import { useGT } from "gt-react";
+import { useSerializedRows } from "./useSerializedRows.js";
 
 interface KeyValueEntry {
   /** Stable per-row id for React keys — rows are editable and removable. */
@@ -48,26 +48,21 @@ export function KeyValueListPicker({
   maxEntries,
 }: KeyValueListPickerProps) {
   const gt = useGT();
-  const parsed = useMemo(
-    () => parseEntries(value, keyName, valueName),
-    [value, keyName, valueName],
-  );
-  const [entries, setEntries] = useState<KeyValueEntry[]>(() => {
-    if (parsed.length > 0) return parsed;
-    const init: KeyValueEntry[] = [];
-    const defaultVal = valueDefault ?? options[0]?.id ?? "";
-    for (let i = 0; i < Math.max(minEntries, 1); i++) {
-      init.push({ id: crypto.randomUUID(), key: "", value: defaultVal });
-    }
-    return init;
+  const [entries, setEntries] = useSerializedRows<KeyValueEntry>({
+    value,
+    onChange,
+    parse: (v) => parseEntries(v, keyName, valueName),
+    serialize: (rows) =>
+      JSON.stringify(rows.map((e) => ({ [keyName]: e.key, [valueName]: e.value }))),
+    blankRows: () => {
+      const init: KeyValueEntry[] = [];
+      const defaultVal = valueDefault ?? options[0]?.id ?? "";
+      for (let i = 0; i < Math.max(minEntries, 1); i++) {
+        init.push({ id: crypto.randomUUID(), key: "", value: defaultVal });
+      }
+      return init;
+    },
   });
-
-  // Keep the serialized value in sync with local state.
-  useEffect(() => {
-    const json = JSON.stringify(entries.map((e) => ({ [keyName]: e.key, [valueName]: e.value })));
-    if (json !== value) onChange(json);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries]);
 
   function update(i: number, patch: Partial<KeyValueEntry>) {
     setEntries((prev) => {

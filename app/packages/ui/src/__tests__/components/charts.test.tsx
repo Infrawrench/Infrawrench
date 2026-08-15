@@ -91,4 +91,28 @@ describe("MetricChart", () => {
     const { container } = render(<MetricChart node={node} />);
     expect(container.querySelector(".h-64")).toBeTruthy();
   });
+
+  it("humanizes a byte-valued series instead of printing raw byte counts", () => {
+    // Regression test for #112: a droplet memory series topping out around
+    // 4 GiB rendered Y-axis ticks like "4294967296bytes", clipped by the
+    // 50px gutter.
+    const node = {
+      kind: "metric-chart",
+      title: "Memory",
+      series: [
+        {
+          label: "memory_available",
+          unit: "bytes",
+          points: [
+            { timestamp: 1000, value: 1024 ** 3 },
+            { timestamp: 2000, value: 4 * 1024 ** 3 },
+          ],
+        },
+      ],
+    } as unknown as MetricChartNode;
+    const { container, getByRole } = render(<MetricChart node={node} />);
+    expect(container.textContent).not.toMatch(/\d{6,}bytes/);
+    expect(container.textContent).toMatch(/GiB/);
+    expect(getByRole("img").getAttribute("aria-label")).toMatch(/4\.00 GiB/);
+  });
 });
