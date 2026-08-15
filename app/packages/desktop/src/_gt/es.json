@@ -9187,8 +9187,6 @@
   "bf1fce68bf0786dd": "Error de renderizado",
   "69905f5637c9a65c": "El chat funciona a través de Infrawrench Cloud. Inicia sesión y selecciona una organización para preguntarle al agente sobre tu infraestructura.",
   "e57077856e95f319": "Panel",
-  "c7212eaf7ab9e241": "Los gráficos de costos requieren el modo nube",
-  "f4d019ef9bfc1d72": "Las anotaciones requieren el modo nube",
   "0e703bb0e87cfc4e": "No se pudieron cargar los presupuestos",
   "c561d5907c63af7f": "No se pudieron cargar los informes de costos",
   "ee59120a6e6f4194": "Panel no encontrado.",
@@ -9592,5 +9590,6 @@
   "7120551a32a0ea21": "Todas las claves de API",
   "7605071489d4ef01": "Mostrar solo esta clave de API",
   "c7d9edb952ec842a": "Propiedad de {owner}",
-  "7161c775bd96511c": "Deteniendo…"
+  "7161c775bd96511c": "Deteniendo…",
+  "5459ec78d19971ff": "Los costos requieren el modo nube; inicia sesión para sincronizar."
 }
