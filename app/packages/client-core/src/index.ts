@@ -490,6 +490,7 @@ export {
   type UnitCostSeries,
 } from "./business-metrics";
 export { niceAxis, type AxisScale } from "./chart-axis";
+export { createMetricValueFormatter, type MetricValueFormatter } from "./metric-units";
 export {
   dashboardCardId,
   parseDashboardCardId,
