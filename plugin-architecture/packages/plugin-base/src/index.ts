@@ -283,6 +283,7 @@ export type {
   ImageOption,
   DiskOption,
   PolicyOption,
+  SelectOption,
   FieldAction,
   FieldActionResult,
 } from "./create.js";

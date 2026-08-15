@@ -340,13 +340,29 @@ export async function genaiGetCreateConfig(
         ...(info ? { location: info.location, flag: info.flag } : {}),
       };
     });
+    // Two things about this list:
+    //   - GPU count and price go in `description`, not the label. The picker
+    //     gives the label a single line, and a combined
+    //     "gpu-h100x1-80gb (1× GPU, $3219/mo)" is long enough that the price —
+    //     the reason for showing it at all — is the part that gets cut off.
+    //   - The catalog is keyed by region and the same slug appears under
+    //     several of them, so dedupe; otherwise the picker lists a GPU size
+    //     once per region that offers it, with colliding option ids.
+    const seenSizeSlugs = new Set<string>();
     const sizeOptions = (sizes.regions ?? []).flatMap((r) =>
-      (r.sizes ?? []).map((s) => ({
-        id: s.slug,
-        label: s.price_monthly
-          ? `${s.slug} (${s.gpu_count}× GPU, $${Math.round(s.price_monthly)}/mo)`
-          : `${s.slug} (${s.gpu_count}× GPU)`,
-      })),
+      (r.sizes ?? []).flatMap((s) => {
+        if (seenSizeSlugs.has(s.slug)) return [];
+        seenSizeSlugs.add(s.slug);
+        return [
+          {
+            id: s.slug,
+            label: s.slug,
+            description: s.price_monthly
+              ? `${s.gpu_count}× GPU · $${Math.round(s.price_monthly)}/mo`
+              : `${s.gpu_count}× GPU`,
+          },
+        ];
+      }),
     );
     const modelOptions = (accelerators.accelerators ?? []).map((a) => ({
       id: String(a.model_id ?? a.slug ?? ""),
