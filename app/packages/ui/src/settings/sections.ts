@@ -31,6 +31,10 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   },
   { key: "bastions", label: msg("Bastions") },
   { key: "api-keys", label: msg("API Keys") },
+  // Beside API Keys because it answers the same question for a different kind
+  // of credential. Not called "Agents" alone anywhere it could be confused with
+  // the coding-agent workspace tab, which is an unrelated feature.
+  { key: "agents", label: msg("Agent Credentials"), requiresPermission: "team:read" },
   { key: "credential-hygiene", label: msg("Credential Hygiene"), requiresPermission: "audit:read" },
   { key: "freezes", label: msg("Change Freezes") },
   { key: "tag-policy", label: msg("Tag Policy") },

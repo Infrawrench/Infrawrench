@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { API_KEY_DENY_RULES, apiKeyRouteDenial, orgSubPath } from "../api-key-route-policy";
+import {
+  AGENT_DENY_RULES,
+  API_KEY_DENY_RULES,
+  agentRouteDenial,
+  apiKeyRouteDenial,
+  orgSubPath,
+} from "../api-key-route-policy";
 
 const ORG = "/api/org/org_01ABCDEF";
 
@@ -111,6 +117,49 @@ describe("apiKeyRouteDenial", () => {
 
   it("gives every rule a reason a caller can act on", () => {
     for (const rule of API_KEY_DENY_RULES) {
+      expect(rule.reason.length).toBeGreaterThan(20);
+      expect(rule.prefix.startsWith("/")).toBe(true);
+      expect(rule.prefix.endsWith("/")).toBe(false);
+    }
+  });
+});
+
+describe("agentRouteDenial", () => {
+  it("inherits every API-key denial", () => {
+    // An agent is strictly more restricted than a key, never less. If a rule is
+    // added to the key table and agents were not covered, this fails.
+    for (const rule of API_KEY_DENY_RULES) {
+      const method = rule.methods === "*" ? "GET" : rule.methods[0]!;
+      expect(agentRouteDenial(method, `${ORG}${rule.prefix}`)).not.toBeNull();
+    }
+  });
+
+  it("rewrites the inherited reason to name agents", () => {
+    // A caller told "API keys cannot manage API keys" when it presented an
+    // agent credential would go looking for a key it does not have.
+    expect(agentRouteDenial("POST", `${ORG}/api-keys`)).toMatch(/^Agents/);
+  });
+
+  it("closes agent-registration writes but leaves reads open", () => {
+    expect(agentRouteDenial("DELETE", `${ORG}/agent-registrations/r1`)).toMatch(/cannot revoke/);
+    expect(agentRouteDenial("GET", `${ORG}/agent-registrations`)).toBeNull();
+  });
+
+  it("closes invitations to claimed agents too", () => {
+    // Unclaimed agents never hold `team:invite`; this is the second lock, for a
+    // claimed agent that inherits it from its claimer's role.
+    expect(agentRouteDenial("POST", `${ORG}/team/invitations`)).not.toBeNull();
+  });
+
+  it("leaves the ordinary product surface open", () => {
+    for (const path of ["/resources", "/accounts", "/dashboards", "/costs"]) {
+      expect(agentRouteDenial("POST", `${ORG}${path}`)).toBeNull();
+      expect(agentRouteDenial("GET", `${ORG}${path}`)).toBeNull();
+    }
+  });
+
+  it("gives every agent-only rule a reason a caller can act on", () => {
+    for (const rule of AGENT_DENY_RULES) {
       expect(rule.reason.length).toBeGreaterThan(20);
       expect(rule.prefix.startsWith("/")).toBe(true);
       expect(rule.prefix.endsWith("/")).toBe(false);

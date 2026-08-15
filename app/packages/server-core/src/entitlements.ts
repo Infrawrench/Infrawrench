@@ -60,18 +60,38 @@ export const FREE_PLAN_LIMITS = {
 export interface PlanAccess {
   paid: boolean;
   /** Why access was granted or withheld, for the message the caller shows. */
-  reason: "complimentary" | "subscription" | "capacity_slot" | "none" | "inactive";
+  reason: "complimentary" | "trial" | "subscription" | "capacity_slot" | "none" | "inactive";
   /** The subscription's Stripe status, when there is a subscription at all. */
   status?: string;
+  /**
+   * When an unclaimed trial's access ends. Only set for `reason: "trial"` —
+   * every caller that renders a plan state should say how long is left, because
+   * the alternative is an org that silently stops existing.
+   */
+  trialExpiresAt?: Date;
 }
 
-/** Whether this org is on a paid plan (or has complimentary access). */
+/** Whether this org is on a paid plan (or has complimentary or trial access). */
 export async function planAccess(organizationId: string): Promise<PlanAccess> {
   const [org] = await db
-    .select({ complimentary: organizations.complimentary })
+    .select({
+      complimentary: organizations.complimentary,
+      trialExpiresAt: organizations.trialExpiresAt,
+    })
     .from(organizations)
     .where(eq(organizations.id, organizationId));
   if (org?.complimentary === true) return { paid: true, reason: "complimentary" };
+
+  // An unclaimed agent trial is paid access with no card and no Stripe row at
+  // all — that is the whole point of it. Checked ahead of the subscription
+  // lookup because a trial org has nothing to look up.
+  //
+  // Note this grants nothing once the clock runs out: an expired trial that the
+  // reaper has not yet swept falls through to the normal free-tier answer
+  // rather than keeping paid access until deletion catches up.
+  if (org?.trialExpiresAt && org.trialExpiresAt > new Date()) {
+    return { paid: true, reason: "trial", trialExpiresAt: org.trialExpiresAt };
+  }
 
   // Ask "is there ANY paid row", not "what is the first row". An org can carry
   // a stale `canceled` alongside a live `active` one, and without an ordering

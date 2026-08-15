@@ -360,6 +360,76 @@ describe("Team routes", () => {
     expect(body.error).toContain("canceled");
   });
 
+  describe("trial organizations", () => {
+    const trialExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
+
+    /** A trial org: paid, on a clock, with no subscription behind it. */
+    function trialPlan() {
+      vi.mocked(planAccess).mockResolvedValueOnce({
+        paid: true,
+        reason: "trial",
+        trialExpiresAt,
+      });
+    }
+
+    it("lets a trial invite teammates", async () => {
+      trialPlan();
+      // Pending invites, then member count — one member, the agent itself.
+      mockSelect
+        .mockReturnValueOnce({ from: () => ({ where: async () => [{ n: 0 }] }) })
+        .mockReturnValueOnce({ from: () => ({ where: async () => [{ n: 1 }] }) });
+      const values = vi.fn().mockResolvedValue(undefined);
+      mockInsert.mockReturnValue({ values });
+
+      const res = await buildApp().request("/invitations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "friend@e.com", role: "member" }),
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("clamps the invite so its link cannot outlive the workspace", async () => {
+      trialPlan();
+      mockSelect
+        .mockReturnValueOnce({ from: () => ({ where: async () => [{ n: 0 }] }) })
+        .mockReturnValueOnce({ from: () => ({ where: async () => [{ n: 1 }] }) });
+      const values = vi.fn().mockResolvedValue(undefined);
+      mockInsert.mockReturnValue({ values });
+
+      await buildApp().request("/invitations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "friend@e.com", role: "member" }),
+      });
+
+      // The standard 7 days would outlast the org by nearly a week, leaving the
+      // recipient a dead link with no explanation.
+      const row = values.mock.calls[0]?.[0] as { expiresAt: Date };
+      expect(row.expiresAt.getTime()).toBe(trialExpiresAt.getTime());
+    });
+
+    it("stops a trial from inviting past its ceiling", async () => {
+      trialPlan();
+      // Three pending invites already, plus the agent's own membership.
+      mockSelect
+        .mockReturnValueOnce({ from: () => ({ where: async () => [{ n: 3 }] }) })
+        .mockReturnValueOnce({ from: () => ({ where: async () => [{ n: 1 }] }) });
+      const values = vi.fn().mockResolvedValue(undefined);
+      mockInsert.mockReturnValue({ values });
+
+      const res = await buildApp().request("/invitations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "fourth@e.com", role: "member" }),
+      });
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.code).toBe("trial_invite_limit_reached");
+      expect(values).not.toHaveBeenCalled();
+    });
+  });
+
   it("POST /invitations returns the structured 409 when the plan is full", async () => {
     vi.mocked(checkSeatAvailability).mockResolvedValueOnce({
       seatCount: 3,

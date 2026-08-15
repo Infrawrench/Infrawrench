@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as ClaimRouteImport } from './routes/claim'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as DeploySplatRouteImport } from './routes/deploy.$'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
@@ -51,9 +52,9 @@ import { Route as OrgOrgIdCostReportsReportIdRouteImport } from './routes/org.$o
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
 import { Route as OrgOrgIdIncidentsIncidentIdRouteImport } from './routes/org.$orgId.incidents.$incidentId'
 import { Route as OrgOrgIdInvoicesInvoiceIdRouteImport } from './routes/org.$orgId.invoices.$invoiceId'
-import { Route as OrgOrgIdWorkflowsWorkflowIdRouteImport } from './routes/org.$orgId.workflows.$workflowId'
 import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
 import { Route as OrgOrgIdSettingsAccessRequestsRouteImport } from './routes/org.$orgId.settings.access-requests'
+import { Route as OrgOrgIdSettingsAgentsRouteImport } from './routes/org.$orgId.settings.agents'
 import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
 import { Route as OrgOrgIdSettingsApprovalsRouteImport } from './routes/org.$orgId.settings.approvals'
 import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
@@ -75,11 +76,17 @@ import { Route as OrgOrgIdSettingsSshHostKeysRouteImport } from './routes/org.$o
 import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId.settings.ssh-keys'
 import { Route as OrgOrgIdSettingsTagPolicyRouteImport } from './routes/org.$orgId.settings.tag-policy'
 import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
+import { Route as OrgOrgIdWorkflowsWorkflowIdRouteImport } from './routes/org.$orgId.workflows.$workflowId'
 import { Route as OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRouteImport } from './routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId'
 
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClaimRoute = ClaimRouteImport.update({
+  id: '/claim',
+  path: '/claim',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -293,12 +300,6 @@ const OrgOrgIdInvoicesInvoiceIdRoute =
     path: '/$invoiceId',
     getParentRoute: () => OrgOrgIdInvoicesRoute,
   } as any)
-const OrgOrgIdWorkflowsWorkflowIdRoute =
-  OrgOrgIdWorkflowsWorkflowIdRouteImport.update({
-    id: '/$workflowId',
-    path: '/$workflowId',
-    getParentRoute: () => OrgOrgIdWorkflowsRoute,
-  } as any)
 const OrgOrgIdSettingsIndexRoute = OrgOrgIdSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -310,6 +311,11 @@ const OrgOrgIdSettingsAccessRequestsRoute =
     path: '/access-requests',
     getParentRoute: () => OrgOrgIdSettingsRoute,
   } as any)
+const OrgOrgIdSettingsAgentsRoute = OrgOrgIdSettingsAgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
+  getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
 const OrgOrgIdSettingsApiKeysRoute = OrgOrgIdSettingsApiKeysRouteImport.update({
   id: '/api-keys',
   path: '/api-keys',
@@ -426,6 +432,12 @@ const OrgOrgIdSettingsTeamRoute = OrgOrgIdSettingsTeamRouteImport.update({
   path: '/team',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdWorkflowsWorkflowIdRoute =
+  OrgOrgIdWorkflowsWorkflowIdRouteImport.update({
+    id: '/$workflowId',
+    path: '/$workflowId',
+    getParentRoute: () => OrgOrgIdWorkflowsRoute,
+  } as any)
 const OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute =
   OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRouteImport.update({
     id: '/resources/$pluginId/$resourceTypeId/$resourceId',
@@ -435,6 +447,7 @@ const OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute =
 
 export interface FileRoutesByFullPath {
   '/admin': typeof AdminRoute
+  '/claim': typeof ClaimRoute
   '/onboarding': typeof OnboardingRoute
   '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -475,8 +488,8 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
-  '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
+  '/org/$orgId/settings/agents': typeof OrgOrgIdSettingsAgentsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
@@ -498,12 +511,14 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
+  '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
   '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
   '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId': typeof OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute
 }
 export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
+  '/claim': typeof ClaimRoute
   '/onboarding': typeof OnboardingRoute
   '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -541,8 +556,8 @@ export interface FileRoutesByTo {
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
-  '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
+  '/org/$orgId/settings/agents': typeof OrgOrgIdSettingsAgentsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
@@ -564,6 +579,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
+  '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsIndexRoute
   '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId': typeof OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute
@@ -571,6 +587,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/admin': typeof AdminRoute
+  '/claim': typeof ClaimRoute
   '/onboarding': typeof OnboardingRoute
   '/deploy/$': typeof DeploySplatRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -611,8 +628,8 @@ export interface FileRoutesById {
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/incidents/$incidentId': typeof OrgOrgIdIncidentsIncidentIdRoute
   '/org/$orgId/invoices/$invoiceId': typeof OrgOrgIdInvoicesInvoiceIdRoute
-  '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
   '/org/$orgId/settings/access-requests': typeof OrgOrgIdSettingsAccessRequestsRoute
+  '/org/$orgId/settings/agents': typeof OrgOrgIdSettingsAgentsRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/approvals': typeof OrgOrgIdSettingsApprovalsRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
@@ -634,6 +651,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/tag-policy': typeof OrgOrgIdSettingsTagPolicyRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
+  '/org/$orgId/workflows/$workflowId': typeof OrgOrgIdWorkflowsWorkflowIdRoute
   '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
   '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId': typeof OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute
@@ -642,6 +660,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/admin'
+    | '/claim'
     | '/onboarding'
     | '/deploy/$'
     | '/invite/$token'
@@ -682,8 +701,8 @@ export interface FileRouteTypes {
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
-    | '/org/$orgId/workflows/$workflowId'
     | '/org/$orgId/settings/access-requests'
+    | '/org/$orgId/settings/agents'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
@@ -705,12 +724,14 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/tag-policy'
     | '/org/$orgId/settings/team'
+    | '/org/$orgId/workflows/$workflowId'
     | '/org/$orgId/chat/'
     | '/org/$orgId/settings/'
     | '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/admin'
+    | '/claim'
     | '/onboarding'
     | '/deploy/$'
     | '/invite/$token'
@@ -748,8 +769,8 @@ export interface FileRouteTypes {
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
-    | '/org/$orgId/workflows/$workflowId'
     | '/org/$orgId/settings/access-requests'
+    | '/org/$orgId/settings/agents'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
@@ -771,12 +792,14 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/tag-policy'
     | '/org/$orgId/settings/team'
+    | '/org/$orgId/workflows/$workflowId'
     | '/org/$orgId/chat'
     | '/org/$orgId/settings'
     | '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId'
   id:
     | '__root__'
     | '/admin'
+    | '/claim'
     | '/onboarding'
     | '/deploy/$'
     | '/invite/$token'
@@ -817,8 +840,8 @@ export interface FileRouteTypes {
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/incidents/$incidentId'
     | '/org/$orgId/invoices/$invoiceId'
-    | '/org/$orgId/workflows/$workflowId'
     | '/org/$orgId/settings/access-requests'
+    | '/org/$orgId/settings/agents'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/approvals'
     | '/org/$orgId/settings/audit-log'
@@ -840,6 +863,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/tag-policy'
     | '/org/$orgId/settings/team'
+    | '/org/$orgId/workflows/$workflowId'
     | '/org/$orgId/chat/'
     | '/org/$orgId/settings/'
     | '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId'
@@ -847,6 +871,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AdminRoute: typeof AdminRoute
+  ClaimRoute: typeof ClaimRoute
   OnboardingRoute: typeof OnboardingRoute
   DeploySplatRoute: typeof DeploySplatRoute
   InviteTokenRoute: typeof InviteTokenRoute
@@ -862,6 +887,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/claim': {
+      id: '/claim'
+      path: '/claim'
+      fullPath: '/claim'
+      preLoaderRoute: typeof ClaimRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding': {
@@ -1151,13 +1183,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdInvoicesInvoiceIdRouteImport
       parentRoute: typeof OrgOrgIdInvoicesRoute
     }
-    '/org/$orgId/workflows/$workflowId': {
-      id: '/org/$orgId/workflows/$workflowId'
-      path: '/$workflowId'
-      fullPath: '/org/$orgId/workflows/$workflowId'
-      preLoaderRoute: typeof OrgOrgIdWorkflowsWorkflowIdRouteImport
-      parentRoute: typeof OrgOrgIdWorkflowsRoute
-    }
     '/org/$orgId/settings/': {
       id: '/org/$orgId/settings/'
       path: '/'
@@ -1170,6 +1195,13 @@ declare module '@tanstack/react-router' {
       path: '/access-requests'
       fullPath: '/org/$orgId/settings/access-requests'
       preLoaderRoute: typeof OrgOrgIdSettingsAccessRequestsRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/settings/agents': {
+      id: '/org/$orgId/settings/agents'
+      path: '/agents'
+      fullPath: '/org/$orgId/settings/agents'
+      preLoaderRoute: typeof OrgOrgIdSettingsAgentsRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
     '/org/$orgId/settings/api-keys': {
@@ -1319,6 +1351,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsTeamRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/workflows/$workflowId': {
+      id: '/org/$orgId/workflows/$workflowId'
+      path: '/$workflowId'
+      fullPath: '/org/$orgId/workflows/$workflowId'
+      preLoaderRoute: typeof OrgOrgIdWorkflowsWorkflowIdRouteImport
+      parentRoute: typeof OrgOrgIdWorkflowsRoute
+    }
     '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId': {
       id: '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId'
       path: '/resources/$pluginId/$resourceTypeId/$resourceId'
@@ -1376,19 +1415,9 @@ const OrgOrgIdInvoicesRouteChildren: OrgOrgIdInvoicesRouteChildren = {
 const OrgOrgIdInvoicesRouteWithChildren =
   OrgOrgIdInvoicesRoute._addFileChildren(OrgOrgIdInvoicesRouteChildren)
 
-interface OrgOrgIdWorkflowsRouteChildren {
-  OrgOrgIdWorkflowsWorkflowIdRoute: typeof OrgOrgIdWorkflowsWorkflowIdRoute
-}
-
-const OrgOrgIdWorkflowsRouteChildren: OrgOrgIdWorkflowsRouteChildren = {
-  OrgOrgIdWorkflowsWorkflowIdRoute: OrgOrgIdWorkflowsWorkflowIdRoute,
-}
-
-const OrgOrgIdWorkflowsRouteWithChildren =
-  OrgOrgIdWorkflowsRoute._addFileChildren(OrgOrgIdWorkflowsRouteChildren)
-
 interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsAccessRequestsRoute: typeof OrgOrgIdSettingsAccessRequestsRoute
+  OrgOrgIdSettingsAgentsRoute: typeof OrgOrgIdSettingsAgentsRoute
   OrgOrgIdSettingsApiKeysRoute: typeof OrgOrgIdSettingsApiKeysRoute
   OrgOrgIdSettingsApprovalsRoute: typeof OrgOrgIdSettingsApprovalsRoute
   OrgOrgIdSettingsAuditLogRoute: typeof OrgOrgIdSettingsAuditLogRoute
@@ -1415,6 +1444,7 @@ interface OrgOrgIdSettingsRouteChildren {
 
 const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsAccessRequestsRoute: OrgOrgIdSettingsAccessRequestsRoute,
+  OrgOrgIdSettingsAgentsRoute: OrgOrgIdSettingsAgentsRoute,
   OrgOrgIdSettingsApiKeysRoute: OrgOrgIdSettingsApiKeysRoute,
   OrgOrgIdSettingsApprovalsRoute: OrgOrgIdSettingsApprovalsRoute,
   OrgOrgIdSettingsAuditLogRoute: OrgOrgIdSettingsAuditLogRoute,
@@ -1443,6 +1473,17 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
 
 const OrgOrgIdSettingsRouteWithChildren =
   OrgOrgIdSettingsRoute._addFileChildren(OrgOrgIdSettingsRouteChildren)
+
+interface OrgOrgIdWorkflowsRouteChildren {
+  OrgOrgIdWorkflowsWorkflowIdRoute: typeof OrgOrgIdWorkflowsWorkflowIdRoute
+}
+
+const OrgOrgIdWorkflowsRouteChildren: OrgOrgIdWorkflowsRouteChildren = {
+  OrgOrgIdWorkflowsWorkflowIdRoute: OrgOrgIdWorkflowsWorkflowIdRoute,
+}
+
+const OrgOrgIdWorkflowsRouteWithChildren =
+  OrgOrgIdWorkflowsRoute._addFileChildren(OrgOrgIdWorkflowsRouteChildren)
 
 interface OrgOrgIdRouteChildren {
   OrgOrgIdAccessReviewRoute: typeof OrgOrgIdAccessReviewRoute
@@ -1519,6 +1560,7 @@ const OrgOrgIdRouteWithChildren = OrgOrgIdRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRoute,
+  ClaimRoute: ClaimRoute,
   OnboardingRoute: OnboardingRoute,
   DeploySplatRoute: DeploySplatRoute,
   InviteTokenRoute: InviteTokenRoute,

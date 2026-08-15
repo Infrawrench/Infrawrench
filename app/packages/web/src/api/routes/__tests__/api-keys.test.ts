@@ -21,6 +21,20 @@ vi.mock("@/db/client", () => ({
   },
 }));
 
+// `authenticateApiRequest` asks whether a bearer `sub` is an agent registration
+// before reading it as a user id. These cases are all `iwk_` keys, so the
+// answer is always no — mocked because the real module reaches Postgres at
+// import time.
+vi.mock("@infrawrench/server-core/trials/ceremony", () => ({
+  resolveAgentCredential: vi.fn(async () => null),
+  getClaimStatus: vi.fn(async () => null),
+}));
+
+vi.mock("@infrawrench/server-core/trials/principal", () => ({
+  resolveAgentPrincipal: vi.fn(async () => null),
+  touchAgentRegistration: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/services/audit", () => ({
   logAudit: vi.fn(),
 }));

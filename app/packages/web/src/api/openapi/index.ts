@@ -86,6 +86,7 @@ import { registerTeamPaths } from "./paths/team";
 import { registerBillingPaths } from "./paths/billing";
 import { registerAuditPaths } from "./paths/audit";
 import { registerApiKeyPaths } from "./paths/api-keys";
+import { registerAgentAuthPaths } from "./paths/agent-auth";
 import { registerWsTokenPaths } from "./paths/ws-token";
 import { registerSyncPaths } from "./paths/sync";
 import { registerWebhookPaths } from "./paths/webhooks";
@@ -216,6 +217,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerBillingPaths(ctx);
   registerAuditPaths(ctx);
   registerApiKeyPaths(ctx);
+  registerAgentAuthPaths(ctx);
   registerWsTokenPaths(ctx);
   registerSyncPaths(ctx);
   registerWebhookPaths(ctx);
@@ -499,6 +501,12 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
           "configured rate is reported unconverted rather than dropped from the total.",
       },
       { name: "API keys", description: "Programmatic access tokens." },
+      {
+        name: "Agent auth",
+        description:
+          "Anonymous agent registration, the 24-hour trial workspace it opens, and the claim " +
+          "ceremony that binds it to a person. See /auth.md for the agent-facing guide.",
+      },
       { name: "WebSocket", description: "Auth tokens for the WebSocket gateway." },
       { name: "Sync", description: "Bi-directional resource sync (used by the desktop app)." },
       { name: "Webhooks", description: "Inbound webhooks from third parties." },

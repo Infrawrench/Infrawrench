@@ -1,10 +1,28 @@
 import { verifyWorkosAccessToken } from "../auth/api-auth";
 import { ensureUserFromClaims, hasMembership, listUserOrganizations } from "../api/auth-middleware";
+import {
+  resolveAgentPrincipal,
+  touchAgentRegistration,
+} from "@infrawrench/server-core/trials/principal";
 
 export interface McpAuthContext {
   userId: string;
   organizationId: string;
   email?: string;
+  /**
+   * Set when the caller is an agent-auth registration rather than a person.
+   *
+   * Two things downstream must branch on it: the agent is bound to exactly one
+   * org (so the `org_id` tool parameter must not move it), and its permissions
+   * are already final (so they are not re-derived from a role).
+   */
+  agent?: {
+    registrationId: string;
+    claimed: boolean;
+    permissions: readonly string[];
+    /** Milliseconds until the trial org is destroyed; null once claimed. */
+    trialExpiresInMs: number | null;
+  };
 }
 
 /**
@@ -33,6 +51,24 @@ export async function authenticateMcpRequest(
   if (!claims.sub) {
     console.warn("[mcp-auth] rejected: token has no sub claim");
     return null;
+  }
+
+  // Agent credentials first. `sub` is a registration id here, and the org it
+  // acts in comes from our own binding rather than from the token — an agent
+  // has exactly one tenant and no membership rows to fall back on.
+  const agent = await resolveAgentPrincipal(claims.sub, { actorUserId: claims.act?.sub });
+  if (agent) {
+    void touchAgentRegistration(agent.registrationId);
+    return {
+      userId: agent.userId,
+      organizationId: agent.organizationId,
+      agent: {
+        registrationId: agent.registrationId,
+        claimed: agent.claimed,
+        permissions: agent.permissions,
+        trialExpiresInMs: agent.trialExpiresInMs,
+      },
+    };
   }
 
   const user = await ensureUserFromClaims(claims.sub, claims.email);

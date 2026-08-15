@@ -47,12 +47,14 @@ The samples are rendered from the same intermediate representation the SDK gener
 
 The published spec advertises a single scheme:
 
-- **`bearerAuth`** — a WorkOS access token (JWT) or an Infrawrench [API key](./api-keys.md). Send it as `Authorization: Bearer <token>`.
+- **`bearerAuth`** — a WorkOS access token (JWT), an Infrawrench [API key](./api-keys.md) (`iwk_`), or an [agent credential](../features/agent-auth.md) (`iwa_`). Send it as `Authorization: Bearer <token>`.
 
 ```sh
 curl https://app.infrawrench.com/api/org/$ORG_ID/accounts \
   -H "Authorization: Bearer $INFRAWRENCH_API_KEY"
 ```
+
+The three `/api/agent/*` registration routes are the exception to all of this: `POST /api/agent/identity` takes no authentication at all, because it is how a client with no credentials gets one. It is rate limited per source address instead. See [agent authentication](../features/agent-auth.md).
 
 The server also accepts the `wos-session` cookie — that's how the web UI authenticates — but the only way to get one is the browser sign-in redirect, which is [internal](#internal-routes). It's left out of the published spec so generated snippets and Scalar's "try it" panel default to bearer auth.
 

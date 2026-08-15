@@ -74,4 +74,10 @@
 // handoff endpoint. All additive.
 // 1.25.0: chat `ask_question` answer route — the in-app agent can pause for a
 // selection (with Other) or a textarea and resume once the user submits.
-export const API_VERSION = "1.25.0";
+// 1.26.0: agent auth — anonymous registration (`POST /api/agent/identity`), the
+// 24-hour trial workspace it opens, the claim ceremony (`/identity/claim` plus
+// the session-authed confirm), and org-scoped registration listing and
+// revocation. A new `Agent auth` tag, an unauthenticated route (the first in
+// the public spec), and `iwa_` as a third bearer credential format. All
+// additive — no existing route or shape changed.
+export const API_VERSION = "1.26.0";

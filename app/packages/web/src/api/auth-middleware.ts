@@ -5,7 +5,7 @@ import { eq, and } from "drizzle-orm";
 import { workos } from "../auth/workos";
 import { authenticateApiRequest, verifyWorkosAccessToken } from "../auth/api-auth";
 import { effectivePermissions } from "../auth/effective-permissions";
-import { apiKeyRouteDenial } from "../auth/api-key-route-policy";
+import { agentRouteDenial, apiKeyRouteDenial } from "../auth/api-key-route-policy";
 import { runWithAuditPrincipal } from "../services/audit-context";
 import { db } from "../db/client";
 import { users, organizationMembers, organizations } from "../db/schema";
@@ -14,6 +14,7 @@ import {
   type ActiveElevation,
   resolveEffectivePermissions,
 } from "@infrawrench/server-core/permissions";
+import { resolveAgentPrincipal } from "@infrawrench/server-core/trials/principal";
 
 export interface AuthSession {
   userId: string;
@@ -72,6 +73,21 @@ export const sessionMiddleware = createMiddleware(async (c, next) => {
       const claims = await verifyWorkosAccessToken(bearer.slice(7));
       if (!claims?.sub) {
         return c.json({ error: "Unauthorized" }, 401);
+      }
+      // An agent-auth token's `sub` is a registration id. Handing it to
+      // `ensureUserFromClaims` would mint a `users` row keyed by that id — a
+      // principal nobody created, holding whatever the row's org membership
+      // later granted. Refuse before provisioning, and say why: this group is
+      // the non-org surface (profile, MFA, org creation, admin), which is
+      // people-only by design, exactly as it is for `iwk_` API keys.
+      if (await resolveAgentPrincipal(claims.sub)) {
+        return c.json(
+          {
+            error:
+              "Agent credentials cannot be used here. This endpoint acts on a person's account.",
+          },
+          403,
+        );
       }
       const user = await ensureUserFromClaims(claims.sub, claims.email);
       if (!user) {
@@ -270,6 +286,63 @@ export const apiKeyOrgMiddleware = createMiddleware(async (c, next) => {
   c.set("apiKey", { id: auth.apiKeyId, scopes });
 
   return runWithAuditPrincipal({ apiKeyId: auth.apiKeyId, userId: auth.userId }, next);
+});
+
+/**
+ * Authenticate an agent credential against the org tree.
+ *
+ * Deliberately a sibling of {@link apiKeyOrgMiddleware} rather than a branch
+ * inside it. The two principals differ in the places that matter — an agent is
+ * pinned to its org by a registration row rather than by a key row, its
+ * permissions are resolved by `resolveAgentPrincipal` rather than by
+ * intersecting stored scopes, and its denial policy is its own — and folding
+ * them together would mean one function with two of everything.
+ *
+ * The context it leaves behind is identical in shape to both other paths, so
+ * every route's `requirePermission` gate applies unchanged.
+ */
+export const agentOrgMiddleware = createMiddleware(async (c, next) => {
+  const bearer = c.req.header("authorization");
+  if (!bearer?.startsWith("Bearer ")) return next();
+  const token = bearer.slice(7);
+  // A WorkOS agent token is a JWT, so it cannot be recognised by prefix; the
+  // full auth path below sorts it out. An `iwk_` key is never ours to handle.
+  if (token.startsWith("iwk_")) return next();
+
+  const orgId = c.req.param("orgId");
+  if (!orgId) return next();
+
+  const auth = await authenticateApiRequest(c.req.raw);
+  if (!auth?.agentRegistrationId) return next();
+
+  // An agent is bound to the org its registration opened (or was merged into).
+  // Presenting it against another org's URL is a 403 whatever it holds.
+  if (auth.organizationId !== orgId) {
+    return c.json({ error: "This agent belongs to a different organization" }, 403);
+  }
+
+  const denial = agentRouteDenial(c.req.method, new URL(c.req.url).pathname);
+  if (denial) return c.json({ error: denial }, 403);
+
+  const [actor] = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, auth.userId))
+    .limit(1);
+  if (!actor) return c.json({ error: "Unauthorized" }, 401);
+
+  c.set("session", { userId: auth.userId, email: actor.email });
+  c.set("organizationId", orgId);
+  // Already final — intersected with the claimer's role and the agent ceiling
+  // by `resolveAgentPrincipal`, so there is nothing left to narrow here.
+  c.set("permissions", auth.scopes ?? []);
+  // Same reasoning as the key path: an agent holds no role, and answering
+  // `null` makes every "is the caller an owner" check fail closed.
+  c.set("role", null);
+  c.set("elevations", []);
+  c.set("apiKey", { id: auth.agentRegistrationId, scopes: auth.scopes ?? [] });
+
+  return runWithAuditPrincipal({ apiKeyId: auth.agentRegistrationId, userId: auth.userId }, next);
 });
 
 /**

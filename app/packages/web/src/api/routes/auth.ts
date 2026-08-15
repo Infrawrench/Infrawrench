@@ -48,6 +48,12 @@ app.get("/orgs", async (c) => {
       id: organizations.id,
       displayName: organizations.displayName,
       role: organizationMembers.role,
+      // The trial deadline rides along here rather than on `billing/status`
+      // because the countdown has to be visible to *every* member, and
+      // `billing/status` needs `billing:read` — which most members do not hold,
+      // and which is exactly the wrong permission to gate "this workspace is
+      // about to be deleted" behind.
+      trialExpiresAt: organizations.trialExpiresAt,
     })
     .from(organizationMembers)
     .innerJoin(organizations, eq(organizationMembers.organizationId, organizations.id))

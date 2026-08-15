@@ -24,6 +24,9 @@ app_env = {
   APP_URL = "https://app.infrawrench.com"
 
   # WorkOS
+  # Read by the poller as well as the web app: the agent trial reaper deletes
+  # the WorkOS organization alongside the Postgres and ClickHouse rows, and
+  # without this key it logs a warning and leaves orgs behind in WorkOS.
   WORKOS_API_KEY         = "sk_live_..."
   WORKOS_CLIENT_ID       = "client_..."
   WORKOS_REDIRECT_URI    = "https://app.infrawrench.com/callback"

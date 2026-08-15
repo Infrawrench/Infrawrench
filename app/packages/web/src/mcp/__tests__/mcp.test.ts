@@ -8,6 +8,18 @@ vi.mock("@/db/client", () => ({
   },
 }));
 
+// "Not an agent" by default, so these cases keep exercising the human path.
+// Mocked rather than left real because the module reaches Postgres at import.
+vi.mock("@infrawrench/server-core/trials/ceremony", () => ({
+  resolveAgentCredential: vi.fn(async () => null),
+  getClaimStatus: vi.fn(async () => null),
+}));
+
+vi.mock("@infrawrench/server-core/trials/principal", () => ({
+  resolveAgentPrincipal: vi.fn(async () => null),
+  touchAgentRegistration: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/auth/workos", () => ({
   workos: {
     userManagement: {

@@ -26,6 +26,12 @@ export interface ToolAuthContext {
    * Absent for session/OAuth principals, who act with their role's permissions.
    */
   scopes?: readonly string[];
+  /**
+   * Set when the caller is an agent-auth registration. `userId` beside it is
+   * the agent's own user row, never a person's — a handler that means "the
+   * human who did this" must check here before attributing anything.
+   */
+  agentRegistrationId?: string;
   /** "mcp" | "chat" | "api" — written into audit metadata. */
   source: "mcp" | "chat" | "api";
 }

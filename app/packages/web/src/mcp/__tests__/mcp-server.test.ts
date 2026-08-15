@@ -5,6 +5,11 @@ const handler = vi.fn(async (_input: Record<string, unknown>, _auth: unknown) =>
   content: [{ type: "text" as const, text: "done" }],
 }));
 
+vi.mock("@infrawrench/server-core/trials/ceremony", () => ({
+  resolveAgentCredential: vi.fn(async () => null),
+  getClaimStatus: vi.fn(async () => null),
+}));
+
 vi.mock("@/tools/registry", () => ({
   getToolRegistry: vi.fn(async () => [
     {

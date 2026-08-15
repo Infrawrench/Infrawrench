@@ -1,6 +1,6 @@
-import { useMemo } from "react";
-import { createFileRoute, Outlet } from "@tanstack/react-router";
-import { IssueFilingProvider } from "@infrawrench/ui";
+import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
+import { IssueFilingProvider, TrialBanner } from "@infrawrench/ui";
 import { PermissionsProvider, usePermissions } from "@/auth/permissions-context";
 import { apiGet, apiPost } from "@/lib/api";
 
@@ -19,10 +19,39 @@ function OrgLayout() {
   return (
     <PermissionsProvider orgId={orgId}>
       <IssueFiling orgId={orgId}>
+        <TrialCountdown orgId={orgId} />
         <Outlet />
       </IssueFiling>
     </PermissionsProvider>
   );
+}
+
+/**
+ * The unclaimed-trial countdown, above everything else in the org.
+ *
+ * Reads `/api/auth/orgs` rather than the billing status: the deadline has to be
+ * visible to every member, and billing status needs `billing:read`. Renders
+ * nothing at all for an ordinary organization.
+ */
+function TrialCountdown({ orgId }: { orgId: string }) {
+  const navigate = useNavigate();
+  const [expiresInMs, setExpiresInMs] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiGet<Array<{ id: string; trialExpiresAt?: string | null }>>("/api/auth/orgs")
+      .then((orgs) => {
+        if (cancelled) return;
+        const trialEnd = orgs.find((o) => o.id === orgId)?.trialExpiresAt;
+        setExpiresInMs(trialEnd ? Math.max(0, new Date(trialEnd).getTime() - Date.now()) : null);
+      })
+      .catch(() => setExpiresInMs(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId]);
+
+  return <TrialBanner expiresInMs={expiresInMs} onClaim={() => void navigate({ to: "/claim" })} />;
 }
 
 /**

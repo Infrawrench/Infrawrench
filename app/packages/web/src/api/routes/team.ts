@@ -6,7 +6,7 @@ import { db } from "../../db/client";
 import { apiKeys, users, invitations, organizationMembers, roles } from "../../db/schema";
 import { logAudit } from "../../services/audit";
 import { addSeat, checkSeatAvailability, releaseSeat } from "../../services/seats";
-import { planAccess, FREE_PLAN_LIMITS } from "../../services/entitlements";
+import { planAccess, FREE_PLAN_LIMITS, type PlanAccess } from "../../services/entitlements";
 import { isOwnerRole } from "../../services/org-roles";
 import { requirePermission } from "../../auth/permissions";
 import {
@@ -277,6 +277,73 @@ app.get("/invitations", async (c) => {
   return c.json(rows);
 });
 
+/**
+ * How many people an unclaimed trial org may invite.
+ *
+ * Small on purpose. The number that makes a trial useful is "enough to show a
+ * colleague", not "enough to seed a workspace" — and every invite is an email
+ * our domain sends on behalf of an org that nobody has paid for or, before the
+ * claim ceremony, even identified themselves to open.
+ */
+const TRIAL_INVITE_LIMIT = 3;
+
+/**
+ * Bound invitations from a trial org: a low ceiling, and no invite whose link
+ * outlives the org it is for.
+ *
+ * The second half matters more than it looks. Invitations cascade with the
+ * organization, so an invite sent an hour before the reaper runs becomes a dead
+ * link with no explanation on the other side — the recipient sees a broken
+ * page, not "that workspace expired". Clamping the expiry to the trial's own
+ * deadline at least makes the failure an expired invite, which the accept route
+ * already explains.
+ */
+async function checkTrialInviteAllowance(
+  organizationId: string,
+): Promise<{ status: 402 | 409; body: { error: string; code?: string } } | null> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(invitations)
+    .where(and(eq(invitations.organizationId, organizationId), isNull(invitations.acceptedAt)));
+  // Accepted invites count too: the limit is on how many people a trial pulls
+  // in, not on how many links are outstanding.
+  const [members] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(organizationMembers)
+    .where(eq(organizationMembers.organizationId, organizationId));
+
+  // The agent's own membership is not a person and does not consume the
+  // allowance — it is an implementation detail of how a trial org exists at all.
+  const humanMembers = Math.max(0, (members?.n ?? 0) - 1);
+  const used = (row?.n ?? 0) + humanMembers;
+  if (used >= TRIAL_INVITE_LIMIT) {
+    return {
+      status: 409,
+      body: {
+        error:
+          `A trial workspace can invite up to ${TRIAL_INVITE_LIMIT} people. ` +
+          `Claim this workspace to invite your whole team.`,
+        code: "trial_invite_limit_reached",
+      },
+    };
+  }
+  return null;
+}
+
+/**
+ * The usual invitation lifetime, clamped so it never outlives a trial org.
+ *
+ * Takes the already-resolved {@link PlanAccess} rather than re-reading the org:
+ * `planAccess` carries `trialExpiresAt` precisely so a caller acting on a trial
+ * does not have to ask twice.
+ */
+function inviteExpiry(access: PlanAccess): Date {
+  const standard = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const trialEnd = access.trialExpiresAt;
+  if (!trialEnd) return standard;
+  return trialEnd < standard ? trialEnd : standard;
+}
+
 /** POST /api/org/:orgId/team/invitations */
 app.post("/invitations", async (c) => {
   requirePermission(c, "team:invite");
@@ -293,6 +360,15 @@ app.post("/invitations", async (c) => {
   // The free plan is a single user, so any invite means upgrading first.
   // Paid orgs skip this and hit the seat gate below instead.
   const access = await planAccess(organizationId);
+  // A trial org is paid, so it reaches both gates already — and passes the seat
+  // gate too, because capacity is 0 and `checkSeatAvailability` reads that as
+  // "invite freely". Inviting teammates into a trial is wanted; inviting
+  // unbounded strangers from an org that cost nothing to open is a way to send
+  // mail from our domain at scale, so trials get their own ceiling.
+  if (access.reason === "trial") {
+    const trialCheck = await checkTrialInviteAllowance(organizationId);
+    if (trialCheck) return c.json(trialCheck.body, trialCheck.status);
+  }
   if (!access.paid) {
     return c.json(
       {
@@ -406,7 +482,7 @@ app.post("/invitations", async (c) => {
     roleId: resolvedRoleId,
     invitedByUserId: session.userId,
     hashedToken,
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    expiresAt: inviteExpiry(access),
   });
 
   void logAudit({

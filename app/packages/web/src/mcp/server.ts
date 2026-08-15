@@ -4,6 +4,7 @@ import { z, type ZodTypeAny } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { getToolRegistry } from "../tools/registry";
 import { authorizeToolCall } from "../tools/permissions";
+import { getClaimStatus } from "@infrawrench/server-core/trials/ceremony";
 import { hasMembership, listUserOrganizations } from "../api/auth-middleware";
 import type { ToolAuthContext } from "../tools/types";
 import type { McpAuthContext } from "./auth";
@@ -59,6 +60,14 @@ async function resolveCallAuth(
   orgId: string | undefined,
 ): Promise<ToolAuthContext | { error: string }> {
   if (!orgId || orgId === base.organizationId) return base;
+  // An agent credential is bound to the one org its registration opened. The
+  // membership check below would not catch this on its own — the agent *is* a
+  // member of its own org and of nothing else — but the error it produced would
+  // read as "ask someone to add you", which is the wrong instruction for a
+  // principal that can never belong anywhere else.
+  if (base.agentRegistrationId) {
+    return { error: "An agent credential can only act in the organization it was issued for." };
+  }
   if (!(await hasMembership(base.userId, orgId))) {
     return { error: `You are not a member of organization ${orgId}.` };
   }
@@ -86,6 +95,16 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
     organizationId: auth.organizationId,
     source: "mcp",
     ...(auth.email !== undefined ? { email: auth.email } : {}),
+    // An agent's permissions arrive already intersected with its claimer's role
+    // and the agent ceiling, so they ride the same `scopes` channel API keys
+    // use — `effectivePermissions` narrows to them rather than granting the
+    // full role of the user row the agent happens to act as.
+    ...(auth.agent
+      ? {
+          agentRegistrationId: auth.agent.registrationId,
+          scopes: auth.agent.permissions,
+        }
+      : {}),
   };
 
   // MCP-only. The chat agent has no org switcher, so this would be dead weight
@@ -113,6 +132,45 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
       };
     },
   );
+
+  // Agent-only, and registered only for agents: a human's MCP client has no
+  // trial and no ceremony to run, so offering the tool would be noise on every
+  // ordinary connection.
+  if (auth.agent) {
+    const agent = auth.agent;
+    server.registerTool(
+      "trial_workspace_status",
+      {
+        title: "Trial workspace status",
+        description:
+          "How long this trial workspace has left before it is deleted, and whether a person " +
+          "has claimed it yet. Check this before doing substantial work, and tell the user " +
+          "what you find — an unclaimed workspace is deleted along with everything in it.",
+        inputSchema: toInputSchema({}),
+      },
+      async () => {
+        // Re-read rather than closing over the connection-time value: an MCP
+        // connection can outlive the claim, and a cached "unclaimed" would have
+        // the agent nagging someone who already dealt with it.
+        const status = await getClaimStatus(agent.registrationId);
+        const remainingMs = status?.trialExpiresInMs ?? null;
+        const payload = {
+          claimed: status?.claimed ?? agent.claimed,
+          claim_pending: status?.claimPending ?? false,
+          expires_in_ms: remainingMs,
+          expires_in_hours: remainingMs === null ? null : Math.floor(remainingMs / 3_600_000),
+          claim_instructions: status?.claimed
+            ? null
+            : "Call POST /api/agent/identity/claim to get a code, then give the user the code " +
+              "and the verification URL together in one message.",
+        };
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
+          isError: false,
+        };
+      },
+    );
+  }
 
   const tools = await getToolRegistry();
   for (const tool of tools) {

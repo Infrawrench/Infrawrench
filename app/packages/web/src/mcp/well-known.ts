@@ -73,7 +73,29 @@ function protectedResourceMetadata(c: Context) {
     scopes_supported: ["openid", "profile", "email", "offline_access"],
     bearer_methods_supported: ["header"],
     resource_documentation: `${baseUrl}/docs/features/mcp`,
+    // The auth.md agent-registration block. Advertised beside the OAuth
+    // metadata rather than instead of it: an agent with a human at the keyboard
+    // should still use the interactive flow above, and this is for the one that
+    // has nobody to send to a browser.
+    agent_auth: agentAuthMetadata(baseUrl),
   });
+}
+
+/**
+ * The `agent_auth` discovery block.
+ *
+ * `skill` points at the human- and agent-readable `auth.md`, which is what lets
+ * an agent follow the flow by reading one document rather than by having its
+ * vendor implement our API.
+ */
+function agentAuthMetadata(baseUrl: string) {
+  return {
+    identity_endpoint: `${baseUrl}/api/agent/identity`,
+    claim_endpoint: `${baseUrl}/api/agent/identity/claim`,
+    verification_uri: `${baseUrl}/claim`,
+    identity_types_supported: ["anonymous"],
+    skill: `${baseUrl}/auth.md`,
+  };
 }
 
 app.get("/oauth-protected-resource", protectedResourceMetadata);

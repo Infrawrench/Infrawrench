@@ -8,3 +8,4 @@ export {
   FREE_PLAN_LIMITS,
   PlanRequiredError,
 } from "@infrawrench/server-core/entitlements";
+export type { PlanAccess } from "@infrawrench/server-core/entitlements";

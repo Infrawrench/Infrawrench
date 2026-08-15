@@ -1887,6 +1887,83 @@ export const apiKeys = pgTable(
   }),
 );
 
+/**
+ * An AuthKit agent-auth registration and the trial org it opened.
+ *
+ * Named `agent_auth_*` rather than `agent_*` on purpose: `agent-schema.ts`
+ * already owns "agent" for coding-agent VM sessions, which are an unrelated
+ * feature that also surfaces in the UI as "Agents". Nothing here is a coding
+ * agent — these rows are credentials.
+ *
+ * The row is what makes the WorkOS registration id addressable. WorkOS knows
+ * the registration is claimed; only this table knows *which org it opened*, so
+ * an agent token can be resolved to a tenant, and a claimed registration can be
+ * listed and revoked by the human who now owns it.
+ */
+export const agentAuthRegistrations = pgTable(
+  "agent_auth_registrations",
+  {
+    /** The WorkOS registration id — the `sub` of every token this agent presents. */
+    id: text("id").primaryKey(),
+    /**
+     * The org this registration acts in. Cascades: destroying an expired trial
+     * takes its registrations with it, which is what makes the reaper a single
+     * `DELETE FROM organizations`.
+     */
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /**
+     * The user bound by the claim ceremony, from the token's `act` claim. Null
+     * until claimed — and the only trustworthy statement of who is behind this
+     * agent. A registration's `sub` is never a user id, however much it looks
+     * like one.
+     */
+    claimedByUserId: text("claimed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    claimedAt: timestamp("claimed_at"),
+    /** "anonymous" | "service_auth" — how the registration was opened. */
+    kind: text("kind").notNull().default("anonymous"),
+    /** Free-text label the agent supplied at registration, for the settings list. */
+    label: text("label"),
+    /**
+     * HMAC of the `iwa_` credential this registration authenticates with, using
+     * the same keyed scheme as `api_keys.hashed_key`. Null for a registration
+     * that authenticates with a WorkOS-issued agent token instead.
+     */
+    hashedCredential: text("hashed_credential"),
+    /** First 8 chars of the credential for display ("iwa_abc1…"). */
+    credentialPrefix: text("credential_prefix"),
+    /**
+     * HMAC of the 6-digit `user_code` for an in-flight claim ceremony.
+     *
+     * Hashed, not stored plainly, because the code is a bearer secret for the
+     * duration of the ceremony: anyone holding it can bind the registration to
+     * their own account. Cleared on completion.
+     */
+    hashedClaimCode: text("hashed_claim_code"),
+    /** When the in-flight `user_code` stops being accepted. */
+    claimCodeExpiresAt: timestamp("claim_code_expires_at"),
+    /**
+     * Source IP of the registration request, for the per-IP rate limit. Kept on
+     * the row rather than in a counter table so the limit and the audit trail
+     * are the same record — "who opened 40 trials this hour" is answerable.
+     */
+    createdFromIp: text("created_from_ip"),
+    lastSeenAt: timestamp("last_seen_at"),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("agent_auth_registrations_org_idx").on(t.organizationId),
+    claimedByIdx: index("agent_auth_registrations_claimed_by_idx").on(t.claimedByUserId),
+    credentialIdx: uniqueIndex("agent_auth_registrations_credential_unique").on(t.hashedCredential),
+    // The rate limiter's only query: registrations from one IP since a cutoff.
+    ipCreatedIdx: index("agent_auth_registrations_ip_created_idx").on(t.createdFromIp, t.createdAt),
+  }),
+);
+
 export const subscriptions = pgTable(
   "subscriptions",
   {
