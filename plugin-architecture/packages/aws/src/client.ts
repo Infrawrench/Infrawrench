@@ -24,6 +24,7 @@ import type {
   PublishMessageResult,
   QuotaUsage,
 } from "@infrawrench/plugin-base";
+import { withMetricsCapability } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
 import type { ListerContext } from "./resource-listers.js";
 import {
@@ -639,7 +640,15 @@ export class AWSClient implements PluginClient {
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     const region = String(resource.fields["region"] ?? this.creds.region);
-    return renderDetailImpl(resource, this.resourceTypes, region);
+    // Every type `fetchMetricSeries` handles declares `supportsMetrics`, so
+    // the Metrics tab is derived from the declaration rather than restated
+    // per type. `makeMetricsContext` defaults to the last hour.
+    return withMetricsCapability(
+      renderDetailImpl(resource, this.resourceTypes, region),
+      this.resourceTypes,
+      resource.resourceTypeId,
+      3_600_000,
+    );
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {

@@ -4,21 +4,37 @@ description: Save private keys once and reuse them across every SSH session.
 sidebar_order: 6
 ---
 
-You can store named SSH private keys in infrawrench so the [SSH terminal](../features/ssh-terminal.md), [file browser SFTP](../features/file-browsers.md), and [SSH tunnels](../features/ssh-tunnels.md) can use them without a key picker every time.
+**Settings → SSH Keys** holds named SSH keys shared across the organization, so the [SSH terminal](../features/ssh-terminal.md), [file browser SFTP](../features/file-browsers.md), and [SSH tunnels](../features/ssh-tunnels.md) can use them without a key picker every time.
 
 ![SSH keys page with a list of named keys and the Import Key and Generate Key buttons](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/ssh-keys/ssh-keys-list.png)
 
-## Add a key
+The page has two buttons — **Generate Key** and **Import Key** — and which one you want depends on who holds the private half. The table lists each key's name, type, fingerprint, source (**Generated** or **Imported**), owner and date added, with **Copy public key** and **Delete** on each row.
 
-1. **Settings → SSH keys → Add key**.
+## Generate a key
+
+1. **Settings → SSH Keys → Generate Key**.
+2. Give it a name (`production-bastion`, say).
+3. Click **Generate key**.
+
+Infrawrench mints an Ed25519 keypair and shows both halves once, under **Public Key** and **Private Key**, with a **Copy private key to clipboard** button. That dialog cannot be reopened — copy the private key now if you want it outside Infrawrench, or just close it and let Infrawrench hold the key on your behalf.
+
+## Import a key
+
+1. **Settings → SSH Keys → Import Key**.
 2. Give it a name.
-3. Paste the **private key** (OpenSSH format). Optionally paste a **passphrase**.
-4. Save.
+3. Paste the **public** key — the contents of `~/.ssh/id_ed25519.pub`, not the private half.
+4. Click **Import key**.
 
-## Storage
+There is no field for a private key and none for a passphrase. Importing records the public half so Infrawrench can install it on new machines and identify it in pickers; the private key stays wherever you already keep it.
 
-- **Web** — the key is encrypted server-side and decrypted in memory only for the session. Not visible in the UI after save.
-- **Desktop** — the key is stored in the local encrypted database alongside your credentials.
+## What each kind can do
+
+That difference decides where a key works:
+
+- A **generated** key is stored encrypted server-side, so the cloud can use it to open connections for you — web terminals, SFTP, tunnels, and agent-driven SSH all work.
+- An **imported** key has no private half on the server, so the cloud cannot authenticate with it. Picking one for a web SSH session or tunnel fails with _"SSH key has no private key data"_. It is still the right thing to import when you connect from the desktop app, where the private key is on your own disk, or when you only need the public half installed on a new VM.
+
+Either way the public half is shared with everyone in the organization.
 
 ## Using a key
 
@@ -26,7 +42,7 @@ Any time a host asks for a key, the picker lists saved keys first. In desktop mo
 
 ## Removing a key
 
-**Settings → SSH keys → (key) → Delete**. Any hosts that were pinned to this key will prompt for a new key on next connection.
+**Settings → SSH Keys → (key) → Delete**. Any hosts that were pinned to this key will prompt for a new key on next connection. You can delete your own keys; deleting somebody else's needs the same permission as managing roles.
 
 ## Managing keys from MCP and chat
 

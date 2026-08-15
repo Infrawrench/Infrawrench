@@ -1,18 +1,11 @@
-import { useUIStore } from "@infrawrench/ui";
 import type { CostsPanelDashboard } from "@infrawrench/ui/cost";
 import type { CostReportsClient } from "@infrawrench/ui/cost-reports";
 import type {
-  CostAnnotationInput,
   CostReportFolderInput,
   CostReportInput,
   ReportNotificationInput,
-  SavedCostFilterInput,
 } from "@infrawrench/client-core";
 import {
-  createCloudCostAnnotation,
-  deleteCloudCostAnnotation,
-  listCloudCostAnnotations,
-  updateCloudCostAnnotation,
   createCloudCostReport,
   createCloudCostReportFolder,
   createCloudReportNotification,
@@ -25,62 +18,28 @@ import {
   listCloudCostReportFolders,
   listCloudCostReports,
   listCloudReportNotifications,
-  loadCloudCostDimensionValues,
-  loadCloudCostStatus,
   loadCloudReportDeliveryTargets,
-  queryCloudCosts,
   sendCloudReportNotificationNow,
   updateCloudCostReport,
   updateCloudCostReportFolder,
   updateCloudReportNotification,
-  createCloudSavedCostFilter,
-  listCloudSavedCostFilters,
 } from "./cloud-costs";
 import { listCloudDashboards } from "./cloud-dashboards";
+import { createDesktopCostApi, requireCloudOrgId as requireOrgId } from "./cost-api";
 
 /**
- * Cost reports are cloud-only for the same reason budgets are: the spend they
- * draw is collected server-side, so a desktop app in local mode has nothing to
- * report on. Every call resolves the active org at call time rather than
- * closing over it — the org can change under a mounted panel.
+ * The Cost reports client: the shared read calls plus report and folder CRUD,
+ * the dashboard-placement calls for `cost_report` cards, and delivery
+ * schedules.
+ *
+ * The reads come from {@link createDesktopCostApi} rather than being restated
+ * here — the report editor is the same `CostGraphConfigModal` the dashboard and
+ * the Costs panel open, so it must be handed the same loaders or its scenario,
+ * saved-filter and unit-cost pickers quietly disappear.
  */
-function requireOrgId(): string {
-  const orgId = useUIStore.getState().activeCloudOrgId;
-  if (!orgId) throw new Error("Cost reports require cloud mode — sign in to sync.");
-  return orgId;
-}
-
 export function createDesktopCostReportsClient(): CostReportsClient {
   return {
-    queryCosts: (req) => queryCloudCosts(requireOrgId(), req),
-    loadDimensionValues: (dimension, tagKey) => {
-      const orgId = useUIStore.getState().activeCloudOrgId;
-      if (!orgId) return Promise.resolve([]);
-      return loadCloudCostDimensionValues(orgId, dimension, tagKey);
-    },
-    loadCostStatus: () => {
-      const orgId = useUIStore.getState().activeCloudOrgId;
-      if (!orgId) return Promise.resolve([]);
-      return loadCloudCostStatus(orgId);
-    },
-    // Dated notes drawn over the chart. Org-wide notes belong on every cost
-    // chart, so these live on the base cost API rather than the report client.
-    listCostAnnotations: (reportId?: string) => {
-      const orgId = useUIStore.getState().activeCloudOrgId;
-      if (!orgId) return Promise.resolve([]);
-      return listCloudCostAnnotations(orgId, reportId);
-    },
-    createCostAnnotation: (input: CostAnnotationInput) =>
-      createCloudCostAnnotation(requireOrgId(), input),
-    updateCostAnnotation: (annotationId: string, input: CostAnnotationInput) =>
-      updateCloudCostAnnotation(requireOrgId(), annotationId, input),
-    deleteCostAnnotation: (annotationId: string) =>
-      deleteCloudCostAnnotation(requireOrgId(), annotationId),
-    // The report editor is the shared CostGraphConfigModal, so it offers the
-    // saved-filter picker; management lives on the Costs panel.
-    listSavedFilters: () => listCloudSavedCostFilters(requireOrgId()),
-    createSavedFilter: (input: SavedCostFilterInput) =>
-      createCloudSavedCostFilter(requireOrgId(), input),
+    ...createDesktopCostApi(),
     listReports: () => listCloudCostReports(requireOrgId()),
     getReport: (reportId: string) => getCloudCostReport(requireOrgId(), reportId),
     createReport: (input: CostReportInput) => createCloudCostReport(requireOrgId(), input),

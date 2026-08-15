@@ -32,8 +32,9 @@ or re-tagged out of scope stops being watched, and any open alert on it resolves
 match case-insensitively (providers disagree about casing), values exactly. An empty selector
 covers every resource in the organization.
 
-The rule editor shows a live preview of how many resources the selector matches right now, so
-you can see the blast radius before saving.
+Directly under those four controls — and above the Metric picker — the editor shows a live
+preview: "Matches 6 resources right now", with the first few named. It updates as you narrow
+the selector, so you see the blast radius before saving rather than after.
 
 ## Picking a metric
 
@@ -42,7 +43,7 @@ days, narrowed to the provider and type you selected — you pick "CPU %" or "Me
 from a list (with its unit and how many resources report it), never type an internal metric
 name. If the list is empty, resources of that shape have not reported metrics yet.
 
-![The rule editor modal with a provider and resource type selected, the "Matches 6 resources right now" selector preview, and the metric picker open showing series labels with units and resource counts](https://agent-assets.infrawrench.com/docs-screenshots/features/metric-alerts/rule-editor-metric-picker.png)
+![The rule editor modal with a provider and resource type selected, the "Matches 6 resources right now" preview closing the Resources block, and the Metric picker below it open showing series labels with units and resource counts](https://agent-assets.infrawrench.com/docs-screenshots/features/metric-alerts/rule-editor-metric-picker.png)
 
 ## How evaluation works
 

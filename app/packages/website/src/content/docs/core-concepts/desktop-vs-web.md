@@ -14,8 +14,8 @@ Infrawrench ships as a desktop app, a hosted web app, and a [mobile app](../feat
 | Credential storage                          | Local SQLite, AES-256-GCM                                 | Server-side, encrypted              | None (uses your cloud org)                                 |
 | Auth                                        | None required                                             | WorkOS (email / Google / MS)        | WorkOS (same, OAuth PKCE)                                  |
 | SSH terminal                                | Native, direct connection                                 | WebSocket proxied through server    | WebSocket proxied through server                           |
-| SQL / KV console                            | Native drivers                                            | Proxied                             | Proxied, no SQL autocomplete                               |
-| File browsers                               | GCS, S3, R2, Azure Blob, + SFTP                           | GCS, S3, R2, Azure Blob             | SFTP (proxied through the cloud)                           |
+| SQL / KV console                            | Native drivers                                            | Proxied                             | Proxied, no SQL schema browser                             |
+| File browsers                               | GCS, S3, R2, Azure Blob, + SFTP                           | GCS, S3, R2, Azure Blob, + SFTP     | SFTP (proxied through the cloud)                           |
 | Docker                                      | Native socket / TCP                                       | Remote TCP only                     | Remote TCP only                                            |
 | Team / billing                              | Full org settings when signed in to cloud                 | Full multi-user, Stripe billing     | View team; billing read-only                               |
 | Audit log, API keys                         | Paid plan (when signed in to cloud)                       | Paid plan                           | Paid plan (keys view/revoke only)                          |

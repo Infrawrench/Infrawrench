@@ -9,6 +9,11 @@ import type { PeerPaneData } from "./detail-types.js";
 import { statusDotClass } from "../schema-tokens.js";
 import { dispatchPromptNoSqlCommand } from "../../utils.js";
 import { useDataString } from "../../i18n/data-strings.js";
+import {
+  peerPaneCreateLabel,
+  peerPaneGroupName,
+  peerPaneGroupTitle,
+} from "./PeerPaneView.utils.js";
 
 export interface PeerPanePortForwardEntry {
   sessionId: string;
@@ -306,7 +311,7 @@ export function PeerPaneView({
             {resourceGroups.length > 0
               ? gt("No {groupNames} found. Create one in the provider, then refresh.", {
                   groupNames: resourceGroups
-                    .map((g) => gtData(g.title.replace(/\s*\(\d+\)\s*$/, "").toLowerCase()))
+                    .map((g) => gtData(peerPaneGroupName(g.title).toLowerCase()))
                     .join(" / "),
                 })
               : gt("Create a resource in the provider, then refresh.")}
@@ -318,7 +323,21 @@ export function PeerPaneView({
         const groupKey = `${group.pluginId}:${group.resourceTypeId}`;
         const isNamespaceGroup = group.resourceTypeId === "k8s-namespace";
         const isCollapsed = collapsedGroups.has(groupKey);
-        const itemCount = group.items.length;
+        // The namespace group is a filter control over this pane's own
+        // listings, so it offers only namespaces the pane can filter *to*.
+        // The workload listers hide the control-plane namespaces
+        // (`SYSTEM_NAMESPACES` in the kubernetes plugin), so `kube-system` and
+        // friends never appear in `namespaces` and are not offered here or in
+        // the <select> above — picking one would empty the pane. Their cost is
+        // a separate surface and is deliberately still counted there.
+        //
+        // The count in the header is taken from this list rather than from
+        // `group.items`, so the header can never claim more namespaces than
+        // are drawn.
+        const visibleItems = isNamespaceGroup
+          ? group.items.filter((ns) => namespaces.includes(ns.displayName))
+          : group.items;
+        const itemCount = visibleItems.length;
 
         if (isNamespaceGroup && nsFilter) return null;
 
@@ -342,18 +361,8 @@ export function PeerPaneView({
                   ▶
                 </span>
                 <h3 className="text-sm font-semibold text-on-surface">
-                  {getGroupDisplayTitle(group.title, itemCount)}
+                  {peerPaneGroupTitle(group.title, itemCount)}
                 </h3>
-                {isNamespaceGroup && (
-                  <span className="text-xs text-on-surface-muted">
-                    {gt("{count} user", {
-                      count: group.items.filter(
-                        (ns) =>
-                          ns.fields["system"] !== "true" && namespaces.includes(ns.displayName),
-                      ).length,
-                    })}
-                  </span>
-                )}
               </button>
               <div className="flex items-center gap-2">
                 {group.supportsCreate && onCreate && (
@@ -365,7 +374,7 @@ export function PeerPaneView({
                     }}
                     className="px-2.5 py-1 rounded-lg border border-border-strong bg-surface-overlay text-xs text-on-surface-secondary hover:border-border-strong hover:bg-surface-sunken transition-colors"
                   >
-                    {gt("Create {label}", { label: gtData(getCreateLabel(group.title)) })}
+                    {gt("Create {label}", { label: gtData(peerPaneCreateLabel(group.title)) })}
                   </button>
                 )}
               </div>
@@ -375,13 +384,13 @@ export function PeerPaneView({
               <div id={`peer-pane-group-${groupKey}`} className="px-4 pb-3">
                 {isNamespaceGroup ? (
                   <NamespaceGrid
-                    items={group.items.filter((ns) => namespaces.includes(ns.displayName))}
+                    items={visibleItems}
                     activeNamespace={nsFilter}
                     onSelect={(ns) => setNsFilter(nsFilter === ns ? null : ns)}
                   />
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {group.items.map((resource) => {
+                    {visibleItems.map((resource) => {
                       const isService = group.resourceTypeId === "k8s-service";
                       const hasSelector = resource.fields["hasSelector"] === "true";
                       const pfEntry = portForward?.entries.find(
@@ -489,6 +498,18 @@ export function PeerPaneView({
   );
 }
 
+/**
+ * The namespace filter pills.
+ *
+ * Each pill carries the namespace's `subtitle` — the phase plus, when cost
+ * allocation resolved, the daily cost and the tighter of the two efficiency
+ * figures (`Active · ~$4.20/day · 18% CPU`). That is the same secondary line
+ * `PeerResourcePill` puts under a workload's name, so the two grids read the
+ * same way; a pill without a subtitle is still a single line.
+ *
+ * Callers pass only the namespaces the pane can filter to — see the comment at
+ * the call site — so there is no system/user split to make here.
+ */
 function NamespaceGrid({
   items,
   activeNamespace,
@@ -499,72 +520,49 @@ function NamespaceGrid({
   onSelect: (ns: string) => void;
 }) {
   const gt = useGT();
-  const userNs = items.filter((ns) => ns.fields["system"] !== "true");
-  const systemNs = items.filter((ns) => ns.fields["system"] === "true");
-  const [showSystem, setShowSystem] = useState(false);
+  const gtData = useDataString();
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-1.5">
-        {userNs.map((ns) => (
+    <div className="flex flex-wrap gap-1.5">
+      {items.map((ns) => {
+        const isActive = activeNamespace === ns.displayName;
+        return (
           <button
             key={ns.id}
             type="button"
             onClick={() => onSelect(ns.displayName)}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-              activeNamespace === ns.displayName
+            aria-pressed={isActive}
+            // `max-w-full` keeps a long subtitle from pushing the pill past the
+            // pane at narrow widths — it wraps onto its own row and truncates
+            // instead. `min-w-0` is what lets the truncation happen at all.
+            className={`flex min-w-0 max-w-full flex-col items-start gap-0.5 rounded-lg px-2.5 py-1 text-left transition-colors ${
+              isActive
                 ? "bg-blue-600 text-white"
                 : "bg-surface-overlay text-on-surface-secondary hover:bg-surface-sunken hover:text-on-surface"
             }`}
           >
-            {ns.displayName}
-            {ns.status && (
+            <span className="flex min-w-0 max-w-full items-center gap-1.5">
+              <span className="truncate text-xs font-medium">{ns.displayName}</span>
+              {ns.status && (
+                <span
+                  role="img"
+                  aria-label={gt("Status: {status}", { status: ns.status })}
+                  className={`inline-block size-1.5 flex-shrink-0 rounded-full ${statusDotClass(ns.status)}`}
+                />
+              )}
+            </span>
+            {ns.subtitle && (
               <span
-                role="img"
-                aria-label={gt("Status: {status}", { status: ns.status })}
-                className={`ml-1.5 inline-block size-1.5 rounded-full ${statusDotClass(ns.status)}`}
-              />
+                className={`max-w-full truncate text-[11px] leading-tight ${
+                  isActive ? "text-white/75" : "text-on-surface-muted"
+                }`}
+              >
+                {gtData(ns.subtitle)}
+              </span>
             )}
           </button>
-        ))}
-      </div>
-      {systemNs.length > 0 && (
-        <div>
-          <button
-            type="button"
-            onClick={() => setShowSystem(!showSystem)}
-            className="text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
-          >
-            {showSystem
-              ? gt("Hide {count} system namespace{suffix}", {
-                  count: systemNs.length,
-                  suffix: systemNs.length === 1 ? "" : "s",
-                })
-              : gt("Show {count} system namespace{suffix}", {
-                  count: systemNs.length,
-                  suffix: systemNs.length === 1 ? "" : "s",
-                })}
-          </button>
-          {showSystem && (
-            <div className="flex flex-wrap gap-1.5 mt-1.5">
-              {systemNs.map((ns) => (
-                <button
-                  key={ns.id}
-                  type="button"
-                  onClick={() => onSelect(ns.displayName)}
-                  className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${
-                    activeNamespace === ns.displayName
-                      ? "bg-blue-600/60 text-accent-on-muted"
-                      : "bg-surface-overlay/50 text-on-surface-muted hover:bg-surface-sunken/50 hover:text-on-surface-tertiary"
-                  }`}
-                >
-                  {ns.displayName}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+        );
+      })}
     </div>
   );
 }
@@ -716,18 +714,4 @@ function PeerResourcePill({
       )}
     </div>
   );
-}
-
-function getGroupDisplayTitle(title: string, itemCount: number): string {
-  if (/\(\d+\)$/.test(title)) {
-    return title.replace(/\(\d+\)$/, `(${itemCount})`);
-  }
-  return `${title} (${itemCount})`;
-}
-
-function getCreateLabel(title: string): string {
-  return title
-    .replace(/\(\d+\)$/, "")
-    .trim()
-    .replace(/s$/i, "");
 }

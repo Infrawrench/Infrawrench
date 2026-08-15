@@ -191,20 +191,23 @@ The `--json` output carries a `kind` field on every row (`spike` or `new_source`
 
 ## Alerts
 
-Anomaly alerts ride the same channels as budget alerts and sync-failure incidents, with their
-own opt-in toggle everywhere those channels are configured:
+Anomaly alerts ride the same channels as budget alerts and sync-failure incidents. Everything
+lives under **Settings → Notifications**, in two places:
 
-- **[Mobile push](./mobile-push-notifications.md)** — per-user, per-org toggle ("Cost
-  anomalies") in **Settings → Alerting & paging** on the web, or the mobile app's
-  notification settings.
-- **[Slack](./slack-alerts.md)** — per-channel "Anomalies" toggle on each routed channel.
-- **[Microsoft Teams](./teams-alerts.md)** — per-webhook "Anomalies" toggle on each routed
-  channel.
+- **[Slack](./slack-alerts.md) and [Microsoft Teams](./teams-alerts.md)** — which channels get
+  anomalies is decided by the **Alert routing** rules, not by a checkbox on the channel row.
+  Add a rule whose **Trigger** condition names **Anomalies** and pick the channels under
+  **Send to**. Until you write any rules, the built-in default sends every trigger except
+  Drift to every connected channel, so a freshly connected workspace already receives them —
+  see [Alert routing](./alert-routing.md).
+- **[Mobile push](./mobile-push-notifications.md)** — a per-user, per-org toggle labelled
+  **Anomalies**, in the **Mobile app** pane of the Connections box (under "Your mobile
+  notifications"), or on the mobile app's own **Settings → Notifications** screen. It defaults
+  to on.
 
-<insert [Web settings Alerting & paging page with the "Cost anomalies" push toggle and a Slack channel row showing the Anomalies trigger checkbox] here>
+<insert [Settings → Notifications with an Alert routing rule whose Trigger condition names Anomalies, and the Mobile app pane's "Anomalies" push toggle] here>
 
-All toggles default to on. Slack and Teams messages carry a "View in Infrawrench" button that
-opens the Costs panel.
+Slack and Teams messages carry a "View in Infrawrench" button that opens the Costs panel.
 
 ## Paging by SMS
 

@@ -283,6 +283,7 @@ export type {
   ImageOption,
   DiskOption,
   PolicyOption,
+  SelectOption,
   FieldAction,
   FieldActionResult,
 } from "./create.js";
@@ -301,6 +302,8 @@ export {
   labeledFieldItems,
   labeledOutputItems,
   resourceTypeDisplayName,
+  resourceTypeHasMetrics,
+  withMetricsCapability,
 } from "./render-helpers.js";
 
 export {

@@ -88,6 +88,7 @@ export type {
   AgentTool,
   AgentVmAccount,
 } from "./agents/types.js";
+export { NO_AGENT_LAUNCH_DEFAULTS } from "./agents/types.js";
 export { closeSshTabsForAgentTarget, openAgentSshTerminalTab } from "./agents/open-ssh-tab.js";
 export type { AgentSshTabTarget, OpenAgentSshTerminalTabInput } from "./agents/open-ssh-tab.js";
 
@@ -245,7 +246,7 @@ export type {
   ChildResourceGroup,
 } from "./components/detail/DetailView.js";
 export { PeerPaneView } from "./components/detail/PeerPaneView.js";
-export { replacePeerPaneTrailingCount } from "./components/detail/PeerPaneView.utils.js";
+export { replacePeerPaneCount } from "./components/detail/PeerPaneView.utils.js";
 export type {
   PeerPaneViewProps,
   PeerPanePortForwardEntry,

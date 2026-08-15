@@ -29,14 +29,14 @@ noticed: a down probe on the **Probes** tab and a firing rule on the **Alerts** 
 a **Declare incident** button that opens the same form with the title, the summary, the
 affected resource and the start time already filled in.
 
-The form asks for a title and a severity (SEV1–SEV4), and offers four things to do:
+The form asks for a title, a severity (SEV1–SEV4, defaulting to SEV2) and an optional summary, then offers four things to do under **And do this** — three checkboxes and, last, a **Tell the public** dropdown rather than a tick:
 
-| Action              | Default | What it does                                                                                                                                                                                                          |
-| ------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Announce it**     | on      | Sends through your existing alert routing rules under a new **Incidents** trigger — so it lands in whichever Slack channels, Teams webhooks and phones your rules already name, honouring quiet hours and escalation. |
-| **Pin the moment**  | on      | Records when this started, so "what changed around then" stays one click away for the whole investigation.                                                                                                            |
-| **Freeze changes**  | off     | Opens an org change freeze for the duration, blocking destructive actions. Lifted automatically when the incident resolves.                                                                                           |
-| **Tell the public** | off     | Posts an update on one of your status pages, optionally naming which components are affected. Closed automatically on resolve.                                                                                        |
+| Action              | Default | What it does                                                                                                                                                                                                                                       |
+| ------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Announce it**     | on      | Sends through your existing alert routing rules under a new **Incidents** trigger — so it lands in whichever Slack channels, Teams webhooks and phones your rules already name, honouring quiet hours and escalation.                              |
+| **Pin the moment**  | on      | Records when this started, so "what changed around then" stays one click away for the whole investigation.                                                                                                                                         |
+| **Freeze changes**  | off     | Opens an org change freeze for the duration, blocking destructive actions. Lifted automatically when the incident resolves.                                                                                                                        |
+| **Tell the public** | off     | A dropdown of your status pages, defaulting to **Don't post publicly**. Pick one and it posts an update there, with toggles for which components are affected. Closed automatically on resolve. It is hidden entirely if you have no status pages. |
 
 The two that are off by default are the two with blast radius beyond the incident. The two
 that are on only help.

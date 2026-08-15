@@ -307,11 +307,20 @@ registry: your cluster can then pull it with credentials it already has.
 
 Builds are capped at 20 minutes and metered, so a runaway `RUN` stops on its own.
 
+**A hosted build is quiet while it runs.** The log gets `Uploading source (12.4 MB)`,
+then `Building <image> on Cloud Build`, and then nothing until the build finishes
+and `Built <image> in 84s` appears — the worker's per-layer output goes to storage
+rather than back down the wire, so there is no `Step 3/9` to watch. A failure names
+the build id so you can read the full log in Google Cloud Build. Hosted `run()`
+steps do get their output, but in one burst once the step ends rather than as it
+happens.
+
 Set `buildOn` to a resource if you'd rather build somewhere specific — a machine
 with a warm layer cache, or one inside a private network. It's an override, not
-a requirement.
+a requirement, and it is also the way to watch a build happen: that path streams
+every line of `docker build` and `docker push` into the log as it is printed.
 
-![The Deploy screen mid-build with the stage indicator on "build", showing hosted build output streaming into the live log panel](https://agent-assets.infrawrench.com/docs-screenshots/features/infrafile/deploy-mid-build-hosted.png)
+![The Deploy screen mid-build with the stage indicator on "build", showing the "Uploading source" and "Building … on Cloud Build" lines in the live log panel while the hosted build runs](https://agent-assets.infrawrench.com/docs-screenshots/features/infrafile/deploy-mid-build-hosted.png)
 
 ## Deploy on push
 
@@ -556,6 +565,21 @@ reads (see above).
 
 The web app streams a run's logs live and shows the plan and rendered Dockerfile
 before anything is built.
+
+### Stopping a run
+
+**Stop** sits next to Deploy while a run is in flight, in the web app and in the
+desktop app's Deploy tab. It is a request rather than a kill switch: the run
+unwinds at its next checkpoint, and a `select(...)` still waiting on an answer is
+resolved so the isolate can exit instead of sitting there until the execution
+budget expires. Clicking it before the connection is up is fine — the request is
+held and sent the moment the run is reachable — and the button reads "Stopping…"
+until the run ends.
+
+A stopped run is recorded like any other unsuccessful one: it appears in the
+history as failed, at the stage it reached, with the reason attached. Anything it
+had already provisioned stays provisioned, and stays in that run's
+created-resource ledger, so `destroy --created` can clean it up.
 
 ## What a deploy cost
 

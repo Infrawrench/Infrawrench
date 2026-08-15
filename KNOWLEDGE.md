@@ -163,6 +163,8 @@ addSecretVersion?(typeId, resourceId, accountId, value): Promise<SecretVersion>
 modifySecretVersion?(typeId, resourceId, accountId, versionId, "enable"|"disable"|"destroy"): Promise<SecretVersion>
 ```
 
+**Metrics tab — two declarations that have to agree.** The host _fetches_ series when the resource type declares `supportsMetrics` (and the client has `fetchMetricSeries`), **or** when the type has a peer integration with `exposeMetricsToParent` — that second half is how the managed-Kubernetes types (`doks-cluster`, `gke-cluster`, `azure-aks-cluster`, `kapsule-cluster`, `eks-cluster`, `managed-kube`) get the Kubernetes peer's cost series merged into the cloud cluster's own tab. The host _renders_ the tab when the `DetailViewSchema` that `renderDetail` returned carries `metricsCapability`. Nothing type-checks the pair, and both mismatches are silent: a declaration with no capability means the fetch fires and the series land nowhere (issue #111 — this was the state of every AWS and Azure type), and a capability with no declaration means a tab that is permanently empty. Plugins should call `withMetricsCapability(schema, this.resourceTypes, resource.resourceTypeId, defaultWindowMs)` (`plugin-base/src/render-helpers.ts`) as the last thing `renderDetail` does rather than restating the fact per renderer; a renderer that set `metricsCapability` itself is left alone. `defaultTimeRangeMs` must be the window that plugin's own `fetchMetricSeries` defaults to when the host passes no range — it is what the chart's time-range label says. Declare it **unconditionally**: the host's empty state ("No metric data yet") is the right answer for a resource whose series have not arrived, and gating the capability on data the synchronous renderer happens to hold is what made the Kubernetes tab miss on a cold client. `describe("metrics declarations")` in `server-core/src/__tests__/plugin-loader.test.ts` renders every type in the registry and fails on either mismatch.
+
 **Secret versions:** resource types that hold versioned secret material (e.g. GCP Secret Manager Secret) declare `secretVersions: { supportsFileUpload?, helpText? }` on their `DetailViewSchema`. The host then renders a "Versions" tab with a table of versions (id · state · created), per-row Reveal/Enable/Disable/Destroy actions, and an "Add version" form (paste or file upload). Reveal opens a shared reveal-once modal with copy. Destroy is confirmed before dispatch. Web routes: `GET/POST /api/org/:org/resources/:plugin/:type/secret-versions[/access|/add|/modify]`. Desktop IPC: `cloud_list_secret_versions`, `cloud_access_secret_version`, `cloud_add_secret_version`, `cloud_modify_secret_version`.
 
 Implementations by plugin:
@@ -1058,6 +1060,7 @@ The same generic flow also powers managed Kubernetes cluster creation for provid
 Field rendering:
 
 - `region-picker` — searchable by zone ID, human-readable location name, or flag. Shows location as primary label, zone ID as secondary monospaced hint.
+- `select` — a chip row for up to 4 short, description-less options; otherwise `SelectPicker`, a searchable option grid. **Metadata belongs in `SelectOption.description`, not appended to the label.** The card gives the label one line, and the create modal is a fixed 560px, so a two-column cell holds roughly 30 characters at `text-sm`: DO's dedicated-inference sizes shipped as `gpu-h100x1-80gb (1× GPU, $3219/mo)` and truncated at `$3…`, hiding the price the option existed to advertise. Rules live in `ui/src/components/create-resource/select-layout.ts` (`selectRendersAsChips`, `selectPickerColumns`, `selectOptionSecondaryLines`) and are shared by `FieldRenderer` and the picker so the two can't disagree. The grid drops to **one column** when any label exceeds `SELECT_NARROW_LABEL_LIMIT` (28), labels **wrap** rather than truncate, search matches the description too, and the raw `id` still renders as a monospaced line whenever it differs from the label. Descriptions never widen the grid — they're 11px on their own line. Mobile's `PromptCommandSheet` chips render the description as a sub-line; the CLI has no create-form select.
 - `size-picker` — collapsible categories, CPU/RAM bars per option
 - `image-picker` — grouped by OS family, searchable, "owned" badge for account images
 - `disk-picker` — searchable by name/zone/type
@@ -2352,6 +2355,22 @@ the ui barrel — dragging React and Monaco into a Node test until `cloud-api.te
 Data-layer modules import the React-free entry; only components import the barrel. Same
 precedent as `agents/launch-command`.
 
+**The Stop button's handle is created by the caller, never handed back by the transport.**
+`DeploySession.stopper` is a required `DeployStopController` (`client-core/src/deploy-stop.ts`)
+that `DeploymentsPanel` constructs before it calls `deploy()`. It used to be an optional
+`stop?: () => void` the transport assigned and the panel read synchronously on the next line —
+which no transport can satisfy, because every one of them `await`s a websocket token before it
+has a socket at all, so the assignment landed a microtask after the read and the button never
+rendered on **either** web or desktop (#108). Owning the controller removes the ordering
+question: there is nothing to read back, and a transport that forgets to `arm()` leaves the stop
+visibly queued rather than silently never offering the button. Transports `arm(send)` inside
+`onopen` **after** sending `deploy:run` — `server.ts` routes `deploy:stop` to the listener that
+frame registers — and `finish()` in their `finish()` wrapper. A stop clicked while the socket is
+still connecting is queued and flushed on arm rather than being dropped or hidden behind a
+disabled button: that window is short but it is exactly when a user changes their mind, having
+just clicked Deploy. The controller is deliberately not reactive — with the queue there is no
+"not ready yet" state to render.
+
 Permissions are `deployments:read` / `:plan` / `:write` — **not** the `dashboards:*` squat
 workflows took. Three tiers because previewing and shipping are different risks: `read` is the
 history and declared envs (inert), `plan` runs the repo's `plan()` against the org's host so it
@@ -2590,6 +2609,8 @@ The dashboard `+` menu offers **New budget** and **Existing budget** for the sam
 
 Desktop gates the sidebar entry on `activeCloudOrgId` (spend is collected server-side, so local mode has nothing to show) and `createDesktopCostsClient` resolves the org per call rather than closing over it, matching the dashboard's cost API. Mobile omits the mutating half of `CostsClient` and `CostsPanel` renders read-only rather than showing controls that would fail on click.
 
+**There is exactly one `CostApi` factory per platform — `createWebCostApi` (`web/src/lib/cost-client.ts`) and `createDesktopCostApi` (`desktop/src/lib/cost-api.ts`) — and every cost surface spreads it.** Nearly all of `CostApi` is optional (`listScenarioModels?`, `listSavedFilters?`, `listBusinessMetrics?`, `listCostAnnotations?`), and the shared components render a picker **only when its loader is present**, so a host that hand-rolls a smaller literal typechecks fine and silently ships a graph editor with controls missing. That is exactly what happened: both `DashboardView`s built their own three-method object, so a cost graph opened from a dashboard had no scenario, saved-filter or unit-cost picker while the identical modal on the Reports page did (#115) — and desktop's `createDesktopCostReportsClient` had separately drifted to omit scenarios and unit costs. The Costs panel's and the Reports page's clients now extend the one factory instead of restating the reads, and `{web,desktop}` each carry a test asserting the three clients expose the same loaders _and_ that `DashboardView` builds from the factory. Desktop's `queryCosts`/`queryUnitCosts` are `async` on purpose: `requireCloudOrgId()` throws, and `CostGraphCard` queries from an effect with a `.catch()` and no `try`, where a synchronous throw would escape.
+
 ## Charge types, amortization & estimate provenance
 
 `CostRow` carries optional `chargeType` (`usage|commitment_fee|commitment_discount|credit|tax|refund|adjustment|support|other`, absent = `usage`), `amortizedAmount` and `commitmentId`; `CostCapabilityDeclaration` gained `chargeTypes`, `amortization` and `estimated`. Queries take `costBasis: "cash"|"amortized"` — **amortized falls back to the cash amount per row** (`if(amortized_amount != 0, amortized_amount, amount)`), because otherwise a non-amortizing provider mixed with an amortizing one drops out entirely and reads as a saving. `charge_type` and `commitment` are groupable/filterable dimensions.
@@ -2605,6 +2626,8 @@ A cluster has no billing API, so cost is derived in `plugin-kubernetes/src/cost-
 Node rates arrive via the existing `credentialMappings` mechanism (`nodeHourlyRates` on all six cluster resource types); DigitalOcean gives real billed price, AWS/Azure list price, GCP/Scaleway/OVH none. **With no rate, capacity and efficiency render with no money attached** rather than a fabricated number. `metrics.k8s.io` is optional — a 404 degrades to requests-based allocation.
 
 Surfaced through the plugin: peer-pane subtitles and status (`PeerPaneSchema` has no chart/table slot, so real breakdowns go elsewhere), `dashboard-stats.ts`, `TableNode` breakdowns in `detail-renderers.ts`, and `fetchMetricSeries` merged onto the parent cluster's Metrics tab via `exposeMetricsToParent`. Cost rows use `maxHistoryDays: 1` with namespace/workload as tags. **Allocation deliberately does not inherit `SYSTEM_NAMESPACES`** — it reads pods directly so kube-system's cost cannot silently vanish.
+
+**The peer pane's Namespaces grid does the opposite, on purpose.** It is a filter control over the pane's own workload listings, and those listings _do_ inherit `SYSTEM_NAMESPACES`, so no pod ever reports `kube-system` and offering it as a filter would empty the pane. `PeerPaneView` therefore draws only namespaces present in the set derived from the other groups — the same set the namespace `<select>` is built from, so the two controls always agree — and takes the group's header count from that list rather than from `group.items`, which is what stopped the header claiming more namespaces than it drew. The old system/user disclosure inside `NamespaceGrid` was unreachable for the same reason and is gone. Group titles carry their count inside the string (`Namespaces (5) · by cost`), so all count handling goes through `PeerPaneView.utils.ts`, which anchors on "a parenthesised integer ending the title or preceding the `·` suffix" — matching only a _trailing_ count read that title as uncounted and appended a second one.
 
 ## Cost reports, currency, query language & exports
 

@@ -15,11 +15,14 @@ Infrawrench ships an in-app SQL console so you do not need to juggle psql, mysql
 
 ## Features
 
-- **Autocomplete** from live schema introspection (tables, columns, functions).
-- **Query history** per connection.
-- **Result grid** with column sorting and cell-level copy.
-- **Export** results as CSV or JSON.
-- **Multi-statement** — run a single statement with Cmd/Ctrl + Enter, or run the whole buffer.
+- **Schema browser** down the left-hand side, from live introspection. Filter it with the **Search tables…** box, expand a table to see its columns and types, and click a table name to drop `SELECT * FROM <table> LIMIT 100;` into the buffer and run it. Primary-key columns are marked with a ⚿.
+- **Result grid** with primary-key columns badged **PK** and nulls shown as `NULL`.
+- **Inline row editing** — where the query selects from a single table and brings back all of its primary-key columns, the pencil on a row turns the non-key cells into inputs and writes an `UPDATE` back.
+- **Export CSV** — downloads the current result set.
+- **Estimate** — on engines that support a dry run (BigQuery, Databricks), prices the query before you run it; the toolbar then shows the bytes and cost, or "cache hit · free".
+- **Run ⌘↵** runs the whole buffer. Tab inserts two spaces rather than moving focus.
+
+The editor itself is a plain text area — there is no autocomplete, and no query history is kept between visits.
 
 ## Per-driver notes
 

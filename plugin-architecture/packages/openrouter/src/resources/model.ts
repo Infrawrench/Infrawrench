@@ -50,5 +50,9 @@ export const ModelResourceType = rt({
     o("modelId", "Model ID", { description: "Pass as `model` in inference requests" }),
     o("canonicalSlug", "Canonical Slug"),
   ],
+  // The detail view has offered a Metrics tab since it was written, but the
+  // host only calls `fetchMetricSeries` for types that declare this — so the
+  // per-model spend and request series from `/activity` never reached it.
+  supportsMetrics: true,
   iconKey: "cpu",
 });

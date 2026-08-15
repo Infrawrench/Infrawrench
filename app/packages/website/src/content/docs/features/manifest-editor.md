@@ -18,16 +18,16 @@ S3-compatible buckets (AWS S3, DigitalOcean Spaces, Scaleway Object Storage) hav
 
 ## Editor features
 
-- Syntax highlighting and validation (JSON / YAML).
-- Schema-aware autocomplete for Kubernetes.
-- Diff view against the live manifest before save.
-- Undo / redo, find / replace.
+- Syntax highlighting for JSON and YAML, word wrap, bracket-pair colouring.
+- Undo / redo, find / replace — it is Monaco, so the usual editor bindings work.
+- **Apply ⌘S** is the primary button, and it stays disabled until the buffer differs from what was loaded. While you have unsaved work the toolbar says **Unsaved changes**; after a successful apply it says **Applied** for a few seconds.
+- **Reload** re-fetches the live document, discarding your edits.
 
-## Save semantics
+## Apply semantics
 
-- **Kubernetes** — the manifest is applied via the API server. Conflicts surface as an error; resolve them by refreshing.
+- **Kubernetes** — the manifest is applied via the API server. Conflicts surface as an error; resolve them with **Reload**.
 - **Cloudflare** — settings are pushed field-by-field. Partial failures are reported per field.
-- **Read-only providers** — save is disabled; clone the manifest into your IaC tool instead.
+- **Read-only providers** — the toolbar shows a **Read-only** chip and no Apply button; clone the manifest into your IaC tool instead.
 
 ## Tips
 

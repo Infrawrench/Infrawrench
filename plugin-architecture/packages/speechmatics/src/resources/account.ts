@@ -36,5 +36,10 @@ export const AccountResourceType = rt({
     }),
   ],
   supportsDelete: false,
+  // `/usage` is account-wide and the detail view has offered a Metrics tab
+  // since it was written, but the host only calls `fetchMetricSeries` for
+  // types that declare this — so the bucketed hours/jobs series never reached
+  // it.
+  supportsMetrics: true,
   iconKey: "account",
 });

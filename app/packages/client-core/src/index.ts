@@ -705,6 +705,11 @@ export * from "./linear";
 export * from "./issue-filing";
 export * from "./cost-exports";
 export * from "./change-cost-impact";
+export {
+  createDeployStopController,
+  type DeployStopController,
+  type DeployStopSender,
+} from "./deploy-stop";
 export * from "./report-notifications";
 export * from "./chat/types";
 export {

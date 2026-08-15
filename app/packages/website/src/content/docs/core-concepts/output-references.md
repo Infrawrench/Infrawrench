@@ -8,25 +8,32 @@ Many resources depend on credentials from other resources. A Postgres client nee
 
 ## The idea
 
-When you create or edit a resource, any secret-valued field (API token, connection string, kubeconfig, password) can be filled in two ways:
+A field that holds a credential (API token, connection string, kubeconfig, password) can be filled in two ways:
 
 - **Literal** — you paste the actual value.
-- **Output reference** — you point at another resource’s output field.
+- **Output reference** — the field points at another resource’s output field.
 
 Output references re-resolve automatically. If the upstream resource’s value changes (say, a managed database rotates its password), the dependent resource picks up the new value the next time it connects.
 
+## Where the references come from
+
+Credential forms are plain fields — there is no link icon on **Connection string** or **Kubeconfig** that opens a picker. References are wired from the resource that _produces_ the value, or from a field that already holds one:
+
+- **From the upstream resource's own page.** A managed database or cluster carries a tab for the plugin that consumes it — a DigitalOcean Postgres database gets a **PostgreSQL** tab, a DOKS or EKS cluster gets a **Kubernetes** tab — and opening that tab passes the connection string, CA certificate or kubeconfig straight through as a reference. Nothing is typed and no second account is created. That is what a credential field's help text means when it says you can "link this to a DigitalOcean Managed Database after adding".
+- **From a picker the plugin declares.** DNS record content is the one create form with a reference control today: a **Value source** select offering **Pick a resource** or **Use custom value** — see [DNS records](#dns-records) below.
+- **From a field that already holds a secret or a reference.** Those render with a **Reroll** link that opens a dialog for pointing them somewhere else — see [Secret rerolls](./secret-rerolls.md).
+
 ## Example
 
-You have a DigitalOcean managed Postgres database. You want to add a Postgres plugin account that points to it so you can use the [SQL editor](../features/sql-editor.md).
+You have a DigitalOcean managed Postgres database and you want the [SQL editor](../features/sql-editor.md) pointed at it.
 
-1. Add a new Postgres account.
-2. On the **Connection string** field, click the link icon.
-3. Pick **DigitalOcean → my-database → connectionString**.
-4. Save.
+1. Open the managed database resource.
+2. Switch to its **PostgreSQL** tab.
+3. That's it — the connection string and CA certificate flow through from the database's outputs.
 
-<insert [Field with a "link" icon showing the output-ref picker open] here>
+The Postgres side now follows whatever DigitalOcean returns.
 
-The Postgres account now follows whatever DigitalOcean returns.
+<insert [A DigitalOcean managed Postgres database detail page with the PostgreSQL peer tab open and the SQL editor connected through it] here>
 
 ## Which plugins expose outputs
 
@@ -40,7 +47,7 @@ Any resource that produces a credential-ish value. Common ones:
 
 ## DNS records
 
-DNS record content uses the same machinery. When you create an **A**, **AAAA**, or **CNAME** record, the value field is a resource picker that searches across your accounts for IP- or hostname-producing resources. Picking one stores a live reference, so the record tracks the source's address and is re-applied at the provider when it changes. See [DNS records](../features/dns-records.md).
+DNS record content uses the same machinery. When you create an **A**, **AAAA**, or **CNAME** record, a **Value source** select appears above the value, offering **Pick a resource** (the default) or **Use custom value**. Leave it on **Pick a resource** and the value field becomes a picker that searches across your accounts for IP- or hostname-producing resources; picking one stores a live reference, so the record tracks the source's address and is re-applied at the provider when it changes. Other record types (MX, TXT, SRV, NS) have no such select — their value is plain text. See [DNS records](../features/dns-records.md).
 
 ## When to use a literal instead
 

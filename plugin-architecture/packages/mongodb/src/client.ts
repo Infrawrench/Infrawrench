@@ -165,6 +165,11 @@ export class MongoDBClient implements PluginClient {
         },
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      // `mongodb-database` declares `supportsMetrics`, so the host fetches the
+      // `dbStats` series for this view; without the capability it had nowhere
+      // to put them. No default window — `dbStats` is a reading taken now, not
+      // a range.
+      metricsCapability: {},
     };
   }
 

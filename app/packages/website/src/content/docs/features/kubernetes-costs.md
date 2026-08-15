@@ -231,9 +231,11 @@ The workload listings hide `kube-system`, `kube-public`, and the provider-manage
 
 **Cost allocation deliberately does not inherit that.** Those pods sit on the same nodes and hold real capacity. Dropping them would make their spend vanish and make every other namespace look proportionally larger than it is. They appear in the tables and in the cost rows, tagged `system=true` so you can filter them out yourself if you want to.
 
+The **Namespaces group in the Kubernetes pane follows the listings, not the allocation** — it is a filter over the workloads the pane shows, and there are no `kube-system` workloads to filter to. So system namespaces are neither offered there nor included in the group's count: the number in `Namespaces (5) · by cost` is always the number of pills below it. Their money is on the **Cost by namespace** table and the **Efficiency** tab, where nothing is hidden.
+
 ## Where it shows up
 
-- **The Kubernetes pane** on your cloud cluster resource — a Namespaces group ordered by cost, and per-item cost and efficiency appended to every pod, deployment, statefulset, daemonset and namespace pill. Its banner also flags unattached volumes, never-bound claims and unpriced components.
+- **The Kubernetes pane** on your cloud cluster resource — a Namespaces group ordered by cost, and per-item cost and efficiency appended to every pod, deployment, statefulset, daemonset and namespace pill. A namespace pill reads `Active · ~$4.20/day · 18% CPU`: the phase, the day's allocated cost, and the tighter of its two efficiency figures. Its banner also flags unattached volumes, never-bound claims and unpriced components.
 - **Resource cards** — cost/day and efficiency stats for clusters, namespaces, pods, deployments, statefulsets and daemonsets. The cluster card also carries an **Idle** stat with its percentage (measured against node cost, not the whole bill), an **Over-requested** money figure, and **Volumes** / **Load balancers** counts.
 - **Detail views** — a **Cost by namespace** table on the cluster with a Storage/LB column and the idle, system-reserved, control-plane and unattached-volume rows; a **What the cluster costs** per-component breakdown; and a **Cost by workload** table on each namespace.
 - **The Efficiency tab** — on the cluster and on every namespace.

@@ -1,10 +1,8 @@
-import { useUIStore } from "@infrawrench/ui";
 import type {
   BudgetInput,
   BusinessMetricInput,
   BusinessMetricValueInput,
   CostAlertInput,
-  CostAnnotationInput,
   CostAnomalySettings,
   CostsClient,
   CostsPanelDashboard,
@@ -13,10 +11,6 @@ import type {
 } from "@infrawrench/ui/cost";
 import {
   acknowledgeCloudCostAnomaly,
-  createCloudCostAnnotation,
-  deleteCloudCostAnnotation,
-  listCloudCostAnnotations,
-  updateCloudCostAnnotation,
   createCloudBudget,
   createCloudCostAlert,
   createCloudWidget,
@@ -28,8 +22,6 @@ import {
   listCloudCostAlerts,
   listCloudCostAnomalies,
   loadCloudAnomalySettings,
-  loadCloudCostDimensionValues,
-  loadCloudCostStatus,
   loadCloudBillingRules,
   loadCloudShowback,
   loadCloudCommitments,
@@ -39,74 +31,40 @@ import {
   loadCloudCreditBurndown,
   loadCloudTagCompliance,
   loadCloudUntaggedSpend,
-  queryCloudCosts,
   saveCloudAnomalySettings,
   updateCloudBudget,
   updateCloudCostAlert,
-  createCloudSavedCostFilter,
   deleteCloudSavedCostFilter,
   listCloudSavedCostFilterReferents,
-  listCloudCostScenarioModels,
   createCloudCostScenarioModel,
   updateCloudCostScenarioModel,
   deleteCloudCostScenarioModel,
   listCloudCostScenarioReferents,
-  listCloudSavedCostFilters,
   updateCloudSavedCostFilter,
   createCloudBusinessMetric,
   deleteCloudBusinessMetric,
   listCloudBusinessMetricValues,
-  listCloudBusinessMetrics,
-  queryCloudUnitCosts,
   updateCloudBusinessMetric,
   writeCloudBusinessMetricValues,
 } from "./cloud-costs";
 import { listCloudDashboards } from "./cloud-dashboards";
+import { createDesktopCostApi, requireCloudOrgId as requireOrgId } from "./cost-api";
 
 /**
- * Costs are cloud-only: spend is collected server-side, so a desktop app in
- * local mode has nothing to show. Every call resolves the active org at call
- * time rather than closing over it, matching the dashboard's cost API — the
- * org can change under a mounted panel when the user switches org.
+ * The full Costs panel client: the shared read calls plus budget CRUD, the
+ * anomaly and alert surfaces, and the management half of saved filters,
+ * scenario models and business metrics.
+ *
+ * The reads come from {@link createDesktopCostApi} rather than being restated
+ * here, so the Costs panel, the Cost reports page and the dashboard's cost
+ * cards cannot drift apart — the mirror of web's `createWebCostsClient`.
  */
-function requireOrgId(): string {
-  const orgId = useUIStore.getState().activeCloudOrgId;
-  if (!orgId) throw new Error("Costs and budgets require cloud mode — sign in to sync.");
-  return orgId;
-}
-
 export function createDesktopCostsClient(): CostsClient {
   return {
-    queryCosts: (req) => queryCloudCosts(requireOrgId(), req),
-    loadDimensionValues: (dimension, tagKey) => {
-      const orgId = useUIStore.getState().activeCloudOrgId;
-      if (!orgId) return Promise.resolve([]);
-      return loadCloudCostDimensionValues(orgId, dimension, tagKey);
-    },
-    loadCostStatus: () => {
-      const orgId = useUIStore.getState().activeCloudOrgId;
-      if (!orgId) return Promise.resolve([]);
-      return loadCloudCostStatus(orgId);
-    },
-    // Dated notes drawn over the chart. Org-wide notes belong on every cost
-    // chart, so these live on the base cost API rather than the report client.
-    listCostAnnotations: (reportId?: string) => {
-      const orgId = useUIStore.getState().activeCloudOrgId;
-      if (!orgId) return Promise.resolve([]);
-      return listCloudCostAnnotations(orgId, reportId);
-    },
-    createCostAnnotation: (input: CostAnnotationInput) =>
-      createCloudCostAnnotation(requireOrgId(), input),
-    updateCostAnnotation: (annotationId: string, input: CostAnnotationInput) =>
-      updateCloudCostAnnotation(requireOrgId(), annotationId, input),
-    deleteCostAnnotation: (annotationId: string) =>
-      deleteCloudCostAnnotation(requireOrgId(), annotationId),
+    ...createDesktopCostApi(),
     // Saved filters get the full editor on desktop for the same reason the
     // anomaly tuning does: the Costs panel is the same shared component, and
     // the filters are org-level cloud state either way.
-    listSavedFilters: () => listCloudSavedCostFilters(requireOrgId()),
-    createSavedFilter: (input: SavedCostFilterInput) =>
-      createCloudSavedCostFilter(requireOrgId(), input),
     updateSavedFilter: (savedFilterId: string, input: SavedCostFilterInput) =>
       updateCloudSavedCostFilter(requireOrgId(), savedFilterId, input),
     deleteSavedFilter: (savedFilterId: string) =>
@@ -116,11 +74,6 @@ export function createDesktopCostsClient(): CostsClient {
     // Scenario models get the full editor on desktop, like saved filters: the
     // Costs panel is the same shared component in both hosts, and a model is
     // org-level cloud state either way.
-    listScenarioModels: () => {
-      const orgId = useUIStore.getState().activeCloudOrgId;
-      if (!orgId) return Promise.resolve([]);
-      return listCloudCostScenarioModels(orgId);
-    },
     createScenarioModel: (input: CostScenarioModelInput) =>
       createCloudCostScenarioModel(requireOrgId(), input),
     updateScenarioModel: (modelId: string, input: CostScenarioModelInput) =>
@@ -131,12 +84,6 @@ export function createDesktopCostsClient(): CostsClient {
     // Business metrics get the full editor on desktop, like saved filters and
     // anomaly tuning: the Costs panel is the same shared component in both
     // hosts, and a metric is org-level cloud state either way.
-    listBusinessMetrics: () => {
-      const orgId = useUIStore.getState().activeCloudOrgId;
-      if (!orgId) return Promise.resolve([]);
-      return listCloudBusinessMetrics(orgId);
-    },
-    queryUnitCosts: (metricId, request) => queryCloudUnitCosts(requireOrgId(), metricId, request),
     createBusinessMetric: (input: BusinessMetricInput) =>
       createCloudBusinessMetric(requireOrgId(), input),
     updateBusinessMetric: (metricId: string, input: BusinessMetricInput) =>

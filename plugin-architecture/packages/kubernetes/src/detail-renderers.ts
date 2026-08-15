@@ -49,6 +49,15 @@ const K8S_LOGS: LogsCapability = { defaultTailLines: 500, supportsPrevious: true
  * Cost and efficiency are time series worth charting, so every kind that gets
  * a cost breakdown also gets a Metrics tab. 24 hours is the useful default:
  * allocation only changes when workloads are rescheduled or resized.
+ *
+ * Declared unconditionally, unlike the cost *sections* below. Those need the
+ * allocation synchronously and `renderDetail` cannot await one, so they only
+ * appear once some earlier async pass has warmed `lastCostIndex`. The tab must
+ * not work that way: on a cold client the host fetches the series anyway (the
+ * type declares `supportsMetrics`) and they arrive asynchronously, so gating
+ * the capability on the same warm cache is what made a first visit render the
+ * series into a tab that was not there. An empty tab is the host's documented
+ * "no data yet" state; a missing one reads as metrics being broken.
  */
 const K8S_COST_METRICS = { defaultTimeRangeMs: 24 * 60 * 60 * 1000 };
 
@@ -608,7 +617,7 @@ export function renderClusterDetail(
   costs?: CostIndex,
 ): DetailViewSchema {
   const generic = renderGenericDetail(resource);
-  if (!costs) return generic;
+  if (!costs) return { ...generic, metricsCapability: K8S_COST_METRICS };
   const storage = storageTable(costs);
   const loadBalancers = loadBalancerTable(costs);
   return {
@@ -641,7 +650,7 @@ export function renderNamespaceDetail(
   const name = String(resource.fields["name"] ?? resource.displayName);
   const entry = costs?.namespaces.get(name);
   const generic = renderGenericDetail(resource);
-  if (!costs) return generic;
+  if (!costs) return { ...generic, metricsCapability: K8S_COST_METRICS };
   return {
     ...generic,
     subtitle: "Namespace",
@@ -780,7 +789,7 @@ export function renderPodDetail(resource: ResourceInstance, costs?: CostIndex): 
     manifestEditor: { ...K8S_MANIFEST_EDITOR, resourceKind: "Pod" },
     describe: K8S_DESCRIBE,
     logs: K8S_LOGS,
-    ...(costs ? { metricsCapability: K8S_COST_METRICS } : {}),
+    metricsCapability: K8S_COST_METRICS,
   };
 }
 
@@ -839,7 +848,7 @@ export function renderDeploymentDetail(
     manifestEditor: { ...K8S_MANIFEST_EDITOR, resourceKind: "Deployment" },
     describe: K8S_DESCRIBE,
     logs: K8S_LOGS,
-    ...(costs ? { metricsCapability: K8S_COST_METRICS } : {}),
+    metricsCapability: K8S_COST_METRICS,
   };
 }
 
@@ -920,7 +929,7 @@ export function renderStatefulSetDetail(
     manifestEditor: { ...K8S_MANIFEST_EDITOR, resourceKind: "StatefulSet" },
     describe: K8S_DESCRIBE,
     logs: K8S_LOGS,
-    ...(costs ? { metricsCapability: K8S_COST_METRICS } : {}),
+    metricsCapability: K8S_COST_METRICS,
   };
 }
 
@@ -969,7 +978,7 @@ export function renderDaemonSetDetail(
     manifestEditor: { ...K8S_MANIFEST_EDITOR, resourceKind: "DaemonSet" },
     describe: K8S_DESCRIBE,
     logs: K8S_LOGS,
-    ...(costs ? { metricsCapability: K8S_COST_METRICS } : {}),
+    metricsCapability: K8S_COST_METRICS,
   };
 }
 
