@@ -557,6 +557,21 @@ reads (see above).
 The web app streams a run's logs live and shows the plan and rendered Dockerfile
 before anything is built.
 
+### Stopping a run
+
+**Stop** sits next to Deploy while a run is in flight, in the web app and in the
+desktop app's Deploy tab. It is a request rather than a kill switch: the run
+unwinds at its next checkpoint, and a `select(...)` still waiting on an answer is
+resolved so the isolate can exit instead of sitting there until the execution
+budget expires. Clicking it before the connection is up is fine — the request is
+held and sent the moment the run is reachable — and the button reads "Stopping…"
+until the run ends.
+
+A stopped run is recorded like any other unsuccessful one: it appears in the
+history as failed, at the stage it reached, with the reason attached. Anything it
+had already provisioned stays provisioned, and stays in that run's
+created-resource ledger, so `destroy --created` can clean it up.
+
 ## What a deploy cost
 
 Every successful run carries a **Cost impact** button in the history: what the
