@@ -15,6 +15,7 @@ export { SshHostKeysSection } from "./SshHostKeysSection.js";
 export { SessionRecordingsSection } from "./SessionRecordingsSection.js";
 export { BastionsSection } from "./BastionsSection.js";
 export { ApiKeysSection } from "./ApiKeysSection.js";
+export { AgentsSection } from "./AgentsSection.js";
 export { CredentialHygieneSection } from "./CredentialHygieneSection.js";
 export { FreezesSection } from "./FreezesSection.js";
 export { TagPolicySection } from "./TagPolicySection.js";

@@ -6,6 +6,11 @@ import { apiKeys, organizationMembers } from "@/db/schema";
 import { keyedHash, legacySha256Hex } from "@/services/encryption";
 import { workos, clientId } from "./workos";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import {
+  resolveAgentPrincipal,
+  touchAgentRegistration,
+} from "@infrawrench/server-core/trials/principal";
+import { resolveAgentCredential } from "@infrawrench/server-core/trials/ceremony";
 
 /** Domain label for HMAC sub-key derivation when hashing API keys. Must
  * match the value used in `api/routes/api-keys.ts`. */
@@ -17,6 +22,12 @@ interface ApiAuthResult {
   email?: string;
   apiKeyId?: string;
   scopes?: string[];
+  /**
+   * Set when the caller authenticated with an agent-auth credential. Its
+   * presence is what tells a surface it is not talking to a person — the
+   * `userId` beside it is the agent's own user row, not a human's.
+   */
+  agentRegistrationId?: string;
 }
 
 /**
@@ -61,12 +72,23 @@ function getJwks(): ReturnType<typeof createRemoteJWKSet> {
   return jwks;
 }
 
-interface WorkosAccessTokenClaims extends JWTPayload {
+export interface WorkosAccessTokenClaims extends JWTPayload {
   sub?: string;
   email?: string;
   org_id?: string;
   /** WorkOS session id the token was minted for. */
   sid?: string;
+  /**
+   * RFC 8693 delegation claim, present only on agent-auth tokens whose claim
+   * ceremony has completed. `act.sub` names the *user behind the agent*; the
+   * token's own `sub` remains the agent registration id.
+   *
+   * Read as a cross-check, never as the authority — see
+   * `server-core/trials/principal.ts`.
+   */
+  act?: { sub?: string };
+  /** Space-separated scopes, on agent-auth tokens. */
+  scope?: string;
 }
 
 /**
@@ -98,14 +120,48 @@ export async function verifyWorkosAccessToken(
 }
 
 /**
+ * Build the auth result for an agent registration, whichever way it proved
+ * itself — an `iwa_` credential we issued or a WorkOS agent token whose `sub`
+ * is the registration id. One function, so the two credential formats can never
+ * end up granting different things.
+ *
+ * Returns null when the id is not a live registration.
+ */
+export async function agentAuthResult(
+  registrationId: string,
+  actorUserId?: string,
+): Promise<ApiAuthResult | null> {
+  const agent = await resolveAgentPrincipal(registrationId, { actorUserId });
+  if (!agent) return null;
+  void touchAgentRegistration(agent.registrationId);
+  return {
+    userId: agent.userId,
+    organizationId: agent.organizationId,
+    agentRegistrationId: agent.registrationId,
+    // Already intersected with the claimer's role and the agent ceiling, so
+    // `requireScope` and the tool layer both read a final answer.
+    scopes: [...agent.permissions],
+  };
+}
+
+/**
  * Authenticate an API request via Bearer token.
- * Supports API keys (iwk_ prefix) and WorkOS access tokens.
+ * Supports agent credentials (`iwa_`), API keys (`iwk_`) and WorkOS access
+ * tokens (a person's, or an agent's carrying a registration id in `sub`).
  */
 export async function authenticateApiRequest(request: Request): Promise<ApiAuthResult | null> {
   const auth = request.headers.get("authorization");
   if (!auth?.startsWith("Bearer ")) return null;
 
   const token = auth.slice(7);
+
+  // Agent credentials. Checked before the `iwk_` branch purely because the
+  // prefix test is cheaper than a hash; they are otherwise independent.
+  if (token.startsWith("iwa_")) {
+    const registrationId = await resolveAgentCredential(token);
+    if (!registrationId) return null;
+    return agentAuthResult(registrationId);
+  }
 
   if (token.startsWith("iwk_")) {
     // HMAC hash first; legacy SHA-256 fallback for pre-migration rows. A
@@ -181,7 +237,20 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
   }
 
   const claims = await verifyWorkosAccessToken(token);
-  if (!claims?.sub || !claims.org_id) return null;
+  if (!claims?.sub) return null;
+
+  // Agent tokens verify against the same JWKS as a person's, so the signature
+  // alone cannot tell them apart. Ask our own table before reading `sub` as a
+  // user id: for an agent it is a registration id, and treating it as a user
+  // would authenticate a principal that does not exist. A `user_`-prefixed sub
+  // is WorkOS's user-id shape and registration ids are bare UUIDs, so the
+  // lookup is skipped on the hot person-token path.
+  const agentResult = claims.sub.startsWith("user_")
+    ? null
+    : await agentAuthResult(claims.sub, claims.act?.sub);
+  if (agentResult) return agentResult;
+
+  if (!claims.org_id) return null;
 
   const result: ApiAuthResult = {
     userId: claims.sub,

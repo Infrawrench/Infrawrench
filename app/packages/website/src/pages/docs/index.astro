@@ -3,7 +3,8 @@ import DocsLayout from "../../layouts/DocsLayout.astro";
 import DocsWipNotice from "../../components/DocsWipNotice.astro";
 import { getDocsNav } from "../../lib/docs-nav";
 
-export const prerender = true;
+// On demand so middleware can negotiate; see src/middleware.ts.
+export const prerender = false;
 
 const sections = await getDocsNav();
 ---

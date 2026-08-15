@@ -360,6 +360,34 @@ describe("Team routes", () => {
     expect(body.error).toContain("canceled");
   });
 
+  describe("trial organizations", () => {
+    const trialExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
+
+    // A caller with `reason: "trial"` cannot actually reach this route today —
+    // agents are denied it outright and no human is a member of an org that is
+    // still a trial — but the expiry clamp is kept defensive, and this pins it.
+    it("clamps the invite so its link cannot outlive the workspace", async () => {
+      vi.mocked(planAccess).mockResolvedValueOnce({
+        paid: true,
+        reason: "trial",
+        trialExpiresAt,
+      });
+      const values = vi.fn().mockResolvedValue(undefined);
+      mockInsert.mockReturnValue({ values });
+
+      await buildApp().request("/invitations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "friend@e.com", role: "member" }),
+      });
+
+      // The standard 7 days would outlast the org by nearly a week, leaving the
+      // recipient a dead link with no explanation.
+      const row = values.mock.calls[0]?.[0] as { expiresAt: Date };
+      expect(row.expiresAt.getTime()).toBe(trialExpiresAt.getTime());
+    });
+  });
+
   it("POST /invitations returns the structured 409 when the plan is full", async () => {
     vi.mocked(checkSeatAvailability).mockResolvedValueOnce({
       seatCount: 3,
@@ -449,8 +477,12 @@ describe("Team routes", () => {
     const ownerWhere = vi.fn().mockReturnValue({ limit: ownerLimit });
     const ownerLeftJoin = vi.fn().mockReturnValue({ where: ownerWhere });
     const ownerFrom = vi.fn().mockReturnValue({ leftJoin: ownerLeftJoin });
-    // countOwners -> single owner
-    const countWhere = vi.fn().mockResolvedValue([{ legacyRole: "owner", systemKey: "owner" }]);
+    // countOwners -> single human owner, plus an agent row that must not count
+    // as a second one (or this guard would let the last person remove themselves).
+    const countWhere = vi.fn().mockResolvedValue([
+      { userId: "user_1", legacyRole: "owner", systemKey: "owner" },
+      { userId: "agent_reg-1", legacyRole: "owner", systemKey: "owner" },
+    ]);
     const countLeftJoin = vi.fn().mockReturnValue({ where: countWhere });
     const countFrom = vi.fn().mockReturnValue({ leftJoin: countLeftJoin });
     mockSelect.mockReturnValueOnce({ from: ownerFrom }).mockReturnValueOnce({ from: countFrom });

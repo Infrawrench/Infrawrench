@@ -17,26 +17,55 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
-export const organizations = pgTable("organizations", {
-  id: text("id").primaryKey(), // WorkOS org ID
-  displayName: text("display_name").notNull(),
-  /**
-   * Optional monthly token-spend cap for the chat agent, in micro-dollars
-   * (1 USD = 1_000_000). When the org's current-month chat_usage cost sum
-   * exceeds this, the agent loop refuses new turns. Null means no cap.
-   */
-  chatMonthlyCapMicros: integer("chat_monthly_cap_micros"),
-  /**
-   * Platform-granted free ride: the org is never billed, gets every paid-plan
-   * perk, and chat usage is uncapped by default (an org-set
-   * chatMonthlyCapMicros still applies) and never reported to Stripe.
-   * Set by platform admins via /api/admin — see web/src/auth/platform-admin.ts.
-   */
-  complimentary: boolean("complimentary").notNull().default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+export const organizations = pgTable(
+  "organizations",
+  {
+    id: text("id").primaryKey(), // WorkOS org ID
+    displayName: text("display_name").notNull(),
+    /**
+     * Optional monthly token-spend cap for the chat agent, in micro-dollars
+     * (1 USD = 1_000_000). When the org's current-month chat_usage cost sum
+     * exceeds this, the agent loop refuses new turns. Null means no cap.
+     */
+    chatMonthlyCapMicros: integer("chat_monthly_cap_micros"),
+    /**
+     * Platform-granted free ride: the org is never billed, gets every paid-plan
+     * perk, and chat usage is uncapped by default (an org-set
+     * chatMonthlyCapMicros still applies) and never reported to Stripe.
+     * Set by platform admins via /api/admin — see web/src/auth/platform-admin.ts.
+     */
+    complimentary: boolean("complimentary").notNull().default(false),
+    /**
+     * When an unclaimed agent-auth trial org is destroyed. Non-null means the org
+     * was created by an anonymous agent registration and is on the 24-hour clock;
+     * `trials/pass.ts` sweeps rows past this date and deletes them outright.
+     *
+     * Also the paid-plan grant: `planAccess` treats a future `trialExpiresAt` as
+     * paid access (`reason: "trial"`), which is how a trial gets the full product
+     * without a card. Cleared — not merely ignored — when the org is claimed, so
+     * there is exactly one place that says whether the clock is running.
+     */
+    trialExpiresAt: timestamp("trial_expires_at"),
+    /**
+     * When a real user completed the claim ceremony for a trial org. Set at the
+     * same moment `trialExpiresAt` is cleared, and kept afterwards purely so the
+     * billing surface can say "claimed on the 3rd" rather than reconstructing it
+     * from the audit log.
+     */
+    claimedAt: timestamp("claimed_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    // Partial: the reaper only ever asks for rows where this is set, and for
+    // every org that is not a trial it is null forever.
+    trialExpiryIdx: index("organizations_trial_expiry_idx")
+      .on(t.trialExpiresAt)
+      .where(sql`${t.trialExpiresAt} is not null`),
+  }),
+);
 
 export const users = pgTable(
   "users",

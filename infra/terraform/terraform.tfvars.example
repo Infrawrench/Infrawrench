@@ -24,6 +24,9 @@ app_env = {
   APP_URL = "https://app.infrawrench.com"
 
   # WorkOS
+  # Read by the poller as well as the web app: the agent trial reaper deletes
+  # the WorkOS organization alongside the Postgres and ClickHouse rows, and
+  # without this key it logs a warning and leaves orgs behind in WorkOS.
   WORKOS_API_KEY         = "sk_live_..."
   WORKOS_CLIENT_ID       = "client_..."
   WORKOS_REDIRECT_URI    = "https://app.infrawrench.com/callback"
@@ -222,4 +225,17 @@ app_env = {
   # what it would have looked up. Searches are billed on to the org per query on
   # top of tokens, so this also chooses which per-query rate applies.
   # INFRAWRENCH_CHAT_SEARCH_BACKEND = "vertex"
+
+  # Ceiling on anonymous agent registrations per hour across every source
+  # address — the kill switch for a distributed flood of trial workspaces.
+  # `POST /api/agent/identity` is the only unauthenticated route in the product
+  # that creates an organization, and each one it creates is a free paid-tier
+  # org, so this is the tap. The per-IP limit (5/hour) is a code constant; this
+  # is the global backstop on top of it. Optional: unset means 500/hour.
+  #
+  # Must be a positive integer. Anything else logs a warning and falls back to
+  # 500 rather than being taken literally — an empty string would otherwise
+  # 429 every registration forever, and a malformed one would disable the
+  # ceiling silently during the incident it was set for.
+  # AGENT_TRIAL_GLOBAL_HOURLY_LIMIT = "500"
 }

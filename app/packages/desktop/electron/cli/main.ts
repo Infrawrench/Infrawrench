@@ -39,6 +39,7 @@ import { cmdLeases } from "./commands/leases";
 import { cmdRecordings } from "./commands/recordings";
 import { cmdAccess } from "./commands/access";
 import { cmdHygiene } from "./commands/hygiene";
+import { cmdAgents } from "./commands/agents";
 import { cmdCredits } from "./commands/credits";
 import { cmdCommitments } from "./commands/commitments";
 import { cmdProbes } from "./commands/probes";
@@ -142,6 +143,8 @@ COMMANDS
                       coverage, utilization & the savings planner's recommendations
   hygiene             unused API keys, unreferenced SSH keys & unexercised
                       write permissions   [--days 30|90|180|365]
+  agents              agent credentials that can reach this org: who claimed
+                      each one, when it was last used & which are unclaimed
   access active       only the elevations in force right now
   recordings          recorded SSH sessions: who connected, to what, for how long
   recordings get <id> print the session's asciicast   [-f/--file <path>]
@@ -523,6 +526,9 @@ export async function runCli(): Promise<void> {
         break;
       case "hygiene":
         await cmdHygiene(ctx, { days: parsed.range.days });
+        break;
+      case "agents":
+        await cmdAgents(ctx);
         break;
       case "credits":
         await cmdCredits(ctx);

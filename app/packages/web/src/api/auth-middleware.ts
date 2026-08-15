@@ -3,9 +3,14 @@ import type { MiddlewareHandler } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { eq, and } from "drizzle-orm";
 import { workos } from "../auth/workos";
-import { authenticateApiRequest, verifyWorkosAccessToken } from "../auth/api-auth";
+import {
+  agentAuthResult,
+  authenticateApiRequest,
+  verifyWorkosAccessToken,
+  type WorkosAccessTokenClaims,
+} from "../auth/api-auth";
 import { effectivePermissions } from "../auth/effective-permissions";
-import { apiKeyRouteDenial } from "../auth/api-key-route-policy";
+import { agentRouteDenial, apiKeyRouteDenial } from "../auth/api-key-route-policy";
 import { runWithAuditPrincipal } from "../services/audit-context";
 import { db } from "../db/client";
 import { users, organizationMembers, organizations } from "../db/schema";
@@ -14,6 +19,8 @@ import {
   type ActiveElevation,
   resolveEffectivePermissions,
 } from "@infrawrench/server-core/permissions";
+import { resolveAgentPrincipal } from "@infrawrench/server-core/trials/principal";
+import { looksLikeAgentRegistrationId } from "@infrawrench/server-core/trials/identity";
 
 export interface AuthSession {
   userId: string;
@@ -51,6 +58,14 @@ declare module "hono" {
     role: ResolvedRole | null;
     apiKey: ApiKeyPrincipal;
     /**
+     * The verified claims of this request's bearer JWT — or null when the JWT
+     * failed verification — stashed by `agentOrgMiddleware` so that
+     * `sessionMiddleware`, running next on the same request, does not verify
+     * the same signature a second time. Unset (`undefined`) on requests the
+     * agent middleware never saw.
+     */
+    bearerClaims: WorkosAccessTokenClaims | null;
+    /**
      * Live break-glass grants already folded into `permissions`. Kept separate
      * so a surface can say *why* the caller can do something — "until 14:32,
      * because you asked for it" is a different statement from "your role
@@ -69,9 +84,43 @@ export const sessionMiddleware = createMiddleware(async (c, next) => {
   if (!cookieValue) {
     const bearer = c.req.header("authorization");
     if (bearer?.startsWith("Bearer ")) {
-      const claims = await verifyWorkosAccessToken(bearer.slice(7));
+      // On the org tree `agentOrgMiddleware` has already verified this exact
+      // token and stashed the claims (null = failed verification); reuse them
+      // rather than paying the JWKS signature check twice per request.
+      const stashed = c.get("bearerClaims");
+      const claims =
+        stashed !== undefined ? stashed : await verifyWorkosAccessToken(bearer.slice(7));
       if (!claims?.sub) {
         return c.json({ error: "Unauthorized" }, 401);
+      }
+      // An agent-auth token's `sub` is a registration id. Handing it to
+      // `ensureUserFromClaims` would mint a `users` row keyed by that id — a
+      // principal nobody created, holding whatever the row's org membership
+      // later granted. Refuse before provisioning, and say why: this group is
+      // the non-org surface (profile, MFA, org creation, admin), which is
+      // people-only by design, exactly as it is for `iwk_` API keys.
+      //
+      // The shape check runs FIRST and unconditionally, because it is the only
+      // one that covers a *revoked or reaped* registration: `resolveAgentPrincipal`
+      // answers null for both, and reading that as "then it must be a person"
+      // is exactly how the phantom row gets minted. The table lookup after it
+      // catches any registration id that is not UUID-shaped, and is skipped
+      // when the agent middleware already did it, or for `user_`-prefixed subs
+      // (WorkOS's user-id shape, which no registration can have).
+      const agentShaped = looksLikeAgentRegistrationId(claims.sub);
+      if (
+        agentShaped ||
+        (stashed === undefined &&
+          !claims.sub.startsWith("user_") &&
+          (await resolveAgentPrincipal(claims.sub)))
+      ) {
+        return c.json(
+          {
+            error:
+              "Agent credentials cannot be used here. This endpoint acts on a person's account.",
+          },
+          403,
+        );
       }
       const user = await ensureUserFromClaims(claims.sub, claims.email);
       if (!user) {
@@ -270,6 +319,91 @@ export const apiKeyOrgMiddleware = createMiddleware(async (c, next) => {
   c.set("apiKey", { id: auth.apiKeyId, scopes });
 
   return runWithAuditPrincipal({ apiKeyId: auth.apiKeyId, userId: auth.userId }, next);
+});
+
+/**
+ * Authenticate an agent credential against the org tree.
+ *
+ * Deliberately a sibling of {@link apiKeyOrgMiddleware} rather than a branch
+ * inside it. The two principals differ in the places that matter — an agent is
+ * pinned to its org by a registration row rather than by a key row, its
+ * permissions are resolved by `resolveAgentPrincipal` rather than by
+ * intersecting stored scopes, and its denial policy is its own — and folding
+ * them together would mean one function with two of everything.
+ *
+ * The context it leaves behind is identical in shape to both other paths, so
+ * every route's `requirePermission` gate applies unchanged.
+ */
+export const agentOrgMiddleware = createMiddleware(async (c, next) => {
+  const bearer = c.req.header("authorization");
+  if (!bearer?.startsWith("Bearer ")) return next();
+  const token = bearer.slice(7);
+  // An `iwk_` key is never ours to handle.
+  if (token.startsWith("iwk_")) return next();
+
+  const orgId = c.req.param("orgId");
+  if (!orgId) return next();
+
+  let auth: Awaited<ReturnType<typeof authenticateApiRequest>> = null;
+  if (token.startsWith("iwa_")) {
+    // Our own opaque credential: `authenticateApiRequest`'s `iwa_` branch is
+    // the whole resolution. An unknown or revoked credential 401s here rather
+    // than falling through to `sessionMiddleware`, which could only fail to
+    // parse it as a JWT and answer the same 401 less accurately.
+    auth = await authenticateApiRequest(c.req.raw);
+    if (!auth?.agentRegistrationId) return c.json({ error: "Unauthorized" }, 401);
+  } else {
+    // A WorkOS agent token is a JWT, so it cannot be recognised by prefix.
+    // Verify it once and stash the claims — `sessionMiddleware` runs next on
+    // every non-agent bearer request, and without the stash this hottest
+    // authenticated path would pay the JWKS signature check twice.
+    const claims = await verifyWorkosAccessToken(token);
+    c.set("bearerClaims", claims ?? null);
+    // A `user_`-prefixed sub is a person (registration ids are bare UUIDs), so
+    // the registration lookup is skipped for the common case entirely.
+    if (!claims?.sub || claims.sub.startsWith("user_")) return next();
+    auth = await agentAuthResult(claims.sub, claims.act?.sub);
+    if (!auth) {
+      // A registration-shaped sub that resolves to nothing is a revoked or
+      // reaped agent whose token is still cryptographically valid. Answer 401
+      // here rather than falling through: downstream, `ensureUserFromClaims`
+      // would happily provision a person keyed by the registration id.
+      if (looksLikeAgentRegistrationId(claims.sub)) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+      return next();
+    }
+  }
+  if (!auth.agentRegistrationId) return next();
+
+  // An agent is bound to the org its registration opened (or was merged into).
+  // Presenting it against another org's URL is a 403 whatever it holds.
+  if (auth.organizationId !== orgId) {
+    return c.json({ error: "This agent belongs to a different organization" }, 403);
+  }
+
+  const denial = agentRouteDenial(c.req.method, new URL(c.req.url).pathname);
+  if (denial) return c.json({ error: denial }, 403);
+
+  const [actor] = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, auth.userId))
+    .limit(1);
+  if (!actor) return c.json({ error: "Unauthorized" }, 401);
+
+  c.set("session", { userId: auth.userId, email: actor.email });
+  c.set("organizationId", orgId);
+  // Already final — intersected with the claimer's role and the agent ceiling
+  // by `resolveAgentPrincipal`, so there is nothing left to narrow here.
+  c.set("permissions", auth.scopes ?? []);
+  // Same reasoning as the key path: an agent holds no role, and answering
+  // `null` makes every "is the caller an owner" check fail closed.
+  c.set("role", null);
+  c.set("elevations", []);
+  c.set("apiKey", { id: auth.agentRegistrationId, scopes: auth.scopes ?? [] });
+
+  return runWithAuditPrincipal({ apiKeyId: auth.agentRegistrationId, userId: auth.userId }, next);
 });
 
 /**

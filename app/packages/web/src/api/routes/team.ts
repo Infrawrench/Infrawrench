@@ -6,7 +6,7 @@ import { db } from "../../db/client";
 import { apiKeys, users, invitations, organizationMembers, roles } from "../../db/schema";
 import { logAudit } from "../../services/audit";
 import { addSeat, checkSeatAvailability, releaseSeat } from "../../services/seats";
-import { planAccess, FREE_PLAN_LIMITS } from "../../services/entitlements";
+import { planAccess, FREE_PLAN_LIMITS, type PlanAccess } from "../../services/entitlements";
 import { isOwnerRole } from "../../services/org-roles";
 import { requirePermission } from "../../auth/permissions";
 import {
@@ -17,6 +17,7 @@ import {
   isSystemRoleKey,
   systemRolePermissions,
 } from "@infrawrench/server-core/permissions";
+import { isAgentUserId } from "@infrawrench/server-core/trials/identity";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -277,6 +278,28 @@ app.get("/invitations", async (c) => {
   return c.json(rows);
 });
 
+/**
+ * The usual invitation lifetime, clamped so it never outlives a trial org.
+ *
+ * The clamp is defensive rather than reachable today: agents may not invite
+ * (`AGENT_DENY_RULES` closes `POST /team/invitations`), and no human is a
+ * member of an org while it is still a trial, so no invite is ever minted from
+ * one. It stays because invitations cascade with the organization — should
+ * trial-org invites ever open up, an invite whose link outlives the org would
+ * be a dead link with no explanation on the other side, and this is the one
+ * place that failure can be prevented.
+ *
+ * Takes the already-resolved {@link PlanAccess} rather than re-reading the org:
+ * `planAccess` carries `trialExpiresAt` precisely so a caller acting on a trial
+ * does not have to ask twice.
+ */
+function inviteExpiry(access: PlanAccess): Date {
+  const standard = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const trialEnd = access.trialExpiresAt;
+  if (!trialEnd) return standard;
+  return trialEnd < standard ? trialEnd : standard;
+}
+
 /** POST /api/org/:orgId/team/invitations */
 app.post("/invitations", async (c) => {
   requirePermission(c, "team:invite");
@@ -292,6 +315,12 @@ app.post("/invitations", async (c) => {
 
   // The free plan is a single user, so any invite means upgrading first.
   // Paid orgs skip this and hit the seat gate below instead.
+  //
+  // No trial-specific gate is needed: a caller with `access.reason === "trial"`
+  // cannot exist here. Agents are denied this route outright (see
+  // `AGENT_DENY_RULES` — an anonymous registration that can send mail from our
+  // domain is a spam relay), and a trial org has no human members until a
+  // claim, which is also the moment `trialExpiresAt` is cleared.
   const access = await planAccess(organizationId);
   if (!access.paid) {
     return c.json(
@@ -406,7 +435,7 @@ app.post("/invitations", async (c) => {
     roleId: resolvedRoleId,
     invitedByUserId: session.userId,
     hashedToken,
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    expiresAt: inviteExpiry(access),
   });
 
   void logAudit({
@@ -423,9 +452,16 @@ app.post("/invitations", async (c) => {
 
 // Counts both new (role.systemKey === "owner") and legacy (text role) owners.
 // Used by the "last owner" guard on member delete / role change.
+//
+// Agent memberships never count, whatever role their row carries: the guard
+// exists so a *person* always remains who can administer the org, and an agent
+// cannot — its permission ceiling excludes team and settings mutations. A
+// claimed org whose agent still counted as an owner would let the only human
+// owner remove themselves.
 async function countOwners(organizationId: string): Promise<number> {
   const rows = await db
     .select({
+      userId: organizationMembers.userId,
       legacyRole: organizationMembers.role,
       systemKey: roles.systemKey,
     })
@@ -434,6 +470,7 @@ async function countOwners(organizationId: string): Promise<number> {
     .where(eq(organizationMembers.organizationId, organizationId));
   let count = 0;
   for (const r of rows) {
+    if (isAgentUserId(r.userId)) continue;
     if (isOwnerRole(r.systemKey, r.legacyRole)) count++;
   }
   return count;

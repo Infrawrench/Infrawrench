@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.25.0",
+    "version": "1.26.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -243,6 +243,10 @@
     {
       "name": "API keys",
       "description": "Programmatic access tokens."
+    },
+    {
+      "name": "Agent auth",
+      "description": "Anonymous agent registration, the 24-hour trial workspace it opens, and the claim ceremony that binds it to a person. See /auth.md for the agent-facing guide."
     },
     {
       "name": "WebSocket",
@@ -27240,6 +27244,354 @@
         "required": [
           "name",
           "scopes"
+        ],
+        "additionalProperties": false
+      },
+      "RegisteredAgent": {
+        "type": "object",
+        "properties": {
+          "registration_id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "credential": {
+            "type": "string",
+            "description": "Bearer credential for this registration. Format `iwa_<base64url>`. Returned once and never recoverable — there is no route that can show it again."
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "trial_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the trial workspace is deleted unless a person claims it."
+          },
+          "claim_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "notice": {
+            "type": "string",
+            "description": "Human-readable summary of the trial terms, meant to be relayed to the user."
+          }
+        },
+        "required": [
+          "registration_id",
+          "credential",
+          "organization_id",
+          "trial_expires_at",
+          "claim_url",
+          "notice"
+        ],
+        "additionalProperties": false
+      },
+      "AgentRegisterRequest": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Short name for the workspace, shown to the user who claims it."
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentIdentity": {
+        "type": "object",
+        "properties": {
+          "registration_id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "claimed": {
+            "type": "boolean"
+          },
+          "claim_pending": {
+            "type": "boolean",
+            "description": "A `user_code` is currently outstanding."
+          },
+          "trial_expires_in_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Milliseconds until deletion. Null once the workspace is claimed."
+          }
+        },
+        "required": [
+          "registration_id",
+          "organization_id",
+          "claimed",
+          "claim_pending",
+          "trial_expires_in_ms"
+        ],
+        "additionalProperties": false
+      },
+      "AgentClaimStarted": {
+        "type": "object",
+        "properties": {
+          "user_code": {
+            "type": "string",
+            "description": "Formatted as `XXXX-XXXX`. Show it to the user alongside `verification_uri`."
+          },
+          "verification_uri": {
+            "type": "string",
+            "format": "uri"
+          },
+          "verification_uri_complete": {
+            "type": "string",
+            "format": "uri",
+            "description": "The verification page with the code pre-filled. Convenient, but it puts a live bearer secret in a URL — prefer `verification_uri` plus the code shown separately."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "interval": {
+            "type": "integer",
+            "description": "Minimum seconds between status polls."
+          }
+        },
+        "required": [
+          "user_code",
+          "verification_uri",
+          "verification_uri_complete",
+          "expires_at",
+          "interval"
+        ],
+        "additionalProperties": false
+      },
+      "AgentClaimMergeTarget": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "displayName"
+        ],
+        "additionalProperties": false
+      },
+      "AgentClaimLookup": {
+        "type": "object",
+        "properties": {
+          "registrationId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "workspaceName": {
+            "type": "string"
+          },
+          "trialExpiresInMs": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mergeTargets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentClaimMergeTarget"
+            },
+            "description": "Organizations this user may merge the workspace into: ones they already belong to AND hold `accounts:write` in. A merge writes cloud credentials, so membership alone is not enough — the confirm route enforces the same rule."
+          }
+        },
+        "required": [
+          "registrationId",
+          "workspaceName",
+          "trialExpiresInMs",
+          "mergeTargets"
+        ],
+        "additionalProperties": false
+      },
+      "AgentClaimLookupRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The `user_code` the agent showed its user."
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      },
+      "AgentClaimResult": {
+        "type": "object",
+        "properties": {
+          "organizationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The organization the agent acts in from now on.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "adopt",
+              "merge"
+            ]
+          },
+          "accountsMoved": {
+            "type": "integer"
+          },
+          "historyMoved": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "organizationId",
+          "mode",
+          "accountsMoved",
+          "historyMoved"
+        ],
+        "additionalProperties": false
+      },
+      "AgentClaimRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "adopt",
+              "merge"
+            ],
+            "description": "`adopt` keeps the workspace as its own organization and stops the clock. `merge` moves its cloud accounts into an organization you already belong to and destroys the trial. Defaults to `adopt`."
+          },
+          "targetOrganizationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Required when `mode` is merge.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "moveHistory": {
+            "type": "boolean",
+            "description": "Merge only: also re-parent the trial's metrics and cost history. Off by default — it changes numbers the target organization may already be reporting on. Needs `costs:write`."
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      },
+      "AgentRegistration": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "anonymous",
+              "service_auth"
+            ]
+          },
+          "prefix": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "First 8 characters of the credential."
+          },
+          "claimedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "claimedByUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "claimedByEmail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "kind",
+          "prefix",
+          "claimedAt",
+          "claimedByUserId",
+          "claimedByEmail",
+          "lastSeenAt",
+          "revokedAt",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "AgentRevoked": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "revoked": {
+            "type": "boolean",
+            "description": "False when the registration was already revoked. The request still succeeds — revocation is idempotent — but nothing changed."
+          }
+        },
+        "required": [
+          "ok",
+          "revoked"
         ],
         "additionalProperties": false
       },
@@ -56807,6 +57159,465 @@
           }
         },
         "operationId": "postOrgOrgIdApiKeysIdRotate"
+      }
+    },
+    "/api/agent/identity": {
+      "post": {
+        "tags": [
+          "Agent auth"
+        ],
+        "summary": "Open an anonymous registration and a 24-hour trial workspace",
+        "description": "Requires no authentication — this is how a client with no credentials gets one. Rate limited per source address. The workspace it opens is deleted 24 hours later unless a person completes the claim ceremony.",
+        "security": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisteredAgent"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many registrations from this address"
+          },
+          "500": {
+            "description": "Could not open a workspace"
+          }
+        },
+        "operationId": "postAgentIdentity"
+      },
+      "get": {
+        "tags": [
+          "Agent auth"
+        ],
+        "summary": "Poll this registration's claim status and time remaining",
+        "responses": {
+          "200": {
+            "description": "Status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentIdentity"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown or revoked credential"
+          },
+          "404": {
+            "description": "Unknown registration"
+          }
+        },
+        "operationId": "getAgentIdentity"
+      }
+    },
+    "/api/agent/identity/claim": {
+      "post": {
+        "tags": [
+          "Agent auth"
+        ],
+        "summary": "Start the claim ceremony and mint a user code",
+        "description": "Returns a code to show the user together with the verification URL. Replaces any code already outstanding for this registration.",
+        "responses": {
+          "200": {
+            "description": "Ceremony started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentClaimStarted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Already claimed"
+          },
+          "401": {
+            "description": "Unknown or revoked credential"
+          },
+          "403": {
+            "description": "Registration revoked"
+          }
+        },
+        "operationId": "postAgentIdentityClaim"
+      }
+    },
+    "/api/agent/claim/lookup": {
+      "post": {
+        "tags": [
+          "Agent auth"
+        ],
+        "summary": "Resolve a user code so the claim page can show what is being claimed",
+        "description": "A POST rather than a GET with the code in the path: the code is a live bearer secret for 15 minutes, and a URL lands in history, in `Referer`, and in access logs. Rate limited per user.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentClaimLookupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resolved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentClaimLookup"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing, malformed, or expired code"
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The workspace no longer exists"
+          },
+          "429": {
+            "description": "Too many attempts"
+          }
+        },
+        "operationId": "postAgentClaimLookup"
+      }
+    },
+    "/api/agent/claim": {
+      "post": {
+        "tags": [
+          "Agent auth"
+        ],
+        "summary": "Confirm a claim, binding the workspace to the signed-in user",
+        "description": "The code is re-resolved here rather than trusting a registration id from the lookup, so the lookup cannot be used as an oracle. Rate limited per user.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentClaimRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Claimed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentClaimResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad code, already claimed, revoked, or a merge with no valid target"
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "The merge would put a free target organization over its plan limits"
+          },
+          "403": {
+            "description": "You lack the permission the merge needs in the target organization (`accounts:write`, plus `costs:write` when moving history)."
+          },
+          "429": {
+            "description": "Too many attempts"
+          }
+        },
+        "operationId": "postAgentClaim"
+      }
+    },
+    "/api/org/{orgId}/agent-registrations": {
+      "get": {
+        "tags": [
+          "Agent auth"
+        ],
+        "summary": "List the agent registrations acting in this organization",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Registrations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentRegistration"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAgentRegistrations"
+      }
+    },
+    "/api/org/{orgId}/agent-registrations/{id}": {
+      "delete": {
+        "tags": [
+          "Agent auth"
+        ],
+        "summary": "Revoke an agent registration",
+        "description": "The row is kept so audit entries naming this agent stay legible; its credential stops working on the next request. Closed to agent credentials.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRevoked"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A backing service this endpoint depends on is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "reauth": {
+            "description": "Recent sign-in required. Send the user through sign-in again and retry; the request itself was well-formed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReauthenticationRequired"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdAgentRegistrationsId"
       }
     },
     "/api/org/{orgId}/ws-token": {

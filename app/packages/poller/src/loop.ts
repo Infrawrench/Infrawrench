@@ -10,6 +10,7 @@ import { runExpiryAlerts } from "@infrawrench/server-core/expiry/alerts";
 import { runPostureAlerts } from "@infrawrench/server-core/posture/alerts";
 import { runSchedulePass } from "@infrawrench/server-core/schedules/pass";
 import { runLeasePass } from "@infrawrench/server-core/leases/pass";
+import { runTrialExpiryPass } from "@infrawrench/server-core/trials/pass";
 import {
   runEnvironmentRepairPass,
   runEnvironmentReconcilePass,
@@ -201,6 +202,12 @@ export class PollerLoop extends TickLoop {
     // resource at expiry, deferring during change freezes. Defensive like the
     // others.
     await this.tickLeases();
+
+    // Trial reaper: destroy unclaimed agent trial orgs past their 24 hours.
+    // Sits beside the lease pass because it is the same shape of work — a
+    // clock ran out, something gets deleted — but it takes no claim, since
+    // destruction is idempotent across all three stores it touches.
+    await this.tickTrials();
 
     // Ephemeral-environment repair. Runs immediately after the lease pass
     // because it *feeds* it: a member stranded with a live resource and no
@@ -400,6 +407,27 @@ export class PollerLoop extends TickLoop {
       await runLeasePass({ limit: 4 });
     } catch (e) {
       console.error("[poller] lease tick failed:", e);
+    }
+  }
+
+  /**
+   * Destroy unclaimed agent trial orgs whose 24 hours have elapsed.
+   *
+   * Unlike every other pass this one deletes a whole tenant, so the result is
+   * logged even when it is zero-work — "the reaper ran and found nothing" is
+   * the line you want in the log when someone asks why a trial is still there.
+   */
+  private async tickTrials(): Promise<void> {
+    try {
+      const result = await runTrialExpiryPass({ limit: 10 });
+      if (result.due > 0) {
+        console.log(
+          `[poller] trial reaper: ${result.destroyed} destroyed, ${result.failed} failed ` +
+            `of ${result.due} due`,
+        );
+      }
+    } catch (e) {
+      console.error("[poller] trial reaper tick failed:", e);
     }
   }
 

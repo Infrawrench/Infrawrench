@@ -1,5 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// Agent-auth resolution is exercised in server-core's own suite; here it must
+// simply answer "not an agent" so `sub` keeps being read as a WorkOS user id.
+// Mocked rather than left real because the module reaches Postgres at import.
+vi.mock("@infrawrench/server-core/trials/ceremony", () => ({
+  resolveAgentCredential: vi.fn(async () => null),
+  getClaimStatus: vi.fn(async () => null),
+}));
+
+vi.mock("@infrawrench/server-core/trials/principal", () => ({
+  resolveAgentPrincipal: vi.fn(async () => null),
+  touchAgentRegistration: vi.fn(async () => undefined),
+}));
+
 const mockSelect = vi.fn();
 const mockUpdate = vi.fn();
 vi.mock("@/db/client", () => ({

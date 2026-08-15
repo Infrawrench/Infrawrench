@@ -62,6 +62,33 @@ function isPublicRoute(pathname: string): boolean {
   return pathname.startsWith("/status/");
 }
 
+/**
+ * Routes that need a signed-in visitor but must be left exactly where they are.
+ *
+ * Everything not listed here is funnelled to the visitor's first organization
+ * (or to onboarding), which is right for a bare `/` and wrong for any page that
+ * *is* the destination. Three ways that funnel breaks such a page, all of which
+ * `/claim` hit at once: a visitor with an org is redirected away and the
+ * `?code=` in the URL goes with them, a visitor with none waits on a spinner
+ * that never resolves because `setAuthChecked` is only reached through the
+ * `/org/` branch, and an anonymous visitor is bounced to sign-in and lands back
+ * in one of the first two.
+ *
+ * `/claim` in particular must also survive having **no organization at all** —
+ * claiming is how its visitor gets their first one, so sending them to
+ * onboarding first would be asking them to build the workspace they were
+ * invited to take over.
+ */
+function skipsOrgRedirect(pathname: string): boolean {
+  return (
+    pathname.startsWith("/onboarding") ||
+    pathname.startsWith("/invite/") ||
+    pathname.startsWith("/share/") ||
+    pathname.startsWith("/admin") ||
+    pathname === "/claim"
+  );
+}
+
 function RootLayout() {
   const gt = useGT();
   const [authChecked, setAuthChecked] = useState(false);
@@ -73,12 +100,7 @@ function RootLayout() {
 
   useEffect(() => {
     if (isPublicRoute(pathname)) return;
-    if (
-      pathname.startsWith("/onboarding") ||
-      pathname.startsWith("/invite/") ||
-      pathname.startsWith("/share/") ||
-      pathname.startsWith("/admin")
-    ) {
+    if (skipsOrgRedirect(pathname)) {
       // These routes still need an auth check, but we don't redirect them to onboarding.
       apiGet<AuthMe>("/api/auth/me")
         .then(() => setAuthChecked(true))
@@ -114,12 +136,7 @@ function RootLayout() {
   if (isPublicRoute(pathname)) return <Outlet />;
 
   if (!authChecked) {
-    if (
-      pathname.startsWith("/onboarding") ||
-      pathname.startsWith("/invite/") ||
-      pathname.startsWith("/share/") ||
-      pathname.startsWith("/admin")
-    ) {
+    if (skipsOrgRedirect(pathname)) {
       return <Outlet />;
     }
 
@@ -130,12 +147,7 @@ function RootLayout() {
     );
   }
 
-  if (
-    pathname.startsWith("/onboarding") ||
-    pathname.startsWith("/invite/") ||
-    pathname.startsWith("/share/") ||
-    pathname.startsWith("/admin")
-  ) {
+  if (skipsOrgRedirect(pathname)) {
     return <Outlet />;
   }
 

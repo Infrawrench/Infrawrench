@@ -22,8 +22,9 @@
  * no-ops before constructing the Stripe client (which throws without
  * STRIPE_SECRET_KEY).
  */
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, notLike, sql } from "drizzle-orm";
 import { activeCapacitySeats } from "@infrawrench/server-core/billing/capacity-slots";
+import { AGENT_USER_ID_LIKE_PATTERN } from "@infrawrench/server-core/trials/identity";
 import { db } from "../db/client";
 import { invitations, organizationMembers, subscriptions } from "../db/schema";
 import { getStripe } from "./stripe";
@@ -71,11 +72,20 @@ export async function checkSeatAvailability(
   // enforced by the plan gate at the invite route, not here.
   if (capacity === 0) return null;
 
+  // Agent memberships are excluded: an agent whose trial was adopted or merged
+  // in is not a person and must not consume a seat — counted, it would refuse
+  // a real hire's invite while a phantom "member" nobody can see in a billing
+  // sense holds the slot.
   const members = await countRows(
     db
       .select({ n: sql<number>`count(*)` })
       .from(organizationMembers)
-      .where(eq(organizationMembers.organizationId, organizationId)),
+      .where(
+        and(
+          eq(organizationMembers.organizationId, organizationId),
+          notLike(organizationMembers.userId, AGENT_USER_ID_LIKE_PATTERN),
+        ),
+      ),
   );
   // A pending, unexpired invite reserves a seat — otherwise two invites sent
   // against one free seat would both be honoured on accept.
@@ -139,11 +149,18 @@ export async function releaseSeat(organizationId: string): Promise<void> {
   const sub = await liveSubscription(organizationId);
   if (!sub) return;
 
+  // People only — an agent membership must not hold the subscription's floor
+  // up, or the org keeps paying for a seat no person occupies.
   const remaining = await countRows(
     db
       .select({ n: sql<number>`count(*)` })
       .from(organizationMembers)
-      .where(eq(organizationMembers.organizationId, organizationId)),
+      .where(
+        and(
+          eq(organizationMembers.organizationId, organizationId),
+          notLike(organizationMembers.userId, AGENT_USER_ID_LIKE_PATTERN),
+        ),
+      ),
   );
   const prepaidSeats = await activeCapacitySeats(organizationId);
 

@@ -9741,5 +9741,77 @@
   "8208e5f28507a7b9": "Statusseite nicht gefunden",
   "da59f482393fca26": "Statusseite nicht verfügbar",
   "9eab45611e3d004a": "Dieser Link ist nicht mehr gültig, oder die Seite wurde nicht veröffentlicht.",
-  "6e96886ec71293f7": "Beim Laden dieser Seite ist ein Fehler aufgetreten. Versuchen Sie es gleich noch einmal."
+  "6e96886ec71293f7": "Beim Laden dieser Seite ist ein Fehler aufgetreten. Versuchen Sie es gleich noch einmal.",
+  "d4f86415916c0c73": "Agenten konnten nicht geladen werden",
+  "077267d10193e3e6": "Dieser Agent konnte nicht widerrufen werden",
+  "e7ea774dcaad2077": "Agenten, die sich selbst registriert haben und dieser Organisation zugeordnet wurden. Ein Agent handelt mit den Berechtigungen der Person, die ihn übernommen hat, und kann niemals die Abrechnung verwalten, API-Schlüssel erstellen, Personen einladen oder einen anderen Agenten widerrufen.",
+  "1f1aa35293f33b64": "Dieser Organisation wurde noch kein Agent zugeordnet.",
+  "a61a873c554484b7": "Unbenannter Agent",
+  "6bd09d230f5ce090": "widerrufen",
+  "2a51fb903bd634b1": "nicht übernommen",
+  "13516a2b6966d0a6": "externe Anmeldedaten",
+  "f759f5f9cee5031b": "zuletzt verwendet {when}",
+  "278e49f5300b957f": "vor {n} Min.",
+  "56bad7d650c0beac": "vor {n} Std.",
+  "48ff474fb25b84f2": "vor {n} T.",
+  "1d702661a023c18a": "Übernommen von {email}",
+  "92b6de7e7300c7f0": "Nie von einer Person übernommen",
+  "ada2d20e8028e7d0": "Agent-Anmeldedaten",
+  "9521dd28dc2cfc74": "jeden Moment",
+  "507ccabb0594eff3": "{n} Minuten",
+  "9148cf9a6f66c778": "Diesen Arbeitsbereich übernehmen",
+  "9d1b9f28eff4548e": "Dieser Code ist ungültig.",
+  "72cbdbbc7c5dfaad": "Dieser Arbeitsbereich konnte nicht übernommen werden.",
+  "a7f3b5c65df28fea": "Arbeitsbereich übernehmen",
+  "9311647750e42c66": "Ein Agent hat einen Infrawrench-Arbeitsbereich für Sie eingerichtet. Geben Sie den Code ein, den er Ihnen genannt hat, um ihn zu behalten – nicht übernommene Arbeitsbereiche werden 24 Stunden nach ihrer Erstellung gelöscht.",
+  "2630e7b58f5f271b": "Weiter",
+  "5de53b28fec37c16": "bereits übernommen",
+  "452f61ca6a5684b1": "läuft jetzt ab",
+  "20968f5b35d86299": "Was soll damit geschehen?",
+  "e63ba989aadc11be": "Als eigene Organisation behalten",
+  "77deca19ba4139a8": "Alles bleibt genau dort, wo es ist, und Sie werden Eigentümer.",
+  "d69224723c262747": "In eine bereits vorhandene Organisation verschieben",
+  "fec601d3b2d2623d": "Die Cloud-Konten werden verschoben und neu synchronisiert. Dashboards und andere in diesem Arbeitsbereich erstellte Elemente werden nicht übernommen.",
+  "40234f04aded01ff": "Verschieben nach",
+  "466753e2d85c9f32": "Auch die Metriken und den Kostenverlauf dieses Arbeitsbereichs übernehmen. Das kann einige Minuten dauern und verändert die Zahlen in bestehenden Kostendiagrammen.",
+  "4f9b6926c0b29f61": "Wird übernommen…",
+  "9425bde0a1a6b548": "Arbeitsbereich übernehmen",
+  "d2322db18080e6b9": {
+    "t": "span",
+    "i": 1,
+    "c": [
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "Test-Arbeitsbereich."
+      },
+      " Alles hier wird gelöscht in",
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      ", sofern ihn niemand übernimmt."
+    ]
+  },
+  "51b727c1a63225a7": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Wird in",
+      " ",
+      {
+        "t": "span",
+        "i": 2,
+        "c": {
+          "i": 3,
+          "k": "_gt_value_3",
+          "v": "v"
+        }
+      },
+      " ",
+      "gelöscht, sofern Sie ihn nicht jetzt übernehmen."
+    ]
+  }
 }

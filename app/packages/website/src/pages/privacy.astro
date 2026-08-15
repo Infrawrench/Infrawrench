@@ -3,7 +3,8 @@ import "../styles/global.css";
 import Nav from "../components/Nav.astro";
 import Footer from "../components/Footer.astro";
 
-export const prerender = true;
+// On demand so middleware can negotiate; see src/middleware.ts.
+export const prerender = false;
 
 const lastUpdated = "July 27, 2026";
 const contactEmail = "astrid@infrawrench.com";

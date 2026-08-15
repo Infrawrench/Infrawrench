@@ -1,23 +1,49 @@
 ---
-import { getCollection, render } from "astro:content";
+import { getEntry, render } from "astro:content";
 import DocsLayout from "../../layouts/DocsLayout.astro";
 import DocsWipNotice from "../../components/DocsWipNotice.astro";
 
-export const prerender = true;
+// Rendered on demand, not prerendered: a static page is served straight from
+// Cloudflare's asset handler and never reaches middleware, so it could not
+// answer `Accept: text/markdown`. `lib/page-cache.ts` restores the edge caching
+// that giving up static serving cost.
+export const prerender = false;
 
-export async function getStaticPaths() {
-  const entries = await getCollection("docs");
-  return entries.map((entry) => ({
-    params: { slug: entry.id },
-    props: { entry },
-  }));
+const { slug } = Astro.params;
+const entry = slug ? await getEntry("docs", slug) : undefined;
+
+// A static route got its 404 for free by simply not existing; on demand, an
+// unknown slug reaches this file and has to be turned away here.
+//
+// Rendered inline rather than via `Astro.rewrite("/404")`, which throws
+// "unable to find a component instance for route /404" whether the target is
+// prerendered or not. Doing it here also keeps the docs chrome, so a mistyped
+// URL lands somewhere with a nav rather than on a bare error page.
+if (!entry) {
+  Astro.response.status = 404;
 }
 
-const { entry } = Astro.props;
-const { Content, headings } = await render(entry);
-const tocItems = headings.filter((h) => h.depth === 2 || h.depth === 3);
+const rendered = entry ? await render(entry) : null;
+const tocItems = rendered ? rendered.headings.filter((h) => h.depth === 2 || h.depth === 3) : [];
+const Content = rendered?.Content;
 ---
 
+{
+  !entry && (
+    <DocsLayout title="Page not found">
+      <article class="docs-article docs-article-body">
+        <header class="docs-article-header">
+          <h1 class="docs-article-title">Page not found</h1>
+          <p class="docs-article-lede">
+            There's no documentation page at this address. Try the <a href="/docs">documentation index</a>.
+          </p>
+        </header>
+      </article>
+    </DocsLayout>
+  )
+}
+
+{entry && Content && (
 <DocsLayout
   title={entry.data.title}
   description={entry.data.description}
@@ -53,3 +79,4 @@ const tocItems = headings.filter((h) => h.depth === 2 || h.depth === 3);
     }
   </div>
 </DocsLayout>
+)}

@@ -155,3 +155,53 @@ export function apiKeyRouteDenial(method: string, pathname: string): string | nu
   }
   return null;
 }
+
+/**
+ * What an agent credential may never reach, on top of everything above.
+ *
+ * Agents inherit the whole API-key table, because every argument in it applies
+ * at least as strongly to a principal with no person attached. These are the
+ * additions that are specific to agents:
+ */
+export const AGENT_DENY_RULES: readonly DenyRule[] = [
+  {
+    // The same escalation `/api-keys` is closed for, one level up. An agent
+    // that can revoke registrations can revoke *the other agents* — including,
+    // in an org running several, the one a colleague is mid-conversation with.
+    // Reads stay open: an agent listing its org's agents is inventory, and the
+    // page it powers is the one a human uses to notice something unexpected.
+    prefix: "/agent-registrations",
+    methods: MUTATING,
+    reason: "Agents cannot revoke agent registrations. Revoke them from Settings → Agents.",
+  },
+  {
+    // Inviting people is a person's act, and an agent doing it sends mail from
+    // our domain to an address it chose. Unclaimed agents do not hold
+    // `team:invite` at all (see `trials/principal.ts`); this closes the same
+    // door for a *claimed* agent, which inherits its claimer's role and would
+    // otherwise pick the permission up.
+    prefix: "/team/invitations",
+    methods: MUTATING,
+    reason: "Agents cannot invite people. Send invitations from Settings → Team.",
+  },
+];
+
+/**
+ * The reason this request is closed to an agent credential, or `null`.
+ *
+ * Checks the API-key table first — an agent is strictly more restricted than a
+ * key, never less — then the agent-only additions.
+ */
+export function agentRouteDenial(method: string, pathname: string): string | null {
+  const fromKeys = apiKeyRouteDenial(method, pathname);
+  if (fromKeys) return fromKeys.replace(/^API keys/, "Agents");
+
+  const subPath = orgSubPath(pathname);
+  if (subPath === null) return null;
+  const verb = method.toUpperCase();
+  for (const rule of AGENT_DENY_RULES) {
+    if (!matchesPrefix(subPath, rule.prefix)) continue;
+    if (rule.methods === "*" || rule.methods.includes(verb)) return rule.reason;
+  }
+  return null;
+}

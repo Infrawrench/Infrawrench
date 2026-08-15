@@ -13,6 +13,7 @@ import {
   orgMiddleware,
   permissionsMiddleware,
   apiKeyOrgMiddleware,
+  agentOrgMiddleware,
   unlessApiKey,
 } from "./auth-middleware";
 import { securityHeaders } from "./security-headers";
@@ -34,6 +35,8 @@ import { authRoutes } from "./routes/auth";
 import { profileRoutes } from "./routes/profile";
 
 import { orgManagementRoutes } from "./routes/orgs";
+import { agentAuthRoutes, agentClaimRoutes } from "./routes/agent-auth";
+import { agentRegistrationRoutes } from "./routes/agent-registrations";
 import { invitationAcceptRoutes } from "./routes/invitation-accept";
 import { adminRoutes } from "./routes/admin";
 
@@ -126,6 +129,7 @@ import { syncRoutes } from "./routes/sync";
 import { chatRoutes } from "./routes/chat";
 
 import { wellKnownRoutes } from "../mcp/well-known";
+import { authMdRoutes } from "../mcp/auth-md";
 
 const api = new Hono();
 
@@ -158,6 +162,9 @@ api.route("/api", slackOauthRoute);
 // session-authed account-link landing (it bounces through sign-in itself).
 api.route("/api", slackInboundRoutes);
 api.route("/.well-known", wellKnownRoutes);
+// `auth.md` at the domain root — the agent-registration skill document the
+// `agent_auth` discovery block points at.
+api.route("/", authMdRoutes);
 
 /**
  * The `@scalar/api-reference` standalone bundle the docs page loads. Keep this
@@ -264,6 +271,15 @@ api.route("/api/org/:orgId/pages", pageRoutes);
 // assembler (see routes/status-pages.ts).
 api.route("/api/status", publicStatusRoutes);
 
+// Agent registration and the claim ceremony. Outside every auth layer because
+// its whole purpose is serving a caller with no credentials — the rate limit in
+// `trials/ceremony.ts` is what stands in for authentication here, and it has to,
+// since this is the only route in the product that creates an organization
+// without a person behind it.
+api.route("/api/agent", agentAuthRoutes);
+// The human half of the same ceremony, session-authed on its own router.
+api.route("/api/agent/claim", agentClaimRoutes);
+
 const authed = new Hono();
 authed.use("*", sessionMiddleware);
 
@@ -290,6 +306,11 @@ const orgScoped = new Hono();
 // `unlessApiKey` is a pass-through for every other caller: when no key
 // authenticated, each middleware runs exactly as it did before.
 orgScoped.use("*", apiKeyOrgMiddleware);
+// Agent credentials, same contract: pinned to one org, permissions already
+// final, and a denial table of their own on top of the API-key one. Runs after
+// the key middleware because the two never both match — a key is recognised by
+// prefix and returns early here.
+orgScoped.use("*", unlessApiKey(agentOrgMiddleware));
 orgScoped.use("*", unlessApiKey(sessionMiddleware));
 orgScoped.use("*", unlessApiKey(orgMiddleware));
 orgScoped.use("*", unlessApiKey(permissionsMiddleware));
@@ -333,6 +354,7 @@ orgScoped.route("/agents", agentRoutes);
 orgScoped.route("/github", githubRoutes);
 orgScoped.route("/accounts", accountRoutes);
 orgScoped.route("/api-keys", apiKeyRoutes);
+orgScoped.route("/agent-registrations", agentRegistrationRoutes);
 orgScoped.route("/team", teamRoutes);
 orgScoped.route("/billing", billingRoutes);
 orgScoped.route("/audit-logs", auditRoutes);

@@ -10,6 +10,7 @@
  * a live subscription still billing.
  */
 import type { OwnershipBlocker } from "@infrawrench/client-core";
+import { isAgentUserId } from "@infrawrench/server-core/trials/identity";
 
 import { isOwnerRole } from "./org-roles";
 
@@ -43,7 +44,15 @@ export function classifyMemberships(
   };
 
   for (const orgId of organizationIds) {
-    const members = rows.filter((r) => r.organizationId === orgId);
+    const orgRows = rows.filter((r) => r.organizationId === orgId);
+    if (orgRows.length === 0) continue;
+    // People only. An agent registration holds a real `organization_members`
+    // row (see `server-core/trials/create.ts`), and counting it as a member
+    // turns "you are alone in this org" into "you solely own a shared org" —
+    // refusing the deletion over a principal that cannot own anything, and
+    // that the user has no obvious way to remove. An org whose only other
+    // member is an agent is an org with nobody else in it.
+    const members = orgRows.filter((m) => !isAgentUserId(m.userId));
     if (members.length === 0) continue;
     const owners = members.filter((m) => isOwnerRole(m.systemKey, m.legacyRole));
     const callerIsOwner = owners.some((o) => o.userId === userId);

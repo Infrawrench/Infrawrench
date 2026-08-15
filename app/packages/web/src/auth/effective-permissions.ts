@@ -14,11 +14,16 @@ export interface PrincipalRef {
   userId: string;
   organizationId: string;
   /**
-   * Present only for API-key principals. `[]` is meaningful — a key with no
-   * scopes — and is not the same as `undefined`, which means "not a key" and
-   * grants the user's full role permissions.
+   * Present for API-key and agent principals. `[]` is meaningful — a key with
+   * no scopes — and is not the same as `undefined`, which means "not a key"
+   * and grants the user's full role permissions.
    */
   scopes?: readonly string[] | undefined;
+  /**
+   * Set when the caller is an agent-auth registration. Its `scopes` are then
+   * the FINAL answer rather than a ceiling to intersect — see below.
+   */
+  agentRegistrationId?: string | undefined;
 }
 
 /**
@@ -29,9 +34,20 @@ export interface PrincipalRef {
  * exceed the scopes it was minted with, nor the role its owner holds right
  * now — whichever is narrower wins.
  *
+ * **An agent is neither, and must not be re-resolved.** `resolveAgentPrincipal`
+ * has already done the whole calculation — the agent ceiling, and for a claimed
+ * registration the intersection with its claimer's role — and the `users` row
+ * an agent acts as is an implementation detail whose membership is deliberately
+ * a plain `member` so that people-shaped code (the last-owner guard, seat
+ * accounting) reads it correctly. Intersecting with that row's role would
+ * silently narrow every agent to the member role, so an `iwa_` credential that
+ * can create a resource over HTTP would be refused the equivalent MCP tool.
+ *
  * Deliberately un-memoized; see the note on `tools/permissions.ts`.
  */
 export async function effectivePermissions(principal: PrincipalRef): Promise<readonly string[]> {
+  if (principal.agentRegistrationId !== undefined) return principal.scopes ?? [];
+
   const access = await resolveEffectivePermissions(
     principal.organizationId,
     { kind: "user", userId: principal.userId },

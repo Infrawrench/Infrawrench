@@ -9741,5 +9741,77 @@
   "8208e5f28507a7b9": "Página de estado no encontrada",
   "da59f482393fca26": "Página de estado no disponible",
   "9eab45611e3d004a": "Este enlace ya no es válido o la página no se ha publicado.",
-  "6e96886ec71293f7": "Algo salió mal al cargar esta página. Inténtalo de nuevo en un momento."
+  "6e96886ec71293f7": "Algo salió mal al cargar esta página. Inténtalo de nuevo en un momento.",
+  "d4f86415916c0c73": "No se pudieron cargar los agentes",
+  "077267d10193e3e6": "No se pudo revocar ese agente",
+  "e7ea774dcaad2077": "Agentes que se registraron por sí mismos y fueron reclamados en esta organización. Un agente actúa con los permisos de quien lo reclamó y nunca puede gestionar la facturación, crear claves de API, invitar a personas ni revocar otro agente.",
+  "1f1aa35293f33b64": "Ningún agente ha sido reclamado en esta organización.",
+  "a61a873c554484b7": "Agente sin nombre",
+  "6bd09d230f5ce090": "revocado",
+  "2a51fb903bd634b1": "sin reclamar",
+  "13516a2b6966d0a6": "credencial externa",
+  "f759f5f9cee5031b": "último uso {when}",
+  "278e49f5300b957f": "hace {n} min",
+  "56bad7d650c0beac": "hace {n} h",
+  "48ff474fb25b84f2": "hace {n} d",
+  "1d702661a023c18a": "Reclamado por {email}",
+  "92b6de7e7300c7f0": "Nunca reclamado por una persona",
+  "ada2d20e8028e7d0": "Credenciales de agente",
+  "9521dd28dc2cfc74": "en cualquier momento",
+  "507ccabb0594eff3": "{n} minutos",
+  "9148cf9a6f66c778": "Reclamar este espacio de trabajo",
+  "9d1b9f28eff4548e": "Ese código no es válido.",
+  "72cbdbbc7c5dfaad": "No se pudo reclamar este espacio de trabajo.",
+  "a7f3b5c65df28fea": "Reclamar un espacio de trabajo",
+  "9311647750e42c66": "Un agente ha creado un espacio de trabajo de Infrawrench para usted. Introduzca el código que le dio para conservarlo: los espacios de trabajo sin reclamar se eliminan 24 horas después de crearse.",
+  "2630e7b58f5f271b": "Continuar",
+  "5de53b28fec37c16": "ya reclamado",
+  "452f61ca6a5684b1": "caducando ahora",
+  "20968f5b35d86299": "¿Qué debe ocurrir con él?",
+  "e63ba989aadc11be": "Conservarlo como su propia organización",
+  "77deca19ba4139a8": "Todo permanece exactamente donde está y usted pasa a ser el propietario.",
+  "d69224723c262747": "Moverlo a una organización que ya tengo",
+  "fec601d3b2d2623d": "Las cuentas de nube se trasladan y se vuelven a sincronizar. Los paneles y otros elementos creados en este espacio de trabajo no se conservan.",
+  "40234f04aded01ff": "Mover a",
+  "466753e2d85c9f32": "Traer también las métricas y el historial de costes de este espacio de trabajo. Puede tardar unos minutos en aparecer y cambiará las cifras de los gráficos de costes existentes.",
+  "4f9b6926c0b29f61": "Reclamando…",
+  "9425bde0a1a6b548": "Reclamar espacio de trabajo",
+  "d2322db18080e6b9": {
+    "t": "span",
+    "i": 1,
+    "c": [
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "Espacio de trabajo de prueba."
+      },
+      " Todo lo que hay aquí se eliminará en",
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " si nadie lo reclama."
+    ]
+  },
+  "51b727c1a63225a7": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Se eliminará en",
+      " ",
+      {
+        "t": "span",
+        "i": 2,
+        "c": {
+          "i": 3,
+          "k": "_gt_value_3",
+          "v": "v"
+        }
+      },
+      " ",
+      "si no lo reclama ahora."
+    ]
+  }
 }

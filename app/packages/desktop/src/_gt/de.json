@@ -9549,5 +9549,42 @@
   "7187d36740a92d47": "der Agent-Schlüssel",
   "78fc1048b8130a83": "SSH-Agent weiterleiten",
   "809076dbcc310eb3": "Leitet denselben SSH-Schlüssel weiter, den Sie zum Anmelden verwendet haben, sodass Befehle wie `git clone` auf dem entfernten Host sich damit authentifizieren können. Ein kompromittierter entfernter Host könnte den weitergeleiteten Schlüssel gegen andere Hosts verwenden, die ihn akzeptieren — aktivieren Sie dies nur für Hosts, denen Sie vertrauen. Wird bei der nächsten Verbindung wirksam.",
-  "2569f497652599d2": "(leitet Ihren ausgewählten Schlüssel weiter; gilt ab der nächsten Verbindung)"
+  "2569f497652599d2": "(leitet Ihren ausgewählten Schlüssel weiter; gilt ab der nächsten Verbindung)",
+  "d4f86415916c0c73": "Agenten konnten nicht geladen werden",
+  "077267d10193e3e6": "Dieser Agent konnte nicht widerrufen werden",
+  "e7ea774dcaad2077": "Agenten, die sich selbst registriert haben und dieser Organisation zugeordnet wurden. Ein Agent handelt mit den Berechtigungen der Person, die ihn übernommen hat, und kann niemals die Abrechnung verwalten, API-Schlüssel erstellen, Personen einladen oder einen anderen Agenten widerrufen.",
+  "1f1aa35293f33b64": "Dieser Organisation wurde noch kein Agent zugeordnet.",
+  "a61a873c554484b7": "Unbenannter Agent",
+  "6bd09d230f5ce090": "widerrufen",
+  "2a51fb903bd634b1": "nicht übernommen",
+  "13516a2b6966d0a6": "externe Anmeldedaten",
+  "f759f5f9cee5031b": "zuletzt verwendet {when}",
+  "278e49f5300b957f": "vor {n} Min.",
+  "56bad7d650c0beac": "vor {n} Std.",
+  "48ff474fb25b84f2": "vor {n} T.",
+  "1d702661a023c18a": "Übernommen von {email}",
+  "92b6de7e7300c7f0": "Nie von einer Person übernommen",
+  "ada2d20e8028e7d0": "Agent-Anmeldedaten",
+  "9521dd28dc2cfc74": "jeden Moment",
+  "507ccabb0594eff3": "{n} Minuten",
+  "9148cf9a6f66c778": "Diesen Arbeitsbereich übernehmen",
+  "d2322db18080e6b9": {
+    "t": "span",
+    "i": 1,
+    "c": [
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "Test-Arbeitsbereich."
+      },
+      " Alles hier wird gelöscht in",
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      ", sofern ihn niemand übernimmt."
+    ]
+  }
 }
