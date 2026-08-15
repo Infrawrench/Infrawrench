@@ -278,6 +278,7 @@ export {
   costCentreMoveBlocker,
   orderAllocationRules,
   buildShowbackCentres,
+  showbackCentreHasChildren,
   type CostCentrePathRow,
   type RequiredTag,
   type TagPolicy,
