@@ -47,6 +47,8 @@ const { probeClientRegistrationSupport, resetRegistrationProbeForTests } =
   await import("@/mcp/registration-probe");
 const apiAuth = await import("@/auth/api-auth");
 const middleware = await import("@/api/auth-middleware");
+const ceremony = await import("@infrawrench/server-core/trials/ceremony");
+const principal = await import("@infrawrench/server-core/trials/principal");
 
 /** Stubs the probe's fetch so route tests never reach the network. */
 function stubProbeAsDocument(doc: Record<string, unknown>) {
@@ -155,6 +157,42 @@ describe("authenticateMcpRequest", () => {
     vi.mocked(apiAuth.verifyWorkosAccessToken).mockResolvedValue(null);
     const result = await authenticateMcpRequest("Bearer bogus");
     expect(result).toBeNull();
+  });
+
+  // The credential every anonymous registration actually holds. Routing it
+  // through the JWT verifier was the bug that made the documented agent MCP
+  // flow a guaranteed 401 — auth.md tells agents to bring this token here.
+  it("authenticates an iwa_ credential without consulting the JWT verifier", async () => {
+    vi.mocked(ceremony.resolveAgentCredential).mockResolvedValue("reg-1");
+    vi.mocked(principal.resolveAgentPrincipal).mockResolvedValue({
+      registrationId: "reg-1",
+      organizationId: "org-trial",
+      userId: "agent_reg-1",
+      claimedByUserId: null,
+      claimed: false,
+      permissions: ["resources:read"],
+      trialExpiresInMs: 60_000,
+    });
+
+    const result = await authenticateMcpRequest("Bearer iwa_secret");
+    expect(result).toEqual({
+      userId: "agent_reg-1",
+      organizationId: "org-trial",
+      agent: {
+        registrationId: "reg-1",
+        claimed: false,
+        permissions: ["resources:read"],
+        trialExpiresInMs: 60_000,
+      },
+    });
+    expect(apiAuth.verifyWorkosAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("returns null for an unknown or revoked iwa_ credential", async () => {
+    vi.mocked(ceremony.resolveAgentCredential).mockResolvedValue(null);
+    const result = await authenticateMcpRequest("Bearer iwa_revoked");
+    expect(result).toBeNull();
+    expect(apiAuth.verifyWorkosAccessToken).not.toHaveBeenCalled();
   });
 
   // AuthKit OAuth tokens issued to MCP clients are not guaranteed to carry an

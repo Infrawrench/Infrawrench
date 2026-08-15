@@ -72,7 +72,7 @@ function getJwks(): ReturnType<typeof createRemoteJWKSet> {
   return jwks;
 }
 
-interface WorkosAccessTokenClaims extends JWTPayload {
+export interface WorkosAccessTokenClaims extends JWTPayload {
   sub?: string;
   email?: string;
   org_id?: string;
@@ -127,7 +127,7 @@ export async function verifyWorkosAccessToken(
  *
  * Returns null when the id is not a live registration.
  */
-async function agentAuthResult(
+export async function agentAuthResult(
   registrationId: string,
   actorUserId?: string,
 ): Promise<ApiAuthResult | null> {
@@ -242,8 +242,12 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
   // Agent tokens verify against the same JWKS as a person's, so the signature
   // alone cannot tell them apart. Ask our own table before reading `sub` as a
   // user id: for an agent it is a registration id, and treating it as a user
-  // would authenticate a principal that does not exist.
-  const agentResult = await agentAuthResult(claims.sub, claims.act?.sub);
+  // would authenticate a principal that does not exist. A `user_`-prefixed sub
+  // is WorkOS's user-id shape and registration ids are bare UUIDs, so the
+  // lookup is skipped on the hot person-token path.
+  const agentResult = claims.sub.startsWith("user_")
+    ? null
+    : await agentAuthResult(claims.sub, claims.act?.sub);
   if (agentResult) return agentResult;
 
   if (!claims.org_id) return null;

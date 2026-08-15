@@ -166,13 +166,45 @@ export async function resolveAgentPrincipal(
   };
 }
 
-/** Record that a registration was used, for the settings list's "last seen". */
+/**
+ * How often `lastSeenAt` is actually written. The settings list renders it as
+ * "5 minutes ago", so per-request precision buys nothing — and agents poll
+ * `GET /api/agent/identity` every few seconds, which would otherwise turn
+ * read-only authentication into a row write per request.
+ */
+const TOUCH_INTERVAL_MS = 60_000;
+const lastTouched = new Map<string, number>();
+
+/** Test hook: forget the throttle so a suite can observe consecutive writes. */
+export function resetAgentTouchThrottle(): void {
+  lastTouched.clear();
+}
+
+/**
+ * Record that a registration was used, for the settings list's "last seen".
+ *
+ * Never throws. Both call sites fire-and-forget this (`void touch(...)`), so a
+ * rejection here — a pool blip, or the row being cascaded away by the trial
+ * reaper mid-request — would be an unhandled promise rejection, and under
+ * Node's default `--unhandled-rejections=throw` that takes the whole server
+ * down over bookkeeping. Auth must not fail because "last seen" didn't write.
+ */
 export async function touchAgentRegistration(
   registrationId: string,
   now = new Date(),
 ): Promise<void> {
-  await db
-    .update(agentAuthRegistrations)
-    .set({ lastSeenAt: now })
-    .where(eq(agentAuthRegistrations.id, registrationId));
+  const previous = lastTouched.get(registrationId);
+  if (previous !== undefined && now.getTime() - previous < TOUCH_INTERVAL_MS) return;
+  lastTouched.set(registrationId, now.getTime());
+  // Unbounded only in theory — one entry per registration this process has
+  // seen. The clear is a cheap backstop against a pathological credential scan.
+  if (lastTouched.size > 10_000) lastTouched.clear();
+  try {
+    await db
+      .update(agentAuthRegistrations)
+      .set({ lastSeenAt: now })
+      .where(eq(agentAuthRegistrations.id, registrationId));
+  } catch (e) {
+    console.warn(`[agent-auth] could not record lastSeenAt for ${registrationId}:`, e);
+  }
 }

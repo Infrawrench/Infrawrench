@@ -16,7 +16,7 @@
  *    one that should be paying for its own tokens.
  */
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { db } from "../db/client.js";
 import {
@@ -37,19 +37,43 @@ export const TRIAL_DURATION_MS = 24 * 60 * 60 * 1000;
  *
  * `getAiSpendStatus` computes `exceeded` as `monthToDate >= cap`, so a cap of 0
  * is `exceeded` from the first request with no special case anywhere in the
- * chat path — the existing cap error is raised, and it already tells the reader
+ * chain — the existing cap error is raised, and it already tells the reader
  * where the setting lives. A *small* budget would have been worse than either
  * extreme: enough to be worth farming, not enough to be useful.
  */
 export const TRIAL_CHAT_CAP_MICROS = 0;
 
+/**
+ * The transaction handle the reservation step runs on. Exposed so the rate
+ * limiter in `ceremony.ts` can type its callback without importing Drizzle's
+ * transaction machinery itself.
+ */
+export type TrialCreateTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 export interface CreateTrialOrgOptions {
-  /** The WorkOS agent registration id. Becomes `agent_auth_registrations.id`. */
+  /** The WorkOS registration id. Becomes `agent_auth_registrations.id`. */
   registrationId: string;
   /** Label the agent supplied, shown in the claim UI and settings list. */
   label?: string;
   /** "anonymous" | "service_auth" */
   kind?: string;
+  /**
+   * The credential the registration authenticates with, written on the row in
+   * the same statement that creates it. Written here rather than backfilled
+   * after the fact: a registration that exists without its credential hash is
+   * an org nobody can ever authenticate to or claim, and a row the per-IP rate
+   * limiter cannot yet see.
+   */
+  credential?: { hashed: string; prefix: string };
+  /** Source address of the registration request, for the per-IP limit. */
+  createdFromIp?: string | null;
+  /**
+   * Veto hook, run *inside* the same transaction — and behind the same
+   * advisory lock — that inserts the org and registration rows. This is what
+   * makes a count-based rate limit race-free: concurrent registrations
+   * serialise on the lock, so every count sees every row a rival committed.
+   */
+  assertAllowed?: (tx: TrialCreateTx) => Promise<void>;
   /** Fixed clock for tests. */
   now?: Date;
 }
@@ -65,8 +89,17 @@ export interface TrialOrg {
 export { agentUserId, agentUserEmail } from "./identity.js";
 
 /**
- * Create the org, its system roles, its default dashboard, the agent's own user
- * and membership, and the registration row binding it all together.
+ * Create the org, the registration row binding it, its system roles, its
+ * default dashboard, and the agent's own user and membership.
+ *
+ * **The org and registration rows commit together, first, behind an advisory
+ * lock.** The registration is the row the rate limiter counts and the row the
+ * credential resolves against, so it must become visible — complete, with its
+ * credential hash and source IP — the moment anything else about this
+ * registration exists. The provisioning that follows (roles, user, membership,
+ * dashboard) is retried-or-reaped territory: if it fails, the committed rows
+ * still count against the caller's rate limit and the reaper deletes the org
+ * when its clock runs out.
  *
  * **The agent gets a real user row**, created explicitly here and nowhere else.
  * That is what makes the JIT-provisioning hazard closable: `ensureUserFromClaims`
@@ -74,11 +107,12 @@ export { agentUserId, agentUserEmail } from "./identity.js";
  * because the only path that ever creates an agent user is this one, where the
  * registration is known and the org is being created around it.
  *
- * It costs no seat. Seat capacity comes from a subscription or a capacity slot,
- * and a trial has neither — `checkSeatAvailability` reads a capacity of 0 as
- * "invite freely" and never counts members at all. The membership only starts
- * mattering if the org is later adopted and subscribes, by which point a human
- * owns it and can remove the agent.
+ * The membership is a **member, not an owner**, and costs no seat. The agent's
+ * authority never comes from this row — `resolveAgentPrincipal` derives it from
+ * the registration — so the role only exists to be read by people-shaped code:
+ * the last-owner guard on member removal, seat accounting, the team list. Every
+ * one of those must see "not an owner, not a person", or a claimed org's sole
+ * human owner could remove themselves because the agent still "owned" it.
  */
 export async function createTrialOrg(options: CreateTrialOrgOptions): Promise<TrialOrg> {
   const now = options.now ?? new Date();
@@ -86,11 +120,36 @@ export async function createTrialOrg(options: CreateTrialOrgOptions): Promise<Tr
   const organizationId = randomUUID();
   const displayName = options.label?.trim() || "Trial workspace";
 
-  await db.insert(organizations).values({
-    id: organizationId,
-    displayName,
-    trialExpiresAt,
-    chatMonthlyCapMicros: TRIAL_CHAT_CAP_MICROS,
+  await db.transaction(async (tx) => {
+    // One global lock for all trial registrations, not per-IP: the global
+    // ceiling needs it too, and registrations are rare enough (hundreds per
+    // hour at the ceiling) that serialising them costs nothing measurable.
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended('infrawrench:agent-registration'::text, 0))`,
+    );
+
+    if (options.assertAllowed) await options.assertAllowed(tx);
+
+    await tx.insert(organizations).values({
+      id: organizationId,
+      displayName,
+      trialExpiresAt,
+      chatMonthlyCapMicros: TRIAL_CHAT_CAP_MICROS,
+    });
+
+    await tx.insert(agentAuthRegistrations).values({
+      id: options.registrationId,
+      organizationId,
+      kind: options.kind ?? "anonymous",
+      ...(options.label ? { label: options.label } : {}),
+      ...(options.credential
+        ? {
+            hashedCredential: options.credential.hashed,
+            credentialPrefix: options.credential.prefix,
+          }
+        : {}),
+      createdFromIp: options.createdFromIp ?? null,
+    });
   });
 
   await ensureSystemRoles(organizationId);
@@ -109,15 +168,15 @@ export async function createTrialOrg(options: CreateTrialOrgOptions): Promise<Tr
     })
     .onConflictDoNothing();
 
-  const ownerRole = await getSystemRole(organizationId, "owner");
+  const memberRole = await getSystemRole(organizationId, "member");
   await db
     .insert(organizationMembers)
     .values({
       id: randomUUID(),
       userId,
       organizationId,
-      role: "owner",
-      roleId: ownerRole.id,
+      role: "member",
+      roleId: memberRole.id,
     })
     .onConflictDoNothing();
 
@@ -126,13 +185,6 @@ export async function createTrialOrg(options: CreateTrialOrgOptions): Promise<Tr
     organizationId,
     name: "Home",
     isDefault: true,
-  });
-
-  await db.insert(agentAuthRegistrations).values({
-    id: options.registrationId,
-    organizationId,
-    kind: options.kind ?? "anonymous",
-    ...(options.label ? { label: options.label } : {}),
   });
 
   return { organizationId, displayName, trialExpiresAt, agentUserId: userId };

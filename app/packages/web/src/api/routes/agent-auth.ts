@@ -13,6 +13,7 @@
  *   of the ceremony is binding the registration to a person we have actually
  *   signed in.
  */
+import { isIP } from "node:net";
 import { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
 
@@ -38,14 +39,19 @@ const app = new Hono();
 /**
  * The client's address, for the per-IP registration limit.
  *
- * Behind the ingress the socket address is the proxy, so `x-forwarded-for`'s
- * first hop is the only useful value. It is client-controlled and therefore
- * spoofable — which is why it is not the only defence; the global hourly
- * ceiling is what holds when this is lied about.
+ * Behind our ingress (ingress-nginx with its default `use-forwarded-headers:
+ * false`) the controller *overwrites* `x-forwarded-for` with the socket
+ * address, so the first hop is trustworthy there. In any deployment where the
+ * header passes through raw it is client-controlled, which is why the value is
+ * validated as an actual IP address rather than taken as an opaque bucket key:
+ * un-validated, every request could invent a fresh "address" and mint itself a
+ * fresh per-IP allowance. A value that is not an IP counts as "unknown", and
+ * unknown callers are governed by the global hourly ceiling instead.
  */
 function clientIp(header: string | undefined): string | null {
   const first = header?.split(",")[0]?.trim();
-  return first && first.length <= 45 ? first : null;
+  if (!first) return null;
+  return isIP(first) !== 0 ? first : null;
 }
 
 function publicBaseUrl(reqUrl: string, forwardedProto?: string): string {

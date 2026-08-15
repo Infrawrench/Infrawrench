@@ -6,28 +6,41 @@
  * `POST /api/orgs` could always create one; nothing could ever remove one.
  *
  * The work spans three stores, and the order they are touched in is the whole
- * design. Postgres goes **last**, because the `organizations` row is the only
- * record that the other two have anything to clean up:
+ * design:
  *
- *  1. **ClickHouse** — metrics, cost, poll outcomes and network flows are
+ *  1. **WorkOS** — first, because it is the only fallible step that changes
+ *     nothing on our side. Most orgs (every trial org — their ids are local
+ *     UUIDs, minted by us) have no WorkOS counterpart at all, and the 404
+ *     answers count as success; but when WorkOS *refuses* (rotated key, an
+ *     outage), aborting here leaves the org genuinely intact everywhere.
+ *  2. **ClickHouse** — metrics, cost, poll outcomes and network flows are
  *     org-scoped but carry no foreign key to anything. Nothing deletes them
- *     implicitly.
- *  2. **WorkOS** — the org exists there too, and an org we forget the id of is
- *     an org we can never delete.
- *  3. **Postgres** — one `DELETE`, and 76 tables cascade behind it.
+ *     implicitly, and an issued purge cannot be recalled — which is exactly
+ *     why it must not run before every check and every abortable step is
+ *     behind it.
+ *  3. **Postgres** — one `DELETE`, and 76 tables cascade behind it. Last,
+ *     because the `organizations` row is the only record that the other two
+ *     have anything to clean up.
  *
  * Any step failing aborts the rest and leaves the org intact for the next
  * sweep. That is the safe direction to fail in: an org that outlives its clock
  * by an hour is a billing curiosity, whereas half-deleted state spread across
  * three stores is unrecoverable without hand-written SQL. Every step is
  * idempotent, so the retry costs nothing.
+ *
+ * The reaper additionally passes {@link DestroyOrganizationOptions.expiredTrialOnly},
+ * which takes the per-org lock in `lock.ts` and re-checks the org is *still*
+ * an expired, unclaimed trial before anything irreversible happens — a claim
+ * ceremony completing in the window between the reaper's due-query and this
+ * function must win, not be silently deleted underneath.
  */
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte } from "drizzle-orm";
 
 import { db } from "../db/client.js";
 import { agentAuthRegistrations, organizations, users } from "../db/schema.js";
 import { getClickHouseClient, isClickHouseConfigured } from "../clickhouse/client.js";
 import { agentUserId } from "./identity.js";
+import { withTrialOrgLock } from "./lock.js";
 
 /**
  * Every ClickHouse table holding org-scoped rows.
@@ -51,7 +64,12 @@ export const ORG_SCOPED_CLICKHOUSE_TABLES = [
 ] as const;
 
 export interface DestroyOrganizationResult {
-  /** False when the org row was already gone — a concurrent sweep won the race. */
+  /**
+   * False when nothing was destroyed: the org row was already gone (a
+   * concurrent sweep won the race), or — on the guarded reaper path — the org
+   * stopped being an expired unclaimed trial before anything was touched,
+   * which is what a claim landing in the window looks like.
+   */
   deleted: boolean;
   /** Tables a purge was issued against. Empty when ClickHouse isn't configured. */
   clickhouseTablesPurged: readonly string[];
@@ -135,13 +153,17 @@ export async function moveOrgClickHouseData(
  * custom Authentication API domain reaches the same place the rest of the app
  * does — once that domain is live, `api.workos.com` is unsupported.
  *
- * A 404 counts as success. The org being absent is the state we wanted.
+ * A 404 counts as success, and is the *expected* answer for every trial org:
+ * trial org ids are local UUIDs and nothing in the repo creates a WorkOS
+ * organization for them. The call is kept — cheap, and it covers any org that
+ * does have a WorkOS counterpart — but it must never be treated as evidence
+ * the org "exists there too".
  */
 async function deleteWorkosOrganization(organizationId: string): Promise<boolean> {
   const apiKey = process.env["WORKOS_API_KEY"];
   if (!apiKey) {
-    // Not fatal, but it does mean orgs accumulate in WorkOS. Say so loudly
-    // rather than reporting a clean destroy that only cleaned two stores.
+    // Not fatal, but it does mean any WorkOS-side orgs accumulate. Say so
+    // loudly rather than reporting a clean destroy that only cleaned two stores.
     console.warn(
       `[trials] WORKOS_API_KEY is unset; leaving WorkOS organization ${organizationId} in place`,
     );
@@ -155,6 +177,9 @@ async function deleteWorkosOrganization(organizationId: string): Promise<boolean
   const res = await fetch(`${origin}/organizations/${encodeURIComponent(organizationId)}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${apiKey}` },
+    // Bounded: on the guarded reaper path this runs while holding the per-org
+    // lock, and an unbounded hang there would block a claim of the same org.
+    signal: AbortSignal.timeout(10_000),
   });
   if (res.status === 404) return true;
   if (!res.ok) {
@@ -178,6 +203,16 @@ export interface DestroyOrganizationOptions {
    * all is the same outcome with nothing to reason about.
    */
   skipClickHouse?: boolean;
+  /**
+   * Reaper path: take the per-org lock and destroy only if the org is *still*
+   * an expired, unclaimed trial at `now`. A claim that completed after the
+   * reaper's due-query cleared `trialExpiresAt` (adopt) or is holding the lock
+   * mid-merge wins, and the result reports `deleted: false`.
+   *
+   * Never set this from a code path that already holds the org's lock — see
+   * `lock.ts` for the re-entrancy rule.
+   */
+  expiredTrialOnly?: { now: Date };
 }
 
 /**
@@ -190,10 +225,49 @@ export async function destroyOrganization(
   organizationId: string,
   options: DestroyOrganizationOptions = {},
 ): Promise<DestroyOrganizationResult> {
+  if (options.expiredTrialOnly) {
+    const { now } = options.expiredTrialOnly;
+    return await withTrialOrgLock(organizationId, async () => {
+      // Re-checked under the lock: the due-query's answer is stale the moment
+      // it returns, and this is the last point a claim can still win.
+      const [org] = await db
+        .select({
+          trialExpiresAt: organizations.trialExpiresAt,
+          claimedAt: organizations.claimedAt,
+        })
+        .from(organizations)
+        .where(eq(organizations.id, organizationId))
+        .limit(1);
+      const stillExpiredTrial =
+        org !== undefined &&
+        org.trialExpiresAt !== null &&
+        org.trialExpiresAt <= now &&
+        org.claimedAt === null;
+      if (!stillExpiredTrial) {
+        return {
+          deleted: false,
+          clickhouseTablesPurged: [],
+          workosDeleted: false,
+          agentUsersDeleted: 0,
+        };
+      }
+      return await destroyStores(organizationId, options, {
+        trialGuardNow: now,
+      });
+    });
+  }
+  return await destroyStores(organizationId, options, {});
+}
+
+async function destroyStores(
+  organizationId: string,
+  options: DestroyOrganizationOptions,
+  guard: { trialGuardNow?: Date },
+): Promise<DestroyOrganizationResult> {
+  const workosDeleted = await deleteWorkosOrganization(organizationId);
   const clickhouseTablesPurged = options.skipClickHouse
     ? []
     : await purgeClickHouse(organizationId);
-  const workosDeleted = await deleteWorkosOrganization(organizationId);
 
   // Read the org's registrations before the delete cascades them away. Their
   // agents' `users` rows are the one thing belonging to this org that does NOT
@@ -207,9 +281,20 @@ export async function destroyOrganization(
     .from(agentAuthRegistrations)
     .where(eq(agentAuthRegistrations.organizationId, organizationId));
 
+  // On the reaper path the guard predicates ride on the DELETE itself as well
+  // — the lock already serialises claims, so this is belt and braces, but the
+  // row this braces against being deleted is a paying customer's org.
   const deleted = await db
     .delete(organizations)
-    .where(eq(organizations.id, organizationId))
+    .where(
+      guard.trialGuardNow
+        ? and(
+            eq(organizations.id, organizationId),
+            lte(organizations.trialExpiresAt, guard.trialGuardNow),
+            isNull(organizations.claimedAt),
+          )
+        : eq(organizations.id, organizationId),
+    )
     .returning({ id: organizations.id });
 
   // After the org, so a failure above leaves the agent identity intact for the

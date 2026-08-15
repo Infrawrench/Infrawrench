@@ -16,8 +16,23 @@
  * resolution, `invitations.invitedByUserId` — takes a real user id and would
  * otherwise have to grow a null case at 70-odd call sites.
  */
+export const AGENT_USER_ID_PREFIX = "agent_";
+
+/**
+ * The same prefix as a `LIKE` pattern, underscore escaped (in `LIKE`, a bare
+ * `_` matches any character). For queries that must count or exclude agent
+ * memberships in SQL — seat accounting being the case that forced it: an agent
+ * is not a person and must never occupy, hold down, or block a paid seat.
+ */
+export const AGENT_USER_ID_LIKE_PATTERN = "agent\\_%";
+
 export function agentUserId(registrationId: string): string {
-  return `agent_${registrationId}`;
+  return `${AGENT_USER_ID_PREFIX}${registrationId}`;
+}
+
+/** Whether a `users.id` denotes an agent rather than a person. */
+export function isAgentUserId(userId: string): boolean {
+  return userId.startsWith(AGENT_USER_ID_PREFIX);
 }
 
 /**

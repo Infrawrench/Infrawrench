@@ -10,13 +10,12 @@ This exists because the alternative is worse. An agent that needs an account has
 
 ## The trial workspace
 
-Registering opens a genuine organization — real cloud accounts, real syncing, real dashboards — with three deliberate limits:
+Registering opens a genuine organization — real cloud accounts, real syncing, real dashboards — with two deliberate limits:
 
 - **It is deleted 24 hours after it is created** unless someone claims it. Everything in it goes: resources, dashboards, cost history, the lot. There is no undelete.
 - **The AI chat budget is zero.** Infrawrench's own chat agent will refuse to run. An agent arriving here already has a model of its own, and that model is the one that should be paying for its tokens.
-- **It can invite up to 3 people**, and those invitations expire with the workspace.
 
-Everything else — connecting AWS, browsing resources, building dashboards, running workflows — works exactly as it does on a paid plan.
+Everything else — connecting AWS, browsing resources, building dashboards, running workflows — works exactly as it does on a paid plan. Inviting teammates needs a person: claim the workspace first, then invite from **Settings → Team**.
 
 <insert The trial countdown banner across the top of an org page, showing roughly 6 hours remaining and the "Claim this workspace" button here>
 

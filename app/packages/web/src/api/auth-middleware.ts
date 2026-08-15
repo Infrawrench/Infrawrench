@@ -3,7 +3,12 @@ import type { MiddlewareHandler } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { eq, and } from "drizzle-orm";
 import { workos } from "../auth/workos";
-import { authenticateApiRequest, verifyWorkosAccessToken } from "../auth/api-auth";
+import {
+  agentAuthResult,
+  authenticateApiRequest,
+  verifyWorkosAccessToken,
+  type WorkosAccessTokenClaims,
+} from "../auth/api-auth";
 import { effectivePermissions } from "../auth/effective-permissions";
 import { agentRouteDenial, apiKeyRouteDenial } from "../auth/api-key-route-policy";
 import { runWithAuditPrincipal } from "../services/audit-context";
@@ -52,6 +57,14 @@ declare module "hono" {
     role: ResolvedRole | null;
     apiKey: ApiKeyPrincipal;
     /**
+     * The verified claims of this request's bearer JWT — or null when the JWT
+     * failed verification — stashed by `agentOrgMiddleware` so that
+     * `sessionMiddleware`, running next on the same request, does not verify
+     * the same signature a second time. Unset (`undefined`) on requests the
+     * agent middleware never saw.
+     */
+    bearerClaims: WorkosAccessTokenClaims | null;
+    /**
      * Live break-glass grants already folded into `permissions`. Kept separate
      * so a surface can say *why* the caller can do something — "until 14:32,
      * because you asked for it" is a different statement from "your role
@@ -70,7 +83,12 @@ export const sessionMiddleware = createMiddleware(async (c, next) => {
   if (!cookieValue) {
     const bearer = c.req.header("authorization");
     if (bearer?.startsWith("Bearer ")) {
-      const claims = await verifyWorkosAccessToken(bearer.slice(7));
+      // On the org tree `agentOrgMiddleware` has already verified this exact
+      // token and stashed the claims (null = failed verification); reuse them
+      // rather than paying the JWKS signature check twice per request.
+      const stashed = c.get("bearerClaims");
+      const claims =
+        stashed !== undefined ? stashed : await verifyWorkosAccessToken(bearer.slice(7));
       if (!claims?.sub) {
         return c.json({ error: "Unauthorized" }, 401);
       }
@@ -80,7 +98,15 @@ export const sessionMiddleware = createMiddleware(async (c, next) => {
       // later granted. Refuse before provisioning, and say why: this group is
       // the non-org surface (profile, MFA, org creation, admin), which is
       // people-only by design, exactly as it is for `iwk_` API keys.
-      if (await resolveAgentPrincipal(claims.sub)) {
+      //
+      // Skipped when the agent middleware already ran (it did this lookup) and
+      // for `user_`-prefixed subs — that is WorkOS's user-id shape, and
+      // registration ids are bare UUIDs, so those can never be agents.
+      if (
+        stashed === undefined &&
+        !claims.sub.startsWith("user_") &&
+        (await resolveAgentPrincipal(claims.sub))
+      ) {
         return c.json(
           {
             error:
@@ -305,15 +331,34 @@ export const agentOrgMiddleware = createMiddleware(async (c, next) => {
   const bearer = c.req.header("authorization");
   if (!bearer?.startsWith("Bearer ")) return next();
   const token = bearer.slice(7);
-  // A WorkOS agent token is a JWT, so it cannot be recognised by prefix; the
-  // full auth path below sorts it out. An `iwk_` key is never ours to handle.
+  // An `iwk_` key is never ours to handle.
   if (token.startsWith("iwk_")) return next();
 
   const orgId = c.req.param("orgId");
   if (!orgId) return next();
 
-  const auth = await authenticateApiRequest(c.req.raw);
-  if (!auth?.agentRegistrationId) return next();
+  let auth: Awaited<ReturnType<typeof authenticateApiRequest>> = null;
+  if (token.startsWith("iwa_")) {
+    // Our own opaque credential: `authenticateApiRequest`'s `iwa_` branch is
+    // the whole resolution. An unknown or revoked credential 401s here rather
+    // than falling through to `sessionMiddleware`, which could only fail to
+    // parse it as a JWT and answer the same 401 less accurately.
+    auth = await authenticateApiRequest(c.req.raw);
+    if (!auth?.agentRegistrationId) return c.json({ error: "Unauthorized" }, 401);
+  } else {
+    // A WorkOS agent token is a JWT, so it cannot be recognised by prefix.
+    // Verify it once and stash the claims — `sessionMiddleware` runs next on
+    // every non-agent bearer request, and without the stash this hottest
+    // authenticated path would pay the JWKS signature check twice.
+    const claims = await verifyWorkosAccessToken(token);
+    c.set("bearerClaims", claims ?? null);
+    // A `user_`-prefixed sub is a person (registration ids are bare UUIDs), so
+    // the registration lookup is skipped for the common case entirely.
+    if (!claims?.sub || claims.sub.startsWith("user_")) return next();
+    auth = await agentAuthResult(claims.sub, claims.act?.sub);
+    if (!auth) return next();
+  }
+  if (!auth.agentRegistrationId) return next();
 
   // An agent is bound to the org its registration opened (or was merged into).
   // Presenting it against another org's URL is a 403 whatever it holds.

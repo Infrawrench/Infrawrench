@@ -42,34 +42,51 @@ afterEach(() => {
 });
 
 describe("registerAnonymousAgent", () => {
-  /** Rate-limit probes: global count, then per-IP count. */
+  /** Advisory lock, then rate-limit probes: global count, then per-IP count. */
   function allowRegistration() {
+    pg.queueRows([]); // pg_advisory_xact_lock
     pg.queueRows([{ n: 0 }]);
     pg.queueRows([{ n: 0 }]);
   }
 
-  it("issues an iwa_ credential and stores only its hash", async () => {
+  it("issues an iwa_ credential and stores only its hash, in the creating insert", async () => {
     allowRegistration();
     const result = await ceremony.registerAnonymousAgent({ ip: "1.2.3.4" });
 
     expect(result.credential.startsWith("iwa_")).toBe(true);
 
-    const [update] = updates("agent_auth_registrations");
     // The plaintext must not appear in any statement we issued.
     for (const q of pg.queries) {
       expect(q.params).not.toContain(result.credential);
     }
-    expect(update?.params).toContain(`hash(agent-credential:${result.credential})`);
+    // On the insert itself, not a backfill: a registration without its hash is
+    // an org nobody can authenticate to, and a row the per-IP count cannot see.
+    const [insert] = inserts("agent_auth_registrations");
+    expect(insert?.params).toContain(`hash(agent-credential:${result.credential})`);
+    expect(updates("agent_auth_registrations")).toHaveLength(0);
   });
 
-  it("stores the credential prefix for display", async () => {
+  it("stores the credential prefix and source address for display and rate limiting", async () => {
     allowRegistration();
     const result = await ceremony.registerAnonymousAgent({ ip: "1.2.3.4" });
-    const [update] = updates("agent_auth_registrations");
-    expect(update?.params).toContain(result.credential.slice(0, 8));
+    const [insert] = inserts("agent_auth_registrations");
+    expect(insert?.params).toContain(result.credential.slice(0, 8));
+    expect(insert?.params).toContain("1.2.3.4");
+  });
+
+  it("takes the registration lock before counting", async () => {
+    allowRegistration();
+    await ceremony.registerAnonymousAgent({ ip: "1.2.3.4" });
+    const lockIndex = pg.queries.findIndex((q) => q.sql.includes("pg_advisory_xact_lock"));
+    const firstCount = pg.queries.findIndex((q) => q.sql.startsWith("select count"));
+    // Serialised count-then-insert is the whole point: without the lock, N
+    // concurrent registrations all count the same world and all pass.
+    expect(lockIndex).toBeGreaterThanOrEqual(0);
+    expect(firstCount).toBeGreaterThan(lockIndex);
   });
 
   it("refuses past the per-IP hourly limit, before creating anything", async () => {
+    pg.queueRows([]); // lock
     pg.queueRows([{ n: 0 }]); // global is fine
     pg.queueRows([{ n: ceremony.REGISTRATIONS_PER_IP_PER_HOUR }]); // this IP is not
 
@@ -82,6 +99,7 @@ describe("registerAnonymousAgent", () => {
   });
 
   it("refuses past the global hourly ceiling whatever the address", async () => {
+    pg.queueRows([]); // lock
     pg.queueRows([{ n: ceremony.GLOBAL_REGISTRATIONS_PER_HOUR }]);
     await expect(ceremony.registerAnonymousAgent({ ip: "1.2.3.4" })).rejects.toThrow(
       /temporarily paused/,
@@ -90,6 +108,7 @@ describe("registerAnonymousAgent", () => {
   });
 
   it("still applies the global ceiling when there is no source address", async () => {
+    pg.queueRows([]); // lock
     pg.queueRows([{ n: ceremony.GLOBAL_REGISTRATIONS_PER_HOUR }]);
     await expect(ceremony.registerAnonymousAgent({})).rejects.toThrow(/temporarily paused/);
   });

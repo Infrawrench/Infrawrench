@@ -24,9 +24,18 @@ export const PAGE_CACHE_SECONDS = 600;
  * A query parameter rather than a header, because that is the part of the
  * request Cloudflare's Cache API actually keys on. It never reaches an origin —
  * this key is only ever handed to `caches.default`.
+ *
+ * Built from **origin + pathname only**, never the request's own query string.
+ * The pages this fronts do not vary by query, and copying the client's query
+ * into the key breaks the representation split both ways: a browser request
+ * for `/?__repr=md` would render HTML (the representation is decided by
+ * `Accept` alone) and store it under the exact key the markdown answer lives
+ * at, poisoning every agent's next ten minutes — and any junk parameter
+ * (`?utm_source=…`) would mint its own cache entry, making the edge cache
+ * trivially dilutable.
  */
 function representationKey(url: URL, markdown: boolean): Request {
-  const keyUrl = new URL(url);
+  const keyUrl = new URL(url.pathname, url.origin);
   if (markdown) keyUrl.searchParams.set("__repr", "md");
   return new Request(keyUrl.toString(), { method: "GET" });
 }

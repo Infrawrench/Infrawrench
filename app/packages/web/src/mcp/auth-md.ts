@@ -45,10 +45,12 @@ feature enabled and no payment details required.
   Everything in it goes with it.
 - It has a **zero AI budget**. Infrawrench's own chat agent will refuse to run.
   You are expected to bring your own model — you already have one.
-- It can invite up to 3 people, and those invitations expire with the workspace.
 
 Tell your user both of these things when you register. A workspace that
 disappears overnight without warning is worse than no workspace.
+
+Inviting teammates needs a person: once the workspace is claimed, its owner
+can invite the team from Settings → Team.
 
 ## 1. Register
 

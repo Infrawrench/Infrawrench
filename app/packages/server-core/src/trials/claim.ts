@@ -39,6 +39,7 @@ import { ensureSystemRoles, getSystemRole } from "../permissions/resolver.js";
 import { FREE_PLAN_LIMITS, PlanRequiredError, planAccess } from "../entitlements.js";
 import { destroyOrganization, moveOrgClickHouseData } from "./destroy.js";
 import { agentUserId } from "./identity.js";
+import { withTrialOrgLock } from "./lock.js";
 
 export type ClaimMode = "adopt" | "merge";
 
@@ -95,94 +96,125 @@ export class TrialClaimError extends Error {
  * registration throws rather than re-running, because the two modes are not
  * interchangeable and silently ignoring the second call would leave the caller
  * believing a merge happened when an adopt did.
+ *
+ * The whole claim runs holding the trial org's lock (`lock.ts`), the same one
+ * the reaper's guarded destroy takes. A `user_code` stays valid for fifteen
+ * minutes, so claims legitimately land *after* the trial's clock has run out
+ * and race the reaper; the lock decides that race cleanly. If the claim wins,
+ * adopt clears `trialExpiresAt` (or merge re-points the registration) and the
+ * reaper's re-check backs off. If the reaper wins, the registration cascades
+ * away with the org and the re-read below reports the honest outcome instead
+ * of returning success against rows that no longer exist.
  */
 export async function claimTrialOrg(options: ClaimTrialOptions): Promise<ClaimTrialResult> {
   const now = options.now ?? new Date();
 
-  const [registration] = await db
-    .select()
+  // An unlocked read, only to learn which org's lock to take. Everything it
+  // returns is re-established under the lock.
+  const [preliminary] = await db
+    .select({ organizationId: agentAuthRegistrations.organizationId })
     .from(agentAuthRegistrations)
     .where(eq(agentAuthRegistrations.id, options.registrationId))
     .limit(1);
-
-  if (!registration) {
+  if (!preliminary) {
     throw new TrialClaimError("That agent registration is not known to this service.");
   }
-  if (registration.revokedAt) {
-    throw new TrialClaimError("That agent registration has been revoked and cannot be claimed.");
-  }
-  if (registration.claimedAt) {
-    throw new TrialClaimError("That agent registration has already been claimed.");
-  }
 
-  const trialOrgId = registration.organizationId;
+  return await withTrialOrgLock(preliminary.organizationId, async () => {
+    const [registration] = await db
+      .select()
+      .from(agentAuthRegistrations)
+      .where(eq(agentAuthRegistrations.id, options.registrationId))
+      .limit(1);
 
-  if (options.mode === "adopt") {
-    await adoptTrialOrg(trialOrgId, options.userId, now);
+    if (!registration) {
+      // Cascaded away between the read above and taking the lock: the reaper
+      // destroyed the trial while this claim waited its turn.
+      throw new TrialClaimError(
+        "That trial workspace expired and has been deleted. Ask your agent to register again.",
+      );
+    }
+    if (registration.revokedAt) {
+      throw new TrialClaimError("That agent registration has been revoked and cannot be claimed.");
+    }
+    if (registration.claimedAt) {
+      throw new TrialClaimError("That agent registration has already been claimed.");
+    }
+
+    const trialOrgId = registration.organizationId;
+
+    if (options.mode === "adopt") {
+      await adoptTrialOrg(trialOrgId, options.registrationId, options.userId, now);
+      await db
+        .update(agentAuthRegistrations)
+        .set({ claimedByUserId: options.userId, claimedAt: now })
+        .where(eq(agentAuthRegistrations.id, options.registrationId));
+      return { mode: "adopt", organizationId: trialOrgId, accountsMoved: 0, historyMoved: false };
+    }
+
+    const targetOrganizationId = options.targetOrganizationId;
+    if (!targetOrganizationId) {
+      throw new TrialClaimError("A merge needs a target organization.");
+    }
+    if (targetOrganizationId === trialOrgId) {
+      throw new TrialClaimError("Cannot merge a trial organization into itself.");
+    }
+
+    // The claimer must already belong to the target. Without this check, a claim
+    // ceremony would be a way to push cloud credentials into any org whose id you
+    // can guess.
+    const [membership] = await db
+      .select({ id: organizationMembers.id })
+      .from(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.userId, options.userId),
+          eq(organizationMembers.organizationId, targetOrganizationId),
+        ),
+      )
+      .limit(1);
+    if (!membership) {
+      throw new TrialClaimError(
+        "You are not a member of the organization you asked to merge into.",
+      );
+    }
+
+    const accountsMoved = await mergeTrialInto(trialOrgId, targetOrganizationId);
+
+    // History moves before the destroy so the purge can be skipped entirely —
+    // see `DestroyOrganizationOptions.skipClickHouse` for why "the mutation queue
+    // is ordered" is not a good enough reason to issue both.
+    let historyMoved = false;
+    if (options.moveHistory) {
+      await moveOrgClickHouseData(trialOrgId, targetOrganizationId);
+      historyMoved = true;
+    }
+
+    // Record the claim against the registration *before* the trial org goes away:
+    // the row cascades with the org, so it has to be re-pointed at the target
+    // first or the agent would lose its binding along with its trial.
     await db
       .update(agentAuthRegistrations)
-      .set({ claimedByUserId: options.userId, claimedAt: now })
+      .set({
+        organizationId: targetOrganizationId,
+        claimedByUserId: options.userId,
+        claimedAt: now,
+      })
       .where(eq(agentAuthRegistrations.id, options.registrationId));
-    return { mode: "adopt", organizationId: trialOrgId, accountsMoved: 0, historyMoved: false };
-  }
 
-  const targetOrganizationId = options.targetOrganizationId;
-  if (!targetOrganizationId) {
-    throw new TrialClaimError("A merge needs a target organization.");
-  }
-  if (targetOrganizationId === trialOrgId) {
-    throw new TrialClaimError("Cannot merge a trial organization into itself.");
-  }
+    // The agent's own membership follows its registration into the target org,
+    // or the agent would keep authenticating into an org it no longer belongs
+    // to — its permissions resolve against membership, and the trial's row is
+    // about to be cascaded away.
+    await moveAgentMembership(options.registrationId, trialOrgId, targetOrganizationId);
 
-  // The claimer must already belong to the target. Without this check, a claim
-  // ceremony would be a way to push cloud credentials into any org whose id you
-  // can guess.
-  const [membership] = await db
-    .select({ id: organizationMembers.id })
-    .from(organizationMembers)
-    .where(
-      and(
-        eq(organizationMembers.userId, options.userId),
-        eq(organizationMembers.organizationId, targetOrganizationId),
-      ),
-    )
-    .limit(1);
-  if (!membership) {
-    throw new TrialClaimError("You are not a member of the organization you asked to merge into.");
-  }
+    // No `expiredTrialOnly` here: this caller already holds the org's lock (a
+    // guarded destroy would deadlock re-taking it — see `lock.ts`), and a merge
+    // destroys the trial org whether or not its clock has run out.
+    await destroyOrganization(trialOrgId, { skipClickHouse: historyMoved });
 
-  const accountsMoved = await mergeTrialInto(trialOrgId, targetOrganizationId);
-
-  // History moves before the destroy so the purge can be skipped entirely —
-  // see `DestroyOrganizationOptions.skipClickHouse` for why "the mutation queue
-  // is ordered" is not a good enough reason to issue both.
-  let historyMoved = false;
-  if (options.moveHistory) {
-    await moveOrgClickHouseData(trialOrgId, targetOrganizationId);
-    historyMoved = true;
-  }
-
-  // Record the claim against the registration *before* the trial org goes away:
-  // the row cascades with the org, so it has to be re-pointed at the target
-  // first or the agent would lose its binding along with its trial.
-  await db
-    .update(agentAuthRegistrations)
-    .set({
-      organizationId: targetOrganizationId,
-      claimedByUserId: options.userId,
-      claimedAt: now,
-    })
-    .where(eq(agentAuthRegistrations.id, options.registrationId));
-
-  // The agent's own membership follows its registration into the target org,
-  // or the agent would keep authenticating into an org it no longer belongs
-  // to — its permissions resolve against membership, and the trial's row is
-  // about to be cascaded away.
-  await moveAgentMembership(options.registrationId, trialOrgId, targetOrganizationId);
-
-  await destroyOrganization(trialOrgId, { skipClickHouse: historyMoved });
-
-  return { mode: "merge", organizationId: targetOrganizationId, accountsMoved, historyMoved };
+    return { mode: "merge", organizationId: targetOrganizationId, accountsMoved, historyMoved };
+  });
 }
 
 /**
@@ -200,7 +232,12 @@ export async function claimTrialOrg(options: ClaimTrialOptions): Promise<ClaimTr
  * is a decision for its new owner to make knowingly, not something a claim
  * should hand over silently.
  */
-async function adoptTrialOrg(organizationId: string, userId: string, now: Date): Promise<void> {
+async function adoptTrialOrg(
+  organizationId: string,
+  registrationId: string,
+  userId: string,
+  now: Date,
+): Promise<void> {
   await db
     .update(organizations)
     .set({ trialExpiresAt: null, claimedAt: now, updatedAt: now })
@@ -209,8 +246,8 @@ async function adoptTrialOrg(organizationId: string, userId: string, now: Date):
   await ensureSystemRoles(organizationId);
   const ownerRole = await getSystemRole(organizationId, "owner");
 
-  // The first membership row this org has ever had — trials run without one so
-  // they never consume a seat (see `trials/create.ts`).
+  // The claimer becomes the org's owner — its only human member so far; the
+  // agent's membership from `trials/create.ts` is the other row this org holds.
   await db
     .insert(organizationMembers)
     .values({
@@ -221,6 +258,24 @@ async function adoptTrialOrg(organizationId: string, userId: string, now: Date):
       roleId: ownerRole.id,
     })
     .onConflictDoNothing();
+
+  // Make sure the agent's own membership is a plain member. `create.ts` writes
+  // it that way now, but rows created before it did were owners — and an
+  // agent-owner makes the claimer's ownership a lie: the last-owner guard on
+  // member removal would count the agent and let the only human owner remove
+  // themselves, leaving a tenant nobody can administer. The agent loses
+  // nothing; its authority comes from `resolveAgentPrincipal`, never from this
+  // row's role.
+  const memberRole = await getSystemRole(organizationId, "member");
+  await db
+    .update(organizationMembers)
+    .set({ role: "member", roleId: memberRole.id })
+    .where(
+      and(
+        eq(organizationMembers.userId, agentUserId(registrationId)),
+        eq(organizationMembers.organizationId, organizationId),
+      ),
+    );
 }
 
 /**

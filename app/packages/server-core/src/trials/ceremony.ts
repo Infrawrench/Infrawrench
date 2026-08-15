@@ -32,7 +32,7 @@ import { and, count, eq, gte, isNull } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { agentAuthRegistrations } from "../db/schema.js";
 import { keyedHash } from "../encryption.js";
-import { createTrialOrg, type TrialOrg } from "./create.js";
+import { createTrialOrg, type TrialCreateTx, type TrialOrg } from "./create.js";
 
 /** Domain label for HMAC sub-key derivation. Distinct from the API-key domain. */
 const AGENT_CREDENTIAL_HASH_DOMAIN = "agent-credential";
@@ -132,10 +132,16 @@ export function formatClaimCode(code: string): string {
   return `${code.slice(0, 4)}-${code.slice(4)}`;
 }
 
-async function assertRegistrationAllowed(ip: string | null): Promise<void> {
+/**
+ * Runs inside `createTrialOrg`'s reservation transaction, behind its advisory
+ * lock — that is what makes count-then-insert safe. N concurrent registrations
+ * serialise on the lock, so each count sees every row the previous one
+ * committed; without it, all N would count the same world and all N would pass.
+ */
+async function assertRegistrationAllowed(tx: TrialCreateTx, ip: string | null): Promise<void> {
   const since = new Date(Date.now() - 60 * 60 * 1000);
 
-  const [global] = await db
+  const [global] = await tx
     .select({ n: count() })
     .from(agentAuthRegistrations)
     .where(gte(agentAuthRegistrations.createdAt, since));
@@ -146,10 +152,12 @@ async function assertRegistrationAllowed(ip: string | null): Promise<void> {
   }
 
   // No IP is not a free pass, but it cannot be counted per-IP either; the
-  // global ceiling above is what covers it.
+  // global ceiling above is what covers it. The route validates the header
+  // value is an actual IP address before it gets here, so this branch is
+  // "genuinely unknown", not "sent us 46 bytes of garbage".
   if (!ip) return;
 
-  const [perIp] = await db
+  const [perIp] = await tx
     .select({ n: count() })
     .from(agentAuthRegistrations)
     .where(
@@ -183,35 +191,36 @@ export interface RegisteredAgent {
 /**
  * Open an anonymous registration and the trial org behind it.
  *
- * Rate-limited before anything is created — the limit exists to stop orgs being
- * created, so checking after would be a limit on nothing.
+ * Rate-limited inside the same locked transaction that creates the org and
+ * registration rows — the limit exists to stop orgs being created, so it has
+ * to be checked where creation is decided, against a world no rival request
+ * can change mid-check. The credential hash and source IP are written on the
+ * registration row in the statement that creates it: a backfilled row would be
+ * invisible to the per-IP count while in flight, and a failure between the
+ * insert and the backfill would leave a fully provisioned org that nobody —
+ * not even the agent that opened it — could ever authenticate to.
  */
 export async function registerAnonymousAgent(
   options: RegisterAgentOptions = {},
 ): Promise<RegisteredAgent> {
-  await assertRegistrationAllowed(options.ip ?? null);
-
   const registrationId = randomUUID();
   const { token, prefix } = mintCredential();
+  const hashed = await keyedHash(token, AGENT_CREDENTIAL_HASH_DOMAIN);
+  const ip = options.ip ?? null;
 
   let trial: TrialOrg;
   try {
     trial = await createTrialOrg({
       registrationId,
       ...(options.label ? { label: options.label } : {}),
+      credential: { hashed, prefix },
+      createdFromIp: ip,
+      assertAllowed: (tx) => assertRegistrationAllowed(tx, ip),
     });
   } catch (e) {
+    if (e instanceof RegistrationRateLimitedError) throw e;
     throw new Error(`could not open a trial workspace: ${e instanceof Error ? e.message : e}`);
   }
-
-  await db
-    .update(agentAuthRegistrations)
-    .set({
-      hashedCredential: await keyedHash(token, AGENT_CREDENTIAL_HASH_DOMAIN),
-      credentialPrefix: prefix,
-      createdFromIp: options.ip ?? null,
-    })
-    .where(eq(agentAuthRegistrations.id, registrationId));
 
   return {
     registrationId,

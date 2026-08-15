@@ -198,9 +198,18 @@ describe("destroyOrganization", () => {
 });
 
 describe("runTrialExpiryPass", () => {
+  const now = new Date("2026-08-14T10:00:00Z");
+  const expired = new Date("2026-08-14T09:00:00Z");
+
+  /** One destroyed org's statement tail: lock, guard re-check, then the stores. */
+  function queueGuardedDestroy(guardRow: { trialExpiresAt: Date | null; claimedAt: Date | null }) {
+    pg.queueRows([]); // pg_advisory_xact_lock
+    pg.queueRows([guardRow]); // the under-lock re-check
+  }
+
   it("asks only for unclaimed trials whose clock has run out", async () => {
     pg.setRows([]);
-    await pass.runTrialExpiryPass({ now: new Date("2026-08-14T10:00:00Z") });
+    await pass.runTrialExpiryPass({ now });
 
     const [select] = pg.queries.filter((q) => q.sql.startsWith("select"));
     expect(select?.sql).toContain('"trial_expires_at" is not null');
@@ -208,15 +217,46 @@ describe("runTrialExpiryPass", () => {
   });
 
   it("keeps going after one org fails to destroy", async () => {
-    pg.setRows([
+    pg.queueRows([
       { id: "org-a", displayName: "A" },
       { id: "org-b", displayName: "B" },
     ]);
-    chCommand.mockRejectedValueOnce(new Error("clickhouse down"));
+    queueGuardedDestroy({ trialExpiresAt: expired, claimedAt: null });
+    chCommand.mockRejectedValueOnce(new Error("clickhouse down")); // org-a dies here
+    queueGuardedDestroy({ trialExpiresAt: expired, claimedAt: null });
+    pg.queueRows([]); // org-b: surviving registrations
+    pg.queueRows([{ id: "org-b" }]); // org-b: the delete's returning row
 
-    const result = await pass.runTrialExpiryPass();
+    const result = await pass.runTrialExpiryPass({ now });
     expect(result.due).toBe(2);
     expect(result.failed).toBe(1);
+    expect(result.destroyed).toBe(1);
+  });
+
+  it("skips an org claimed between the due query and the destroy", async () => {
+    pg.queueRows([{ id: "org-a", displayName: "A" }]);
+    // The under-lock re-check sees the claim that landed in the window.
+    queueGuardedDestroy({ trialExpiresAt: null, claimedAt: new Date("2026-08-14T09:59:59Z") });
+
+    const result = await pass.runTrialExpiryPass({ now });
+    expect(result.destroyed).toBe(0);
+    expect(result.failed).toBe(0);
+    // Nothing irreversible happened: no purge was issued and no row deleted.
+    expect(chCommand).not.toHaveBeenCalled();
+    expect(deletes("organizations")).toHaveLength(0);
+  });
+
+  it("backs a persistently failing org off instead of retrying it every tick", async () => {
+    pg.queueRows([{ id: "org-a", displayName: "A" }]);
+    queueGuardedDestroy({ trialExpiresAt: expired, claimedAt: null });
+    chCommand.mockRejectedValueOnce(new Error("clickhouse down"));
+    await pass.runTrialExpiryPass({ now });
+
+    // Same tick clock: the org is due in the table but sitting out its backoff,
+    // so the slot it occupied is free for the trials queued behind it.
+    pg.queueRows([{ id: "org-a", displayName: "A" }]);
+    const second = await pass.runTrialExpiryPass({ now });
+    expect(second.due).toBe(0);
   });
 });
 
@@ -299,8 +339,15 @@ describe("claimTrialOrg", () => {
     createdAt: new Date(),
   };
 
+  /** The claim's entry statements: the org lookup, the lock, the locked re-read. */
+  function queueClaimPreamble(row: Record<string, unknown> = registration) {
+    pg.queueRows([{ organizationId: row["organizationId"] }]); // which org to lock
+    pg.queueRows([]); // pg_advisory_xact_lock
+    pg.queueRows([row]); // the re-read under the lock
+  }
+
   it("adopting clears the expiry and makes the claimer owner", async () => {
-    pg.queueRows([registration]);
+    queueClaimPreamble();
     const result = await claim.claimTrialOrg({
       registrationId: "reg_1",
       userId: "user-1",
@@ -316,24 +363,48 @@ describe("claimTrialOrg", () => {
     expect(deletes("organizations")).toHaveLength(0);
   });
 
+  it("adopting leaves the claimer as the only owner-shaped member", async () => {
+    queueClaimPreamble();
+    await claim.claimTrialOrg({ registrationId: "reg_1", userId: "user-1", mode: "adopt" });
+
+    // The agent's membership is forced down to member. Left an owner, it would
+    // satisfy the last-owner guard and let the sole human owner remove
+    // themselves, stranding the tenant with nobody who can administer it.
+    const demote = updates("organization_members")[0];
+    expect(demote).toBeDefined();
+    expect(demote?.params).toContain("agent_reg_1");
+    expect(demote?.params).toContain("member");
+  });
+
   it("refuses a second claim of the same registration", async () => {
-    pg.queueRows([{ ...registration, claimedAt: new Date() }]);
+    queueClaimPreamble({ ...registration, claimedAt: new Date() });
     await expect(
       claim.claimTrialOrg({ registrationId: "reg_1", userId: "user-1", mode: "adopt" }),
     ).rejects.toThrow(/already been claimed/);
   });
 
   it("refuses a revoked registration", async () => {
-    pg.queueRows([{ ...registration, revokedAt: new Date() }]);
+    queueClaimPreamble({ ...registration, revokedAt: new Date() });
     await expect(
       claim.claimTrialOrg({ registrationId: "reg_1", userId: "user-1", mode: "adopt" }),
     ).rejects.toThrow(/revoked/);
   });
 
+  it("reports the honest outcome when the reaper won the race for the org", async () => {
+    pg.queueRows([{ organizationId: "org-trial" }]); // the unlocked lookup still saw it
+    pg.queueRows([]); // pg_advisory_xact_lock — held by the reaper until the org was gone
+    pg.queueRows([]); // the re-read under the lock: cascaded away
+    await expect(
+      claim.claimTrialOrg({ registrationId: "reg_1", userId: "user-1", mode: "adopt" }),
+    ).rejects.toThrow(/expired and has been deleted/);
+    // Nothing was claimed against rows that no longer exist.
+    expect(updates("agent_auth_registrations")).toHaveLength(0);
+  });
+
   it("refuses a merge into an org the claimer does not belong to", async () => {
-    // Only the registration is queued; the membership lookup falls to the
+    // Only the preamble is queued; the membership lookup falls to the
     // empty default, which is what "not a member" looks like.
-    pg.queueRows([registration]);
+    queueClaimPreamble();
     await expect(
       claim.claimTrialOrg({
         registrationId: "reg_1",
@@ -345,16 +416,16 @@ describe("claimTrialOrg", () => {
   });
 
   it("refuses a merge with no target", async () => {
-    pg.queueRows([registration]);
+    queueClaimPreamble();
     await expect(
       claim.claimTrialOrg({ registrationId: "reg_1", userId: "user-1", mode: "merge" }),
     ).rejects.toThrow(/needs a target/);
   });
 
   describe("merge", () => {
-    /** Registration → membership → accounts → planAccess(paid) → … */
+    /** Preamble → membership → accounts → planAccess(paid) → … */
     function queueMergePreamble() {
-      pg.queueRows([registration]); // registration lookup
+      queueClaimPreamble();
       pg.queueRows([{ id: "member-1" }]); // claimer's membership in the target
       pg.queueRows([{ id: "acct-1" }]); // accounts to move
       pg.queueRows([{ complimentary: true, trialExpiresAt: null }]); // target is paid
@@ -409,7 +480,7 @@ describe("claimTrialOrg", () => {
     });
 
     it("refuses when the merge would put a free target over its account limit", async () => {
-      pg.queueRows([registration]);
+      queueClaimPreamble();
       pg.queueRows([{ id: "member-1" }]);
       pg.queueRows([{ id: "a" }, { id: "b" }]); // two accounts moving
       pg.queueRows([{ complimentary: false, trialExpiresAt: null }]); // target unpaid

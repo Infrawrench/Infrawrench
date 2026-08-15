@@ -17,6 +17,7 @@ import {
   isSystemRoleKey,
   systemRolePermissions,
 } from "@infrawrench/server-core/permissions";
+import { isAgentUserId } from "@infrawrench/server-core/trials/identity";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -278,60 +279,15 @@ app.get("/invitations", async (c) => {
 });
 
 /**
- * How many people an unclaimed trial org may invite.
- *
- * Small on purpose. The number that makes a trial useful is "enough to show a
- * colleague", not "enough to seed a workspace" — and every invite is an email
- * our domain sends on behalf of an org that nobody has paid for or, before the
- * claim ceremony, even identified themselves to open.
- */
-const TRIAL_INVITE_LIMIT = 3;
-
-/**
- * Bound invitations from a trial org: a low ceiling, and no invite whose link
- * outlives the org it is for.
- *
- * The second half matters more than it looks. Invitations cascade with the
- * organization, so an invite sent an hour before the reaper runs becomes a dead
- * link with no explanation on the other side — the recipient sees a broken
- * page, not "that workspace expired". Clamping the expiry to the trial's own
- * deadline at least makes the failure an expired invite, which the accept route
- * already explains.
- */
-async function checkTrialInviteAllowance(
-  organizationId: string,
-): Promise<{ status: 402 | 409; body: { error: string; code?: string } } | null> {
-  const [row] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(invitations)
-    .where(and(eq(invitations.organizationId, organizationId), isNull(invitations.acceptedAt)));
-  // Accepted invites count too: the limit is on how many people a trial pulls
-  // in, not on how many links are outstanding.
-  const [members] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(organizationMembers)
-    .where(eq(organizationMembers.organizationId, organizationId));
-
-  // The agent's own membership is not a person and does not consume the
-  // allowance — it is an implementation detail of how a trial org exists at all.
-  const humanMembers = Math.max(0, (members?.n ?? 0) - 1);
-  const used = (row?.n ?? 0) + humanMembers;
-  if (used >= TRIAL_INVITE_LIMIT) {
-    return {
-      status: 409,
-      body: {
-        error:
-          `A trial workspace can invite up to ${TRIAL_INVITE_LIMIT} people. ` +
-          `Claim this workspace to invite your whole team.`,
-        code: "trial_invite_limit_reached",
-      },
-    };
-  }
-  return null;
-}
-
-/**
  * The usual invitation lifetime, clamped so it never outlives a trial org.
+ *
+ * The clamp is defensive rather than reachable today: agents may not invite
+ * (`AGENT_DENY_RULES` closes `POST /team/invitations`), and no human is a
+ * member of an org while it is still a trial, so no invite is ever minted from
+ * one. It stays because invitations cascade with the organization — should
+ * trial-org invites ever open up, an invite whose link outlives the org would
+ * be a dead link with no explanation on the other side, and this is the one
+ * place that failure can be prevented.
  *
  * Takes the already-resolved {@link PlanAccess} rather than re-reading the org:
  * `planAccess` carries `trialExpiresAt` precisely so a caller acting on a trial
@@ -359,16 +315,13 @@ app.post("/invitations", async (c) => {
 
   // The free plan is a single user, so any invite means upgrading first.
   // Paid orgs skip this and hit the seat gate below instead.
+  //
+  // No trial-specific gate is needed: a caller with `access.reason === "trial"`
+  // cannot exist here. Agents are denied this route outright (see
+  // `AGENT_DENY_RULES` — an anonymous registration that can send mail from our
+  // domain is a spam relay), and a trial org has no human members until a
+  // claim, which is also the moment `trialExpiresAt` is cleared.
   const access = await planAccess(organizationId);
-  // A trial org is paid, so it reaches both gates already — and passes the seat
-  // gate too, because capacity is 0 and `checkSeatAvailability` reads that as
-  // "invite freely". Inviting teammates into a trial is wanted; inviting
-  // unbounded strangers from an org that cost nothing to open is a way to send
-  // mail from our domain at scale, so trials get their own ceiling.
-  if (access.reason === "trial") {
-    const trialCheck = await checkTrialInviteAllowance(organizationId);
-    if (trialCheck) return c.json(trialCheck.body, trialCheck.status);
-  }
   if (!access.paid) {
     return c.json(
       {
@@ -499,9 +452,16 @@ app.post("/invitations", async (c) => {
 
 // Counts both new (role.systemKey === "owner") and legacy (text role) owners.
 // Used by the "last owner" guard on member delete / role change.
+//
+// Agent memberships never count, whatever role their row carries: the guard
+// exists so a *person* always remains who can administer the org, and an agent
+// cannot — its permission ceiling excludes team and settings mutations. A
+// claimed org whose agent still counted as an owner would let the only human
+// owner remove themselves.
 async function countOwners(organizationId: string): Promise<number> {
   const rows = await db
     .select({
+      userId: organizationMembers.userId,
       legacyRole: organizationMembers.role,
       systemKey: roles.systemKey,
     })
@@ -510,6 +470,7 @@ async function countOwners(organizationId: string): Promise<number> {
     .where(eq(organizationMembers.organizationId, organizationId));
   let count = 0;
   for (const r of rows) {
+    if (isAgentUserId(r.userId)) continue;
     if (isOwnerRole(r.systemKey, r.legacyRole)) count++;
   }
   return count;
