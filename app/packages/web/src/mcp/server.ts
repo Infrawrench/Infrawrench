@@ -97,8 +97,12 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
     ...(auth.email !== undefined ? { email: auth.email } : {}),
     // An agent's permissions arrive already intersected with its claimer's role
     // and the agent ceiling, so they ride the same `scopes` channel API keys
-    // use — `effectivePermissions` narrows to them rather than granting the
-    // full role of the user row the agent happens to act as.
+    // use. `agentRegistrationId` beside them is load-bearing, not just audit
+    // metadata: it tells `effectivePermissions` these are the final answer
+    // rather than a ceiling to re-intersect with the role of the `users` row
+    // the agent acts as — that row is a plain `member` on purpose, and
+    // intersecting with it would deny over MCP what the same credential is
+    // granted over HTTP.
     ...(auth.agent
       ? {
           agentRegistrationId: auth.agent.registrationId,

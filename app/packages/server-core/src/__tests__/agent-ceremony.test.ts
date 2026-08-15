@@ -114,6 +114,43 @@ describe("registerAnonymousAgent", () => {
   });
 });
 
+describe("parseGlobalRegistrationLimit", () => {
+  it("takes a positive integer", () => {
+    expect(ceremony.parseGlobalRegistrationLimit("120")).toBe(120);
+  });
+
+  it("falls back rather than reading an empty string as zero", () => {
+    // `Number("")` is 0, and a ceiling of 0 makes `count >= limit` true for
+    // every request — a permanently 429ing registration route, from a value an
+    // operator can produce by declaring the key and leaving it blank.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(ceremony.parseGlobalRegistrationLimit("")).toBe(
+      ceremony.DEFAULT_GLOBAL_REGISTRATIONS_PER_HOUR,
+    );
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it("falls back rather than reading garbage as NaN", () => {
+    // Every comparison against NaN is false, so the kill switch would silently
+    // never fire — during exactly the incident it was set for.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (const bad of ["500/hr", "lots", "-1", "12.5"]) {
+      expect(ceremony.parseGlobalRegistrationLimit(bad)).toBe(
+        ceremony.DEFAULT_GLOBAL_REGISTRATIONS_PER_HOUR,
+      );
+    }
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it("uses the default when the variable is unset, without warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(ceremony.parseGlobalRegistrationLimit(undefined)).toBe(
+      ceremony.DEFAULT_GLOBAL_REGISTRATIONS_PER_HOUR,
+    );
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
 describe("claim codes", () => {
   it("normalises formatting and case", () => {
     const code = "K7MP2Q9X";

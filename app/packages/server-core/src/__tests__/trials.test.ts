@@ -31,6 +31,20 @@ vi.mock("../clickhouse/client", () => ({
 vi.mock("../permissions/resolver", () => ({
   ensureSystemRoles: vi.fn(async () => undefined),
   getSystemRole: vi.fn(async () => ({ id: "role-owner" })),
+  resolveEffectivePermissions: vi.fn(async () => ({
+    permissions: ["accounts:write", "costs:write"],
+    role: null,
+    elevations: [],
+  })),
+}));
+
+// The trial-org lock owns a dedicated connection pool of its own (see
+// `trials/lock.ts`), which is exactly what must not be reached from a suite
+// running against the recording driver. Mutual exclusion is not what these
+// tests are about; the statements issued inside the section are.
+vi.mock("../trials/lock", () => ({
+  withTrialOrgLock: async (_organizationId: string, fn: () => Promise<unknown>) => await fn(),
+  closeTrialOrgLockPool: async () => undefined,
 }));
 
 let create: typeof import("../trials/create");
@@ -201,9 +215,8 @@ describe("runTrialExpiryPass", () => {
   const now = new Date("2026-08-14T10:00:00Z");
   const expired = new Date("2026-08-14T09:00:00Z");
 
-  /** One destroyed org's statement tail: lock, guard re-check, then the stores. */
+  /** One destroyed org's statement tail: the guard re-check, then the stores. */
   function queueGuardedDestroy(guardRow: { trialExpiresAt: Date | null; claimedAt: Date | null }) {
-    pg.queueRows([]); // pg_advisory_xact_lock
     pg.queueRows([guardRow]); // the under-lock re-check
   }
 
@@ -339,10 +352,9 @@ describe("claimTrialOrg", () => {
     createdAt: new Date(),
   };
 
-  /** The claim's entry statements: the org lookup, the lock, the locked re-read. */
+  /** The claim's entry statements: the org lookup, then the locked re-read. */
   function queueClaimPreamble(row: Record<string, unknown> = registration) {
     pg.queueRows([{ organizationId: row["organizationId"] }]); // which org to lock
-    pg.queueRows([]); // pg_advisory_xact_lock
     pg.queueRows([row]); // the re-read under the lock
   }
 
@@ -392,7 +404,6 @@ describe("claimTrialOrg", () => {
 
   it("reports the honest outcome when the reaper won the race for the org", async () => {
     pg.queueRows([{ organizationId: "org-trial" }]); // the unlocked lookup still saw it
-    pg.queueRows([]); // pg_advisory_xact_lock — held by the reaper until the org was gone
     pg.queueRows([]); // the re-read under the lock: cascaded away
     await expect(
       claim.claimTrialOrg({ registrationId: "reg_1", userId: "user-1", mode: "adopt" }),
@@ -477,6 +488,54 @@ describe("claimTrialOrg", () => {
       expect(memberInsert?.params).toContain("agent_reg_1");
       expect(memberInsert?.params).toContain("member");
       expect(memberInsert?.params).not.toContain("owner");
+    });
+
+    it("refuses a claimer who cannot write accounts in the target", async () => {
+      const resolver = await import("../permissions/resolver");
+      vi.mocked(resolver.resolveEffectivePermissions).mockResolvedValueOnce({
+        permissions: ["accounts:read"],
+        role: null,
+        elevations: [],
+      });
+      queueClaimPreamble();
+      pg.queueRows([{ id: "member-1" }]); // they ARE a member of the target
+
+      // Membership is not authorization: without this gate the ceremony is a
+      // way for a read-only member to put cloud credentials into an org that
+      // refuses them POST /accounts.
+      await expect(
+        claim.claimTrialOrg({
+          registrationId: "reg_1",
+          userId: "user-1",
+          mode: "merge",
+          targetOrganizationId: "org-target",
+        }),
+      ).rejects.toThrow(/do not have permission/);
+      expect(updates("accounts")).toHaveLength(0);
+    });
+
+    it("refuses moving history without costs:write, even with accounts:write", async () => {
+      const resolver = await import("../permissions/resolver");
+      vi.mocked(resolver.resolveEffectivePermissions).mockResolvedValueOnce({
+        permissions: ["accounts:write"],
+        role: null,
+        elevations: [],
+      });
+      queueClaimPreamble();
+      pg.queueRows([{ id: "member-1" }]);
+
+      // Splicing a day of foreign cost history into charts the org reports on
+      // is the authority POST /costs/rows asks for, not the account write.
+      await expect(
+        claim.claimTrialOrg({
+          registrationId: "reg_1",
+          userId: "user-1",
+          mode: "merge",
+          targetOrganizationId: "org-target",
+          moveHistory: true,
+        }),
+      ).rejects.toThrow(/costs:write/);
+      expect(chCommand).not.toHaveBeenCalled();
     });
 
     it("refuses when the merge would put a free target over its account limit", async () => {

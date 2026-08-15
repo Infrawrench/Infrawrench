@@ -27370,6 +27370,131 @@
         ],
         "additionalProperties": false
       },
+      "AgentClaimMergeTarget": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "displayName"
+        ],
+        "additionalProperties": false
+      },
+      "AgentClaimLookup": {
+        "type": "object",
+        "properties": {
+          "registrationId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "workspaceName": {
+            "type": "string"
+          },
+          "trialExpiresInMs": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mergeTargets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentClaimMergeTarget"
+            },
+            "description": "Organizations this user may merge the workspace into: ones they already belong to AND hold `accounts:write` in. A merge writes cloud credentials, so membership alone is not enough — the confirm route enforces the same rule."
+          }
+        },
+        "required": [
+          "registrationId",
+          "workspaceName",
+          "trialExpiresInMs",
+          "mergeTargets"
+        ],
+        "additionalProperties": false
+      },
+      "AgentClaimLookupRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The `user_code` the agent showed its user."
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      },
+      "AgentClaimResult": {
+        "type": "object",
+        "properties": {
+          "organizationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The organization the agent acts in from now on.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "adopt",
+              "merge"
+            ]
+          },
+          "accountsMoved": {
+            "type": "integer"
+          },
+          "historyMoved": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "organizationId",
+          "mode",
+          "accountsMoved",
+          "historyMoved"
+        ],
+        "additionalProperties": false
+      },
+      "AgentClaimRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "adopt",
+              "merge"
+            ],
+            "description": "`adopt` keeps the workspace as its own organization and stops the clock. `merge` moves its cloud accounts into an organization you already belong to and destroys the trial. Defaults to `adopt`."
+          },
+          "targetOrganizationId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Required when `mode` is merge.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "moveHistory": {
+            "type": "boolean",
+            "description": "Merge only: also re-parent the trial's metrics and cost history. Off by default — it changes numbers the target organization may already be reporting on. Needs `costs:write`."
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      },
       "AgentRegistration": {
         "type": "object",
         "properties": {
@@ -27447,6 +27572,26 @@
           "lastSeenAt",
           "revokedAt",
           "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "AgentRevoked": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "revoked": {
+            "type": "boolean",
+            "description": "False when the registration was already revoked. The request still succeeds — revocation is idempotent — but nothing changed."
+          }
+        },
+        "required": [
+          "ok",
+          "revoked"
         ],
         "additionalProperties": false
       },
@@ -57110,6 +57255,109 @@
         "operationId": "postAgentIdentityClaim"
       }
     },
+    "/api/agent/claim/lookup": {
+      "post": {
+        "tags": [
+          "Agent auth"
+        ],
+        "summary": "Resolve a user code so the claim page can show what is being claimed",
+        "description": "A POST rather than a GET with the code in the path: the code is a live bearer secret for 15 minutes, and a URL lands in history, in `Referer`, and in access logs. Rate limited per user.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentClaimLookupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resolved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentClaimLookup"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing, malformed, or expired code"
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The workspace no longer exists"
+          },
+          "429": {
+            "description": "Too many attempts"
+          }
+        },
+        "operationId": "postAgentClaimLookup"
+      }
+    },
+    "/api/agent/claim": {
+      "post": {
+        "tags": [
+          "Agent auth"
+        ],
+        "summary": "Confirm a claim, binding the workspace to the signed-in user",
+        "description": "The code is re-resolved here rather than trusting a registration id from the lookup, so the lookup cannot be used as an oracle. Rate limited per user.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentClaimRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Claimed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentClaimResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad code, already claimed, revoked, or a merge with no valid target"
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "The merge would put a free target organization over its plan limits"
+          },
+          "403": {
+            "description": "You lack the permission the merge needs in the target organization (`accounts:write`, plus `costs:write` when moving history)."
+          },
+          "429": {
+            "description": "Too many attempts"
+          }
+        },
+        "operationId": "postAgentClaim"
+      }
+    },
     "/api/org/{orgId}/agent-registrations": {
       "get": {
         "tags": [
@@ -57273,7 +57521,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Ok"
+                  "$ref": "#/components/schemas/AgentRevoked"
                 }
               }
             }

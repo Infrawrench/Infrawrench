@@ -29,6 +29,21 @@ function member(
 }
 
 describe("classifyMemberships", () => {
+  it("deletes an organization whose only other member is an agent", () => {
+    // A claimed trial keeps the agent's `organization_members` row. Counting it
+    // as a person turns "you are alone in here" into "you solely own a shared
+    // organization" and refuses the deletion over a principal that cannot own
+    // anything — and that the user has no obvious way to remove.
+    const rows = [
+      member("org_claimed", ME, "owner"),
+      member("org_claimed", "agent_reg-1", "member"),
+    ];
+    const plan = classifyMemberships(rows, ["org_claimed"], ME);
+
+    expect(plan.organizationIdsToDelete).toEqual(["org_claimed"]);
+    expect(plan.blockers).toEqual([]);
+  });
+
   it("deletes an organization the user is the only member of", () => {
     const rows = [member("org_solo", ME, "owner")];
     const plan = classifyMemberships(rows, ["org_solo"], ME);

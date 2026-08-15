@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { apiFetch, apiPost, apiDelete, apiPatch } from "../api";
 
-// Stub window.location
-const locationMock = { href: "" };
+// Stub window.location. `pathname`/`search` are read by the 401 redirect to
+// build its `return_to`, so a stub without them silently produces "undefined".
+const locationMock = { href: "", pathname: "/org/o1/resources", search: "?tab=all" };
 vi.stubGlobal("window", { location: locationMock });
 
 function mockFetch(response: Partial<Response>) {
@@ -40,12 +41,16 @@ describe("apiFetch", () => {
     );
   });
 
-  it("redirects to sign-in on 401", async () => {
+  it("redirects to sign-in on 401, keeping where the user was", async () => {
     mockFetch({ ok: false, status: 401, text: async () => "" });
     const promise = apiFetch("/api/test");
-    // Should set location but never resolve
+    // Should set location but never resolve. The `return_to` matters for pages
+    // whose URL carries single-use state — `/claim?code=…` is handed over once
+    // by an agent and cannot be reissued, so losing it spends the link.
     await vi.waitFor(() => {
-      expect(locationMock.href).toBe("/api/auth/sign-in");
+      expect(locationMock.href).toBe(
+        `/api/auth/sign-in?return_to=${encodeURIComponent("/org/o1/resources?tab=all")}`,
+      );
     });
     // The promise should not resolve, but we can't await it forever.
     // Just confirm it's pending by racing with a timeout.

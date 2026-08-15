@@ -24,12 +24,16 @@ export interface ToolAuthContext {
    * permissions are the INTERSECTION of these and the user's role permissions,
    * so a narrowly-scoped key can never act with its owner's full authority.
    * Absent for session/OAuth principals, who act with their role's permissions.
+   *
+   * For an **agent** they are the final answer rather than a ceiling — see
+   * `auth/effective-permissions.ts`.
    */
   scopes?: readonly string[];
   /**
    * Set when the caller is an agent-auth registration. `userId` beside it is
    * the agent's own user row, never a person's — a handler that means "the
-   * human who did this" must check here before attributing anything.
+   * human who did this" must check here before attributing anything, and
+   * nothing may derive authority from that row's membership role.
    */
   agentRegistrationId?: string;
   /** "mcp" | "chat" | "api" — written into audit metadata. */

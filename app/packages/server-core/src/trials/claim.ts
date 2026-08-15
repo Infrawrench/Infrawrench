@@ -35,7 +35,12 @@ import {
   organizationMembers,
   organizations,
 } from "../db/schema.js";
-import { ensureSystemRoles, getSystemRole } from "../permissions/resolver.js";
+import {
+  ensureSystemRoles,
+  getSystemRole,
+  resolveEffectivePermissions,
+} from "../permissions/resolver.js";
+import { hasPermission } from "../permissions/catalog.js";
 import { FREE_PLAN_LIMITS, PlanRequiredError, planAccess } from "../entitlements.js";
 import { destroyOrganization, moveOrgClickHouseData } from "./destroy.js";
 import { agentUserId } from "./identity.js";
@@ -82,9 +87,10 @@ export interface ClaimTrialResult {
 }
 
 export class TrialClaimError extends Error {
-  status = 400;
-  constructor(message: string) {
+  status: number;
+  constructor(message: string, status = 400) {
     super(message);
+    this.status = status;
     this.name = "TrialClaimError";
   }
 }
@@ -179,6 +185,17 @@ export async function claimTrialOrg(options: ClaimTrialOptions): Promise<ClaimTr
       );
     }
 
+    // …and must be allowed to do this *particular* thing there. Membership
+    // alone is not authorization: a merge writes cloud account credentials
+    // into the target org, which is exactly what `POST /accounts` requires
+    // `accounts:write` for, and the member role deliberately does not hold it.
+    // Without this check the claim ceremony is a way around that route — a
+    // read-only member could connect arbitrary accounts to a trial and then
+    // merge them into an org they cannot write to.
+    await assertClaimerMayMerge(targetOrganizationId, options.userId, {
+      moveHistory: options.moveHistory === true,
+    });
+
     const accountsMoved = await mergeTrialInto(trialOrgId, targetOrganizationId);
 
     // History moves before the destroy so the purge can be skipped entirely —
@@ -215,6 +232,46 @@ export async function claimTrialOrg(options: ClaimTrialOptions): Promise<ClaimTr
 
     return { mode: "merge", organizationId: targetOrganizationId, accountsMoved, historyMoved };
   });
+}
+
+/**
+ * The permissions a merge actually exercises in the target organization.
+ *
+ * A merge is not one act but two, and they are gated separately because a user
+ * can legitimately hold one and not the other:
+ *
+ *  - **`accounts:write`** — always. Re-parenting the trial's `accounts` rows is
+ *    the same write as connecting those clouds by hand.
+ *  - **`costs:write`** — only for `moveHistory`, which splices a day of someone
+ *    else's metrics and cost into charts the target org may already be
+ *    reporting on. That is the same authority `POST /costs/rows` asks for.
+ *
+ * Elevation is excluded on purpose, matching how an agent's own permissions are
+ * scored: a break-glass window is authority handed to a person for a stated
+ * reason, and folding it into a merge would let a temporary grant permanently
+ * relocate cloud credentials.
+ */
+async function assertClaimerMayMerge(
+  targetOrganizationId: string,
+  userId: string,
+  opts: { moveHistory: boolean },
+): Promise<void> {
+  const access = await resolveEffectivePermissions(
+    targetOrganizationId,
+    { kind: "user", userId },
+    { includeElevation: false },
+  );
+  const required = opts.moveHistory ? ["accounts:write", "costs:write"] : ["accounts:write"];
+  for (const permission of required) {
+    if (!hasPermission(access.permissions, permission)) {
+      throw new TrialClaimError(
+        `You do not have permission to merge this workspace into that organization ` +
+          `(${permission} is required there). Ask an administrator, or claim the ` +
+          `workspace as its own organization instead.`,
+        403,
+      );
+    }
+  }
 }
 
 /**

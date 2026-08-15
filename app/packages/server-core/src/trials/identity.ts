@@ -35,6 +35,28 @@ export function isAgentUserId(userId: string): boolean {
   return userId.startsWith(AGENT_USER_ID_PREFIX);
 }
 
+/** 8-4-4-4-12 hex. Deliberately not pinned to v4 — this guard fails closed. */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Whether a token's `sub` has the shape of an agent registration id rather than
+ * a person's WorkOS user id.
+ *
+ * Free, and deliberately **shape-based rather than a table lookup**, because the
+ * cases that matter most are the ones no lookup can answer: a registration that
+ * has been revoked, or one the trial reaper has already deleted. Asking the
+ * table "is this a live agent?" answers *no* for both, and a person-only surface
+ * that reads that as "so it must be a person" will hand the token to
+ * `ensureUserFromClaims` and mint a `users` row keyed by a registration id —
+ * a principal nobody created, holding whatever that row's memberships grant.
+ *
+ * Registration ids are `randomUUID()`; WorkOS user ids are `user_`-prefixed and
+ * never bare UUIDs, so this cannot refuse a person.
+ */
+export function looksLikeAgentRegistrationId(sub: string): boolean {
+  return UUID_SHAPE.test(sub);
+}
+
 /**
  * The address on the agent's user row.
  *

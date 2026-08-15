@@ -87,7 +87,14 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   });
 
   if (res.status === 401) {
-    window.location.href = SIGN_IN_URL;
+    // With a `return_to`, as the re-authentication path below already does.
+    // Signing in should put you back where you were, and for a page reached by
+    // a link carrying state in its URL — `/claim?code=…`, which an agent hands
+    // its user once and cannot reissue — dropping it means the link is spent
+    // and the ceremony has to be restarted. The server validates this against
+    // same-origin paths (`safeReturnPath`), so it cannot become a redirector.
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    window.location.href = `${SIGN_IN_URL}?return_to=${encodeURIComponent(returnTo)}`;
     // Never resolves — page will navigate away
     return new Promise(() => {});
   }

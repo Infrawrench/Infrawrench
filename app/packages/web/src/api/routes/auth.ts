@@ -43,17 +43,18 @@ app.get("/me", async (c) => {
 app.get("/orgs", async (c) => {
   const session = c.get("session");
 
+  // Deliberately carries no trial deadline. A trial org has no human members —
+  // an agent opens it alone, agents cannot invite, and claiming clears
+  // `trialExpiresAt` in the same statement that precedes adding the claimer —
+  // so this endpoint could only ever report null for it. The people who need
+  // that deadline get it where they actually are: the agent, from
+  // `trial_expires_in_ms` on every `/api/agent/identity` poll (and it is told
+  // to pass it on), and the claimer, from the `/claim` page.
   const rows = await db
     .select({
       id: organizations.id,
       displayName: organizations.displayName,
       role: organizationMembers.role,
-      // The trial deadline rides along here rather than on `billing/status`
-      // because the countdown has to be visible to *every* member, and
-      // `billing/status` needs `billing:read` — which most members do not hold,
-      // and which is exactly the wrong permission to gate "this workspace is
-      // about to be deleted" behind.
-      trialExpiresAt: organizations.trialExpiresAt,
     })
     .from(organizationMembers)
     .innerJoin(organizations, eq(organizationMembers.organizationId, organizations.id))

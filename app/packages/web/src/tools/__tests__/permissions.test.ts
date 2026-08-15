@@ -36,6 +36,26 @@ describe("effectiveToolPermissions", () => {
     expect(await effectiveToolPermissions(keyAuth)).toEqual(["resources:read"]);
   });
 
+  it("takes an agent's permissions as final, without consulting its user row", async () => {
+    // The `users` row an agent acts as is a plain `member` on purpose (so the
+    // last-owner guard and seat accounting read it as "not a person, not an
+    // owner"). Intersecting with that role would silently narrow every agent
+    // to member-level and deny over MCP what the same `iwa_` credential is
+    // granted over HTTP.
+    grant("resources:read");
+    const agentAuth = {
+      ...auth,
+      agentRegistrationId: "reg-1",
+      scopes: ["resources:read", "resources:write", "accounts:write"],
+    };
+    expect(await effectiveToolPermissions(agentAuth)).toEqual([
+      "resources:read",
+      "resources:write",
+      "accounts:write",
+    ]);
+    expect(mockResolvePerms).not.toHaveBeenCalled();
+  });
+
   it("does not let a broad key exceed a downgraded owner role", async () => {
     grant("resources:read");
     const keyAuth = { ...auth, scopes: ["*"] };

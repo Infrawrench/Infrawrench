@@ -31,7 +31,9 @@ import {
 } from "@infrawrench/server-core/trials/ceremony";
 import { claimTrialOrg, TrialClaimError } from "@infrawrench/server-core/trials/claim";
 import { PlanRequiredError } from "@infrawrench/server-core/entitlements";
+import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { logAudit } from "../../services/audit";
+import { effectivePermissions } from "../../auth/effective-permissions";
 import { sessionMiddleware } from "../auth-middleware";
 
 const app = new Hono();
@@ -231,11 +233,24 @@ claimApp.post("/lookup", async (c) => {
       .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
       .where(eq(organizationMembers.userId, session.userId));
 
+    // …and only those they may actually write accounts into. `claimTrialOrg`
+    // enforces this itself — this is the same answer computed early, so the
+    // page never offers a destination that would 403 on submit.
+    const candidates = targets.filter((t) => t.id !== status.organizationId);
+    const mergeTargets: typeof candidates = [];
+    for (const candidate of candidates) {
+      const permissions = await effectivePermissions({
+        userId: session.userId,
+        organizationId: candidate.id,
+      });
+      if (hasPermission(permissions, "accounts:write")) mergeTargets.push(candidate);
+    }
+
     return c.json({
       registrationId,
       workspaceName: org?.displayName ?? "Trial workspace",
       trialExpiresInMs: status.trialExpiresInMs,
-      mergeTargets: targets.filter((t) => t.id !== status.organizationId),
+      mergeTargets,
     });
   } catch (e) {
     if (e instanceof ClaimCeremonyError) return c.json({ error: e.message }, e.status as 400);
@@ -297,7 +312,10 @@ claimApp.post("/", async (c) => {
     });
   } catch (e) {
     if (e instanceof ClaimCeremonyError) return c.json({ error: e.message }, e.status as 400);
-    if (e instanceof TrialClaimError) return c.json({ error: e.message }, 400);
+    // `status`, not a flat 400: a merge refused for want of a permission in the
+    // target org is a 403, and reporting it as a bad request tells the user to
+    // fix their input when the answer is "ask an administrator".
+    if (e instanceof TrialClaimError) return c.json({ error: e.message }, e.status as 400);
     if (e instanceof PlanRequiredError) return c.json({ error: e.message }, 402);
     throw e;
   }

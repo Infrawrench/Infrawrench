@@ -27,6 +27,7 @@ import { getCookie } from "hono/cookie";
 import { workos } from "./workos";
 import { effectivePermissions } from "./effective-permissions";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import { looksLikeAgentRegistrationId } from "@infrawrench/server-core/trials/identity";
 import { authenticateApiRequest, requireScope, verifyWorkosAccessToken } from "./api-auth";
 import { db } from "../db/client";
 import { users } from "../db/schema";
@@ -137,6 +138,14 @@ export async function authenticateOrgRequest(
     // WorkOS access token (browser SPAs that send Bearer instead of cookie).
     const claims = await verifyWorkosAccessToken(bearer.slice(7));
     if (!claims?.sub) return c.json({ error: "Unauthorized" }, 401);
+    // An agent token's `sub` is a registration id, not a user id. These routes
+    // resolve a person and provision one on sight, so an agent reaching here
+    // would mint a `users` row keyed by that registration — including a
+    // revoked or already-reaped one, which no table lookup can rule out. See
+    // `looksLikeAgentRegistrationId`.
+    if (looksLikeAgentRegistrationId(claims.sub)) {
+      return c.json({ error: "Agent credentials cannot be used on this endpoint." }, 403);
+    }
     const user = await ensureUserFromClaims(claims.sub, claims.email);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
     if (!(await hasMembership(user.id, pathOrgId))) {

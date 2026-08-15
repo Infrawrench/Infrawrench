@@ -71,9 +71,35 @@ const CLAIM_CODE_LENGTH = 8;
  */
 export const REGISTRATIONS_PER_IP_PER_HOUR = 5;
 
+export const DEFAULT_GLOBAL_REGISTRATIONS_PER_HOUR = 500;
+
+/**
+ * Read the global ceiling from the environment, falling back to the default on
+ * anything that is not a positive integer.
+ *
+ * A bare `Number(env ?? 500)` was wrong in both directions and silently so:
+ * `Number("")` is **0**, which makes the `count >= limit` test true for every
+ * request and 429s the registration route permanently; `Number("500/hr")` is
+ * **NaN**, and every comparison against NaN is false, so the kill switch this
+ * exists to be would simply never fire during the flood it was set for. Both
+ * are plausible values to find in a `map(string)` of environment variables.
+ */
+export function parseGlobalRegistrationLimit(raw: string | undefined): number {
+  if (raw === undefined) return DEFAULT_GLOBAL_REGISTRATIONS_PER_HOUR;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    console.warn(
+      `[trials] AGENT_TRIAL_GLOBAL_HOURLY_LIMIT=${JSON.stringify(raw)} is not a positive ` +
+        `integer; using the default of ${DEFAULT_GLOBAL_REGISTRATIONS_PER_HOUR}/hour`,
+    );
+    return DEFAULT_GLOBAL_REGISTRATIONS_PER_HOUR;
+  }
+  return parsed;
+}
+
 /** Global ceiling across every IP, as a kill switch for a distributed flood. */
-export const GLOBAL_REGISTRATIONS_PER_HOUR = Number(
-  process.env["AGENT_TRIAL_GLOBAL_HOURLY_LIMIT"] ?? 500,
+export const GLOBAL_REGISTRATIONS_PER_HOUR = parseGlobalRegistrationLimit(
+  process.env["AGENT_TRIAL_GLOBAL_HOURLY_LIMIT"],
 );
 
 export class RegistrationRateLimitedError extends Error {

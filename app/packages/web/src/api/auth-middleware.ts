@@ -20,6 +20,7 @@ import {
   resolveEffectivePermissions,
 } from "@infrawrench/server-core/permissions";
 import { resolveAgentPrincipal } from "@infrawrench/server-core/trials/principal";
+import { looksLikeAgentRegistrationId } from "@infrawrench/server-core/trials/identity";
 
 export interface AuthSession {
   userId: string;
@@ -99,13 +100,19 @@ export const sessionMiddleware = createMiddleware(async (c, next) => {
       // the non-org surface (profile, MFA, org creation, admin), which is
       // people-only by design, exactly as it is for `iwk_` API keys.
       //
-      // Skipped when the agent middleware already ran (it did this lookup) and
-      // for `user_`-prefixed subs — that is WorkOS's user-id shape, and
-      // registration ids are bare UUIDs, so those can never be agents.
+      // The shape check runs FIRST and unconditionally, because it is the only
+      // one that covers a *revoked or reaped* registration: `resolveAgentPrincipal`
+      // answers null for both, and reading that as "then it must be a person"
+      // is exactly how the phantom row gets minted. The table lookup after it
+      // catches any registration id that is not UUID-shaped, and is skipped
+      // when the agent middleware already did it, or for `user_`-prefixed subs
+      // (WorkOS's user-id shape, which no registration can have).
+      const agentShaped = looksLikeAgentRegistrationId(claims.sub);
       if (
-        stashed === undefined &&
-        !claims.sub.startsWith("user_") &&
-        (await resolveAgentPrincipal(claims.sub))
+        agentShaped ||
+        (stashed === undefined &&
+          !claims.sub.startsWith("user_") &&
+          (await resolveAgentPrincipal(claims.sub)))
       ) {
         return c.json(
           {
@@ -356,7 +363,16 @@ export const agentOrgMiddleware = createMiddleware(async (c, next) => {
     // the registration lookup is skipped for the common case entirely.
     if (!claims?.sub || claims.sub.startsWith("user_")) return next();
     auth = await agentAuthResult(claims.sub, claims.act?.sub);
-    if (!auth) return next();
+    if (!auth) {
+      // A registration-shaped sub that resolves to nothing is a revoked or
+      // reaped agent whose token is still cryptographically valid. Answer 401
+      // here rather than falling through: downstream, `ensureUserFromClaims`
+      // would happily provision a person keyed by the registration id.
+      if (looksLikeAgentRegistrationId(claims.sub)) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+      return next();
+    }
   }
   if (!auth.agentRegistrationId) return next();
 

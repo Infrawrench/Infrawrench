@@ -1100,5 +1100,3 @@ export { getStoredLocale, setStoredLocale } from "./i18n/locale-preference.js";
 export { useDataString } from "./i18n/data-strings.js";
 // Trial workspaces — the countdown an unclaimed agent trial carries until a
 // person claims it. See server-core/trials for the lifecycle behind it.
-export { TrialBanner } from "./trials/TrialBanner.js";
-export type { TrialBannerProps } from "./trials/TrialBanner.js";

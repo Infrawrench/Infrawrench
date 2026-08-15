@@ -102,17 +102,26 @@ export async function runTrialExpiryPass(options: TrialPassOptions = {}): Promis
     try {
       const result = await destroyOrganization(org.id, { expiredTrialOnly: { now } });
       destroyBackoff.delete(org.id);
-      if (result.deleted) destroyed += 1;
-      // This log line is the audit trail, and it has to be: `audit_logs` is
-      // org-scoped and cascades, so a row recording "this org was destroyed"
-      // would be deleted by the destruction it records. Anything that needs a
-      // durable history of reaped trials has to read it from here — a
+      // Gated on `deleted`, because this log line is the audit trail and has to
+      // be: `audit_logs` is org-scoped and cascades, so a row recording "this
+      // org was destroyed" would be deleted by the destruction it records.
+      // Anything that needs a durable history of reaped trials reads it from
+      // here — which makes a line claiming a destruction that the guard just
+      // declined (a claim won the race) worse than no line at all. A
       // platform-level audit table would be the real fix.
-      console.log(
-        `[trials] destroyed expired trial org ${org.id} (${org.displayName}): ` +
-          `clickhouse=${result.clickhouseTablesPurged.length} tables, ` +
-          `workos=${result.workosDeleted ? "deleted" : "left in place"}`,
-      );
+      if (result.deleted) {
+        destroyed += 1;
+        console.log(
+          `[trials] destroyed expired trial org ${org.id} (${org.displayName}): ` +
+            `clickhouse=${result.clickhouseTablesPurged.length} tables, ` +
+            `workos=${result.workosDeleted ? "deleted" : "left in place"}`,
+        );
+      } else {
+        console.log(
+          `[trials] left expired trial org ${org.id} (${org.displayName}) in place: ` +
+            `it stopped being an unclaimed trial before the destroy ran`,
+        );
+      }
     } catch (e) {
       failed += 1;
       const failures = (destroyBackoff.get(org.id)?.failures ?? 0) + 1;

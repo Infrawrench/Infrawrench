@@ -39,7 +39,7 @@ At claim time you choose:
 
 A merge moves the **connection**, not everything. Dashboards, cost centres and anything else the agent authored in the trial do not come across. If you want the trial's metrics and cost history too, tick **bring metrics and cost history across** — it takes a few minutes to appear, and it will change the numbers on existing cost charts in the target organization, which is why it's off by default.
 
-You can only merge into an organization you're already a member of.
+You can only merge into an organization you're already a member of **and can add cloud accounts to** — a merge writes credentials into that organization, so it asks for the same permission connecting an account by hand does (`accounts:write`). Bringing metrics and cost history across additionally needs `costs:write`, because it changes numbers the organization may already be reporting on. Organizations you can't merge into aren't offered in the list.
 
 ## After claiming
 
