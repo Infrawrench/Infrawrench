@@ -57,6 +57,7 @@ import {
   type CustomGraphSummary,
   type CustomGraphWidgetConfig,
   type CustomGraphsClient,
+  useStableGT,
 } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete, apiPatch, apiPut } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
@@ -127,6 +128,9 @@ export function DashboardView({
   widgets: initialWidgets,
 }: DashboardViewProps) {
   const gt = useGT();
+  // For memos whose gt() calls are lazy: useGT()'s identity changes every
+  // render, and a client rebuilt every render re-fires its consumers' effects.
+  const lazyGt = useStableGT();
   const gtData = useDataString();
   const navigate = useNavigate();
   const orgId = useOrgId();
@@ -236,11 +240,11 @@ export function DashboardView({
         const res = await fetch(`/api/org/${orgId}/custom-graphs/typings`, {
           credentials: "include",
         });
-        if (!res.ok) throw new Error(gt("Failed to load graph typings"));
+        if (!res.ok) throw new Error(lazyGt("Failed to load graph typings"));
         return res.text();
       },
     }),
-    [orgId, gt],
+    [orgId, lazyGt],
   );
 
   const refetchBudgets = useCallback(async () => {

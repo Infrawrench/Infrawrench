@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useGT } from "gt-react";
 
 import type {
   CustomGraphControlState,
@@ -9,6 +8,7 @@ import type {
 } from "./types.js";
 import { CustomGraphChart } from "./CustomGraphChart.js";
 import { CustomGraphControls, controlStateOf } from "./CustomGraphControls.js";
+import { useStableGT } from "../i18n/stable-gt.js";
 
 export interface CustomGraphCardProps {
   title: string;
@@ -34,7 +34,9 @@ export function CustomGraphCard({
   onRemove,
   reloadToken,
 }: CustomGraphCardProps) {
-  const gt = useGT();
+  // Stable: `run` below is a dependency of the mount effect, so an identity
+  // that changes every render turns one card into an endless render loop.
+  const gt = useStableGT();
   const [result, setResult] = useState<CustomGraphRenderResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
