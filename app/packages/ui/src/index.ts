@@ -245,7 +245,7 @@ export type {
   ChildResourceGroup,
 } from "./components/detail/DetailView.js";
 export { PeerPaneView } from "./components/detail/PeerPaneView.js";
-export { replacePeerPaneTrailingCount } from "./components/detail/PeerPaneView.utils.js";
+export { replacePeerPaneCount } from "./components/detail/PeerPaneView.utils.js";
 export type {
   PeerPaneViewProps,
   PeerPanePortForwardEntry,

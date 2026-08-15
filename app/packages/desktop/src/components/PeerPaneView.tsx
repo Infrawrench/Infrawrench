@@ -12,7 +12,7 @@ import {
   type PeerPaneData,
   formatErrorMessage,
   PeerPaneView as SharedPeerPaneView,
-  replacePeerPaneTrailingCount,
+  replacePeerPaneCount,
   type PeerPanePortForwardEntry,
 } from "@infrawrench/ui";
 import { navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
@@ -370,10 +370,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
                 if (base) {
                   next.set(key, {
                     ...base,
-                    title: replacePeerPaneTrailingCount(
-                      base.title,
-                      Math.max(0, base.items.length - 1),
-                    ),
+                    title: replacePeerPaneCount(base.title, Math.max(0, base.items.length - 1)),
                     items: base.items.filter((item) => item.id !== resourceId),
                   });
                 }
@@ -439,7 +436,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
               if (base) {
                 next.set(key, {
                   ...base,
-                  title: replacePeerPaneTrailingCount(base.title, base.items.length + 1),
+                  title: replacePeerPaneCount(base.title, base.items.length + 1),
                   items: [peerResource, ...base.items],
                 });
               }
