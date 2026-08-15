@@ -13,6 +13,10 @@ interface Props {
 
 const { title, description, activeSlug } = Astro.props;
 const sections = await getDocsNav();
+// These pages are prerendered, so they cannot answer an `Accept` header. The
+// alternate link is how a reader that wants markdown finds it anyway — the
+// same role `/llms.txt` plays for the site as a whole.
+const markdownHref = activeSlug ? `/docs/${activeSlug}.md` : undefined;
 const pageTitle = `${title} · Infrawrench docs`;
 ---
 
@@ -24,6 +28,7 @@ const pageTitle = `${title} · Infrawrench docs`;
     <title>{pageTitle}</title>
     {description && <meta name="description" content={description} />}
     <link rel="icon" href="/icon.png" type="image/png" />
+    {markdownHref && <link rel="alternate" type="text/markdown" href={markdownHref} />}
 
     <meta property="og:type" content="article" />
     <meta property="og:site_name" content="Infrawrench" />
