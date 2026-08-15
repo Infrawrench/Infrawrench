@@ -8,7 +8,7 @@ import type {
   DashboardStat,
   HostServices,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch, formatBytes } from "@infrawrench/plugin-base";
+import { formatBytes, joinSubtitle, jsonRestFetch } from "@infrawrench/plugin-base";
 
 /** Minimal shapes for the Cloudinary API responses we use. */
 
@@ -564,7 +564,7 @@ export class CloudinaryClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `${String(f["resourceType"] ?? "image")} · ${String(f["format"] ?? "")}`,
+      subtitle: joinSubtitle(String(f["resourceType"] ?? "image"), f["format"]),
       status: { kind: "status-dot", status: "healthy", label: "Available" },
       sections,
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],

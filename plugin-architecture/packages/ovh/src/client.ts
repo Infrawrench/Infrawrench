@@ -15,6 +15,7 @@ import type {
   HostServices,
 } from "@infrawrench/plugin-base";
 import {
+  joinSubtitle,
   labeledFieldItems,
   resourceTypeDisplayName,
   withMetricsCapability,
@@ -1429,7 +1430,10 @@ export class OvhClient implements PluginClient {
 
     const detail: DetailViewSchema = {
       title: resource.displayName,
-      subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} · ${String(fields["region"] ?? "")}`,
+      subtitle: joinSubtitle(
+        resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId),
+        fields["region"],
+      ),
       status: { kind: "status-dot", status, ...(statusStr ? { label: statusStr } : {}) },
       sections: [
         {

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGT } from "gt-react";
 import {
   Area,
@@ -17,6 +17,12 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import {
+  FORECAST_COLOR,
+  OTHER_SERIES_COLOR,
+  SCENARIO_COLOR,
+  type CostConversion,
+} from "@infrawrench/client-core";
 import { useChartTheme } from "../chart-theme.js";
 import { niceAxis, rowsExtent } from "../components/charts/nice-axis.js";
 import { CostAnnotationModal } from "./CostAnnotationModal.js";
@@ -47,13 +53,6 @@ import {
 import type { CostApi } from "./types.js";
 import { UnitCostCard } from "./UnitCostCard.js";
 
-/**
- * Categorical series colors — the app-wide chart theme order, assigned in
- * fixed order by series rank-at-load (API returns groups ranked with "Other"
- * last). "Other" always renders in neutral gray, never a categorical hue.
- */
-const OTHER_COLOR = "#6b7280";
-
 export interface CostGraphCardProps {
   title: string;
   config: CostGraphConfig;
@@ -76,6 +75,18 @@ export interface CostGraphCardProps {
   annotationReportId?: string | undefined;
   /** The report's name, for the scope choice in the annotation editor. */
   annotationReportName?: string | undefined;
+  /**
+   * Called with each loaded response's `conversion` block — `undefined` when
+   * nothing was converted, which is what an org that has stated no exchange
+   * rates always sees.
+   *
+   * The card prints the one-line {@link describeCostConversion} footnote
+   * itself, which is as much as a card has room for. This lets the page hosting
+   * the card render the full `CostConversionNotice` above it, which is the only
+   * surface that names each rate and the date it took effect. Never called by
+   * the unit-cost chart: that one plots a ratio, not an amount.
+   */
+  onConversion?: ((conversion: CostConversion | undefined) => void) | undefined;
 }
 
 interface LoadedState {
@@ -98,6 +109,7 @@ function SpendGraphCard({
   onRemove,
   annotationReportId,
   annotationReportName,
+  onConversion,
 }: CostGraphCardProps) {
   const gt = useGT();
   const resolvedEditLabel = editLabel ?? gt("Edit widget");
@@ -114,6 +126,14 @@ function SpendGraphCard({
   } | null>(null);
 
   const request = useMemo(() => costQueryForConfig(config), [config]);
+
+  /**
+   * Held in a ref rather than listed in the fetch effect's dependencies: a
+   * caller that passes an inline arrow — the ordinary way to write this — would
+   * otherwise re-run the query on every render of the page above.
+   */
+  const onConversionRef = useRef(onConversion);
+  onConversionRef.current = onConversion;
 
   useEffect(() => {
     let cancelled = false;
@@ -137,9 +157,14 @@ function SpendGraphCard({
           spliceScenario(pivot, response, config.binning);
         }
         setState({ response, pivot });
+        onConversionRef.current?.(response.conversion);
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : gt("Failed to load costs"));
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : gt("Failed to load costs"));
+        // Withdraw the caveat with the figure it was about: a notice naming
+        // rates for a chart that failed to load describes nothing on screen.
+        onConversionRef.current?.(undefined);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -279,8 +304,19 @@ function SpendGraphCard({
     fontSize: 12,
   };
 
+  /**
+   * Categorical series colors — the app-wide chart theme order, assigned in
+   * fixed order by series rank-at-load (API returns groups ranked with "Other"
+   * last). "Other" always renders in neutral gray, never a categorical hue.
+   *
+   * The overlay lines below do *not* come through here. They use the named
+   * `FORECAST_COLOR` / `SCENARIO_COLOR` from the shared palette, because a slot
+   * in this rotation means "the fourth series", not "amber".
+   */
   const colorFor = (index: number, isOther: boolean): string =>
-    isOther ? OTHER_COLOR : (chart.colors[index % chart.colors.length] ?? OTHER_COLOR);
+    isOther
+      ? OTHER_SERIES_COLOR
+      : (chart.colors[index % chart.colors.length] ?? OTHER_SERIES_COLOR);
 
   // The chart body is exposed as a single role="img" with a summary label
   // only when a chart is actually rendered — loading, error, and empty
@@ -476,7 +512,7 @@ function SpendGraphCard({
               type="monotone"
               dataKey={FORECAST_KEY}
               name={FORECAST_KEY}
-              stroke={chart.colors[0] ?? "#60a5fa"}
+              stroke={FORECAST_COLOR}
               strokeWidth={2}
               strokeDasharray="5 5"
               dot={false}
@@ -493,7 +529,7 @@ function SpendGraphCard({
               type="monotone"
               dataKey={SCENARIO_KEY}
               name={SCENARIO_KEY}
-              stroke={chart.colors[3] ?? "#f59e0b"}
+              stroke={SCENARIO_COLOR}
               strokeWidth={2}
               strokeDasharray="2 3"
               dot={false}

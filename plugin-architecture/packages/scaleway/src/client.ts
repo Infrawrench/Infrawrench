@@ -17,6 +17,7 @@ import type {
 import {
   deleteS3Object,
   getS3BucketPolicy,
+  joinSubtitle,
   jsonRestFetch,
   labeledFieldItems,
   listS3Objects,
@@ -1030,7 +1031,7 @@ export class ScalewayClient implements PluginClient {
 
     const detail: DetailViewSchema = {
       title: resource.displayName,
-      subtitle: `${resource.resourceTypeId} · ${String(fields["zone"] ?? fields["region"] ?? "")}`,
+      subtitle: joinSubtitle(resource.resourceTypeId, fields["zone"] ?? fields["region"]),
       status: { kind: "status-dot", status: statusKind },
       sections: [
         {

@@ -9,7 +9,7 @@ import type {
   CostRow,
   DashboardStat,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { joinSubtitle, jsonRestFetch } from "@infrawrench/plugin-base";
 import { fetchPlanetScaleCostData } from "./cost-data.js";
 
 interface PsRegion {
@@ -1087,7 +1087,10 @@ export class PlanetScaleClient implements PluginClient {
     const state = String(resource.fields["state"] ?? "");
     return {
       title: resource.displayName,
-      subtitle: `PlanetScale Database \u00B7 ${formatRegion(String(resource.fields["region"] ?? ""))}`,
+      subtitle: joinSubtitle(
+        "PlanetScale Database",
+        formatRegion(String(resource.fields["region"] ?? "")),
+      ),
       status: {
         kind: "status-dot",
         status:
@@ -1126,7 +1129,7 @@ export class PlanetScaleClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `PlanetScale Branch \u00B7 ${String(resource.fields["databaseName"] ?? "")}`,
+      subtitle: joinSubtitle("PlanetScale Branch", resource.fields["databaseName"]),
       status: {
         kind: "status-dot",
         status: ready ? "healthy" : "provisioning",
@@ -1167,7 +1170,10 @@ export class PlanetScaleClient implements PluginClient {
     const expired = resource.fields["expired"] === true;
     return {
       title: resource.displayName,
-      subtitle: `PlanetScale Password · ${String(resource.fields["databaseName"] ?? "")}/${String(resource.fields["branchName"] ?? "")}`,
+      subtitle: joinSubtitle(
+        "PlanetScale Password",
+        [resource.fields["databaseName"], resource.fields["branchName"]].filter(Boolean).join("/"),
+      ),
       status: { kind: "status-dot", status: expired ? "error" : "healthy" },
       sections: [
         {
@@ -1198,7 +1204,7 @@ export class PlanetScaleClient implements PluginClient {
     const state = String(resource.fields["state"] ?? "open");
     return {
       title: resource.displayName,
-      subtitle: `PlanetScale Deploy Request · ${String(resource.fields["databaseName"] ?? "")}`,
+      subtitle: joinSubtitle("PlanetScale Deploy Request", resource.fields["databaseName"]),
       status: {
         kind: "status-dot",
         status: state === "deployed" ? "healthy" : state === "closed" ? "degraded" : "info",
@@ -1234,7 +1240,10 @@ export class PlanetScaleClient implements PluginClient {
     const state = String(resource.fields["state"] ?? "");
     return {
       title: resource.displayName,
-      subtitle: `PlanetScale Backup · ${String(resource.fields["databaseName"] ?? "")}/${String(resource.fields["branchName"] ?? "")}`,
+      subtitle: joinSubtitle(
+        "PlanetScale Backup",
+        [resource.fields["databaseName"], resource.fields["branchName"]].filter(Boolean).join("/"),
+      ),
       status: {
         kind: "status-dot",
         status: state === "success" ? "healthy" : state === "failed" ? "error" : "info",

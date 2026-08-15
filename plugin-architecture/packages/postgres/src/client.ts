@@ -10,6 +10,7 @@ import type {
   PeerPaneSchema,
   PeerPaneResource,
 } from "@infrawrench/plugin-base";
+import { joinSubtitle } from "@infrawrench/plugin-base";
 
 const VISIBLE_SCHEMA_FILTER =
   "schema_name NOT IN ('pg_catalog', 'information_schema') AND schema_name NOT LIKE 'pg_toast%' AND schema_name NOT LIKE 'pg_temp_%'";
@@ -157,7 +158,10 @@ export class PostgresClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `${String(resource.fields["host"] ?? "PostgreSQL")} · ${String(resource.fields["database"] ?? "")}`,
+      subtitle: joinSubtitle(
+        String(resource.fields["host"] ?? "PostgreSQL"),
+        resource.fields["database"],
+      ),
       status: { kind: "status-dot", status: hasConnection ? "healthy" : "info" },
       sections: [
         {

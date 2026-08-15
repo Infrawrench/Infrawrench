@@ -23,13 +23,14 @@ import {
   buildCostEstimate,
   deleteS3Object,
   getS3BucketPolicy,
+  joinSubtitle,
   jsonRestFetch,
   labeledFieldItems,
   listS3Objects,
   makeS3Folder,
   putS3BucketPolicy,
-  resourceTypeDisplayName,
   renderDnsRecordSidebar,
+  resourceTypeDisplayName,
   signedS3Fetch,
   uploadS3Object,
   virtualHostedUrl,
@@ -1820,7 +1821,10 @@ export class DigitalOceanClient implements PluginClient {
     const fields = resource.fields;
     const detail: DetailViewSchema = {
       title: resource.displayName,
-      subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} \u00B7 ${String(fields["region"] ?? "")}`,
+      subtitle: joinSubtitle(
+        resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId),
+        fields["region"],
+      ),
       status: doStatusDot(resource),
       sections: [
         {

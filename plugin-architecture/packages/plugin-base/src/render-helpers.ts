@@ -62,6 +62,38 @@ export function labeledOutputItems(
     }));
 }
 
+/** The separator a detail subtitle joins its parts with, app-wide. */
+const SUBTITLE_SEPARATOR = " · ";
+
+/**
+ * Join the parts of a detail subtitle, dropping the ones that are not there.
+ *
+ * Almost every plugin builds its subtitle as "type name, then where it lives"
+ * — and writes it as a template literal with a `?? ""` on the tail. That reads
+ * fine until a resource type does not carry the field: a DigitalOcean project
+ * has no region, so `${typeName} · ${fields.region ?? ""}` renders as
+ * "Project ·", a separator pointing at nothing. The same shape appears for a
+ * Postgres role with no database, a Vercel resource with no slug, and a Fly
+ * app with no region, so the fix belongs here rather than at each call site.
+ *
+ * Empty and whitespace-only parts are dropped, as are `null` and `undefined`,
+ * which is what lets a caller pass `fields["region"]` straight in. `0` and
+ * `false` are kept — they are values a field can legitimately hold, and a
+ * subtitle that silently omits "0 replicas" is a different kind of wrong.
+ *
+ * Returns `""` when nothing survives; `DetailViewSchema.subtitle` is optional
+ * and the renderers all guard on truthiness, so an empty string draws no line
+ * at all rather than an empty one.
+ */
+export function joinSubtitle(
+  ...parts: Array<string | number | boolean | null | undefined>
+): string {
+  return parts
+    .map((part) => (part === null || part === undefined ? "" : String(part).trim()))
+    .filter((part) => part !== "")
+    .join(SUBTITLE_SEPARATOR);
+}
+
 /**
  * True when the host will fetch metric series for this resource type.
  *
