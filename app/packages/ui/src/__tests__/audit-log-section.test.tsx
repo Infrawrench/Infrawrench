@@ -52,8 +52,11 @@ const KEYS = [
   { id: "key-2", name: "reporting", prefix: "iwk_def67890", revokedAt: null },
 ];
 
-function renderSection(entries: AuditRow[], opts: { canReadKeys?: boolean } = {}) {
-  const requests: string[] = [];
+function buildHost(
+  entries: AuditRow[],
+  requests: string[],
+  opts: { canReadKeys?: boolean; permissionsLoading?: boolean } = {},
+) {
   const host = {
     orgId: "org-1",
     api: {
@@ -79,7 +82,7 @@ function renderSection(entries: AuditRow[], opts: { canReadKeys?: boolean } = {}
     },
     has: (p: string) => (p === "apikeys:read" ? (opts.canReadKeys ?? true) : true),
     hasAny: () => true,
-    permissionsLoading: false,
+    permissionsLoading: opts.permissionsLoading ?? false,
     async refreshPermissions() {},
     async fetchText() {
       return "";
@@ -90,9 +93,13 @@ function renderSection(entries: AuditRow[], opts: { canReadKeys?: boolean } = {}
     onAccountDeleted() {},
     approvals: {},
   } as unknown as SettingsHostValue;
+  return host;
+}
 
+function renderSection(entries: AuditRow[], opts: { canReadKeys?: boolean } = {}) {
+  const requests: string[] = [];
   render(
-    <SettingsHostProvider value={host}>
+    <SettingsHostProvider value={buildHost(entries, requests, opts)}>
       <AuditLogSection />
     </SettingsHostProvider>,
   );
@@ -205,5 +212,31 @@ describe("AuditLogSection API key filter", () => {
     await waitFor(() =>
       expect(requests.filter((p) => p.includes("audit-logs")).at(-1)).not.toContain("apiKeyId"),
     );
+  });
+
+  /**
+   * `has` answers false until the caller's role arrives. Fetching once on
+   * mount would read that as a denial and never look again, leaving a
+   * permitted reader with no dropdown.
+   */
+  it("waits for permissions to load before deciding it cannot list keys", async () => {
+    const requests: string[] = [];
+    const entries = [row({ apiKeyId: "key-1", apiKeyName: "ci-deploy", apiKeyPrefix: "iwk_abc" })];
+    const { rerender } = render(
+      <SettingsHostProvider value={buildHost(entries, requests, { permissionsLoading: true })}>
+        <AuditLogSection />
+      </SettingsHostProvider>,
+    );
+
+    await screen.findByText("ci-deploy");
+    expect(requests.some((p) => p.includes("/api-keys"))).toBe(false);
+
+    rerender(
+      <SettingsHostProvider value={buildHost(entries, requests, { permissionsLoading: false })}>
+        <AuditLogSection />
+      </SettingsHostProvider>,
+    );
+
+    expect(await screen.findByLabelText("Filter by API key")).toBeTruthy();
   });
 });

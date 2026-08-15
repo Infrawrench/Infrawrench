@@ -62,7 +62,7 @@ const ACTION_LABELS: Record<string, string> = {
 const ENTITY_TYPES = ["account", "resource", "dashboard", "api_key", "member", "subscription"];
 
 export function AuditLogSection() {
-  const { orgId, api, has } = useSettingsHost();
+  const { orgId, api, has, permissionsLoading } = useSettingsHost();
   const gt = useGT();
   const gtData = useDataString();
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
@@ -94,15 +94,19 @@ export function AuditLogSection() {
    * are separate permissions, so this is best-effort: without `apikeys:read`
    * the dropdown simply carries whatever key the reader clicked on in the
    * table, which is still enough to narrow the log and to clear the filter.
+   *
+   * Gated on `permissionsLoading` because `has` answers false until the
+   * caller's role arrives — running once on mount would read that as a denial
+   * and never look again.
    */
   useEffect(() => {
-    if (!has("apikeys:read")) return;
+    if (permissionsLoading || !has("apikeys:read")) return;
     api
       .get<ApiKeyOption[]>(`/api/org/${orgId}/api-keys`)
       .then(setApiKeys)
       .catch(() => setApiKeys([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId]);
+  }, [orgId, permissionsLoading]);
 
   const totalPages = Math.ceil(total / pageSize);
 
