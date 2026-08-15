@@ -71,7 +71,7 @@ Every argument falls back to an environment variable, which is how you should ru
 
 The organization id is the one in your URL when you're signed in — it starts with `org_`.
 
-Create the credential on **Settings → API keys**. The permissions each object needs are the same ones the UI enforces, so a key that can't edit budgets in the app can't edit them through Terraform either:
+Create the credential on **Settings → API keys**. The scope picker lists every permission the server recognises, grouped, with a filter box that matches the permission string itself — so you can paste `costs:` from the table below and tick what you need. The permissions each object needs are the same ones the UI enforces, so a key that can't edit budgets in the app can't edit them through Terraform either:
 
 | Objects                                                                                  | Read             | Write                |
 | ---------------------------------------------------------------------------------------- | ---------------- | -------------------- |
@@ -86,6 +86,8 @@ Beyond cost, each area uses the permission the matching page in the app uses —
 
 Two of those need care. Alert routing, Slack, Teams and the digest have **no separate read permission** — their GET is gated on `org:settings:write` too, so a read-only key cannot even refresh them. And an account needs three: `accounts:write` to connect, `secrets:write` to rotate its credentials, `accounts:delete` to disconnect.
 
+`apikeys:write` and `team:role:write` are the two the picker does not offer, because a key holding them would be refused anyway — see below.
+
 ### Two resources need a signed-in credential
 
 An API key reaches everything in the provider except two things, whatever scopes you give it:
@@ -97,7 +99,7 @@ An API key reaches everything in the provider except two things, whatever scopes
 
 If you manage either, keep them in a separate Terraform root that a person applies with a WorkOS access token — which is the separation the restriction is arguing for anyway. The provider recognises this particular 403 and tells you which resource is affected, rather than leaving you staring at a permission error that isn't about permissions.
 
-![The Create API Key dialog under Settings → API Keys with the scope checkboxes visible, showing a key being created for Terraform](https://agent-assets.infrawrench.com/docs-screenshots/features/terraform-provider/api-key-scopes.png)
+<insert [The Create API Key dialog under Settings → API keys, filter box containing "costs:", with Costs (read) and Costs (write) ticked and the selected-count showing 2] here>
 
 ## A worked example
 

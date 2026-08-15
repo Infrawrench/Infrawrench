@@ -12,7 +12,7 @@ API keys let scripts and CI jobs list resources, create them, and read outputs p
 
 1. **Settings → API keys → New key**.
 2. Give it a name (e.g. `ci-deploy`).
-3. Optionally scope it to one or more accounts.
+3. Tick the [scopes](#scopes) it needs — the filter box matches the permission string, so `costs:` finds the two cost scopes.
 4. Click **Create**.
 
 The token is shown once. Copy it now; you cannot see it again.
@@ -62,7 +62,9 @@ There is no built-in rotate. Issue a new key, update your scripts, then revoke t
 
 API keys carry an explicit list of **permission strings** (scopes). The same vocabulary used for [roles](./roles-and-permissions.md) is used for API keys, so `resources:read` on a key gates the same endpoints as `resources:read` on a role.
 
-When you create a key you pick its scopes. Pick the narrowest set that gets the job done — a CI deploy key might only need `accounts:read` + `resources:read`, while a sync agent for the desktop app needs `resources:read` + `resources:write`.
+When you create a key you pick its scopes. The dialog lists every permission the server recognises, grouped into infrastructure, cost and billing, dashboards and alerting, automation and deployment, access and credentials, integrations, and organization settings; the filter box matches the permission string as well as the label, so pasting `costs:` from a doc page narrows the list to the two cost scopes. Pick the narrowest set that gets the job done — a CI deploy key might only need `accounts:read` + `resources:read`, a [Terraform provider](../features/terraform-provider.md) key managing cost allocation needs `costs:read` + `costs:write`, and a sync agent for the desktop app needs `resources:read` + `resources:write`.
+
+Nine permissions are deliberately missing from the picker: `apikeys:read`, `apikeys:write`, `billing:read`, `billing:write`, `team:invite`, `team:role:write`, `team:remove`, `access:request` and `access:approve`. Each of them gates only routes in [what a key cannot reach](#what-a-key-cannot-reach), so a key carrying one would be answered `403` regardless — offering the checkbox would look like the difference between working and not working when it isn't. Everything else in the catalog is selectable.
 
 A sync-scoped key cannot read provider credentials. The sync endpoints report only whether an account has credentials stored; fetching one is a separate, audit-logged call that requires `secrets:read`.
 
@@ -74,7 +76,7 @@ The `costs:write` and `pages:write` scopes gate the [push endpoints](../features
 
 `chat:write` lets a key hold a conversation — it does not widen what that conversation can do. Every tool the assistant runs is checked against the key's own scopes, so a chat-only key can talk about your infrastructure but cannot read a secret or delete a resource unless you also granted `secrets:read` or `resources:delete`.
 
-Older keys created with the deprecated `sync:read` / `sync:write` scopes are renamed automatically the next time they authenticate. The workflow permission split was handled differently, once: [workflows](../features/workflows.md) were gated on `dashboards:read` / `dashboards:write` until they got their own `workflows:read`, `workflows:write` and `workflows:approve` scopes, so every key that was still active at that upgrade had the matching workflow scopes added to it there and then — they are listed on the key like any other scope, and nothing is added at authentication time. Revoked keys were left alone. Every key created since carries exactly the scopes you chose, so grant the workflow scopes a key actually needs — `workflows:read` to list and inspect, `workflows:write` to edit and run, `workflows:approve` to decide an approval step. Use `workflows:*` only for a key that should hold the whole family.
+Older keys created with the deprecated `sync:read` / `sync:write` scopes are renamed automatically the next time they authenticate; the picker no longer offers them, because a key minted with them stores a scope that silently becomes `resources:read` / `resources:write` on first use. Tick those two directly instead. The workflow permission split was handled differently, once: [workflows](../features/workflows.md) were gated on `dashboards:read` / `dashboards:write` until they got their own `workflows:read`, `workflows:write` and `workflows:approve` scopes, so every key that was still active at that upgrade had the matching workflow scopes added to it there and then — they are listed on the key like any other scope, and nothing is added at authentication time. Revoked keys were left alone. Every key created since carries exactly the scopes you chose, so grant the workflow scopes a key actually needs — `workflows:read` to list and inspect, `workflows:write` to edit and run, `workflows:approve` to decide an approval step. Use `workflows:*` only for a key that should hold the whole family.
 
 ## Keys are bounded by their owner
 
