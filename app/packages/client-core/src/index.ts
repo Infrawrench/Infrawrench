@@ -278,6 +278,7 @@ export {
   costCentreMoveBlocker,
   orderAllocationRules,
   buildShowbackCentres,
+  showbackCentreHasChildren,
   type CostCentrePathRow,
   type RequiredTag,
   type TagPolicy,
@@ -489,6 +490,7 @@ export {
   type UnitCostSeries,
 } from "./business-metrics";
 export { niceAxis, type AxisScale } from "./chart-axis";
+export { createMetricValueFormatter, type MetricValueFormatter } from "./metric-units";
 export {
   dashboardCardId,
   parseDashboardCardId,
@@ -684,6 +686,7 @@ export * from "./status-pages";
 export * from "./ownership";
 export * from "./log-workspaces";
 export * from "./log-discovery";
+export * from "./log-tail-options";
 export * from "./alert-routing";
 export * from "./metric-alerts";
 export * from "./org-config";

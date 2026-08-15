@@ -8,8 +8,20 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { createMetricValueFormatter } from "@infrawrench/client-core";
 import { useChartTheme } from "../../chart-theme.js";
 import { niceAxis, rowsExtent } from "./nice-axis.js";
+
+/**
+ * Minimum and maximum width of the Y-axis gutter. Humanized byte ticks
+ * ("512.00 GiB") and other long unit strings ("42connections") need more
+ * room than the default 50px; a plain "%"/count axis stays at the minimum.
+ */
+const MIN_AXIS_WIDTH = 50;
+const MAX_AXIS_WIDTH = 90;
+/** Rough width in px of one character at the axis tick font size (11px). */
+const AXIS_CHAR_WIDTH = 6;
+const AXIS_PADDING = 14;
 
 const COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f87171", "#a78bfa", "#fb923c"];
 
@@ -45,6 +57,21 @@ export function MetricChart({ node }: MetricChartProps) {
   const extent = rowsExtent(data, { keys: node.series.map((s) => s.label) });
   const yScale = niceAxis(extent.min, extent.max);
 
+  // One formatter per chart, scaled once from the axis extent — every tick,
+  // the tooltip and the aria-label summary share it, so a byte-valued series
+  // reads in a single consistent unit (e.g. all GiB) instead of each value
+  // picking its own KiB/MiB/GiB independently.
+  const axisMax = Math.max(Math.abs(yScale.domain[0]), Math.abs(yScale.domain[1]));
+  const formatValue = createMetricValueFormatter(unit, axisMax);
+
+  // Widen the gutter for long formatted ticks (humanized bytes, word units
+  // like "connections") instead of clipping them at a fixed 50px.
+  const longestTick = yScale.ticks.reduce((max, t) => Math.max(max, formatValue(t).length), 0);
+  const axisWidth = Math.min(
+    MAX_AXIS_WIDTH,
+    Math.max(MIN_AXIS_WIDTH, longestTick * AXIS_CHAR_WIDTH + AXIS_PADDING),
+  );
+
   // Text alternative for the chart: metric name plus the latest value of
   // each series, read as a single image by assistive tech.
   const lastRow = data[data.length - 1];
@@ -52,7 +79,7 @@ export function MetricChart({ node }: MetricChartProps) {
     ? node.series
         .map((series) =>
           lastRow[series.label] !== undefined
-            ? `${series.label} ${lastRow[series.label]}${unit}`
+            ? `${series.label} ${formatValue(lastRow[series.label]!)}`
             : null,
         )
         .filter((part): part is string => part !== null)
@@ -78,10 +105,10 @@ export function MetricChart({ node }: MetricChartProps) {
             <YAxis
               tick={{ fill: chart.tick, fontSize: 11 }}
               stroke={chart.axis}
-              tickFormatter={(v: number) => (unit ? `${v}${unit}` : String(v))}
+              tickFormatter={formatValue}
               domain={yScale.domain}
               ticks={yScale.ticks}
-              width={50}
+              width={axisWidth}
             />
             <Tooltip
               contentStyle={{
@@ -91,7 +118,7 @@ export function MetricChart({ node }: MetricChartProps) {
                 fontSize: 12,
               }}
               labelFormatter={(ts) => new Date(Number(ts)).toLocaleTimeString()}
-              formatter={(value) => [`${value}${unit}`, undefined]}
+              formatter={(value) => [formatValue(Number(value)), undefined]}
             />
             {node.series.map((series, i) => {
               const color = COLORS[i % COLORS.length];

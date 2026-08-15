@@ -15,6 +15,23 @@ interface AuditEntry {
   createdAt: string;
   userName: string | null;
   userEmail: string | null;
+  /** Null for a browser action, and for a key row that has since been deleted. */
+  apiKeyName: string | null;
+  apiKeyPrefix: string | null;
+}
+
+/**
+ * A key call is attributed to the key, not just to the person who minted it —
+ * a key acts as its owner, so the owner's name alone cannot say whether a
+ * human or a token was at the other end. Filtering by key is web/desktop only
+ * (the phone has no key picker); reading which key it was belongs everywhere.
+ */
+function describeActor(e: AuditEntry): string {
+  const owner = e.userName ?? e.userEmail;
+  if (!e.apiKeyId) return owner ?? "system";
+  const key = e.apiKeyName ?? "deleted key";
+  const label = e.apiKeyPrefix ? `${key} (${e.apiKeyPrefix}…)` : key;
+  return owner ? `key ${label} · ${owner}` : `key ${label}`;
 }
 
 interface AuditPage {
@@ -63,7 +80,7 @@ export default function AuditLogScreen() {
           <Row
             key={e.id}
             title={e.action}
-            subtitle={`${e.entityType} · ${e.userName ?? e.userEmail ?? (e.apiKeyId ? "API key" : "system")} · ${new Date(e.createdAt).toLocaleString()}`}
+            subtitle={`${e.entityType} · ${describeActor(e)} · ${new Date(e.createdAt).toLocaleString()}`}
           />
         ))}
       </Card>

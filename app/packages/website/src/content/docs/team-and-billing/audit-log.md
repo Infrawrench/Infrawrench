@@ -15,7 +15,7 @@ The audit log records every state-changing action in the organization — resour
 The table has four columns:
 
 - **Time** — wall-clock in your timezone.
-- **User** — who did it, or **API Key** when the call came in on an [API key](./api-keys.md) and **System** for automated work.
+- **User** — who did it. When the call came in on an [API key](./api-keys.md) the cell names the key and its `iwk_` prefix alongside its owner, because a key acts as its owner and the owner alone cannot tell you whether a person or a token was at the other end. **System** for automated work.
 - **Action** — verb + object (e.g. “created Droplet”, “started SSH session”).
 - **Entity** — the type and id of the resource or account affected.
 
@@ -23,9 +23,9 @@ Twenty-five entries to a page, newest first, with **Previous** / **Next** undern
 
 ## Filtering
 
-The page has one filter: a **Filter by type** dropdown over the entity type — account, resource, dashboard, api_key, member, subscription — or **All types**.
+The page has two filters. **Filter by type** covers the entity type — account, resource, dashboard, api_key, member, subscription — or **All types**. Beside it, **Filter by API key** narrows the log to a single credential; clicking the key chip in an entry's User column does the same thing without leaving the page, and **All API keys** goes back. A key that has since been deleted still filters, because the chip carries its id even when there is no key row left to name it.
 
-The API is where the finer questions get asked. `GET /api/org/<orgId>/audit-logs` takes `action`, `entityType`, `userId`, `from` and `to`, and — most usefully — `apiKeyId`, which is everything one credential did and the first thing to pull when a token leaks. `userId` cannot answer that question on its own, because a person and every key they minted share one user id.
+The API is where the finer questions get asked. `GET /api/org/<orgId>/audit-logs` takes the same `apiKeyId`, plus `action`, `entityType`, `userId`, `from` and `to`. Everything one credential did is the first thing to pull when a token leaks, and `userId` cannot answer that question on its own, because a person and every key they minted share one user id.
 
 ## Retention
 

@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { T, Var, useGT } from "gt-react";
 
-import { formatMoney, taggedSpendPercent } from "@infrawrench/client-core";
+import {
+  formatMoney,
+  showbackCentreHasChildren,
+  taggedSpendPercent,
+} from "@infrawrench/client-core";
 import type {
   ShowbackReport,
   TagComplianceReport,
@@ -202,9 +206,7 @@ export function TagGovernanceSection({ client }: { client: CostsClient }) {
               // allocated spend beside it, so "of which the division itself"
               // is legible instead of hidden inside the rollup. A leaf has one
               // number and prints one.
-              const hasChildren = showback.centres.some(
-                (other) => other.parentId === centre.costCentreId,
-              );
+              const hasChildren = showbackCentreHasChildren(showback.centres, centre);
               const primary = hasChildren ? centre.subtreeTotals : centre.totals;
               return (
                 <li

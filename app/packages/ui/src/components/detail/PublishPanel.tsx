@@ -183,7 +183,7 @@ export function PublishPanel({ capability, onPublish }: Props) {
                 placeholder={bodyFormat === "json" ? '{ "hello": "world" }' : gt("Message text…")}
                 rows={10}
                 spellCheck={false}
-                className="mt-1 w-full resize-y bg-surface-overlay text-on-surface text-sm font-mono border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent-blue placeholder:text-on-surface-faint"
+                className="mt-1 w-full resize-y bg-surface-overlay text-on-surface text-sm font-mono border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent placeholder:text-on-surface-faint"
               />
             </label>
 
@@ -198,7 +198,7 @@ export function PublishPanel({ capability, onPublish }: Props) {
                 type="button"
                 onClick={() => void send()}
                 disabled={sending}
-                className="px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-md hover:bg-accent-blue/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 text-sm font-medium text-white bg-accent rounded-md hover:bg-accent/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"
               >
                 {sending ? gt("Sending…") : submitLabel}
               </button>
@@ -272,7 +272,7 @@ function ExtraFieldInput({ field, value, onChange }: ExtraFieldInputProps) {
         <select
           value={stringValue}
           onChange={(e) => onChange(e.target.value)}
-          className="mt-1 w-full bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent-blue"
+          className="mt-1 w-full bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent"
         >
           {!stringValue && <option value="">{gt("Select…")}</option>}
           {(field.options ?? []).map((opt) => (
@@ -303,7 +303,7 @@ function ExtraFieldInput({ field, value, onChange }: ExtraFieldInputProps) {
         value={stringValue}
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder}
-        className="mt-1 w-full bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent-blue placeholder:text-on-surface-faint"
+        className="mt-1 w-full bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent placeholder:text-on-surface-faint"
       />
       {field.helpText && <p className="text-[11px] text-on-surface-faint mt-1">{field.helpText}</p>}
     </label>
@@ -357,7 +357,7 @@ function KeyValueListEditor({ value, onChange }: KeyValueListEditorProps) {
             onChange={(e) => setKey(k, e.target.value)}
             placeholder={gt("name")}
             aria-label={gt("Entry name")}
-            className="flex-1 bg-surface-overlay text-on-surface text-xs border border-border-strong rounded-md px-2 py-1 focus:outline-none focus:border-accent-blue"
+            className="flex-1 bg-surface-overlay text-on-surface text-xs border border-border-strong rounded-md px-2 py-1 focus:outline-none focus:border-accent"
           />
           <input
             type="text"
@@ -365,7 +365,7 @@ function KeyValueListEditor({ value, onChange }: KeyValueListEditorProps) {
             onChange={(e) => setValue(k, e.target.value)}
             placeholder={gt("value")}
             aria-label={gt("Entry value")}
-            className="flex-1 bg-surface-overlay text-on-surface text-xs border border-border-strong rounded-md px-2 py-1 focus:outline-none focus:border-accent-blue"
+            className="flex-1 bg-surface-overlay text-on-surface text-xs border border-border-strong rounded-md px-2 py-1 focus:outline-none focus:border-accent"
           />
           <button
             type="button"

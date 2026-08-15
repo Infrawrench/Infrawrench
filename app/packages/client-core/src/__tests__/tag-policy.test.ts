@@ -10,6 +10,7 @@ import {
   extractRecordTags,
   fieldsDeclareTagField,
   orderAllocationRules,
+  showbackCentreHasChildren,
   taggedSpendPercent,
   tagPolicyViolations,
   type AllocationRule,
@@ -358,5 +359,31 @@ describe("buildShowbackCentres", () => {
     );
     expect(out.map((c) => c.costCentreId).sort()).toEqual(["p", "q", "x"]);
     expect(out.reduce((acc, c) => acc + (c.totals["USD"] ?? 0), 0)).toBe(6);
+  });
+
+  describe("showbackCentreHasChildren", () => {
+    it("is false for two unrelated root centres, not true from their shared null parentId", () => {
+      const out = buildShowbackCentres(FLAT, totals({}));
+      for (const row of out) {
+        expect(showbackCentreHasChildren(out, row)).toBe(false);
+      }
+    });
+
+    it("is false for the synthetic Unallocated row even though every root's parentId is also null", () => {
+      // FLAT is all roots, so their parentId is null — the same null
+      // Unallocated uses for its own costCentreId. Without the guard this
+      // reads every root as Unallocated's child.
+      const out = buildShowbackCentres(FLAT, totals({}), { USD: 33 });
+      const unallocated = out.find((c) => c.costCentreId === null)!;
+      expect(showbackCentreHasChildren(out, unallocated)).toBe(false);
+    });
+
+    it("is true for a centre with a genuine child, false for a leaf", () => {
+      const out = buildShowbackCentres(TREE, totals({}));
+      const eng = out.find((c) => c.costCentreId === "eng")!;
+      const search = out.find((c) => c.costCentreId === "search")!;
+      expect(showbackCentreHasChildren(out, eng)).toBe(true);
+      expect(showbackCentreHasChildren(out, search)).toBe(false);
+    });
   });
 });
