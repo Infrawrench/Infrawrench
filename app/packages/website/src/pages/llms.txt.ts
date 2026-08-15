@@ -8,9 +8,8 @@ import { docMarkdownPath } from "../lib/markdown/docs";
  *
  * Same job `robots.txt` does for crawlers and `sitemap.xml` does for search:
  * one well-known path that says what is here and where the machine-readable
- * version of it lives. It exists because the interesting pages on this site are
- * prerendered and cannot answer an `Accept` header, so discovery has to be a
- * document rather than a protocol.
+ * version of it lives. Negotiation covers the same ground for a caller that
+ * already knows a URL; this is for the one that does not know any yet.
  *
  * The agent-signup section is first on purpose. Everything below it is reading
  * material; that part is the one thing on this site an agent can *act* on, and

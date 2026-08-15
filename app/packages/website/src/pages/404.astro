@@ -1,0 +1,42 @@
+---
+import "../styles/global.css";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+import ProvidersModal from "../components/ProvidersModal.astro";
+
+// Astro renders this for any route that matches nothing, which on a
+// server-rendered site is every typo'd URL rather than only the ones outside
+// `dist/`. On demand for the same reason as the content pages.
+//
+// Nothing rewrites *to* it: `Astro.rewrite("/404")` throws "unable to find a
+// component instance for route /404" regardless of this setting, so the docs
+// route renders its own not-found inline instead.
+export const prerender = false;
+
+Astro.response.status = 404;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Not found · Infrawrench</title>
+    <meta name="robots" content="noindex" />
+    <link rel="icon" href="/icon.png" type="image/png" />
+  </head>
+  <body>
+    <Nav />
+    <main class="docs-article" style="min-height: 60vh; padding-top: 6rem;">
+      <header class="docs-article-header">
+        <h1 class="docs-article-title">Page not found</h1>
+        <p class="docs-article-lede">
+          That page doesn't exist. Try the <a href="/docs">documentation index</a>, or
+          <a href="/">start from the home page</a>.
+        </p>
+      </header>
+    </main>
+    <Footer />
+    <ProvidersModal />
+  </body>
+</html>
