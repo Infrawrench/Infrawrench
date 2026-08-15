@@ -8,6 +8,7 @@ import {
 } from "@infrawrench/client-core";
 
 import { ApprovalCard } from "./ApprovalCard.js";
+import { LiveLogPanel, RunResultPanel, WorkflowRunHistory } from "./RunHistory.js";
 import { WorkflowEditorView } from "./WorkflowEditorView.js";
 import type {
   BudgetIntegration,
@@ -185,9 +186,10 @@ function detailReducer(state: WorkflowDetail, action: WorkflowDetailAction): Wor
   switch (action.kind) {
     // A newly picked workflow keeps the old typings until the fresh ones land
     // (the editor would flash an untyped `infra` otherwise), but its approvals
-    // belong to the previous workflow and must go immediately.
+    // and run history belong to the previous workflow and must go immediately —
+    // the history is a list of that other workflow's runs, not a placeholder.
     case "cleared":
-      return { ...state, approvals: [] };
+      return { ...state, approvals: [], runs: [] };
     case "loaded":
       return { ...state, dts: action.dts, runs: action.runs, metrics: action.metrics };
     case "typings":
@@ -210,6 +212,12 @@ interface RunSession {
   currentLine: number | null;
   pausedLine: number | null;
   lastRun: WorkflowRunResult | null;
+  /**
+   * Id of the run this session started, known once the client returns. The run
+   * history uses it to mark that row as the one already on screen above rather
+   * than offering a second copy of the same logs.
+   */
+  lastRunId: string | null;
 }
 
 type RunSessionAction =
@@ -219,7 +227,7 @@ type RunSessionAction =
   | { kind: "log"; entry: WorkflowRunLog }
   | { kind: "paused"; line: number }
   | { kind: "resumed" }
-  | { kind: "finished"; result: WorkflowRunResult }
+  | { kind: "finished"; runId: string; result: WorkflowRunResult }
   | { kind: "settled" };
 
 const IDLE_RUN: RunSession = {
@@ -228,14 +236,22 @@ const IDLE_RUN: RunSession = {
   currentLine: null,
   pausedLine: null,
   lastRun: null,
+  lastRunId: null,
 };
 
 function runSessionReducer(state: RunSession, action: RunSessionAction): RunSession {
   switch (action.kind) {
     case "cleared":
-      return { ...state, lastRun: null };
+      return { ...state, lastRun: null, lastRunId: null };
     case "started":
-      return { ...state, running: true, liveLogs: [], currentLine: null, pausedLine: null };
+      return {
+        ...state,
+        running: true,
+        liveLogs: [],
+        currentLine: null,
+        pausedLine: null,
+        lastRunId: null,
+      };
     case "line":
       return { ...state, currentLine: action.line };
     case "log":
@@ -245,7 +261,7 @@ function runSessionReducer(state: RunSession, action: RunSessionAction): RunSess
     case "resumed":
       return { ...state, pausedLine: null };
     case "finished":
-      return { ...state, lastRun: action.result };
+      return { ...state, lastRun: action.result, lastRunId: action.runId || null };
     // The run ended (cleanly or not): stop reporting a position, but keep
     // liveLogs so the log panel still shows what happened.
     case "settled":
@@ -506,8 +522,8 @@ export function WorkflowsPanel({
     debugSessionRef.current = debug;
     try {
       await client.update(draft.id, { source: draft.source });
-      const { result } = await client.run(draft.id, debug);
-      dispatchSession({ kind: "finished", result });
+      const { runId, result } = await client.run(draft.id, debug);
+      dispatchSession({ kind: "finished", runId, result });
       dispatchDetail({
         kind: "runsRefreshed",
         runs: await client.listRuns(draft.id),
@@ -767,6 +783,12 @@ export function WorkflowsPanel({
           ) : (
             session.lastRun && <RunResultPanel run={session.lastRun} />
           )}
+
+          <WorkflowRunHistory
+            runs={detail.runs}
+            currentRunId={session.lastRunId}
+            liveRunActive={session.running}
+          />
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-sm opacity-50">
@@ -1669,66 +1691,6 @@ function PendingApprovalsPanel({
       {approvals.map((a) => (
         <ApprovalCard key={a.id} approval={a} deciding={decidingId === a.id} onDecide={onDecide} />
       ))}
-    </div>
-  );
-}
-
-function RunResultPanel({ run }: { run: WorkflowRunResult }) {
-  const gt = useGT();
-  return (
-    <div className="h-48 border-t border-white/10 flex flex-col min-h-0">
-      <div className="px-3 py-1 text-xs border-b border-white/10 flex items-center gap-2">
-        <span
-          className={`font-semibold ${run.status === "success" ? "text-success" : run.status === "failure" ? "text-danger" : ""}`}
-        >
-          {run.status}
-        </span>
-        {run.durationMs != null && <span className="opacity-50">{run.durationMs}ms</span>}
-      </div>
-      <div className="flex-1 overflow-auto p-2 font-mono text-[11px] leading-relaxed">
-        {run.logs.map((l, i) => (
-          <div
-            key={i}
-            className={
-              l.level === "error" ? "text-danger" : l.level === "warn" ? "text-warning" : ""
-            }
-          >
-            {l.message}
-          </div>
-        ))}
-        {run.error && (
-          <div className="text-danger">
-            {gt("Error: {message}", { message: run.error.message })}
-          </div>
-        )}
-        {run.output !== undefined && run.output !== null && (
-          <pre className="mt-2 opacity-80">{JSON.stringify(run.output, null, 2)}</pre>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** Logs streamed live while a run is in progress (same colour-by-level styling). */
-function LiveLogPanel({ logs }: { logs: WorkflowRunLog[] }) {
-  const gt = useGT();
-  return (
-    <div className="h-48 border-t border-white/10 flex flex-col min-h-0">
-      <div className="px-3 py-1 text-xs border-b border-white/10 flex items-center gap-2">
-        <span className="font-semibold text-warning">{gt("running…")}</span>
-      </div>
-      <div className="flex-1 overflow-auto p-2 font-mono text-[11px] leading-relaxed">
-        {logs.map((l, i) => (
-          <div
-            key={i}
-            className={
-              l.level === "error" ? "text-danger" : l.level === "warn" ? "text-warning" : ""
-            }
-          >
-            {l.message}
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
