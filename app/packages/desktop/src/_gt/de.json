@@ -9187,8 +9187,6 @@
   "bf1fce68bf0786dd": "Renderfehler",
   "69905f5637c9a65c": "Chat läuft über Infrawrench Cloud. Melden Sie sich an und wählen Sie eine Organisation aus, um den Agenten zu Ihrer Infrastruktur zu befragen.",
   "e57077856e95f319": "Dashboard",
-  "c7212eaf7ab9e241": "Kostendiagramme erfordern den Cloud-Modus",
-  "f4d019ef9bfc1d72": "Anmerkungen erfordern den Cloud-Modus",
   "0e703bb0e87cfc4e": "Budgets konnten nicht geladen werden",
   "c561d5907c63af7f": "Kostenberichte konnten nicht geladen werden",
   "ee59120a6e6f4194": "Dashboard nicht gefunden.",
@@ -9593,5 +9591,6 @@
   "7605071489d4ef01": "Nur diesen API-Schlüssel anzeigen",
   "c7d9edb952ec842a": "Gehört {owner}",
   "7161c775bd96511c": "Wird gestoppt…",
+  "5459ec78d19971ff": "Kosten erfordern den Cloud-Modus — melden Sie sich zum Synchronisieren an.",
   "0fe46c2c3c0518fa": "Letzte {hours} Std."
 }

@@ -24,9 +24,9 @@ import {
   type CustomGraphSummary,
   type CustomGraphWidgetConfig,
   DashboardAddMenu,
-  useStableGT,
 } from "@infrawrench/ui";
 import { createCloudCustomGraphsClient } from "../lib/cloud-custom-graphs";
+import { createDesktopCostApi } from "../lib/cost-api";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
 import {
@@ -54,13 +54,7 @@ import {
   reorderCloudCards,
   renameCloudDashboard,
   deleteCloudDashboard,
-  queryCloudCosts,
-  loadCloudCostDimensionValues,
   loadCloudCostStatus,
-  listCloudCostAnnotations,
-  createCloudCostAnnotation,
-  updateCloudCostAnnotation,
-  deleteCloudCostAnnotation,
   listCloudBudgets,
   listCloudCostReports,
   createCloudBudget,
@@ -125,9 +119,6 @@ interface DashboardViewProps {
 
 export function DashboardView({ dashboardId }: DashboardViewProps) {
   const gt = useGT();
-  // For memos whose gt() calls are lazy: useGT()'s identity changes every
-  // render, and a client rebuilt every render re-fires its consumers' effects.
-  const lazyGt = useStableGT();
   const navigate = useNavigate();
   const [pinned, setPinned] = useState<PinnedRow[]>([]);
   const [workflowPins, setWorkflowPins] = useState<WorkflowPin[]>([]);
@@ -841,48 +832,12 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     }
   }
 
-  const costApi: CostApi = useMemo(
-    () => ({
-      queryCosts: (req) => {
-        const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(lazyGt("Cost graphs require cloud mode")));
-        return queryCloudCosts(orgId, req);
-      },
-      loadDimensionValues: (dimension, tagKey) => {
-        const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.resolve([]);
-        return loadCloudCostDimensionValues(orgId, dimension, tagKey);
-      },
-      loadCostStatus: () => {
-        const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.resolve([]);
-        return loadCloudCostStatus(orgId);
-      },
-      // A dashboard cost card belongs to no report, so it draws the org-wide
-      // notes only — which is exactly what "we changed instance types" is.
-      listCostAnnotations: (reportId?: string) => {
-        const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.resolve([]);
-        return listCloudCostAnnotations(orgId, reportId);
-      },
-      createCostAnnotation: (input) => {
-        const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(lazyGt("Annotations require cloud mode")));
-        return createCloudCostAnnotation(orgId, input);
-      },
-      updateCostAnnotation: (annotationId, input) => {
-        const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(lazyGt("Annotations require cloud mode")));
-        return updateCloudCostAnnotation(orgId, annotationId, input);
-      },
-      deleteCostAnnotation: (annotationId) => {
-        const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(lazyGt("Annotations require cloud mode")));
-        return deleteCloudCostAnnotation(orgId, annotationId);
-      },
-    }),
-    [lazyGt],
-  );
+  // The same client the Costs panel and the Cost reports page build on, not a
+  // subset: the graph editor's scenario, saved-filter and unit-cost pickers
+  // render only when their loader is present, so a hand-rolled literal here
+  // takes them away from every cost card opened on a dashboard. Every call
+  // resolves the active org itself, so this never has to be rebuilt.
+  const costApi: CostApi = useMemo(() => createDesktopCostApi(), []);
 
   // Keyed to the active org so an org switch rebuilds it (and with it, every
   // open card's data). Local mode never renders custom-graph widgets.
@@ -1026,17 +981,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       // Round-tripped, or editing a budget's name would quietly move it back to
       // the cash basis it was deliberately taken off.
       ...(budget.costBasis ? { costBasis: budget.costBasis } : {}),
-      // Same rule: a rename must not silently detach the saved filter scoping
-      // this budget — updates are full replaces.
-      ...(budget.savedFilterId ? { savedFilterId: budget.savedFilterId } : {}),
-      // Same rule: a rename must not silently detach the scenario model whose
-      // forecast this budget's thresholds were opted into.
-      ...(budget.scenarioModelId ? { scenarioModelId: budget.scenarioModelId } : {}),
-      // Same rule: not exposed as a toggle in this editor, but settable via
-      // the API and the Terraform provider — a save here must not silently
-      // move a budget back off the adjusted (billing-rule) figure it was
-      // opted into.
-      ...(budget.useAdjustedSpend ? { useAdjustedSpend: budget.useAdjustedSpend } : {}),
     };
   }
 

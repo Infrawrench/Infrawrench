@@ -54,12 +54,17 @@ import type {
 import { apiDelete, apiGet, apiPost, apiPut } from "./api";
 
 /**
- * The read-only cost calls, shared by the dashboard's cost cards and the Costs
- * panel. Both render the same components, so both need the same `CostApi`;
- * keeping one definition means a change to the query endpoint cannot reach one
- * surface and miss the other.
+ * The read-only cost calls, shared by the dashboard's cost cards, the Costs
+ * panel and the Cost reports page. All three render the same components, so all
+ * three need the same `CostApi`; keeping one definition means a change to the
+ * query endpoint cannot reach one surface and miss the other.
+ *
+ * Exported because the dashboard needs it without the budget/report halves.
+ * It used to build its own three-method literal, and the pickers that gate on
+ * an optional loader (scenarios, saved filters, unit costs) silently vanished
+ * from a graph editor opened from a dashboard — never construct a second one.
  */
-function createWebCostApi(orgId: string): CostApi {
+export function createWebCostApi(orgId: string): CostApi {
   return {
     queryCosts: (req: CostQueryRequest) =>
       apiPost<CostQueryResponse>(`/api/org/${orgId}/costs/query`, req),
