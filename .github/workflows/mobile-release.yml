@@ -1,28 +1,24 @@
-# Build the iOS app for the App Store and hand it to TestFlight.
+# Build the mobile app for the stores and hand it to TestFlight / Play internal.
 #
 # Shape: the same version-as-trigger idiom the rest of this repo uses. The
 # release version is `version` in `app/packages/mobile/app.config.ts` — the one
-# that actually lands in the binary as CFBundleShortVersionString — and this
-# workflow does nothing unless the tag `mobile-v<version>` is absent. Bumping
-# that number is the whole release ritual; re-running on an unchanged version is
-# a no-op, and a re-run after a failed submit resumes rather than
+# that actually lands in the binary as CFBundleShortVersionString / versionName
+# — and this workflow does nothing unless the tag `mobile-v<version>` is absent.
+# Bumping that number is the whole release ritual; re-running on an unchanged
+# version is a no-op, and a re-run after a failed submit resumes rather than
 # double-publishing.
 #
 # Build numbers are not part of that: `appVersionSource: "remote"` plus
-# `autoIncrement` on the production profile means EAS owns buildNumber, so no
-# release commit is needed and two releases of the same version string can't
-# collide.
+# `autoIncrement` on the production profile means EAS owns buildNumber and
+# versionCode, so no release commit is needed and two releases of the same
+# version string can't collide.
 #
-# iOS only for now — Android stays out until the Play Console app has had its
-# first manual AAB upload and `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` is in place.
-# See the mobile release runbook in KNOWLEDGE.md.
-#
-# Where it stops: `--auto-submit` uploads to TestFlight. It deliberately does
-# not push App Store review — promoting a build to production stays a human
-# decision in App Store Connect. That is also why this never touches the
-# `preview` builds in mobile-build.yml, which keep running for internal
-# distribution.
-name: Mobile Release (iOS)
+# Where it stops: `--auto-submit` uploads to TestFlight and the Play **internal**
+# track. It deliberately does not push either store's public review — promoting a
+# build to production stays a human decision in App Store Connect and the Play
+# Console. That is also why this never touches the `preview` builds in
+# mobile-build.yml, which keep running per-push for internal distribution.
+name: Mobile Release
 
 on:
   push:
@@ -64,7 +60,7 @@ jobs:
           # crafted branch name inject shell metacharacters under contents:write.
           REF: ${{ github.ref }}
         run: |
-          echo "::error::Mobile releases must run from main (got ${REF}). Re-run Actions → Mobile Release (iOS) with the main branch selected."
+          echo "::error::Mobile releases must run from main (got ${REF}). Re-run Actions → Mobile Release with the main branch selected."
           exit 1
 
       # Pin privileged actions by SHA — this job (and release) hold contents:write
@@ -102,13 +98,13 @@ jobs:
           fi
 
   release:
-    name: Build and submit iOS ${{ needs.check-if-release.outputs.version }}
+    name: Build and submit ${{ needs.check-if-release.outputs.version }}
     needs: check-if-release
     if: needs.check-if-release.outputs.version != ''
     runs-on: ubuntu-24.04-arm
-    # One store build plus upload; the default 6h ceiling is generous but a
-    # hung build should not sit there burning the whole budget.
-    timeout-minutes: 90
+    # Two store builds plus their uploads; the default 6h ceiling is generous
+    # but a hung build should not sit there burning the whole budget.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -123,16 +119,22 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
 
-      # Fail in seconds rather than after a 40-minute build. Creating the ASC
-      # app record is one-time store setup that cannot be done from here — see
-      # the mobile release runbook in KNOWLEDGE.md.
-      - name: Check App Store Connect is configured
+      # Fail in seconds rather than after a 40-minute build. Both of these are
+      # one-time store setup that cannot be done from here — see the mobile
+      # release runbook in KNOWLEDGE.md.
+      - name: Check the store credentials are actually configured
         working-directory: app/packages/mobile
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
           set -eo pipefail
           ASC_APP_ID="$(jq -r '.submit.production.ios.ascAppId' eas.json)"
           if [ -z "$ASC_APP_ID" ] || [ "$ASC_APP_ID" = "REPLACE_WITH_APP_STORE_CONNECT_APP_ID" ] || [ "$ASC_APP_ID" = "null" ]; then
             echo "::error::eas.json still has the placeholder ascAppId. Create the app in App Store Connect, then put its numeric Apple ID in submit.production.ios.ascAppId."
+            exit 1
+          fi
+          if [ -z "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::Secret GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is not set. Create a Play Console service account, invite it under Users and permissions with release rights, and add its JSON key."
             exit 1
           fi
 
@@ -144,14 +146,29 @@ jobs:
           install -m 600 /dev/null "${RUNNER_TEMP}/asc-api-key.p8"
           echo "$EXPO_ASC_API_KEY_BASE64" | base64 --decode > "${RUNNER_TEMP}/asc-api-key.p8"
 
+      # `serviceAccountKeyPath` in eas.json is a static path — submit profiles
+      # have no environment-variable interpolation — so the key is written to
+      # the path the profile names. It is gitignored, and removed below.
+      - name: Write Google Play service account key
+        working-directory: app/packages/mobile
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -eo pipefail
+          install -m 600 /dev/null google-play-key.json
+          printf '%s' "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > google-play-key.json
+          jq -e '.type == "service_account"' google-play-key.json > /dev/null \
+            || { echo "::error::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is not a service account key"; exit 1; }
+
       # `--auto-submit` reuses the submit profile named after the build profile,
       # so `production` builds go through `submit.production`. It lands in
-      # TestFlight; App Store public review is not triggered from here.
+      # TestFlight and the Play internal track; neither store's public review is
+      # triggered from here.
       #
       # As in mobile-build.yml, `--non-interactive` disables eas-cli's Apple
       # capability syncing, so a newly added entitlement still needs a one-time
       # manual enable on the App ID. See KNOWLEDGE.md.
-      - name: EAS build and submit iOS (production)
+      - name: EAS build and submit (production)
         working-directory: app/packages/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -161,7 +178,12 @@ jobs:
           EXPO_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           EXPO_APPLE_TEAM_TYPE: ${{ vars.APPLE_TEAM_TYPE }}
         run: |
-          npx eas-cli build --platform ios --profile production --non-interactive --auto-submit
+          npx eas-cli build --platform all --profile production --non-interactive --auto-submit
+
+      - name: Remove the Play key
+        if: always()
+        working-directory: app/packages/mobile
+        run: rm -f google-play-key.json
 
       # Last, so a failed build or submit can simply be re-run: the tag is what
       # makes the next push a no-op, and writing it early would strand a release
@@ -183,9 +205,10 @@ jobs:
           VERSION: ${{ needs.check-if-release.outputs.version }}
         run: |
           {
-            echo "### Mobile iOS ${VERSION} submitted"
+            echo "### Mobile ${VERSION} submitted"
             echo
             echo "- iOS → TestFlight"
+            echo "- Android → Play internal track"
             echo
-            echo "Promote to public release in App Store Connect when you're ready."
+            echo "Promote to public release in App Store Connect and the Play Console when you're ready."
           } >> "$GITHUB_STEP_SUMMARY"
