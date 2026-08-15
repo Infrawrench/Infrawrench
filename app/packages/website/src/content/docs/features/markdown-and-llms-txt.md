@@ -29,17 +29,39 @@ curl https://infrawrench.com/llms.txt
 
 `robots.txt` points at it too, so a crawler that starts where crawlers start will find it.
 
-## What negotiation does and doesn't cover
+## What counts as asking for markdown
 
-Content negotiation works on the home page. Documentation pages are prerendered as static files, so they never reach the code that inspects `Accept` — for those, use the `.md` URL. Each documentation page advertises its own twin in the HTML head:
+Negotiation covers the home page and every documentation page — both render on demand, so both see your `Accept` header.
+
+Markdown wins when you weight it above HTML:
+
+```bash
+curl -H 'Accept: text/markdown;q=1.0, text/html;q=0.1' https://infrawrench.com/
+```
+
+It also wins when you name it first and give no weights at all, which is how most HTTP clients express a preference:
+
+```bash
+curl -H 'Accept: text/markdown, text/html, */*' https://infrawrench.com/
+```
+
+`q` decides first; where markdown and HTML carry the same weight, the one named first wins. `text/plain` and `text/x-markdown` both count as markdown.
+
+A request with no preference gets HTML. That includes `Accept: */*`, which is what most browsers and plain `curl` send — asking for "anything" isn't asking for markdown, and treating it as such would serve plain text to the entire web. Browsers never name markdown at all, so they never negotiate into it.
+
+Every page advertises its markdown twin two ways, for clients that would rather follow a link than set a header — a response header:
+
+```
+Link: <https://infrawrench.com/index.md>; rel="alternate"; type="text/markdown"
+```
+
+and a tag in the HTML head:
 
 ```html
 <link rel="alternate" type="text/markdown" href="/docs/features/agent-auth.md" />
 ```
 
 The negotiated responses carry `Vary: Accept`, so a shared cache keeps the two representations apart rather than serving whichever it saw first.
-
-A request with no preference gets HTML. That includes `Accept: */*`, which is what most browsers and plain `curl` send — asking for "anything" isn't asking for markdown, and treating it as such would serve plain text to the entire web.
 
 ## If you're an agent
 
