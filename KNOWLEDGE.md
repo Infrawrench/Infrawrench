@@ -2351,6 +2351,22 @@ the ui barrel — dragging React and Monaco into a Node test until `cloud-api.te
 Data-layer modules import the React-free entry; only components import the barrel. Same
 precedent as `agents/launch-command`.
 
+**The Stop button's handle is created by the caller, never handed back by the transport.**
+`DeploySession.stopper` is a required `DeployStopController` (`client-core/src/deploy-stop.ts`)
+that `DeploymentsPanel` constructs before it calls `deploy()`. It used to be an optional
+`stop?: () => void` the transport assigned and the panel read synchronously on the next line —
+which no transport can satisfy, because every one of them `await`s a websocket token before it
+has a socket at all, so the assignment landed a microtask after the read and the button never
+rendered on **either** web or desktop (#108). Owning the controller removes the ordering
+question: there is nothing to read back, and a transport that forgets to `arm()` leaves the stop
+visibly queued rather than silently never offering the button. Transports `arm(send)` inside
+`onopen` **after** sending `deploy:run` — `server.ts` routes `deploy:stop` to the listener that
+frame registers — and `finish()` in their `finish()` wrapper. A stop clicked while the socket is
+still connecting is queued and flushed on arm rather than being dropped or hidden behind a
+disabled button: that window is short but it is exactly when a user changes their mind, having
+just clicked Deploy. The controller is deliberately not reactive — with the queue there is no
+"not ready yet" state to render.
+
 Permissions are `deployments:read` / `:plan` / `:write` — **not** the `dashboards:*` squat
 workflows took. Three tiers because previewing and shipping are different risks: `read` is the
 history and declared envs (inert), `plan` runs the repo's `plan()` against the org's host so it
@@ -2606,6 +2622,8 @@ A cluster has no billing API, so cost is derived in `plugin-kubernetes/src/cost-
 Node rates arrive via the existing `credentialMappings` mechanism (`nodeHourlyRates` on all six cluster resource types); DigitalOcean gives real billed price, AWS/Azure list price, GCP/Scaleway/OVH none. **With no rate, capacity and efficiency render with no money attached** rather than a fabricated number. `metrics.k8s.io` is optional — a 404 degrades to requests-based allocation.
 
 Surfaced through the plugin: peer-pane subtitles and status (`PeerPaneSchema` has no chart/table slot, so real breakdowns go elsewhere), `dashboard-stats.ts`, `TableNode` breakdowns in `detail-renderers.ts`, and `fetchMetricSeries` merged onto the parent cluster's Metrics tab via `exposeMetricsToParent`. Cost rows use `maxHistoryDays: 1` with namespace/workload as tags. **Allocation deliberately does not inherit `SYSTEM_NAMESPACES`** — it reads pods directly so kube-system's cost cannot silently vanish.
+
+**The peer pane's Namespaces grid does the opposite, on purpose.** It is a filter control over the pane's own workload listings, and those listings _do_ inherit `SYSTEM_NAMESPACES`, so no pod ever reports `kube-system` and offering it as a filter would empty the pane. `PeerPaneView` therefore draws only namespaces present in the set derived from the other groups — the same set the namespace `<select>` is built from, so the two controls always agree — and takes the group's header count from that list rather than from `group.items`, which is what stopped the header claiming more namespaces than it drew. The old system/user disclosure inside `NamespaceGrid` was unreachable for the same reason and is gone. Group titles carry their count inside the string (`Namespaces (5) · by cost`), so all count handling goes through `PeerPaneView.utils.ts`, which anchors on "a parenthesised integer ending the title or preceding the `·` suffix" — matching only a _trailing_ count read that title as uncounted and appended a second one.
 
 ## Cost reports, currency, query language & exports
 

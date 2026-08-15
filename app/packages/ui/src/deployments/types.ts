@@ -1,5 +1,5 @@
 /** Shared UI-side shapes for deployments. Kept decoupled from server types. */
-import type { DeploymentCostImpact } from "@infrawrench/client-core";
+import type { DeploymentCostImpact, DeployStopController } from "@infrawrench/client-core";
 import type { WorkflowRunLog } from "../workflows/types.js";
 
 export type DeployStage = "plan" | "dockerfile" | "build" | "deploy" | "destroy";
@@ -86,8 +86,22 @@ export interface DeployTriggerInput {
 export interface DeploySession {
   onLog?: (entry: WorkflowRunLog) => void;
   onStage?: (stage: DeployStage) => void;
-  /** Ask the server to stop; set by the transport once the socket is open. */
-  stop?: () => void;
+  /**
+   * The run's stop channel, created by the *caller* and armed by the transport
+   * once its socket is open.
+   *
+   * Required, and an object rather than a `stop?: () => void` the transport
+   * assigns, because the transport cannot assign one in time: `deploy()` awaits
+   * a websocket token before it has a socket at all, so anything it writes back
+   * onto the session lands after its caller has already read it. Owning the
+   * controller means the caller can wire its Stop button the instant it starts
+   * the run, and a transport that forgets to `arm()` fails visibly (the stop is
+   * queued forever) rather than silently never offering the button.
+   *
+   * A transport must `arm()` as soon as it can send, and `finish()` once the
+   * run has settled or the socket has closed.
+   */
+  stopper: DeployStopController;
 }
 
 export interface DeployStartOptions {
