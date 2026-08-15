@@ -26,6 +26,7 @@ import {
   DashboardAddMenu,
 } from "@infrawrench/ui";
 import { createCloudCustomGraphsClient } from "../lib/cloud-custom-graphs";
+import { createDesktopCostApi } from "../lib/cost-api";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
 import {
@@ -53,13 +54,7 @@ import {
   reorderCloudCards,
   renameCloudDashboard,
   deleteCloudDashboard,
-  queryCloudCosts,
-  loadCloudCostDimensionValues,
   loadCloudCostStatus,
-  listCloudCostAnnotations,
-  createCloudCostAnnotation,
-  updateCloudCostAnnotation,
-  deleteCloudCostAnnotation,
   listCloudBudgets,
   listCloudCostReports,
   createCloudBudget,
@@ -837,48 +832,12 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     }
   }
 
-  const costApi: CostApi = useMemo(
-    () => ({
-      queryCosts: (req) => {
-        const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(gt("Cost graphs require cloud mode")));
-        return queryCloudCosts(orgId, req);
-      },
-      loadDimensionValues: (dimension, tagKey) => {
-        const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.resolve([]);
-        return loadCloudCostDimensionValues(orgId, dimension, tagKey);
-      },
-      loadCostStatus: () => {
-        const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.resolve([]);
-        return loadCloudCostStatus(orgId);
-      },
-      // A dashboard cost card belongs to no report, so it draws the org-wide
-      // notes only — which is exactly what "we changed instance types" is.
-      listCostAnnotations: (reportId?: string) => {
-        const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.resolve([]);
-        return listCloudCostAnnotations(orgId, reportId);
-      },
-      createCostAnnotation: (input) => {
-        const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(gt("Annotations require cloud mode")));
-        return createCloudCostAnnotation(orgId, input);
-      },
-      updateCostAnnotation: (annotationId, input) => {
-        const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(gt("Annotations require cloud mode")));
-        return updateCloudCostAnnotation(orgId, annotationId, input);
-      },
-      deleteCostAnnotation: (annotationId) => {
-        const orgId = useUIStore.getState().activeCloudOrgId;
-        if (!orgId) return Promise.reject(new Error(gt("Annotations require cloud mode")));
-        return deleteCloudCostAnnotation(orgId, annotationId);
-      },
-    }),
-    [gt],
-  );
+  // The same client the Costs panel and the Cost reports page build on, not a
+  // subset: the graph editor's scenario, saved-filter and unit-cost pickers
+  // render only when their loader is present, so a hand-rolled literal here
+  // takes them away from every cost card opened on a dashboard. Every call
+  // resolves the active org itself, so this never has to be rebuilt.
+  const costApi: CostApi = useMemo(() => createDesktopCostApi(), []);
 
   // Keyed to the active org so an org switch rebuilds it (and with it, every
   // open card's data). Local mode never renders custom-graph widgets.

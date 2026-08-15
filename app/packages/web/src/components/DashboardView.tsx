@@ -34,10 +34,7 @@ import {
   type BudgetWithStatus,
   type CostAccountStatus,
   type CostApi,
-  type CostDimensionOption,
   type CostGraphConfig,
-  type CostQueryRequest,
-  type CostQueryResponse,
   type DashboardWidget,
 } from "@infrawrench/ui/cost";
 import {
@@ -59,6 +56,7 @@ import {
   type CustomGraphsClient,
 } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete, apiPatch, apiPut } from "@/lib/api";
+import { createWebCostApi } from "@/lib/cost-client";
 import { useOrgId } from "@/lib/useOrgId";
 import { SpotlightSearch } from "./SpotlightSearch";
 
@@ -191,27 +189,11 @@ export function DashboardView({
   const cardsRef = useRef(cards);
   cardsRef.current = cards;
 
-  const costApi: CostApi = useMemo(
-    () => ({
-      queryCosts: (req: CostQueryRequest) =>
-        apiPost<CostQueryResponse>(`/api/org/${orgId}/costs/query`, req),
-      loadDimensionValues: async (dimension: string, tagKey?: string) => {
-        const params = new URLSearchParams({ dimension });
-        if (tagKey) params.set("tagKey", tagKey);
-        const res = await apiGet<{ values: Array<string | CostDimensionOption> }>(
-          `/api/org/${orgId}/costs/dimensions?${params}`,
-        );
-        return res.values.map((v) => (typeof v === "string" ? { value: v, label: v } : v));
-      },
-      loadCostStatus: async () => {
-        const res = await apiGet<{ accounts: CostAccountStatus[] }>(
-          `/api/org/${orgId}/costs/status`,
-        );
-        return res.accounts;
-      },
-    }),
-    [orgId],
-  );
+  // The same client the Costs panel and the Cost reports page build on, not a
+  // subset: the graph editor's scenario, saved-filter and unit-cost pickers
+  // render only when their loader is present, so a hand-rolled literal here
+  // takes them away from every cost card opened on a dashboard.
+  const costApi: CostApi = useMemo(() => createWebCostApi(orgId), [orgId]);
 
   const customGraphsClient: CustomGraphsClient = useMemo(
     () => ({
