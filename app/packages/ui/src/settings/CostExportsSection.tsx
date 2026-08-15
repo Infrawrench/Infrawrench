@@ -400,189 +400,191 @@ function CostExportEditor({
   }
 
   return (
-    <Modal
-      onClose={onClose}
-      ariaLabel={existing ? gt("Edit cost export") : gt("New cost export")}
-      className="w-[42rem] max-w-[92vw]"
-    >
-      <div className="p-5 space-y-5 max-h-[80vh] overflow-y-auto">
-        <h2 className="text-lg font-semibold">
-          {existing ? gt("Edit cost export") : gt("New cost export")}
-        </h2>
+    <Modal onClose={onClose} ariaLabel={existing ? gt("Edit cost export") : gt("New cost export")}>
+      <div className="bg-surface-raised border border-border-strong rounded-xl w-[42rem] max-w-[92vw] shadow-2xl">
+        <div className="p-5 space-y-5 max-h-[80vh] overflow-y-auto">
+          <h2 className="text-lg font-semibold">
+            {existing ? gt("Edit cost export") : gt("New cost export")}
+          </h2>
 
-        {error !== null && (
-          <div className="px-3 py-2 text-sm text-danger border border-red-900/50 bg-red-950/20 rounded-lg">
-            {error}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="block sm:col-span-2">
-            <span className={LABEL}>{gt("Name")}</span>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Finance warehouse (daily)"
-              className={INPUT}
-            />
-          </label>
-
-          <label className="block">
-            <span className={LABEL}>{gt("Format")}</span>
-            <select
-              value={form.format}
-              onChange={(e) =>
-                setForm({ ...form, format: e.target.value as CostExportInput["format"] })
-              }
-              className={INPUT}
-            >
-              {COST_EXPORT_FORMATS.map((f) => (
-                <option key={f} value={f}>
-                  {gtData(COST_EXPORT_FORMAT_LABELS[f])}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block">
-            <span className={LABEL}>{gt("Cadence (also the period per object)")}</span>
-            <select
-              value={form.cadence}
-              onChange={(e) =>
-                setForm({ ...form, cadence: e.target.value as CostExportInput["cadence"] })
-              }
-              className={INPUT}
-            >
-              {COST_EXPORT_CADENCES.map((cadence) => (
-                <option key={cadence} value={cadence}>
-                  {gtData(COST_EXPORT_CADENCE_LABELS[cadence])}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block">
-            <span className={LABEL}>{gt("Hour (local)")}</span>
-            <select
-              value={form.hour}
-              onChange={(e) => setForm({ ...form, hour: Number(e.target.value) })}
-              className={INPUT}
-            >
-              {Array.from({ length: 24 }, (_, h) => (
-                <option key={h} value={h}>
-                  {String(h).padStart(2, "0")}:00
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block">
-            <span className={LABEL}>{gt("Timezone")}</span>
-            <input
-              type="text"
-              value={form.timezone}
-              onChange={(e) => setForm({ ...form, timezone: e.target.value })}
-              placeholder="Europe/Berlin"
-              className={INPUT}
-            />
-          </label>
-        </div>
-
-        <section className="space-y-2">
-          <h3 className="text-sm font-semibold">{gt("Restatement window")}</h3>
-          <T>
-            <p className="text-xs text-on-surface-muted">
-              Days of already-written history each run rebuilds. Every period overlapping the window
-              is re-exported <em>in full</em> at the key it already occupies, so the destination
-              ends up with a better copy of the same file — never a duplicate. Seven days covers how
-              far back the providers we collect from normally revise; set 0 only if yours never do.
-            </p>
-          </T>
-          <label className="block max-w-[12rem]">
-            <span className={LABEL}>{gt("Days")}</span>
-            <input
-              type="number"
-              min={0}
-              max={90}
-              value={form.restatementDays}
-              onChange={(e) => {
-                // Empty or half-typed keeps the stored window; 0 is a real
-                // setting ("never restate") and must be chosen, not fallen into.
-                const days = parseNumericInputValue(e.target.value);
-                if (days === null) return;
-                setForm({ ...form, restatementDays: days });
-              }}
-              className={INPUT}
-            />
-          </label>
-        </section>
-
-        <ColumnPicker query={form.query} onChange={(query) => setForm((f) => ({ ...f, query }))} />
-
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold">{gt("Destination")}</h3>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setDestinationKind("s3")}
-              className={isS3 ? PRIMARY_BUTTON : SECONDARY_BUTTON}
-            >
-              {gt("S3-compatible")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setDestinationKind("http")}
-              className={!isS3 ? PRIMARY_BUTTON : SECONDARY_BUTTON}
-            >
-              {gt("HTTPS endpoint")}
-            </button>
-          </div>
-
-          {form.destination.kind === "s3" ? (
-            <S3DestinationFields
-              destination={form.destination}
-              onChange={(destination) => setForm((f) => ({ ...f, destination }))}
-              existing={existing}
-              accessKeyId={accessKeyId}
-              onAccessKeyIdChange={setAccessKeyId}
-              secretAccessKey={secretAccessKey}
-              onSecretAccessKeyChange={setSecretAccessKey}
-            />
-          ) : (
-            <HttpDestinationFields
-              destination={form.destination}
-              onChange={(destination) => setForm((f) => ({ ...f, destination }))}
-              existing={existing}
-              url={url}
-              onUrlChange={setUrl}
-            />
+          {error !== null && (
+            <div className="px-3 py-2 text-sm text-danger border border-red-900/50 bg-red-950/20 rounded-lg">
+              {error}
+            </div>
           )}
-        </section>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={form.enabled}
-            onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="block sm:col-span-2">
+              <span className={LABEL}>{gt("Name")}</span>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Finance warehouse (daily)"
+                className={INPUT}
+              />
+            </label>
+
+            <label className="block">
+              <span className={LABEL}>{gt("Format")}</span>
+              <select
+                value={form.format}
+                onChange={(e) =>
+                  setForm({ ...form, format: e.target.value as CostExportInput["format"] })
+                }
+                className={INPUT}
+              >
+                {COST_EXPORT_FORMATS.map((f) => (
+                  <option key={f} value={f}>
+                    {gtData(COST_EXPORT_FORMAT_LABELS[f])}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className={LABEL}>{gt("Cadence (also the period per object)")}</span>
+              <select
+                value={form.cadence}
+                onChange={(e) =>
+                  setForm({ ...form, cadence: e.target.value as CostExportInput["cadence"] })
+                }
+                className={INPUT}
+              >
+                {COST_EXPORT_CADENCES.map((cadence) => (
+                  <option key={cadence} value={cadence}>
+                    {gtData(COST_EXPORT_CADENCE_LABELS[cadence])}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className={LABEL}>{gt("Hour (local)")}</span>
+              <select
+                value={form.hour}
+                onChange={(e) => setForm({ ...form, hour: Number(e.target.value) })}
+                className={INPUT}
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>
+                    {String(h).padStart(2, "0")}:00
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className={LABEL}>{gt("Timezone")}</span>
+              <input
+                type="text"
+                value={form.timezone}
+                onChange={(e) => setForm({ ...form, timezone: e.target.value })}
+                placeholder="Europe/Berlin"
+                className={INPUT}
+              />
+            </label>
+          </div>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold">{gt("Restatement window")}</h3>
+            <T>
+              <p className="text-xs text-on-surface-muted">
+                Days of already-written history each run rebuilds. Every period overlapping the
+                window is re-exported <em>in full</em> at the key it already occupies, so the
+                destination ends up with a better copy of the same file — never a duplicate. Seven
+                days covers how far back the providers we collect from normally revise; set 0 only
+                if yours never do.
+              </p>
+            </T>
+            <label className="block max-w-[12rem]">
+              <span className={LABEL}>{gt("Days")}</span>
+              <input
+                type="number"
+                min={0}
+                max={90}
+                value={form.restatementDays}
+                onChange={(e) => {
+                  // Empty or half-typed keeps the stored window; 0 is a real
+                  // setting ("never restate") and must be chosen, not fallen into.
+                  const days = parseNumericInputValue(e.target.value);
+                  if (days === null) return;
+                  setForm({ ...form, restatementDays: days });
+                }}
+                className={INPUT}
+              />
+            </label>
+          </section>
+
+          <ColumnPicker
+            query={form.query}
+            onChange={(query) => setForm((f) => ({ ...f, query }))}
           />
-          <span className="text-on-surface-secondary">
-            {gt("Run on schedule (uncheck to pause without deleting)")}
-          </span>
-        </label>
 
-        <div className="flex items-center justify-end gap-2 pt-1">
-          <button type="button" onClick={onClose} className={SECONDARY_BUTTON}>
-            {gt("Cancel")}
-          </button>
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={saving || !form.name.trim()}
-            className={PRIMARY_BUTTON}
-          >
-            {saving ? gt("Saving…") : existing ? gt("Save changes") : gt("Create export")}
-          </button>
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">{gt("Destination")}</h3>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDestinationKind("s3")}
+                className={isS3 ? PRIMARY_BUTTON : SECONDARY_BUTTON}
+              >
+                {gt("S3-compatible")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDestinationKind("http")}
+                className={!isS3 ? PRIMARY_BUTTON : SECONDARY_BUTTON}
+              >
+                {gt("HTTPS endpoint")}
+              </button>
+            </div>
+
+            {form.destination.kind === "s3" ? (
+              <S3DestinationFields
+                destination={form.destination}
+                onChange={(destination) => setForm((f) => ({ ...f, destination }))}
+                existing={existing}
+                accessKeyId={accessKeyId}
+                onAccessKeyIdChange={setAccessKeyId}
+                secretAccessKey={secretAccessKey}
+                onSecretAccessKeyChange={setSecretAccessKey}
+              />
+            ) : (
+              <HttpDestinationFields
+                destination={form.destination}
+                onChange={(destination) => setForm((f) => ({ ...f, destination }))}
+                existing={existing}
+                url={url}
+                onUrlChange={setUrl}
+              />
+            )}
+          </section>
+
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.enabled}
+              onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
+            />
+            <span className="text-on-surface-secondary">
+              {gt("Run on schedule (uncheck to pause without deleting)")}
+            </span>
+          </label>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button type="button" onClick={onClose} className={SECONDARY_BUTTON}>
+              {gt("Cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving || !form.name.trim()}
+              className={PRIMARY_BUTTON}
+            >
+              {saving ? gt("Saving…") : existing ? gt("Save changes") : gt("Create export")}
+            </button>
+          </div>
         </div>
       </div>
     </Modal>
