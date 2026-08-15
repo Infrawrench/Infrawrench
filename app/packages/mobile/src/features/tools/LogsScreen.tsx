@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
+import { tailLineOptions } from "@infrawrench/client-core";
 import type { LogsFetchParams, LogsFetchResult } from "@infrawrench/plugin-base";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { Button, LoadingView } from "@/components/ui";
@@ -13,7 +14,6 @@ import { colors, radii, spacing } from "@/lib/theme";
  * all and take whatever defaults the provider chose.
  */
 
-const TAIL_OPTIONS = [100, 500, 1000, 5000];
 const FOLLOW_INTERVAL_MS = 5000;
 
 export function LogsScreen({
@@ -38,6 +38,10 @@ export function LogsScreen({
   const [containers, setContainers] = useState<string[]>([]);
   const [container, setContainer] = useState<string | null>(null);
   const [tailLines, setTailLines] = useState(defaultTailLines ?? 500);
+  // The default may fall outside the fixed presets (e.g. a plugin declaring
+  // 200) — include it as an extra chip rather than clamp state to the
+  // nearest preset, so a chip is always shown selected for the actual value.
+  const tailOptions = useMemo(() => tailLineOptions(defaultTailLines), [defaultTailLines]);
   const [previous, setPrevious] = useState(false);
   const [follow, setFollow] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -120,7 +124,7 @@ export function LogsScreen({
           containers.map((c) => (
             <Chip key={c} label={c} selected={c === container} onPress={() => setContainer(c)} />
           ))}
-        {TAIL_OPTIONS.map((n) => (
+        {tailOptions.map((n) => (
           <Chip
             key={n}
             label={`Last ${n}`}

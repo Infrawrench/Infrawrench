@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
 import { useGT } from "gt-react";
+import { useSerializedRows } from "./useSerializedRows.js";
 
 interface StringEntry {
   /** Stable per-row id for React keys — rows are editable and removable. */
@@ -33,20 +33,13 @@ export function StringListPicker({
 }: StringListPickerProps) {
   const gt = useGT();
   const displayAddLabel = addLabel ?? gt("+ Add");
-  const parsed = useMemo(() => parseEntries(value), [value]);
-  const [entries, setEntries] = useState<StringEntry[]>(() =>
-    parsed.length > 0 ? parsed : [{ id: crypto.randomUUID(), value: "" }],
-  );
-
-  // Keep the comma-joined value in sync with local state.
-  useEffect(() => {
-    const joined = entries
-      .map((e) => e.value.trim())
-      .filter((v) => v.length > 0)
-      .join(", ");
-    if (joined !== value) onChange(joined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries]);
+  const [entries, setEntries] = useSerializedRows<StringEntry>({
+    value,
+    onChange,
+    parse: parseEntries,
+    serialize: serializeEntries,
+    blankRows: () => [{ id: crypto.randomUUID(), value: "" }],
+  });
 
   function update(i: number, next: string) {
     setEntries((prev) => {
@@ -120,6 +113,13 @@ export function StringListPicker({
       </button>
     </div>
   );
+}
+
+function serializeEntries(entries: StringEntry[]): string {
+  return entries
+    .map((e) => e.value.trim())
+    .filter((v) => v.length > 0)
+    .join(", ");
 }
 
 function parseEntries(value: string): StringEntry[] {

@@ -67,6 +67,13 @@ function budgetToInput(budget: BudgetWithStatus): BudgetInput {
     // Same rule: a rename must not silently detach the saved filter scoping
     // this budget — updates are full replaces.
     ...(budget.savedFilterId ? { savedFilterId: budget.savedFilterId } : {}),
+    // Same rule: a rename must not silently detach the scenario model whose
+    // forecast this budget's thresholds were opted into.
+    ...(budget.scenarioModelId ? { scenarioModelId: budget.scenarioModelId } : {}),
+    // Same rule: not exposed as a toggle in this editor, but settable via the
+    // API and the Terraform provider — a save here must not silently move a
+    // budget back off the adjusted (billing-rule) figure it was opted into.
+    ...(budget.useAdjustedSpend ? { useAdjustedSpend: budget.useAdjustedSpend } : {}),
   };
 }
 

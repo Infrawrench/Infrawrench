@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import Svg, { Polyline, Line as SvgLine, Text as SvgText } from "react-native-svg";
+import { createMetricValueFormatter } from "@infrawrench/client-core";
 import type {
   ActionNode,
   BadgeNode,
@@ -294,6 +295,10 @@ function MetricChartView({ node }: { node: MetricChartNode }) {
 }
 
 function formatValue(v: number, unit?: string): string {
+  // Byte-valued series ("bytes", "bytes/s") get humanized to KiB/MiB/GiB —
+  // see MetricChart.tsx (the DOM counterpart) for why the raw number is
+  // unreadable. Everything else keeps mobile's existing rounding.
+  if (unit === "bytes" || unit === "bytes/s") return createMetricValueFormatter(unit, v)(v);
   const rounded = v >= 100 ? Math.round(v).toString() : v.toPrecision(3);
   return unit ? `${rounded} ${unit}` : rounded;
 }

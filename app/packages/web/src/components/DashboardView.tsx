@@ -54,6 +54,7 @@ import {
   type CustomGraphSummary,
   type CustomGraphWidgetConfig,
   type CustomGraphsClient,
+  useStableGT,
 } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete, apiPatch, apiPut } from "@/lib/api";
 import { createWebCostApi } from "@/lib/cost-client";
@@ -125,6 +126,9 @@ export function DashboardView({
   widgets: initialWidgets,
 }: DashboardViewProps) {
   const gt = useGT();
+  // For memos whose gt() calls are lazy: useGT()'s identity changes every
+  // render, and a client rebuilt every render re-fires its consumers' effects.
+  const lazyGt = useStableGT();
   const gtData = useDataString();
   const navigate = useNavigate();
   const orgId = useOrgId();
@@ -218,11 +222,11 @@ export function DashboardView({
         const res = await fetch(`/api/org/${orgId}/custom-graphs/typings`, {
           credentials: "include",
         });
-        if (!res.ok) throw new Error(gt("Failed to load graph typings"));
+        if (!res.ok) throw new Error(lazyGt("Failed to load graph typings"));
         return res.text();
       },
     }),
-    [orgId, gt],
+    [orgId, lazyGt],
   );
 
   const refetchBudgets = useCallback(async () => {
@@ -831,6 +835,16 @@ function budgetToInput(budget: BudgetWithStatus | undefined): BudgetInput {
     // Round-tripped, or editing a budget's name would quietly move it back to
     // the cash basis it was deliberately taken off.
     ...(budget.costBasis ? { costBasis: budget.costBasis } : {}),
+    // Same rule: a rename must not silently detach the saved filter scoping
+    // this budget — updates are full replaces.
+    ...(budget.savedFilterId ? { savedFilterId: budget.savedFilterId } : {}),
+    // Same rule: a rename must not silently detach the scenario model whose
+    // forecast this budget's thresholds were opted into.
+    ...(budget.scenarioModelId ? { scenarioModelId: budget.scenarioModelId } : {}),
+    // Same rule: not exposed as a toggle in this editor, but settable via the
+    // API and the Terraform provider — a save here must not silently move a
+    // budget back off the adjusted (billing-rule) figure it was opted into.
+    ...(budget.useAdjustedSpend ? { useAdjustedSpend: budget.useAdjustedSpend } : {}),
   };
 }
 
