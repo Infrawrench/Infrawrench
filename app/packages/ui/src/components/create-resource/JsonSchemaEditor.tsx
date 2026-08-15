@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
 import { useGT } from "gt-react";
+import { useSerializedRows } from "./useSerializedRows.js";
 
 /**
  * Structured, no-code JSON Schema builder. Each row is one top-level
@@ -33,15 +33,14 @@ interface JsonSchemaEditorProps {
 
 export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
   const gt = useGT();
-  const parsed = useMemo(() => parseSchema(value), [value]);
-  const [rows, setRows] = useState<PropertyRow[]>(() => parsed);
-
-  // Keep the serialized JSON Schema in sync with the row state.
-  useEffect(() => {
-    const next = serializeSchema(rows);
-    if (next !== value) onChange(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows]);
+  const [rows, setRows] = useSerializedRows<PropertyRow>({
+    value,
+    onChange,
+    parse: parseSchema,
+    serialize: serializeSchema,
+    // An empty schema is genuinely no rows — the editor prints its own hint.
+    blankRows: () => [],
+  });
 
   function update(i: number, patch: Partial<PropertyRow>) {
     setRows((prev) => {
