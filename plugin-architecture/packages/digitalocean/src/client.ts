@@ -33,6 +33,7 @@ import {
   signedS3Fetch,
   uploadS3Object,
   virtualHostedUrl,
+  withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import type { S3StorageConfig, StorageObject } from "@infrawrench/plugin-base";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
@@ -1872,7 +1873,11 @@ export class DigitalOceanClient implements PluginClient {
       applyGenAiModelRouterDetail(detail, resource);
     }
 
-    return detail;
+    // Droplets state the capability themselves (see `applyDropletDetail`);
+    // DOKS clusters, managed databases and Gradient AI agents get it from the
+    // type declaration. DO's `/v2/monitoring` endpoints default to the last
+    // hour when the host asks without a range.
+    return withMetricsCapability(detail, this.resourceTypes, resource.resourceTypeId, 3_600_000);
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {

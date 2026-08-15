@@ -300,6 +300,8 @@ export {
   labeledFieldItems,
   labeledOutputItems,
   resourceTypeDisplayName,
+  resourceTypeHasMetrics,
+  withMetricsCapability,
 } from "./render-helpers.js";
 
 export {

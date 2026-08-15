@@ -25,6 +25,7 @@ import {
   putS3BucketPolicy,
   signedS3Fetch,
   uploadS3Object,
+  withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import type { S3StorageConfig, StorageObject } from "@infrawrench/plugin-base";
 import { fetchScalewayCostData } from "./cost-data.js";
@@ -1000,6 +1001,18 @@ export class ScalewayClient implements PluginClient {
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
+    // Instances and Kapsule clusters declare `supportsMetrics`; the Cockpit
+    // range query defaults to the last hour. Kapsule additionally merges the
+    // Kubernetes peer's cost series.
+    return withMetricsCapability(
+      this.renderDetailInner(resource),
+      this.resourceTypes,
+      resource.resourceTypeId,
+      3_600_000,
+    );
+  }
+
+  private renderDetailInner(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const state = String(fields["state"] ?? fields["status"] ?? "");
 

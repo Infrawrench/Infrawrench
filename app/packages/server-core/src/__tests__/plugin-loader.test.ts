@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { findUnsafeSvgConstructs } from "@infrawrench/plugin-base";
+import { findUnsafeSvgConstructs, resourceTypeHasMetrics } from "@infrawrench/plugin-base";
+import { createMockResource, makeMockCredentials } from "@infrawrench/plugin-base/test-harness";
 
 let loader: typeof import("../plugin-loader");
 
@@ -702,6 +703,88 @@ describe("principalRole declarations", () => {
       }
     }
     expect(collisions).toEqual([]);
+  });
+});
+
+/**
+ * The Metrics tab is stated twice, in two places that never see each other.
+ *
+ * The hosts *fetch* series when the resource type declares `supportsMetrics`
+ * (or has a peer integration with `exposeMetricsToParent` — the managed-K8s
+ * types get all of their series from the Kubernetes peer). The hosts *render*
+ * the tab when the schema `renderDetail` returns carries `metricsCapability`.
+ * Neither statement can see the other, nothing type-checks the pair, and both
+ * ways of getting it wrong are silent:
+ *
+ *  - declaration without capability — the fetch fires, series come back, and
+ *    there is no tab to put them in. This was issue #111: ~100 resource types
+ *    across thirteen plugins, including everything AWS and Azure list.
+ *  - capability without declaration — the tab is there and permanently empty,
+ *    because nothing ever asks the plugin for the series.
+ *
+ * So assert the pair over the whole registry, in both directions, by actually
+ * rendering each type. `createMockResource` gives every declared field a value,
+ * which is what makes this catch a capability that a renderer only attaches on
+ * some branch.
+ */
+describe("metrics declarations", () => {
+  function renderEveryType(): Array<{
+    id: string;
+    hasMetrics: boolean;
+    declaresCapability: boolean;
+  }> {
+    const out: Array<{ id: string; hasMetrics: boolean; declaresCapability: boolean }> = [];
+    for (const plugin of loader.BUNDLED_PLUGINS) {
+      const client = plugin.createClient(makeMockCredentials(plugin.manifest.id));
+      for (const rt of plugin.resourceTypes) {
+        const schema = client.renderDetail(createMockResource(plugin.manifest.id, rt));
+        out.push({
+          id: `${plugin.manifest.id}/${rt.id}`,
+          hasMetrics: resourceTypeHasMetrics(rt),
+          declaresCapability: !!schema.metricsCapability,
+        });
+      }
+    }
+    return out;
+  }
+
+  it("every type the host fetches metrics for renders a Metrics tab", () => {
+    const stranded = renderEveryType()
+      .filter((t) => t.hasMetrics && !t.declaresCapability)
+      .map((t) => t.id);
+    expect(
+      stranded,
+      "these types fetch metric series into a detail view with no Metrics tab",
+    ).toEqual([]);
+  });
+
+  it("every Metrics tab belongs to a type the host fetches metrics for", () => {
+    const empty = renderEveryType()
+      .filter((t) => !t.hasMetrics && t.declaresCapability)
+      .map((t) => t.id);
+    expect(
+      empty,
+      "these types render a Metrics tab nothing will ever fetch series for — set supportsMetrics",
+    ).toEqual([]);
+  });
+
+  /**
+   * The flag alone is not enough: the host's condition is
+   * `supportsMetrics && client.fetchMetricSeries`, so a type that declares it
+   * on a plugin with no fetcher gets a tab that stays empty forever. Peer-only
+   * types are exempt by construction — their series come from the peer's
+   * client, which is why they leave `supportsMetrics` unset in the first place.
+   */
+  it("supportsMetrics only appears on plugins whose client can fetch series", () => {
+    const bad: string[] = [];
+    for (const plugin of loader.BUNDLED_PLUGINS) {
+      const client = plugin.createClient(makeMockCredentials(plugin.manifest.id));
+      if (typeof client.fetchMetricSeries === "function") continue;
+      for (const rt of plugin.resourceTypes) {
+        if (rt.supportsMetrics) bad.push(`${plugin.manifest.id}/${rt.id}`);
+      }
+    }
+    expect(bad).toEqual([]);
   });
 });
 
