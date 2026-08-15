@@ -205,7 +205,7 @@ export function PeerPaneView({
                 resourceId: parentResourceId,
               })
             }
-            className="ml-5 px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-md hover:bg-accent-blue/90 transition-colors"
+            className="ml-5 px-4 py-2 text-sm font-medium text-white bg-accent rounded-md hover:bg-accent/90 transition-colors"
           >
             {gtData(guidance.action.label)}
           </button>
