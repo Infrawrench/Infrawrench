@@ -60,6 +60,7 @@ async function deploy(
     const finish = (fn: () => void) => {
       if (settled) return;
       settled = true;
+      session.stopper.finish();
       fn();
       try {
         ws.close();
@@ -69,18 +70,19 @@ async function deploy(
     };
     const send = (m: unknown) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(m));
 
-    // Exposed to the panel so its Stop button can reach the running deploy.
-    session.stop = () => send({ type: "deploy:stop" });
-
-    ws.addEventListener("open", () =>
+    ws.addEventListener("open", () => {
       send({
         type: "deploy:run",
         repo: opts.repo,
         branch: opts.branch,
         ...(opts.env ? { env: opts.env } : {}),
         ...(opts.planOnly ? { planOnly: true } : {}),
-      }),
-    );
+      });
+      // After deploy:run, never before: the server routes deploy:stop to the
+      // session that frame creates. Arming here flushes a stop the user asked
+      // for while the socket was still connecting.
+      session.stopper.arm(() => send({ type: "deploy:stop" }));
+    });
     ws.addEventListener("error", () => finish(() => reject(new Error("Deploy connection failed"))));
     ws.addEventListener("close", () => finish(() => reject(new Error("Deploy connection closed"))));
     ws.addEventListener("message", (ev) => {
