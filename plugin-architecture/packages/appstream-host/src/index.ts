@@ -1,5 +1,6 @@
 /**
- * Getting `iwappd` onto a customer's host and running it.
+ * Getting `iwappd` onto a customer's host, running it, and leaving nothing
+ * behind.
  *
  * Both apps end up here by different routes — the desktop app has an ssh2
  * client from `electron/ssh-shell.ts`, the web server from
@@ -7,6 +8,14 @@
  * so it lives once. The binaries themselves come from each app's own
  * `getx86_64GzBinary()` / `getArm64GzBinary()`, which is the only part that
  * legitimately differs.
+ *
+ * **The binary is never installed.** It is written to a RAM-backed directory,
+ * opened, unlinked, and executed through the open descriptor, so from the
+ * moment it starts there is no file on the customer's machine — nothing to
+ * find, nothing to clean up, nothing left after the session ends or the
+ * connection drops. That costs about a megabyte of upload per session, which is
+ * the right trade: we are running a binary on someone else's computer, and the
+ * polite version of that does not leave it there.
  *
  * Nothing here opens a connection or verifies a host key. That is the caller's
  * job precisely because each app already does it, with its own TOFU store and
@@ -45,26 +54,21 @@ export class AppServerError extends Error {
   }
 }
 
-export interface EnsureOptions {
-  /**
-   * Identity of the binaries — the `linux-appserver/` hash the apps build
-   * from. It is part of the cached path, so a new build lands under a new name
-   * and an old one is never silently reused.
-   */
-  version: string;
+/**
+ * Where the binary is staged, best first.
+ *
+ * `/dev/shm` and `/run/user/<uid>` are tmpfs on every mainstream distribution,
+ * so the bytes never reach a disk. `/tmp` is the fallback for hosts that have
+ * neither — often a disk, which is why it is last, and why the file is unlinked
+ * before the process starts either way.
+ */
+const STAGING_DIRS = ["/dev/shm", `/run/user/$(id -u)`, "$XDG_RUNTIME_DIR", "/tmp"] as const;
+
+export interface BinarySource {
   /** The app's own gz binary source, per architecture. */
   binaryForArch: (arch: RemoteArch) => Promise<Buffer>;
-  /** Defaults to `~/.cache/infrawrench`. */
-  cacheDir?: string;
   /** Called with progress, for a UI that wants to say "uploading…". */
-  onProgress?: (stage: "detecting" | "uploading" | "verifying" | "ready") => void;
-}
-
-export interface EnsureResult {
-  path: string;
-  arch: RemoteArch;
-  /** False when the host already had this exact build. */
-  uploaded: boolean;
+  onProgress?: (stage: "detecting" | "uploading" | "starting" | "ready") => void;
 }
 
 interface ExecResult {
@@ -121,92 +125,79 @@ export async function detectArch(conn: SshExecutor): Promise<RemoteArch> {
 }
 
 /**
- * Path the binary lives at on the host. Versioned, so a client carrying a
- * newer build never runs an older one left by a previous session.
+ * Shell that picks the first staging directory that exists, is writable, and
+ * permits execution — a hardened host may mount `/tmp` or `/dev/shm` `noexec`,
+ * and finding that out by failing to exec is a much worse error message.
  */
-export function remoteBinaryPath(version: string, arch: RemoteArch, cacheDir?: string): string {
-  const dir = cacheDir ?? "$HOME/.cache/infrawrench";
-  return `${dir}/iwappd-${sanitiseVersion(version)}-${arch}`;
+function pickStagingDirScript(): string {
+  return STAGING_DIRS.map(
+    (dir) =>
+      `for d in ${dir}; do [ -n "$d" ] && [ -d "$d" ] && [ -w "$d" ] && ` +
+      `t=$(mktemp "$d/.iw.XXXXXXXX" 2>/dev/null) && ` +
+      // The only reliable test for noexec is to run something from it.
+      `{ printf '#!/bin/sh\\nexit 0\\n' > "$t"; chmod 700 "$t"; ` +
+      `if "$t" 2>/dev/null; then rm -f "$t"; echo "$d"; exit 0; fi; rm -f "$t"; }; done`,
+  ).join("\n");
 }
 
 /**
- * Version strings become part of a shell path, so anything that is not
- * obviously safe is dropped rather than quoted around.
- */
-function sanitiseVersion(version: string): string {
-  const safe = version.replace(/[^A-Za-z0-9._-]/g, "").slice(0, 64);
-  if (!safe) throw new AppServerError("the binary version is empty after sanitising");
-  return safe;
-}
-
-/**
- * Make sure the right `iwappd` is on the host, uploading it if it is not.
+ * Stage the binary in RAM and hand back the path it landed at.
  *
- * The upload goes through `gunzip` on the far side rather than SFTP: it is one
- * exec on a connection we already have, it works on hosts with the SFTP
- * subsystem disabled, and it never leaves a half-written file at the final
- * path because the decompression writes a temporary and moves it into place.
+ * The file is deliberately short-lived: whoever gets this path is expected to
+ * open, unlink and exec it immediately. A watchdog removes it a minute later
+ * regardless, so a client that dies between staging and starting cannot leave
+ * anything behind.
  */
-export async function ensureAppServer(
-  conn: SshExecutor,
-  options: EnsureOptions,
-): Promise<EnsureResult> {
-  options.onProgress?.("detecting");
+async function stageBinary(conn: SshExecutor, source: BinarySource): Promise<string> {
+  source.onProgress?.("detecting");
   const arch = await detectArch(conn);
-  const path = remoteBinaryPath(options.version, arch, options.cacheDir);
 
-  const present = await execCommand(conn, `test -x ${path} && echo present || true`);
-  if (present.stdout.trim() === "present") {
-    options.onProgress?.("ready");
-    return { path, arch, uploaded: false };
-  }
+  source.onProgress?.("uploading");
+  const gz = await source.binaryForArch(arch);
 
-  options.onProgress?.("uploading");
-  const gz = await options.binaryForArch(arch);
-  const dir = options.cacheDir ?? "$HOME/.cache/infrawrench";
-  const temp = `${path}.$$.part`;
-  // `set -e` so a missing gunzip fails here rather than leaving an empty file
-  // that later fails as "not executable"; the move is last so the final path
-  // only ever exists complete.
-  const install = [
+  const script = [
     "set -e",
-    `mkdir -p ${dir}`,
-    `gunzip -c > ${temp}`,
-    `chmod 700 ${temp}`,
-    `mv -f ${temp} ${path}`,
-    // Older builds are dead weight on someone else's disk.
-    `find ${dir} -maxdepth 1 -name 'iwappd-*' ! -name '${basename(path)}' -mmin +1 -delete 2>/dev/null || true`,
-  ].join("; ");
+    `dir=$(${pickStagingDirScript()})`,
+    '[ -n "$dir" ] || { echo "no writable, exec-capable directory for staging" >&2; exit 1; }',
+    'f=$(mktemp "$dir/.iw.XXXXXXXX")',
+    'gunzip -c > "$f"',
+    'chmod 700 "$f"',
+    // If nobody execs it, it disappears anyway: a client that dies between
+    // staging and starting must not leave a binary on someone's machine.
+    '(sleep 60; rm -f "$f") >/dev/null 2>&1 &',
+    'echo "$f"',
+  ].join("\n");
 
-  const installed = await execCommand(conn, `sh -c '${install}'`, gz);
-  if (installed.code !== 0) {
+  const staged = await execCommand(conn, `sh -c ${shellQuote(script)}`, gz);
+  const path = staged.stdout.trim().split("\n").pop() ?? "";
+  if (staged.code !== 0 || !path.startsWith("/")) {
     throw new AppServerError(
-      "could not install the app server on the host",
-      installed.stderr.trim() || `exit ${installed.code}`,
+      "could not stage the app server on the host",
+      staged.stderr.trim() || `exit ${staged.code}`,
     );
   }
-
-  options.onProgress?.("verifying");
-  // Running it is the only check that means anything: the upload can succeed
-  // and the binary still be wrong for this host — the wrong libc, a truncated
-  // transfer, a noexec mount on the cache directory.
-  const caps = await execCommand(conn, `${path} --caps --json`);
-  if (caps.code !== 0) {
-    throw new AppServerError(
-      "the app server would not start on this host",
-      caps.stderr.trim() || `exit ${caps.code}`,
-    );
-  }
-
-  options.onProgress?.("ready");
-  return { path, arch, uploaded: true };
+  return path;
 }
 
-function basename(path: string): string {
-  return path.slice(path.lastIndexOf("/") + 1);
+/**
+ * Run a staged binary and delete it in the same breath.
+ *
+ * `exec 3< "$f"` keeps the inode alive through the `rm`, and Linux will execute
+ * an unlinked file through `/proc/self/fd`. The shell then `exec`s so no extra
+ * process sits between the SSH channel and the app server — the channel's
+ * stdin, stdout and signals belong to it directly.
+ */
+function runAndUnlinkScript(path: string, args: string): string {
+  return [
+    "set -e",
+    `f=${shellQuote(path)}`,
+    'exec 3< "$f"',
+    'rm -f "$f"',
+    `exec /proc/self/fd/3 ${args}`,
+  ].join("\n");
 }
 
-export interface SessionOptions extends EnsureOptions {
+export interface SessionOptions extends BinarySource {
   /** Namespaces the Wayland socket, so two sessions on one host do not collide. */
   sessionId: string;
   /** Exit after this long with no client and no windows. Zero disables it. */
@@ -225,21 +216,22 @@ export interface AppServerSession {
   write(chunk: Buffer): void;
   close(): void;
   arch: RemoteArch;
-  path: string;
 }
 
 /**
- * Ensure the binary, then exec it and hand back the raw channel.
+ * Upload, run, and unlink: the app server is streaming frames before its file
+ * has existed for a second, and nothing remains on the host afterwards.
  *
- * The protocol lives on stdin and stdout; stderr is diagnostics only, and is
- * surfaced line by line because "the app exited immediately" is nearly always
- * a missing library whose real message is on stderr.
+ * The protocol lives on stdin and stdout, which is why staging and running are
+ * two channels rather than one — the upload has to finish and close its stdin
+ * before the server's stdin can start carrying frames.
  */
 export async function startAppServer(
   conn: SshExecutor,
   options: SessionOptions,
 ): Promise<AppServerSession> {
-  const { path, arch } = await ensureAppServer(conn, options);
+  const staged = await stageBinary(conn, options);
+  const arch = await detectArch(conn);
 
   const args = [
     "--serve",
@@ -250,8 +242,9 @@ export async function startAppServer(
     ...(options.iconSize !== undefined ? [`--icon-size ${Math.floor(options.iconSize)}`] : []),
   ].join(" ");
 
+  options.onProgress?.("starting");
   return new Promise((resolve, reject) => {
-    conn.exec(`${path} ${args}`, (err, channel) => {
+    conn.exec(`sh -c ${shellQuote(runAndUnlinkScript(staged, args))}`, (err, channel) => {
       if (err) {
         reject(new AppServerError("could not start the app server", err.message));
         return;
@@ -265,9 +258,9 @@ export async function startAppServer(
         for (const line of lines) if (line.trim()) options.onStderr?.(line);
       });
 
+      options.onProgress?.("ready");
       resolve({
         arch,
-        path,
         onData: (handler) => channel.on("data", handler),
         onClose: (handler) => channel.on("close", (code) => handler(code ?? null)),
         write: (chunk) => channel.write(chunk),
@@ -280,31 +273,50 @@ export async function startAppServer(
 /**
  * The installed applications, without starting a session.
  *
- * This is what `infrawrench apps list` and the launcher's first paint use: one
- * exec, no compositor, no Wayland socket. The JSON is the same `AppEntry[]` the
- * protocol carries.
+ * One channel rather than two: this command needs no stdin of its own, so the
+ * upload, the run and the delete all fit in a single exec.
  */
 export async function listApps(
   conn: SshExecutor,
-  options: EnsureOptions & { iconSize?: number },
+  options: BinarySource & { iconSize?: number },
 ): Promise<unknown[]> {
-  const { path } = await ensureAppServer(conn, options);
+  options.onProgress?.("detecting");
+  const arch = await detectArch(conn);
+  options.onProgress?.("uploading");
+  const gz = await options.binaryForArch(arch);
+
   const iconSize =
     options.iconSize !== undefined ? ` --icon-size ${Math.floor(options.iconSize)}` : "";
-  const result = await execCommand(conn, `${path} --list-apps --json${iconSize}`);
+  const script = [
+    "set -e",
+    `dir=$(${pickStagingDirScript()})`,
+    '[ -n "$dir" ] || { echo "no writable, exec-capable directory for staging" >&2; exit 1; }',
+    'f=$(mktemp "$dir/.iw.XXXXXXXX")',
+    'gunzip -c > "$f"',
+    'chmod 700 "$f"',
+    'exec 3< "$f"',
+    'rm -f "$f"',
+    `/proc/self/fd/3 --list-apps --json${iconSize}`,
+  ].join("\n");
+
+  const result = await execCommand(conn, `sh -c ${shellQuote(script)}`, gz);
   if (result.code !== 0) {
     throw new AppServerError(
       "could not list the applications on this host",
       result.stderr.trim() || `exit ${result.code}`,
     );
   }
+  // A login banner on stdout is the classic way this arrives as garbage, so
+  // parse the last line rather than the whole stream.
+  const line = result.stdout.trim().split("\n").pop() ?? "";
   try {
-    const parsed: unknown = JSON.parse(result.stdout);
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed: unknown = JSON.parse(line);
+    if (!Array.isArray(parsed)) throw new Error("not an array");
+    return parsed;
   } catch {
     throw new AppServerError(
       "the app server returned something that is not an application list",
-      result.stdout.slice(0, 200),
+      line.slice(0, 200),
     );
   }
 }

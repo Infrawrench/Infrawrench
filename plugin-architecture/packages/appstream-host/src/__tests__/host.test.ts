@@ -3,15 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AppServerError,
   detectArch,
-  ensureAppServer,
   listApps,
-  remoteBinaryPath,
   startAppServer,
   type ExecChannel,
   type SshExecutor,
 } from "../index.js";
 
-/** A scripted ssh2 client: each command is matched against a reply table. */
 interface Reply {
   match: RegExp;
   stdout?: string;
@@ -22,6 +19,7 @@ interface Reply {
   hold?: boolean;
 }
 
+/** A scripted ssh2 client: each command is matched against a reply table. */
 class FakeSsh implements SshExecutor {
   commands: string[] = [];
   stdinByCommand = new Map<string, Buffer>();
@@ -54,6 +52,11 @@ class FakeSsh implements SshExecutor {
         channel.emitClose(reply?.code ?? 0);
       });
     }
+  }
+
+  /** The command that staged the binary, if one ran. */
+  stagingCommand(): string | undefined {
+    return this.commands.find((command) => command.includes("gunzip"));
   }
 }
 
@@ -104,11 +107,25 @@ class FakeChannel implements ExecChannel {
   }
 }
 
+/**
+ * Undo the outer `sh -c '…'` quoting, so assertions read the script the host
+ * will actually run rather than its escaped form.
+ */
+function innerScript(command: string): string {
+  const start = command.indexOf("'");
+  return command.slice(start + 1, command.lastIndexOf("'")).replaceAll(`'\\''`, "'");
+}
+
 const gz = Buffer.from("gzipped-binary");
-const options = {
-  version: "abc123",
-  binaryForArch: async () => gz,
-};
+const source = { binaryForArch: async () => gz };
+
+/** A host that stages successfully and then holds the session channel open. */
+const readyHost = () =>
+  new FakeSsh([
+    { match: /uname/, stdout: "x86_64" },
+    { match: /gunzip/, stdout: "/dev/shm/.iw.abcd1234" },
+    { match: /proc\/self\/fd/, hold: true },
+  ]);
 
 describe("detectArch", () => {
   it("normalises what uname reports", async () => {
@@ -135,126 +152,126 @@ describe("detectArch", () => {
   });
 });
 
-describe("remoteBinaryPath", () => {
-  it("versions the path so a new build never reuses an old binary", () => {
-    expect(remoteBinaryPath("abc123", "x86_64")).toBe(
-      "$HOME/.cache/infrawrench/iwappd-abc123-x86_64",
-    );
+describe("staging", () => {
+  it("writes to RAM, never to a fixed path", async () => {
+    const ssh = readyHost();
+    await startAppServer(ssh, { ...source, sessionId: "s" });
+
+    const staging = ssh.stagingCommand()!;
+    expect(staging).toMatch(/dev\/shm/);
+    expect(staging).toMatch(/run\/user/);
+    expect(staging).toMatch(/mktemp/);
+    // Nothing predictable, nothing versioned, nothing a second session finds.
+    expect(staging).not.toMatch(/\.cache/);
   });
 
-  it("strips anything that would escape the path", () => {
-    expect(remoteBinaryPath("../../etc/passwd; rm -rf /", "aarch64")).toBe(
-      "$HOME/.cache/infrawrench/iwappd-....etcpasswdrm-rf-aarch64",
-    );
+  it("checks a staging directory can actually execute before using it", async () => {
+    // A hardened host mounts /tmp and /dev/shm noexec. Discovering that by
+    // failing to exec gives a far worse error than skipping the directory.
+    const ssh = readyHost();
+    await startAppServer(ssh, { ...source, sessionId: "s" });
+    expect(innerScript(ssh.stagingCommand()!)).toMatch(/printf '#!\/bin\/sh/);
   });
 
-  it("refuses a version that sanitises away to nothing", () => {
-    expect(() => remoteBinaryPath("$( )", "x86_64")).toThrow(AppServerError);
-  });
-});
-
-describe("ensureAppServer", () => {
-  it("uploads, verifies and reports the path when the host has nothing", async () => {
-    const ssh = new FakeSsh([
-      { match: /uname/, stdout: "x86_64" },
-      { match: /test -x/, stdout: "" },
-      { match: /gunzip/, stdout: "" },
-      { match: /--caps/, stdout: "{}" },
-    ]);
-    const stages: string[] = [];
-
-    const result = await ensureAppServer(ssh, { ...options, onProgress: (s) => stages.push(s) });
-
-    expect(result).toMatchObject({ arch: "x86_64", uploaded: true });
-    expect(result.path).toContain("iwappd-abc123-x86_64");
-    // The binary goes in over stdin of the gunzip command.
-    const install = ssh.commands.find((c) => c.includes("gunzip"))!;
-    expect(ssh.stdinByCommand.get(install)).toEqual(gz);
-    expect(stages).toEqual(["detecting", "uploading", "verifying", "ready"]);
+  it("arms a watchdog so a client that dies stages nothing permanent", async () => {
+    const ssh = readyHost();
+    await startAppServer(ssh, { ...source, sessionId: "s" });
+    expect(ssh.stagingCommand()).toMatch(/sleep 60; rm -f/);
   });
 
-  it("skips the upload when that exact build is already there", async () => {
-    // The common case by a wide margin: a host is enrolled once and connected
-    // to for months.
-    const ssh = new FakeSsh([
-      { match: /uname/, stdout: "aarch64" },
-      { match: /test -x/, stdout: "present" },
-    ]);
+  it("sends the binary in over stdin", async () => {
+    const ssh = readyHost();
+    await startAppServer(ssh, { ...source, sessionId: "s" });
+    expect(ssh.stdinByCommand.get(ssh.stagingCommand()!)).toEqual(gz);
+  });
+
+  it("uploads again for every session rather than caching on the host", async () => {
+    // The trade is about a megabyte per session against leaving an executable
+    // on someone else's machine.
     const binaryForArch = vi.fn(async () => gz);
-
-    const result = await ensureAppServer(ssh, { ...options, binaryForArch });
-
-    expect(result.uploaded).toBe(false);
-    expect(binaryForArch).not.toHaveBeenCalled();
-    expect(ssh.commands.some((c) => c.includes("gunzip"))).toBe(false);
+    for (let i = 0; i < 2; i++) {
+      await startAppServer(readyHost(), { binaryForArch, sessionId: `s${i}` });
+    }
+    expect(binaryForArch).toHaveBeenCalledTimes(2);
   });
 
-  it("writes a temporary and moves it, so a failed upload leaves nothing runnable", async () => {
+  it("surfaces the host's own error when staging fails", async () => {
     const ssh = new FakeSsh([
       { match: /uname/, stdout: "x86_64" },
-      { match: /test -x/, stdout: "" },
-      { match: /gunzip/, stdout: "" },
-      { match: /--caps/, stdout: "{}" },
-    ]);
-    await ensureAppServer(ssh, options);
-
-    const install = ssh.commands.find((c) => c.includes("gunzip"))!;
-    expect(install).toMatch(/set -e/);
-    expect(install).toMatch(/\.part/);
-    expect(install).toMatch(/mv -f .*\.part/);
-    expect(install).toMatch(/chmod 700/);
-  });
-
-  it("surfaces the host's own error when the install fails", async () => {
-    // A host without gunzip, or a read-only home: the message the user needs
-    // is the shell's, not ours.
-    const ssh = new FakeSsh([
-      { match: /uname/, stdout: "x86_64" },
-      { match: /test -x/, stdout: "" },
       { match: /gunzip/, stderr: "sh: gunzip: not found", code: 127 },
     ]);
-    await expect(ensureAppServer(ssh, options)).rejects.toThrow(/gunzip: not found/);
+    await expect(startAppServer(ssh, { ...source, sessionId: "s" })).rejects.toThrow(
+      /gunzip: not found/,
+    );
   });
 
-  it("fails when the uploaded binary will not run", async () => {
-    // The upload can succeed and the binary still be unusable — a noexec cache
-    // directory, a truncated transfer. Running it is the only real check.
+  it("fails when no directory is both writable and exec-capable", async () => {
     const ssh = new FakeSsh([
       { match: /uname/, stdout: "x86_64" },
-      { match: /test -x/, stdout: "" },
-      { match: /gunzip/, stdout: "" },
-      { match: /--caps/, stderr: "Permission denied", code: 126 },
+      { match: /gunzip/, stderr: "no writable, exec-capable directory for staging", code: 1 },
     ]);
-    await expect(ensureAppServer(ssh, options)).rejects.toThrow(/would not start/);
+    await expect(startAppServer(ssh, { ...source, sessionId: "s" })).rejects.toThrow(
+      /exec-capable/,
+    );
+  });
+
+  it("refuses a staging reply that is not a path", async () => {
+    // A shell profile that prints a banner would otherwise have us exec ""
+    const ssh = new FakeSsh([
+      { match: /uname/, stdout: "x86_64" },
+      { match: /gunzip/, stdout: "Welcome to Ubuntu!" },
+    ]);
+    await expect(startAppServer(ssh, { ...source, sessionId: "s" })).rejects.toThrow(
+      /could not stage/,
+    );
   });
 });
 
 describe("startAppServer", () => {
-  const ready = () =>
-    new FakeSsh([
-      { match: /uname/, stdout: "x86_64" },
-      { match: /test -x/, stdout: "present" },
-      { match: /--serve/, hold: true },
-    ]);
+  it("unlinks the binary before running it, and runs it through the open descriptor", async () => {
+    const ssh = readyHost();
+    await startAppServer(ssh, { ...source, sessionId: "s" });
 
-  it("execs the server with the session's own socket namespace", async () => {
-    const ssh = ready();
-    await startAppServer(ssh, { ...options, sessionId: "sess-1", idleTimeoutSecs: 60 });
-    const serve = ssh.commands.find((c) => c.includes("--serve"))!;
-    expect(serve).toMatch(/--session-id 'sess-1'/);
-    expect(serve).toMatch(/--idle-timeout 60/);
+    const run = ssh.commands.find((command) => command.includes("proc/self/fd"))!;
+    // Order matters: open, then delete, then exec. Deleting after the exec
+    // would leave the file behind whenever the exec fails.
+    expect(run.indexOf("exec 3<")).toBeLessThan(run.indexOf("rm -f"));
+    expect(run.indexOf("rm -f")).toBeLessThan(run.indexOf("exec /proc/self/fd/3"));
+    expect(run).toContain("/dev/shm/.iw.abcd1234");
+  });
+
+  it("execs rather than forking, so the channel owns the process", async () => {
+    const ssh = readyHost();
+    await startAppServer(ssh, { ...source, sessionId: "s" });
+    expect(ssh.commands.at(-1)).toMatch(/exec \/proc\/self\/fd\/3 --serve/);
+  });
+
+  it("passes the session's own socket namespace and limits", async () => {
+    const ssh = readyHost();
+    await startAppServer(ssh, {
+      ...source,
+      sessionId: "sess-1",
+      idleTimeoutSecs: 60,
+      iconSize: 32,
+    });
+    const run = innerScript(ssh.commands.at(-1)!);
+    expect(run).toMatch(/--session-id 'sess-1'/);
+    expect(run).toMatch(/--idle-timeout 60/);
+    expect(run).toMatch(/--icon-size 32/);
   });
 
   it("quotes a session id that would otherwise run a command", async () => {
-    const ssh = ready();
-    await startAppServer(ssh, { ...options, sessionId: "a'; rm -rf ~; echo '" });
-    const serve = ssh.commands.find((c) => c.includes("--serve"))!;
-    expect(serve).toContain(`'a'\\''; rm -rf ~; echo '\\'''`);
+    const ssh = readyHost();
+    await startAppServer(ssh, { ...source, sessionId: "a'; rm -rf ~; echo '" });
+    // It survives as a single argument: every quote in it is closed and
+    // reopened, so the shell never sees `rm` as a command of its own.
+    const run = innerScript(ssh.commands.at(-1)!);
+    expect(run).toContain(`--session-id 'a'\\''; rm -rf ~; echo '\\'''`);
   });
 
   it("carries frames in both directions", async () => {
-    const ssh = ready();
-    const session = await startAppServer(ssh, { ...options, sessionId: "s" });
+    const ssh = readyHost();
+    const session = await startAppServer(ssh, { ...source, sessionId: "s" });
     const received: Buffer[] = [];
     session.onData((chunk) => received.push(chunk));
 
@@ -269,9 +286,9 @@ describe("startAppServer", () => {
   it("reports the host's stderr a line at a time", async () => {
     // "the app exited immediately" is nearly always a missing library, and the
     // real message is on stderr.
-    const ssh = ready();
+    const ssh = readyHost();
     const lines: string[] = [];
-    await startAppServer(ssh, { ...options, sessionId: "s", onStderr: (l) => lines.push(l) });
+    await startAppServer(ssh, { ...source, sessionId: "s", onStderr: (line) => lines.push(line) });
 
     const channel = ssh.open[0]!.channel;
     channel.emitStderr("iwappd: launch failed: libgtk-4.so.1: cannot open\npartial line");
@@ -285,44 +302,57 @@ describe("startAppServer", () => {
   });
 
   it("reports the channel closing", async () => {
-    const ssh = ready();
-    const session = await startAppServer(ssh, { ...options, sessionId: "s" });
+    const ssh = readyHost();
+    const session = await startAppServer(ssh, { ...source, sessionId: "s" });
     const codes: Array<number | null> = [];
     session.onClose((code) => codes.push(code));
     ssh.open[0]!.channel.emitClose(3);
     expect(codes).toEqual([3]);
   });
+
+  it("reports progress through to ready", async () => {
+    const stages: string[] = [];
+    await startAppServer(readyHost(), {
+      ...source,
+      sessionId: "s",
+      onProgress: (stage) => stages.push(stage),
+    });
+    expect(stages).toEqual(["detecting", "uploading", "starting", "ready"]);
+  });
 });
 
 describe("listApps", () => {
-  it("parses the host's application list", async () => {
-    const apps = [{ id: "firefox.desktop", name: "Firefox" }];
-    const ssh = new FakeSsh([
+  const listingHost = (stdout: string, code = 0) =>
+    new FakeSsh([
       { match: /uname/, stdout: "x86_64" },
-      { match: /test -x/, stdout: "present" },
-      { match: /--list-apps/, stdout: JSON.stringify(apps) },
+      { match: /list-apps/, stdout, code },
     ]);
-    expect(await listApps(ssh, { ...options, iconSize: 32 })).toEqual(apps);
-    expect(ssh.commands.at(-1)).toMatch(/--list-apps --json --icon-size 32/);
+
+  it("stages, runs and deletes in a single exec", async () => {
+    // No session, no stdin of its own — so it does not need the two channels
+    // the server does.
+    const apps = [{ id: "firefox.desktop", name: "Firefox" }];
+    const ssh = listingHost(JSON.stringify(apps));
+
+    expect(await listApps(ssh, { ...source, iconSize: 32 })).toEqual(apps);
+    const command = ssh.commands.at(-1)!;
+    expect(command).toMatch(/gunzip/);
+    expect(command).toMatch(/rm -f/);
+    expect(command).toMatch(/--list-apps --json --icon-size 32/);
   });
 
-  it("does not need a session, only the binary", async () => {
-    const ssh = new FakeSsh([
-      { match: /uname/, stdout: "x86_64" },
-      { match: /test -x/, stdout: "present" },
-      { match: /--list-apps/, stdout: "[]" },
-    ]);
-    await listApps(ssh, options);
-    expect(ssh.commands.some((c) => c.includes("--serve"))).toBe(false);
+  it("reads the last line, so a login banner does not become the answer", async () => {
+    const ssh = listingHost('Welcome to Ubuntu!\nLast login: today\n[{"id":"a","name":"A"}]');
+    expect(await listApps(ssh, source)).toEqual([{ id: "a", name: "A" }]);
   });
 
   it("refuses output that is not an application list", async () => {
-    const ssh = new FakeSsh([
-      { match: /uname/, stdout: "x86_64" },
-      { match: /test -x/, stdout: "present" },
-      { match: /--list-apps/, stdout: "Welcome to Ubuntu!\n[]" },
-    ]);
-    // A login banner printed into stdout is the classic version of this.
-    await expect(listApps(ssh, options)).rejects.toThrow(/not an application list/);
+    await expect(listApps(listingHost("not json at all"), source)).rejects.toThrow(
+      /not an application list/,
+    );
+  });
+
+  it("surfaces a failure from the host", async () => {
+    await expect(listApps(listingHost("", 127), source)).rejects.toThrow(AppServerError);
   });
 });
