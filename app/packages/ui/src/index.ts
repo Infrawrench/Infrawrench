@@ -360,6 +360,7 @@ export {
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
+  resourceAppsTabTarget,
   navigateToWorkspaceTarget,
 } from "./workspace-tabs.js";
 export type { RouteNavigator } from "./workspace-tabs.js";

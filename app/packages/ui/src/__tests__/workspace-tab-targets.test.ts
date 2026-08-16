@@ -17,6 +17,7 @@ import {
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
+  resourceAppsTabTarget,
   navigateToWorkspaceTarget,
 } from "../workspace-tabs";
 import {
@@ -259,5 +260,65 @@ describe("invoices tab identity", () => {
 
   it("is never equal to another kind", () => {
     expect(workspaceTabTargetsEqual(invoicesTabTarget(), { kind: "cost-reports" })).toBe(false);
+  });
+});
+
+describe("apps tab identity", () => {
+  it("is a view of the host, distinct from its other tabs", () => {
+    const apps = resourceAppsTabTarget("acc-1", "res-1");
+    expect(getWorkspaceTabId(apps)).toBe("resource:acc-1:res-1:apps");
+    expect(getWorkspaceTabFallbackTitle(apps)).toBe("Apps");
+    expect(workspaceTabTargetsEqual(apps, resourceSshTabTarget("acc-1", "res-1"))).toBe(false);
+    expect(workspaceTabTargetsEqual(apps, resourceAppsTabTarget("acc-1", "res-1"))).toBe(true);
+  });
+});
+
+describe("tab icons", () => {
+  beforeEach(() => {
+    useUIStore.setState({ workspaceTabs: [], activeWorkspaceTabId: null });
+  });
+
+  const openTab = () => {
+    useUIStore
+      .getState()
+      .createWorkspaceTabInstance(resourceAppsTabTarget("acc-1", "res-1"), "Apps");
+    return useUIStore.getState().workspaceTabs[0]!.id;
+  };
+
+  it("sets and clears the icon on a tab", () => {
+    const id = openTab();
+    useUIStore.getState().setWorkspaceTabIcon(id, "data:image/png;base64,AAA");
+    expect(useUIStore.getState().workspaceTabs[0]?.icon).toBe("data:image/png;base64,AAA");
+
+    useUIStore.getState().setWorkspaceTabIcon(id, undefined);
+    expect(useUIStore.getState().workspaceTabs[0]).not.toHaveProperty("icon");
+  });
+
+  it("leaves other tabs alone", () => {
+    const first = openTab();
+    useUIStore.getState().createWorkspaceTabInstance(resourceSshTabTarget("acc-1", "res-1"), "SSH");
+    useUIStore.getState().setWorkspaceTabIcon(first, "data:image/png;base64,AAA");
+    const icons = useUIStore.getState().workspaceTabs.map((tab) => tab.icon);
+    expect(icons.filter(Boolean)).toHaveLength(1);
+  });
+
+  it("survives a title change", () => {
+    // A remote window retitles constantly — every document it opens — and the
+    // icon must not blink out each time.
+    const id = openTab();
+    useUIStore.getState().setWorkspaceTabIcon(id, "data:image/png;base64,AAA");
+    useUIStore.getState().setWorkspaceTabTitle(id, "Files");
+    expect(useUIStore.getState().workspaceTabs[0]).toMatchObject({
+      title: "Files",
+      icon: "data:image/png;base64,AAA",
+    });
+  });
+
+  it("survives the reload path that rebuilds every tab", () => {
+    const id = openTab();
+    useUIStore.getState().setWorkspaceTabIcon(id, "data:image/png;base64,AAA");
+    const tabs = useUIStore.getState().workspaceTabs;
+    useUIStore.getState().replaceWorkspaceTabs(tabs, id);
+    expect(useUIStore.getState().workspaceTabs[0]?.icon).toBe("data:image/png;base64,AAA");
   });
 });

@@ -1,0 +1,13 @@
+[package]
+name = "iw-proto"
+description = "Wire protocol between the Infrawrench client and the remote app server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

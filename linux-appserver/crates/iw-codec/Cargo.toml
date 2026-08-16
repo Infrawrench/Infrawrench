@@ -1,0 +1,13 @@
+[package]
+name = "iw-codec"
+description = "Damage tracking and the tiered pixel encoder for the Infrawrench app server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+iw-proto = { workspace = true }
+thiserror = { workspace = true }
+zstd = { workspace = true }

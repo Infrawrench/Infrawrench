@@ -155,8 +155,18 @@ function TabBarItem({
         tabIndex={tabIndex}
         onClick={() => onActivate(tab.id)}
         onKeyDown={onKeyDown}
-        className="flex-1 min-w-0 flex items-center pl-3 pr-1 h-8 cursor-pointer bg-transparent text-left"
+        className="flex-1 min-w-0 flex items-center gap-1.5 pl-3 pr-1 h-8 cursor-pointer bg-transparent text-left"
       >
+        {tab.icon && (
+          // The title already names the tab, so the icon is decorative and
+          // announcing it again would just make every tab read twice.
+          <img
+            src={tab.icon}
+            alt=""
+            aria-hidden="true"
+            className="size-3.5 shrink-0 object-contain"
+          />
+        )}
         <span className="truncate text-xs font-medium">{tab.title}</span>
       </button>
       <button
