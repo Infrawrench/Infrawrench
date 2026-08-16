@@ -12,7 +12,9 @@ try {
   hashFileContents = readFileSync(hashFile, "utf-8");
 } catch {
   if (existsSync(xzFile)) {
-    console.log("iwappd hash doesn't exist but .tar.xz does, presuming file is externally managed and bailing now!");
+    console.log(
+      "iwappd hash doesn't exist but .tar.xz does, presuming file is externally managed and bailing now!",
+    );
     process.exit(0);
   }
 }
