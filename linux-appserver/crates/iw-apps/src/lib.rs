@@ -28,11 +28,24 @@ use iw_proto::AppEntry;
 ///
 /// The cap is a tab-bar budget, not an aesthetic one: workspace tabs persist to
 /// `localStorage`, so a session with thirty tabs open has to fit in a few
-/// hundred kilobytes with room to spare. A 48px PNG is typically 1–3 KB.
+/// hundred kilobytes with room to spare.
+///
+/// Raster and vector get separate caps because they fail differently. A 48px
+/// PNG is 1–3 KB and a bigger one can always be traded for a smaller size. A
+/// scalable SVG has no smaller size to fall back to, and on a stock Debian 13
+/// with GNOME apps installed the SVGs run 7–10 KB — Evince 7.5 KB, Nautilus
+/// 9.4 KB, Eye of GNOME 8.5 KB — while shipping no PNG at all. One shared 6 KB
+/// cap therefore left four of ten apps with no icon on a real host, which is
+/// how this pair of numbers was arrived at.
 #[derive(Debug, Clone, Copy)]
 pub struct IconBudget {
     pub target_size: u32,
+    /// Cap for PNG and other raster formats.
     pub max_bytes: usize,
+    /// Cap for SVG. Higher because there is no smaller size to fall back to,
+    /// and because SVG is text: it compresses hard over the wire, and 30 tabs
+    /// at this cap is still well inside a `localStorage` origin quota.
+    pub max_svg_bytes: usize,
 }
 
 impl Default for IconBudget {
@@ -40,6 +53,16 @@ impl Default for IconBudget {
         Self {
             target_size: 48,
             max_bytes: 6 * 1024,
+            max_svg_bytes: 24 * 1024,
+        }
+    }
+}
+
+impl IconBudget {
+    fn limit_for(&self, format: IconFormat) -> usize {
+        match format {
+            IconFormat::Svg => self.max_svg_bytes,
+            _ => self.max_bytes,
         }
     }
 }
@@ -68,7 +91,7 @@ pub fn icon_data_url(resolver: &IconResolver, name: &str, budget: IconBudget) ->
         let Ok(bytes) = std::fs::read(&icon.path) else {
             continue;
         };
-        if bytes.len() > budget.max_bytes {
+        if bytes.len() > budget.limit_for(icon.format) {
             continue;
         }
         return Some(base64::data_url(icon.format.mime(), &bytes));
@@ -146,6 +169,29 @@ mod tests {
                 .starts_with("data:image/svg+xml;base64,")
         );
         assert!(icon_data_url(&r, "ancient", IconBudget::default()).is_none());
+    }
+
+    #[test]
+    fn a_scalable_svg_gets_the_larger_cap() {
+        // The case a real host produced: a GNOME app that ships one 8 KB
+        // scalable SVG and no PNG at any size. Under a single 6 KB cap it had
+        // no icon at all, with no smaller size to fall back to.
+        let t = tree();
+        t.write(
+            "icons/hicolor/scalable/apps/gnome-app.svg",
+            &format!("<svg>{}</svg>", "p".repeat(8_000)),
+        );
+        assert!(icon_data_url(&resolver(&t), "gnome-app", IconBudget::default()).is_some());
+    }
+
+    #[test]
+    fn an_svg_past_even_the_svg_cap_is_still_refused() {
+        let t = tree();
+        t.write(
+            "icons/hicolor/scalable/apps/huge.svg",
+            &format!("<svg>{}</svg>", "p".repeat(30_000)),
+        );
+        assert!(icon_data_url(&resolver(&t), "huge", IconBudget::default()).is_none());
     }
 
     #[test]
