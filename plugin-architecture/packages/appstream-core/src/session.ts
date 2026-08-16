@@ -46,6 +46,22 @@ export interface WindowInfo {
   parentWindowId?: number;
 }
 
+/**
+ * The host's answer to one `launch`.
+ *
+ * A failure is not a session failure: the compositor is still there and every
+ * other application still starts. It arrives two ways — `launchResult` for an
+ * entry the host refused outright, and an `error` frame carrying `unknownApp`
+ * or `launchFailed` for one that was spawned and died — and both mean the same
+ * thing to whoever asked, so the session normalises them into this.
+ */
+export interface LaunchResult {
+  ok: boolean;
+  /** Why it failed, from the host — usually the child's own stderr. */
+  message?: string;
+  appId?: string;
+}
+
 export interface AppSessionEvents {
   onReady?(welcome: Extract<ServerMessage, { type: "welcome" }>): void;
   onApps?(apps: AppEntry[], complete: boolean): void;
@@ -57,6 +73,10 @@ export interface AppSessionEvents {
   onCursor?(windowId: number, shape: string | undefined): void;
   onClipboard?(blob: ClipboardBlob): void;
   onLaunchResult?(ok: boolean, message: string | undefined, appId: string | undefined): void;
+  /**
+   * Fatal, session-wide errors only. A launch that failed goes to
+   * `onLaunchResult` and the launch listeners instead — see `LaunchResult`.
+   */
   onError?(message: string, code?: string): void;
   onClose?(): void;
 }
@@ -88,6 +108,7 @@ export class AppSession {
   #windowListeners = new Set<(windowId: number, window: WindowInfo) => void>();
   #windowCloseListeners = new Set<(windowId: number, reason: string) => void>();
   #appsListeners = new Set<(apps: AppEntry[], complete: boolean) => void>();
+  #launchListeners = new Set<(result: LaunchResult) => void>();
   #sessionId: string | undefined;
 
   constructor(transport: AppSessionTransport, options: AppSessionOptions) {
@@ -160,6 +181,20 @@ export class AppSession {
 
   removeAppsListener(listener: (apps: AppEntry[], complete: boolean) => void): void {
     this.#appsListeners.delete(listener);
+  }
+
+  /**
+   * Subscribe to launch outcomes. Nothing else tells the caller that the
+   * application it asked for is not coming: a launch that fails opens no
+   * window, so without this a click on a broken entry is indistinguishable
+   * from a slow one.
+   */
+  addLaunchResultListener(listener: (result: LaunchResult) => void): void {
+    this.#launchListeners.add(listener);
+  }
+
+  removeLaunchResultListener(listener: (result: LaunchResult) => void): void {
+    this.#launchListeners.delete(listener);
   }
 
   addCursorListener(listener: (windowId: number, shape: string | undefined) => void): void {
@@ -285,6 +320,18 @@ export class AppSession {
     });
   }
 
+  #onLaunchResult(result: LaunchResult): void {
+    this.#events.onLaunchResult?.(result.ok, result.message, result.appId);
+    for (const listener of this.#launchListeners) {
+      // One subscriber throwing must not stop the others hearing about it.
+      try {
+        listener(result);
+      } catch {
+        /* a launcher's problem, not the session's */
+      }
+    }
+  }
+
   #onMessage(message: ServerMessage): void {
     switch (message.type) {
       case "welcome": {
@@ -354,9 +401,22 @@ export class AppSession {
         for (const listener of this.#cursorListeners) listener(message.windowId, message.shape);
         break;
       case "launchResult":
-        this.#events.onLaunchResult?.(message.ok, message.message, message.appId);
+        this.#onLaunchResult({
+          ok: message.ok,
+          ...(message.message !== undefined ? { message: message.message } : {}),
+          ...(message.appId !== undefined ? { appId: message.appId } : {}),
+        });
         break;
       case "error":
+        // `unknownApp` and `launchFailed` answer one launch attempt — the
+        // session behind them is healthy and the next application will start
+        // fine. Reporting them as session errors would leave the launcher
+        // permanently red over a single bad entry, so they go where the
+        // outcome of a launch goes.
+        if (message.code === "unknownApp" || message.code === "launchFailed") {
+          this.#onLaunchResult({ ok: false, message: message.message });
+          break;
+        }
         this.#events.onError?.(message.message, message.code);
         break;
       case "clipboardOffer":

@@ -226,6 +226,68 @@ describe("AppSession", () => {
     expect(results).toEqual([[false, "this entry needs a terminal emulator"]]);
   });
 
+  it("fans a launch result out to subscribers, not just the owner", () => {
+    // The launcher component subscribes and unsubscribes with its own
+    // lifetime, which the single events object cannot express.
+    const seen: Array<{ ok: boolean; message?: string; appId?: string }> = [];
+    const { transport, app } = session();
+    transport.reply(welcome);
+    app.addLaunchResultListener((result) => seen.push(result));
+    transport.reply({ type: "launchResult", appId: "gimp.desktop", ok: false, message: "no gtk" });
+    expect(seen).toEqual([{ ok: false, message: "no gtk", appId: "gimp.desktop" }]);
+  });
+
+  it("treats a failed launch as an answer to that launch, not a dead session", () => {
+    // The host reports a child that died as an `error` frame. Reporting it as
+    // a session error would paint the launcher red for good over one bad
+    // entry, when every other application still starts.
+    const fatal: string[] = [];
+    const launches: Array<{ ok: boolean; message?: string }> = [];
+    const { transport, app } = session({ onError: (message) => fatal.push(message) });
+    transport.reply(welcome);
+    app.addLaunchResultListener((result) => launches.push(result));
+    transport.reply({
+      type: "error",
+      code: "launchFailed",
+      message: "libgtk-3.so.0: cannot open shared object file",
+    });
+    expect(fatal).toEqual([]);
+    expect(launches).toEqual([
+      { ok: false, message: "libgtk-3.so.0: cannot open shared object file" },
+    ]);
+  });
+
+  it("still reports an error that ends the session", () => {
+    const fatal: Array<[string, string | undefined]> = [];
+    const { transport } = session({ onError: (message, code) => fatal.push([message, code]) });
+    transport.reply(welcome);
+    transport.reply({ type: "error", code: "noRuntimeDir", message: "no XDG_RUNTIME_DIR" });
+    expect(fatal).toEqual([["no XDG_RUNTIME_DIR", "noRuntimeDir"]]);
+  });
+
+  it("keeps delivering a launch result when one subscriber throws", () => {
+    const seen: boolean[] = [];
+    const { transport, app } = session();
+    transport.reply(welcome);
+    app.addLaunchResultListener(() => {
+      throw new Error("a launcher unmounted mid-update");
+    });
+    app.addLaunchResultListener((result) => seen.push(result.ok));
+    transport.reply({ type: "launchResult", ok: true });
+    expect(seen).toEqual([true]);
+  });
+
+  it("stops delivering launch results after a listener is removed", () => {
+    const seen: boolean[] = [];
+    const { transport, app } = session();
+    transport.reply(welcome);
+    const listener = (result: { ok: boolean }) => seen.push(result.ok);
+    app.addLaunchResultListener(listener);
+    app.removeLaunchResultListener(listener);
+    transport.reply({ type: "launchResult", ok: false, message: "nope" });
+    expect(seen).toEqual([]);
+  });
+
   it("hands clipboard payloads over as binary, not text", () => {
     const received: Array<{ mimeType: string; length: number }> = [];
     const { transport } = session({

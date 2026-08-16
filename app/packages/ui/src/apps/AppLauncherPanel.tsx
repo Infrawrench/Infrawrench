@@ -17,6 +17,15 @@ export interface AppLauncherPanelProps {
   running?: Array<{ windowId: number; title: string; icon?: string; appId?: string }>;
   status?: "connecting" | "uploading" | "ready" | "error";
   statusMessage?: string;
+  /**
+   * The most recent launch: one still starting, or the reason one failed.
+   *
+   * Launching is the one action here with no visible result of its own — the
+   * window it opens becomes a tab, and a launch that fails opens nothing at
+   * all. Without this, clicking a broken entry and clicking a slow one look
+   * exactly alike.
+   */
+  notice?: { kind: "pending" | "error"; message: string } | null;
   onLaunch: (app: AppEntry) => void;
   onRunCommand?: (command: string) => void;
   onFocusWindow?: (windowId: number) => void;
@@ -28,6 +37,7 @@ export function AppLauncherPanel({
   running = [],
   status = "ready",
   statusMessage,
+  notice,
   onLaunch,
   onRunCommand,
   onFocusWindow,
@@ -77,6 +87,15 @@ export function AppLauncherPanel({
         >
           {statusMessage ??
             (status === "uploading" ? gt("Starting the app server…") : gt("Connecting…"))}
+        </p>
+      )}
+
+      {notice && (
+        <p
+          className={`text-sm ${notice.kind === "error" ? "text-danger-on-surface" : "text-on-surface-muted"}`}
+          role={notice.kind === "error" ? "alert" : "status"}
+        >
+          {dataString(notice.message)}
         </p>
       )}
 

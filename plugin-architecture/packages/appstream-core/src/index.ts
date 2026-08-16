@@ -72,5 +72,6 @@ export {
   type AppSessionEvents,
   type AppSessionOptions,
   type AppSessionTransport,
+  type LaunchResult,
   type WindowInfo,
 } from "./session.js";

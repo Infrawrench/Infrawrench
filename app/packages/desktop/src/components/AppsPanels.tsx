@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { T, useGT } from "gt-react";
 import { AppLauncherPanel, AppWindowViewer, linuxAppTabTarget, useUIStore } from "@infrawrench/ui";
-import type { AppEntry } from "@infrawrench/appstream-core";
+import type { AppEntry, LaunchResult } from "@infrawrench/appstream-core";
 
 import {
   acquireHostSession,
@@ -115,6 +115,7 @@ export function AppLauncherHostPanel({ accountId, resourceId, config }: AppLaunc
   const { handle, status } = useHostSession(hostSessionKey(accountId, resourceId), config);
   const [apps, setApps] = useState<AppEntry[]>([]);
   const [listError, setListError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ kind: "pending" | "error"; message: string } | null>(null);
   const pinTab = useUIStore((state) => state.pinWorkspaceTab);
   const setTabIcon = useUIStore((state) => state.setWorkspaceTabIcon);
   const activate = useUIStore((state) => state.activateWorkspaceTab);
@@ -134,6 +135,22 @@ export function AppLauncherHostPanel({ accountId, resourceId, config }: AppLaunc
 
   useEffect(refresh, [refresh]);
 
+  // A launch that fails opens no window, so the failure is the only thing that
+  // ever comes back. Dropping it leaves a click looking like it did nothing.
+  useEffect(() => {
+    if (!handle) return;
+    const session = handle.session;
+    const onResult = (result: LaunchResult) => {
+      if (result.ok) return;
+      setNotice({
+        kind: "error",
+        message: result.message ?? gt("The host could not start that application."),
+      });
+    };
+    session.addLaunchResultListener(onResult);
+    return () => session.removeLaunchResultListener(onResult);
+  }, [handle, gt]);
+
   // Any window this host opens becomes a tab — including one an application
   // opens by itself, like a browser restoring its last session.
   useEffect(() => {
@@ -146,6 +163,9 @@ export function AppLauncherHostPanel({ accountId, resourceId, config }: AppLaunc
       const sessionId = session.sessionId;
       if (!sessionId) return;
 
+      // The window is the launch's real result; whatever we were saying about
+      // it starting is now answered by a tab appearing.
+      setNotice(null);
       const target = linuxAppTabTarget({
         accountId,
         resourceId,
@@ -189,8 +209,17 @@ export function AppLauncherHostPanel({ accountId, resourceId, config }: AppLaunc
       running={running}
       status={status.stage === "ready" ? "ready" : status.stage === "error" ? "error" : "uploading"}
       {...(message ? { statusMessage: message } : {})}
-      onLaunch={(app) => handle?.session.launch({ appId: app.id })}
-      onRunCommand={(command) => handle?.session.launch({ exec: command })}
+      notice={notice}
+      onLaunch={(app) => {
+        if (!handle) return;
+        setNotice({ kind: "pending", message: gt("Starting {name}…", { name: app.name }) });
+        handle.session.launch({ appId: app.id });
+      }}
+      onRunCommand={(command) => {
+        if (!handle) return;
+        setNotice({ kind: "pending", message: gt("Starting {name}…", { name: command }) });
+        handle.session.launch({ exec: command });
+      }}
       onRefresh={refresh}
       onFocusWindow={(windowId) => {
         const tab = tabs.find(
