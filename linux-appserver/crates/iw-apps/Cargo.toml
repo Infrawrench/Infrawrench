@@ -1,0 +1,11 @@
+[package]
+name = "iw-apps"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+iw-proto = { workspace = true }
+thiserror = { workspace = true }

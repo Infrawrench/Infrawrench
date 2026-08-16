@@ -1,0 +1,105 @@
+name: Linux app server
+
+# `linux-appserver/` is a standalone Rust workspace outside the pnpm workspace,
+# so nothing in test.yml reaches it. This is its whole CI.
+#
+# The two path lists are duplicated because GitHub Actions does not support YAML
+# anchors in workflow files. Keep them in step.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "linux-appserver/**"
+      - ".github/workflows/linux-appserver.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "linux-appserver/**"
+      - ".github/workflows/linux-appserver.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Format, lint and test
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: linux-appserver
+    steps:
+      - uses: actions/checkout@v6
+
+      # The toolchain file is the single source of truth for the version, so a
+      # bump does not need a second edit here.
+      - name: Install Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: linux-appserver
+
+      # Formatting first: cheapest check, most likely to fail.
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace
+
+  musl:
+    name: Static build (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: linux-appserver
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add ${{ matrix.target }}
+
+      # The binary is uploaded to hosts we know nothing about — a musl static
+      # build is what makes one artefact per architecture run on Alpine, on
+      # CentOS 7, and on whatever glibc the customer's AMI happens to carry.
+      # `cross` supplies the linkers; installing it from the pinned release is
+      # faster and more reproducible than building it from source.
+      - name: Install cross
+        run: |
+          curl -fsSL https://github.com/cross-rs/cross/releases/download/v0.2.5/cross-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C /usr/local/bin cross
+
+      - name: Build
+        run: cross build --release --target ${{ matrix.target }} -p iwappd
+
+      # A dynamically linked "static" build fails only on the customer's host,
+      # days later, so assert it here instead.
+      - name: Assert the binary is static
+        run: |
+          binary="target/${{ matrix.target }}/release/iwappd"
+          file "$binary"
+          if file "$binary" | grep -q "dynamically linked"; then
+            echo "::error::$binary is dynamically linked; it must be static to run on an unknown host"
+            exit 1
+          fi
+          ls -lh "$binary"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iwappd-${{ matrix.target }}
+          path: linux-appserver/target/${{ matrix.target }}/release/iwappd
+          if-no-files-found: error

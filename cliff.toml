@@ -97,4 +97,7 @@ include_paths = [
     "app/packages/ui/**",
     "app/packages/workflow-runtime/**",
     "plugin-architecture/**",
+    # The desktop app ships the remote app server binary, so a change to it is
+    # a user-visible desktop change even though it is a standalone Rust module.
+    "linux-appserver/**",
 ]

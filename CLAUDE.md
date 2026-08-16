@@ -80,6 +80,15 @@ Three unrelated features have "Terraform" in the name — **eject to Terraform**
 - **The provider is MIT licensed**, not the repository's BUSL-1.1, because it is a client library people vendor into their own infrastructure repositories. `terraform-provider-infrawrench/LICENSE` governs everything under that directory.
 - Acceptance tests (`TF_ACC=1 go test ./...`) create and destroy real objects against a live org; they need credentials on top of `TF_ACC` and should only ever point at a scratch organization.
 
+## Linux app server (`linux-appserver/`)
+
+`linux-appserver/` at the repo root is the remote half of Linux application support: `iwappd`, a headless Wayland compositor uploaded to a customer's host over SSH that streams one app window per workspace tab. KNOWLEDGE.md carries the design rationale; what binds changes made elsewhere:
+
+- **It is outside every JS toolchain, on purpose** — not in `pnpm-workspace.yaml`, not in `turbo.json`. Build and test it on its own: `cd linux-appserver && cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`, Rust 1.85+ (edition 2024, toolchain pinned in `rust-toolchain.toml`). `.github/workflows/linux-appserver.yml` runs exactly that plus the static musl builds; `test.yml` is the pnpm workspace's CI and never reaches it.
+- **It _is_ in `cliff.toml`'s `include_paths`**, unlike the Terraform provider, because the desktop app ships this binary — a change here is a user-visible desktop change.
+- **The protocol has two ends.** `crates/iw-proto` is the source of truth for the frame layout and the control messages, and its serde field names are the TypeScript field names in the client package. A change to either side is a change to both, in one commit, with the golden-fixture test as the guard.
+- **No new runtime dependencies without a reason you would defend in review.** Everything in this workspace runs on someone else's machine; the list is `serde`, `thiserror` and `zstd`.
+
 ## Server environment variables
 
 Every server-side variable read through `process.env` (web, poller, github-watcher) must be added to **both** places in the same change:

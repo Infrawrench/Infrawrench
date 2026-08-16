@@ -24,6 +24,9 @@ coverage
 # Tauri
 src-tauri/target
 
+# Rust build output (the remote app server workspace)
+linux-appserver/target
+
 # SQLite
 *.db
 *.db-shm
