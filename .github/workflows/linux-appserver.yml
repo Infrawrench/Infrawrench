@@ -35,6 +35,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # The compositor links libxkbcommon, so building the test binaries needs
+      # its headers and .so. `cargo clippy` does not link and passes without
+      # them, which is exactly how this got missed: a dev machine set up for
+      # compositor work already has the package.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libxkbcommon-dev
+
       # The toolchain file is the single source of truth for the version, so a
       # bump does not need a second edit here.
       - name: Install Rust

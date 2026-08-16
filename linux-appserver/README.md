@@ -52,6 +52,11 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
+On Linux those need `libxkbcommon-dev` installed — the compositor links it, and
+`cargo clippy` will pass without it because checking does not link. macOS needs
+nothing: the compositor is `cfg(target_os = "linux")` and everything above the
+`Backend` seam is pure Rust.
+
 The shipped artefact is a **static musl binary, built inside Alpine**:
 
 ```
