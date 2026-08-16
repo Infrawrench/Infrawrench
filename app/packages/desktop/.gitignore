@@ -6,3 +6,4 @@ dist
 env.ts
 iwappd.tar.xz
 .iwappd-hash
+.iwappd-build

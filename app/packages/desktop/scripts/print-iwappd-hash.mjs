@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { hashRustFolder } from "./utils/iwappd.mjs";
+import { hashRustFolder } from "./utils/iwappd/hash.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 

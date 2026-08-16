@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { hashRustFolder } from "./utils/iwappd.mjs";
+import { hashRustFolder } from "./utils/iwappd/hash.mjs";
+import { dockerBuild } from "./utils/iwappd/docker.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -22,25 +23,24 @@ try {
 const appserverFolder = resolve(here, "..", "..", "..", "..", "linux-appserver");
 const currentRepoState = hashRustFolder(appserverFolder);
 if (currentRepoState === hashFileContents) {
-  console.log("hashes match - bailing now!");
+  console.log("iwappd hashes match - bailing now!");
   process.exit(0);
 }
 
-fetch(`https://iwappd-hash-asset-downloader.infrawrench.com/${currentRepoState}`).then(async (res) => {
-  if (res.status === 200) {
-    console.log("version locally was remotely built - downloading that!");
-    const b = await res.arrayBuffer();
-    writeFileSync(xzFile, Buffer.from(b));
-  } else {
-    console.log("hashes do not match - compiling the rust now!");
+fetch(`https://iwappd-hash-asset-downloader.infrawrench.com/${currentRepoState}`)
+  .then(async (res) => {
+    if (res.status === 200) {
+      console.log("iwappd version locally was remotely built - downloading that!");
+      const b = await res.arrayBuffer();
+      writeFileSync(xzFile, Buffer.from(b));
+    } else {
+      console.log("iwappd hashes do not match - compiling the rust now!");
+      dockerBuild(xzFile, appserverFolder);
+    }
 
-    // TODO: build rust code using docker and .tar.xz then put in that file path when its okay
-
-    throw new Error("builds not supported yet");
-  }
-
-  writeFileSync(hashFile, currentRepoState);
-}).catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+    writeFileSync(hashFile, currentRepoState);
+  })
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
