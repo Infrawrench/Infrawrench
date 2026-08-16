@@ -70,6 +70,7 @@ import {
   navigateToWorkspaceTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
+  resourceAppsTabTarget,
   resourceTabTarget,
 } from "@/lib/workspace-tabs";
 import { CreateResourceModal } from "./CreateResourceModal";
@@ -1057,6 +1058,14 @@ export function ResourceDetailClient({
     );
   }
 
+  function openAppsTab() {
+    void navigateToWorkspaceTarget(
+      navigate,
+      resourceAppsTabTarget(accountId, resourceId, pluginId, resourceTypeId),
+      { label: gt("Apps: {name}", { name: resourceDisplayName }), mode: "pin" },
+    );
+  }
+
   function openSftpTab() {
     void navigateToWorkspaceTarget(
       navigate,
@@ -1287,6 +1296,15 @@ export function ResourceDetailClient({
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
               >
                 {gt("Open SSH tab")}
+              </button>
+            )}
+            {hasSshPanel && (
+              <button
+                type="button"
+                onClick={openAppsTab}
+                className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
+              >
+                {gt("Open Apps tab")}
               </button>
             )}
             {sshHost && (
