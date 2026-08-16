@@ -62,6 +62,7 @@ export {
   applyPayload,
   decodeImageTiles,
   decodePixelPayload,
+  dirtyBounds,
   expectedPixelBytes,
   type PixelPayload,
   type RectEntry,

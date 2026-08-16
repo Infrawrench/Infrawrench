@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use iw_apps::IconBudget;
 use iw_proto::{FrameDecoder, PixelFormat, ServerCaps};
+use smithay::reexports::calloop::ping::Ping;
 
 use crate::catalog::FsCatalog;
 use crate::compositor::WaylandBackend;
@@ -23,6 +24,13 @@ use crate::session::{Session, SessionConfig};
 /// Short enough that stdin traffic is answered promptly, long enough that an
 /// idle session is not a spin loop on someone else's VM.
 const TURN: Duration = Duration::from_millis(8);
+
+/// How often the loop reports what it has been doing, when it has been doing
+/// anything. One line per interval of *activity* — a quiet session says
+/// nothing — written to stderr, which both apps already forward into their
+/// logs. Latency questions are otherwise unanswerable from the outside: the
+/// user sees "laggy" and everything below is a guess.
+const STATS_EVERY: Duration = Duration::from_secs(5);
 
 pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io::Result<()> {
     let env: BTreeMap<String, String> = std::env::vars().collect();
@@ -63,17 +71,23 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
 
     let mut session = Session::new(backend, catalog, config);
     let mut decoder = FrameDecoder::new();
-    let stdin_rx = spawn_stdin_reader();
+    // The reader wakes the compositor's event loop as soon as it has bytes, so
+    // a keystroke is acted on when it arrives rather than whenever the current
+    // turn happens to end.
+    let stdin_rx = spawn_stdin_reader(session.backend_mut().waker());
     let stdout = std::io::stdout();
 
     let mut last_activity = Instant::now();
     let mut stdin_open = true;
+    let mut stats = Stats::default();
 
     loop {
+        let turn_started = Instant::now();
         session
             .backend_mut()
             .dispatch(TURN)
             .map_err(|e| std::io::Error::other(e.to_string()))?;
+        let dispatched = Instant::now();
 
         for event in session.backend_mut().poll_events() {
             session.on_backend_event(event);
@@ -107,9 +121,11 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
             session.on_client_frame(frame);
         }
 
+        let pump_started = Instant::now();
         session.pump();
 
         let outbound = session.drain();
+        let outbound_bytes: usize = outbound.iter().map(Vec::len).sum();
         if !outbound.is_empty() {
             let mut handle = stdout.lock();
             for bytes in outbound {
@@ -117,6 +133,16 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
             }
             handle.flush()?;
         }
+
+        // Compositing happens inside `dispatch`, in the commit handler, so the
+        // two numbers separate "the host is slow at drawing" from "the host is
+        // slow at encoding" — which want completely different fixes.
+        stats.record(
+            dispatched.saturating_duration_since(turn_started),
+            pump_started.elapsed(),
+            outbound_bytes,
+        );
+        stats.report();
 
         if session.is_ended() || !stdin_open {
             break;
@@ -137,9 +163,63 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
     Ok(())
 }
 
+/// What the loop has been spending its time on since the last report.
+struct Stats {
+    since: Instant,
+    turns: u32,
+    dispatch: Duration,
+    encode: Duration,
+    slowest_encode: Duration,
+    bytes: usize,
+}
+
+impl Default for Stats {
+    fn default() -> Self {
+        Self {
+            since: Instant::now(),
+            turns: 0,
+            dispatch: Duration::ZERO,
+            encode: Duration::ZERO,
+            slowest_encode: Duration::ZERO,
+            bytes: 0,
+        }
+    }
+}
+
+impl Stats {
+    fn record(&mut self, dispatch: Duration, encode: Duration, bytes: usize) {
+        self.turns += 1;
+        self.dispatch += dispatch;
+        self.encode += encode;
+        self.slowest_encode = self.slowest_encode.max(encode);
+        self.bytes += bytes;
+    }
+
+    fn report(&mut self) {
+        let elapsed = self.since.elapsed();
+        if elapsed < STATS_EVERY {
+            return;
+        }
+        // Nothing went out: the session was idle, and saying so every five
+        // seconds for an hour helps nobody.
+        if self.bytes > 0 {
+            let seconds = elapsed.as_secs_f64().max(0.001);
+            eprintln!(
+                "[stats] {:.0} turns/s, compositing {:.1}ms/s, encoding {:.1}ms/s (slowest frame {:.1}ms), {:.0} KiB/s",
+                f64::from(self.turns) / seconds,
+                self.dispatch.as_secs_f64() * 1000.0 / seconds,
+                self.encode.as_secs_f64() * 1000.0 / seconds,
+                self.slowest_encode.as_secs_f64() * 1000.0,
+                self.bytes as f64 / 1024.0 / seconds,
+            );
+        }
+        *self = Self::default();
+    }
+}
+
 /// Read stdin on its own thread, forwarding chunks and then a single `None`
 /// for EOF.
-fn spawn_stdin_reader() -> mpsc::Receiver<Option<Vec<u8>>> {
+fn spawn_stdin_reader(waker: Ping) -> mpsc::Receiver<Option<Vec<u8>>> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let mut stdin = std::io::stdin().lock();
@@ -148,15 +228,18 @@ fn spawn_stdin_reader() -> mpsc::Receiver<Option<Vec<u8>>> {
             match stdin.read(&mut buf) {
                 Ok(0) => {
                     let _ = tx.send(None);
+                    waker.ping();
                     return;
                 }
                 Ok(n) => {
                     if tx.send(Some(buf[..n].to_vec())).is_err() {
                         return;
                     }
+                    waker.ping();
                 }
                 Err(_) => {
                     let _ = tx.send(None);
+                    waker.ping();
                     return;
                 }
             }

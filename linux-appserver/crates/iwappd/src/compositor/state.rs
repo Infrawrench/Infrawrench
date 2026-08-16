@@ -71,6 +71,15 @@ pub struct WindowRec {
     /// the price of not having one.
     pub pixels: Vec<u8>,
     pub damage: Vec<Rect>,
+    /// Where each surface of the tree sat last time it was composited, as
+    /// `(surface id, x, y, width, height)` in tree order. A subsurface that
+    /// *moves* damages nothing — the pixels it vacated are unchanged as far as
+    /// it is concerned — so this is what turns a move into a full repaint
+    /// instead of a trail.
+    pub layout: Vec<(u32, i32, i32, u32, u32)>,
+    /// The canvas holds nothing worth keeping: the next composite has to build
+    /// the whole window rather than patch it.
+    pub pixels_stale: bool,
     /// A toplevel exists before it has anything to show. We announce it to the
     /// client on its first committed buffer, so a tab never opens on nothing.
     pub mapped: bool,
@@ -257,13 +266,33 @@ impl AppState {
             return;
         };
         let root_scale = surface_scale(&root);
-        let mut canvas = vec![0u8; width as usize * height as usize * 4];
+
+        // The canvas is kept between commits and only re-composited where
+        // something changed. Rebuilding it whole was a fresh allocation, a
+        // zeroing pass and a blend of every pixel in the window — per commit,
+        // at whatever rate the application redraws, however little of it moved.
+        let Some(rec) = self.windows.get_mut(&window_id) else {
+            return;
+        };
+        let resized = rec.width != width || rec.height != height;
+        let bytes = width as usize * height as usize * 4;
+        if resized || rec.pixels.len() != bytes {
+            rec.pixels.clear();
+            rec.pixels.resize(bytes, 0);
+        }
+        let mut canvas = std::mem::take(&mut rec.pixels);
+
+        // A subsurface that *moved* damages nothing: the pixels it left behind
+        // are still where it was. So the layout is compared against the last
+        // one and any change means a full recomposite — the alternative is a
+        // trail of whatever a menu was drawn over.
+        let mut layout: Vec<(u32, i32, i32, u32, u32)> = Vec::new();
         let mut damage: Vec<Rect> = Vec::new();
 
         with_surface_tree_downward(
             &root,
             (0i32, 0i32),
-            |_, states, offset| {
+            |surface, states, offset| {
                 // Draw on the way *down*: a parent is painted before its
                 // children, because a subsurface sits on top of the surface it
                 // belongs to. Painting on the way up instead — which is what
@@ -287,7 +316,13 @@ impl AppState {
 
                 if let Some(cache) = states.data_map.get::<RefCell<SurfacePixels>>() {
                     let mut cache = cache.borrow_mut();
-                    blit(&mut canvas, width, height, &cache, at.0, at.1);
+                    layout.push((
+                        surface.id().protocol_id(),
+                        at.0,
+                        at.1,
+                        cache.width,
+                        cache.height,
+                    ));
                     let pending: Vec<Rect> = cache.damage.drain(..).collect();
                     for rect in pending {
                         if let Some(clipped) = translate(rect, at.0, at.1).clip(width, height) {
@@ -305,10 +340,64 @@ impl AppState {
         let Some(rec) = self.windows.get_mut(&window_id) else {
             return;
         };
-        let resized = rec.width != width || rec.height != height;
+        let moved = rec.layout != layout;
+        rec.layout = layout;
+        // A window nobody has drawn yet, one that just changed size, and one
+        // whose surfaces moved all have to be built from scratch. Everything
+        // else is a repaint of the rectangles that changed.
+        let full = resized || moved || rec.pixels_stale;
+        let regions: Vec<Rect> = if full {
+            vec![Rect::new(0, 0, width, height)]
+        } else {
+            coalesce_for_composite(&damage, width, height)
+        };
+
+        if !regions.is_empty() {
+            let root_for_paint = rec.surface.clone();
+            for region in &regions {
+                // Compositing is source-over, so the region has to start empty
+                // or the last frame shows through anything translucent drawn
+                // over it.
+                clear_region(&mut canvas, width, *region);
+            }
+            with_surface_tree_downward(
+                &root_for_paint,
+                (0i32, 0i32),
+                |_, states, offset| {
+                    let mut sub = states.cached_state.get::<SubsurfaceCachedState>();
+                    let location = sub.current().location;
+                    let at = (
+                        offset.0 + location.x * root_scale,
+                        offset.1 + location.y * root_scale,
+                    );
+                    if let Some(cache) = states.data_map.get::<RefCell<SurfacePixels>>() {
+                        let cache = cache.borrow();
+                        for region in &regions {
+                            blit(
+                                &mut canvas,
+                                width,
+                                height,
+                                &cache,
+                                at.0,
+                                at.1,
+                                Some(*region),
+                            );
+                        }
+                    }
+                    TraversalAction::DoChildren(at)
+                },
+                |_, _, _| {},
+                |_, _, _| true,
+            );
+        }
+
+        let Some(rec) = self.windows.get_mut(&window_id) else {
+            return;
+        };
         rec.width = width;
         rec.height = height;
         rec.pixels = canvas;
+        rec.pixels_stale = false;
         if resized {
             // Damage from before a resize describes a buffer that no longer
             // exists; the encoder sends a keyframe for the new size instead.
@@ -328,6 +417,9 @@ pub struct SurfacePixels {
     height: u32,
     pixels: Vec<u8>,
     damage: Vec<Rect>,
+    /// The client's format has no alpha channel (`Xrgb8888`), so compositing
+    /// this surface is a copy rather than a blend.
+    opaque: bool,
     /// `wl_surface.set_buffer_scale`: how many buffer pixels the client drew
     /// per logical pixel. Everything cached here is in *buffer* pixels, while
     /// subsurface offsets and surface damage arrive in logical ones, so this is
@@ -336,44 +428,80 @@ pub struct SurfacePixels {
 }
 
 /// Copy a committed `wl_shm` buffer into a surface's cache.
-fn absorb(cache: &mut SurfacePixels, buffer: &wl_buffer::WlBuffer) {
-    let copied = with_buffer_contents(buffer, |ptr, len, data| {
+///
+/// Only the rectangles the client said it damaged, when it said anything and
+/// the buffer is the same shape as last time. That is the difference between
+/// work proportional to what changed and work proportional to the window: a
+/// character typed into a terminal damages a few hundred pixels, and copying
+/// the whole surface for it costs the same as a full-screen video frame — every
+/// commit, at whatever rate the application redraws.
+///
+/// Copying only the damage is correct because that is what damage *means*: the
+/// client promises the rest of the new buffer matches what the compositor
+/// already has for this surface. Double buffering does not break that — the
+/// other buffer holds the same content — which is why every compositor does
+/// this and why a toolkit that under-reports damage is broken everywhere, not
+/// just here.
+fn absorb(cache: &mut SurfacePixels, buffer: &wl_buffer::WlBuffer, damage: &[Rect]) {
+    let _ = with_buffer_contents(buffer, |ptr, len, data| {
         let width = data.width.max(0) as usize;
         let height = data.height.max(0) as usize;
         let stride = data.stride.max(0) as usize;
         let offset = data.offset.max(0) as usize;
         if width == 0 || height == 0 || stride < width * 4 {
-            return None;
+            return;
         }
         if offset + stride * height > len {
-            return None;
+            return;
         }
         let opaque = matches!(data.format, wl_shm::Format::Xrgb8888);
 
         // SAFETY: the pool is mapped for the duration of this callback, and
         // every byte read is bounds-checked against `len` above.
         let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
-        let mut out = vec![0u8; width * height * 4];
-        for row in 0..height {
-            let src = offset + row * stride;
-            let dst = row * width * 4;
-            out[dst..dst + width * 4].copy_from_slice(&bytes[src..src + width * 4]);
-            if opaque {
-                // Xrgb8888 leaves the high byte undefined; a client that left
-                // it at zero would otherwise arrive fully transparent.
-                for px in 0..width {
-                    out[dst + px * 4 + 3] = 0xff;
+
+        let resized = cache.width as usize != width
+            || cache.height as usize != height
+            || cache.pixels.len() != width * height * 4;
+        if resized {
+            // Nothing to be partial about: there is no previous content at this
+            // size. `resize` keeps the allocation when it can.
+            cache.pixels.clear();
+            cache.pixels.resize(width * height * 4, 0);
+            cache.width = width as u32;
+            cache.height = height as u32;
+        }
+        cache.opaque = opaque;
+
+        let full = Rect::new(0, 0, width as u32, height as u32);
+        // No damage with a new buffer means "assume everything": a client is
+        // allowed to say nothing, and the first buffer has nothing to diff
+        // against anyway.
+        let regions: &[Rect] = if resized || damage.is_empty() {
+            std::slice::from_ref(&full)
+        } else {
+            damage
+        };
+
+        for region in regions {
+            let Some(r) = region.clip(width as u32, height as u32) else {
+                continue;
+            };
+            let row_bytes = r.w as usize * 4;
+            for y in r.y..r.bottom() {
+                let src = offset + y as usize * stride + r.x as usize * 4;
+                let dst = (y as usize * width + r.x as usize) * 4;
+                cache.pixels[dst..dst + row_bytes].copy_from_slice(&bytes[src..src + row_bytes]);
+                if opaque {
+                    // Xrgb8888 leaves the high byte undefined; a client that
+                    // left it at zero would arrive fully transparent.
+                    for px in cache.pixels[dst..dst + row_bytes].chunks_exact_mut(4) {
+                        px[3] = 0xff;
+                    }
                 }
             }
         }
-        Some((width as u32, height as u32, out))
     });
-
-    if let Ok(Some((width, height, pixels))) = copied {
-        cache.width = width;
-        cache.height = height;
-        cache.pixels = pixels;
-    }
 }
 
 /// Draw one surface's pixels into the window canvas at `(ox, oy)`, blended.
@@ -382,22 +510,54 @@ fn absorb(cache: &mut SurfacePixels, buffer: &wl_buffer::WlBuffer) {
 /// carries. A straight copy would be cheaper but wrong in both directions: a
 /// client's rounded corners and shadows would get hard edges, and any surface
 /// with a transparent region would punch a hole through whatever it covers.
-fn blit(canvas: &mut [u8], canvas_w: u32, canvas_h: u32, src: &SurfacePixels, ox: i32, oy: i32) {
+fn blit(
+    canvas: &mut [u8],
+    canvas_w: u32,
+    canvas_h: u32,
+    src: &SurfacePixels,
+    ox: i32,
+    oy: i32,
+    clip: Option<Rect>,
+) {
     if src.pixels.is_empty() {
         return;
     }
-    for row in 0..src.height {
-        let y = oy + row as i32;
-        if y < 0 || y >= canvas_h as i32 {
+    // Work out the overlapping rows and columns once, rather than testing every
+    // pixel against the canvas edges and against the clip. On a 2× window that
+    // inner branch ran a few million times per commit.
+    let (clip_x0, clip_y0, clip_x1, clip_y1) = match clip {
+        Some(r) => (r.x as i64, r.y as i64, r.right() as i64, r.bottom() as i64),
+        None => (0, 0, canvas_w as i64, canvas_h as i64),
+    };
+    let x0 = (ox as i64).max(0).max(clip_x0);
+    let y0 = (oy as i64).max(0).max(clip_y0);
+    let x1 = (ox as i64 + src.width as i64)
+        .min(canvas_w as i64)
+        .min(clip_x1);
+    let y1 = (oy as i64 + src.height as i64)
+        .min(canvas_h as i64)
+        .min(clip_y1);
+    if x0 >= x1 || y0 >= y1 {
+        return;
+    }
+    let row_bytes = (x1 - x0) as usize * 4;
+
+    for y in y0..y1 {
+        let from = ((y - oy as i64) as usize * src.width as usize + (x0 - ox as i64) as usize) * 4;
+        let to = (y as usize * canvas_w as usize + x0 as usize) * 4;
+
+        // A surface whose format has no alpha — which is most of them, and
+        // every toplevel that fills its own window — is a row copy. Blending it
+        // pixel by pixel produces the identical result at roughly ten times the
+        // cost.
+        if src.opaque {
+            canvas[to..to + row_bytes].copy_from_slice(&src.pixels[from..from + row_bytes]);
             continue;
         }
-        for col in 0..src.width {
-            let x = ox + col as i32;
-            if x < 0 || x >= canvas_w as i32 {
-                continue;
-            }
-            let from = (row * src.width + col) as usize * 4;
-            let to = (y as u32 * canvas_w + x as u32) as usize * 4;
+
+        for col in 0..(x1 - x0) as usize {
+            let from = from + col * 4;
+            let to = to + col * 4;
             let alpha = src.pixels[from + 3] as u32;
             if alpha == 255 {
                 canvas[to..to + 4].copy_from_slice(&src.pixels[from..from + 4]);
@@ -414,6 +574,38 @@ fn blit(canvas: &mut [u8], canvas_w: u32, canvas_h: u32, src: &SurfacePixels, ox
             }
         }
     }
+}
+
+/// Blank a rectangle of the canvas.
+///
+/// Compositing is source-over, so a region has to start empty or the previous
+/// frame shows through anything translucent drawn over it.
+fn clear_region(canvas: &mut [u8], canvas_w: u32, region: Rect) {
+    let row_bytes = region.w as usize * 4;
+    for y in region.y..region.bottom() {
+        let at = (y as usize * canvas_w as usize + region.x as usize) * 4;
+        if at + row_bytes <= canvas.len() {
+            canvas[at..at + row_bytes].fill(0);
+        }
+    }
+}
+
+/// Merge the damage into the regions the composite pass will actually repaint.
+///
+/// Deliberately coarser than the encoder's coalescing: this bounds *compositing*
+/// work, where the cost of one more region is another walk of the surface tree,
+/// while the encoder's bounds what goes on the wire. Past a fraction of the
+/// window there is nothing left to save and the whole thing is cheaper.
+fn coalesce_for_composite(damage: &[Rect], width: u32, height: u32) -> Vec<Rect> {
+    iw_codec::coalesce(
+        damage,
+        width,
+        height,
+        iw_codec::CoalesceLimits {
+            max_rects: 4,
+            full_frame_coverage: 0.5,
+        },
+    )
 }
 
 fn translate(rect: Rect, ox: i32, oy: i32) -> Rect {
@@ -498,10 +690,35 @@ impl CompositorHandler for AppState {
             let mut guard = states.cached_state.get::<SurfaceAttributes>();
             let attrs = guard.current();
             cache.scale = attrs.buffer_scale.max(1);
+
+            // Damage is read *before* the buffer is absorbed, because it is
+            // what says how much of the buffer has to be copied at all.
+            // Everything downstream works in buffer pixels: `wl_surface.damage`
+            // is in *surface* (logical) coordinates and `damage_buffer` is
+            // already in buffer ones — identical at scale 1, off by a factor of
+            // the scale on a HiDPI client, which shows up as a window that
+            // repaints a quarter of what it should.
+            let scale = cache.scale;
+            let fresh: Vec<Rect> = attrs
+                .damage
+                .drain(..)
+                .map(|damage| match damage {
+                    Damage::Buffer(rect) => {
+                        rect_from(rect.loc.x, rect.loc.y, rect.size.w, rect.size.h)
+                    }
+                    Damage::Surface(rect) => rect_from(
+                        rect.loc.x * scale,
+                        rect.loc.y * scale,
+                        rect.size.w * scale,
+                        rect.size.h * scale,
+                    ),
+                })
+                .collect();
+
             match attrs.buffer.take() {
                 Some(BufferAssignment::NewBuffer(buffer)) => {
                     let before = (cache.width, cache.height);
-                    absorb(&mut cache, &buffer);
+                    absorb(&mut cache, &buffer, &fresh);
                     if debug {
                         let shm = with_buffer_contents(&buffer, |_, _, d| {
                             format!(
@@ -531,30 +748,12 @@ impl CompositorHandler for AppState {
                     cache.pixels.clear();
                     cache.width = 0;
                     cache.height = 0;
+                    // Nothing damaged the window, but a surface just stopped
+                    // drawing. That shows up as its size changing in the
+                    // layout, which is already a full recomposite.
                 }
                 None => {}
             }
-            // Everything downstream works in buffer pixels. `wl_surface.damage`
-            // is in *surface* (logical) coordinates and `damage_buffer` is
-            // already in buffer ones — identical at scale 1, off by a factor of
-            // the scale on a HiDPI client, which shows up as a window that
-            // repaints a quarter of what it should.
-            let scale = cache.scale;
-            let fresh: Vec<Rect> = attrs
-                .damage
-                .drain(..)
-                .map(|damage| match damage {
-                    Damage::Buffer(rect) => {
-                        rect_from(rect.loc.x, rect.loc.y, rect.size.w, rect.size.h)
-                    }
-                    Damage::Surface(rect) => rect_from(
-                        rect.loc.x * scale,
-                        rect.loc.y * scale,
-                        rect.size.w * scale,
-                        rect.size.h * scale,
-                    ),
-                })
-                .collect();
             cache.damage.extend(fresh);
         });
 
@@ -710,6 +909,8 @@ impl XdgShellHandler for AppState {
                 height: 0,
                 pixels: Vec::new(),
                 damage: Vec::new(),
+                layout: Vec::new(),
+                pixels_stale: true,
                 mapped: false,
             },
         );

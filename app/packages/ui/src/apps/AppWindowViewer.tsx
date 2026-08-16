@@ -8,6 +8,7 @@ import {
   applyPayload,
   axisFromWheel,
   decodeImageTiles,
+  dirtyBounds,
   evdevFromCode,
   pointerButtonFromDom,
   pointerPosition,
@@ -109,6 +110,8 @@ export function AppWindowViewer({
     pixels: Uint8ClampedArray<ArrayBuffer>;
     width: number;
     height: number;
+    /** Kept rather than rebuilt per frame; it is a view, not a copy. */
+    image: ImageData;
   } | null>(null);
   const [painted, setPainted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,10 +125,12 @@ export function AppWindowViewer({
 
     let buffer = bufferRef.current;
     if (!buffer || buffer.width !== payload.width || buffer.height !== payload.height) {
+      const pixels = new Uint8ClampedArray(new ArrayBuffer(payload.width * payload.height * 4));
       buffer = {
-        pixels: new Uint8ClampedArray(new ArrayBuffer(payload.width * payload.height * 4)),
+        pixels,
         width: payload.width,
         height: payload.height,
+        image: new ImageData(pixels, payload.width, payload.height),
       };
       bufferRef.current = buffer;
       canvas.width = payload.width;
@@ -140,7 +145,14 @@ export function AppWindowViewer({
         await paintImageTiles(payload, context, buffer);
       } else {
         applyPayload(payload, buffer.pixels, buffer.width, buffer.height, zstdDecompress);
-        context.putImageData(new ImageData(buffer.pixels, buffer.width, buffer.height), 0, 0);
+        // Only the region the frame touched. Handing the whole canvas to
+        // `putImageData` uploads every pixel of the window for a frame that
+        // changed one line of a terminal — which on a HiDPI window is
+        // megabytes, at whatever rate the application redraws.
+        const dirty = dirtyBounds(payload);
+        if (dirty) {
+          context.putImageData(buffer.image, 0, 0, dirty.x, dirty.y, dirty.w, dirty.h);
+        }
       }
     } catch (cause) {
       // A frame we cannot decode is not fatal — the next keyframe repairs the

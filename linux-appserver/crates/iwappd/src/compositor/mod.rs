@@ -19,6 +19,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use smithay::reexports::calloop::generic::Generic;
+use smithay::reexports::calloop::ping::{Ping, make_ping};
 use smithay::reexports::calloop::{EventLoop, Interest, Mode, PostAction};
 use smithay::reexports::wayland_server::Display;
 use smithay::utils::SERIAL_COUNTER;
@@ -45,6 +46,9 @@ pub struct WaylandBackend {
     /// Events raised by us rather than by a protocol handler (launch failures,
     /// crashed children).
     local_events: VecDeque<BackendEvent>,
+    /// Interrupts [`Self::dispatch`] from another thread. Held so the reader
+    /// thread can be handed a clone.
+    waker: Ping,
 }
 
 impl WaylandBackend {
@@ -101,6 +105,16 @@ impl WaylandBackend {
             )
             .map_err(|e| BackendError::Compositor(format!("display source: {e}")))?;
 
+        // Client input arrives on another thread. Without something to
+        // interrupt it, `dispatch` sits on its timeout with a keystroke already
+        // in the channel — up to a whole turn of latency on every key and every
+        // mouse move, for input the loop is holding but has not looked at.
+        let (waker, wake_source) =
+            make_ping().map_err(|e| BackendError::Compositor(format!("waker: {e}")))?;
+        handle
+            .insert_source(wake_source, |_, _, _| {})
+            .map_err(|e| BackendError::Compositor(format!("waker source: {e}")))?;
+
         Ok(Self {
             event_loop,
             data: LoopData { state, display },
@@ -108,7 +122,15 @@ impl WaylandBackend {
             runtime_dir,
             nursery: Nursery::default(),
             local_events: VecDeque::new(),
+            waker,
         })
+    }
+
+    /// A handle that interrupts [`Self::dispatch`] from another thread. The
+    /// stdin reader pings it as soon as it has bytes, so client input is acted
+    /// on when it arrives rather than when the turn happens to end.
+    pub fn waker(&self) -> Ping {
+        self.waker.clone()
     }
 
     pub fn socket_name(&self) -> &str {

@@ -48,6 +48,8 @@ export const FLAG_KEYFRAME = 1 << 0;
 const HEADER_LEN = 12;
 const RECT_LEN = 13;
 
+const LITTLE_ENDIAN = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
+
 export interface RectEntry {
   x: number;
   y: number;
@@ -156,6 +158,34 @@ export function decodeImageTiles(payload: PixelPayload): Uint8Array[] {
   return tiles;
 }
 
+/**
+ * The bounding box of everything a payload touches.
+ *
+ * What a viewer hands `putImageData`'s dirty-rectangle form: uploading the
+ * whole canvas for a frame that changed one line of a terminal costs the same
+ * as a full-screen repaint, every frame, and on a HiDPI window that is
+ * megabytes each time.
+ *
+ * `null` when the payload paints nothing at all.
+ */
+export function dirtyBounds(
+  payload: PixelPayload,
+): { x: number; y: number; w: number; h: number } | null {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = 0;
+  let y1 = 0;
+  for (const rect of payload.rects) {
+    if (rect.w === 0 || rect.h === 0) continue;
+    x0 = Math.min(x0, rect.x);
+    y0 = Math.min(y0, rect.y);
+    x1 = Math.max(x1, rect.x + rect.w);
+    y1 = Math.max(y1, rect.y + rect.h);
+  }
+  if (!Number.isFinite(x0) || x1 <= x0 || y1 <= y0) return null;
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
 /** Decompresses a zstd frame. Supplied by the host so this package stays free of wasm. */
 export type ZstdDecompress = (input: Uint8Array, expectedBytes: number) => Uint8Array;
 
@@ -245,6 +275,27 @@ export function applyPayload(
       continue;
     }
 
+    // A word at a time when both sides are word-aligned, which is the normal
+    // case: the canvas is our own allocation and the blob is a decompressor's.
+    // Four byte loads, four stores and eight index computations per pixel is
+    // the difference between a full-window frame costing a few milliseconds
+    // and costing tens of them.
+    const words = wordViews(canvas, pixels, at);
+    if (words) {
+      const { dst, src } = words;
+      for (let row = 0; row < rect.h; row++) {
+        let to = ((rect.y + row) * canvasWidth + rect.x) | 0;
+        for (let col = 0; col < rect.w; col++) {
+          const v = src[at >>> 2]!;
+          // BGRA to RGBA: green and alpha stay, red and blue trade places.
+          dst[to] = (v & 0xff00ff00) | ((v >>> 16) & 0xff) | ((v & 0xff) << 16);
+          to += 1;
+          at += 4;
+        }
+      }
+      continue;
+    }
+
     for (let row = 0; row < rect.h; row++) {
       let to = ((rect.y + row) * canvasWidth + rect.x) * 4;
       for (let col = 0; col < rect.w; col++) {
@@ -256,5 +307,38 @@ export function applyPayload(
         at += 4;
       }
     }
+  }
+}
+
+/**
+ * 32-bit views over the canvas and the blob, when both are aligned to a word
+ * boundary and the blob's read offset is too.
+ *
+ * `null` when any of that fails — a payload's pixels can start at any offset
+ * inside the frame it arrived in — and the caller falls back to bytes. Writing
+ * through a `Uint32Array` also side-steps `Uint8ClampedArray`'s clamping, which
+ * is what we want here: these are raw pixels, not arithmetic.
+ */
+function wordViews(
+  canvas: Uint8ClampedArray | Uint8Array,
+  pixels: Uint8Array,
+  at: number,
+): { dst: Uint32Array; src: Uint32Array } | null {
+  // The word path packs bytes by position, so it is only the same operation as
+  // the byte path on a little-endian machine. Every browser runs on one; the
+  // check costs nothing and means the fallback is a fallback rather than a
+  // silently wrong answer somewhere else.
+  if (!LITTLE_ENDIAN) return null;
+  if ((canvas.byteOffset & 3) !== 0 || (pixels.byteOffset & 3) !== 0 || (at & 3) !== 0) return null;
+  if ((canvas.byteLength & 3) !== 0 || (pixels.byteLength & 3) !== 0) return null;
+  try {
+    return {
+      dst: new Uint32Array(canvas.buffer, canvas.byteOffset, canvas.byteLength >>> 2),
+      src: new Uint32Array(pixels.buffer, pixels.byteOffset, pixels.byteLength >>> 2),
+    };
+  } catch {
+    // A SharedArrayBuffer-backed view, or a length that does not divide: not
+    // worth reasoning about when the byte path is right there.
+    return null;
   }
 }

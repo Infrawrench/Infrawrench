@@ -14,7 +14,14 @@ import { zstdDecompressSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 
 import { FrameDecoder, FrameKind } from "../frame.js";
-import { Codec, RectOp, applyPayload, decodeImageTiles, decodePixelPayload } from "../pixels.js";
+import {
+  Codec,
+  RectOp,
+  applyPayload,
+  decodeImageTiles,
+  decodePixelPayload,
+  dirtyBounds,
+} from "../pixels.js";
 
 const fixture = (name: string) =>
   new Uint8Array(readFileSync(fileURLToPath(new URL(`../../fixtures/${name}`, import.meta.url))));
@@ -184,3 +191,65 @@ function jpegSize(bytes: Uint8Array): { width: number; height: number } {
   }
   throw new Error("no frame header in this JPEG");
 }
+
+describe("painting only what changed", () => {
+  const payload = (rects: Array<{ x: number; y: number; w: number; h: number }>) => ({
+    codec: Codec.RawRects,
+    keyframe: false,
+    seq: 1,
+    width: 64,
+    height: 64,
+    rects: rects.map((r) => ({ ...r, op: RectOp.Pixels, solid: 0 })),
+    blob: new Uint8Array(),
+  });
+
+  it("bounds a single rectangle exactly", () => {
+    expect(dirtyBounds(payload([{ x: 4, y: 8, w: 10, h: 6 }]))).toEqual({
+      x: 4,
+      y: 8,
+      w: 10,
+      h: 6,
+    });
+  });
+
+  it("bounds scattered rectangles with one box", () => {
+    // `putImageData` takes one dirty rectangle, so scattered damage becomes
+    // the box around it — still far less than the whole window, which is what
+    // this replaces.
+    expect(
+      dirtyBounds(
+        payload([
+          { x: 50, y: 50, w: 4, h: 4 },
+          { x: 2, y: 10, w: 4, h: 4 },
+        ]),
+      ),
+    ).toEqual({ x: 2, y: 10, w: 52, h: 44 });
+  });
+
+  it("reports nothing for a payload that paints nothing", () => {
+    expect(dirtyBounds(payload([]))).toBeNull();
+    expect(dirtyBounds(payload([{ x: 1, y: 1, w: 0, h: 5 }]))).toBeNull();
+  });
+
+  it("unpacks pixels identically whether or not the word path is taken", () => {
+    // The fast path packs bytes by position and the slow one moves them one at
+    // a time; they have to agree, or a frame would look different depending on
+    // where in a transport buffer it happened to land.
+    const bgra = new Uint8Array(8 * 8 * 4);
+    for (let i = 0; i < bgra.length; i++) bgra[i] = (i * 37) & 0xff;
+    const frame = { ...payload([{ x: 0, y: 0, w: 8, h: 8 }]), width: 8, height: 8 };
+
+    const aligned = new Uint8ClampedArray(8 * 8 * 4);
+    applyPayload({ ...frame, blob: bgra }, aligned, 8, 8);
+
+    // The same bytes at an offset no word can start on.
+    const shifted = new Uint8Array(bgra.length + 1);
+    shifted.set(bgra, 1);
+    const unaligned = new Uint8ClampedArray(8 * 8 * 4);
+    applyPayload({ ...frame, blob: shifted.subarray(1) }, unaligned, 8, 8);
+
+    expect([...unaligned]).toEqual([...aligned]);
+    // And it really is the swap, not two copies of the same mistake.
+    expect([...aligned.slice(0, 4)]).toEqual([bgra[2], bgra[1], bgra[0], bgra[3]]);
+  });
+});
