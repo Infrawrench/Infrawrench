@@ -168,6 +168,42 @@ jobs:
             "s3://${R2_BUCKET}/iwappd-builds/${RUST_HASH}/iwappd.tar.xz" \
             --endpoint-url "${R2_ENDPOINT}"
 
+  rust-latest:
+    name: Point iwappd-builds/latest at this hash
+    runs-on: ubuntu-24.04-arm
+    needs: [check-if-rust-cached, rust-tar]
+    # rust-tar is skipped when the hash is already cached in R2, and the
+    # pointer still has to move — reverting linux-appserver/ to a previously
+    # built state is exactly the case where nothing rebuilds but `latest` is
+    # wrong. Accept skipped, reject failed.
+    if: ${{ !cancelled() && needs.check-if-rust-cached.result == 'success' && needs.rust-tar.result != 'failure' }}
+    steps:
+      - name: Write the pointer
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          RUST_HASH: ${{ needs.check-if-rust-cached.outputs.rust-hash }}
+        run: |
+          set -eo pipefail
+          # The web server reads this to find the newest build
+          # (app/packages/web/src/services/iwappd-binaries.ts). It holds the
+          # hash as text, not an archive.
+          #
+          # The key ends in iwappd.tar.xz despite being a text file because the
+          # downloader Worker maps `/<key>` to `iwappd-builds/<key>/iwappd.tar.xz`
+          # — this is the only key that makes GET /latest resolve without
+          # changing the Worker.
+          printf '%s' "${RUST_HASH}" > latest
+          aws s3 cp latest \
+            "s3://${R2_BUCKET}/iwappd-builds/latest/iwappd.tar.xz" \
+            --content-type text/plain \
+            --cache-control 'max-age=60' \
+            --endpoint-url "${R2_ENDPOINT}"
+
   linux-x64-build:
     runs-on: ubuntu-24.04
     name: Build on ubuntu-24.04

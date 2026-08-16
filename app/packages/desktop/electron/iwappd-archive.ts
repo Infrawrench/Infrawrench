@@ -18,8 +18,15 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { constants as zlibConstants, gzip } from "node:zlib";
 import { app } from "electron";
-import { XzReadableStream } from "xz-decompress";
+// `xz-decompress` is CJS with no ESM entry, and Node's cjs-module-lexer cannot
+// see the class through its UMD wrapper. A named import happens to work in the
+// CJS bundle electron-vite emits for the main process, but breaks the moment
+// that output is ESM — take the default and destructure, as the web server's
+// `iwappd-binaries.ts` has to.
+import xzDecompressModule from "xz-decompress";
 import { Parser, type ReadEntry } from "tar";
+
+const { XzReadableStream } = xzDecompressModule;
 
 const gzipAsync = promisify(gzip);
 

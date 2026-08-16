@@ -1023,12 +1023,18 @@ importers:
       stripe:
         specifier: ^17.7.0
         version: 17.7.0
+      tar:
+        specifier: ^7.5.22
+        version: 7.5.22
       uuid:
         specifier: ^11.1.1
         version: 11.1.1
       ws:
         specifier: ^8.21.3
         version: 8.21.3
+      xz-decompress:
+        specifier: ^0.2.3
+        version: 0.2.3
       zod:
         specifier: ^3.25.76
         version: 3.25.76
