@@ -47,6 +47,9 @@
     "asarUnpack": [
       "**/node_modules/@jitl/quickjs-*/dist/*.wasm"
     ],
+    "extraResources": [
+      "iwappd.tar.xz"
+    ],
     "publish": [
       {
         "provider": "generic",
@@ -95,7 +98,9 @@
     "pg": "^8.22.0",
     "sql.js": "^1.14.1",
     "ssh2": "^1.17.0",
+    "tar": "^7.5.22",
     "ws": "^8.21.3",
+    "xz-decompress": "^0.2.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {

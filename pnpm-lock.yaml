@@ -119,9 +119,15 @@ importers:
       ssh2:
         specifier: ^1.17.0
         version: 1.17.0
+      tar:
+        specifier: ^7.5.22
+        version: 7.5.22
       ws:
         specifier: ^8.21.3
         version: 8.21.3
+      xz-decompress:
+        specifier: ^0.2.3
+        version: 0.2.3
       zod:
         specifier: ^3.25.76
         version: 3.25.76
@@ -13767,6 +13773,10 @@ packages:
   xxhash-wasm@1.1.0:
     resolution: {integrity: sha512-147y/6YNh+tlp6nd/2pWq38i9h6mz/EuQ6njIrmW8D1BS5nCqs0P6DG+m6zTGnNz5I+uhZ0SHxBs9BsPrwcKDA==}
 
+  xz-decompress@0.2.3:
+    resolution: {integrity: sha512-O8v6HG8T0PrKBcpyWA13GkSYWFvncwzuzcLx5A7++l3HsE3atmoetXjIxrZ/JV/nbvSZ7WS4+3XvREZuVn+rEA==}
+    engines: {node: '>=16'}
+
   y18n@5.0.8:
     resolution: {integrity: sha512-0pfFzegeDWJHJIAmTLRP2DwHjdF5s7jo9tuztdQxAhINCdvS+3nGINqPd00AphqJR/0LhANUS6/+7SCb98YOfA==}
     engines: {node: '>=10'}
@@ -19465,7 +19475,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
   '@vitest/expect@4.1.10':
     dependencies:
@@ -27426,6 +27436,8 @@ snapshots:
   xtend@4.0.2: {}
 
   xxhash-wasm@1.1.0: {}
+
+  xz-decompress@0.2.3: {}
 
   y18n@5.0.8: {}
 
