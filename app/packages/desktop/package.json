@@ -12,11 +12,11 @@
   "main": "out/main/index.js",
   "scripts": {
     "test": "node scripts/ensure-env.mjs && vitest run",
-    "dev": "node scripts/ensure-env.mjs && electron-vite dev",
+    "dev": "node scripts/ensure-env.mjs && node scripts/ensure-iwappd.mjs && electron-vite dev",
     "build": "node scripts/ensure-env.mjs && electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "node scripts/ensure-env.mjs && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "dist": "node scripts/ensure-env.mjs && electron-vite build && bash build/dist.sh"
+    "dist": "node scripts/ensure-env.mjs && node scripts/ensure-iwappd.mjs --required && electron-vite build && bash build/dist.sh"
   },
   "build": {
     "appId": "com.infrawrench.desktop",

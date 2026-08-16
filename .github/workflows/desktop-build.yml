@@ -153,6 +153,22 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Copy env.production.ts to env.ts for desktop package
         run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
+      # scripts/ensure-iwappd.mjs sees a .tar.xz with no sibling hash file and
+      # treats it as externally managed, so nothing rebuilds the Rust here.
+      - name: Download iwappd.tar.xz
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -eo pipefail
+          aws s3 cp "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/iwappd.tar.xz" \
+            app/packages/desktop/iwappd.tar.xz \
+            --endpoint-url "${R2_ENDPOINT}"
+          ls -lh app/packages/desktop/iwappd.tar.xz
       - name: Build plugin dependencies
         # sudo drops CI=; pnpm 11 aborts module purges without CI/TTY (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY)
         run: sudo env "PATH=$PATH" "CI=true" pnpm turbo build --filter='@infrawrench/desktop^...'
@@ -236,6 +252,22 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Copy env.production.ts to env.ts for desktop package
         run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
+      # scripts/ensure-iwappd.mjs sees a .tar.xz with no sibling hash file and
+      # treats it as externally managed, so nothing rebuilds the Rust here.
+      - name: Download iwappd.tar.xz
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -eo pipefail
+          aws s3 cp "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/iwappd.tar.xz" \
+            app/packages/desktop/iwappd.tar.xz \
+            --endpoint-url "${R2_ENDPOINT}"
+          ls -lh app/packages/desktop/iwappd.tar.xz
       - name: Build plugin dependencies
         run: pnpm turbo build --filter='@infrawrench/desktop^...'
       - name: Build
@@ -286,6 +318,23 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Copy env.production.ts to env.ts for desktop package
         run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
+      # scripts/ensure-iwappd.mjs sees a .tar.xz with no sibling hash file and
+      # treats it as externally managed, so nothing rebuilds the Rust here —
+      # which matters most on macOS and Windows, where it could not anyway.
+      - name: Download iwappd.tar.xz
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -eo pipefail
+          aws s3 cp "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/iwappd.tar.xz" \
+            app/packages/desktop/iwappd.tar.xz \
+            --endpoint-url "${R2_ENDPOINT}"
+          ls -lh app/packages/desktop/iwappd.tar.xz
       - name: Setup Keychain
         env:
           MACOS_APP_CERTIFICATE_BASE64: ${{ secrets.MACOS_APP_CERTIFICATE_BASE64 }}
@@ -387,6 +436,23 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Copy env.production.ts to env.ts for desktop package
         run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
+      # scripts/ensure-iwappd.mjs sees a .tar.xz with no sibling hash file and
+      # treats it as externally managed, so nothing rebuilds the Rust here —
+      # which matters most on macOS and Windows, where it could not anyway.
+      - name: Download iwappd.tar.xz
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -eo pipefail
+          aws s3 cp "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/iwappd.tar.xz" \
+            app/packages/desktop/iwappd.tar.xz \
+            --endpoint-url "${R2_ENDPOINT}"
+          ls -lh app/packages/desktop/iwappd.tar.xz
       - name: Build plugin dependencies
         run: pnpm turbo build --filter='@infrawrench/desktop^...'
       - name: Build

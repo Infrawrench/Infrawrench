@@ -4,3 +4,5 @@ release
 dist
 *.tsbuildinfo
 env.ts
+iwappd.tar.xz
+.iwappd-hash
