@@ -41,18 +41,47 @@ fn main() {
             );
             print_apps(&mut catalog, json);
         }
-        Command::Serve => {
-            // The compositor is the Linux-only half. Until it lands, say so
-            // plainly and with a distinct exit code, rather than hanging on a
-            // stdin nobody will answer.
-            eprintln!(
-                "iwappd: this build has no compositor backend (target {}). \
-                 Use --list-apps or --caps.",
-                std::env::consts::OS
-            );
-            std::process::exit(3);
-        }
+        Command::Serve => serve(&parsed),
+        Command::Capture(capture) => run_capture(&capture),
     }
+}
+
+#[cfg(target_os = "linux")]
+fn serve(args: &args::Args) {
+    let idle = std::time::Duration::from_secs(args.idle_timeout_secs);
+    if let Err(err) = iwappd::serve::run(&args.session_id, idle, args.icon_size) {
+        eprintln!("iwappd: {err}");
+        std::process::exit(1);
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn run_capture(capture: &args::Capture) {
+    if let Err(err) = iwappd::capture::run(capture) {
+        eprintln!("iwappd: {err}");
+        std::process::exit(1);
+    }
+}
+
+/// The compositor is the Linux-only half. Elsewhere, say so plainly and with a
+/// distinct exit code rather than hanging on a stdin nobody will answer.
+#[cfg(not(target_os = "linux"))]
+fn serve(_args: &args::Args) {
+    no_compositor();
+}
+
+#[cfg(not(target_os = "linux"))]
+fn run_capture(_capture: &args::Capture) {
+    no_compositor();
+}
+
+#[cfg(not(target_os = "linux"))]
+fn no_compositor() -> ! {
+    eprintln!(
+        "iwappd: this build has no compositor backend (target {}). Use --list-apps or --caps.",
+        std::env::consts::OS
+    );
+    std::process::exit(3);
 }
 
 fn host_caps() -> ServerCaps {

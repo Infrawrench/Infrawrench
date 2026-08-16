@@ -56,47 +56,46 @@ jobs:
 
   musl:
     name: Static build (${{ matrix.target }})
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    defaults:
-      run:
-        working-directory: linux-appserver
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install Rust
+      # Built inside Alpine rather than with a musl cross-toolchain, because
+      # the compositor links libxkbcommon and a static build needs a musl
+      # build of it. Debian and the cross images ship only the glibc one, so
+      # the link fails with `cannot find -lxkbcommon`; Alpine packages
+      # libxkbcommon-static and every arch runs natively on its own runner.
+      #
+      # `docker run` rather than the job-level `container:` key: actions/checkout
+      # needs a glibc node to run, which an Alpine container does not have.
+      - name: Build in Alpine
         run: |
-          rustup show active-toolchain || rustup toolchain install
-          rustup target add ${{ matrix.target }}
+          docker run --rm -v "$PWD/linux-appserver:/src" -w /src alpine:3.22 sh -euc '
+            apk add --no-cache curl gcc musl-dev libxkbcommon-dev libxkbcommon-static file
+            curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --no-modify-path --profile minimal
+            export PATH=/root/.cargo/bin:$PATH
+            cargo build --release --target ${{ matrix.target }} -p iwappd
 
-      # The binary is uploaded to hosts we know nothing about — a musl static
-      # build is what makes one artefact per architecture run on Alpine, on
-      # CentOS 7, and on whatever glibc the customer's AMI happens to carry.
-      # `cross` supplies the linkers; installing it from the pinned release is
-      # faster and more reproducible than building it from source.
-      - name: Install cross
-        run: |
-          curl -fsSL https://github.com/cross-rs/cross/releases/download/v0.2.5/cross-x86_64-unknown-linux-gnu.tar.gz \
-            | tar -xz -C /usr/local/bin cross
-
-      - name: Build
-        run: cross build --release --target ${{ matrix.target }} -p iwappd
-
-      # A dynamically linked "static" build fails only on the customer's host,
-      # days later, so assert it here instead.
-      - name: Assert the binary is static
-        run: |
-          binary="target/${{ matrix.target }}/release/iwappd"
-          file "$binary"
-          if file "$binary" | grep -q "dynamically linked"; then
-            echo "::error::$binary is dynamically linked; it must be static to run on an unknown host"
-            exit 1
-          fi
-          ls -lh "$binary"
+            binary=target/${{ matrix.target }}/release/iwappd
+            file "$binary"
+            # A dynamically linked "static" build fails only on the target
+            # host, days later, so assert it here instead.
+            if file "$binary" | grep -q "dynamically linked"; then
+              echo "::error::$binary is dynamically linked; it must be static to run on an unknown host"
+              exit 1
+            fi
+            ls -lh "$binary"
+          '
 
       - uses: actions/upload-artifact@v4
         with:

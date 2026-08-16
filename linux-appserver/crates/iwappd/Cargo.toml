@@ -13,3 +13,10 @@ iw-codec = { workspace = true }
 iw-apps = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Only the Wayland server half. Smithay's defaults pull in DRM, GBM, libinput,
+# libseat, X11, winit and three renderers — every one of them a system library
+# the customer's host would then have to have, for a compositor that never
+# touches a GPU or a real input device.
+smithay = { version = "0.7", default-features = false, features = ["wayland_frontend"] }

@@ -21,9 +21,11 @@ Being the compositor also removes the host's dependencies rather than adding to 
 
 ¹ The `Backend` trait it drives is implemented by a Smithay compositor that only exists on Linux. Everything above that seam — which is most of the interesting logic — builds and tests on macOS too, which is the point of the split.
 
+The compositor is real: `iwappd --capture --exec 'firefox-esr https://news.ycombinator.com'` launches Firefox on a host with no display, composites its surface tree, injects scroll input and writes PNGs of what it drew. `--list-apps` and `--caps` need no compositor at all, which is what `infrawrench apps list` uses over a plain SSH exec.
+
 ### Not here yet
 
-The compositor itself. `iwappd --serve` exits with code 3 and says so. `--list-apps` and `--caps` work today and need no compositor, which is what `infrawrench apps list` will use over a plain SSH exec.
+Popups and dialogs (they are tracked but not composited into their parent), the keysym path for characters a US layout cannot reach, clipboard read-back from applications, VP9 and WebP tiers, and XWayland.
 
 ## Design notes worth knowing before changing things
 
@@ -37,6 +39,10 @@ The compositor itself. `iwappd --serve` exits with code 3 and says so. `--list-a
 
 **A parentless toplevel is a tab; anything with a parent is not.** Dialogs and popups composite into their parent's frame. Without that rule, opening a menu spawns a workspace tab.
 
+**Paint parents before children, and blend.** A window is a surface _tree_: Firefox puts its shadow frame in the toplevel and the entire browser in a subsurface. `with_surface_tree_downward`'s post-order callback visits children first, so compositing there paints the mostly transparent parent over the content and produces an empty window from a client that drew everything correctly. Paint on the way down, and blend source-over with premultiplied alpha — a straight copy punches holes wherever a surface is transparent.
+
+**Tell surfaces which output they are on.** `Output::enter` on map. A window that belongs to no output reads as "not visible" to some clients, which then stop painting.
+
 ## Working on it
 
 ```
@@ -45,6 +51,18 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
+
+The shipped artefact is a **static musl binary, built inside Alpine**:
+
+```
+docker run --rm -v "$PWD:/src" -w /src alpine:3.22 sh -euc '
+  apk add --no-cache curl gcc musl-dev libxkbcommon-dev libxkbcommon-static
+  curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+  export PATH=/root/.cargo/bin:$PATH
+  cargo build --release --target x86_64-unknown-linux-musl -p iwappd'
+```
+
+Alpine specifically, because the compositor links `libxkbcommon` and a static build needs a musl build of it. Debian and the `cross` images carry only the glibc one, so the link fails with `cannot find -lxkbcommon`. The result is ~2.5 MB and `static-pie linked`.
 
 Rust 1.85+ (edition 2024). This module is **not** in `pnpm-workspace.yaml`, `turbo.json`, or the JS CI — `.github/workflows/linux-appserver.yml` runs exactly the three commands above and nothing else reaches it. It _is_ in `cliff.toml`'s `include_paths`, because the desktop app ships this binary and changes to it are user-visible in the desktop changelog.
 

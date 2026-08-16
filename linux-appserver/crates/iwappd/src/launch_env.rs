@@ -124,6 +124,24 @@ fn create_private_dir(path: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(path)
 }
 
+/// The process uid, used to name a fallback runtime directory.
+#[cfg(unix)]
+pub fn current_uid() -> u32 {
+    // SAFETY: getuid takes no arguments, touches no memory we own, and cannot
+    // fail — it is one of the few libc calls with no failure mode at all.
+    unsafe { getuid() }
+}
+
+#[cfg(unix)]
+unsafe extern "C" {
+    fn getuid() -> u32;
+}
+
+#[cfg(not(unix))]
+pub fn current_uid() -> u32 {
+    0
+}
+
 /// The socket name for a session. Namespaced so two Infrawrench sessions on
 /// one host — a second browser tab, a colleague on the same box — do not
 /// collide.

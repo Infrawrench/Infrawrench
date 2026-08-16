@@ -11,7 +11,17 @@ pub mod args;
 pub mod backend;
 pub mod catalog;
 pub mod launch_env;
+pub mod png;
 pub mod session;
+
+/// The compositor and the two modes that drive it. Linux-only: everything
+/// above the `Backend` seam builds anywhere, this does not.
+#[cfg(target_os = "linux")]
+pub mod capture;
+#[cfg(target_os = "linux")]
+pub mod compositor;
+#[cfg(target_os = "linux")]
+pub mod serve;
 
 #[cfg(test)]
 mod testing;
