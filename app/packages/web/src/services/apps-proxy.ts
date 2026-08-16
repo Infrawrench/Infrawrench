@@ -59,6 +59,27 @@ export async function handleAppsSession(ws: WebSocket, params: AppsSessionParams
     }
   };
 
+  /**
+   * Frames that arrive before the app server is up.
+   *
+   * The browser sends `hello` the instant the socket opens, while getting the
+   * server running takes seconds — connect, stage a megabyte, exec. A listener
+   * attached after that would miss the handshake entirely: `ws` drops messages
+   * with no listener, so the client would wait for a `welcome` that never comes
+   * and the host for a `hello` it never got. So listen immediately and hold
+   * what arrives until there is somewhere to put it.
+   */
+  const queued: Buffer[] = [];
+  ws.on("message", (data: RawData) => {
+    const buffer = Buffer.isBuffer(data)
+      ? data
+      : Array.isArray(data)
+        ? Buffer.concat(data)
+        : Buffer.from(data as ArrayBuffer);
+    if (session) session.write(buffer);
+    else queued.push(buffer);
+  });
+
   try {
     const [key] = await db
       .select()
@@ -111,6 +132,10 @@ export async function handleAppsSession(ws: WebSocket, params: AppsSessionParams
       metadata: { accountId: params.accountId, host: params.host },
     });
 
+    // Anything the client sent while the server was starting — the handshake,
+    // and whatever followed it — goes in now, in order.
+    for (const buffer of queued.splice(0)) session.write(buffer);
+
     session.onData((chunk) => {
       if (ws.readyState === ws.OPEN) ws.send(chunk);
     });
@@ -120,15 +145,6 @@ export async function handleAppsSession(ws: WebSocket, params: AppsSessionParams
       } catch {
         /* already closing */
       }
-    });
-
-    ws.on("message", (data: RawData) => {
-      const buffer = Buffer.isBuffer(data)
-        ? data
-        : Array.isArray(data)
-          ? Buffer.concat(data)
-          : Buffer.from(data as ArrayBuffer);
-      session?.write(buffer);
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -27,7 +27,13 @@ export interface AppsConnectTarget {
 }
 
 export interface HostStatus {
-  stage: "connecting" | "ready" | "error";
+  /**
+   * `connecting` is the socket; `starting` is the host getting the app server
+   * up, which takes seconds — connect, stage a megabyte, exec. Distinguishing
+   * them matters: without it a stalled session and a working one look
+   * identical for as long as the user is willing to wait.
+   */
+  stage: "connecting" | "starting" | "ready" | "error";
   message?: string;
 }
 
@@ -117,6 +123,8 @@ export async function acquireHostSession(
   };
 
   socket.addEventListener("open", () => {
+    // The socket is up; from here the wait is the host, not the network.
+    setStatus({ stage: "starting" });
     // `send` wants a view over a plain ArrayBuffer; a Uint8Array typed against
     // ArrayBufferLike might be backed by a SharedArrayBuffer as far as TS knows.
     for (const frame of pending.splice(0)) socket.send(toBufferSource(frame));
