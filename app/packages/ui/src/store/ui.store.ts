@@ -38,7 +38,7 @@ export type WorkspaceTabTarget =
       kind: "resource";
       accountId: string;
       resourceId: string;
-      view?: "details" | "ssh" | "sftp";
+      view?: "details" | "ssh" | "sftp" | "apps";
       pluginId?: string | undefined;
       resourceTypeId?: string | undefined;
       parentResourceId?: string | undefined;
@@ -53,7 +53,21 @@ export interface WorkspaceTab {
   id: string;
   target: WorkspaceTabTarget;
   title: string;
+  /**
+   * Optional `data:` URL shown before the title — a remote application's own
+   * icon, today. Cosmetic by design: it is dropped rather than persisted when
+   * oversized, because losing an icon is nothing and blowing the storage quota
+   * loses the whole tab list.
+   */
+  icon?: string;
 }
+
+/**
+ * Icons past this are kept in memory but not written to `localStorage`. Thirty
+ * open tabs share one origin quota with everything else the app stores, and a
+ * scalable icon can be tens of kilobytes.
+ */
+const MAX_PERSISTED_TAB_ICON = 8 * 1024;
 
 const WORKSPACE_TABS_STORAGE_KEY = "infrawrench-workspace-tabs";
 
@@ -142,6 +156,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       }
       if (target.view === "sftp")
         return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:sftp`;
+      if (target.view === "apps")
+        return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:apps`;
       return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}`;
   }
 }
@@ -208,6 +224,7 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
     case "resource":
       if (target.view === "ssh") return "SSH";
       if (target.view === "sftp") return "SFTP";
+      if (target.view === "apps") return "Apps";
       return "Resource";
   }
 }
@@ -277,7 +294,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
         normalizeResourceId(a.resourceId) ===
           normalizeResourceId((b as { resourceId: string }).resourceId) &&
         (a.view ?? "details") ===
-          ((b as { view?: "details" | "ssh" | "sftp" }).view ?? "details") &&
+          ((b as { view?: "details" | "ssh" | "sftp" | "apps" }).view ?? "details") &&
         a.agentSessionId === (b as { agentSessionId?: string }).agentSessionId &&
         a.sshKeyId === (b as { sshKeyId?: string }).sshKeyId &&
         a.sshKeyName === (b as { sshKeyName?: string }).sshKeyName
@@ -285,8 +302,14 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
   }
 }
 
-function createWorkspaceTab(target: WorkspaceTabTarget, title?: string, id?: string): WorkspaceTab {
+function createWorkspaceTab(
+  target: WorkspaceTabTarget,
+  title?: string,
+  id?: string,
+  icon?: string,
+): WorkspaceTab {
   return {
+    ...(icon ? { icon } : {}),
     id: id ?? getWorkspaceTabId(target),
     target:
       target.kind === "resource"
@@ -506,6 +529,8 @@ interface UIState {
   closeWorkspaceTab: (tabId: string) => void;
   reorderWorkspaceTabs: (activeId: string, overId: string) => void;
   setWorkspaceTabTitle: (tabId: string, title: string) => void;
+  /** Set (or clear, with undefined) the small icon shown before a tab's title. */
+  setWorkspaceTabIcon: (tabId: string, icon: string | undefined) => void;
   replaceWorkspaceTabs: (tabs: WorkspaceTab[], activeTabId?: string | null) => void;
   removeWorkspaceTabs: (tabIds: string[]) => void;
   setTabsHydrated: (hydrated: boolean) => void;
@@ -626,11 +651,22 @@ export const useUIStore = create<UIState>()(
             tab.id === tabId ? upsertWorkspaceTabTitle(tab, title) : tab,
           ),
         })),
+      setWorkspaceTabIcon: (tabId, icon) =>
+        set((state) => ({
+          workspaceTabs: state.workspaceTabs.map((tab) => {
+            if (tab.id !== tabId || tab.icon === icon) return tab;
+            const { icon: _dropped, ...rest } = tab;
+            return icon ? { ...rest, icon } : rest;
+          }),
+        })),
       replaceWorkspaceTabs: (tabs, activeTabId) =>
         set(() => {
           const deduped = Array.from(
             new Map(
-              tabs.map((tab) => [tab.id, createWorkspaceTab(tab.target, tab.title, tab.id)]),
+              tabs.map((tab) => [
+                tab.id,
+                createWorkspaceTab(tab.target, tab.title, tab.id, tab.icon),
+              ]),
             ).values(),
           );
           return {
@@ -659,7 +695,14 @@ export const useUIStore = create<UIState>()(
       version: PERSISTED_TABS_VERSION,
       migrate: migrateWorkspaceTabs,
       partialize: (state) => ({
-        workspaceTabs: state.workspaceTabs,
+        // Icons are dropped rather than truncated when they are too big: a
+        // half-written data URL renders as a broken image, and the tab is
+        // perfectly usable without one.
+        workspaceTabs: state.workspaceTabs.map((tab) =>
+          tab.icon && tab.icon.length > MAX_PERSISTED_TAB_ICON
+            ? { id: tab.id, target: tab.target, title: tab.title }
+            : tab,
+        ),
         activeWorkspaceTabId: state.activeWorkspaceTabId,
         activeCloudOrgId: state.activeCloudOrgId,
       }),

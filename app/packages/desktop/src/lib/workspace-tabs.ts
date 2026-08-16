@@ -31,6 +31,7 @@ import {
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
+  resourceAppsTabTarget,
   type WorkspaceTabTarget,
   type RouteNavigator,
 } from "@infrawrench/ui";
@@ -67,6 +68,7 @@ export {
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
+  resourceAppsTabTarget,
 };
 
 export function getWorkspaceNavigateArgs(
@@ -216,7 +218,9 @@ export function getWorkspaceNavigateArgs(
           ? { hash: "ssh" }
           : target.view === "sftp"
             ? { hash: "sftp" }
-            : {}),
+            : target.view === "apps"
+              ? { hash: "apps" }
+              : {}),
         ...(replace ? { replace: true } : {}),
       };
     }
@@ -359,6 +363,8 @@ export function syncWorkspaceRouteFromPath(
       });
     if (normalizedHash === "sftp")
       return resourceSftpTabTarget(segments[1], segments.slice(2).join("/"));
+    if (normalizedHash === "apps")
+      return resourceAppsTabTarget(segments[1], segments.slice(2).join("/"));
     return resourceTabTarget(segments[1], segments.slice(2).join("/"));
   }
   return null;

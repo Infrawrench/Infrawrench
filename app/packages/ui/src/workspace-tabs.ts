@@ -222,6 +222,26 @@ export function resourceSftpTabTarget(
 }
 
 /**
+ * The app launcher for a host — what is installed, and what is running. One
+ * tab per resource, like SSH and SFTP: the launcher belongs to the machine.
+ */
+export function resourceAppsTabTarget(
+  accountId: string,
+  resourceId: string,
+  pluginId?: string,
+  resourceTypeId?: string,
+): WorkspaceTabTarget {
+  return {
+    kind: "resource",
+    accountId,
+    resourceId: normalizeResourceId(resourceId),
+    view: "apps",
+    ...(pluginId ? { pluginId } : {}),
+    ...(resourceTypeId ? { resourceTypeId } : {}),
+  };
+}
+
+/**
  * Navigate to a workspace target, updating the store and routing.
  * Platform-specific `getNavigateArgs` must be curried in by each platform.
  * Note: each platform re-implements this thin wrapper to enable test mocking

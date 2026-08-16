@@ -14,6 +14,7 @@ import {
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
+  resourceAppsTabTarget,
   getWorkspaceNavigateArgs,
   syncWorkspaceRouteFromPath,
 } from "../workspace-tabs";
@@ -143,6 +144,11 @@ describe("getWorkspaceNavigateArgs", () => {
     const target = resourceSftpTabTarget("acc-1", "res-1");
     const args = getWorkspaceNavigateArgs(target);
     expect(args.hash).toBe("sftp");
+  });
+
+  it("returns resource route args with the apps hash", () => {
+    const args = getWorkspaceNavigateArgs(resourceAppsTabTarget("acc-1", "res-1"));
+    expect(args.hash).toBe("apps");
   });
 
   it("includes plugin/type/parent in search and sets replace for resources", () => {
@@ -433,6 +439,13 @@ describe("syncWorkspaceRouteFromPath", () => {
       kind: "resource",
       view: "sftp",
     });
+  });
+
+  it("parses resource paths with the apps hash", () => {
+    // The launcher is a view of the host, so it round-trips through the same
+    // route as SSH and SFTP rather than needing one of its own.
+    const result = syncWorkspaceRouteFromPath("/resource/acc-1/res-1", "#apps");
+    expect(result).toMatchObject({ kind: "resource", view: "apps" });
   });
 
   it("handles resource IDs with slashes", () => {

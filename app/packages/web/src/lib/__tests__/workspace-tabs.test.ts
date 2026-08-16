@@ -24,6 +24,7 @@ import {
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
+  resourceAppsTabTarget,
   costReportsTabTarget,
   invoicesTabTarget,
   workflowsTabTarget,
@@ -32,6 +33,7 @@ import {
   navigateToWorkspaceTarget,
   syncWorkspaceRouteFromPath,
 } from "../workspace-tabs";
+import { getWorkspaceTabId } from "@infrawrench/ui";
 
 // Mock window.location for getWorkspaceNavigateArgs (reads orgId from URL)
 beforeEach(() => {
@@ -82,6 +84,28 @@ describe("resourceSftpTabTarget", () => {
       resourceId: "r1",
       view: "sftp",
     });
+  });
+});
+
+describe("resourceAppsTabTarget", () => {
+  it("returns a resource target with the apps view", () => {
+    expect(resourceAppsTabTarget("a1", "r1", "ssh", "server")).toEqual({
+      kind: "resource",
+      accountId: "a1",
+      resourceId: "r1",
+      view: "apps",
+      pluginId: "ssh",
+      resourceTypeId: "server",
+    });
+  });
+
+  it("is its own tab, separate from the host's SSH and details tabs", () => {
+    // One tab per view: the launcher for a machine sits alongside its terminal
+    // rather than replacing it.
+    const apps = getWorkspaceTabId(resourceAppsTabTarget("a1", "r1"));
+    expect(apps).not.toBe(getWorkspaceTabId(resourceSshTabTarget("a1", "r1")));
+    expect(apps).not.toBe(getWorkspaceTabId(resourceTabTarget("a1", "r1")));
+    expect(apps.endsWith(":apps")).toBe(true);
   });
 });
 
@@ -213,6 +237,18 @@ describe("getWorkspaceNavigateArgs", () => {
       },
       hash: "ssh",
     });
+  });
+
+  it("returns resource route args with the apps hash", () => {
+    const args = getWorkspaceNavigateArgs({
+      kind: "resource",
+      accountId: "a1",
+      resourceId: "r1",
+      view: "apps",
+      pluginId: "ssh",
+      resourceTypeId: "server",
+    });
+    expect(args).toMatchObject({ hash: "apps" });
   });
 
   it("returns resource route args with sftp hash", () => {
