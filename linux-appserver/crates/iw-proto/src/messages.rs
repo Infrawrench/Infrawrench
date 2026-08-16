@@ -20,8 +20,22 @@ pub struct ClientCaps {
     /// The wasm zstd decoder loaded. Without it there is no lossless tier and
     /// the session is image-only.
     pub zstd: bool,
+    /// `createImageBitmap` of a JPEG blob. Defaulted true rather than false:
+    /// every browser has decoded JPEG for thirty years, and a client old
+    /// enough to omit the field is one whose `webp` flag meant the same thing.
+    #[serde(default = "yes")]
+    pub jpeg: bool,
+    /// The client applies `RectOp::Delta` — interframe compression. Defaulted
+    /// **false**, because a client that does not know the op would paint a
+    /// rectangle of differences as if they were pixels: garbage, silently.
+    #[serde(default)]
+    pub delta: bool,
     /// Largest single frame the client will accept, in bytes.
     pub max_frame_bytes: u32,
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Default for ClientCaps {
@@ -30,6 +44,8 @@ impl Default for ClientCaps {
             vp9: false,
             webp: true,
             zstd: true,
+            jpeg: true,
+            delta: true,
             max_frame_bytes: 16 * 1024 * 1024,
         }
     }
@@ -42,6 +58,10 @@ impl Default for ClientCaps {
 pub struct ServerCaps {
     pub vp9: bool,
     pub webp: bool,
+    /// This build has the JPEG encoder — the lossy tier. Always true today;
+    /// a flag because the client's tier choice reads both ends.
+    #[serde(default)]
+    pub jpeg: bool,
     pub xwayland: bool,
     pub audio: bool,
     /// A `wl_shm` client can start at all: we found or created an

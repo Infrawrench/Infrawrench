@@ -71,7 +71,7 @@ Alpine specifically, because the compositor links `libxkbcommon` and a static bu
 
 Rust 1.85+ (edition 2024). This module is **not** in `pnpm-workspace.yaml`, `turbo.json`, or the JS CI — `.github/workflows/linux-appserver.yml` runs exactly the three commands above and nothing else reaches it. It _is_ in `cliff.toml`'s `include_paths`, because the desktop app ships this binary and changes to it are user-visible in the desktop changelog.
 
-There are no runtime dependencies beyond `serde`, `thiserror` and `zstd`. Everything here ends up on someone else's machine, so the bar for adding one is high.
+There are no runtime dependencies beyond `serde`, `thiserror`, `zstd` and `jpeg-encoder`. Everything here ends up on someone else's machine, so the bar for adding one is high — `jpeg-encoder` cleared it by having no transitive dependencies of its own and by pairing with a decoder every browser already ships.
 
 ## Licence
 

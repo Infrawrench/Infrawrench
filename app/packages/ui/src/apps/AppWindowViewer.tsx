@@ -3,8 +3,11 @@ import { T, useGT } from "gt-react";
 import { decompress } from "fzstd";
 import {
   ButtonState,
+  Codec,
+  RectOp,
   applyPayload,
   axisFromWheel,
+  decodeImageTiles,
   evdevFromCode,
   pointerButtonFromDom,
   pointerPosition,
@@ -40,6 +43,55 @@ function zstdDecompress(input: Uint8Array, expectedBytes: number): Uint8Array {
   return decompress(input, new Uint8Array(expectedBytes));
 }
 
+/**
+ * Paint a lossy frame: one JPEG per damaged rectangle, decoded by the browser.
+ *
+ * Drawn straight onto the canvas — decoding to a pixel array first would mean
+ * a second full copy of every frame, and the browser's own path is the reason
+ * this tier costs the client nothing. The buffer is then read back so the two
+ * stay in step: the *next* frame may be lossless, and a lossless frame may be
+ * a difference against exactly these pixels.
+ */
+async function paintImageTiles(
+  payload: PixelPayload,
+  context: CanvasRenderingContext2D,
+  buffer: { pixels: Uint8ClampedArray<ArrayBuffer>; width: number; height: number },
+): Promise<void> {
+  const tiles = decodeImageTiles(payload);
+  let index = 0;
+  const drawn: Array<Promise<void>> = [];
+  for (const rect of payload.rects) {
+    if (rect.op === RectOp.Solid) {
+      // A solid carries no image; it is the same little-endian BGRA the
+      // lossless path unpacks.
+      const b = rect.solid & 0xff;
+      const g = (rect.solid >>> 8) & 0xff;
+      const r = (rect.solid >>> 16) & 0xff;
+      const a = ((rect.solid >>> 24) & 0xff) / 255;
+      context.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
+      context.fillRect(rect.x, rect.y, rect.w, rect.h);
+      continue;
+    }
+    const tile = tiles[index++];
+    if (!tile) continue;
+    // Copied into a fresh buffer: the payload is a view over the frame we were
+    // handed, and `createImageBitmap` is asynchronous, so the underlying bytes
+    // must not be something the transport can reuse underneath it.
+    const blob = new Blob([new Uint8Array(tile)], { type: "image/jpeg" });
+    drawn.push(
+      createImageBitmap(blob).then((bitmap) => {
+        context.drawImage(bitmap, rect.x, rect.y);
+        bitmap.close();
+      }),
+    );
+  }
+  await Promise.all(drawn);
+  // Read the canvas back so the buffer holds what the user is looking at. The
+  // host knows a JPEG rectangle is approximate and will never send a delta
+  // against one, but every *other* rectangle of the next frame may be one.
+  buffer.pixels.set(context.getImageData(0, 0, buffer.width, buffer.height).data);
+}
+
 export function AppWindowViewer({
   session,
   windowId,
@@ -64,7 +116,7 @@ export function AppWindowViewer({
 
   const scale = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
 
-  const paint = useCallback((payload: PixelPayload) => {
+  const paint = useCallback(async (payload: PixelPayload) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -80,8 +132,16 @@ export function AppWindowViewer({
       canvas.height = payload.height;
     }
 
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return;
+
     try {
-      applyPayload(payload, buffer.pixels, buffer.width, buffer.height, zstdDecompress);
+      if (payload.codec === Codec.JpegTiles) {
+        await paintImageTiles(payload, context, buffer);
+      } else {
+        applyPayload(payload, buffer.pixels, buffer.width, buffer.height, zstdDecompress);
+        context.putImageData(new ImageData(buffer.pixels, buffer.width, buffer.height), 0, 0);
+      }
     } catch (cause) {
       // A frame we cannot decode is not fatal — the next keyframe repairs the
       // window — but silently painting nothing looks like a hang.
@@ -89,18 +149,16 @@ export function AppWindowViewer({
       return;
     }
 
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    context.putImageData(new ImageData(buffer.pixels, buffer.width, buffer.height), 0, 0);
     setError(null);
     setPainted(true);
   }, []);
 
   // Frames and cursor changes for this window.
   useEffect(() => {
-    const handleFrame = (id: number, payload: PixelPayload) => {
-      if (id === windowId) paint(payload);
-    };
+    // Returning the promise is what makes the ack wait for the paint: on the
+    // lossy tier the decode is the browser's and only finishes later.
+    const handleFrame = (id: number, payload: PixelPayload) =>
+      id === windowId ? paint(payload) : undefined;
     const handleCursor = (id: number, shape: string | undefined) => {
       if (id !== windowId) return;
       setCursor(cssCursor(shape));
@@ -205,7 +263,12 @@ export function AppWindowViewer({
         role="img"
         aria-label={gt("Remote application window")}
         className="h-full w-full object-contain outline-none"
-        style={{ cursor, imageRendering: "pixelated" }}
+        // Smooth rather than `pixelated`: the host renders at the next whole
+        // scale up from this display's device pixel ratio, so at a fractional
+        // ratio the canvas is *larger* than the box and the browser is
+        // downsampling. Nearest-neighbour there throws away the extra detail
+        // the bigger buffer was for.
+        style={{ cursor, imageRendering: "auto" }}
         onPointerMove={(event) => sendPointer(event)}
         onPointerDown={(event) => {
           event.currentTarget.focus();

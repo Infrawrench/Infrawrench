@@ -62,14 +62,29 @@ export interface LaunchResult {
   appId?: string;
 }
 
+/**
+ * A painter of frames.
+ *
+ * Returning a promise delays the ack until it settles — which is how a viewer
+ * that hands a JPEG to the browser keeps "acked" meaning "painted". The return
+ * type is `unknown` rather than `void | Promise<void>` so that a listener whose
+ * body happens to be an expression (`(id) => seen.push(id)`, most tests) still
+ * type-checks; anything that is not a thenable is ignored.
+ */
+export type FrameListener = (windowId: number, payload: PixelPayload) => unknown;
+
 export interface AppSessionEvents {
   onReady?(welcome: Extract<ServerMessage, { type: "welcome" }>): void;
   onApps?(apps: AppEntry[], complete: boolean): void;
   onWindowOpen?(window: WindowInfo): void;
   onWindowMeta?(window: WindowInfo): void;
   onWindowClose?(windowId: number, reason: string): void;
-  /** New pixels for a window. The session acks once this returns. */
-  onFrame?(windowId: number, payload: PixelPayload): void;
+  /**
+   * New pixels for a window. The session acks once this returns — or once the
+   * promise it returns settles, which is how a viewer that has to wait for the
+   * browser to decode a JPEG keeps the ack honest.
+   */
+  onFrame?(windowId: number, payload: PixelPayload): unknown;
   onCursor?(windowId: number, shape: string | undefined): void;
   onClipboard?(blob: ClipboardBlob): void;
   onLaunchResult?(ok: boolean, message: string | undefined, appId: string | undefined): void;
@@ -102,7 +117,7 @@ export class AppSession {
    * owner passes in. A viewer component mounts and unmounts independently of
    * the session, and there may be several — one per open window tab.
    */
-  #frameListeners = new Set<(windowId: number, payload: PixelPayload) => void>();
+  #frameListeners = new Set<FrameListener>();
   #cursorListeners = new Set<(windowId: number, shape: string | undefined) => void>();
   /** Window opened, or its title/icon changed. */
   #windowListeners = new Set<(windowId: number, window: WindowInfo) => void>();
@@ -148,12 +163,15 @@ export class AppSession {
     return this.#windows.get(windowId);
   }
 
-  /** Subscribe to pixels. The session acks once every listener has returned. */
-  addFrameListener(listener: (windowId: number, payload: PixelPayload) => void): void {
+  /**
+   * Subscribe to pixels. The session acks once every listener has returned, and
+   * waits on any promise one of them hands back.
+   */
+  addFrameListener(listener: FrameListener): void {
     this.#frameListeners.add(listener);
   }
 
-  removeFrameListener(listener: (windowId: number, payload: PixelPayload) => void): void {
+  removeFrameListener(listener: FrameListener): void {
     this.#frameListeners.delete(listener);
   }
 
@@ -299,25 +317,37 @@ export class AppSession {
   #onPixels(windowId: number, payload: Uint8Array): void {
     const decoded = decodePixelPayload(payload);
     const started = now();
-    this.#events.onFrame?.(windowId, decoded);
-    for (const listener of this.#frameListeners) {
+    const pending: Array<Promise<unknown>> = [];
+    const run = (listener: FrameListener) => {
       // One viewer throwing must not stop the others painting, and must not
       // stop the ack — a session that stops acking stops receiving.
       try {
-        listener(windowId, decoded);
+        const result = listener(windowId, decoded);
+        // A lossy frame is decoded by the browser, which only offers that
+        // asynchronously. Acking before it lands would defeat the point of
+        // acking after the paint.
+        if (result && typeof (result as Promise<void>).then === "function") {
+          pending.push((result as Promise<void>).catch(() => undefined));
+        }
       } catch {
         /* a viewer's problem, not the session's */
       }
-    }
+    };
+    if (this.#events.onFrame) run(this.#events.onFrame.bind(this.#events));
+    for (const listener of this.#frameListeners) run(listener);
+
     // Acked after the consumer has painted, not on arrival: the ack is what
     // frees an in-flight slot on the host, so acking early would let frames
     // queue up ahead of a viewer that cannot keep up.
-    this.#send({
-      type: "ack",
-      windowId,
-      seq: decoded.seq,
-      decodeMs: Math.round(now() - started),
-    });
+    const ack = () =>
+      this.#send({
+        type: "ack",
+        windowId,
+        seq: decoded.seq,
+        decodeMs: Math.round(now() - started),
+      });
+    if (pending.length === 0) ack();
+    else void Promise.all(pending).then(ack);
   }
 
   #onLaunchResult(result: LaunchResult): void {

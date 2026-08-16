@@ -77,6 +77,8 @@ impl Backend for MockBackend {
             height: *height,
             stride: width * 4,
             pixels,
+            // Damage reaches the session as a backend *event*; a frame is just
+            // the pixels behind it.
             damage: Vec::new(),
         })
     }

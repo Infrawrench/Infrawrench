@@ -50,6 +50,7 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
         caps: ServerCaps {
             vp9: false,
             webp: false,
+            jpeg: true,
             xwayland: false,
             audio: false,
             runtime_dir: true,

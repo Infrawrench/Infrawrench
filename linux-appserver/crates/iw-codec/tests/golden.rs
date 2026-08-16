@@ -18,7 +18,7 @@
 
 use std::path::{Path, PathBuf};
 
-use iw_codec::{Encoder, EncoderConfig, FrameView, Rect};
+use iw_codec::{Codec, EncodeMode, Encoder, EncoderConfig, FrameView, PixelPayload, Rect, RectOp};
 use iw_proto::{FrameKind, encode_frame};
 
 const WIDTH: u32 = 64;
@@ -68,15 +68,28 @@ fn render(step: u32, pixels: &mut [u8]) {
     }
 }
 
+/// What one encoding of the fixture sequence produced.
+struct Sequence {
+    /// The frames as they go on the wire.
+    wire: Vec<u8>,
+    /// The canvas they reconstruct, in the client's RGBA. `None` for the lossy
+    /// tier, whose blob only a JPEG decoder can apply — the reference blit
+    /// refuses it on purpose.
+    canvas: Option<Vec<u8>>,
+    /// Every payload, so a test can assert what the encoder actually chose
+    /// rather than trusting that the fixture still covers it.
+    payloads: Vec<PixelPayload>,
+}
+
 /// Encode the sequence, returning the wire frames and the canvas they build.
-fn encode_sequence(allow_zstd: bool) -> (Vec<u8>, Vec<u8>) {
-    let mut encoder = Encoder::new(EncoderConfig {
-        allow_zstd,
-        ..EncoderConfig::default()
-    });
+fn encode_sequence(config: EncoderConfig, mode: EncodeMode) -> Sequence {
+    let mut encoder = Encoder::new(config);
+    encoder.set_mode(mode);
     let mut pixels = vec![0u8; (WIDTH * HEIGHT) as usize * 4];
     let mut wire = Vec::new();
     let mut canvas = vec![0u8; (WIDTH * HEIGHT) as usize * 4];
+    let mut payloads = Vec::new();
+    let lossless = mode == EncodeMode::Lossless;
 
     for step in 0..4u32 {
         render(step, &mut pixels);
@@ -94,11 +107,14 @@ fn encode_sequence(allow_zstd: bool) -> (Vec<u8>, Vec<u8>) {
             .encode(frame, &damage, step == 0)
             .expect("the fixture frames are well formed")
         {
-            encoded
-                .payload
-                .apply(&mut canvas, WIDTH, HEIGHT)
-                .expect("the reference blit accepts what the encoder produced");
+            if lossless {
+                encoded
+                    .payload
+                    .apply(&mut canvas, WIDTH, HEIGHT)
+                    .expect("the reference blit accepts what the encoder produced");
+            }
             wire.extend_from_slice(&encode_frame(FrameKind::Pixels, WINDOW, &encoded.bytes));
+            payloads.push(encoded.payload);
         }
     }
 
@@ -109,7 +125,11 @@ fn encode_sequence(allow_zstd: bool) -> (Vec<u8>, Vec<u8>) {
         .chunks_exact(4)
         .flat_map(|px| [px[2], px[1], px[0], px[3]])
         .collect();
-    (wire, rgba)
+    Sequence {
+        wire,
+        canvas: lossless.then_some(rgba),
+        payloads,
+    }
 }
 
 fn check(dir: &Path, name: &str, actual: &[u8]) {
@@ -143,17 +163,53 @@ fn golden_fixtures_match() {
         return;
     };
 
-    let (raw_wire, raw_canvas) = encode_sequence(false);
-    check(&dir, "raw-frames.bin", &raw_wire);
+    // No zstd: raw rectangles, and no deltas either — a difference is only
+    // worth anything to a client that can then decompress it.
+    let raw = encode_sequence(
+        EncoderConfig {
+            allow_zstd: false,
+            allow_delta: false,
+            ..EncoderConfig::default()
+        },
+        EncodeMode::Lossless,
+    );
+    let raw_canvas = raw.canvas.clone().expect("the lossless tier builds one");
+    check(&dir, "raw-frames.bin", &raw.wire);
     check(&dir, "raw-canvas.rgba", &raw_canvas);
+    assert!(
+        raw.payloads.iter().all(|p| p.codec == Codec::RawRects),
+        "the raw fixture stopped covering the uncompressed tier"
+    );
 
-    let (zstd_wire, zstd_canvas) = encode_sequence(true);
-    check(&dir, "zstd-frames.bin", &zstd_wire);
+    let zstd = encode_sequence(EncoderConfig::default(), EncodeMode::Lossless);
+    check(&dir, "zstd-frames.bin", &zstd.wire);
     // Both encodings must reconstruct the same picture: the compression tier is
     // a transport detail, not a difference the viewer can see.
     assert_eq!(
-        raw_canvas, zstd_canvas,
+        Some(raw_canvas.clone()),
+        zstd.canvas,
         "the zstd and raw tiers disagree about what the window looks like"
+    );
+    // The fixture is the only place the delta op is pinned across languages, so
+    // it has to actually contain one.
+    assert!(
+        zstd.payloads
+            .iter()
+            .any(|p| p.rects.iter().any(|r| r.op == RectOp::Delta)),
+        "the zstd fixture no longer exercises interframe compression"
+    );
+
+    // The lossy tier. There is no canvas fixture for it — the pixels depend on
+    // whichever JPEG decoder the client happens to have, which is the reason
+    // the encoder never deltas against one — so what is pinned is the framing:
+    // a length-prefixed image per rectangle, in table order.
+    let jpeg = encode_sequence(EncoderConfig::default(), EncodeMode::Lossy);
+    check(&dir, "jpeg-frames.bin", &jpeg.wire);
+    assert!(
+        jpeg.payloads
+            .iter()
+            .any(|p| p.codec == Codec::JpegTiles && !p.blob.is_empty()),
+        "the jpeg fixture no longer exercises the lossy tier"
     );
 
     let meta = format!(

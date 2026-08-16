@@ -11,7 +11,9 @@ mod payload;
 mod rect;
 mod tier;
 
-pub use encoder::{EncodeError, EncodedFrame, Encoder, EncoderConfig, EncoderStats, FrameView};
+pub use encoder::{
+    EncodeError, EncodeMode, EncodedFrame, Encoder, EncoderConfig, EncoderStats, FrameView,
+};
 pub use payload::{
     Codec, FLAG_KEYFRAME, HEADER_LEN, PayloadError, PixelPayload, RECT_LEN, RectEntry, RectOp,
 };

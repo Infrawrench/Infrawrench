@@ -14,6 +14,14 @@ export interface ClientCaps {
   webp: boolean;
   /** The wasm zstd decoder loaded; without it there is no lossless tier. */
   zstd: boolean;
+  /** `createImageBitmap` of a JPEG blob — the lossy tier for a window in motion. */
+  jpeg: boolean;
+  /**
+   * This client applies `RectOp.Delta`. False would make the host send whole
+   * pixels: a client that did not know the op would paint a rectangle of
+   * differences as if it were an image.
+   */
+  delta: boolean;
   /** Largest single frame the client will accept, in bytes. */
   maxFrameBytes: number;
 }
@@ -22,6 +30,8 @@ export interface ClientCaps {
 export interface ServerCaps {
   vp9: boolean;
   webp: boolean;
+  /** The host has the JPEG encoder. Absent on a host older than the tier. */
+  jpeg?: boolean;
   xwayland: boolean;
   audio: boolean;
   /** A Wayland socket could be placed somewhere. */
@@ -145,6 +155,13 @@ export async function probeClientCaps(
     vp9: await canDecodeVp9(),
     webp: typeof capabilityGlobals().createImageBitmap === "function",
     zstd: options.zstd,
+    // Same capability as WebP, and for the same reason — the browser decodes
+    // the blob for us. Kept a separate flag because a host may have one
+    // encoder and not the other.
+    jpeg: typeof capabilityGlobals().createImageBitmap === "function",
+    // Arithmetic on a canvas this package already owns, so there is nothing to
+    // feature-detect: it is true wherever this code runs at all.
+    delta: true,
     maxFrameBytes: 16 * 1024 * 1024,
   };
 }

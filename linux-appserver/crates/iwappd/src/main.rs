@@ -90,6 +90,9 @@ fn host_caps() -> ServerCaps {
         // a tier this build cannot produce.
         vp9: false,
         webp: false,
+        // The JPEG encoder is compiled in, so the lossy tier is always
+        // available — unlike VP9, which has no encoder yet.
+        jpeg: true,
         xwayland: false,
         audio: false,
         runtime_dir: launch_env::resolve_runtime_dir(

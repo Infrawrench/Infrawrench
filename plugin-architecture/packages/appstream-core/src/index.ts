@@ -60,6 +60,7 @@ export {
   PayloadError,
   RectOp,
   applyPayload,
+  decodeImageTiles,
   decodePixelPayload,
   expectedPixelBytes,
   type PixelPayload,
@@ -70,6 +71,7 @@ export {
 export {
   AppSession,
   type AppSessionEvents,
+  type FrameListener,
   type AppSessionOptions,
   type AppSessionTransport,
   type LaunchResult,

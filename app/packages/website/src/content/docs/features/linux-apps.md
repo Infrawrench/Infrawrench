@@ -22,6 +22,17 @@ There is no X server, no VNC server and no desktop environment involved. Infrawr
 
 The program is **never installed on your host**. It is written to a memory-backed directory, opened, deleted, and then run from the open file — so from the moment it starts there is no file on the machine, and nothing remains after the session ends, the connection drops, or the process crashes.
 
+## Sharpness and speed
+
+Applications are rendered at your display's own resolution. On a high-DPI screen the host is told to draw at that scale, so text is as crisp as it is in a local window rather than a magnified version of a smaller one — the tab asks for the pixels it will actually show, and the application lays itself out for them. Resizing the tab re-asks.
+
+How those pixels reach you depends on what the window is doing, and Infrawrench switches by itself:
+
+- **A window that is mostly still** — an editor, a terminal, a settings dialog — is sent losslessly. Only the parts that changed are sent, and each is sent as the difference from what your screen already shows, which is usually a few kilobytes.
+- **A window in motion** — a video, a page being scrolled fast, an animation — moves to a lossy encoding. It is softer, and it is what makes the difference between a video that plays and a video that stutters.
+
+When the motion stops, the window is redrawn exactly. So a video looks like a video while it plays, and the text beside it goes back to being sharp within a moment of it stopping. You do not have to choose, and there is no setting for it.
+
 ## What the host needs
 
 - **SSH access**, which you already have if the terminal works.

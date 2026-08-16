@@ -57,6 +57,14 @@ pub struct EncoderConfig {
     pub zstd_level: i32,
     /// False when the client reported no wasm zstd decoder.
     pub allow_zstd: bool,
+    /// False when the client cannot apply [`RectOp::Delta`].
+    pub allow_delta: bool,
+    /// False when the client cannot decode JPEG, which also pins the encoder
+    /// to the lossless mode however much the window is moving.
+    pub allow_jpeg: bool,
+    /// Quality for the lossy mode, 1–100. 72 is where a moving window stops
+    /// looking soft on text that happens to be inside it.
+    pub jpeg_quality: u8,
 }
 
 impl Default for EncoderConfig {
@@ -65,8 +73,22 @@ impl Default for EncoderConfig {
             limits: CoalesceLimits::default(),
             zstd_level: 2,
             allow_zstd: true,
+            allow_delta: true,
+            allow_jpeg: true,
+            jpeg_quality: 72,
         }
     }
+}
+
+/// How the next frame should be encoded. The tier selector owns this decision;
+/// the encoder just obeys it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EncodeMode {
+    /// Exact pixels — solid fills, deltas, and zstd.
+    Lossless,
+    /// JPEG tiles. Cheap for a window in motion, and wrong for still text,
+    /// which is why leaving this mode forces a keyframe.
+    Lossy,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -79,6 +101,8 @@ pub enum EncodeError {
     WindowTooLarge(u32, u32),
     #[error("zstd: {0}")]
     Zstd(String),
+    #[error("jpeg: {0}")]
+    Jpeg(String),
 }
 
 /// A frame ready to hand to the transport.
@@ -97,6 +121,10 @@ pub struct EncoderStats {
     pub frames_sent: u32,
     pub frames_skipped: u32,
     pub rects_dropped_unchanged: u32,
+    /// Rectangles sent as a difference from what the client already held.
+    pub rects_delta: u32,
+    /// Rectangles sent as JPEG.
+    pub rects_lossy: u32,
     pub encoded_bytes: u64,
 }
 
@@ -105,9 +133,33 @@ pub struct Encoder {
     /// What we believe the client's canvas holds, tightly packed `width * 4`.
     prev: Vec<u8>,
     prev_dims: (u32, u32),
+    /// One flag per [`LOSSY_TILE`]-sized tile: the client's copy of this tile
+    /// came from a JPEG, so `prev` is what the *encoder* rendered and not what
+    /// the client actually has.
+    ///
+    /// It is not what the client has because the two ends decode JPEG with
+    /// different implementations, and they disagree by a unit or two per
+    /// channel. That is invisible on its own and fatal to a difference: a delta
+    /// against a reference the client does not share leaves permanent
+    /// artefacts. So a lossy tile is always re-sent whole, and clearing the
+    /// flag is what makes the region exact again.
+    lossy_tiles: Vec<bool>,
+    tiles_across: u32,
+    mode: EncodeMode,
     seq: u32,
     stats: EncoderStats,
 }
+
+/// Side of a lossy-tracking tile, in pixels. Small enough that a moving video
+/// in a corner does not mark the text beside it, large enough that the grid for
+/// a 4K window is a few thousand bools.
+const LOSSY_TILE: u32 = 64;
+
+/// A delta is only worth sending when most of its bytes came out zero — that is
+/// the whole reason it compresses better than the pixels. A rectangle that
+/// genuinely changed everywhere (a photo, a video frame) deltas to noise, which
+/// zstd handles *worse* than the original.
+const DELTA_ZERO_FRACTION: f32 = 0.55;
 
 impl Encoder {
     pub fn new(config: EncoderConfig) -> Self {
@@ -115,6 +167,9 @@ impl Encoder {
             config,
             prev: Vec::new(),
             prev_dims: (0, 0),
+            lossy_tiles: Vec::new(),
+            tiles_across: 0,
+            mode: EncodeMode::Lossless,
             seq: 0,
             stats: EncoderStats::default(),
         }
@@ -124,11 +179,29 @@ impl Encoder {
         self.stats
     }
 
+    pub fn mode(&self) -> EncodeMode {
+        self.mode
+    }
+
+    /// Choose how the next frame is encoded.
+    ///
+    /// Returns true when the caller must force a keyframe. Coming *back* from
+    /// lossy is exactly that case: everything on screen is a JPEG of itself,
+    /// and only a full lossless frame makes the text sharp again. Going the
+    /// other way needs nothing — a JPEG tile stands alone.
+    pub fn set_mode(&mut self, mode: EncodeMode) -> bool {
+        let leaving_lossy = self.mode == EncodeMode::Lossy && mode == EncodeMode::Lossless;
+        self.mode = mode;
+        leaving_lossy && self.lossy_tiles.iter().any(|&t| t)
+    }
+
     /// Forget the client's canvas, so the next frame is a keyframe. Called on
     /// attach and reattach — a client that just joined has nothing.
     pub fn invalidate(&mut self) {
         self.prev.clear();
         self.prev_dims = (0, 0);
+        self.lossy_tiles.clear();
+        self.tiles_across = 0;
     }
 
     /// Encode the damaged parts of `frame`. Returns `None` when nothing the
@@ -150,7 +223,11 @@ impl Encoder {
         if keyframe {
             self.prev = vec![0u8; (frame.width * frame.height) as usize * 4];
             self.prev_dims = (frame.width, frame.height);
+            self.tiles_across = frame.width.div_ceil(LOSSY_TILE);
+            let tiles = (self.tiles_across * frame.height.div_ceil(LOSSY_TILE)) as usize;
+            self.lossy_tiles = vec![false; tiles];
         }
+        let lossy = self.mode == EncodeMode::Lossy && self.config.allow_jpeg;
 
         let rects = if keyframe {
             vec![Rect::new(0, 0, frame.width, frame.height)]
@@ -164,32 +241,63 @@ impl Encoder {
 
         let mut entries: Vec<RectEntry> = Vec::with_capacity(rects.len());
         let mut pixels: Vec<u8> = Vec::new();
+        // Each rectangle's own JPEG, length-prefixed, when this is a lossy
+        // frame. Kept apart from `pixels` because the two never mix in one
+        // payload — the codec byte describes the whole blob.
+        let mut tiles: Vec<u8> = Vec::new();
         for rect in rects {
             if !keyframe && !self.rect_changed(&frame, rect) {
                 self.stats.rects_dropped_unchanged += 1;
                 continue;
             }
-            match solid_colour(&frame, rect) {
-                Some(colour) => entries.push(RectEntry {
+            // A flat rectangle is a solid fill in either mode: it is 13 bytes
+            // against a JPEG's several hundred, and it is exact.
+            if let Some(colour) = solid_colour(&frame, rect) {
+                entries.push(RectEntry {
                     rect,
                     op: RectOp::Solid,
                     solid: colour,
-                }),
-                None => {
-                    let row_bytes = rect.w as usize * 4;
-                    pixels.reserve(row_bytes * rect.h as usize);
-                    for y in rect.y..rect.bottom() {
-                        let row = frame.row(y);
-                        let start = rect.x as usize * 4;
-                        pixels.extend_from_slice(&row[start..start + row_bytes]);
-                    }
-                    entries.push(RectEntry {
-                        rect,
-                        op: RectOp::Pixels,
-                        solid: 0,
-                    });
-                }
+                });
+                continue;
             }
+
+            if lossy {
+                let jpeg = encode_jpeg(&frame, rect, self.config.jpeg_quality)?;
+                tiles.extend_from_slice(&(jpeg.len() as u32).to_le_bytes());
+                tiles.extend_from_slice(&jpeg);
+                entries.push(RectEntry {
+                    rect,
+                    op: RectOp::Pixels,
+                    solid: 0,
+                });
+                self.stats.rects_lossy += 1;
+                continue;
+            }
+
+            let row_bytes = rect.w as usize * 4;
+            let at = pixels.len();
+            pixels.reserve(row_bytes * rect.h as usize);
+            for y in rect.y..rect.bottom() {
+                let row = frame.row(y);
+                let start = rect.x as usize * 4;
+                pixels.extend_from_slice(&row[start..start + row_bytes]);
+            }
+            // Interframe: subtract what the client already holds, in place, and
+            // keep it only if it went mostly to zero. A keyframe has no
+            // reference to subtract from, and a tile the client holds as JPEG
+            // has one the client does not share.
+            let op = if !keyframe
+                && self.config.allow_delta
+                && self.config.allow_zstd
+                && !self.rect_is_lossy(rect)
+                && self.subtract_prev(&mut pixels[at..], rect, frame.width)
+            {
+                self.stats.rects_delta += 1;
+                RectOp::Delta
+            } else {
+                RectOp::Pixels
+            };
+            entries.push(RectEntry { rect, op, solid: 0 });
         }
 
         if entries.is_empty() {
@@ -197,7 +305,9 @@ impl Encoder {
             return Ok(None);
         }
 
-        let (codec, blob) = if self.config.allow_zstd && !pixels.is_empty() {
+        let (codec, blob) = if !tiles.is_empty() {
+            (Codec::JpegTiles, tiles)
+        } else if self.config.allow_zstd && !pixels.is_empty() {
             let compressed = zstd::bulk::compress(&pixels, self.config.zstd_level)
                 .map_err(|e| EncodeError::Zstd(e.to_string()))?;
             (Codec::ZstdRects, compressed)
@@ -248,9 +358,84 @@ impl Encoder {
         false
     }
 
+    /// Replace `slice` — a rectangle's pixels, row-major — with the difference
+    /// from what the client holds, and say whether that was worth doing.
+    ///
+    /// Leaves the slice untouched when it was not: the caller then sends the
+    /// pixels themselves, so the work is one pass over a rectangle we were
+    /// about to compress anyway.
+    fn subtract_prev(&self, slice: &mut [u8], rect: Rect, canvas_width: u32) -> bool {
+        let row_bytes = rect.w as usize * 4;
+        let mut zeros = 0usize;
+        for row in 0..rect.h {
+            let src = ((rect.y + row) * canvas_width + rect.x) as usize * 4;
+            let dst = row as usize * row_bytes;
+            for i in 0..row_bytes {
+                let d = slice[dst + i].wrapping_sub(self.prev[src + i]);
+                slice[dst + i] = d;
+                zeros += usize::from(d == 0);
+            }
+        }
+        let total = row_bytes * rect.h as usize;
+        if zeros as f32 >= total as f32 * DELTA_ZERO_FRACTION {
+            return true;
+        }
+        // Not worth it — put the pixels back. Undoing costs one more pass and
+        // keeps the caller's code linear; the alternative is a second copy of
+        // every rectangle we were only ever going to send one way.
+        for row in 0..rect.h {
+            let src = ((rect.y + row) * canvas_width + rect.x) as usize * 4;
+            let dst = row as usize * row_bytes;
+            for i in 0..row_bytes {
+                slice[dst + i] = slice[dst + i].wrapping_add(self.prev[src + i]);
+            }
+        }
+        false
+    }
+
+    /// Does the client hold any part of this rectangle as a JPEG?
+    fn rect_is_lossy(&self, rect: Rect) -> bool {
+        self.tiles(rect, false)
+            .any(|index| self.lossy_tiles.get(index).copied().unwrap_or(false))
+    }
+
+    /// Tile indices for a rectangle. `contained` restricts them to tiles that
+    /// lie wholly inside it, which is the difference between "this rectangle
+    /// touched lossy pixels" (any overlap) and "this rectangle made these tiles
+    /// exact" (full cover only).
+    fn tiles(&self, rect: Rect, contained: bool) -> impl Iterator<Item = usize> + '_ {
+        let (x0, y0, x1, y1) = if contained {
+            (
+                rect.x.div_ceil(LOSSY_TILE),
+                rect.y.div_ceil(LOSSY_TILE),
+                rect.right() / LOSSY_TILE,
+                rect.bottom() / LOSSY_TILE,
+            )
+        } else {
+            (
+                rect.x / LOSSY_TILE,
+                rect.y / LOSSY_TILE,
+                rect.right().div_ceil(LOSSY_TILE),
+                rect.bottom().div_ceil(LOSSY_TILE),
+            )
+        };
+        let across = self.tiles_across;
+        (y0..y1).flat_map(move |ty| (x0..x1).map(move |tx| (ty * across + tx) as usize))
+    }
+
+    fn mark_lossy(&mut self, rect: Rect, lossy: bool) {
+        let indices: Vec<usize> = self.tiles(rect, !lossy).collect();
+        for index in indices {
+            if let Some(tile) = self.lossy_tiles.get_mut(index) {
+                *tile = lossy;
+            }
+        }
+    }
+
     /// Bring our model of the client's canvas up to date with what we just
     /// encoded — only the rectangles we actually sent.
     fn commit(&mut self, frame: &FrameView<'_>, payload: &PixelPayload) {
+        let lossy_frame = payload.codec.is_tiled_image();
         for entry in &payload.rects {
             let r = entry.rect;
             let row_bytes = r.w as usize * 4;
@@ -263,14 +448,48 @@ impl Encoder {
                             self.prev[dst + px * 4..dst + px * 4 + 4].copy_from_slice(&colour);
                         }
                     }
-                    RectOp::Pixels => {
+                    // Both carry the same pixels — a delta *is* those pixels,
+                    // expressed against what the client had — so the model of
+                    // the client's canvas ends up in the same place.
+                    RectOp::Pixels | RectOp::Delta => {
                         let src = &frame.row(y)[r.x as usize * 4..][..row_bytes];
                         self.prev[dst..dst + row_bytes].copy_from_slice(src);
                     }
                 }
             }
+            // A JPEG rectangle leaves the client holding an approximation of
+            // `prev`; anything else leaves it holding `prev` exactly. A solid
+            // fill counts as exact either way, which is why it is checked per
+            // rectangle rather than per frame.
+            self.mark_lossy(r, lossy_frame && entry.op != RectOp::Solid);
         }
     }
+}
+
+/// One rectangle of a frame as a baseline JPEG.
+///
+/// The rectangle is copied out row by row because the encoder wants a tightly
+/// packed image and the frame is a window with a stride, and converted from the
+/// session's BGRA to RGB because that is what a JPEG holds — alpha does not
+/// survive this tier, which is fine for a window being composited onto nothing.
+fn encode_jpeg(frame: &FrameView<'_>, rect: Rect, quality: u8) -> Result<Vec<u8>, EncodeError> {
+    let mut rgb = Vec::with_capacity(rect.area() as usize * 3);
+    for y in rect.y..rect.bottom() {
+        let row = &frame.row(y)[rect.x as usize * 4..][..rect.w as usize * 4];
+        for px in row.chunks_exact(4) {
+            rgb.extend_from_slice(&[px[2], px[1], px[0]]);
+        }
+    }
+    let mut out = Vec::new();
+    jpeg_encoder::Encoder::new(&mut out, quality.clamp(1, 100))
+        .encode(
+            &rgb,
+            u16::try_from(rect.w).map_err(|_| EncodeError::WindowTooLarge(rect.w, rect.h))?,
+            u16::try_from(rect.h).map_err(|_| EncodeError::WindowTooLarge(rect.w, rect.h))?,
+            jpeg_encoder::ColorType::Rgb,
+        )
+        .map_err(|e| EncodeError::Jpeg(e.to_string()))?;
+    Ok(out)
 }
 
 /// The rectangle's colour if every pixel in it is the same, else `None`.
@@ -473,6 +692,155 @@ mod tests {
         let frame = enc.encode(view(&px, 32, 32), &[], false).unwrap().unwrap();
         assert_eq!(frame.payload.codec, Codec::RawRects);
         assert_eq!(frame.payload.blob.len(), 32 * 32 * 4);
+    }
+
+    /// Change one small square inside a much larger damage rectangle — the
+    /// shape every toolkit produces when a single widget redraws.
+    fn poke(px: &mut [u8], width: u32, at: Rect, value: u8) {
+        for y in at.y..at.bottom() {
+            for x in at.x..at.right() {
+                let i = ((y * width + x) * 4) as usize;
+                px[i..i + 4].copy_from_slice(&[value, value, value, 255]);
+            }
+        }
+    }
+
+    #[test]
+    fn a_mostly_unchanged_rectangle_is_sent_as_a_difference() {
+        let mut px = noise(128, 128);
+        let mut enc = Encoder::new(EncoderConfig::default());
+        enc.encode(view(&px, 128, 128), &[], false).unwrap();
+
+        poke(&mut px, 128, Rect::new(20, 20, 8, 8), 0x40);
+        let frame = enc
+            .encode(view(&px, 128, 128), &[Rect::new(0, 0, 128, 64)], false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(frame.payload.rects[0].op, RectOp::Delta);
+        assert_eq!(enc.stats().rects_delta, 1);
+    }
+
+    #[test]
+    fn a_delta_reconstructs_the_rectangle_exactly() {
+        // Wrapping arithmetic in both directions: the encoder subtracts, the
+        // client adds, and every byte value has to survive the round trip.
+        let width = 96u32;
+        let mut px = noise(width, width);
+        let mut enc = Encoder::new(EncoderConfig::default());
+        let mut canvas = vec![0u8; (width * width) as usize * 4];
+        let first = enc.encode(view(&px, width, width), &[], false).unwrap();
+        first
+            .unwrap()
+            .payload
+            .apply(&mut canvas, width, width)
+            .unwrap();
+
+        for step in 0..6u8 {
+            poke(
+                &mut px,
+                width,
+                Rect::new(10, 10 + step as u32 * 6, 6, 6),
+                step,
+            );
+            let frame = enc
+                .encode(
+                    view(&px, width, width),
+                    &[Rect::new(0, 0, width, 64)],
+                    false,
+                )
+                .unwrap()
+                .unwrap();
+            frame.payload.apply(&mut canvas, width, width).unwrap();
+        }
+        assert_eq!(canvas, px, "a delta must reconstruct its rectangle exactly");
+        assert!(enc.stats().rects_delta > 0);
+    }
+
+    #[test]
+    fn a_rectangle_that_changed_everywhere_is_sent_whole() {
+        // A delta of unrelated pixels is noise, and noise compresses worse than
+        // the pixels it came from.
+        let a = noise(64, 64);
+        let b: Vec<u8> = a
+            .chunks_exact(4)
+            .flat_map(|px| [px[0] ^ 0x5a, px[1] ^ 0xa5, px[2] ^ 0x3c, 255])
+            .collect();
+        let mut enc = Encoder::new(EncoderConfig::default());
+        enc.encode(view(&a, 64, 64), &[], false).unwrap();
+        let frame = enc
+            .encode(view(&b, 64, 64), &[Rect::new(0, 0, 64, 64)], false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(frame.payload.rects[0].op, RectOp::Pixels);
+        assert_eq!(enc.stats().rects_delta, 0);
+    }
+
+    #[test]
+    fn the_lossy_mode_sends_one_jpeg_per_rectangle() {
+        let px = noise(64, 64);
+        let mut enc = Encoder::new(EncoderConfig::default());
+        enc.set_mode(EncodeMode::Lossy);
+        let frame = enc.encode(view(&px, 64, 64), &[], false).unwrap().unwrap();
+        assert_eq!(frame.payload.codec, Codec::JpegTiles);
+        // u32 length prefix, then a JPEG: SOI … EOI.
+        let len = u32::from_le_bytes(frame.payload.blob[..4].try_into().unwrap()) as usize;
+        let tile = &frame.payload.blob[4..4 + len];
+        assert_eq!(&tile[..2], &[0xff, 0xd8]);
+        assert_eq!(&tile[len - 2..], &[0xff, 0xd9]);
+        assert_eq!(frame.payload.blob.len(), 4 + len);
+    }
+
+    #[test]
+    fn a_lossy_region_is_never_deltad_against() {
+        // The client's copy of a JPEG rectangle is whatever *its* decoder
+        // produced, which is not what we hold. A difference against it would
+        // leave permanent artefacts.
+        let mut px = noise(64, 64);
+        let mut enc = Encoder::new(EncoderConfig::default());
+        enc.set_mode(EncodeMode::Lossy);
+        enc.encode(view(&px, 64, 64), &[], false).unwrap();
+
+        // Back to lossless without the keyframe the session would normally
+        // force, so the next frame is the interesting one.
+        enc.set_mode(EncodeMode::Lossless);
+        poke(&mut px, 64, Rect::new(4, 4, 4, 4), 0x11);
+        let frame = enc
+            .encode(view(&px, 64, 64), &[Rect::new(0, 0, 64, 32)], false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(frame.payload.rects[0].op, RectOp::Pixels);
+    }
+
+    #[test]
+    fn coming_back_from_lossy_asks_for_a_keyframe() {
+        // Everything on screen is a JPEG of itself; only a full lossless frame
+        // makes the text crisp again.
+        let px = noise(64, 64);
+        let mut enc = Encoder::new(EncoderConfig::default());
+        enc.set_mode(EncodeMode::Lossy);
+        enc.encode(view(&px, 64, 64), &[], false).unwrap();
+        assert!(enc.set_mode(EncodeMode::Lossless));
+        // And not twice: once the window is exact again there is nothing to
+        // repair.
+        enc.encode(view(&px, 64, 64), &[], true).unwrap();
+        enc.set_mode(EncodeMode::Lossy);
+        assert!(!enc.set_mode(EncodeMode::Lossless));
+    }
+
+    #[test]
+    fn a_client_without_the_delta_op_gets_whole_pixels() {
+        let mut px = noise(64, 64);
+        let mut enc = Encoder::new(EncoderConfig {
+            allow_delta: false,
+            ..EncoderConfig::default()
+        });
+        enc.encode(view(&px, 64, 64), &[], false).unwrap();
+        poke(&mut px, 64, Rect::new(4, 4, 4, 4), 0x11);
+        let frame = enc
+            .encode(view(&px, 64, 64), &[Rect::new(0, 0, 64, 32)], false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(frame.payload.rects[0].op, RectOp::Pixels);
     }
 
     #[test]

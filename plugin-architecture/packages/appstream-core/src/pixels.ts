@@ -21,10 +21,25 @@ export const Codec = {
   Vp9: 2,
   /** Per-rectangle WebP images, each u32 length-prefixed. */
   WebpTiles: 3,
+  /**
+   * Per-rectangle baseline JPEG images, each u32 length-prefixed, in table
+   * order for the rectangles that carry pixels. The lossy tier: the browser
+   * decodes these itself, so it costs nothing to ship.
+   */
+  JpegTiles: 4,
 } as const;
 export type Codec = (typeof Codec)[keyof typeof Codec];
 
-export const RectOp = { Pixels: 0, Solid: 1 } as const;
+export const RectOp = {
+  Pixels: 0,
+  Solid: 1,
+  /**
+   * The blob holds a per-byte wrapping difference from what this canvas
+   * already shows — interframe compression. Mostly zeros, which is what makes
+   * it compress where the pixels themselves would not.
+   */
+  Delta: 2,
+} as const;
 export type RectOp = (typeof RectOp)[keyof typeof RectOp];
 
 /** First frame of a window, or the first after a reattach. */
@@ -81,7 +96,7 @@ export function decodePixelPayload(bytes: Uint8Array): PixelPayload {
   for (let i = 0; i < rectCount; i++) {
     const at = HEADER_LEN + i * RECT_LEN;
     const op = bytes[at + 8] as RectOp;
-    if (op !== RectOp.Pixels && op !== RectOp.Solid) {
+    if (op !== RectOp.Pixels && op !== RectOp.Solid && op !== RectOp.Delta) {
       throw new PayloadError(`unknown rect op ${bytes[at + 8]}`);
     }
     rects[i] = {
@@ -109,9 +124,36 @@ export function decodePixelPayload(bytes: Uint8Array): PixelPayload {
 export function expectedPixelBytes(payload: PixelPayload): number {
   let total = 0;
   for (const rect of payload.rects) {
-    if (rect.op === RectOp.Pixels) total += rect.w * rect.h * 4;
+    if (rect.op === RectOp.Pixels || rect.op === RectOp.Delta) total += rect.w * rect.h * 4;
   }
   return total;
+}
+
+/**
+ * The images inside a tiled-codec blob, one per rectangle that carries pixels,
+ * in table order. Each is `u32` length-prefixed.
+ *
+ * Returned as views over the payload rather than copies: they go straight to
+ * `createImageBitmap`, which takes a Blob built from them.
+ */
+export function decodeImageTiles(payload: PixelPayload): Uint8Array[] {
+  const tiles: Uint8Array[] = [];
+  const view = new DataView(payload.blob.buffer, payload.blob.byteOffset, payload.blob.byteLength);
+  let at = 0;
+  for (const rect of payload.rects) {
+    if (rect.op === RectOp.Solid) continue;
+    if (at + 4 > payload.blob.length) {
+      throw new PayloadError(`tile table ends after ${tiles.length} of ${payload.rects.length}`);
+    }
+    const length = view.getUint32(at, true);
+    at += 4;
+    if (at + length > payload.blob.length) {
+      throw new PayloadError(`tile ${tiles.length} claims ${length} bytes past the blob`);
+    }
+    tiles.push(payload.blob.subarray(at, at + length));
+    at += length;
+  }
+  return tiles;
 }
 
 /** Decompresses a zstd frame. Supplied by the host so this package stays free of wasm. */
@@ -178,6 +220,26 @@ export function applyPayload(
           canvas[to + 2] = b;
           canvas[to + 3] = a;
           to += 4;
+        }
+      }
+      continue;
+    }
+
+    if (rect.op === RectOp.Delta) {
+      for (let row = 0; row < rect.h; row++) {
+        let to = ((rect.y + row) * canvasWidth + rect.x) * 4;
+        for (let col = 0; col < rect.w; col++) {
+          // Masked before the store rather than after the add: a
+          // Uint8ClampedArray clamps what it is given, so 250 + 10 would land
+          // on 255 instead of wrapping to 4 — and the encoder's subtraction
+          // wraps. Silent, permanent, and only on the pixels that happened to
+          // straddle the top of the range.
+          canvas[to] = (canvas[to]! + pixels[at + 2]!) & 0xff;
+          canvas[to + 1] = (canvas[to + 1]! + pixels[at + 1]!) & 0xff;
+          canvas[to + 2] = (canvas[to + 2]! + pixels[at]!) & 0xff;
+          canvas[to + 3] = (canvas[to + 3]! + pixels[at + 3]!) & 0xff;
+          to += 4;
+          at += 4;
         }
       }
       continue;

@@ -31,6 +31,14 @@ pub enum Codec {
     Vp9 = 2,
     /// Per-rectangle WebP images, each `u32` length-prefixed (tier 3).
     WebpTiles = 3,
+    /// Per-rectangle baseline JPEG images, each `u32` length-prefixed, in table
+    /// order for the [`RectOp::Pixels`] rectangles.
+    ///
+    /// The lossy tier for windows in motion. The browser decodes these itself —
+    /// `createImageBitmap` on the blob — so the cost of the tier is an encoder
+    /// on the host and nothing at all on the client, which is the whole reason
+    /// it is JPEG rather than something we would have to ship a decoder for.
+    JpegTiles = 4,
 }
 
 impl Codec {
@@ -40,8 +48,15 @@ impl Codec {
             1 => Self::ZstdRects,
             2 => Self::Vp9,
             3 => Self::WebpTiles,
+            4 => Self::JpegTiles,
             _ => return None,
         })
+    }
+
+    /// True when the blob is a sequence of `u32`-length-prefixed images rather
+    /// than a run of raw pixels.
+    pub fn is_tiled_image(self) -> bool {
+        matches!(self, Self::WebpTiles | Self::JpegTiles)
     }
 }
 
@@ -54,6 +69,18 @@ pub enum RectOp {
     /// Fill it with `solid` — a cleared background, a blanked video area, the
     /// dominant case in a window that just got resized.
     Solid = 1,
+    /// The blob holds a per-byte wrapping difference from what the client
+    /// already has in this rectangle, in table order alongside [`Self::Pixels`].
+    ///
+    /// Interframe compression: a toolkit damages a whole widget when one
+    /// character of it changed, so the rectangle is mostly identical to the one
+    /// the client is holding. Subtracting first turns "mostly identical" into
+    /// "mostly zero", which is what zstd is good at — the pixels themselves are
+    /// high-entropy and compress badly.
+    ///
+    /// Only ever emitted against a rectangle the encoder knows exactly, which
+    /// is why it is never used over a region the client last received as JPEG.
+    Delta = 2,
 }
 
 impl RectOp {
@@ -61,8 +88,14 @@ impl RectOp {
         Some(match v {
             0 => Self::Pixels,
             1 => Self::Solid,
+            2 => Self::Delta,
             _ => return None,
         })
+    }
+
+    /// True when this op consumes bytes from the blob.
+    fn carries_pixels(self) -> bool {
+        matches!(self, Self::Pixels | Self::Delta)
     }
 }
 
@@ -179,7 +212,7 @@ impl PixelPayload {
     pub fn expected_pixel_bytes(&self) -> usize {
         self.rects
             .iter()
-            .filter(|e| e.op == RectOp::Pixels)
+            .filter(|e| e.op.carries_pixels())
             .map(|e| e.rect.area() as usize * 4)
             .sum()
     }
@@ -202,7 +235,7 @@ impl PixelPayload {
                 zstd::bulk::decompress(&self.blob, expected.max(1))
                     .map_err(|e| PayloadError::Zstd(e.to_string()))?
             }
-            Codec::Vp9 | Codec::WebpTiles => {
+            Codec::Vp9 | Codec::WebpTiles | Codec::JpegTiles => {
                 // Those tiers are decoded by the browser (WebCodecs /
                 // createImageBitmap), never here. The reference blit only
                 // covers what the wasm module is responsible for.
@@ -246,6 +279,19 @@ impl PixelPayload {
                     for row in 0..r.h {
                         let dst = ((r.y + row) * canvas_width + r.x) as usize * 4;
                         canvas[dst..dst + row_bytes].copy_from_slice(&pixels[at..at + row_bytes]);
+                        at += row_bytes;
+                    }
+                }
+                RectOp::Delta => {
+                    // What the client holds plus the difference. Wrapping in
+                    // both directions, so the encoder's subtraction and this
+                    // addition are exact inverses for every byte value.
+                    let row_bytes = r.w as usize * 4;
+                    for row in 0..r.h {
+                        let dst = ((r.y + row) * canvas_width + r.x) as usize * 4;
+                        for i in 0..row_bytes {
+                            canvas[dst + i] = canvas[dst + i].wrapping_add(pixels[at + i]);
+                        }
                         at += row_bytes;
                     }
                 }

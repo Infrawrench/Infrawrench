@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use iw_codec::Rect;
 use smithay::input::{Seat, SeatHandler, SeatState};
-use smithay::output::{Mode, Output, PhysicalProperties, Subpixel};
+use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
@@ -44,6 +44,13 @@ use smithay::{
 };
 
 use crate::backend::BackendEvent;
+
+/// Highest buffer scale we will ask an application to render at.
+///
+/// Every step squares the pixels the encoder has to look at, and past 3 the
+/// difference is below what a viewer downscaling to its own device pixel ratio
+/// can show. A 4× display asks for 3× and the browser resamples the rest.
+pub(super) const MAX_SCALE: i32 = 3;
 
 /// One toplevel we are streaming.
 pub struct WindowRec {
@@ -116,6 +123,9 @@ pub struct AppState {
     /// and geometry before they map anything.
     #[allow(dead_code)]
     pub output: Output,
+    /// Buffer pixels per logical pixel, as told to the applications through
+    /// the output. Set from the viewer's device pixel ratio.
+    scale: i32,
     pub windows: HashMap<u32, WindowRec>,
     pub next_window_id: u32,
     pub events: VecDeque<BackendEvent>,
@@ -177,6 +187,7 @@ impl AppState {
             seat,
             output,
             windows: HashMap::new(),
+            scale: 1,
             next_window_id: 1,
             events: VecDeque::new(),
             started: Instant::now(),
@@ -186,6 +197,37 @@ impl AppState {
 
     pub fn now_ms(&self) -> u32 {
         self.started.elapsed().as_millis() as u32
+    }
+
+    /// Tell the applications what resolution the viewer is actually showing
+    /// them at. Returns true when this changed anything.
+    ///
+    /// This is the whole of HiDPI on the host side: a toolkit renders at the
+    /// scale of the output its surface entered, so an output that says 2 gets a
+    /// buffer with four times the pixels and text drawn for it, rather than a
+    /// 1× buffer the browser then stretches. Everything else — the toplevel's
+    /// configured size, the coordinates in the composite pass — follows from
+    /// the client's answer to this.
+    pub fn set_scale(&mut self, scale: i32) -> bool {
+        let scale = scale.clamp(1, MAX_SCALE);
+        if scale == self.scale {
+            return false;
+        }
+        self.scale = scale;
+        self.output
+            .change_current_state(None, None, Some(Scale::Integer(scale)), None);
+        // A surface that is already mapped has to be told again: it entered the
+        // output when the scale was something else, and nothing re-sends that
+        // on its own.
+        for rec in self.windows.values() {
+            self.output.leave(&rec.surface);
+            self.output.enter(&rec.surface);
+        }
+        true
+    }
+
+    pub fn scale(&self) -> i32 {
+        self.scale
     }
 
     pub fn window_id_for(&self, surface: &WlSurface) -> Option<u32> {
@@ -214,6 +256,7 @@ impl AppState {
         let Some((width, height)) = surface_size(&root) else {
             return;
         };
+        let root_scale = surface_scale(&root);
         let mut canvas = vec![0u8; width as usize * height as usize * 4];
         let mut damage: Vec<Rect> = Vec::new();
 
@@ -233,7 +276,14 @@ impl AppState {
                 // subsurface it is the default (0, 0), so no branch is needed.
                 let mut sub = states.cached_state.get::<SubsurfaceCachedState>();
                 let location = sub.current().location;
-                let at = (offset.0 + location.x, offset.1 + location.y);
+                // A subsurface is positioned in *logical* pixels while the
+                // canvas is in buffer pixels, so on a HiDPI window every child
+                // would land at half its offset — the content drifts up and
+                // left of where the application put it.
+                let at = (
+                    offset.0 + location.x * root_scale,
+                    offset.1 + location.y * root_scale,
+                );
 
                 if let Some(cache) = states.data_map.get::<RefCell<SurfacePixels>>() {
                     let mut cache = cache.borrow_mut();
@@ -278,6 +328,11 @@ pub struct SurfacePixels {
     height: u32,
     pixels: Vec<u8>,
     damage: Vec<Rect>,
+    /// `wl_surface.set_buffer_scale`: how many buffer pixels the client drew
+    /// per logical pixel. Everything cached here is in *buffer* pixels, while
+    /// subsurface offsets and surface damage arrive in logical ones, so this is
+    /// the conversion between them and 1 for a client that ignores DPI.
+    scale: i32,
 }
 
 /// Copy a committed `wl_shm` buffer into a surface's cache.
@@ -370,6 +425,18 @@ fn translate(rect: Rect, ox: i32, oy: i32) -> Rect {
     )
 }
 
+/// A surface's buffer scale — buffer pixels per logical pixel. 1 for a client
+/// that never called `set_buffer_scale`, which is every client on a 1× output.
+fn surface_scale(surface: &WlSurface) -> i32 {
+    with_states(surface, |states| {
+        states
+            .data_map
+            .get::<RefCell<SurfacePixels>>()
+            .map(|cache| cache.borrow().scale.max(1))
+            .unwrap_or(1)
+    })
+}
+
 /// The size of a surface's own buffer, which for a toplevel is the window size.
 fn surface_size(surface: &WlSurface) -> Option<(u32, u32)> {
     with_states(surface, |states| {
@@ -399,6 +466,19 @@ impl CompositorHandler for AppState {
         // what size, and whether its buffer was one we could read.
         let debug = std::env::var_os("IWAPPD_DEBUG").is_some();
 
+        // `wl_compositor` v6 replaced "work it out from the outputs you have
+        // entered" with a per-surface preference, and GTK4 and Qt6 both prefer
+        // it. A surface that never hears it renders at 1× on a 2× output.
+        let scale = self.scale;
+        with_states(surface, |states| {
+            smithay::wayland::compositor::send_surface_state(
+                surface,
+                states,
+                scale,
+                smithay::utils::Transform::Normal,
+            );
+        });
+
         // Every surface caches its own pixels, whether it is a toplevel or a
         // child three levels down: the compositing pass needs all of them.
         with_states(surface, |states| {
@@ -413,6 +493,7 @@ impl CompositorHandler for AppState {
 
             let mut guard = states.cached_state.get::<SurfaceAttributes>();
             let attrs = guard.current();
+            cache.scale = attrs.buffer_scale.max(1);
             match attrs.buffer.take() {
                 Some(BufferAssignment::NewBuffer(buffer)) => {
                     let before = (cache.width, cache.height);
@@ -449,6 +530,12 @@ impl CompositorHandler for AppState {
                 }
                 None => {}
             }
+            // Everything downstream works in buffer pixels. `wl_surface.damage`
+            // is in *surface* (logical) coordinates and `damage_buffer` is
+            // already in buffer ones — identical at scale 1, off by a factor of
+            // the scale on a HiDPI client, which shows up as a window that
+            // repaints a quarter of what it should.
+            let scale = cache.scale;
             let fresh: Vec<Rect> = attrs
                 .damage
                 .drain(..)
@@ -456,9 +543,12 @@ impl CompositorHandler for AppState {
                     Damage::Buffer(rect) => {
                         rect_from(rect.loc.x, rect.loc.y, rect.size.w, rect.size.h)
                     }
-                    Damage::Surface(rect) => {
-                        rect_from(rect.loc.x, rect.loc.y, rect.size.w, rect.size.h)
-                    }
+                    Damage::Surface(rect) => rect_from(
+                        rect.loc.x * scale,
+                        rect.loc.y * scale,
+                        rect.size.w * scale,
+                        rect.size.h * scale,
+                    ),
                 })
                 .collect();
             cache.damage.extend(fresh);

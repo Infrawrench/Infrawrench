@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
-use iw_codec::{Encoder, EncoderConfig, Rect, Tier, TierSelector};
+use iw_codec::{EncodeMode, Encoder, EncoderConfig, Rect, Tier, TierSelector};
 use iw_proto::{
     ClientCaps, ClientMessage, ClipboardBlob, ErrorCode, Frame, FrameKind, PROTOCOL_VERSION,
     PixelFormat, SESSION_WINDOW, ServerCaps, ServerMessage, WindowCloseReason, decode_input_batch,
@@ -38,7 +38,13 @@ impl Default for SessionConfig {
         Self {
             session_id: "session".into(),
             version: env!("CARGO_PKG_VERSION").into(),
-            caps: ServerCaps::default(),
+            caps: ServerCaps {
+                // Compiled in, so it holds for every build — the two call
+                // sites that resolve the rest of the caps from the host say
+                // the same thing.
+                jpeg: true,
+                ..ServerCaps::default()
+            },
             pixel_format: PixelFormat::Bgra8888,
             keymap: String::new(),
             launch_env: BTreeMap::new(),
@@ -204,6 +210,11 @@ impl<B: Backend, C: Catalog> Session<B, C> {
             }
             self.client_caps = caps;
             self.config.encoder.allow_zstd = caps.zstd;
+            // A client that cannot apply a difference would paint one as if it
+            // were pixels, and one that cannot decode JPEG would paint nothing
+            // at all. Both are the client's word, taken here once.
+            self.config.encoder.allow_delta = caps.delta && caps.zstd;
+            self.config.encoder.allow_jpeg = caps.jpeg && self.config.caps.jpeg;
             self.phase = Phase::Running;
             let welcome = ServerMessage::Welcome {
                 protocol: PROTOCOL_VERSION,
@@ -483,11 +494,23 @@ impl<B: Backend, C: Catalog> Session<B, C> {
             let Some(window) = self.windows.get(&window_id) else {
                 continue;
             };
-            if !window.attached || !window.dirty || window.in_flight >= self.config.max_in_flight {
+            if !window.attached {
+                continue;
+            }
+            // Backed up rather than quiet. A window that has run out of
+            // in-flight slots is the most active one there is, and letting it
+            // decay would take it off the lossy tier exactly when bandwidth is
+            // tightest.
+            if window.in_flight >= self.config.max_in_flight {
+                continue;
+            }
+            if !window.dirty {
+                self.observe_quiet(window_id);
                 continue;
             }
 
             let Some(frame) = self.backend.take_frame(window_id) else {
+                self.observe_quiet(window_id);
                 continue;
             };
             let window = self.windows.get_mut(&window_id).expect("checked above");
@@ -500,6 +523,17 @@ impl<B: Backend, C: Catalog> Session<B, C> {
                 stride: frame.stride,
                 pixels: frame.pixels,
             };
+            // The tier the last frame's coverage argued for is the one this
+            // frame is encoded in. Coming back from lossy asks for a keyframe:
+            // everything on screen is a JPEG of itself and only a full
+            // lossless frame makes the text sharp again.
+            let mode = match window.tier.current() {
+                Tier::Image => EncodeMode::Lossy,
+                Tier::Lossless | Tier::Video => EncodeMode::Lossless,
+            };
+            if window.encoder.set_mode(mode) {
+                window.needs_keyframe = true;
+            }
             let encoded = window.encoder.encode(view, &damage, window.needs_keyframe);
             window.dirty = false;
 
@@ -514,13 +548,29 @@ impl<B: Backend, C: Catalog> Session<B, C> {
                         .push(encode_frame(FrameKind::Pixels, window_id, &encoded.bytes));
                 }
                 // Nothing actually changed: the client's canvas is already
-                // right, so there is no frame and no in-flight slot spent.
-                Ok(None) => {}
+                // right, so there is no frame and no in-flight slot spent. It
+                // still counts as a still frame, or a paused video would stay
+                // on the lossy tier — blurred, and with nothing coming that
+                // would ever sharpen it.
+                Ok(None) => self.observe_quiet(window_id),
                 Err(err) => {
                     let message = err.to_string();
                     self.send_error(ErrorCode::Internal, message, Some(window_id));
                 }
             }
+        }
+    }
+
+    /// Tell a window's tier selector that nothing changed this turn.
+    ///
+    /// Motion is measured per frame, so without this a window that simply stops
+    /// producing frames keeps whatever motion it last had — and a video that
+    /// was paused would sit on the lossy tier indefinitely, showing the user a
+    /// JPEG of a still picture they are now reading.
+    fn observe_quiet(&mut self, window_id: u32) {
+        let caps = (self.client_caps, self.config.caps);
+        if let Some(window) = self.windows.get_mut(&window_id) {
+            window.tier.observe(0.0, &caps.0, &caps.1);
         }
     }
 
@@ -1067,7 +1117,9 @@ mod tests {
     }
 
     #[test]
-    fn a_client_without_zstd_gets_raw_rectangles() {
+    fn a_client_without_zstd_gets_jpeg_rather_than_raw_rectangles() {
+        // No lossless tier is available to it, and a screenful of uncompressed
+        // pixels over SSH is worse than a lossy one that arrives.
         let mut s = session();
         s.on_client_frame(hello(ClientCaps {
             zstd: false,
@@ -1078,7 +1130,68 @@ mod tests {
         s.backend_mut().set_frame(1, 64, 64, 1);
         s.pump();
         let pixels = drain_pixels(&mut s);
+        assert_eq!(pixels[0].1.codec, Codec::JpegTiles);
+    }
+
+    #[test]
+    fn a_client_with_neither_zstd_nor_jpeg_gets_raw_rectangles() {
+        let mut s = session();
+        s.on_client_frame(hello(ClientCaps {
+            zstd: false,
+            jpeg: false,
+            ..ClientCaps::default()
+        }));
+        open_window(&mut s, 1);
+        attach(&mut s, 1);
+        s.backend_mut().set_frame(1, 64, 64, 1);
+        s.pump();
+        let pixels = drain_pixels(&mut s);
         assert_eq!(pixels[0].1.codec, Codec::RawRects);
+    }
+
+    #[test]
+    fn a_window_in_motion_moves_to_the_lossy_tier_and_back() {
+        // The user-visible arc: play a video, everything redraws, the window
+        // goes to JPEG; stop, and it comes back exact — with a keyframe,
+        // because every pixel on screen is currently an approximation.
+        let mut s = session();
+        s.on_client_frame(hello(ClientCaps::default()));
+        open_window(&mut s, 1);
+        attach(&mut s, 1);
+        for step in 0..16u8 {
+            s.backend_mut().set_frame(1, 64, 64, step.wrapping_mul(37));
+            s.on_backend_event(BackendEvent::WindowDamaged {
+                window_id: 1,
+                damage: vec![Rect::new(0, 0, 64, 64)],
+            });
+            s.pump();
+            for (window_id, payload) in drain_pixels(&mut s) {
+                s.on_client_frame(control(ClientMessage::Ack {
+                    window_id,
+                    seq: payload.seq,
+                    decode_ms: 1,
+                }));
+            }
+        }
+        assert_eq!(s.tier(1), Some(Tier::Image));
+
+        // Nothing changes for a while: the same frame, redrawn.
+        for _ in 0..24 {
+            s.backend_mut().set_frame(1, 64, 64, 9);
+            s.on_backend_event(BackendEvent::WindowDamaged {
+                window_id: 1,
+                damage: vec![Rect::new(0, 0, 64, 64)],
+            });
+            s.pump();
+            for (window_id, payload) in drain_pixels(&mut s) {
+                s.on_client_frame(control(ClientMessage::Ack {
+                    window_id,
+                    seq: payload.seq,
+                    decode_ms: 1,
+                }));
+            }
+        }
+        assert_eq!(s.tier(1), Some(Tier::Lossless));
     }
 
     #[test]

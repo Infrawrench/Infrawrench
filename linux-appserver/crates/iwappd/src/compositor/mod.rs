@@ -29,7 +29,7 @@ use iw_proto::{ButtonState, InputEvent};
 use crate::backend::{Backend, BackendError, BackendEvent, BackendFrame, LaunchSpec};
 use crate::launch_env;
 use spawn::Nursery;
-use state::{AppState, ClientState, send_frame_callbacks};
+use state::{AppState, ClientState, MAX_SCALE, send_frame_callbacks};
 
 struct LoopData {
     state: AppState,
@@ -176,8 +176,25 @@ impl Backend for WaylandBackend {
         window_id: u32,
         width: u32,
         height: u32,
-        _scale: f32,
+        scale: f32,
     ) -> Result<(), BackendError> {
+        // The client asks in the pixels it will actually paint — its CSS box
+        // times its device pixel ratio. Wayland configures a toplevel in
+        // *logical* pixels and the application multiplies by the output scale
+        // to get its buffer, so the conversion happens here, once.
+        //
+        // The scale is rounded up rather than to nearest: a 1.5× display asks
+        // for 2×, and the browser downsamples the extra pixels. Fractional
+        // scaling would save the difference in bandwidth but not add any
+        // detail, and it needs two more protocols on both ends.
+        let buffer_scale = if scale.is_finite() && scale > 1.0 {
+            (scale.ceil() as i32).min(MAX_SCALE)
+        } else {
+            1
+        };
+        self.data.state.set_scale(buffer_scale);
+        let buffer_scale = self.data.state.scale();
+
         let rec = self
             .data
             .state
@@ -185,7 +202,13 @@ impl Backend for WaylandBackend {
             .get(&window_id)
             .ok_or(BackendError::UnknownWindow(window_id))?;
         rec.toplevel.with_pending_state(|state| {
-            state.size = Some((width.max(1) as i32, height.max(1) as i32).into());
+            state.size = Some(
+                (
+                    (width.max(1).div_ceil(buffer_scale as u32)) as i32,
+                    (height.max(1).div_ceil(buffer_scale as u32)) as i32,
+                )
+                    .into(),
+            );
         });
         rec.toplevel.send_configure();
         Ok(())

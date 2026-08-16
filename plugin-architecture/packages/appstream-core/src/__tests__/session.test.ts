@@ -5,7 +5,14 @@ import { ButtonState } from "../input.js";
 import { encodeControl, type ClientCaps, type ServerMessage } from "../messages.js";
 import { AppSession, type AppSessionEvents, type AppSessionTransport } from "../session.js";
 
-const caps: ClientCaps = { vp9: false, webp: true, zstd: true, maxFrameBytes: 1 << 20 };
+const caps: ClientCaps = {
+  vp9: false,
+  webp: true,
+  zstd: true,
+  jpeg: true,
+  delta: true,
+  maxFrameBytes: 1 << 20,
+};
 
 const welcome: ServerMessage = {
   type: "welcome",

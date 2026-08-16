@@ -16,8 +16,11 @@ pub enum Tier {
     Lossless,
     /// VP9 over the whole window. Cheap when everything changes.
     Video,
-    /// WebP tiles, decoded by the browser with no shipped decoder. The
-    /// fallback when the client has no wasm and no WebCodecs.
+    /// JPEG tiles, decoded by the browser with no shipped decoder.
+    ///
+    /// Two jobs. It is where a window in motion goes when the client has no
+    /// VP9 decoder — which today is every client, since nothing encodes VP9
+    /// yet — and it is the static fallback for a client with no zstd.
     Image,
 }
 
@@ -38,18 +41,14 @@ pub struct TierSelector {
 impl TierSelector {
     /// Start on the best tier the two ends can agree on for static content.
     pub fn new(client: &ClientCaps, server: &ServerCaps) -> Self {
-        Self {
+        let mut selector = Self {
             motion: 0.0,
-            current: if client.zstd {
-                Tier::Lossless
-            } else if client.webp && server.webp {
-                Tier::Image
-            } else {
-                // No wasm, no WebP encoder on the host: raw rectangles still
-                // work, they just cost more. Lossless is the honest answer.
-                Tier::Lossless
-            },
-        }
+            current: Tier::Lossless,
+        };
+        // No zstd and no JPEG: raw rectangles still work, they just cost more.
+        // Lossless is the honest answer.
+        selector.current = selector.static_tier(client, server);
+        selector
     }
 
     pub fn motion(&self) -> f32 {
@@ -68,25 +67,48 @@ impl TierSelector {
         // Caps are re-read every frame rather than trusted from construction:
         // a client can lose its VideoDecoder mid-session when the browser's
         // GPU process restarts, and it tells us by flipping the flag.
-        let video_possible = client.vp9 && server.vp9;
-        self.current = if self.current == Tier::Video {
-            if video_possible && self.motion >= LEAVE_VIDEO {
-                Tier::Video
-            } else {
-                self.static_tier(client, server)
+        let moving = match self.motion_tier(client, server) {
+            Some(tier) => tier,
+            // Nothing lossy is available at either end, so motion is just
+            // expensive lossless frames. Say so rather than pretending.
+            None => {
+                self.current = self.static_tier(client, server);
+                return self.current;
             }
-        } else if video_possible && self.motion > ENTER_VIDEO {
-            Tier::Video
+        };
+        // The threshold depends on which side of it we are already on — that
+        // gap is the hysteresis, and without it a window sitting on the line
+        // would change tier, and pay for a keyframe, every frame.
+        let threshold = if self.current == moving {
+            LEAVE_VIDEO
+        } else {
+            ENTER_VIDEO
+        };
+        self.current = if self.motion >= threshold {
+            moving
         } else {
             self.static_tier(client, server)
         };
         self.current
     }
 
+    /// Where a window in motion goes, if anywhere.
+    fn motion_tier(&self, client: &ClientCaps, server: &ServerCaps) -> Option<Tier> {
+        if client.vp9 && server.vp9 {
+            // One frame for the whole window beats a JPEG per rectangle, when
+            // both ends can do it.
+            Some(Tier::Video)
+        } else if client.jpeg && server.jpeg {
+            Some(Tier::Image)
+        } else {
+            None
+        }
+    }
+
     fn static_tier(&self, client: &ClientCaps, server: &ServerCaps) -> Tier {
         if client.zstd {
             Tier::Lossless
-        } else if client.webp && server.webp {
+        } else if client.jpeg && server.jpeg {
             Tier::Image
         } else {
             Tier::Lossless
@@ -98,17 +120,22 @@ impl TierSelector {
 mod tests {
     use super::*;
 
-    fn caps(vp9: bool, zstd: bool, webp: bool) -> (ClientCaps, ServerCaps) {
+    /// Both ends agreeing. `vp9` is the only cap either side is missing in
+    /// practice — nothing encodes it yet — so it is the interesting axis.
+    fn caps(vp9: bool, zstd: bool, jpeg: bool) -> (ClientCaps, ServerCaps) {
         (
             ClientCaps {
                 vp9,
                 zstd,
-                webp,
+                jpeg,
+                webp: false,
+                delta: true,
                 max_frame_bytes: 16 << 20,
             },
             ServerCaps {
                 vp9,
-                webp,
+                webp: false,
+                jpeg,
                 xwayland: false,
                 audio: false,
                 runtime_dir: true,
@@ -165,8 +192,21 @@ mod tests {
     }
 
     #[test]
-    fn without_vp9_motion_never_reaches_video() {
+    fn without_vp9_motion_falls_to_jpeg_rather_than_staying_lossless() {
+        // The case that actually ships: no VP9 encoder exists, so a window in
+        // motion has to reach the lossy tier through JPEG or not at all.
         let (client, server) = caps(false, true, true);
+        let mut sel = TierSelector::new(&client, &server);
+        let mut tier = Tier::Lossless;
+        for _ in 0..20 {
+            tier = sel.observe(1.0, &client, &server);
+        }
+        assert_eq!(tier, Tier::Image);
+    }
+
+    #[test]
+    fn with_nothing_lossy_at_either_end_motion_stays_lossless() {
+        let (client, server) = caps(false, true, false);
         let mut sel = TierSelector::new(&client, &server);
         for _ in 0..50 {
             assert_eq!(sel.observe(1.0, &client, &server), Tier::Lossless);
@@ -175,15 +215,33 @@ mod tests {
 
     #[test]
     fn a_client_without_wasm_gets_images() {
-        let (mut client, server) = caps(false, false, true);
-        client.webp = true;
+        let (client, server) = caps(false, false, true);
         let mut sel = TierSelector::new(&client, &server);
         assert_eq!(sel.current(), Tier::Image);
         assert_eq!(sel.observe(0.5, &client, &server), Tier::Image);
     }
 
     #[test]
-    fn losing_the_video_decoder_mid_session_falls_back() {
+    fn typing_after_a_video_comes_back_to_crisp_text() {
+        // The round trip that matters to a user: watch something, stop, and the
+        // window has to stop being a JPEG of itself.
+        let (client, server) = caps(false, true, true);
+        let mut sel = TierSelector::new(&client, &server);
+        for _ in 0..20 {
+            sel.observe(1.0, &client, &server);
+        }
+        assert_eq!(sel.current(), Tier::Image);
+        for _ in 0..20 {
+            sel.observe(0.005, &client, &server);
+        }
+        assert_eq!(sel.current(), Tier::Lossless);
+    }
+
+    #[test]
+    fn losing_the_video_decoder_mid_session_falls_to_the_next_lossy_tier() {
+        // A browser whose GPU process restarted loses its VideoDecoder. The
+        // window is still moving, so it belongs on JPEG rather than back on
+        // lossless frames it cannot afford.
         let (mut client, server) = caps(true, true, true);
         let mut sel = TierSelector::new(&client, &server);
         for _ in 0..30 {
@@ -191,6 +249,18 @@ mod tests {
         }
         assert_eq!(sel.current(), Tier::Video);
         client.vp9 = false;
+        assert_eq!(sel.observe(1.0, &client, &server), Tier::Image);
+    }
+
+    #[test]
+    fn losing_every_lossy_tier_mid_session_falls_back_to_lossless() {
+        let (mut client, server) = caps(true, true, true);
+        let mut sel = TierSelector::new(&client, &server);
+        for _ in 0..30 {
+            sel.observe(1.0, &client, &server);
+        }
+        client.vp9 = false;
+        client.jpeg = false;
         assert_eq!(sel.observe(1.0, &client, &server), Tier::Lossless);
     }
 }

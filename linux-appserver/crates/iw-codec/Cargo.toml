@@ -9,5 +9,6 @@ publish.workspace = true
 
 [dependencies]
 iw-proto = { workspace = true }
+jpeg-encoder = { workspace = true }
 thiserror = { workspace = true }
 zstd = { workspace = true }
