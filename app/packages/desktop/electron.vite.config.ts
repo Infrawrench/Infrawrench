@@ -119,6 +119,13 @@ export default defineConfig(({ command }) => ({
           // runtime. Bundling resolves the dynamic import into a chunk instead
           // of leaving a CJS main process to import an ESM package at runtime.
           "@infrawrench/client-core",
+          // The Linux app server's host side, imported by `iwappd-host.ts` and
+          // the `apps` CLI command. Every workspace package the main process
+          // imports has to be bundled: electron-builder's `files` drops
+          // `node_modules/@infrawrench/**` from the asar, so an externalized
+          // one throws "Cannot find module" the moment the app starts — with
+          // no window, just a lit dock icon.
+          "@infrawrench/appstream-host",
         ],
       }),
       copyQuickJsWasm(),
