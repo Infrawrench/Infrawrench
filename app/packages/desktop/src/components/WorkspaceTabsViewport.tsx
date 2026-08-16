@@ -59,6 +59,7 @@ import { DesktopQuotasPanel } from "@/components/DesktopQuotasPanel";
 import { DesktopIncidentsPanel } from "@/components/DesktopIncidentsPanel";
 import { DesktopEnvironmentsPanel } from "@/components/DesktopEnvironmentsPanel";
 import { DesktopSshFanoutPanel } from "@/components/DesktopSshFanoutPanel";
+import { AppWindowPanel } from "./AppsPanels";
 import { DesktopSettingsPanel } from "@/components/DesktopSettingsPanel";
 import { DesktopAgentsPanel } from "@/components/DesktopAgentsPanel";
 
@@ -552,6 +553,17 @@ function renderPanel(
       return <DesktopSettingsPanel section={t.section ?? ""} />;
     case "chat":
       return <CloudChatPanel conversationId={t.conversationId} />;
+    case "linux-app":
+      return (
+        // Joins the session the host's Apps tab opened; it has no key of its
+        // own, which is why closing that tab ends the windows with it.
+        <AppWindowPanel
+          accountId={t.accountId}
+          resourceId={t.resourceId}
+          windowId={t.windowId}
+          tabId={tab.id}
+        />
+      );
     case "resource":
       return (
         <ResourcePanel

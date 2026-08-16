@@ -6,6 +6,7 @@ interface ResourceActionBarProps {
   sshHost: string | null;
   onOpenSftpTab: () => void;
   onOpenSshTab: () => void;
+  onOpenAppsTab: () => void;
   onShowTunnelModal: () => void;
   onShowDockerSetup: () => void;
   onShowDropSpotlight: () => void;
@@ -17,6 +18,7 @@ export function ResourceActionBar({
   sshHost,
   onOpenSftpTab,
   onOpenSshTab,
+  onOpenAppsTab,
   onShowTunnelModal,
   onShowDockerSetup,
   onShowDropSpotlight,
@@ -40,6 +42,15 @@ export function ResourceActionBar({
           className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
         >
           {gt("Open SSH tab")}
+        </button>
+      )}
+      {hasSshPanel && (
+        <button
+          type="button"
+          onClick={onOpenAppsTab}
+          className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
+        >
+          {gt("Open Apps tab")}
         </button>
       )}
       {sshHost && (

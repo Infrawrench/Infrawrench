@@ -24,6 +24,8 @@
     "@asteasolutions/zod-to-openapi": "^7.3.4",
     "@google/genai": "2.13.0",
     "@hono/node-server": "^2.1.0",
+    "@infrawrench/appstream-core": "workspace:*",
+    "@infrawrench/appstream-host": "workspace:*",
     "@infrawrench/client-core": "workspace:*",
     "@infrawrench/plugin-base": "workspace:*",
     "@infrawrench/plugin-ssh": "workspace:*",

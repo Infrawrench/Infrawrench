@@ -47,6 +47,23 @@ export type WorkspaceTabTarget =
       sshKeyName?: string | undefined;
       initialCommand?: string | undefined;
       initialCwd?: string | undefined;
+    }
+  /**
+   * One window of a graphical Linux application running on a remote host.
+   *
+   * Its own kind rather than another `resource` view, because a resource tab is
+   * one-per-resource by construction and a host can have a browser, an editor
+   * and a file manager open at once. The session and window ids come from the
+   * app server; a restored tab reattaches to them, and closes itself when the
+   * window turns out to be gone.
+   */
+  | {
+      kind: "linux-app";
+      accountId: string;
+      resourceId: string;
+      sessionId: string;
+      windowId: number;
+      appId?: string;
     };
 
 export interface WorkspaceTab {
@@ -159,6 +176,10 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       if (target.view === "apps")
         return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:apps`;
       return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}`;
+    case "linux-app":
+      // Keyed by window: every window of every application on a host is its
+      // own tab, and the same window after a reconnect is the same tab.
+      return `linux-app:${target.sessionId}:${target.windowId}`;
   }
 }
 
@@ -226,6 +247,9 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       if (target.view === "sftp") return "SFTP";
       if (target.view === "apps") return "Apps";
       return "Resource";
+    // Replaced by the window's own title as soon as the host sends one.
+    case "linux-app":
+      return "App";
   }
 }
 
@@ -254,6 +278,11 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "status-pages":
     case "quotas":
       return true;
+    case "linux-app":
+      return (
+        a.sessionId === (b as { sessionId: string }).sessionId &&
+        a.windowId === (b as { windowId: number }).windowId
+      );
     case "incidents":
       // The deployments/settings trick: one tab by id, but comparing the
       // incident is what makes the route sync record which one the tab is on,

@@ -422,6 +422,21 @@ infrawrench graph --resource "$DB_ID" --json | jq -r '.blastRadius[]'
 
 `--no-color` (or the `NO_COLOR` env var, or piping output) disables ANSI colors in text mode.
 
+### `apps` — graphical applications on a Linux host
+
+```
+infrawrench apps <resource-id> --key ~/.ssh/id_ed25519
+infrawrench apps <resource-id> --json
+infrawrench apps <resource-id> --launch org.gnome.Nautilus.desktop
+```
+
+Lists what is installed on a Linux host, read from its own desktop entries. The
+app server is staged in the host's memory, asked for the list, and deleted again
+in a single connection — nothing is installed.
+
+`--launch` opens that application in the desktop app: a window needs somewhere to
+draw, and a terminal is not it. See [Linux applications](./linux-apps.md).
+
 ## Notes and limits
 
 - Metric history, cost data, and paging are cloud features — `--local` has neither.

@@ -361,6 +361,7 @@ export {
   resourceSshTabTarget,
   resourceSftpTabTarget,
   resourceAppsTabTarget,
+  linuxAppTabTarget,
   navigateToWorkspaceTarget,
 } from "./workspace-tabs.js";
 export type { RouteNavigator } from "./workspace-tabs.js";
@@ -1102,6 +1103,14 @@ export * from "./chat/index.js";
 
 export { getStoredLocale, setStoredLocale } from "./i18n/locale-preference.js";
 export { useDataString } from "./i18n/data-strings.js";
+
+// Remote Linux applications: the launcher for a host, and one window's canvas.
+export {
+  AppLauncherPanel,
+  AppWindowViewer,
+  type AppLauncherPanelProps,
+  type AppWindowViewerProps,
+} from "./apps/index.js";
 export { useStableGT } from "./i18n/stable-gt.js";
 // Trial workspaces — the countdown an unclaimed agent trial carries until a
 // person claims it. See server-core/trials for the lifecycle behind it.

@@ -83,4 +83,4 @@
 // (Corrected before publication: the first cut of this spec described only the
 // agent's half of the ceremony, and typed the revoke response as bare `Ok`
 // when the route also returns `revoked`.)
-export const API_VERSION = "1.26.0";
+export const API_VERSION = "1.27.0";

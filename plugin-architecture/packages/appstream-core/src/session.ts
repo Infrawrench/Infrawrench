@@ -77,6 +77,18 @@ export class AppSession {
   #queued: ClientMessage[] = [];
   #ready = false;
   #closed = false;
+  /**
+   * Per-window subscribers, on top of the single `events` object the session's
+   * owner passes in. A viewer component mounts and unmounts independently of
+   * the session, and there may be several — one per open window tab.
+   */
+  #frameListeners = new Set<(windowId: number, payload: PixelPayload) => void>();
+  #cursorListeners = new Set<(windowId: number, shape: string | undefined) => void>();
+  /** Window opened, or its title/icon changed. */
+  #windowListeners = new Set<(windowId: number, window: WindowInfo) => void>();
+  #windowCloseListeners = new Set<(windowId: number, reason: string) => void>();
+  #appsListeners = new Set<(apps: AppEntry[], complete: boolean) => void>();
+  #sessionId: string | undefined;
 
   constructor(transport: AppSessionTransport, options: AppSessionOptions) {
     this.#transport = transport;
@@ -102,12 +114,60 @@ export class AppSession {
     return this.#ready;
   }
 
+  /** The host's id for this session, once it has greeted us. */
+  get sessionId(): string | undefined {
+    return this.#sessionId;
+  }
+
   get windows(): WindowInfo[] {
     return [...this.#windows.values()];
   }
 
   window(windowId: number): WindowInfo | undefined {
     return this.#windows.get(windowId);
+  }
+
+  /** Subscribe to pixels. The session acks once every listener has returned. */
+  addFrameListener(listener: (windowId: number, payload: PixelPayload) => void): void {
+    this.#frameListeners.add(listener);
+  }
+
+  removeFrameListener(listener: (windowId: number, payload: PixelPayload) => void): void {
+    this.#frameListeners.delete(listener);
+  }
+
+  /** Called when a window opens and whenever its title or icon changes. */
+  addWindowListener(listener: (windowId: number, window: WindowInfo) => void): void {
+    this.#windowListeners.add(listener);
+  }
+
+  removeWindowListener(listener: (windowId: number, window: WindowInfo) => void): void {
+    this.#windowListeners.delete(listener);
+  }
+
+  addWindowCloseListener(listener: (windowId: number, reason: string) => void): void {
+    this.#windowCloseListeners.add(listener);
+  }
+
+  removeWindowCloseListener(listener: (windowId: number, reason: string) => void): void {
+    this.#windowCloseListeners.delete(listener);
+  }
+
+  /** Subscribe to application lists, which arrive in response to `listApps`. */
+  addAppsListener(listener: (apps: AppEntry[], complete: boolean) => void): void {
+    this.#appsListeners.add(listener);
+  }
+
+  removeAppsListener(listener: (apps: AppEntry[], complete: boolean) => void): void {
+    this.#appsListeners.delete(listener);
+  }
+
+  addCursorListener(listener: (windowId: number, shape: string | undefined) => void): void {
+    this.#cursorListeners.add(listener);
+  }
+
+  removeCursorListener(listener: (windowId: number, shape: string | undefined) => void): void {
+    this.#cursorListeners.delete(listener);
   }
 
   listApps(refresh = false): void {
@@ -205,6 +265,15 @@ export class AppSession {
     const decoded = decodePixelPayload(payload);
     const started = now();
     this.#events.onFrame?.(windowId, decoded);
+    for (const listener of this.#frameListeners) {
+      // One viewer throwing must not stop the others painting, and must not
+      // stop the ack — a session that stops acking stops receiving.
+      try {
+        listener(windowId, decoded);
+      } catch {
+        /* a viewer's problem, not the session's */
+      }
+    }
     // Acked after the consumer has painted, not on arrival: the ack is what
     // frees an in-flight slot on the host, so acking early would let frames
     // queue up ahead of a viewer that cannot keep up.
@@ -228,6 +297,7 @@ export class AppSession {
           return;
         }
         this.#ready = true;
+        this.#sessionId = message.sessionId;
         const queued = this.#queued;
         this.#queued = [];
         for (const pending of queued) this.#sendNow(pending);
@@ -236,6 +306,7 @@ export class AppSession {
       }
       case "apps":
         this.#events.onApps?.(message.apps, message.complete);
+        for (const listener of this.#appsListeners) listener(message.apps, message.complete);
         break;
       case "windowOpen": {
         const info: WindowInfo = {
@@ -254,6 +325,7 @@ export class AppSession {
         };
         this.#windows.set(info.windowId, info);
         this.#events.onWindowOpen?.(info);
+        for (const listener of this.#windowListeners) listener(info.windowId, info);
         break;
       }
       case "windowMeta": {
@@ -267,14 +339,19 @@ export class AppSession {
         };
         this.#windows.set(updated.windowId, updated);
         this.#events.onWindowMeta?.(updated);
+        for (const listener of this.#windowListeners) listener(updated.windowId, updated);
         break;
       }
       case "windowClose":
         this.#windows.delete(message.windowId);
         this.#events.onWindowClose?.(message.windowId, message.reason);
+        for (const listener of this.#windowCloseListeners) {
+          listener(message.windowId, message.reason);
+        }
         break;
       case "cursor":
         this.#events.onCursor?.(message.windowId, message.shape);
+        for (const listener of this.#cursorListeners) listener(message.windowId, message.shape);
         break;
       case "launchResult":
         this.#events.onLaunchResult?.(message.ok, message.message, message.appId);

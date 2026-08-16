@@ -143,6 +143,16 @@ export interface FanoutFlags {
   concurrency?: number | undefined;
 }
 
+/** Flags for `apps` — listing a host's applications, or opening one. */
+export interface AppsFlags {
+  /** Path to a private key for the connection. */
+  key?: string | undefined;
+  /** Login name, when the host's is not the resource type's default. */
+  user?: string | undefined;
+  /** Open this application in the desktop app instead of listing. */
+  launch?: string | undefined;
+}
+
 /** How `diff`'s two accounts were named on the command line. */
 export interface DiffFlags {
   /** `-b` / `--against`: the compared account. `-a` supplies the baseline. */
@@ -172,6 +182,7 @@ export interface ParsedCli {
   deploy: DeployFlags;
   exportFlags: ExportFlags;
   fanout: FanoutFlags;
+  apps: AppsFlags;
   diff: DiffFlags;
   config: ConfigFlags;
   positionals: string[];
@@ -259,6 +270,7 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         plugin: { type: "string" },
         tag: { type: "string" },
         user: { type: "string" },
+        launch: { type: "string" },
         snippet: { type: "string" },
         yes: { type: "boolean", short: "y", default: false },
         concurrency: { type: "string" },
@@ -365,6 +377,11 @@ export function parseCliArgs(argv: string[]): ParsedCli {
     diff: {
       against: str("against"),
       all: values.all === true,
+    },
+    apps: {
+      key: str("key"),
+      user: str("user"),
+      launch: str("launch"),
     },
     fanout: {
       list: values.list === true,

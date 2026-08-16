@@ -85,6 +85,8 @@
     }
   },
   "dependencies": {
+    "@infrawrench/appstream-core": "workspace:*",
+    "@infrawrench/appstream-host": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",
     "@kubernetes/client-node": "^1.4.0",
     "@libsql/client": "^0.14.0",

@@ -151,6 +151,24 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(args.hash).toBe("apps");
   });
 
+  it("routes a window tab to its resource with the window in the query", () => {
+    // A window has no URL of its own worth having: without a live session
+    // there is nothing at it, and it belongs to the host either way.
+    const args = getWorkspaceNavigateArgs({
+      kind: "linux-app",
+      accountId: "acc-1",
+      resourceId: "res-1",
+      sessionId: "sess-9",
+      windowId: 4,
+      appId: "firefox.desktop",
+    });
+    expect(args).toMatchObject({
+      to: "/resource/$accountId/$resourceId",
+      hash: "window",
+      search: { window: "4", session: "sess-9", app: "firefox.desktop" },
+    });
+  });
+
   it("includes plugin/type/parent in search and sets replace for resources", () => {
     const target = {
       kind: "resource" as const,
@@ -446,6 +464,32 @@ describe("syncWorkspaceRouteFromPath", () => {
     // route as SSH and SFTP rather than needing one of its own.
     const result = syncWorkspaceRouteFromPath("/resource/acc-1/res-1", "#apps");
     expect(result).toMatchObject({ kind: "resource", view: "apps" });
+  });
+
+  it("parses a window tab back out of its URL", () => {
+    const result = syncWorkspaceRouteFromPath(
+      "/resource/acc-1/res-1",
+      "#window",
+      "?window=4&session=sess-9&app=firefox.desktop",
+    );
+    expect(result).toMatchObject({
+      kind: "linux-app",
+      accountId: "acc-1",
+      resourceId: "res-1",
+      sessionId: "sess-9",
+      windowId: 4,
+      appId: "firefox.desktop",
+    });
+  });
+
+  it("refuses a window id without the session it belongs to", () => {
+    // Half an address points at a window on a host we have no connection to.
+    expect(syncWorkspaceRouteFromPath("/resource/acc-1/res-1", "#window", "?window=4")).toEqual({
+      kind: "resource",
+      accountId: "acc-1",
+      resourceId: "res-1",
+      view: "details",
+    });
   });
 
   it("handles resource IDs with slashes", () => {

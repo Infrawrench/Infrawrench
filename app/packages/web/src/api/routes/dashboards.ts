@@ -671,6 +671,10 @@ app.post("/validate-tabs", async (c) => {
 
   for (const tab of tabs) {
     const { target } = tab;
+    // A window of a remote application belongs to a session that lived in the
+    // page that opened it, so a restored tab has nothing to reattach to. The
+    // application is still running on the host and its launcher will list it.
+    if (target.kind === "linux-app") continue;
     if (
       target.kind === "agents" ||
       target.kind === "costs" ||
