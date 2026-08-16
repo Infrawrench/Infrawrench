@@ -26,8 +26,21 @@ if (currentRepoState === hashFileContents) {
   process.exit(0);
 }
 
-console.log("hashes do not match - compiling the rust now!");
+fetch(`https://iwappd-hash-asset-downloader.infrawrench.com/${currentRepoState}`).then(async (res) => {
+  if (res.status === 200) {
+    console.log("version locally was remotely built - downloading that!");
+    const b = await res.arrayBuffer();
+    writeFileSync(xzFile, Buffer.from(b));
+  } else {
+    console.log("hashes do not match - compiling the rust now!");
 
-// TODO: build rust code using docker and .tar.xz then put in that file path when its okay
+    // TODO: build rust code using docker and .tar.xz then put in that file path when its okay
 
-// writeFileSync(hashFile, currentRepoState);
+    throw new Error("builds not supported yet");
+  }
+
+  writeFileSync(hashFile, currentRepoState);
+}).catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
