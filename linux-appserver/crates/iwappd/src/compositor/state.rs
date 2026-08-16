@@ -427,7 +427,11 @@ fn translate(rect: Rect, ox: i32, oy: i32) -> Rect {
 
 /// A surface's buffer scale — buffer pixels per logical pixel. 1 for a client
 /// that never called `set_buffer_scale`, which is every client on a 1× output.
-fn surface_scale(surface: &WlSurface) -> i32 {
+///
+/// Read from the surface rather than from the output because the two can
+/// legitimately disagree: an application free to ignore a 2× output renders a
+/// 1× buffer, and its coordinates are then already logical.
+pub(super) fn surface_scale(surface: &WlSurface) -> i32 {
     with_states(surface, |states| {
         states
             .data_map

@@ -222,13 +222,16 @@ export function AppWindowViewer({
       const buffer = bufferRef.current;
       if (!canvas || !buffer) return;
       const rect = canvas.getBoundingClientRect();
-      // The canvas is displayed at CSS size but addressed in buffer pixels, so
-      // the ratio is the buffer over the box, not the device pixel ratio.
-      const ratioX = buffer.width / Math.max(1, rect.width);
-      const ratioY = buffer.height / Math.max(1, rect.height);
+      // `object-contain` letterboxes: when the buffer's aspect ratio differs
+      // from the box — which it does for the whole round trip of every resize,
+      // and permanently if the application refuses a size — the picture is
+      // centred inside the element with bars beside it. Measuring against the
+      // element rather than the picture then puts the pointer somewhere the
+      // user is not looking.
+      const shown = containedRect(buffer.width, buffer.height, rect.width, rect.height);
       const { x, y } = pointerPosition(
-        (event.clientX - rect.left) * ratioX,
-        (event.clientY - rect.top) * ratioY,
+        (event.clientX - rect.left - shown.left) * (buffer.width / shown.width),
+        (event.clientY - rect.top - shown.top) * (buffer.height / shown.height),
         1,
       );
       session.sendInput(windowId, [
@@ -322,6 +325,29 @@ export function AppWindowViewer({
       )}
     </div>
   );
+}
+
+/**
+ * Where `object-contain` actually paints an image inside its box.
+ *
+ * The picture keeps its aspect ratio and is centred, so one axis fills the box
+ * and the other is inset by half the difference. Exported for the test that
+ * pins it, because getting it wrong is invisible in a screenshot and obvious
+ * to anyone trying to click something.
+ */
+export function containedRect(
+  bufferWidth: number,
+  bufferHeight: number,
+  boxWidth: number,
+  boxHeight: number,
+): { left: number; top: number; width: number; height: number } {
+  if (bufferWidth <= 0 || bufferHeight <= 0 || boxWidth <= 0 || boxHeight <= 0) {
+    return { left: 0, top: 0, width: Math.max(1, boxWidth), height: Math.max(1, boxHeight) };
+  }
+  const scale = Math.min(boxWidth / bufferWidth, boxHeight / bufferHeight);
+  const width = bufferWidth * scale;
+  const height = bufferHeight * scale;
+  return { left: (boxWidth - width) / 2, top: (boxHeight - height) / 2, width, height };
 }
 
 /**

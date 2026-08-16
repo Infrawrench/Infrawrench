@@ -227,6 +227,15 @@ impl Backend for WaylandBackend {
         let keyboard = self.data.state.seat.get_keyboard();
         let pointer = self.data.state.seat.get_pointer();
 
+        // The protocol carries pointer positions in *buffer* pixels — the same
+        // pixels the client is looking at, which is the only coordinate system
+        // it has. Wayland delivers them surface-local and **logical**, so on a
+        // HiDPI window every position has to come back down by the scale the
+        // application actually rendered at. Skipping this puts the pointer at
+        // twice its offset, which past the halfway point of the window is
+        // outside it entirely.
+        let scale = f64::from(state::surface_scale(&surface).max(1));
+
         // Keyboard focus follows whichever window is being typed into: with one
         // window per tab, the tab the user is looking at is the focus.
         if let Some(keyboard) = &keyboard
@@ -263,7 +272,7 @@ impl Backend for WaylandBackend {
                 }
                 InputEvent::PointerMotion { time_ms, x, y } => {
                     let Some(pointer) = &pointer else { continue };
-                    let location = (fixed_to_f64(x), fixed_to_f64(y)).into();
+                    let location = (fixed_to_f64(x) / scale, fixed_to_f64(y) / scale).into();
                     pointer.motion(
                         &mut self.data.state,
                         Some((surface.clone(), (0.0, 0.0).into())),
