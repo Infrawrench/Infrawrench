@@ -174,6 +174,12 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     return tab;
   }
 
+  // A window of a remote application belongs to a session that did not survive
+  // the restart, so there is nothing to reattach to. Dropping the tab is the
+  // honest outcome: the application on the host is still running and the
+  // launcher will list it.
+  if (target.kind === "linux-app") return null;
+
   const accountRows = await db.select<AccountRow[]>(
     "SELECT id, plugin_id, display_name, encrypted_credentials, credentials_iv FROM accounts WHERE id = $1 LIMIT 1",
     [target.accountId],

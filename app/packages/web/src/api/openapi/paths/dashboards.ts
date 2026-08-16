@@ -213,6 +213,10 @@ const TabTarget = strict({
     "deployments",
     "settings",
     "chat",
+    // One window of a graphical Linux application on a remote host. Always
+    // dropped by validate-tabs — its session cannot outlive the page — but
+    // accepted so an older client's tab list is not rejected wholesale.
+    "linux-app",
   ]),
   dashboardId: Uuid.optional(),
   accountId: Uuid.optional(),
@@ -231,6 +235,12 @@ const TabTarget = strict({
    * deleted invoice just lands on the list.
    */
   invoiceId: Uuid.optional(),
+  /** Which app-server session a `linux-app` tab belonged to. */
+  sessionId: z.string().max(128).optional(),
+  /** Which window of that session. */
+  windowId: z.number().int().nonnegative().optional(),
+  /** Desktop-file id of the application in that window, when it had one. */
+  appId: z.string().max(256).optional(),
 }).openapi("TabTarget");
 
 const ValidateTabsRequest = strict({

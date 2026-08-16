@@ -89,6 +89,7 @@ import { WebTerminal } from "@/components/WebTerminal";
 import type { WebTerminalSession } from "@/components/WebTerminal";
 import { SharedConsolePanel } from "@/components/SharedConsolePanel";
 import { SshQuickConnectPanel } from "@/components/SshQuickConnectPanel";
+import { WebAppLauncherPanel } from "./WebAppsPanels";
 import { SpotlightSearch } from "./SpotlightSearch";
 import { ConnectResourceModal } from "./ConnectResourceModal";
 import { SshTunnelModal } from "./SshTunnelModal";
@@ -165,7 +166,7 @@ interface Props {
   containerId?: string | undefined;
   databaseName?: string | undefined;
   storageBucketName?: string | undefined;
-  initialView?: "ssh" | "sftp" | undefined;
+  initialView?: "ssh" | "sftp" | "apps" | undefined;
   agentSessionId?: string | undefined;
   initialSshKeyId?: string | undefined;
   initialSshKeyName?: string | undefined;
@@ -386,6 +387,7 @@ export function ResourceDetailClient({
 
   const isSshView = initialView === "ssh";
   const isSftpView = initialView === "sftp";
+  const isAppsView = initialView === "apps";
   const hasSshPanel = hasSshTerminal || !!sshHost;
 
   // Rehydrate launch metadata ONLY for agent tabs (agentSessionId present)
@@ -1241,7 +1243,31 @@ export function ResourceDetailClient({
       )}
 
       {/* Detail view — shown when not in SSH or SFTP view */}
-      {!isSshView && !isSftpView && (
+      {isAppsView &&
+        (sshHost && sshQuickConnect ? (
+          <WebAppLauncherPanel
+            target={{
+              orgId,
+              accountId,
+              resourceId,
+              sshKeyId: sshQuickConnect.sshKeyId,
+              host: sshHost,
+              username: sshQuickConnect.username,
+            }}
+          />
+        ) : (
+          // Choosing a key is the same act as opening a shell on the host, so
+          // it is the same flow rather than a second one beside it.
+          <div className="p-4">
+            <SshQuickConnectPanel
+              host={sshHost ?? ""}
+              defaultUsername={defaultSshUsername ?? "root"}
+              onConnect={(connection) => setSshQuickConnect(connection)}
+            />
+          </div>
+        ))}
+
+      {!isSshView && !isSftpView && !isAppsView && (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           {/* Top buttons for SSH/SFTP/Connect */}
           <div className="shrink-0 flex justify-end gap-2 px-4 py-2 border-b border-border bg-surface">

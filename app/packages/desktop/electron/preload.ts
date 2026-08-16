@@ -46,6 +46,11 @@ const INVOKE_CHANNELS = [
   "ssh_open_tunnel",
   "ssh_get_active_tunnels",
   "ssh_exec_command",
+  // Linux applications: open a session on a host, relay frames, list apps.
+  "apps_session_open",
+  "apps_session_write",
+  "apps_session_close",
+  "apps_list",
   "ssh_shell_spawn",
   "ssh_shell_write",
   "ssh_shell_resize",
@@ -435,6 +440,10 @@ const EVENT_PREFIXES: readonly string[] = [
   "k8s_pf_exit_",
   "k8s_pf_cloud_exit_",
   "cloud_chat_stream_",
+  "apps_data_",
+  "apps_exit_",
+  "apps_stderr_",
+  "apps_progress_",
 ];
 
 function isAllowedEventChannel(channel: string): boolean {

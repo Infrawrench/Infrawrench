@@ -19,6 +19,7 @@ import { handleDeploymentSession } from "./src/services/deployment-ws";
 import { resolveKubeconfig } from "./src/services/k8s-kubeconfig-resolver";
 import { authenticateApiRequest, requireScope } from "./src/auth/api-auth";
 import { validateWsToken } from "./src/services/ws-tokens";
+import { handleAppsSession } from "./src/services/apps-proxy";
 import { handleMcpHttp } from "./src/mcp/http-handler";
 import { migrateMetrics } from "@infrawrench/server-core/clickhouse/migrate";
 import { authenticateBastionAgent, handleBastionAgentUpgrade } from "./src/services/bastion-ws";
@@ -139,6 +140,33 @@ async function start() {
   // redraws, which compress extremely well; browsers and Electron negotiate
   // the extension automatically and plain clients fall back to uncompressed.
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
+  // Application frames are already compressed — zstd inside, or an image codec
+  // — so deflating them again would burn a core per session for nothing.
+  const appsWss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
+
+  /**
+   * Same auth the /api/ws upgrade uses: a short-lived ws-token minted by the
+   * app (already gated on `resources:execute`), or an API key carrying that
+   * scope. Starting an application on a host is the same authority as opening
+   * a shell on it, so it is gated the same way.
+   */
+  async function resolveAppsAuth(
+    token: string,
+  ): Promise<{ organizationId: string; userId?: string } | null> {
+    const sessionAuth = await validateWsToken(token);
+    if (sessionAuth) return sessionAuth;
+    const fakeRequest = new Request("http://localhost", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const keyAuth = await authenticateApiRequest(fakeRequest);
+    if (!keyAuth) return null;
+    try {
+      requireScope(keyAuth, "resources:execute");
+      return keyAuth;
+    } catch {
+      return null;
+    }
+  }
 
   server.on("upgrade", async (request, socket, head) => {
     const url = parse(request.url ?? "", true);
@@ -151,6 +179,38 @@ async function start() {
         return;
       }
       handleBastionAgentUpgrade(request, socket, head, bastion);
+      return;
+    }
+
+    if (url.pathname === "/api/apps") {
+      const token = url.query["token"] as string | undefined;
+      const auth = token ? await resolveAppsAuth(token) : null;
+      if (!auth) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      const accountId = url.query["account"] as string | undefined;
+      const resourceId = url.query["resource"] as string | undefined;
+      const sshKeyId = url.query["key"] as string | undefined;
+      const host = url.query["host"] as string | undefined;
+      const username = url.query["user"] as string | undefined;
+      if (!accountId || !resourceId || !sshKeyId || !host || !username) {
+        socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      appsWss.handleUpgrade(request, socket, head, (ws) => {
+        void handleAppsSession(ws, {
+          organizationId: auth.organizationId,
+          ...(auth.userId ? { userId: auth.userId } : {}),
+          accountId,
+          resourceId,
+          sshKeyId,
+          host,
+          username,
+        });
+      });
       return;
     }
 

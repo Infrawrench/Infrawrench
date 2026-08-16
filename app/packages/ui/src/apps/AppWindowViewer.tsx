@@ -1,0 +1,301 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { T, useGT } from "gt-react";
+import { decompress } from "fzstd";
+import {
+  ButtonState,
+  applyPayload,
+  axisFromWheel,
+  evdevFromCode,
+  pointerButtonFromDom,
+  pointerPosition,
+  type AppSession,
+  type InputEvent,
+  type PixelPayload,
+} from "@infrawrench/appstream-core";
+
+/**
+ * One window of a remote Linux application, painted onto a canvas.
+ *
+ * The canvas is sized in *buffer* pixels and scaled down by CSS, so a retina
+ * display gets a window rendered at its own resolution rather than an upscaled
+ * one — which is also why every pointer coordinate goes through
+ * `pointerPosition` rather than being sent as-is.
+ */
+export interface AppWindowViewerProps {
+  session: AppSession;
+  windowId: number;
+  /** Shown over the canvas until the first frame arrives. */
+  status?: string;
+  onClose?: () => void;
+  className?: string;
+}
+
+/**
+ * `fzstd` decompresses in JS; a wasm build would be faster but is an
+ * optimisation, not a gate. The output buffer is pre-sized because the payload
+ * header already says exactly how many pixel bytes to expect, which saves the
+ * decompressor growing a buffer on every frame.
+ */
+function zstdDecompress(input: Uint8Array, expectedBytes: number): Uint8Array {
+  return decompress(input, new Uint8Array(expectedBytes));
+}
+
+export function AppWindowViewer({
+  session,
+  windowId,
+  status,
+  onClose,
+  className,
+}: AppWindowViewerProps) {
+  const gt = useGT();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  /** The RGBA buffer frames are applied to, kept between frames. */
+  // Typed against a plain ArrayBuffer rather than ArrayBufferLike: `ImageData`
+  // refuses a view that might be backed by a SharedArrayBuffer.
+  const bufferRef = useRef<{
+    pixels: Uint8ClampedArray<ArrayBuffer>;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [painted, setPainted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cursor, setCursor] = useState<string>("default");
+
+  const scale = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
+
+  const paint = useCallback((payload: PixelPayload) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    let buffer = bufferRef.current;
+    if (!buffer || buffer.width !== payload.width || buffer.height !== payload.height) {
+      buffer = {
+        pixels: new Uint8ClampedArray(new ArrayBuffer(payload.width * payload.height * 4)),
+        width: payload.width,
+        height: payload.height,
+      };
+      bufferRef.current = buffer;
+      canvas.width = payload.width;
+      canvas.height = payload.height;
+    }
+
+    try {
+      applyPayload(payload, buffer.pixels, buffer.width, buffer.height, zstdDecompress);
+    } catch (cause) {
+      // A frame we cannot decode is not fatal — the next keyframe repairs the
+      // window — but silently painting nothing looks like a hang.
+      setError(cause instanceof Error ? cause.message : String(cause));
+      return;
+    }
+
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.putImageData(new ImageData(buffer.pixels, buffer.width, buffer.height), 0, 0);
+    setError(null);
+    setPainted(true);
+  }, []);
+
+  // Frames and cursor changes for this window.
+  useEffect(() => {
+    const handleFrame = (id: number, payload: PixelPayload) => {
+      if (id === windowId) paint(payload);
+    };
+    const handleCursor = (id: number, shape: string | undefined) => {
+      if (id !== windowId) return;
+      setCursor(cssCursor(shape));
+    };
+    session.addFrameListener(handleFrame);
+    session.addCursorListener(handleCursor);
+    return () => {
+      session.removeFrameListener(handleFrame);
+      session.removeCursorListener(handleCursor);
+    };
+  }, [session, windowId, paint]);
+
+  // Attach on mount, detach on unmount: a tab in the background costs no
+  // bandwidth, and the application keeps running either way.
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    const rect = surface.getBoundingClientRect();
+    session.attach(
+      windowId,
+      Math.max(1, Math.round(rect.width * scale)),
+      Math.max(1, Math.round(rect.height * scale)),
+      scale,
+    );
+    return () => session.detach(windowId);
+  }, [session, windowId, scale]);
+
+  // Follow the tab's size. Debounced, because a drag-resize would otherwise
+  // ask the application to relayout on every animation frame.
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface || typeof ResizeObserver === "undefined") return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        session.resize(
+          windowId,
+          Math.max(1, Math.round(width * scale)),
+          Math.max(1, Math.round(height * scale)),
+          scale,
+        );
+      }, 120);
+    });
+    observer.observe(surface);
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [session, windowId, scale]);
+
+  const started = useMemo(() => Date.now(), []);
+  const now = useCallback(() => (Date.now() - started) % 0xffffffff, [started]);
+
+  const sendPointer = useCallback(
+    (event: React.PointerEvent<HTMLCanvasElement>, extra?: InputEvent[]) => {
+      const canvas = canvasRef.current;
+      const buffer = bufferRef.current;
+      if (!canvas || !buffer) return;
+      const rect = canvas.getBoundingClientRect();
+      // The canvas is displayed at CSS size but addressed in buffer pixels, so
+      // the ratio is the buffer over the box, not the device pixel ratio.
+      const ratioX = buffer.width / Math.max(1, rect.width);
+      const ratioY = buffer.height / Math.max(1, rect.height);
+      const { x, y } = pointerPosition(
+        (event.clientX - rect.left) * ratioX,
+        (event.clientY - rect.top) * ratioY,
+        1,
+      );
+      session.sendInput(windowId, [
+        { kind: "pointerMotion", timeMs: now(), x, y },
+        ...(extra ?? []),
+      ]);
+    },
+    [session, windowId, now],
+  );
+
+  const onKey = useCallback(
+    (event: React.KeyboardEvent<HTMLCanvasElement>, state: ButtonState) => {
+      const keycode = evdevFromCode(event.code);
+      if (keycode === undefined) return;
+      // The remote application owns every key while focused, including the
+      // browser's own shortcuts — otherwise Ctrl-W closes the tab instead of
+      // the document.
+      event.preventDefault();
+      session.sendInput(windowId, [{ kind: "key", timeMs: now(), keycode, state }]);
+    },
+    [session, windowId, now],
+  );
+
+  return (
+    <div
+      ref={surfaceRef}
+      className={`relative h-full w-full overflow-hidden bg-surface-sunken ${className ?? ""}`}
+    >
+      <canvas
+        ref={canvasRef}
+        tabIndex={0}
+        role="img"
+        aria-label={gt("Remote application window")}
+        className="h-full w-full object-contain outline-none"
+        style={{ cursor, imageRendering: "pixelated" }}
+        onPointerMove={(event) => sendPointer(event)}
+        onPointerDown={(event) => {
+          event.currentTarget.focus();
+          const button = pointerButtonFromDom(event.button);
+          if (button === undefined) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          sendPointer(event, [
+            { kind: "pointerButton", timeMs: now(), button, state: ButtonState.Pressed },
+          ]);
+        }}
+        onPointerUp={(event) => {
+          const button = pointerButtonFromDom(event.button);
+          if (button === undefined) return;
+          event.currentTarget.releasePointerCapture(event.pointerId);
+          sendPointer(event, [
+            { kind: "pointerButton", timeMs: now(), button, state: ButtonState.Released },
+          ]);
+        }}
+        onPointerLeave={() =>
+          session.sendInput(windowId, [{ kind: "pointerLeave", timeMs: now() }])
+        }
+        onWheel={(event) => {
+          const { dx, dy } = axisFromWheel(event);
+          session.sendInput(windowId, [{ kind: "pointerAxis", timeMs: now(), dx, dy }]);
+        }}
+        onKeyDown={(event) => onKey(event, ButtonState.Pressed)}
+        onKeyUp={(event) => onKey(event, ButtonState.Released)}
+        onContextMenu={(event) => event.preventDefault()}
+      />
+
+      {!painted && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <p className="text-sm text-on-surface-muted">{status ?? gt("Waiting for the window…")}</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="absolute bottom-3 left-3 right-3 rounded-md border border-warning-border bg-warning-surface px-3 py-2 text-xs text-warning-on-surface">
+          {error}
+        </div>
+      )}
+
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-3 rounded-md border border-border bg-surface-overlay px-2 py-1 text-xs text-on-surface-secondary hover:text-on-surface"
+        >
+          <T>Close window</T>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Wayland cursor shape names to CSS cursors. The names come from
+ * `wp_cursor_shape`, and the ones that do not map are left as the default
+ * rather than guessed at.
+ */
+function cssCursor(shape: string | undefined): string {
+  switch (shape) {
+    case "none":
+      return "none";
+    case "text":
+    case "xterm":
+      return "text";
+    case "pointer":
+    case "hand":
+      return "pointer";
+    case "grab":
+      return "grab";
+    case "grabbing":
+      return "grabbing";
+    case "crosshair":
+      return "crosshair";
+    case "wait":
+    case "watch":
+      return "wait";
+    case "progress":
+      return "progress";
+    case "not-allowed":
+      return "not-allowed";
+    case "col-resize":
+    case "ew-resize":
+      return "ew-resize";
+    case "row-resize":
+    case "ns-resize":
+      return "ns-resize";
+    default:
+      return "default";
+  }
+}

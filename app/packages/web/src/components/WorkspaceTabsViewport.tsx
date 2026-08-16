@@ -28,6 +28,7 @@ import { InvoicesPanel, type InvoicesClient } from "@infrawrench/ui/invoices";
 import { createWebAgentClient } from "@/lib/agent-client";
 import { WebWorkflowsPanel } from "./WebWorkflowsPanel";
 import { WebAgentsPanel } from "./WebAgentsPanel";
+import { WebAppWindowPanel } from "./WebAppsPanels";
 import { WebChatPanel } from "./WebChatPanel";
 import { WebGraphPanel } from "./WebGraphPanel";
 import { CostsPanel, type CostsClient } from "@infrawrench/ui/cost";
@@ -579,6 +580,17 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       // Route-rendered (see showActive above) — the tab only marks the place
       // in the strip; the settings router subtree draws the content.
       return null;
+    case "linux-app":
+      // Joins the session the host's Apps tab opened; a window tab carries no
+      // key of its own, which is why closing that tab ends its windows too.
+      return (
+        <WebAppWindowPanel
+          accountId={t.accountId}
+          resourceId={t.resourceId}
+          windowId={t.windowId}
+          tabId={tab.id}
+        />
+      );
     case "resource":
       if (!t.pluginId || !t.resourceTypeId) {
         // Without pluginId/resourceTypeId we can't construct the detail URL.

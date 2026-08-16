@@ -58,6 +58,7 @@ process.on("uncaughtException", (err) => {
 import "./plugin-host";
 import "./ssh-host";
 import "./ssh-host-key-prompt";
+import { registerIwappdHandlers, shutdownIwappdSessions } from "./iwappd-host";
 import "./k8s-host";
 import "./cloud-auth";
 import "./cloud-data";
@@ -330,6 +331,14 @@ app.on("window-all-closed", () => {
   // notifications + scheduled workflows keep firing with the window closed.
   if (hasBackgroundWork()) return;
   app.quit();
+});
+
+registerIwappdHandlers();
+
+app.on("before-quit", () => {
+  // Every session holds an SSH connection and a compositor on someone else's
+  // machine; quitting without closing them leaves both until the idle timeout.
+  shutdownIwappdSessions();
 });
 
 app.on("before-quit", (event) => {

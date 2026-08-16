@@ -247,3 +247,103 @@ describe("AppSession", () => {
     expect(closed).toBe(true);
   });
 });
+
+describe("AppSession listeners", () => {
+  const pixels = (seq: number) => {
+    const payload = new Uint8Array(12);
+    const view = new DataView(payload.buffer);
+    view.setUint32(4, seq, true);
+    view.setUint16(8, 8, true);
+    view.setUint16(10, 8, true);
+    return encodeFrame(FrameKind.Pixels, 1, payload);
+  };
+
+  it("fans a frame out to every subscriber and still acks", () => {
+    const { transport } = session();
+    transport.reply(welcome);
+    transport.sent = [];
+
+    const seen: string[] = [];
+    const first = (id: number) => seen.push(`first:${id}`);
+    const second = (id: number) => seen.push(`second:${id}`);
+    const app = new AppSession(transport, { caps });
+    app.addFrameListener(first);
+    app.addFrameListener(second);
+    transport.deliver(pixels(5));
+
+    expect(seen).toEqual(["first:1", "second:1"]);
+  });
+
+  it("keeps painting and acking when one viewer throws", () => {
+    // A session that stops acking stops receiving, so one broken viewer must
+    // not take the window down with it.
+    const transport = new FakeTransport();
+    const app = new AppSession(transport, { caps });
+    transport.reply(welcome);
+    transport.sent = [];
+
+    const painted: number[] = [];
+    app.addFrameListener(() => {
+      throw new Error("decode failed");
+    });
+    app.addFrameListener((id) => painted.push(id));
+    transport.deliver(pixels(7));
+
+    expect(painted).toEqual([1]);
+    expect(transport.controls().some((message) => message["type"] === "ack")).toBe(true);
+  });
+
+  it("stops delivering after a listener is removed", () => {
+    const transport = new FakeTransport();
+    const app = new AppSession(transport, { caps });
+    transport.reply(welcome);
+
+    const seen: number[] = [];
+    const listener = (id: number) => seen.push(id);
+    app.addFrameListener(listener);
+    transport.deliver(pixels(1));
+    app.removeFrameListener(listener);
+    transport.deliver(pixels(2));
+
+    expect(seen).toEqual([1]);
+  });
+});
+
+describe("AppSession window subscriptions", () => {
+  it("reports the host's session id once it has greeted", () => {
+    const { transport, app } = session();
+    expect(app.sessionId).toBeUndefined();
+    transport.reply(welcome);
+    expect(app.sessionId).toBe("s1");
+  });
+
+  it("notifies on open and on every retitle", () => {
+    const { transport, app } = session();
+    transport.reply(welcome);
+    const seen: string[] = [];
+    app.addWindowListener((id, window) => seen.push(`${id}:${window.title}`));
+
+    transport.reply({
+      type: "windowOpen",
+      windowId: 2,
+      title: "untitled",
+      width: 100,
+      height: 100,
+    });
+    transport.reply({ type: "windowMeta", windowId: 2, title: "notes.txt" });
+
+    expect(seen).toEqual(["2:untitled", "2:notes.txt"]);
+  });
+
+  it("notifies close with the reason, so a tab can say why", () => {
+    const { transport, app } = session();
+    transport.reply(welcome);
+    const closed: string[] = [];
+    app.addWindowCloseListener((id, reason) => closed.push(`${id}:${reason}`));
+
+    transport.reply({ type: "windowOpen", windowId: 3, title: "x", width: 1, height: 1 });
+    transport.reply({ type: "windowClose", windowId: 3, reason: "crashed" });
+
+    expect(closed).toEqual(["3:crashed"]);
+  });
+});

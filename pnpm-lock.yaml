@@ -80,6 +80,12 @@ importers:
 
   app/packages/desktop:
     dependencies:
+      '@infrawrench/appstream-core':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/appstream-core
+      '@infrawrench/appstream-host':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/appstream-host
       '@infrawrench/workflow-runtime':
         specifier: workspace:*
         version: link:../workflow-runtime
@@ -848,6 +854,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.8)
+      '@infrawrench/appstream-core':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/appstream-core
       '@infrawrench/client-core':
         specifier: workspace:*
         version: link:../client-core
@@ -857,6 +866,9 @@ importers:
       '@monaco-editor/react':
         specifier: ^4.7.0
         version: 4.7.0(monaco-editor@0.52.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      fzstd:
+        specifier: ^0.1.1
+        version: 0.1.1
       gt-react:
         specifier: ^11.1.6
         version: 11.1.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -924,6 +936,12 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.0
         version: 2.1.0(hono@4.13.1)
+      '@infrawrench/appstream-core':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/appstream-core
+      '@infrawrench/appstream-host':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/appstream-host
       '@infrawrench/client-core':
         specifier: workspace:*
         version: link:../client-core
@@ -1197,6 +1215,21 @@ importers:
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
   plugin-architecture/packages/appstream-core:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      tsdown:
+        specifier: ^0.22.14
+        version: 0.22.14(@volar/typescript@2.4.28(typescript@7.0.2))(oxc-resolver@11.24.2)(tsx@4.23.11)(typescript@7.0.2)(unrun@0.3.1)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  plugin-architecture/packages/appstream-host:
     devDependencies:
       '@types/node':
         specifier: ^22.20.1
@@ -9513,6 +9546,9 @@ packages:
 
   function-bind@1.1.2:
     resolution: {integrity: sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA==}
+
+  fzstd@0.1.1:
+    resolution: {integrity: sha512-dkuVSOKKwh3eas5VkJy1AW1vFpet8TA/fGmVA5krThl8YcOVE/8ZIoEA1+U1vEn5ckxxhLirSdY837azmbaNHA==}
 
   gaxios@7.3.0:
     resolution: {integrity: sha512-RB5vLV+vvQeoFPCX4QMK6/hjVkbIamPp1QSUD0CiZcnj12qbpiL+pLbYtgD+oZkWl0tl9z+o2Utp+MpM3QRhBA==}
@@ -19481,7 +19517,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@22.20.1)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
+      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.2)(tsx@4.23.11)(yaml@2.9.0))
 
   '@vitest/expect@4.1.10':
     dependencies:
@@ -21964,6 +22000,8 @@ snapshots:
     optional: true
 
   function-bind@1.1.2: {}
+
+  fzstd@0.1.1: {}
 
   gaxios@7.3.0(supports-color@10.2.2):
     dependencies:

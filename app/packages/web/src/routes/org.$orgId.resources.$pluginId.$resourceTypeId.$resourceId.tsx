@@ -343,7 +343,11 @@ export function ResourcePanel({
         containerId={data.containerId}
         databaseName={data.databaseName}
         storageBucketName={data.storageBucketName}
-        initialView={currentView === "ssh" || currentView === "sftp" ? currentView : undefined}
+        initialView={
+          currentView === "ssh" || currentView === "sftp" || currentView === "apps"
+            ? currentView
+            : undefined
+        }
         agentSessionId={agentSessionId}
         initialSshKeyId={sshKeyId}
         initialSshKeyName={sshKeyName}

@@ -52,6 +52,7 @@ import { cmdPage, cmdCostsPush } from "./commands/push";
 import { cmdCli } from "./commands/cli-install";
 import { cmdDeploy } from "./commands/deploy";
 import { cmdSshFanout } from "./commands/ssh-fanout";
+import { cmdApps } from "./commands/apps";
 import { cmdConfig } from "./commands/config";
 import { runTui } from "./tui";
 
@@ -161,6 +162,8 @@ COMMANDS
   graph               resource dependency tree   [--resource <id>: what it needs + its blast radius]
   blast-radius <id>   what breaks if a resource is deleted: dependants, the dashboards/probes/
                       alerts/leases that point at it, what talks to it, and what wasn't checked
+  apps <resource>     graphical applications installed on a Linux host
+                      (--launch <id> opens one in the app; --key, --user to connect)
   ssh-fanout <cmd>    run one command across many SSH hosts; identical output is collapsed and
                       outliers are diffed against the majority   [--list] [--hosts <q>] [--plugin <id>]
                       [--tag k:v] [--key <id|name>] [--user <name>] [--snippet <name>] [-y]
@@ -228,7 +231,8 @@ FLAGS
   --plugin <id>       ssh-fanout: restrict to one provider
   --tag <key:value>   ssh-fanout: restrict to hosts carrying this tag
   --key <id|name>     ssh-fanout: org SSH key for VM hosts (also: page throttle key)
-  --user <name>       ssh-fanout: username override for VM hosts
+  --user <name>       ssh-fanout, apps: username override for VM hosts
+  --launch <app-id>   apps: open this application in the desktop app
   --snippet <name>    ssh-fanout: run a saved command instead of a literal one
   -y, --yes           skip the confirmation (ssh-fanout's "Run on N hosts?", config apply's plan)
   --concurrency <n>   ssh-fanout: simultaneous connections (default 8, max 16)
@@ -356,6 +360,9 @@ export async function runCli(): Promise<void> {
         break;
       case "accounts":
         await cmdAccounts(ctx);
+        break;
+      case "apps":
+        await cmdApps(ctx, rest[0] ?? "", parsed.apps);
         break;
       case "resources":
         await cmdResources(ctx, parsed.range.type);

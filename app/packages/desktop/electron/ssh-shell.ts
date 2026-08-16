@@ -107,10 +107,18 @@ function connectOneHop(opts: {
   });
 }
 
-export async function spawnSshShell(
-  webContents: WebContents,
+/**
+ * Dial the whole chain — jump hops in order, then the target — and hand back
+ * the connected client plus the intermediates the caller must close with it.
+ *
+ * Shared with the Linux app server (`iwappd-host.ts`), which needs exactly this
+ * connection and then execs on it instead of opening a shell. Agent selection,
+ * forwarding and the per-hop TOFU host-key check all live here so the two
+ * cannot drift apart.
+ */
+export async function connectSshChain(
   config: SshShellConfig,
-): Promise<string> {
+): Promise<{ client: SshClient; intermediates: SshClient[] }> {
   await ensureHostKeyCacheLoaded();
 
   // When the user picked an external agent (Pageant / 1Password) we route both
@@ -198,6 +206,31 @@ export async function spawnSshShell(
     }
     throw err;
   }
+
+  return { client, intermediates };
+}
+
+/** Close a chain, innermost first. Safe to call more than once. */
+export function endSshChain(client: SshClient, intermediates: SshClient[]): void {
+  try {
+    client.end();
+  } catch {
+    /* already gone */
+  }
+  for (const c of intermediates) {
+    try {
+      c.end();
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
+export async function spawnSshShell(
+  webContents: WebContents,
+  config: SshShellConfig,
+): Promise<string> {
+  const { client, intermediates } = await connectSshChain(config);
 
   return new Promise<string>((resolve, reject) => {
     client.shell(

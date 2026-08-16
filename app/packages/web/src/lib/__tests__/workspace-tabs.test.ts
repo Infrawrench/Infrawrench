@@ -251,6 +251,20 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(args).toMatchObject({ hash: "apps" });
   });
 
+  it("routes a window tab to its resource with the window in the query", () => {
+    const args = getWorkspaceNavigateArgs({
+      kind: "linux-app",
+      accountId: "acc-1",
+      resourceId: "res-1",
+      sessionId: "sess-9",
+      windowId: 4,
+    });
+    expect(args).toMatchObject({
+      hash: "window",
+      search: { window: "4", session: "sess-9", accountId: "acc-1" },
+    });
+  });
+
   it("returns resource route args with sftp hash", () => {
     const args = getWorkspaceNavigateArgs({
       kind: "resource",

@@ -32,6 +32,7 @@ import {
   resourceSshTabTarget,
   resourceSftpTabTarget,
   resourceAppsTabTarget,
+  linuxAppTabTarget,
   type WorkspaceTabTarget,
   type RouteNavigator,
 } from "@infrawrench/ui";
@@ -69,6 +70,7 @@ export {
   resourceSshTabTarget,
   resourceSftpTabTarget,
   resourceAppsTabTarget,
+  linuxAppTabTarget,
 };
 
 export function getWorkspaceNavigateArgs(
@@ -197,6 +199,24 @@ export function getWorkspaceNavigateArgs(
       return {
         to: "/chat",
         search: target.conversationId ? { conversation: target.conversationId } : {},
+        ...(replace ? { replace: true } : {}),
+      };
+    // A window belongs to a resource, so it lives at that resource's route
+    // with the window identified in the query rather than at a route of its
+    // own — there is nothing at a window URL without a live session anyway.
+    case "linux-app":
+      return {
+        to: "/resource/$accountId/$resourceId",
+        params: {
+          accountId: target.accountId,
+          resourceId: encodeURIComponent(normalizeResourceId(target.resourceId)),
+        },
+        search: {
+          window: String(target.windowId),
+          session: target.sessionId,
+          ...(target.appId ? { app: target.appId } : {}),
+        },
+        hash: "window",
         ...(replace ? { replace: true } : {}),
       };
     case "resource": {
@@ -365,6 +385,22 @@ export function syncWorkspaceRouteFromPath(
       return resourceSftpTabTarget(segments[1], segments.slice(2).join("/"));
     if (normalizedHash === "apps")
       return resourceAppsTabTarget(segments[1], segments.slice(2).join("/"));
+    if (normalizedHash === "window") {
+      const windowId = Number(params.get("window"));
+      const sessionId = params.get("session");
+      // Both halves or nothing: a window id without its session addresses a
+      // window on a host we have no connection to.
+      if (Number.isInteger(windowId) && windowId > 0 && sessionId) {
+        const appId = params.get("app");
+        return linuxAppTabTarget({
+          accountId: segments[1],
+          resourceId: segments.slice(2).join("/"),
+          sessionId,
+          windowId,
+          ...(appId ? { appId } : {}),
+        });
+      }
+    }
     return resourceTabTarget(segments[1], segments.slice(2).join("/"));
   }
   return null;

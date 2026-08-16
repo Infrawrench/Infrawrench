@@ -242,6 +242,29 @@ export function resourceAppsTabTarget(
 }
 
 /**
+ * One window of a graphical application running on a remote host.
+ *
+ * Not a `resource` view: a resource tab is one-per-resource, and a host can
+ * have several windows open at the same time.
+ */
+export function linuxAppTabTarget(options: {
+  accountId: string;
+  resourceId: string;
+  sessionId: string;
+  windowId: number;
+  appId?: string;
+}): WorkspaceTabTarget {
+  return {
+    kind: "linux-app",
+    accountId: options.accountId,
+    resourceId: normalizeResourceId(options.resourceId),
+    sessionId: options.sessionId,
+    windowId: options.windowId,
+    ...(options.appId ? { appId: options.appId } : {}),
+  };
+}
+
+/**
  * Navigate to a workspace target, updating the store and routing.
  * Platform-specific `getNavigateArgs` must be curried in by each platform.
  * Note: each platform re-implements this thin wrapper to enable test mocking

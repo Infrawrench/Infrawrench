@@ -32,6 +32,7 @@ import {
   resourceSshTabTarget,
   resourceSftpTabTarget,
   resourceAppsTabTarget,
+  linuxAppTabTarget,
   type WorkspaceTabTarget,
   type RouteNavigator,
 } from "@infrawrench/ui";
@@ -49,6 +50,7 @@ export {
   resourceSshTabTarget,
   resourceSftpTabTarget,
   resourceAppsTabTarget,
+  linuxAppTabTarget,
 };
 
 function getCurrentOrgId(): string {
@@ -282,6 +284,29 @@ export function getWorkspaceNavigateArgs(
             params: { orgId },
             ...(replace ? { replace: true } : {}),
           };
+    // Same reasoning as desktop: the window lives at its resource's route with
+    // the window in the query, because a window URL means nothing without a
+    // live session behind it.
+    case "linux-app": {
+      const rid = normalizeResourceId(target.resourceId);
+      return {
+        to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+        params: {
+          orgId,
+          pluginId: "ssh",
+          resourceTypeId: "server",
+          resourceId: rid,
+        },
+        search: {
+          accountId: target.accountId,
+          window: String(target.windowId),
+          session: target.sessionId,
+          ...(target.appId ? { app: target.appId } : {}),
+        },
+        hash: "window",
+        ...(replace ? { replace: true } : {}),
+      };
+    }
     case "resource": {
       const rid = normalizeResourceId(target.resourceId);
       const hash =
@@ -512,6 +537,20 @@ export function syncWorkspaceRouteFromPath(
       return resourceSftpTabTarget(accountId, resourceId, pluginId, resourceTypeId);
     if (normalizedHash === "apps")
       return resourceAppsTabTarget(accountId, resourceId, pluginId, resourceTypeId);
+    if (normalizedHash === "window") {
+      const windowId = Number(params.get("window"));
+      const sessionId = params.get("session");
+      if (Number.isInteger(windowId) && windowId > 0 && sessionId) {
+        const appId = params.get("app");
+        return linuxAppTabTarget({
+          accountId,
+          resourceId,
+          sessionId,
+          windowId,
+          ...(appId ? { appId } : {}),
+        });
+      }
+    }
     return resourceTabTarget(accountId, resourceId, pluginId, resourceTypeId);
   }
   return null;

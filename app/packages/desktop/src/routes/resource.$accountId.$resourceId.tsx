@@ -54,11 +54,13 @@ import {
   accountTabTarget,
   navigateToWorkspaceTarget,
   resourceSshTabTarget,
+  resourceAppsTabTarget,
   resourceSftpTabTarget,
   resourceTabTarget,
 } from "../lib/workspace-tabs";
 import { SftpViewPane } from "./_resource-detail/-SftpViewPane";
 import { SshViewPane } from "./_resource-detail/-SshViewPane";
+import { AppsViewPane } from "./_resource-detail/-AppsViewPane";
 import { ResourceActionBar } from "./_resource-detail/-ResourceActionBar";
 import { ResourceFooterBar } from "./_resource-detail/-ResourceFooterBar";
 import { SshConnectionBar } from "./_resource-detail/-SshConnectionBar";
@@ -154,6 +156,7 @@ export function ResourcePanel({
   const currentView = locationHash.replace(/^#/, "");
   const isSshView = currentView === "ssh";
   const isSftpView = currentView === "sftp";
+  const isAppsView = currentView === "apps";
 
   const [account, setAccount] = useState<AccountRow | null>(null);
   const [resource, setResource] = useState<ResourceInstance | null>(null);
@@ -1118,6 +1121,13 @@ export function ResourcePanel({
     });
   }
 
+  function openAppsTab() {
+    void navigateToWorkspaceTarget(navigate, resourceAppsTabTarget(accountId, decodedResourceId), {
+      label: resourceTabTitle(resource?.displayName ?? "", "apps") || "Apps",
+      mode: "pin",
+    });
+  }
+
   function openSftpTab() {
     void navigateToWorkspaceTarget(navigate, resourceSftpTabTarget(accountId, decodedResourceId), {
       label: resourceTabTitle(resource?.displayName ?? "", "sftp") || "SFTP",
@@ -1150,6 +1160,7 @@ export function ResourcePanel({
                 sshHost={sshHost}
                 onOpenSftpTab={openSftpTab}
                 onOpenSshTab={openSshTab}
+                onOpenAppsTab={openAppsTab}
                 onShowTunnelModal={() => setShowTunnelModal(true)}
                 onShowDockerSetup={() => setShowDockerSetup(true)}
                 onShowDropSpotlight={() => setShowDropSpotlight(true)}
@@ -1213,6 +1224,18 @@ export function ResourcePanel({
                 : {})}
             />
           </div>
+        )}
+
+        {isAppsView && (
+          <AppsViewPane
+            accountId={accountId}
+            decodedResourceId={decodedResourceId}
+            sshConfig={sshConfig}
+            sshHost={sshHost}
+            sshDefaultUsername={sshDefaultUsername}
+            quickSshConnection={quickSshConnection}
+            onConnect={(config) => setQuickSshConnection(config)}
+          />
         )}
 
         {isSshView && (
