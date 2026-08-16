@@ -87,10 +87,24 @@ async function paintImageTiles(
     );
   }
   await Promise.all(drawn);
-  // Read the canvas back so the buffer holds what the user is looking at. The
-  // host knows a JPEG rectangle is approximate and will never send a delta
+
+  // Read back what changed, so the buffer holds what the user is looking at.
+  // The host knows a JPEG rectangle is approximate and will never send a delta
   // against one, but every *other* rectangle of the next frame may be one.
-  buffer.pixels.set(context.getImageData(0, 0, buffer.width, buffer.height).data);
+  //
+  // Only the changed region: a full-canvas `getImageData` is a stall on the
+  // GPU and a copy of the whole window, per frame, on the tier that runs when
+  // the window is busiest.
+  const dirty = dirtyBounds(payload);
+  if (!dirty) return;
+  const read = context.getImageData(dirty.x, dirty.y, dirty.w, dirty.h).data;
+  const rowBytes = dirty.w * 4;
+  for (let row = 0; row < dirty.h; row++) {
+    buffer.pixels.set(
+      read.subarray(row * rowBytes, row * rowBytes + rowBytes),
+      ((dirty.y + row) * buffer.width + dirty.x) * 4,
+    );
+  }
 }
 
 export function AppWindowViewer({

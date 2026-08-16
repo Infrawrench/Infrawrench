@@ -9,6 +9,7 @@
 mod encoder;
 mod payload;
 mod rect;
+mod simd;
 mod tier;
 
 pub use encoder::{

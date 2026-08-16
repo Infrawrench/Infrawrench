@@ -579,6 +579,20 @@ impl<B: Backend, C: Catalog> Session<B, C> {
         self.windows.get(&window_id).map(|w| w.tier.current())
     }
 
+    /// What each attached window is currently costing, for the serve loop's
+    /// periodic report: its tier, and where the lossy quality has settled.
+    /// Empty when nothing is attached.
+    pub fn window_load(&self) -> Vec<(u32, Tier, u8)> {
+        let mut load: Vec<(u32, Tier, u8)> = self
+            .windows
+            .iter()
+            .filter(|(_, w)| w.attached)
+            .map(|(id, w)| (*id, w.tier.current(), w.encoder.quality()))
+            .collect();
+        load.sort_unstable_by_key(|(id, _, _)| *id);
+        load
+    }
+
     pub fn window_ids(&self) -> Vec<u32> {
         let mut ids: Vec<u32> = self.windows.keys().copied().collect();
         ids.sort_unstable();

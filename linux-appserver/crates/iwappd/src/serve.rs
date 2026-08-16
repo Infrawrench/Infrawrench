@@ -12,6 +12,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use iw_apps::IconBudget;
+use iw_codec::Tier;
 use iw_proto::{FrameDecoder, PixelFormat, ServerCaps};
 use smithay::reexports::calloop::ping::Ping;
 
@@ -142,7 +143,7 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
             pump_started.elapsed(),
             outbound_bytes,
         );
-        stats.report();
+        stats.report(&session.window_load());
 
         if session.is_ended() || !stdin_open {
             break;
@@ -195,7 +196,7 @@ impl Stats {
         self.bytes += bytes;
     }
 
-    fn report(&mut self) {
+    fn report(&mut self, load: &[(u32, Tier, u8)]) {
         let elapsed = self.since.elapsed();
         if elapsed < STATS_EVERY {
             return;
@@ -204,13 +205,26 @@ impl Stats {
         // seconds for an hour helps nobody.
         if self.bytes > 0 {
             let seconds = elapsed.as_secs_f64().max(0.001);
+            // The tier and quality are what explain the byte rate: a window on
+            // the lossy tier at a quality the budget pushed down is a window
+            // whose link cannot carry what it wants to send.
+            let windows: Vec<String> = load
+                .iter()
+                .map(|(id, tier, quality)| match tier {
+                    Tier::Image => format!("w{id}=lossy/q{quality}"),
+                    Tier::Video => format!("w{id}=video"),
+                    Tier::Lossless => format!("w{id}=lossless"),
+                })
+                .collect();
             eprintln!(
-                "[stats] {:.0} turns/s, compositing {:.1}ms/s, encoding {:.1}ms/s (slowest frame {:.1}ms), {:.0} KiB/s",
+                "[stats] {:.0} turns/s, compositing {:.1}ms/s, encoding {:.1}ms/s (slowest frame {:.1}ms), {:.0} KiB/s{}{}",
                 f64::from(self.turns) / seconds,
                 self.dispatch.as_secs_f64() * 1000.0 / seconds,
                 self.encode.as_secs_f64() * 1000.0 / seconds,
                 self.slowest_encode.as_secs_f64() * 1000.0,
                 self.bytes as f64 / 1024.0 / seconds,
+                if windows.is_empty() { "" } else { ", " },
+                windows.join(" "),
             );
         }
         *self = Self::default();

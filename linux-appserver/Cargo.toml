@@ -18,12 +18,16 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 zstd = "0.13"
-# Baseline JPEG for the lossy tier. Zero transitive dependencies, no unsafe
-# with default features off, and the browser decodes the result natively —
-# which is the argument for JPEG over anything we would have to ship a decoder
-# for. 0.6 rather than 0.7 because 0.7 wants rustc 1.87 and this workspace is
-# pinned to 1.85.
-jpeg-encoder = { version = "0.6.1", default-features = false }
+# Baseline JPEG for the lossy tier. Zero transitive dependencies, and the
+# browser decodes the result natively — which is the argument for JPEG over
+# anything we would have to ship a decoder for. 0.6 rather than 0.7 because 0.7
+# wants rustc 1.87 and this workspace is pinned to 1.85.
+#
+# `simd` is its AVX2 colour conversion and forward DCT, chosen at *runtime*, so
+# the baseline build still benefits on any host newer than about 2013. It makes
+# the encoder's exact bytes depend on the CPU, which is why the JPEG golden
+# fixture pins the framing rather than the bytes.
+jpeg-encoder = { version = "0.6.1", default-features = false, features = ["simd"] }
 
 [profile.release]
 # The binary is uploaded to every host the user connects to, so size is a

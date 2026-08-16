@@ -62,9 +62,19 @@ pub struct EncoderConfig {
     /// False when the client cannot decode JPEG, which also pins the encoder
     /// to the lossless mode however much the window is moving.
     pub allow_jpeg: bool,
-    /// Quality for the lossy mode, 1–100. 72 is where a moving window stops
-    /// looking soft on text that happens to be inside it.
+    /// Starting quality for the lossy mode, 1–100. 72 is where a moving window
+    /// stops looking soft on text that happens to be inside it.
     pub jpeg_quality: u8,
+    /// Bytes a lossy frame should aim to fit in.
+    ///
+    /// This is the difference between a window that moves and one that lurches.
+    /// A full 2× window at quality 72 encodes to well over a megabyte, and
+    /// nothing carries a megabyte per frame over SSH: the frames queue, each
+    /// one arrives late, and the session feels laggy no matter how fast the
+    /// host encoded them. So quality tracks a byte budget rather than staying
+    /// where it was set — the same trade every video call makes, for the same
+    /// reason.
+    pub target_frame_bytes: usize,
 }
 
 impl Default for EncoderConfig {
@@ -76,6 +86,10 @@ impl Default for EncoderConfig {
             allow_delta: true,
             allow_jpeg: true,
             jpeg_quality: 72,
+            // A quarter of a megabyte a frame is ~60 Mbit at 30fps: more than
+            // a modest link, less than a good one, and the loop moves off it in
+            // either direction within a second.
+            target_frame_bytes: 256 * 1024,
         }
     }
 }
@@ -103,6 +117,8 @@ pub enum EncodeError {
     Zstd(String),
     #[error("jpeg: {0}")]
     Jpeg(String),
+    #[error("a jpeg worker panicked")]
+    JpegPanic,
 }
 
 /// A frame ready to hand to the transport.
@@ -146,6 +162,9 @@ pub struct Encoder {
     lossy_tiles: Vec<bool>,
     tiles_across: u32,
     mode: EncodeMode,
+    /// Where the byte-budget loop has settled. Starts at the configured
+    /// quality and moves with what the frames actually cost.
+    quality: u8,
     seq: u32,
     stats: EncoderStats,
 }
@@ -161,6 +180,23 @@ const LOSSY_TILE: u32 = 64;
 /// zstd handles *worse* than the original.
 const DELTA_ZERO_FRACTION: f32 = 0.55;
 
+/// Above this many bytes of pixels, compression time starts to dominate the
+/// frame and the level drops. Around a quarter of a 1080p window.
+const LARGE_PAYLOAD: usize = 2 * 1024 * 1024;
+
+/// Pixels per JPEG band. Small enough that a full window splits several ways,
+/// large enough that the per-image header and the thread are noise beside it.
+const JPEG_BAND_BYTES: usize = 512 * 1024;
+
+/// However big the window, this many bands. A customer's VM is not ours to
+/// fill, and past a handful the split stops helping anyway.
+const MAX_JPEG_BANDS: usize = 8;
+
+/// The quality the byte budget will not push below. Under this, text inside a
+/// moving window stops being legible and starts being a smear — at which point
+/// the window is cheap and useless rather than expensive and useful.
+const MIN_JPEG_QUALITY: u8 = 35;
+
 impl Encoder {
     pub fn new(config: EncoderConfig) -> Self {
         Self {
@@ -170,6 +206,7 @@ impl Encoder {
             lossy_tiles: Vec::new(),
             tiles_across: 0,
             mode: EncodeMode::Lossless,
+            quality: config.jpeg_quality,
             seq: 0,
             stats: EncoderStats::default(),
         }
@@ -262,15 +299,37 @@ impl Encoder {
             }
 
             if lossy {
-                let jpeg = encode_jpeg(&frame, rect, self.config.jpeg_quality)?;
-                tiles.extend_from_slice(&(jpeg.len() as u32).to_le_bytes());
-                tiles.extend_from_slice(&jpeg);
-                entries.push(RectEntry {
-                    rect,
-                    op: RectOp::Pixels,
-                    solid: 0,
+                // A large rectangle is cut into horizontal bands and the bands
+                // are encoded at the same time. JPEG is the most expensive
+                // thing this encoder does by an order of magnitude, the bands
+                // are independent, and the wire already carries one image per
+                // rectangle — so the parallelism costs nothing but the split.
+                //
+                // The split is by size rather than by core count, so the frames
+                // a given window produces are the same on every host.
+                let bands = bands_of(rect);
+                let quality = self.quality;
+                let encoded = std::thread::scope(|scope| {
+                    let handles: Vec<_> = bands
+                        .iter()
+                        .map(|band| scope.spawn(move || encode_jpeg(&frame, *band, quality)))
+                        .collect();
+                    handles
+                        .into_iter()
+                        .map(|handle| handle.join().unwrap_or(Err(EncodeError::JpegPanic)))
+                        .collect::<Vec<_>>()
                 });
-                self.stats.rects_lossy += 1;
+                for (band, jpeg) in bands.iter().zip(encoded) {
+                    let jpeg = jpeg?;
+                    tiles.extend_from_slice(&(jpeg.len() as u32).to_le_bytes());
+                    tiles.extend_from_slice(&jpeg);
+                    entries.push(RectEntry {
+                        rect: *band,
+                        op: RectOp::Pixels,
+                        solid: 0,
+                    });
+                    self.stats.rects_lossy += 1;
+                }
                 continue;
             }
 
@@ -308,7 +367,7 @@ impl Encoder {
         let (codec, blob) = if !tiles.is_empty() {
             (Codec::JpegTiles, tiles)
         } else if self.config.allow_zstd && !pixels.is_empty() {
-            let compressed = zstd::bulk::compress(&pixels, self.config.zstd_level)
+            let compressed = zstd::bulk::compress(&pixels, zstd_level(&self.config, pixels.len()))
                 .map_err(|e| EncodeError::Zstd(e.to_string()))?;
             (Codec::ZstdRects, compressed)
         } else if pixels.is_empty() {
@@ -336,6 +395,9 @@ impl Encoder {
         self.commit(&frame, &payload);
 
         let bytes = payload.encode();
+        if lossy {
+            self.retarget_quality(bytes.len());
+        }
         self.stats.frames_sent += 1;
         self.stats.encoded_bytes += bytes.len() as u64;
         Ok(Some(EncodedFrame {
@@ -343,6 +405,27 @@ impl Encoder {
             bytes,
             coverage,
         }))
+    }
+
+    /// Move the lossy quality towards the frame-size budget.
+    ///
+    /// Down fast and up slow, deliberately. Overshooting the budget means
+    /// frames queueing on a link that cannot carry them, which the user feels
+    /// immediately; undershooting means a slightly softer picture, which they
+    /// mostly do not. The floor is where text inside a moving window is still
+    /// legible rather than a smear.
+    fn retarget_quality(&mut self, frame_bytes: usize) {
+        let target = self.config.target_frame_bytes.max(1);
+        if frame_bytes > target {
+            self.quality = self.quality.saturating_sub(6).max(MIN_JPEG_QUALITY);
+        } else if frame_bytes < target / 2 {
+            self.quality = (self.quality + 2).min(self.config.jpeg_quality);
+        }
+    }
+
+    /// The lossy quality this window has settled on, for tests and telemetry.
+    pub fn quality(&self) -> u8 {
+        self.quality
     }
 
     /// Does this rectangle differ from what the client holds?
@@ -370,11 +453,10 @@ impl Encoder {
         for row in 0..rect.h {
             let src = ((rect.y + row) * canvas_width + rect.x) as usize * 4;
             let dst = row as usize * row_bytes;
-            for i in 0..row_bytes {
-                let d = slice[dst + i].wrapping_sub(self.prev[src + i]);
-                slice[dst + i] = d;
-                zeros += usize::from(d == 0);
-            }
+            zeros += crate::simd::delta_in_place(
+                &mut slice[dst..dst + row_bytes],
+                &self.prev[src..src + row_bytes],
+            );
         }
         let total = row_bytes * rect.h as usize;
         if zeros as f32 >= total as f32 * DELTA_ZERO_FRACTION {
@@ -386,9 +468,10 @@ impl Encoder {
         for row in 0..rect.h {
             let src = ((rect.y + row) * canvas_width + rect.x) as usize * 4;
             let dst = row as usize * row_bytes;
-            for i in 0..row_bytes {
-                slice[dst + i] = slice[dst + i].wrapping_add(self.prev[src + i]);
-            }
+            crate::simd::undelta_in_place(
+                &mut slice[dst..dst + row_bytes],
+                &self.prev[src..src + row_bytes],
+            );
         }
         false
     }
@@ -466,30 +549,71 @@ impl Encoder {
     }
 }
 
-/// One rectangle of a frame as a baseline JPEG.
+/// How hard to compress a payload of this size.
 ///
-/// The rectangle is copied out row by row because the encoder wants a tightly
-/// packed image and the frame is a window with a stride, and converted from the
-/// session's BGRA to RGB because that is what a JPEG holds — alpha does not
-/// survive this tier, which is fine for a window being composited onto nothing.
+/// Compression is the single most expensive thing the encoder does, and its
+/// cost is linear in the input while the *gain* from a higher level is not: on
+/// a megabyte-scale keyframe, level 1 against level 2 is a few percent of size
+/// against nearly half the time. A keyframe is exactly the frame the user is
+/// waiting on — a window opening, a resize settling — so the big ones trade the
+/// percent for the milliseconds and the small ones, where the whole thing is
+/// sub-millisecond either way, keep the ratio.
+fn zstd_level(config: &EncoderConfig, bytes: usize) -> i32 {
+    if bytes >= LARGE_PAYLOAD {
+        config.zstd_level.min(1)
+    } else {
+        config.zstd_level
+    }
+}
+
+/// One rectangle of a frame as a baseline JPEG, appended to `out`.
+///
+/// The rectangle is copied into `scratch` row by row because the encoder wants
+/// a tightly packed image and the frame is a window with a stride. It is copied
+/// as-is: `jpeg-encoder` takes BGRA directly and ignores the alpha, so the
+/// per-pixel channel shuffle this used to do — a full pass over every pixel of
+/// every lossy frame, into a fresh allocation — buys nothing.
 fn encode_jpeg(frame: &FrameView<'_>, rect: Rect, quality: u8) -> Result<Vec<u8>, EncodeError> {
-    let mut rgb = Vec::with_capacity(rect.area() as usize * 3);
+    let row_bytes = rect.w as usize * 4;
+    let mut packed = Vec::with_capacity(row_bytes * rect.h as usize);
     for y in rect.y..rect.bottom() {
-        let row = &frame.row(y)[rect.x as usize * 4..][..rect.w as usize * 4];
-        for px in row.chunks_exact(4) {
-            rgb.extend_from_slice(&[px[2], px[1], px[0]]);
-        }
+        packed.extend_from_slice(&frame.row(y)[rect.x as usize * 4..][..row_bytes]);
     }
     let mut out = Vec::new();
     jpeg_encoder::Encoder::new(&mut out, quality.clamp(1, 100))
         .encode(
-            &rgb,
+            &packed,
             u16::try_from(rect.w).map_err(|_| EncodeError::WindowTooLarge(rect.w, rect.h))?,
             u16::try_from(rect.h).map_err(|_| EncodeError::WindowTooLarge(rect.w, rect.h))?,
-            jpeg_encoder::ColorType::Rgb,
+            jpeg_encoder::ColorType::Bgra,
         )
         .map_err(|e| EncodeError::Jpeg(e.to_string()))?;
     Ok(out)
+}
+
+/// Cut a rectangle into horizontal bands small enough to be worth encoding
+/// side by side.
+///
+/// Bands are whole numbers of rows and never narrower than a JPEG's own 8-row
+/// unit; a rectangle that is already small comes back as itself, because a
+/// thread costs more than it would save.
+fn bands_of(rect: Rect) -> Vec<Rect> {
+    let bytes = rect.area() as usize * 4;
+    if bytes <= JPEG_BAND_BYTES || rect.h < 16 {
+        return vec![rect];
+    }
+    let wanted = (bytes / JPEG_BAND_BYTES).clamp(2, MAX_JPEG_BANDS) as u32;
+    // Round the band height up to a multiple of 8 so no band starts mid-block,
+    // which would cost quality at every seam.
+    let rows = (rect.h.div_ceil(wanted)).next_multiple_of(8).max(8);
+    let mut bands = Vec::new();
+    let mut y = rect.y;
+    while y < rect.bottom() {
+        let h = rows.min(rect.bottom() - y);
+        bands.push(Rect::new(rect.x, y, rect.w, h));
+        y += h;
+    }
+    bands
 }
 
 /// The rectangle's colour if every pixel in it is the same, else `None`.
@@ -499,7 +623,7 @@ fn solid_colour(frame: &FrameView<'_>, rect: Rect) -> Option<u32> {
     let colour: [u8; 4] = first_row[start..start + 4].try_into().ok()?;
     for y in rect.y..rect.bottom() {
         let row = &frame.row(y)[start..start + rect.w as usize * 4];
-        if !row.chunks_exact(4).all(|px| px == colour) {
+        if !crate::simd::is_uniform(row, colour) {
             return None;
         }
     }

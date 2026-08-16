@@ -156,6 +156,64 @@ fn check(dir: &Path, name: &str, actual: &[u8]) {
     );
 }
 
+/// Like [`check`], but comparing the *shape* of the frames rather than their
+/// bytes: same frame count, same codec, same rectangle table.
+///
+/// The lossy tier's exact bytes depend on the CPU the host happens to have —
+/// `jpeg-encoder` picks an AVX2 path at runtime — so pinning them would mean a
+/// fixture that only reproduces on the machine that wrote it. What has to agree
+/// across the two languages is the framing, and the checked-in file is what the
+/// TypeScript test reads to verify it.
+fn check_same_shape(dir: &Path, name: &str, actual: &[u8]) {
+    let path = dir.join(name);
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        std::fs::create_dir_all(dir).expect("create fixtures dir");
+        std::fs::write(&path, actual).expect("write fixture");
+        return;
+    }
+    let expected = std::fs::read(&path).unwrap_or_else(|_| {
+        panic!(
+            "missing fixture {}; regenerate with UPDATE_GOLDEN=1 cargo test -p iw-codec --test golden",
+            path.display()
+        )
+    });
+    assert_eq!(
+        shape_of(&expected),
+        shape_of(actual),
+        "{name} changed shape: the wire format moved, and @infrawrench/appstream-core has to move with it"
+    );
+}
+
+/// One rectangle's position, size and op — the parts a decoder acts on.
+type RectShape = (u32, u32, u32, u32, u8);
+
+/// One payload's codec, keyframe flag and rectangle table.
+type FrameShape = (u8, bool, Vec<RectShape>);
+
+/// Every frame's shape — everything about a payload except the compressed
+/// bytes themselves.
+fn shape_of(wire: &[u8]) -> Vec<FrameShape> {
+    let mut decoder = iw_proto::FrameDecoder::new();
+    decoder.push(wire);
+    let mut shapes = Vec::new();
+    while let Some(frame) = decoder
+        .next_frame()
+        .expect("fixture frames are well formed")
+    {
+        let payload = PixelPayload::decode(&frame.payload).expect("fixture payloads decode");
+        shapes.push((
+            payload.codec as u8,
+            payload.keyframe,
+            payload
+                .rects
+                .iter()
+                .map(|e| (e.rect.x, e.rect.y, e.rect.w, e.rect.h, e.op as u8))
+                .collect(),
+        ));
+    }
+    shapes
+}
+
 #[test]
 fn golden_fixtures_match() {
     let Some(dir) = fixtures_dir() else {
@@ -204,7 +262,7 @@ fn golden_fixtures_match() {
     // the encoder never deltas against one — so what is pinned is the framing:
     // a length-prefixed image per rectangle, in table order.
     let jpeg = encode_sequence(EncoderConfig::default(), EncodeMode::Lossy);
-    check(&dir, "jpeg-frames.bin", &jpeg.wire);
+    check_same_shape(&dir, "jpeg-frames.bin", &jpeg.wire);
     assert!(
         jpeg.payloads
             .iter()
