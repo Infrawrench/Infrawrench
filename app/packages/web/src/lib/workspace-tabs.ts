@@ -65,7 +65,11 @@ export function getWorkspaceNavigateArgs(
 ): {
   to: string;
   params?: Record<string, string>;
-  search?: Record<string, string>;
+  // Numbers are allowed, and load-bearing for the window id: the router
+  // JSON-encodes search values, so the *string* "4" is written to the URL as
+  // `window=%224%22` and read back out of the raw query string with its quotes
+  // still attached.
+  search?: Record<string, string | number>;
   replace?: boolean;
   hash?: string;
 } {
@@ -289,17 +293,27 @@ export function getWorkspaceNavigateArgs(
     // live session behind it.
     case "linux-app": {
       const rid = normalizeResourceId(target.resourceId);
+      // Without the host's own plugin and type there is no resource URL to
+      // build, and guessing one addresses a resource that does not exist —
+      // the account is the honest fallback. Every launcher supplies them.
+      if (!target.pluginId || !target.resourceTypeId) {
+        return {
+          to: "/org/$orgId/accounts/$accountId",
+          params: { orgId, accountId: target.accountId },
+          ...(replace ? { replace: true } : {}),
+        };
+      }
       return {
         to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
         params: {
           orgId,
-          pluginId: "ssh",
-          resourceTypeId: "server",
+          pluginId: target.pluginId,
+          resourceTypeId: target.resourceTypeId,
           resourceId: rid,
         },
         search: {
           accountId: target.accountId,
-          window: String(target.windowId),
+          window: target.windowId,
           session: target.sessionId,
           ...(target.appId ? { app: target.appId } : {}),
         },
@@ -392,6 +406,18 @@ export function isRouteHostedTabPanel(
   tab: { target: WorkspaceTabTarget },
 ): boolean {
   return tab.target.kind === "settings" && routeTarget?.kind === "settings";
+}
+
+/**
+ * An integer read out of a raw query string.
+ *
+ * The router JSON-encodes search values, so a value it wrote from a string
+ * comes back quoted (`window=%224%22`) while one written from a number does
+ * not. We write numbers, and this reads either — a bare `Number()` on the
+ * quoted form is NaN, which silently demotes a window URL to its resource.
+ */
+function searchInt(value: string | null): number {
+  return Number(value?.replace(/^"(.*)"$/, "$1") ?? NaN);
 }
 
 export function syncWorkspaceRouteFromPath(
@@ -538,7 +564,7 @@ export function syncWorkspaceRouteFromPath(
     if (normalizedHash === "apps")
       return resourceAppsTabTarget(accountId, resourceId, pluginId, resourceTypeId);
     if (normalizedHash === "window") {
-      const windowId = Number(params.get("window"));
+      const windowId = searchInt(params.get("window"));
       const sessionId = params.get("session");
       if (Number.isInteger(windowId) && windowId > 0 && sessionId) {
         const appId = params.get("app");
@@ -547,6 +573,10 @@ export function syncWorkspaceRouteFromPath(
           resourceId,
           sessionId,
           windowId,
+          // The path already says which resource this is; carrying it back onto
+          // the target is what lets the tab rebuild its own URL later.
+          pluginId,
+          resourceTypeId,
           ...(appId ? { appId } : {}),
         });
       }

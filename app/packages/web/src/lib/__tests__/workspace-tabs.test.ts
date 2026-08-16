@@ -258,10 +258,73 @@ describe("getWorkspaceNavigateArgs", () => {
       resourceId: "res-1",
       sessionId: "sess-9",
       windowId: 4,
+      pluginId: "gcp",
+      resourceTypeId: "compute-instance",
     });
     expect(args).toMatchObject({
       hash: "window",
-      search: { window: "4", session: "sess-9", accountId: "acc-1" },
+      // A number, not a string: the router JSON-encodes search values, so "4"
+      // reaches the URL as %224%22 and reads back out of the query string with
+      // its quotes on — which made the window unidentifiable and sent the tab
+      // to the resource detail.
+      search: { window: 4, session: "sess-9", accountId: "acc-1" },
+    });
+  });
+
+  it("reads a window id back whether or not the router quoted it", () => {
+    for (const raw of ["window=4", "window=%224%22"]) {
+      const target = syncWorkspaceRouteFromPath(
+        "/org/o1/resources/hetzner/server/res-1",
+        "#window",
+        `?accountId=acc-1&session=sess-9&${raw}`,
+      );
+      expect(target).toMatchObject({ kind: "linux-app", windowId: 4 });
+    }
+  });
+
+  it("addresses a window tab with the host's own plugin, not a guessed one", () => {
+    // Any host with a shell can run applications. Assuming ssh/server built a
+    // URL for a resource that does not exist, and the tab rendered "Resource
+    // not found" instead of the window.
+    const args = getWorkspaceNavigateArgs({
+      kind: "linux-app",
+      accountId: "acc-1",
+      resourceId: "res-1",
+      sessionId: "sess-9",
+      windowId: 4,
+      pluginId: "hetzner",
+      resourceTypeId: "server",
+    });
+    expect(args.params).toMatchObject({ pluginId: "hetzner", resourceTypeId: "server" });
+  });
+
+  it("falls back to the account when a window tab has no plugin to address", () => {
+    // Better an honest address than a wrong one: a target with no plugin can
+    // only come from an older build, and guessing is what broke this before.
+    const args = getWorkspaceNavigateArgs({
+      kind: "linux-app",
+      accountId: "acc-1",
+      resourceId: "res-1",
+      sessionId: "sess-9",
+      windowId: 4,
+    });
+    expect(args).toMatchObject({
+      to: "/org/$orgId/accounts/$accountId",
+      params: { accountId: "acc-1" },
+    });
+  });
+
+  it("recovers the plugin from the path when syncing a window URL", () => {
+    const target = syncWorkspaceRouteFromPath(
+      "/org/o1/resources/hetzner/server/res-1",
+      "#window",
+      "?accountId=acc-1&window=4&session=sess-9",
+    );
+    expect(target).toMatchObject({
+      kind: "linux-app",
+      pluginId: "hetzner",
+      resourceTypeId: "server",
+      windowId: 4,
     });
   });
 

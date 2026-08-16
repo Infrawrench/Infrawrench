@@ -93,6 +93,9 @@ export const Route = createFileRoute("/resource/$accountId/$resourceId")({
     agentSession?: string;
     sshKeyId?: string;
     sshKeyName?: string;
+    window?: string;
+    session?: string;
+    app?: string;
   } => ({
     ...(typeof search["plugin"] === "string" ? { plugin: search["plugin"] } : {}),
     ...(typeof search["type"] === "string" ? { type: search["type"] } : {}),
@@ -100,6 +103,16 @@ export const Route = createFileRoute("/resource/$accountId/$resourceId")({
     ...(typeof search["agentSession"] === "string" ? { agentSession: search["agentSession"] } : {}),
     ...(typeof search["sshKeyId"] === "string" ? { sshKeyId: search["sshKeyId"] } : {}),
     ...(typeof search["sshKeyName"] === "string" ? { sshKeyName: search["sshKeyName"] } : {}),
+    // A window of a remote application, addressed at its host's URL. This list
+    // is a whitelist — anything absent from it is dropped from the URL on
+    // navigation, which left `#window` with no window to identify and sent the
+    // tab to the resource detail instead. `window` arrives as a number: the
+    // router's default search parser reads each value as JSON.
+    ...(typeof search["window"] === "string" || typeof search["window"] === "number"
+      ? { window: String(search["window"]) }
+      : {}),
+    ...(typeof search["session"] === "string" ? { session: search["session"] } : {}),
+    ...(typeof search["app"] === "string" ? { app: search["app"] } : {}),
   }),
 });
 
@@ -1230,6 +1243,10 @@ export function ResourcePanel({
           <AppsViewPane
             accountId={accountId}
             decodedResourceId={decodedResourceId}
+            // Each window becomes a tab addressed at this resource's URL, and
+            // that URL carries the plugin and the type.
+            pluginId={account?.plugin_id}
+            resourceTypeId={resource?.resourceTypeId}
             sshConfig={sshConfig}
             sshHost={sshHost}
             sshDefaultUsername={sshDefaultUsername}

@@ -20,7 +20,7 @@ Adding a tab kind touches the whole chain, in one change:
 
 - `ui/src/store/ui.store.ts` — the `WorkspaceTabTarget` union plus all three switches (`getWorkspaceTabId`, `getWorkspaceTabFallbackTitle`, `workspaceTabTargetsEqual`). For a single-instance tab with remembered state (Settings, Deploy), give it a fixed id but compare the state field in `workspaceTabTargetsEqual` — that is what makes the route sync record it and reactivation restore it.
 - `ui/src/workspace-tabs.ts` — a target factory, exported from `ui/src/index.ts`.
-- Both platforms' `lib/workspace-tabs.ts` — `getWorkspaceNavigateArgs` and `syncWorkspaceRouteFromPath` (desktop uses `?param=` search, web uses path segments).
+- Both platforms' `lib/workspace-tabs.ts` — `getWorkspaceNavigateArgs` and `syncWorkspaceRouteFromPath` (desktop uses `?param=` search, web uses path segments). A target that carries state in the query needs the route's `validateSearch` extended too — it is a **whitelist**, so an unlisted key is dropped from the URL on navigation and the tab silently resolves to something else. Numeric values go in `search` as numbers, not strings: the router JSON-encodes each value, so `"4"` becomes `%224%22` and reads back out of a raw query string with its quotes on.
 - Both viewports' `renderPanel`, plus a no-op route stub per platform (tab content renders in the viewport, which keeps every open tab mounted).
 - Desktop `__root.tsx` `validateWorkspaceTab` and the web `validate-tabs` kind list **and** the OpenAPI `TabTarget` enum — a kind missing there gets silently dropped on reload. The enum change means an `API_VERSION` minor bump.
 

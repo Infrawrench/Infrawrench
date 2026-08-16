@@ -64,6 +64,18 @@ export type WorkspaceTabTarget =
       sessionId: string;
       windowId: number;
       appId?: string;
+      /**
+       * The host resource's own plugin and type.
+       *
+       * Carried because the window is addressed at its resource's URL, and on
+       * web that URL has the plugin and the type as path segments. They are not
+       * derivable from anything else here: a host that runs applications can be
+       * an SSH server, a GCP instance, a Hetzner box or anything else with a
+       * shell, so assuming one is how a window tab ends up pointing at a
+       * resource that does not exist.
+       */
+      pluginId?: string;
+      resourceTypeId?: string;
     };
 
 export interface WorkspaceTab {

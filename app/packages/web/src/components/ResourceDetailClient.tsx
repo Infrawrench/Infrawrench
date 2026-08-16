@@ -1259,6 +1259,8 @@ export function ResourceDetailClient({
               orgId,
               accountId,
               resourceId,
+              pluginId,
+              resourceTypeId,
               sshKeyId: sshQuickConnect.sshKeyId,
               host: sshHost,
               username: sshQuickConnect.username,

@@ -161,12 +161,38 @@ describe("getWorkspaceNavigateArgs", () => {
       sessionId: "sess-9",
       windowId: 4,
       appId: "firefox.desktop",
+      pluginId: "hetzner",
+      resourceTypeId: "server",
     });
     expect(args).toMatchObject({
       to: "/resource/$accountId/$resourceId",
       hash: "window",
-      search: { window: "4", session: "sess-9", app: "firefox.desktop" },
+      // The plugin and the type ride along for the same reason a resource tab
+      // carries them: the route resolves the resource from the query, and a
+      // window tab that dropped them would rebuild itself as one it cannot
+      // find.
+      search: {
+        // A number, not a string: the router JSON-encodes search values, so
+        // "4" reaches the URL as %224%22 and reads back out of the query
+        // string with its quotes on.
+        window: 4,
+        session: "sess-9",
+        app: "firefox.desktop",
+        plugin: "hetzner",
+        type: "server",
+      },
     });
+  });
+
+  it("reads a window id back whether or not the router quoted it", () => {
+    for (const raw of ["window=4", "window=%224%22"]) {
+      const result = syncWorkspaceRouteFromPath(
+        "/resource/acc-1/res-1",
+        "#window",
+        `?session=sess-9&${raw}`,
+      );
+      expect(result).toMatchObject({ kind: "linux-app", windowId: 4 });
+    }
   });
 
   it("includes plugin/type/parent in search and sets replace for resources", () => {
@@ -479,6 +505,19 @@ describe("syncWorkspaceRouteFromPath", () => {
       sessionId: "sess-9",
       windowId: 4,
       appId: "firefox.desktop",
+    });
+  });
+
+  it("recovers the plugin and type from a window URL", () => {
+    const result = syncWorkspaceRouteFromPath(
+      "/resource/acc-1/res-1",
+      "#window",
+      "?window=4&session=sess-9&plugin=hetzner&type=server",
+    );
+    expect(result).toMatchObject({
+      kind: "linux-app",
+      pluginId: "hetzner",
+      resourceTypeId: "server",
     });
   });
 

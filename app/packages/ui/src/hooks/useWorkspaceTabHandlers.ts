@@ -5,7 +5,8 @@ import type { RouteNavigator } from "../workspace-tabs.js";
 interface NavigateArgs {
   to: string;
   params?: Record<string, string>;
-  search?: Record<string, string>;
+  /** Numbers included, for the reason given on `RouteNavigator`. */
+  search?: Record<string, string | number>;
   replace?: boolean;
   hash?: string;
 }

@@ -107,10 +107,19 @@ function useJoinedSession(sessionKey: string) {
 export interface AppLauncherHostPanelProps {
   accountId: string;
   resourceId: string;
+  /** The host's plugin and type — each window tab is addressed at its URL. */
+  pluginId?: string;
+  resourceTypeId?: string;
   config: AppsConnectConfig | null;
 }
 
-export function AppLauncherHostPanel({ accountId, resourceId, config }: AppLauncherHostPanelProps) {
+export function AppLauncherHostPanel({
+  accountId,
+  resourceId,
+  pluginId,
+  resourceTypeId,
+  config,
+}: AppLauncherHostPanelProps) {
   const gt = useGT();
   const { handle, status } = useHostSession(hostSessionKey(accountId, resourceId), config);
   const [apps, setApps] = useState<AppEntry[]>([]);
@@ -171,6 +180,10 @@ export function AppLauncherHostPanel({ accountId, resourceId, config }: AppLaunc
         resourceId,
         sessionId,
         windowId,
+        // The window tab is addressed at this host's own URL, which carries
+        // the host's plugin and type rather than a guess at them.
+        ...(pluginId ? { pluginId } : {}),
+        ...(resourceTypeId ? { resourceTypeId } : {}),
         ...(window.appId ? { appId: window.appId } : {}),
       });
       pinTab(target, window.title || gt("App"));
@@ -187,7 +200,7 @@ export function AppLauncherHostPanel({ accountId, resourceId, config }: AppLaunc
 
     session.addWindowListener(onWindow);
     return () => session.removeWindowListener(onWindow);
-  }, [handle, accountId, resourceId, pinTab, setTabIcon, gt]);
+  }, [handle, accountId, resourceId, pluginId, resourceTypeId, pinTab, setTabIcon, gt]);
 
   const running = useMemo(
     () =>

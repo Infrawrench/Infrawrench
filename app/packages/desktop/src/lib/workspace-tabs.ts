@@ -79,7 +79,11 @@ export function getWorkspaceNavigateArgs(
 ): {
   to: string;
   params?: Record<string, string>;
-  search?: Record<string, string>;
+  // Numbers are allowed, and load-bearing for the window id: the router
+  // JSON-encodes search values, so the *string* "4" is written to the URL as
+  // `window=%224%22` and read back out of the raw query string with its quotes
+  // still attached.
+  search?: Record<string, string | number>;
   replace?: boolean;
   hash?: string;
 } {
@@ -212,9 +216,14 @@ export function getWorkspaceNavigateArgs(
           resourceId: encodeURIComponent(normalizeResourceId(target.resourceId)),
         },
         search: {
-          window: String(target.windowId),
+          window: target.windowId,
           session: target.sessionId,
           ...(target.appId ? { app: target.appId } : {}),
+          // Same as the resource case below: the route takes the plugin and
+          // the type from the query, and a window tab that dropped them would
+          // rebuild itself as a resource the route cannot resolve.
+          ...(target.pluginId ? { plugin: target.pluginId } : {}),
+          ...(target.resourceTypeId ? { type: target.resourceTypeId } : {}),
         },
         hash: "window",
         ...(replace ? { replace: true } : {}),
@@ -264,6 +273,18 @@ export function navigateToWorkspaceTarget(
     else useUIStore.getState().openInActiveWorkspaceTab(target);
   }
   return navigate(getWorkspaceNavigateArgs(target, options?.replace));
+}
+
+/**
+ * An integer read out of a raw query string.
+ *
+ * The router JSON-encodes search values, so a value it wrote from a string
+ * comes back quoted (`window=%224%22`) while one written from a number does
+ * not. We write numbers, and this reads either — a bare `Number()` on the
+ * quoted form is NaN, which silently demotes a window URL to its resource.
+ */
+function searchInt(value: string | null): number {
+  return Number(value?.replace(/^"(.*)"$/, "$1") ?? NaN);
 }
 
 export function syncWorkspaceRouteFromPath(
@@ -386,18 +407,23 @@ export function syncWorkspaceRouteFromPath(
     if (normalizedHash === "apps")
       return resourceAppsTabTarget(segments[1], segments.slice(2).join("/"));
     if (normalizedHash === "window") {
-      const windowId = Number(params.get("window"));
+      const windowId = searchInt(params.get("window"));
       const sessionId = params.get("session");
       // Both halves or nothing: a window id without its session addresses a
       // window on a host we have no connection to.
       if (Number.isInteger(windowId) && windowId > 0 && sessionId) {
         const appId = params.get("app");
+        const pluginId = params.get("plugin");
+        const resourceTypeId = params.get("type");
         return linuxAppTabTarget({
           accountId: segments[1],
           resourceId: segments.slice(2).join("/"),
           sessionId,
           windowId,
           ...(appId ? { appId } : {}),
+          // Carried back onto the target so the tab can rebuild its own URL.
+          ...(pluginId ? { pluginId } : {}),
+          ...(resourceTypeId ? { resourceTypeId } : {}),
         });
       }
     }

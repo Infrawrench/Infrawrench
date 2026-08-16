@@ -105,6 +105,9 @@ export const Route = createFileRoute("/org/$orgId/resources/$pluginId/$resourceT
       agentSession?: string;
       sshKeyId?: string;
       sshKeyName?: string;
+      window?: string;
+      session?: string;
+      app?: string;
     } => ({
       ...(typeof search["accountId"] === "string" ? { accountId: search["accountId"] } : {}),
       ...(typeof search["parent"] === "string" ? { parent: search["parent"] } : {}),
@@ -113,6 +116,18 @@ export const Route = createFileRoute("/org/$orgId/resources/$pluginId/$resourceT
         : {}),
       ...(typeof search["sshKeyId"] === "string" ? { sshKeyId: search["sshKeyId"] } : {}),
       ...(typeof search["sshKeyName"] === "string" ? { sshKeyName: search["sshKeyName"] } : {}),
+      // A window of a remote application, addressed at its host's URL. This
+      // list is a whitelist — anything absent from it is dropped from the URL
+      // on navigation, which left `#window` with no window to identify and
+      // sent the tab to the resource detail instead.
+      // `window` arrives as a number: the router's default search parser reads
+      // each value as JSON, so a window id is already an integer by the time
+      // it gets here and a string-only check would drop it.
+      ...(typeof search["window"] === "string" || typeof search["window"] === "number"
+        ? { window: String(search["window"]) }
+        : {}),
+      ...(typeof search["session"] === "string" ? { session: search["session"] } : {}),
+      ...(typeof search["app"] === "string" ? { app: search["app"] } : {}),
     }),
   },
 );

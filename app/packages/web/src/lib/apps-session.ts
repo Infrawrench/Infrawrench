@@ -20,6 +20,13 @@ export interface AppsConnectTarget {
   orgId: string;
   accountId: string;
   resourceId: string;
+  /**
+   * The host's plugin and type. Not needed to connect — the window tabs each
+   * live at this resource's URL, and on web that URL has both as path
+   * segments.
+   */
+  pluginId: string;
+  resourceTypeId: string;
   /** Org-managed key the host trusts; the private half stays on the server. */
   sshKeyId: string;
   host: string;

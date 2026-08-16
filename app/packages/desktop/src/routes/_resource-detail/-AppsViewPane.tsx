@@ -17,6 +17,9 @@ import type { QuickSshConnection, SshConfig } from "./-types";
 export interface AppsViewPaneProps {
   accountId: string;
   decodedResourceId: string;
+  /** The host's plugin and type — each window tab is addressed at its URL. */
+  pluginId?: string | undefined;
+  resourceTypeId?: string | undefined;
   sshConfig: SshConfig | null;
   sshHost: string | null;
   sshDefaultUsername: string | null;
@@ -27,6 +30,8 @@ export interface AppsViewPaneProps {
 export function AppsViewPane({
   accountId,
   decodedResourceId,
+  pluginId,
+  resourceTypeId,
   sshConfig,
   sshHost,
   sshDefaultUsername,
@@ -81,6 +86,12 @@ export function AppsViewPane({
   }
 
   return (
-    <AppLauncherHostPanel accountId={accountId} resourceId={decodedResourceId} config={config} />
+    <AppLauncherHostPanel
+      accountId={accountId}
+      resourceId={decodedResourceId}
+      {...(pluginId ? { pluginId } : {})}
+      {...(resourceTypeId ? { resourceTypeId } : {})}
+      config={config}
+    />
   );
 }

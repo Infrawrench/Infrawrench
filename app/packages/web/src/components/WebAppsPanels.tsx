@@ -119,6 +119,10 @@ export function WebAppLauncherPanel({ target }: { target: AppsConnectTarget | nu
           resourceId: target.resourceId,
           sessionId,
           windowId,
+          // The window tab is addressed at this host's own URL, which needs
+          // the host's plugin and type — not a guess at them.
+          pluginId: target.pluginId,
+          resourceTypeId: target.resourceTypeId,
           ...(window.appId ? { appId: window.appId } : {}),
         }),
         window.title || gt("App"),

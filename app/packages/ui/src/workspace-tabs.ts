@@ -11,7 +11,14 @@ export interface RouteNavigator {
   (options: {
     to: string;
     params?: Record<string, string>;
-    search?: Record<string, string>;
+    /**
+     * Numbers are allowed because the router JSON-encodes each search value:
+     * a number is written plainly (`window=4`), while the *string* "4" is
+     * written as `%224%22` and comes back out of a raw query string with its
+     * quotes attached. Anything read back with `URLSearchParams` — which is
+     * how both apps recover a tab target from a URL — wants the plain form.
+     */
+    search?: Record<string, string | number>;
     replace?: boolean;
     hash?: string;
   }): Promise<void> | void;
@@ -253,6 +260,9 @@ export function linuxAppTabTarget(options: {
   sessionId: string;
   windowId: number;
   appId?: string;
+  /** The host resource's plugin and type — the window's URL is built from them. */
+  pluginId?: string;
+  resourceTypeId?: string;
 }): WorkspaceTabTarget {
   return {
     kind: "linux-app",
@@ -261,6 +271,8 @@ export function linuxAppTabTarget(options: {
     sessionId: options.sessionId,
     windowId: options.windowId,
     ...(options.appId ? { appId: options.appId } : {}),
+    ...(options.pluginId ? { pluginId: options.pluginId } : {}),
+    ...(options.resourceTypeId ? { resourceTypeId: options.resourceTypeId } : {}),
   };
 }
 
