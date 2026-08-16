@@ -172,6 +172,10 @@ jobs:
     runs-on: ubuntu-24.04
     name: Build on ubuntu-24.04
     needs: [r2-setup, check-if-rust-cached, rust-tar]
+    # rust-tar is skipped when the hash is already cached in R2, and a skipped
+    # dependency skips everything downstream of it unless the condition spells
+    # out otherwise — so accept skipped, reject failed.
+    if: ${{ !cancelled() && needs.r2-setup.result == 'success' && needs.check-if-rust-cached.result == 'success' && needs.rust-tar.result != 'failure' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -204,9 +208,12 @@ jobs:
           AWS_DEFAULT_REGION: auto
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          # The hash check-if-rust-cached already computed, not a fresh one:
+          # this job must read the blob that job decided about.
+          RUST_HASH: ${{ needs.check-if-rust-cached.outputs.rust-hash }}
         run: |
           set -eo pipefail
-          aws s3 cp "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/iwappd.tar.xz" \
+          aws s3 cp "s3://${R2_BUCKET}/iwappd-builds/${RUST_HASH}/iwappd.tar.xz" \
             app/packages/desktop/iwappd.tar.xz \
             --endpoint-url "${R2_ENDPOINT}"
           ls -lh app/packages/desktop/iwappd.tar.xz
@@ -269,8 +276,11 @@ jobs:
   linux-arm64-build:
     runs-on: ubuntu-24.04-arm
     name: Build on ubuntu-24.04-arm
-    needs: [check-if-release, r2-setup, rust-tar]
-    if: needs.check-if-release.outputs.package-version != ''
+    needs: [check-if-release, r2-setup, check-if-rust-cached, rust-tar]
+    # rust-tar is skipped when the hash is already cached in R2, and a skipped
+    # dependency skips everything downstream of it unless the condition spells
+    # out otherwise — so accept skipped, reject failed.
+    if: ${{ !cancelled() && needs.check-if-release.outputs.package-version != '' && needs.r2-setup.result == 'success' && needs.check-if-rust-cached.result == 'success' && needs.rust-tar.result != 'failure' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -303,9 +313,12 @@ jobs:
           AWS_DEFAULT_REGION: auto
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          # The hash check-if-rust-cached already computed, not a fresh one:
+          # this job must read the blob that job decided about.
+          RUST_HASH: ${{ needs.check-if-rust-cached.outputs.rust-hash }}
         run: |
           set -eo pipefail
-          aws s3 cp "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/iwappd.tar.xz" \
+          aws s3 cp "s3://${R2_BUCKET}/iwappd-builds/${RUST_HASH}/iwappd.tar.xz" \
             app/packages/desktop/iwappd.tar.xz \
             --endpoint-url "${R2_ENDPOINT}"
           ls -lh app/packages/desktop/iwappd.tar.xz
@@ -337,8 +350,11 @@ jobs:
         platform: [macos-15-intel, macos-15]
     runs-on: ${{ matrix.platform }}
     name: Build on ${{ matrix.platform }}
-    needs: [check-if-release, r2-setup, rust-tar]
-    if: needs.check-if-release.outputs.package-version != ''
+    needs: [check-if-release, r2-setup, check-if-rust-cached, rust-tar]
+    # rust-tar is skipped when the hash is already cached in R2, and a skipped
+    # dependency skips everything downstream of it unless the condition spells
+    # out otherwise — so accept skipped, reject failed.
+    if: ${{ !cancelled() && needs.check-if-release.outputs.package-version != '' && needs.r2-setup.result == 'success' && needs.check-if-rust-cached.result == 'success' && needs.rust-tar.result != 'failure' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -370,9 +386,12 @@ jobs:
           AWS_DEFAULT_REGION: auto
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          # The hash check-if-rust-cached already computed, not a fresh one:
+          # this job must read the blob that job decided about.
+          RUST_HASH: ${{ needs.check-if-rust-cached.outputs.rust-hash }}
         run: |
           set -eo pipefail
-          aws s3 cp "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/iwappd.tar.xz" \
+          aws s3 cp "s3://${R2_BUCKET}/iwappd-builds/${RUST_HASH}/iwappd.tar.xz" \
             app/packages/desktop/iwappd.tar.xz \
             --endpoint-url "${R2_ENDPOINT}"
           ls -lh app/packages/desktop/iwappd.tar.xz
@@ -453,8 +472,11 @@ jobs:
         platform: [windows-2025-vs2026, windows-11-arm]
     runs-on: ${{ matrix.platform }}
     name: Build on ${{ matrix.platform }}
-    needs: [check-if-release, r2-setup, rust-tar]
-    if: needs.check-if-release.outputs.package-version != ''
+    needs: [check-if-release, r2-setup, check-if-rust-cached, rust-tar]
+    # rust-tar is skipped when the hash is already cached in R2, and a skipped
+    # dependency skips everything downstream of it unless the condition spells
+    # out otherwise — so accept skipped, reject failed.
+    if: ${{ !cancelled() && needs.check-if-release.outputs.package-version != '' && needs.r2-setup.result == 'success' && needs.check-if-rust-cached.result == 'success' && needs.rust-tar.result != 'failure' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -488,9 +510,12 @@ jobs:
           AWS_DEFAULT_REGION: auto
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          # The hash check-if-rust-cached already computed, not a fresh one:
+          # this job must read the blob that job decided about.
+          RUST_HASH: ${{ needs.check-if-rust-cached.outputs.rust-hash }}
         run: |
           set -eo pipefail
-          aws s3 cp "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/iwappd.tar.xz" \
+          aws s3 cp "s3://${R2_BUCKET}/iwappd-builds/${RUST_HASH}/iwappd.tar.xz" \
             app/packages/desktop/iwappd.tar.xz \
             --endpoint-url "${R2_ENDPOINT}"
           ls -lh app/packages/desktop/iwappd.tar.xz
