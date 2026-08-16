@@ -40,11 +40,50 @@ jobs:
             --lifecycle-configuration file://lifecycle.json \
             --endpoint-url "${R2_ENDPOINT}"
 
+  check-if-rust-cached:
+    name: Check if the Rust blob is cached
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      rust-hash: ${{ steps.hash.outputs.RUST_HASH }}
+      rust-exists: ${{ steps.exists.outputs.RUST_EXISTS }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Hash the Rust code
+        id: hash
+        run: |
+          set -eo pipefail
+          echo "RUST_HASH=$(node app/packages/desktop/scripts/print-iwappd-hash.mjs)" >> $GITHUB_OUTPUT
+      - name: Check if the blob for that hash is already in R2
+        id: exists
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          RUST_HASH: ${{ steps.hash.outputs.RUST_HASH }}
+        run: |
+          set -eo pipefail
+          KEY="iwappd-builds/${RUST_HASH}/iwappd.tar.xz"
+          # head-object exits non-zero on a missing key, which is the answer
+          # rather than a failure — hence the `if` instead of `set -e` aborting.
+          if aws s3api head-object \
+            --bucket "${R2_BUCKET}" \
+            --key "${KEY}" \
+            --endpoint-url "${R2_ENDPOINT}" >/dev/null 2>&1; then
+            echo "s3://${R2_BUCKET}/${KEY} is cached"
+            echo "RUST_EXISTS=true" >> $GITHUB_OUTPUT
+          else
+            echo "s3://${R2_BUCKET}/${KEY} is not cached; it needs building"
+            echo "RUST_EXISTS=false" >> $GITHUB_OUTPUT
+          fi
+
   rust-appserver-build:
     name: Rust appserver build (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
-    needs: r2-setup
+    needs: [r2-setup, check-if-rust-cached]
+    if: needs.check-if-rust-cached.outputs.rust-exists != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -101,7 +140,8 @@ jobs:
   rust-tar:
     name: Create iwappd.tar.xz
     runs-on: ubuntu-24.04-arm
-    needs: rust-appserver-build
+    needs: [rust-appserver-build, check-if-rust-cached]
+    if: needs.check-if-rust-cached.outputs.rust-exists != 'true'
     steps:
       - name: Pack the per-target binaries
         shell: bash
@@ -111,6 +151,7 @@ jobs:
           AWS_DEFAULT_REGION: auto
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          RUST_HASH: ${{ needs.check-if-rust-cached.outputs.rust-hash }}
         run: |
           set -eo pipefail
           mkdir iwappd
@@ -124,13 +165,13 @@ jobs:
           ls -lh iwappd.tar.xz
 
           aws s3 cp iwappd.tar.xz \
-            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/iwappd.tar.xz" \
+            "s3://${R2_BUCKET}/iwappd-builds/${RUST_HASH}/iwappd.tar.xz" \
             --endpoint-url "${R2_ENDPOINT}"
 
   linux-x64-build:
     runs-on: ubuntu-24.04
     name: Build on ubuntu-24.04
-    needs: [r2-setup, rust-tar]
+    needs: [r2-setup, check-if-rust-cached, rust-tar]
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
