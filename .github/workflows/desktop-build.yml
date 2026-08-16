@@ -40,10 +40,97 @@ jobs:
             --lifecycle-configuration file://lifecycle.json \
             --endpoint-url "${R2_ENDPOINT}"
 
+  rust-appserver-build:
+    name: Rust appserver build (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    needs: r2-setup
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+
+      # Built inside Alpine rather than with a musl cross-toolchain, because
+      # the compositor links libxkbcommon and a static build needs a musl
+      # build of it. Debian and the cross images ship only the glibc one, so
+      # the link fails with `cannot find -lxkbcommon`; Alpine packages
+      # libxkbcommon-static and every arch runs natively on its own runner.
+      #
+      # `docker run` rather than the job-level `container:` key: actions/checkout
+      # needs a glibc node to run, which an Alpine container does not have.
+      - name: Build in Alpine
+        run: |
+          docker run --rm -v "$PWD/linux-appserver:/src" -w /src alpine:3.22 sh -euc '
+            apk add --no-cache curl gcc musl-dev libxkbcommon-dev libxkbcommon-static file
+            curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --no-modify-path --profile minimal
+            export PATH=/root/.cargo/bin:$PATH
+            cargo build --release --target ${{ matrix.target }} -p iwappd
+
+            binary=target/${{ matrix.target }}/release/iwappd
+            file "$binary"
+            # A dynamically linked "static" build fails only on the target
+            # host, days later, so assert it here instead.
+            if file "$binary" | grep -q "dynamically linked"; then
+              echo "::error::$binary is dynamically linked; it must be static to run on an unknown host"
+              exit 1
+            fi
+            ls -lh "$binary"
+          '
+
+      - name: Upload artifacts to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -eo pipefail
+          aws s3 cp "linux-appserver/target/${{ matrix.target }}/release/iwappd" \
+            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/iwappd-${{ matrix.target }}" \
+            --endpoint-url "${R2_ENDPOINT}"
+
+  rust-tar:
+    name: Create iwappd.tar.xz
+    runs-on: ubuntu-24.04-arm
+    needs: rust-appserver-build
+    steps:
+      - name: Pack the per-target binaries
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -eo pipefail
+          mkdir iwappd
+          aws s3 cp "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/" iwappd/ \
+            --recursive --exclude '*' --include 'iwappd-*' \
+            --endpoint-url "${R2_ENDPOINT}"
+
+          chmod +x iwappd/iwappd-*
+          tar --numeric-owner --owner=0 --group=0 --sort=name \
+            -cJf iwappd.tar.xz -C iwappd .
+          ls -lh iwappd.tar.xz
+
+          aws s3 cp iwappd.tar.xz \
+            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/iwappd.tar.xz" \
+            --endpoint-url "${R2_ENDPOINT}"
+
   linux-x64-build:
     runs-on: ubuntu-24.04
     name: Build on ubuntu-24.04
-    needs: r2-setup
+    needs: [r2-setup, rust-tar]
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -125,7 +212,7 @@ jobs:
   linux-arm64-build:
     runs-on: ubuntu-24.04-arm
     name: Build on ubuntu-24.04-arm
-    needs: [check-if-release, r2-setup]
+    needs: [check-if-release, r2-setup, rust-tar]
     if: needs.check-if-release.outputs.package-version != ''
     steps:
       - name: Checkout code
@@ -177,7 +264,7 @@ jobs:
         platform: [macos-15-intel, macos-15]
     runs-on: ${{ matrix.platform }}
     name: Build on ${{ matrix.platform }}
-    needs: [check-if-release, r2-setup]
+    needs: [check-if-release, r2-setup, rust-tar]
     if: needs.check-if-release.outputs.package-version != ''
     steps:
       - name: Checkout code
@@ -276,7 +363,7 @@ jobs:
         platform: [windows-2025-vs2026, windows-11-arm]
     runs-on: ${{ matrix.platform }}
     name: Build on ${{ matrix.platform }}
-    needs: [check-if-release, r2-setup]
+    needs: [check-if-release, r2-setup, rust-tar]
     if: needs.check-if-release.outputs.package-version != ''
     steps:
       - name: Checkout code

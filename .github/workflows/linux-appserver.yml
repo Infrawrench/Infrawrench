@@ -66,6 +66,7 @@ jobs:
   musl:
     name: Static build (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
+    if: github.ref != 'refs/heads/main'
     timeout-minutes: 30
     strategy:
       fail-fast: false
