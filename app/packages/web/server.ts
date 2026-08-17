@@ -2,7 +2,8 @@
  * Hono API server + Vite SPA dev middleware + WebSocket support
  * for SSH terminals, SQL query proxy, and K8s exec sessions.
  */
-import { createServer as createHttpServer } from "node:http";
+import { createServer as createHttpServer, type IncomingMessage } from "node:http";
+import type { Duplex } from "node:stream";
 import { getRequestListener } from "@hono/node-server";
 import { parse } from "node:url";
 import { WebSocketServer, WebSocket } from "ws";
@@ -41,7 +42,33 @@ function respondHealthz(res: import("node:http").ServerResponse): void {
   res.end("ok");
 }
 
+/**
+ * Keep one broken request from taking everybody's sessions with it.
+ *
+ * This process holds long-lived state for many people at once — SSH shells,
+ * SQL connections, application streams — and Node's default for an unhandled
+ * rejection or an uncaught exception is to end the process. On a request
+ * handler that would be defensible; here it means every other customer's
+ * terminal dies because one socket reset at the wrong moment, and it shows up
+ * as a gateway error to all of them.
+ *
+ * So both are logged loudly and survived. The risk of carrying on after an
+ * exception is real — the state it came from may be inconsistent — but it is
+ * bounded to whatever was mid-flight, and the alternative is not bounded to
+ * anything. Anything that reaches here is a bug with a stack trace attached:
+ * fix it there rather than relying on this.
+ */
+function installProcessGuards(): void {
+  process.on("unhandledRejection", (reason) => {
+    console.error("[server] unhandled rejection:", reason);
+  });
+  process.on("uncaughtException", (error) => {
+    console.error("[server] uncaught exception:", error);
+  });
+}
+
 async function start() {
+  installProcessGuards();
   try {
     await migrateMetrics();
   } catch (err) {
@@ -168,7 +195,28 @@ async function start() {
     }
   }
 
-  server.on("upgrade", async (request, socket, head) => {
+  // Wrapped, because the body is `async`: a rejection out of an event listener
+  // is an unhandled rejection, and Node ends the process on one of those. Every
+  // await in here can fail for reasons that are nobody's fault — a database
+  // blip while resolving a token — and one of those must cost the caller their
+  // socket, not everybody else theirs.
+  server.on("upgrade", (request, socket, head) => {
+    void handleUpgrade(request, socket, head).catch((error) => {
+      console.error("[ws] upgrade failed:", error);
+      try {
+        socket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
+        socket.destroy();
+      } catch {
+        /* the socket is already gone, which is why we are here */
+      }
+    });
+  });
+
+  async function handleUpgrade(
+    request: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+  ): Promise<void> {
     const url = parse(request.url ?? "", true);
 
     if (url.pathname === "/api/bastions/agent") {
@@ -259,7 +307,7 @@ async function start() {
     wss.handleUpgrade(request, socket, head, (ws) => {
       wss.emit("connection", ws, request, auth);
     });
-  });
+  }
 
   wss.on(
     "connection",

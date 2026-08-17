@@ -37,7 +37,15 @@ export interface ExecChannel {
   on(event: "data", handler: (chunk: Buffer) => void): unknown;
   on(event: "close", handler: (code?: number | null, signal?: string) => void): unknown;
   once(event: "error", handler: (err: Error) => void): unknown;
-  stderr: { on(event: "data", handler: (chunk: Buffer) => void): unknown };
+  stderr: {
+    on(event: "data", handler: (chunk: Buffer) => void): unknown;
+    /**
+     * Streams emit `error` whether or not anyone is listening, and an
+     * unhandled one is not an exception this code can catch — it takes the
+     * process down. stderr gets its own because it is a separate stream.
+     */
+    once(event: "error", handler: (err: Error) => void): unknown;
+  };
   write(chunk: Buffer | string): unknown;
   end(): unknown;
 }
@@ -258,13 +266,52 @@ export async function startAppServer(
         for (const line of lines) if (line.trim()) options.onStderr?.(line);
       });
 
+      // A session ends two ways: the command exits, or the connection under it
+      // fails. Both have to reach the caller as the same thing, and the second
+      // one arrives as an `error` event on a stream — which, unhandled, ends
+      // the *process* rather than the session. On a server holding other
+      // people's sessions that is everyone's problem, not this caller's.
+      let closed: ((code: number | null) => void) | undefined;
+      let finished = false;
+      const finish = (code: number | null) => {
+        if (finished) return;
+        finished = true;
+        closed?.(code);
+      };
+      channel.on("close", (code) => finish(code ?? null));
+      channel.once("error", (err) => {
+        options.onStderr?.(`connection lost: ${err.message}`);
+        finish(null);
+      });
+      channel.stderr.once("error", () => {
+        /* the diagnostics stream going away is not worth ending a session for */
+      });
+
       options.onProgress?.("ready");
       resolve({
         arch,
         onData: (handler) => channel.on("data", handler),
-        onClose: (handler) => channel.on("close", (code) => handler(code ?? null)),
-        write: (chunk) => channel.write(chunk),
-        close: () => channel.end(),
+        onClose: (handler) => {
+          closed = handler;
+        },
+        // Writing to a channel whose connection has gone throws from inside
+        // whatever was relaying — a WebSocket's message handler, typically,
+        // where an exception is again the process rather than the session.
+        write: (chunk) => {
+          if (finished) return;
+          try {
+            channel.write(chunk);
+          } catch {
+            finish(null);
+          }
+        },
+        close: () => {
+          try {
+            channel.end();
+          } catch {
+            /* already gone */
+          }
+        },
       });
     });
   });

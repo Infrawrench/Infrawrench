@@ -74,17 +74,29 @@ class FakeChannel implements ExecChannel {
       this.#stderr.push(handler);
       return this;
     },
+    once: (_event: "error", handler: (err: Error) => void) => {
+      this.stderrErrorHandlers.push(handler);
+      return this;
+    },
   };
+
+  /** Error listeners, so a test can assert nothing is left unhandled. */
+  errorHandlers: Array<(err: Error) => void> = [];
+  stderrErrorHandlers: Array<(err: Error) => void> = [];
+  /** Set when the channel refuses further writes, as a dead one would. */
+  broken = false;
 
   on(event: "data" | "close", handler: never): this {
     if (event === "data") this.#data.push(handler as (chunk: Buffer) => void);
     else this.#close.push(handler as (code?: number | null) => void);
     return this;
   }
-  once(_event: "error", _handler: (err: Error) => void): this {
+  once(_event: "error", handler: (err: Error) => void): this {
+    this.errorHandlers.push(handler);
     return this;
   }
   write(chunk: Buffer | string): this {
+    if (this.broken) throw new Error("write after end");
     this.written.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     return this;
   }
@@ -104,6 +116,9 @@ class FakeChannel implements ExecChannel {
   }
   emitClose(code: number | null): void {
     for (const handler of this.#close) handler(code);
+  }
+  emitError(message: string): void {
+    for (const handler of this.errorHandlers) handler(new Error(message));
   }
 }
 
@@ -281,6 +296,50 @@ describe("startAppServer", () => {
 
     expect(Buffer.concat(received)).toEqual(Buffer.from([1, 2, 3]));
     expect(channel.written.at(-1)).toEqual(Buffer.from([9]));
+  });
+
+  it("listens for the channel's errors so an unhandled one cannot end the process", async () => {
+    // A stream emits `error` whether or not anyone is listening, and an
+    // unhandled one is not catchable — it ends the process. On a server holding
+    // other people's sessions that is everybody's outage.
+    const ssh = readyHost();
+    await startAppServer(ssh, { ...source, sessionId: "s" });
+    const channel = ssh.open[0]!.channel;
+    expect(channel.errorHandlers.length).toBeGreaterThan(0);
+    expect(channel.stderrErrorHandlers.length).toBeGreaterThan(0);
+  });
+
+  it("ends the session when the connection under it fails", async () => {
+    const ssh = readyHost();
+    const session = await startAppServer(ssh, { ...source, sessionId: "s" });
+    let closed = false;
+    session.onClose(() => (closed = true));
+    ssh.open[0]!.channel.emitError("socket hang up");
+    expect(closed).toBe(true);
+  });
+
+  it("reports a lost connection only once, however it is noticed", async () => {
+    // The error and the close both arrive when a connection drops; a consumer
+    // that tears down twice would close somebody else's replacement session.
+    const ssh = readyHost();
+    const session = await startAppServer(ssh, { ...source, sessionId: "s" });
+    let closes = 0;
+    session.onClose(() => (closes += 1));
+    ssh.open[0]!.channel.emitError("socket hang up");
+    ssh.open[0]!.channel.emitClose(255);
+    expect(closes).toBe(1);
+  });
+
+  it("swallows a write to a channel that has gone away", async () => {
+    // The relay writes from a WebSocket's message handler, where a throw is
+    // the process rather than the session.
+    const ssh = readyHost();
+    const session = await startAppServer(ssh, { ...source, sessionId: "s" });
+    let closed = false;
+    session.onClose(() => (closed = true));
+    ssh.open[0]!.channel.broken = true;
+    expect(() => session.write(Buffer.from([1]))).not.toThrow();
+    expect(closed).toBe(true);
   });
 
   it("reports the host's stderr a line at a time", async () => {

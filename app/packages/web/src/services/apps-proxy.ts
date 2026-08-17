@@ -80,6 +80,32 @@ export async function handleAppsSession(ws: WebSocket, params: AppsSessionParams
     else queued.push(buffer);
   });
 
+  // Registered here rather than after the session exists, which is seconds of
+  // connecting, staging a megabyte and starting a process away. A browser that
+  // goes away in that window — a reload, a closed tab — makes the socket emit
+  // `error`, and a WebSocket with no error listener throws it, which on this
+  // server means every other session dies with it. The SSH terminal proxy
+  // registers its teardown before dialling for exactly this reason.
+  let gone = false;
+  const teardown = () => {
+    gone = true;
+    // Not guarded against running twice: both handles are safe to close
+    // repeatedly, and the second call is what closes a session that did not
+    // exist yet the first time.
+    try {
+      session?.close();
+    } catch {
+      /* already gone */
+    }
+    try {
+      client?.end();
+    } catch {
+      /* already gone */
+    }
+  };
+  ws.on("close", teardown);
+  ws.on("error", teardown);
+
   try {
     const [key] = await db
       .select()
@@ -150,22 +176,13 @@ export async function handleAppsSession(ws: WebSocket, params: AppsSessionParams
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`[apps] session setup failed: ${message}`);
     fail(message);
-  } finally {
-    const teardown = () => {
-      try {
-        session?.close();
-      } catch {
-        /* already gone */
-      }
-      try {
-        client?.end();
-      } catch {
-        /* already gone */
-      }
-    };
-    ws.on("close", teardown);
-    ws.on("error", teardown);
+    teardown();
   }
+
+  // The browser left while the host was still starting: everything above
+  // succeeded into a session nobody is watching, so end it rather than leave an
+  // app server running on someone's machine until its idle timeout.
+  if (gone) teardown();
 }
 
 function connect(options: {
