@@ -28,6 +28,10 @@ pub enum FrameKind {
     Pixels = 0x82,
     /// Clipboard payload host → client, same layout as [`Self::ClipboardClient`].
     ClipboardServer = 0x83,
+    /// Mixed session audio host → client (see [`crate::AudioChunk`]). Only
+    /// sent to a client whose caps said `audio`, because an unknown kind is a
+    /// protocol error on the other end, not a skipped frame.
+    Audio = 0x84,
 }
 
 impl FrameKind {
@@ -39,6 +43,7 @@ impl FrameKind {
             0x81 => Self::ControlServer,
             0x82 => Self::Pixels,
             0x83 => Self::ClipboardServer,
+            0x84 => Self::Audio,
             other => return Err(ProtocolError::UnknownKind(other)),
         })
     }

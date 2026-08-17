@@ -273,6 +273,7 @@ dependencies = [
  "serde_json",
  "smithay",
  "thiserror",
+ "zstd",
 ]
 
 [[package]]

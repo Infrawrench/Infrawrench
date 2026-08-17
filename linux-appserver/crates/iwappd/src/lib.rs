@@ -14,6 +14,7 @@ pub mod keymap;
 pub mod launch_env;
 pub mod paint;
 pub mod png;
+pub mod pulse;
 pub mod session;
 
 /// The compositor and the two modes that drive it. Linux-only: everything

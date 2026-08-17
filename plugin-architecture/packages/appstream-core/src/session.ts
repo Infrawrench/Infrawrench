@@ -17,6 +17,7 @@ import {
   PROTOCOL_VERSION,
   type ClipboardBlob,
 } from "./frame.js";
+import { decodeAudioChunk, type AudioChunk } from "./audio.js";
 import { encodeInputBatch, type InputEvent } from "./input.js";
 import {
   decodeServerMessage,
@@ -24,6 +25,7 @@ import {
   type AppEntry,
   type ClientCaps,
   type ClientMessage,
+  type ServerCaps,
   type ServerMessage,
 } from "./messages.js";
 import { decodePixelPayload, type PixelPayload } from "./pixels.js";
@@ -73,6 +75,9 @@ export interface LaunchResult {
  */
 export type FrameListener = (windowId: number, payload: PixelPayload) => unknown;
 
+/** A consumer of mixed session audio. Chunks are session-scoped, not per-window. */
+export type AudioListener = (chunk: AudioChunk) => void;
+
 export interface AppSessionEvents {
   onReady?(welcome: Extract<ServerMessage, { type: "welcome" }>): void;
   onApps?(apps: AppEntry[], complete: boolean): void;
@@ -87,6 +92,8 @@ export interface AppSessionEvents {
   onFrame?(windowId: number, payload: PixelPayload): unknown;
   onCursor?(windowId: number, shape: string | undefined): void;
   onClipboard?(blob: ClipboardBlob): void;
+  /** Mixed session audio. Never fires unless the caps passed in said `audio`. */
+  onAudio?(chunk: AudioChunk): void;
   onLaunchResult?(ok: boolean, message: string | undefined, appId: string | undefined): void;
   /**
    * Fatal, session-wide errors only. A launch that failed goes to
@@ -133,7 +140,9 @@ export class AppSession {
   #windowCloseListeners = new Set<(windowId: number, reason: string) => void>();
   #appsListeners = new Set<(apps: AppEntry[], complete: boolean) => void>();
   #launchListeners = new Set<(result: LaunchResult) => void>();
+  #audioListeners = new Set<AudioListener>();
   #sessionId: string | undefined;
+  #serverCaps: ServerCaps | undefined;
 
   constructor(transport: AppSessionTransport, options: AppSessionOptions) {
     this.#transport = transport;
@@ -162,6 +171,11 @@ export class AppSession {
   /** The host's id for this session, once it has greeted us. */
   get sessionId(): string | undefined {
     return this.#sessionId;
+  }
+
+  /** What the host said it can do, once it has greeted us. */
+  get serverCaps(): ServerCaps | undefined {
+    return this.#serverCaps;
   }
 
   get windows(): WindowInfo[] {
@@ -224,6 +238,18 @@ export class AppSession {
     this.#launchListeners.delete(listener);
   }
 
+  /**
+   * Subscribe to mixed session audio. Nothing arrives unless the session's
+   * caps declared `audio` — the host never sends the frame kind otherwise.
+   */
+  addAudioListener(listener: AudioListener): void {
+    this.#audioListeners.add(listener);
+  }
+
+  removeAudioListener(listener: AudioListener): void {
+    this.#audioListeners.delete(listener);
+  }
+
   addCursorListener(listener: (windowId: number, shape: string | undefined) => void): void {
     this.#cursorListeners.add(listener);
   }
@@ -272,6 +298,14 @@ export class AppSession {
     this.#send({ type: "clipboardRequest", mimeType });
   }
 
+  /**
+   * Start or stop the audio stream at the source. The viewer's mute sends
+   * false so the PCM stops crossing the link, not just the speakers.
+   */
+  setAudioEnabled(enabled: boolean): void {
+    this.#send({ type: "setAudio", enabled });
+  }
+
   ping(nonce: number): void {
     this.#send({ type: "ping", nonce });
   }
@@ -314,6 +348,9 @@ export class AppSession {
           break;
         case FrameKind.ClipboardServer:
           this.#events.onClipboard?.(decodeClipboardBlob(frame.payload));
+          break;
+        case FrameKind.Audio:
+          this.#onAudio(decodeAudioChunk(frame.payload));
           break;
         default:
           // Client-bound kinds arriving from the server mean a desynchronised
@@ -359,6 +396,18 @@ export class AppSession {
     else void Promise.all(pending).then(ack);
   }
 
+  #onAudio(chunk: AudioChunk): void {
+    this.#events.onAudio?.(chunk);
+    for (const listener of this.#audioListeners) {
+      // One player throwing must not stop the others — or the next chunk.
+      try {
+        listener(chunk);
+      } catch {
+        /* a player's problem, not the session's */
+      }
+    }
+  }
+
   #onLaunchResult(result: LaunchResult): void {
     this.#events.onLaunchResult?.(result.ok, result.message, result.appId);
     for (const listener of this.#launchListeners) {
@@ -384,6 +433,7 @@ export class AppSession {
         }
         this.#ready = true;
         this.#sessionId = message.sessionId;
+        this.#serverCaps = message.caps;
         const queued = this.#queued;
         this.#queued = [];
         for (const pending of queued) this.#sendNow(pending);

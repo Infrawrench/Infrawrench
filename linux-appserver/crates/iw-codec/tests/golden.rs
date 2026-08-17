@@ -19,7 +19,7 @@
 use std::path::{Path, PathBuf};
 
 use iw_codec::{Codec, EncodeMode, Encoder, EncoderConfig, FrameView, PixelPayload, Rect, RectOp};
-use iw_proto::{FrameKind, encode_frame};
+use iw_proto::{AUDIO_FLAG_RESET, AudioChunk, AudioCodec, FrameKind, SESSION_WINDOW, encode_frame};
 
 const WIDTH: u32 = 64;
 const HEIGHT: u32 = 48;
@@ -274,4 +274,83 @@ fn golden_fixtures_match() {
         "{{\n  \"width\": {WIDTH},\n  \"height\": {HEIGHT},\n  \"windowId\": {WINDOW}\n}}\n"
     );
     check(&dir, "meta.json", meta.as_bytes());
+}
+
+/// Deterministic interleaved stereo s16 for the audio fixture: a ramp on the
+/// left, a faster ramp on the right, wrapped so every value fits.
+fn audio_pcm(frames: usize, offset: usize) -> Vec<u8> {
+    let mut out = Vec::with_capacity(frames * 4);
+    for i in 0..frames {
+        let at = (offset + i) as i32;
+        let left = ((at * 37) % 2048 - 1024) as i16;
+        let right = ((at * 91) % 4096 - 2048) as i16;
+        out.extend_from_slice(&left.to_le_bytes());
+        out.extend_from_slice(&right.to_le_bytes());
+    }
+    out
+}
+
+/// The audio wire format, pinned the same way as the pixels: three chunks —
+/// zstd with the reset flag, raw, and compressed silence — plus the PCM they
+/// decode back to. The TypeScript test replays the frames and must land on
+/// exactly that PCM.
+#[test]
+fn audio_fixtures_match() {
+    let Some(dir) = fixtures_dir() else {
+        eprintln!("appstream-core is not present; skipping the cross-language fixtures");
+        return;
+    };
+
+    let first = audio_pcm(480, 0);
+    let second = audio_pcm(480, 480);
+    let silence = vec![0u8; 480 * 4];
+
+    let chunks = [
+        AudioChunk {
+            codec: AudioCodec::ZstdPcmS16,
+            channels: 2,
+            flags: AUDIO_FLAG_RESET,
+            seq: 0,
+            sample_rate: 48_000,
+            data: zstd::bulk::compress(&first, 1).expect("pcm compresses"),
+        },
+        AudioChunk {
+            codec: AudioCodec::PcmS16,
+            channels: 2,
+            flags: 0,
+            seq: 1,
+            sample_rate: 48_000,
+            data: second.clone(),
+        },
+        AudioChunk {
+            codec: AudioCodec::ZstdPcmS16,
+            channels: 2,
+            flags: 0,
+            seq: 2,
+            sample_rate: 48_000,
+            data: zstd::bulk::compress(&silence, 1).expect("silence compresses"),
+        },
+    ];
+
+    let mut wire = Vec::new();
+    for chunk in &chunks {
+        wire.extend_from_slice(&encode_frame(
+            FrameKind::Audio,
+            SESSION_WINDOW,
+            &chunk.encode(),
+        ));
+    }
+    check(&dir, "audio-frames.bin", &wire);
+
+    let mut pcm = Vec::new();
+    pcm.extend_from_slice(&first);
+    pcm.extend_from_slice(&second);
+    pcm.extend_from_slice(&silence);
+    check(&dir, "audio-pcm.s16", &pcm);
+
+    // The fixture has to keep covering both codecs and the reset flag, or it
+    // would quietly pin less than it claims to.
+    assert!(chunks.iter().any(|c| c.codec == AudioCodec::PcmS16));
+    assert!(chunks.iter().any(|c| c.codec == AudioCodec::ZstdPcmS16));
+    assert!(chunks[0].flags & AUDIO_FLAG_RESET != 0);
 }

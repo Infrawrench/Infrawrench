@@ -25,6 +25,15 @@ export {
 } from "./frame.js";
 
 export {
+  AUDIO_FLAG_RESET,
+  AUDIO_HEADER_LEN,
+  AudioCodec,
+  audioChunkPcm,
+  decodeAudioChunk,
+  type AudioChunk,
+} from "./audio.js";
+
+export {
   decodeClientMessage,
   decodeServerMessage,
   encodeControl,
@@ -74,6 +83,7 @@ export { KeyTranslator, keysymFromCharacter, type KeyLike } from "./keys.js";
 export {
   AppSession,
   type AppSessionEvents,
+  type AudioListener,
   type FrameListener,
   type AppSessionOptions,
   type AppSessionTransport,

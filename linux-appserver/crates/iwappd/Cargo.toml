@@ -13,6 +13,9 @@ iw-codec = { workspace = true }
 iw-apps = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+# The audio mixer compresses its PCM chunks with the same zstd the pixel
+# encoder already ships.
+zstd = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Only the Wayland server half. Smithay's defaults pull in DRM, GBM, libinput,

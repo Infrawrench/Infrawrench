@@ -14,10 +14,12 @@
 //! ([`ClientMessage`] / [`ServerMessage`]); pixels, input and clipboard blobs
 //! are binary because they are hot or large.
 
+mod audio;
 mod frame;
 mod input;
 mod messages;
 
+pub use audio::{AUDIO_FLAG_RESET, AUDIO_HEADER_LEN, AudioChunk, AudioCodec};
 pub use frame::{Frame, FrameDecoder, FrameKind, MAX_FRAME_LEN, encode_frame};
 pub use input::{
     ButtonState, InputEvent, PointerButton, decode_input_batch, encode_input_batch, fixed_from_px,
@@ -51,6 +53,8 @@ pub enum ProtocolError {
     Truncated { expected: usize, actual: usize },
     #[error("invalid input event kind {0}")]
     UnknownInputEvent(u8),
+    #[error("unknown audio codec {0}")]
+    UnknownAudioCodec(u8),
     #[error("malformed control message: {0}")]
     Json(#[from] serde_json::Error),
     #[error("invalid utf-8 in {field}")]

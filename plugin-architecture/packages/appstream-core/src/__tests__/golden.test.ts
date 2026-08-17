@@ -13,7 +13,8 @@ import { fileURLToPath } from "node:url";
 import { zstdDecompressSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 
-import { FrameDecoder, FrameKind } from "../frame.js";
+import { AUDIO_FLAG_RESET, AudioCodec, audioChunkPcm, decodeAudioChunk } from "../audio.js";
+import { FrameDecoder, FrameKind, SESSION_WINDOW } from "../frame.js";
 import {
   Codec,
   RectOp,
@@ -251,5 +252,54 @@ describe("painting only what changed", () => {
     expect([...unaligned]).toEqual([...aligned]);
     // And it really is the swap, not two copies of the same mistake.
     expect([...aligned.slice(0, 4)]).toEqual([bgra[2], bgra[1], bgra[0], bgra[3]]);
+  });
+});
+
+describe("audio fixtures from the Rust encoder", () => {
+  const zstd = (input: Uint8Array) => new Uint8Array(zstdDecompressSync(input));
+
+  it("replays the chunk sequence back to the exact PCM", () => {
+    const decoder = new FrameDecoder();
+    decoder.push(fixture("audio-frames.bin"));
+
+    const pcm: number[] = [];
+    const seqs: number[] = [];
+    const codecs = new Set<number>();
+    let resets = 0;
+    for (const frame of decoder.drain()) {
+      expect(frame.kind).toBe(FrameKind.Audio);
+      expect(frame.windowId).toBe(SESSION_WINDOW);
+      const chunk = decodeAudioChunk(frame.payload);
+      expect(chunk.channels).toBe(2);
+      expect(chunk.sampleRate).toBe(48_000);
+      seqs.push(chunk.seq);
+      codecs.add(chunk.codec);
+      if (chunk.flags & AUDIO_FLAG_RESET) resets += 1;
+      pcm.push(...audioChunkPcm(chunk, zstd));
+    }
+
+    // The Rust test writes both fixtures from the same PCM; landing on it
+    // byte for byte is what pins the header layout, the sample order and the
+    // compression across the two languages.
+    const expected = fixture("audio-pcm.s16");
+    const view = new DataView(expected.buffer, expected.byteOffset);
+    const samples = Array.from({ length: expected.length / 2 }, (_, i) =>
+      view.getInt16(i * 2, true),
+    );
+    expect(pcm).toEqual(samples);
+
+    expect(seqs).toEqual([0, 1, 2]);
+    // The fixture covers both codecs and the reset flag, or it would pin less
+    // than it claims to.
+    expect(codecs).toEqual(new Set([AudioCodec.PcmS16, AudioCodec.ZstdPcmS16]));
+    expect(resets).toBe(1);
+  });
+
+  it("refuses a compressed chunk when no decompressor was supplied", () => {
+    const decoder = new FrameDecoder();
+    decoder.push(fixture("audio-frames.bin"));
+    const first = decodeAudioChunk([...decoder.drain()][0]!.payload);
+    expect(first.codec).toBe(AudioCodec.ZstdPcmS16);
+    expect(() => audioChunkPcm(first)).toThrow(/no decompressor/);
   });
 });

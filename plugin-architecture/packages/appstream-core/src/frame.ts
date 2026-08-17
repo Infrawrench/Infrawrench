@@ -35,6 +35,12 @@ export const FrameKind = {
   Pixels: 0x82,
   /** Clipboard payload, host → client. */
   ClipboardServer: 0x83,
+  /**
+   * Mixed session audio, host → client. Only sent when this client's caps
+   * said `audio` — an unknown kind here is a thrown protocol error, so the
+   * host's gate is what protects an older client.
+   */
+  Audio: 0x84,
 } as const;
 
 export type FrameKind = (typeof FrameKind)[keyof typeof FrameKind];
