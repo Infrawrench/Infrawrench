@@ -915,6 +915,20 @@ export type {
   QueryMonitorTestResult,
 } from "./query-monitors/QueryMonitorsSection.js";
 export { QueryMonitorIcon } from "./components/icons/QueryMonitorIcon.js";
+// The carbon estimate. Coefficients and arithmetic come from client-core;
+// only the section lives here.
+export {
+  CARBON_LIMITS,
+  CARBON_UNESTIMATED_LABELS,
+  estimateCarbon,
+  formatCo2e,
+  gridIntensityFor,
+  type CarbonEstimate,
+  type CarbonRow,
+  type CarbonUnestimatedReason,
+} from "@infrawrench/client-core";
+export { CarbonSection } from "./carbon/CarbonSection.js";
+export type { CarbonSectionProps } from "./carbon/CarbonSection.js";
 export {
   DNS_CLASSIFICATION_LABELS,
   computeDnsInventory,

@@ -1,5 +1,6 @@
 import type {
   BillingRule,
+  CarbonEstimate,
   BudgetWithStatus,
   CostAccountStatus,
   CostAlert,
@@ -99,6 +100,12 @@ export interface CostApi {
    * that hasn't wired it simply doesn't offer scenarios.
    */
   listScenarioModels?(): Promise<CostScenarioModel[]>;
+  /**
+   * Estimated operational carbon. Optional like the other later additions:
+   * a host that does not offer it simply gets no carbon section, rather than
+   * a section that fails to load.
+   */
+  getCarbonEstimate?(): Promise<CarbonEstimate>;
   /**
    * The dated notes a chart should draw. Lives on the base `CostApi` rather
    * than on the report client because an annotation with no report id is
