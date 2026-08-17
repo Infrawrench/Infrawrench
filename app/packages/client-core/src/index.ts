@@ -668,6 +668,9 @@ export * from "./api-types";
 export { normalizeTerminalLinkUrl } from "./terminal-links";
 export * from "./moment";
 export * from "./orphans";
+// CO2e beside the cost, with its assumptions on the response.
+export * from "./carbon-factors";
+export * from "./carbon";
 export * from "./expiry";
 export * from "./leases";
 // One time axis over every dated thing above — freezes, sleep windows,

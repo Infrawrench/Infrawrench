@@ -1,5 +1,6 @@
 import type {
   BillingRule,
+  CarbonEstimate,
   BudgetInput,
   BudgetWithStatus,
   BusinessMetric,
@@ -89,6 +90,10 @@ export function createWebCostApi(orgId: string): CostApi {
     // Scenario models ride the base CostApi for the same reason saved filters
     // do: every surface that can author or draw a cost graph needs the list —
     // the picker in the editor, and the card that labels an applied scenario.
+    // The carbon estimate walks the whole inventory and asks each plugin for a
+    // size catalogue, so it is deliberately its own call rather than folded
+    // into any of the cost reads above.
+    getCarbonEstimate: async () => apiGet<CarbonEstimate>(`/api/org/${orgId}/carbon`),
     listScenarioModels: async () => {
       const res = await apiGet<{ models: CostScenarioModel[] }>(`/api/org/${orgId}/cost-scenarios`);
       return res.models;
