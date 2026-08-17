@@ -27,6 +27,7 @@ import {
   PostureIcon,
   AccessReviewIcon,
   BackupsIcon,
+  WallboardIcon,
   DomainsIcon,
   EnvironmentDiffIcon,
   FanoutIcon,
@@ -571,6 +572,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <BackupsIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/backups", params: { orgId: orgId! } }),
+              },
+              {
+                key: "wallboard",
+                label: gt("Wallboard"),
+                icon: <WallboardIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/wallboard", params: { orgId: orgId! } }),
               },
               {
                 key: "dns",

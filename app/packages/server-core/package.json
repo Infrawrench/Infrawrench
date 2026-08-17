@@ -118,6 +118,7 @@
     "./posture/dismissals": "./src/posture/dismissals.ts",
     "./posture/feed": "./src/posture/feed.ts",
     "./backups/feed": "./src/backups/feed.ts",
+    "./wallboard/feed": "./src/wallboard/feed.ts",
     "./backups/store": "./src/backups/store.ts",
     "./posture/settings": "./src/posture/settings.ts",
     "./posture/summary": "./src/posture/summary.ts",

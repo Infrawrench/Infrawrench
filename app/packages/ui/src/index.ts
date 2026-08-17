@@ -343,6 +343,7 @@ export {
   postureTabTarget,
   accessReviewTabTarget,
   backupsTabTarget,
+  wallboardTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -791,6 +792,21 @@ export type {
 export { BackupsSection } from "./backups/BackupsSection.js";
 export type { BackupsSectionProps } from "./backups/BackupsSection.js";
 export { BackupsIcon } from "./components/icons/BackupsIcon.js";
+// The wallboard. Its status rule and rotation arithmetic come from client-core
+// like every other section's; only the section and its icon live here.
+export {
+  WALLBOARD_LIMITS,
+  clampWallboardSeconds,
+  formatWallDuration,
+  rotationIndex,
+  wallboardStatus,
+  type WallboardResponse,
+  type WallboardStatus,
+  type WallboardTile,
+} from "@infrawrench/client-core";
+export { WallboardSection } from "./wallboard/WallboardSection.js";
+export type { WallboardSectionProps } from "./wallboard/WallboardSection.js";
+export { WallboardIcon } from "./components/icons/WallboardIcon.js";
 export {
   DNS_CLASSIFICATION_LABELS,
   computeDnsInventory,

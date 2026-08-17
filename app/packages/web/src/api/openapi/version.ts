@@ -83,4 +83,7 @@
 // (Corrected before publication: the first cut of this spec described only the
 // agent's half of the ceremony, and typed the revoke response as bare `Ok`
 // when the route also returns `revoked`.)
-export const API_VERSION = "1.27.0";
+// 1.28.0: the wallboard — one read (`GET /wallboard`) answering "is anything
+// wrong right now" for a screen on a wall, plus a `wallboard` member on the
+// workspace TabTarget kind enum. All additive.
+export const API_VERSION = "1.28.0";

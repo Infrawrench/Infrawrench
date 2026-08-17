@@ -199,6 +199,7 @@ const TabTarget = strict({
     "posture",
     "access-review",
     "backups",
+    "wallboard",
     "dns",
     "iac",
     "environment-diff",

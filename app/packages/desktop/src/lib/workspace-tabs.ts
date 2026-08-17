@@ -14,6 +14,7 @@ import {
   postureTabTarget,
   accessReviewTabTarget,
   backupsTabTarget,
+  wallboardTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -52,6 +53,7 @@ export {
   postureTabTarget,
   accessReviewTabTarget,
   backupsTabTarget,
+  wallboardTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -150,6 +152,8 @@ export function getWorkspaceNavigateArgs(
       return { to: "/access-review", ...(replace ? { replace: true } : {}) };
     case "backups":
       return { to: "/backups", ...(replace ? { replace: true } : {}) };
+    case "wallboard":
+      return { to: "/wallboard", ...(replace ? { replace: true } : {}) };
     case "dns":
       return { to: "/dns", ...(replace ? { replace: true } : {}) };
     case "iac":
@@ -344,6 +348,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "backups") {
     return backupsTabTarget();
+  }
+  if (segments[0] === "wallboard") {
+    return wallboardTabTarget();
   }
   if (segments[0] === "dns") {
     return dnsTabTarget();

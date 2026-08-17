@@ -189,6 +189,7 @@ const INVOKE_CHANNELS = [
   "cloud_backup_policy_create",
   "cloud_backup_policy_update",
   "cloud_backup_policy_delete",
+  "cloud_wallboard",
   "cloud_dns",
   "cloud_environment_diff",
   "cloud_changes_list",

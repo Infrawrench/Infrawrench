@@ -15,6 +15,8 @@ export type WorkspaceTabTarget =
   | { kind: "posture" }
   | { kind: "access-review" }
   | { kind: "backups" }
+  /** The wallboard — one screen, read from across the room. */
+  | { kind: "wallboard" }
   | { kind: "dns" }
   | { kind: "iac" }
   | { kind: "environment-diff"; a?: string; b?: string }
@@ -141,6 +143,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "access-review";
     case "backups":
       return "backups";
+    case "wallboard":
+      return "wallboard";
     case "dns":
       return "dns";
     case "iac":
@@ -223,6 +227,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Access review";
     case "backups":
       return "Backups";
+    case "wallboard":
+      return "Wallboard";
     case "dns":
       return "Domains";
     case "iac":
@@ -281,6 +287,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "posture":
     case "access-review":
     case "backups":
+    case "wallboard":
     case "dns":
     case "iac":
     case "environments":

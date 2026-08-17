@@ -13,6 +13,7 @@ import "./quotas";
 import "./posture";
 import "./access-review";
 import "./backups";
+import "./wallboard";
 import "./dns";
 import "./environment-diff";
 import "./environments";

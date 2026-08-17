@@ -338,6 +338,13 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(args).toMatchObject({ hash: "sftp" });
   });
 
+  it("returns wallboard route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "wallboard" })).toEqual({
+      to: "/org/$orgId/wallboard",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns backups route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "backups" })).toEqual({
       to: "/org/$orgId/backups",
@@ -415,6 +422,10 @@ describe("syncWorkspaceRouteFromPath", () => {
       kind: "account",
       accountId: "a1",
     });
+  });
+
+  it("parses the org-scoped wallboard path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/wallboard")).toEqual({ kind: "wallboard" });
   });
 
   it("parses the org-scoped backups path", () => {

@@ -66,6 +66,14 @@ export function backupsTabTarget(): WorkspaceTabTarget {
   return { kind: "backups" };
 }
 
+/**
+ * The wallboard. Single-instance: it is one screen by construction, and a
+ * second tab of it would be the same screen twice.
+ */
+export function wallboardTabTarget(): WorkspaceTabTarget {
+  return { kind: "wallboard" };
+}
+
 export function dnsTabTarget(): WorkspaceTabTarget {
   return { kind: "dns" };
 }
