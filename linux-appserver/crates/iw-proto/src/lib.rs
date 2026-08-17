@@ -21,6 +21,7 @@ mod messages;
 pub use frame::{Frame, FrameDecoder, FrameKind, MAX_FRAME_LEN, encode_frame};
 pub use input::{
     ButtonState, InputEvent, PointerButton, decode_input_batch, encode_input_batch, fixed_from_px,
+    v120_from_axis,
 };
 pub use messages::{
     AppEntry, ClientCaps, ClientMessage, ClipboardBlob, CursorImage, ErrorCode, PixelFormat,

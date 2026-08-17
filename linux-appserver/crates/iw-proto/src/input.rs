@@ -124,6 +124,20 @@ pub const fn fixed_from_px(px: i32) -> i32 {
     px * 256
 }
 
+/// A scroll delta in this protocol's units as `v120` steps.
+///
+/// Two conventions meet here. The client normalises every wheel to Wayland's
+/// continuous "ten units per notch"; `wl_pointer` counts discrete steps in
+/// hundred-and-twentieths of a notch. So a notch is 10 one way and 120 the
+/// other, and the conversion is twelve.
+///
+/// It matters because the continuous value on its own is not enough: a v8
+/// client reads `axis_value120`, a v5 one reads `axis_discrete`, and a wheel
+/// frame carrying neither is something a toolkit may simply ignore.
+pub fn v120_from_axis(fixed: i32) -> i32 {
+    (fixed as f64 / 256.0 * 12.0).round() as i32
+}
+
 fn put_u32(out: &mut Vec<u8>, v: u32) {
     out.extend_from_slice(&v.to_le_bytes());
 }
@@ -303,6 +317,29 @@ pub fn decode_input_batch(payload: &[u8]) -> Result<Vec<InputEvent>, ProtocolErr
 
 #[cfg(test)]
 mod tests {
+    use super::v120_from_axis;
+
+    #[test]
+    fn one_notch_is_a_hundred_and_twenty_steps() {
+        // The client sends ten units per notch, in 24.8 fixed point.
+        assert_eq!(v120_from_axis(fixed_from_px(10)), 120);
+        assert_eq!(v120_from_axis(fixed_from_px(-10)), -120);
+        assert_eq!(v120_from_axis(fixed_from_px(30)), 360);
+    }
+
+    #[test]
+    fn a_trackpads_fraction_of_a_notch_survives() {
+        // A touchpad reports continuous deltas far smaller than a notch; they
+        // have to arrive as a fraction of 120 rather than rounding to nothing.
+        assert_eq!(v120_from_axis(fixed_from_px(10) / 4), 30);
+        assert_ne!(v120_from_axis(fixed_from_px(10) / 40), 0);
+    }
+
+    #[test]
+    fn nothing_scrolls_nowhere() {
+        assert_eq!(v120_from_axis(0), 0);
+    }
+
     use super::*;
 
     fn sample() -> Vec<InputEvent> {

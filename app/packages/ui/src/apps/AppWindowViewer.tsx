@@ -127,6 +127,8 @@ export function AppWindowViewer({
     /** Kept rather than rebuilt per frame; it is a view, not a copy. */
     image: ImageData;
   } | null>(null);
+  /** Keys the remote application currently believes are down. */
+  const held = useRef<Set<number>>(new Set());
   const [painted, setPainted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string>("default");
@@ -242,8 +244,11 @@ export function AppWindowViewer({
   const started = useMemo(() => Date.now(), []);
   const now = useCallback(() => (Date.now() - started) % 0xffffffff, [started]);
 
+  // Takes the coordinates rather than a React event, because the wheel sends
+  // one too: a scroll has to carry the pointer's position or the compositor has
+  // nowhere to deliver it.
   const sendPointer = useCallback(
-    (event: React.PointerEvent<HTMLCanvasElement>, extra?: InputEvent[]) => {
+    (event: { clientX: number; clientY: number }, extra?: InputEvent[]) => {
       const canvas = canvasRef.current;
       const buffer = bufferRef.current;
       if (!canvas || !buffer) return;
@@ -274,12 +279,48 @@ export function AppWindowViewer({
       if (keycode === undefined) return;
       // The remote application owns every key while focused, including the
       // browser's own shortcuts — otherwise Ctrl-W closes the tab instead of
-      // the document.
+      // the document. Done before the repeat check, or a held Ctrl-W would
+      // reach the browser on the second event.
       event.preventDefault();
+      // The browser repeats a held key and so does the application — Wayland
+      // hands clients a repeat rate and they do it themselves. Forwarding the
+      // browser's repeats too means every held key is typed twice over, which
+      // is what "sometimes sends many times" was.
+      if (state === ButtonState.Pressed && event.repeat) return;
+      if (state === ButtonState.Pressed) held.current.add(keycode);
+      else held.current.delete(keycode);
       session.sendInput(windowId, [{ kind: "key", timeMs: now(), keycode, state }]);
     },
     [session, windowId, now],
   );
+
+  /** Let go of everything still down. */
+  const releaseHeld = useCallback(() => {
+    if (held.current.size === 0) return;
+    const events: InputEvent[] = [...held.current].map((keycode) => ({
+      kind: "key" as const,
+      timeMs: now(),
+      keycode,
+      state: ButtonState.Released,
+    }));
+    held.current.clear();
+    session.sendInput(windowId, events);
+  }, [session, windowId, now]);
+
+  // A key held when the canvas loses focus never gets its keyup — the browser
+  // sends that to whatever has focus now. The application is left holding the
+  // key down and repeating it forever, which looks exactly like a stuck
+  // keyboard because it is one.
+  useEffect(() => {
+    const onBlur = () => releaseHeld();
+    window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onBlur);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onBlur);
+      releaseHeld();
+    };
+  }, [releaseHeld]);
 
   return (
     <div
@@ -320,8 +361,12 @@ export function AppWindowViewer({
           session.sendInput(windowId, [{ kind: "pointerLeave", timeMs: now() }])
         }
         onWheel={(event) => {
+          // Through `sendPointer`, so the scroll carries the cursor's position:
+          // a compositor delivers an axis event to whatever the pointer is
+          // over, and a wheel with no motion behind it has nowhere to go —
+          // which is why scrolling did nothing until the mouse had moved.
           const { dx, dy } = axisFromWheel(event);
-          session.sendInput(windowId, [{ kind: "pointerAxis", timeMs: now(), dx, dy }]);
+          sendPointer(event, [{ kind: "pointerAxis", timeMs: now(), dx, dy }]);
         }}
         onKeyDown={(event) => onKey(event, ButtonState.Pressed)}
         onKeyUp={(event) => onKey(event, ButtonState.Released)}

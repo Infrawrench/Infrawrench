@@ -25,7 +25,7 @@ use smithay::reexports::wayland_server::Display;
 use smithay::utils::SERIAL_COUNTER;
 use smithay::wayland::socket::ListeningSocketSource;
 
-use iw_proto::{ButtonState, InputEvent};
+use iw_proto::{ButtonState, InputEvent, v120_from_axis};
 
 use crate::backend::{Backend, BackendError, BackendEvent, BackendFrame, LaunchSpec};
 use crate::launch_env;
@@ -329,11 +329,16 @@ impl Backend for WaylandBackend {
                         .source(smithay::backend::input::AxisSource::Wheel);
                     if dx != 0 {
                         frame = frame
-                            .value(smithay::backend::input::Axis::Horizontal, fixed_to_f64(dx));
+                            .value(smithay::backend::input::Axis::Horizontal, fixed_to_f64(dx))
+                            .v120(
+                                smithay::backend::input::Axis::Horizontal,
+                                v120_from_axis(dx),
+                            );
                     }
                     if dy != 0 {
-                        frame =
-                            frame.value(smithay::backend::input::Axis::Vertical, fixed_to_f64(dy));
+                        frame = frame
+                            .value(smithay::backend::input::Axis::Vertical, fixed_to_f64(dy))
+                            .v120(smithay::backend::input::Axis::Vertical, v120_from_axis(dy));
                     }
                     pointer.axis(&mut self.data.state, frame);
                     pointer.frame(&mut self.data.state);
