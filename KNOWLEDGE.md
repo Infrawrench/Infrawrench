@@ -2948,6 +2948,23 @@ One time axis over six things the org already stores. API **1.28.0**; migration 
 
 Docs: `website/src/content/docs/features/ops-calendar.md`.
 
+## Maintenance planner (cloud-only)
+
+What order to touch a set of resources in, and what each step takes with it. API **1.39.0**; **no migration** — a read over the dependency graph that already exists.
+
+- **It plans and does not execute, and that is a boundary rather than an omission.** An unattended sequence of destructive actions against somebody's production is not something to run off a heuristic; the ordering is the part people actually get wrong, and it is what this answers. There is deliberately no companion route that stops anything.
+- **Kahn's algorithm over the sub-graph _induced by the selection_.** An edge through a resource nobody selected does not order two that were — restarting a web server and its database is one ordering question whether or not a load balancer sits between them and is being left alone.
+- **Waves, not a flat list.** Resources with no remaining constraint come out together, so twelve services with three real layers is three steps rather than twelve. That is the difference between a window somebody runs and a list they abandon halfway.
+- **The intent changes exactly one line.** `start` orders provider→consumer; `stop` and `restart` order consumer→provider. Everything else in the module is direction-agnostic, which keeps "did we get start and stop the right way round" a single expression to check rather than a property of the whole algorithm. A restart is ordered like a stop, because that is the direction in which a brief absence hurts.
+- **A cycle is reported, never linearised.** It means the graph disagrees with itself, and an arbitrary order presented as a plan is a guess wearing a plan's clothes. The acyclic part of the selection is still ordered.
+- **Selected ids missing from the graph are named**, so a plan for twelve things never quietly becomes a plan for ten; and `partialGraph` carries the graph's own truncation flag through rather than presenting a partial topology as complete.
+- **Outside impact is empty for a `start`.** Listing dependants there would read as a warning about a recovery.
+- **A POST that changes nothing**, because two hundred resource ids is a request body rather than a query string. `resources:read`: working out the order is a planning act, and the person writing the change request is routinely not the one who will run it — the blast-radius argument.
+- **Surfaces**: `MaintenancePlanSection`, beneath the dependency graph canvas in the Graph tab. It sits there because the answer only makes sense next to the picture that produced it. Changing the selection clears a computed plan, so nobody reads an order for a set they are no longer planning.
+- **Deliberate omissions.** No execution, no stored plans (a plan is about a selection and a graph at one moment; storing one would create something that goes stale silently), no health gates between steps, no desktop or mobile surface.
+
+Docs: the "Planning a maintenance window" section of `website/src/content/docs/features/dependency-graph.md`.
+
 ## Pushing in from outside (pages & cost rows over the API)
 
 Two endpoints let a server that isn't Infrawrench push _into_ it — the mirror image of everything else, which pulls. Both are the HTTP twin of a workflow primitive, and in both cases the workflow path was refactored to share the mechanism rather than being copied.

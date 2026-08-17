@@ -655,6 +655,8 @@ export {
   type BlastRadiusGap,
   type BlastRadiusSeverity,
 } from "./blast-radius";
+// What order to touch things in, and what each step takes with it.
+export * from "./maintenance-plan";
 export {
   MONGO_PAGE_SIZE,
   mongoCommands,

@@ -828,6 +828,19 @@ export {
 export { CalendarSection } from "./calendar/CalendarSection.js";
 export type { CalendarSectionProps, CalendarRange } from "./calendar/CalendarSection.js";
 export { CalendarIcon } from "./components/icons/CalendarIcon.js";
+// The maintenance planner, beneath the dependency graph it reads. Ordering
+// and impact come from client-core; only the section lives here.
+export {
+  MAINTENANCE_LIMITS,
+  buildMaintenancePlan,
+  describeMaintenanceOrder,
+  plannedResourceCount,
+  type MaintenanceIntent,
+  type MaintenancePlan,
+  type MaintenanceStep,
+} from "@infrawrench/client-core";
+export { MaintenancePlanSection } from "./maintenance/MaintenancePlanSection.js";
+export type { MaintenancePlanSectionProps } from "./maintenance/MaintenancePlanSection.js";
 export {
   DNS_CLASSIFICATION_LABELS,
   computeDnsInventory,

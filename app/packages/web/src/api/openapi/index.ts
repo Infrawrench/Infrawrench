@@ -53,6 +53,7 @@ import { registerAccessReviewPaths } from "./paths/access-review";
 import { registerBackupPaths } from "./paths/backups";
 import { registerWallboardPaths } from "./paths/wallboard";
 import { registerCalendarPaths } from "./paths/calendar";
+import { registerMaintenancePlanPaths } from "./paths/maintenance-plan";
 import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
@@ -186,6 +187,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerBackupPaths(ctx);
   registerWallboardPaths(ctx);
   registerCalendarPaths(ctx);
+  registerMaintenancePlanPaths(ctx);
   registerDnsPaths(ctx);
   registerEnvironmentDiffPaths(ctx);
   registerMomentPaths(ctx);
@@ -469,6 +471,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Operations calendar",
         description:
           "One time axis over six things the organization already stores — change freezes, sleep/wake schedules, declared deadlines, commitment term ends, cron-triggered workflow runs and declared incidents. Nothing on it is a new record: the calendar is a projection recomputed on every read, and each source is guarded independently so one that fails costs its own kind rather than the page. Subscriptions mint an unauthenticated iCalendar URL whose 32-byte token is the sole credential; it carries scheduling facts only, and no organization id.",
+      },
+      {
+        name: "Maintenance plan",
+        description:
+          "What order to touch a set of resources in, and what each step takes down with it. \"Restart these twelve services\" hides the only hard question in it, and the dependency graph has always known the answer. Ordering is Kahn's algorithm over the sub-graph induced by the selection, so an edge through something nobody selected does not order two things that were; independent resources come out in the same wave, so twelve services with three real layers is three steps rather than twelve. A cycle is reported rather than linearised, because an arbitrary order presented as a plan is a guess wearing a plan's clothes. It plans and does not execute \u2014 a boundary, not an omission.",
       },
       {
         name: "Status pages",
