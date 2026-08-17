@@ -3,6 +3,7 @@ import { T, useGT } from "gt-react";
 import type { Recipient } from "../api-types.js";
 import { useSettingsHost } from "./host.js";
 import { AlertRoutingSection } from "./AlertRoutingSection.js";
+import { AlertNoiseCard } from "./AlertNoiseCard.js";
 import { WeeklyDigestSection } from "./WeeklyDigestSection.js";
 import { ExpiryAlertsSection } from "./ExpiryAlertsSection.js";
 import { DriftAlertsSection } from "./notifications/DriftAlertsSection.js";
@@ -176,6 +177,11 @@ export function NotificationsSection() {
       </section>
 
       <AlertRoutingSection orgId={orgId} />
+
+      {/* Directly beneath the rules: the noise report is a reading *of* them,
+          and the person who should see "nobody has ever acknowledged this one"
+          is the person looking at the rule that produced it. */}
+      <AlertNoiseCard />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <DriftAlertsSection orgId={orgId} />

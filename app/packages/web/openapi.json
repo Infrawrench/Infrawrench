@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.31.0",
+    "version": "1.37.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -17514,6 +17514,174 @@
         },
         "required": [
           "name"
+        ],
+        "additionalProperties": false
+      },
+      "AlertNoiseGroup": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "rule",
+              "trigger"
+            ]
+          },
+          "count": {
+            "type": "integer"
+          },
+          "actionable": {
+            "type": "integer",
+            "description": "Deliveries that asked for an acknowledgement. Only those can be ignored — a rule with no escalation armed shows no button, and counting it as ignored would indict an organization for the product's own design."
+          },
+          "acknowledged": {
+            "type": "integer"
+          },
+          "acknowledgedRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Share of *actionable* deliveries acknowledged, 0–1. Null when none asked for a response — not the same as 0%, and rendering it as 0% would be this report's own version of the lie it exists to catch."
+          },
+          "medianAckMinutes": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "firstAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "severities": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "kind",
+          "count",
+          "actionable",
+          "acknowledged",
+          "acknowledgedRate",
+          "medianAckMinutes",
+          "firstAt",
+          "lastAt",
+          "severities"
+        ],
+        "additionalProperties": false
+      },
+      "AlertNoisyFinding": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "never-acknowledged",
+              "mostly-ignored",
+              "very-frequent"
+            ]
+          },
+          "count": {
+            "type": "integer"
+          },
+          "acknowledgedRate": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "suggestion": {
+            "type": "string",
+            "description": "One sentence a person can act on. **Never an action taken automatically** — a system that silences its own alerts on a heuristic is one nobody can trust."
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "reason",
+          "count",
+          "acknowledgedRate",
+          "suggestion"
+        ],
+        "additionalProperties": false
+      },
+      "AlertNoiseReport": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "totalDeliveries": {
+            "type": "integer"
+          },
+          "actionableDeliveries": {
+            "type": "integer"
+          },
+          "acknowledgedDeliveries": {
+            "type": "integer"
+          },
+          "byRule": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertNoiseGroup"
+            },
+            "description": "Loudest first. Deliveries that matched no rule are one group."
+          },
+          "byTrigger": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertNoiseGroup"
+            }
+          },
+          "noisy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlertNoisyFinding"
+            },
+            "description": "Flagged groups, worst first. Always a subset of byRule."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "totalDeliveries",
+          "actionableDeliveries",
+          "acknowledgedDeliveries",
+          "byRule",
+          "byTrigger",
+          "noisy",
+          "generatedAt"
         ],
         "additionalProperties": false
       },
@@ -48156,6 +48324,63 @@
           }
         },
         "operationId": "deleteOrgOrgIdCalendarSubscriptionsSubscriptionId"
+      }
+    },
+    "/api/org/{orgId}/alert-rules/noise": {
+      "get": {
+        "tags": [
+          "Alert routing"
+        ],
+        "summary": "Which alerts nobody acts on",
+        "description": "Routing decides where an alert goes. This asks the question that decides whether the whole system works: **are these being read?** An organization with one rule that fires 400 times a month and has never been acknowledged does not have a monitoring system — it has a filter people have learned to ignore, and the alert that mattered went into the same channel.\n\nOnly an explicit acknowledgement counts as engagement; `sent` means the message left the building. A group below 10 deliveries is never flagged, because three unacknowledged alerts is not evidence and a report that cried noise at every new rule would be the second thing people learn to ignore.\n\nRead-only by construction: it says a rule is noisy and never disables one.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 180,
+              "description": "Defaults to 30."
+            },
+            "required": false,
+            "description": "Defaults to 30.",
+            "name": "windowDays",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertNoiseReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAlertRulesNoise"
       }
     },
     "/api/org/{orgId}/dns": {

@@ -31,6 +31,7 @@
     "./slack": "./src/slack.ts",
     "./slack-approvals": "./src/slack-approvals.ts",
     "./msteams": "./src/msteams.ts",
+    "./alerts/noise": "./src/alerts/noise.ts",
     "./alerts/route": "./src/alerts/route.ts",
     "./alerts/rules": "./src/alerts/rules.ts",
     "./alerts/pass": "./src/alerts/pass.ts",
