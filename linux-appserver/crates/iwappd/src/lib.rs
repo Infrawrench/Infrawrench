@@ -12,6 +12,7 @@ pub mod backend;
 pub mod catalog;
 pub mod keymap;
 pub mod launch_env;
+pub mod paint;
 pub mod png;
 pub mod session;
 

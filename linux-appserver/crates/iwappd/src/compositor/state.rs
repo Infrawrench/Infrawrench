@@ -44,6 +44,7 @@ use smithay::{
 };
 
 use crate::backend::BackendEvent;
+use crate::paint::{SurfaceView, Target, blit, clear_region, rescale};
 
 /// Highest buffer scale we will ask an application to render at.
 ///
@@ -340,8 +341,13 @@ impl AppState {
                         cache.width,
                         cache.height,
                     ));
+                    // Damage arrives in the surface's *own* buffer pixels, so a
+                    // child at a different scale from the window reports
+                    // rectangles in a different unit than the canvas uses.
+                    let scale = cache.scale.max(1);
                     let pending: Vec<Rect> = cache.damage.drain(..).collect();
                     for rect in pending {
+                        let rect = rescale(rect, scale, root_scale);
                         if let Some(clipped) = translate(rect, at.0, at.1).clip(width, height) {
                             damage.push(clipped);
                         }
@@ -377,6 +383,12 @@ impl AppState {
                 // over it.
                 clear_region(&mut canvas, width, *region);
             }
+            let mut target = Target {
+                pixels: &mut canvas,
+                width,
+                height,
+                scale: root_scale,
+            };
             with_surface_tree_downward(
                 &root_for_paint,
                 (0i32, 0i32),
@@ -390,15 +402,7 @@ impl AppState {
                     if let Some(cache) = states.data_map.get::<RefCell<SurfacePixels>>() {
                         let cache = cache.borrow();
                         for region in &regions {
-                            blit(
-                                &mut canvas,
-                                width,
-                                height,
-                                &cache,
-                                at.0,
-                                at.1,
-                                Some(*region),
-                            );
+                            blit(&mut target, &cache.view(), at.0, at.1, Some(*region));
                         }
                     }
                     TraversalAction::DoChildren(at)
@@ -421,6 +425,18 @@ impl AppState {
             rec.damage.clear();
         } else {
             rec.damage.extend(damage);
+        }
+    }
+}
+
+impl SurfacePixels {
+    fn view(&self) -> SurfaceView<'_> {
+        SurfaceView {
+            width: self.width,
+            height: self.height,
+            pixels: &self.pixels,
+            opaque: self.opaque,
+            scale: self.scale,
         }
     }
 }
@@ -519,92 +535,6 @@ fn absorb(cache: &mut SurfacePixels, buffer: &wl_buffer::WlBuffer, damage: &[Rec
             }
         }
     });
-}
-
-/// Draw one surface's pixels into the window canvas at `(ox, oy)`, blended.
-///
-/// Source-over with premultiplied alpha, which is what `wl_shm`'s `Argb8888`
-/// carries. A straight copy would be cheaper but wrong in both directions: a
-/// client's rounded corners and shadows would get hard edges, and any surface
-/// with a transparent region would punch a hole through whatever it covers.
-fn blit(
-    canvas: &mut [u8],
-    canvas_w: u32,
-    canvas_h: u32,
-    src: &SurfacePixels,
-    ox: i32,
-    oy: i32,
-    clip: Option<Rect>,
-) {
-    if src.pixels.is_empty() {
-        return;
-    }
-    // Work out the overlapping rows and columns once, rather than testing every
-    // pixel against the canvas edges and against the clip. On a 2× window that
-    // inner branch ran a few million times per commit.
-    let (clip_x0, clip_y0, clip_x1, clip_y1) = match clip {
-        Some(r) => (r.x as i64, r.y as i64, r.right() as i64, r.bottom() as i64),
-        None => (0, 0, canvas_w as i64, canvas_h as i64),
-    };
-    let x0 = (ox as i64).max(0).max(clip_x0);
-    let y0 = (oy as i64).max(0).max(clip_y0);
-    let x1 = (ox as i64 + src.width as i64)
-        .min(canvas_w as i64)
-        .min(clip_x1);
-    let y1 = (oy as i64 + src.height as i64)
-        .min(canvas_h as i64)
-        .min(clip_y1);
-    if x0 >= x1 || y0 >= y1 {
-        return;
-    }
-    let row_bytes = (x1 - x0) as usize * 4;
-
-    for y in y0..y1 {
-        let from = ((y - oy as i64) as usize * src.width as usize + (x0 - ox as i64) as usize) * 4;
-        let to = (y as usize * canvas_w as usize + x0 as usize) * 4;
-
-        // A surface whose format has no alpha — which is most of them, and
-        // every toplevel that fills its own window — is a row copy. Blending it
-        // pixel by pixel produces the identical result at roughly ten times the
-        // cost.
-        if src.opaque {
-            canvas[to..to + row_bytes].copy_from_slice(&src.pixels[from..from + row_bytes]);
-            continue;
-        }
-
-        for col in 0..(x1 - x0) as usize {
-            let from = from + col * 4;
-            let to = to + col * 4;
-            let alpha = src.pixels[from + 3] as u32;
-            if alpha == 255 {
-                canvas[to..to + 4].copy_from_slice(&src.pixels[from..from + 4]);
-                continue;
-            }
-            if alpha == 0 {
-                continue;
-            }
-            let inverse = 255 - alpha;
-            for channel in 0..4 {
-                let source = src.pixels[from + channel] as u32;
-                let dest = canvas[to + channel] as u32;
-                canvas[to + channel] = (source + dest * inverse / 255).min(255) as u8;
-            }
-        }
-    }
-}
-
-/// Blank a rectangle of the canvas.
-///
-/// Compositing is source-over, so a region has to start empty or the previous
-/// frame shows through anything translucent drawn over it.
-fn clear_region(canvas: &mut [u8], canvas_w: u32, region: Rect) {
-    let row_bytes = region.w as usize * 4;
-    for y in region.y..region.bottom() {
-        let at = (y as usize * canvas_w as usize + region.x as usize) * 4;
-        if at + row_bytes <= canvas.len() {
-            canvas[at..at + row_bytes].fill(0);
-        }
-    }
 }
 
 /// Merge the damage into the regions the composite pass will actually repaint.
