@@ -112,4 +112,8 @@
 // (`/runbooks/{id}/runs`, `/runbooks/runs/*`), and a `runbooks` member on the
 // workspace TabTarget kind enum, without which a persisted Runbooks tab is
 // silently dropped on reload. All additive.
-export const API_VERSION = "1.33.0";
+// 1.34.0: on-call rotations — `/on-call/schedules` CRUD, `/on-call/now`,
+// shift previews and covers, plus a new `on-call` member on the
+// AlertDestination union so a routing rule can name "whoever is on call"
+// instead of a fixed channel. All additive.
+export const API_VERSION = "1.34.0";

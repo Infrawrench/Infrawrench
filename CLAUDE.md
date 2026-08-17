@@ -55,7 +55,7 @@ The web and desktop UIs are internationalized with gt-react (General Translation
 
 ## Terraform provider
 
-`terraform-provider-infrawrench/` at the repo root manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery (46 resources, 6 data sources). Its README carries the full design rationale; what follows is what binds changes made elsewhere in the repo.
+`terraform-provider-infrawrench/` at the repo root manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery (47 resources, 6 data sources). Its README carries the full design rationale; what follows is what binds changes made elsewhere in the repo.
 
 Three unrelated features have "Terraform" in the name; **eject to Terraform** (`Plugin.terraformExport`, writes HCL describing _the user's cloud resources_), **org config as code** (`infrawrench config export/plan/apply`, whole-org JSON document), and **this provider** (per-object CRUD against the org-scoped routes). The provider deliberately does not wrap config as code: that document addresses entities by a name-derived `key` with no server id, so import is impossible and a rename becomes destroy-and-recreate. It also carries only a handful of the object types the provider manages.
 

@@ -55,6 +55,16 @@ func TestAlertDestinationMarshalsOnlyItsBranch(t *testing.T) {
 		}
 	})
 
+	t.Run("on-call carries scheduleId", func(t *testing.T) {
+		got := decode(t, AlertDestination{Kind: "on-call", ChannelID: strptr("c1"), ScheduleID: strptr("s1")})
+		if got["scheduleId"] != "s1" {
+			t.Errorf("scheduleId lost: %v", got)
+		}
+		if _, present := got["channelId"]; present {
+			t.Errorf("an on-call destination must not carry channelId: %v", got)
+		}
+	})
+
 	t.Run("an unknown kind fails loudly", func(t *testing.T) {
 		if _, err := json.Marshal(AlertDestination{Kind: "email"}); err == nil {
 			t.Error("an unknown destination kind must be an error, not a silently dropped destination")

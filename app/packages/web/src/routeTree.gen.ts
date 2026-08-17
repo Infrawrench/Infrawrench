@@ -72,6 +72,7 @@ import { Route as OrgOrgIdSettingsCurrencyRouteImport } from './routes/org.$orgI
 import { Route as OrgOrgIdSettingsFreezesRouteImport } from './routes/org.$orgId.settings.freezes'
 import { Route as OrgOrgIdSettingsJiraRouteImport } from './routes/org.$orgId.settings.jira'
 import { Route as OrgOrgIdSettingsLinearRouteImport } from './routes/org.$orgId.settings.linear'
+import { Route as OrgOrgIdSettingsOnCallRouteImport } from './routes/org.$orgId.settings.on-call'
 import { Route as OrgOrgIdSettingsPagingRouteImport } from './routes/org.$orgId.settings.paging'
 import { Route as OrgOrgIdSettingsRolesRouteImport } from './routes/org.$orgId.settings.roles'
 import { Route as OrgOrgIdSettingsSessionRecordingsRouteImport } from './routes/org.$orgId.settings.session-recordings'
@@ -412,6 +413,11 @@ const OrgOrgIdSettingsLinearRoute = OrgOrgIdSettingsLinearRouteImport.update({
   path: '/linear',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsOnCallRoute = OrgOrgIdSettingsOnCallRouteImport.update({
+  id: '/on-call',
+  path: '/on-call',
+  getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
 const OrgOrgIdSettingsPagingRoute = OrgOrgIdSettingsPagingRouteImport.update({
   id: '/paging',
   path: '/paging',
@@ -525,6 +531,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
   '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
+  '/org/$orgId/settings/on-call': typeof OrgOrgIdSettingsOnCallRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
@@ -596,6 +603,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
   '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
+  '/org/$orgId/settings/on-call': typeof OrgOrgIdSettingsOnCallRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
@@ -671,6 +679,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
   '/org/$orgId/settings/linear': typeof OrgOrgIdSettingsLinearRoute
+  '/org/$orgId/settings/on-call': typeof OrgOrgIdSettingsOnCallRoute
   '/org/$orgId/settings/paging': typeof OrgOrgIdSettingsPagingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/session-recordings': typeof OrgOrgIdSettingsSessionRecordingsRoute
@@ -747,6 +756,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/jira'
     | '/org/$orgId/settings/linear'
+    | '/org/$orgId/settings/on-call'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/session-recordings'
@@ -818,6 +828,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/jira'
     | '/org/$orgId/settings/linear'
+    | '/org/$orgId/settings/on-call'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/session-recordings'
@@ -892,6 +903,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/freezes'
     | '/org/$orgId/settings/jira'
     | '/org/$orgId/settings/linear'
+    | '/org/$orgId/settings/on-call'
     | '/org/$orgId/settings/paging'
     | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/session-recordings'
@@ -1359,6 +1371,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsLinearRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/on-call': {
+      id: '/org/$orgId/settings/on-call'
+      path: '/on-call'
+      fullPath: '/org/$orgId/settings/on-call'
+      preLoaderRoute: typeof OrgOrgIdSettingsOnCallRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/paging': {
       id: '/org/$orgId/settings/paging'
       path: '/paging'
@@ -1489,6 +1508,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsFreezesRoute: typeof OrgOrgIdSettingsFreezesRoute
   OrgOrgIdSettingsJiraRoute: typeof OrgOrgIdSettingsJiraRoute
   OrgOrgIdSettingsLinearRoute: typeof OrgOrgIdSettingsLinearRoute
+  OrgOrgIdSettingsOnCallRoute: typeof OrgOrgIdSettingsOnCallRoute
   OrgOrgIdSettingsPagingRoute: typeof OrgOrgIdSettingsPagingRoute
   OrgOrgIdSettingsRolesRoute: typeof OrgOrgIdSettingsRolesRoute
   OrgOrgIdSettingsSessionRecordingsRoute: typeof OrgOrgIdSettingsSessionRecordingsRoute
@@ -1517,6 +1537,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsFreezesRoute: OrgOrgIdSettingsFreezesRoute,
   OrgOrgIdSettingsJiraRoute: OrgOrgIdSettingsJiraRoute,
   OrgOrgIdSettingsLinearRoute: OrgOrgIdSettingsLinearRoute,
+  OrgOrgIdSettingsOnCallRoute: OrgOrgIdSettingsOnCallRoute,
   OrgOrgIdSettingsPagingRoute: OrgOrgIdSettingsPagingRoute,
   OrgOrgIdSettingsRolesRoute: OrgOrgIdSettingsRolesRoute,
   OrgOrgIdSettingsSessionRecordingsRoute:

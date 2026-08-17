@@ -696,6 +696,8 @@ export * from "./log-workspaces";
 export * from "./log-discovery";
 export * from "./log-tail-options";
 export * from "./alert-routing";
+// Who to wake, rather than which channel to shout into.
+export * from "./on-call";
 export * from "./metric-alerts";
 export * from "./org-config";
 export * from "./rightsizing";

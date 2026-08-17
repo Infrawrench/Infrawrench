@@ -19,6 +19,7 @@ import { CurrencySection } from "./CurrencySection.js";
 import { CostExportsSection } from "./CostExportsSection.js";
 import { ApprovalsSection } from "./ApprovalsSection.js";
 import { NotificationsSection } from "./NotificationsSection.js";
+import { OnCallSection } from "./OnCallSection.js";
 import { JiraSection } from "./JiraSection.js";
 import { LinearSection } from "./LinearSection.js";
 import { BillingSection } from "./BillingSection.js";
@@ -70,6 +71,8 @@ export function SettingsSectionBody({ section }: { section: string }): ReactNode
       return <CostExportsSection />;
     case "approvals":
       return <ApprovalsSection />;
+    case "on-call":
+      return <OnCallSection />;
     case "paging":
       return <NotificationsSection />;
     case "jira":

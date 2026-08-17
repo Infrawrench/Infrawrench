@@ -384,7 +384,20 @@ export type AlertCondition =
  * should hold.
  */
 export type AlertDestination =
-  { kind: "push" } | { kind: "slack"; channelId: string } | { kind: "msteams"; webhookId: string };
+  | { kind: "push" }
+  | { kind: "slack"; channelId: string }
+  | { kind: "msteams"; webhookId: string }
+  /**
+   * Whoever is on call on a rotation, resolved at delivery time.
+   *
+   * The kind that makes a routing rule survive a handover: "database alerts →
+   * whoever is on call" needs no edit on Monday morning. It resolves to a push
+   * to one person; a schedule that resolves to nobody (disabled, empty, not yet
+   * started, or a failed read) contributes nobody and the rule's **other**
+   * destinations still deliver — an alert lost to a misconfigured rotation
+   * would be the worst outcome this feature could have.
+   */
+  | { kind: "on-call"; scheduleId: string };
 
 export function destinationKey(d: AlertDestination): string {
   switch (d.kind) {
@@ -394,6 +407,8 @@ export function destinationKey(d: AlertDestination): string {
       return `slack:${d.channelId}`;
     case "msteams":
       return `msteams:${d.webhookId}`;
+    case "on-call":
+      return `on-call:${d.scheduleId}`;
   }
 }
 
@@ -925,6 +940,14 @@ export interface AlertRulesResponse {
   slackChannels: Array<{ id: string; name: string; isPrivate: boolean }>;
   msTeamsWebhooks: Array<{ id: string; label: string }>;
   accounts: Array<{ id: string; displayName: string; pluginId: string }>;
+  /**
+   * The org's on-call rotations, so the editor can offer "whoever is on call"
+   * as a destination and render an existing one by name. Only live rotations
+   * are listed — offering a disabled one would let the editor build a rule that
+   * routes nowhere, the same reason a disconnected Slack install is filtered
+   * out of `slackChannels`.
+   */
+  onCallSchedules: Array<{ id: string; name: string }>;
 }
 
 export type AlertRuleInput = Omit<AlertRule, "id"> & { id?: string };

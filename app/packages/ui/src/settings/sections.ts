@@ -48,6 +48,9 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: "currency", label: msg("Currency") },
   { key: "cost-exports", label: msg("Cost Exports"), requiresPermission: "costs:read" },
   { key: "approvals", label: msg("Approvals"), requiresPermission: "workflows:read" },
+  // Beside Notifications: the routing rules there are what consume a rotation,
+  // and "who gets woken up" is one question asked in two halves.
+  { key: "on-call", label: msg("On-call"), requiresPermission: "team:read" },
   { key: "paging", label: msg("Notifications") },
   { key: "jira", label: msg("Jira"), requiresPermission: "jira:read" },
   { key: "linear", label: msg("Linear"), requiresPermission: "linear:read" },

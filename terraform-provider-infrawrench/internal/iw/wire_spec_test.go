@@ -215,6 +215,11 @@ func specChecks() []specCheck {
 		},
 		{schema: "AlertRuleInput", value: AlertRuleInput{}},
 		{schema: "AlertRulesResponse", value: AlertRulesResponse{}},
+
+		{schema: "OnCallSchedule", value: OnCallSchedule{}},
+		{schema: "OnCallScheduleCreate", value: OnCallScheduleCreate{}},
+		{schema: "OnCallScheduleUpdate", value: OnCallScheduleUpdate{}},
+		{schema: "OnCallParticipant", value: OnCallParticipant{}},
 		{schema: "QuietHours", value: QuietHours{}},
 		{schema: "EscalationPolicy", value: EscalationPolicy{}},
 

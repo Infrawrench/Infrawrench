@@ -37,6 +37,12 @@ function destinationName(d: AlertDestination, data: AlertRulesResponse): string 
       const hook = data.msTeamsWebhooks.find((w) => w.id === d.webhookId);
       return hook ? `teams:${hook.label}` : "teams:(removed)";
     }
+    case "on-call": {
+      // Named rather than "on call": an org with a primary and a secondary
+      // rotation needs to see which one a rule points at.
+      const schedule = data.onCallSchedules.find((sched) => sched.id === d.scheduleId);
+      return schedule ? `on-call:${schedule.name}` : "on-call:(removed)";
+    }
   }
 }
 

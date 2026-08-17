@@ -32,7 +32,13 @@ import {
 } from "@infrawrench/server-core/alerts/ack";
 
 import { db } from "../../db/client";
-import { accounts, msteamsWebhooks, slackChannels, slackInstallations } from "../../db/schema";
+import {
+  accounts,
+  msteamsWebhooks,
+  onCallSchedules,
+  slackChannels,
+  slackInstallations,
+} from "../../db/schema";
 import { requirePermission } from "../../auth/permissions";
 import { logAudit } from "../../services/audit";
 
@@ -50,7 +56,7 @@ app.get("/", async (c) => {
   requirePermission(c, "org:settings:write");
   const organizationId = c.get("organizationId");
 
-  const [{ rules, usingDefaults }, channels, webhooks, accountRows] = await Promise.all([
+  const [{ rules, usingDefaults }, channels, webhooks, accountRows, rotations] = await Promise.all([
     resolveRoutingRules(organizationId),
     db
       .select({
@@ -79,6 +85,16 @@ app.get("/", async (c) => {
       })
       .from(accounts)
       .where(eq(accounts.organizationId, organizationId)),
+    // Live rotations only, matching the reason disconnected Slack installs are
+    // filtered out above: offering a disabled rotation would let the editor
+    // build a rule that resolves to nobody.
+    db
+      .select({ id: onCallSchedules.id, name: onCallSchedules.name })
+      .from(onCallSchedules)
+      .where(
+        and(eq(onCallSchedules.organizationId, organizationId), eq(onCallSchedules.enabled, true)),
+      )
+      .orderBy(onCallSchedules.name),
   ]);
 
   const payload: AlertRulesResponse = {
@@ -87,6 +103,7 @@ app.get("/", async (c) => {
     slackChannels: channels,
     msTeamsWebhooks: webhooks,
     accounts: accountRows,
+    onCallSchedules: rotations,
   };
   return c.json(payload);
 });
@@ -114,7 +131,7 @@ const CONDITION_FIELDS = new Set([
   "text",
 ]);
 
-const DESTINATION_KINDS = new Set(["push", "slack", "msteams"]);
+const DESTINATION_KINDS = new Set(["push", "slack", "msteams", "on-call"]);
 
 /**
  * Structural check before the semantic one.
@@ -146,6 +163,9 @@ function destinationError(dest: AlertDestination | null | undefined, what: strin
   }
   if (dest.kind === "msteams" && (typeof dest.webhookId !== "string" || !dest.webhookId)) {
     return `A Teams ${what} needs a webhookId`;
+  }
+  if (dest.kind === "on-call" && (typeof dest.scheduleId !== "string" || !dest.scheduleId)) {
+    return `An on-call ${what} needs a scheduleId`;
   }
   return null;
 }
@@ -211,7 +231,7 @@ app.put("/", async (c) => {
     return c.json({ error: `At most ${ALERT_RULE_LIMITS.maxRulesPerOrg} rules per org` }, 400);
   }
 
-  const [ownChannels, ownWebhooks, ownRules] = await Promise.all([
+  const [ownChannels, ownWebhooks, ownRules, ownSchedules] = await Promise.all([
     // Live installations only, matching the GET list and `resolveSlackChannels`.
     // A channel whose install was disconnected is still a row in this org's
     // table, so ownership alone would accept it — and it would then be dropped
@@ -228,9 +248,17 @@ app.put("/", async (c) => {
       .from(msteamsWebhooks)
       .where(eq(msteamsWebhooks.organizationId, organizationId)),
     listAlertRules(organizationId),
+    // Rotations are checked for the same reason channels are: a destination
+    // naming a rotation from another org would be dropped at delivery time,
+    // turning a first-match rule into silence.
+    db
+      .select({ id: onCallSchedules.id })
+      .from(onCallSchedules)
+      .where(eq(onCallSchedules.organizationId, organizationId)),
   ]);
   const channelIds = new Set(ownChannels.map((r) => r.id));
   const webhookIds = new Set(ownWebhooks.map((r) => r.id));
+  const scheduleIds = new Set(ownSchedules.map((r) => r.id));
   const ownRuleIds = new Set(ownRules.map((r) => r.id));
 
   // An id the caller did not get from this org's own list is rejected rather
@@ -249,6 +277,9 @@ app.put("/", async (c) => {
       }
       if (d.kind === "msteams" && !webhookIds.has(d.webhookId)) {
         return "That Teams channel is not connected to this organization";
+      }
+      if (d.kind === "on-call" && !scheduleIds.has(d.scheduleId)) {
+        return "That on-call rotation does not belong to this organization";
       }
     }
     return null;
