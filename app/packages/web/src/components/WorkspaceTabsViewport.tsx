@@ -61,6 +61,7 @@ import { WebAccessReviewPanel } from "./WebAccessReviewPanel";
 import { WebBackupsPanel } from "./WebBackupsPanel";
 import { WebWallboardPanel } from "./WebWallboardPanel";
 import { WebCalendarPanel } from "./WebCalendarPanel";
+import { WebRunbooksPanel } from "./WebRunbooksPanel";
 import { WebDnsPanel } from "./WebDnsPanel";
 import { WebIacPanel } from "./WebIacPanel";
 import { WebEnvironmentDiffPanel } from "./WebEnvironmentDiffPanel";
@@ -511,6 +512,18 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
                           settingsTabTarget("freezes"),
               ),
             )
+          }
+        />
+      );
+    case "runbooks":
+      return (
+        <WebRunbooksPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's procedures.
+          key={orgId}
+          orgId={orgId}
+          openWorkflow={(workflowId) =>
+            void navigate(getWorkspaceNavigateArgs(workflowsTabTarget(workflowId)))
           }
         />
       );

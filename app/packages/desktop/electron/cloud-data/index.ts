@@ -15,6 +15,7 @@ import "./access-review";
 import "./backups";
 import "./wallboard";
 import "./calendar";
+import "./runbooks";
 import "./dns";
 import "./environment-diff";
 import "./environments";

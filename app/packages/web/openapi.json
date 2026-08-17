@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.31.0",
+    "version": "1.33.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -183,6 +183,10 @@
     {
       "name": "Operations calendar",
       "description": "One time axis over six things the organization already stores — change freezes, sleep/wake schedules, declared deadlines, commitment term ends, cron-triggered workflow runs and declared incidents. Nothing on it is a new record: the calendar is a projection recomputed on every read, and each source is guarded independently so one that fails costs its own kind rather than the page. Subscriptions mint an unauthenticated iCalendar URL whose 32-byte token is the sole credential; it carries scheduling facts only, and no organization id."
+    },
+    {
+      "name": "Runbooks",
+      "description": "The checklist somebody wrote at 03:00, made runnable — an ordered set of steps, each either a manual tick, a link, or a button that records which workflow run was started. Performing one snapshots every step's title into the run, so the record of what somebody was asked to do survives the runbook being rewritten next week; two responders can tick different steps at the same moment without losing each other's work; and closing a run never settles its outstanding steps, because a checklist that ended early is exactly what a postmortem needs to know. Reading and performing take `resources:read` — a checklist nobody on call can open is worse than no checklist — while editing takes `org:settings:write`."
     },
     {
       "name": "Status pages",
@@ -2724,6 +2728,7 @@
               "backups",
               "wallboard",
               "calendar",
+              "runbooks",
               "dns",
               "iac",
               "environment-diff",
@@ -17514,6 +17519,561 @@
         },
         "required": [
           "name"
+        ],
+        "additionalProperties": false
+      },
+      "RunbookStep": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable across edits, because a run's per-step records reference it. Reordering or retitling keeps the same step; deleting one orphans its history, which is why runs keep the title they saw."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "workflow",
+              "link"
+            ],
+            "description": "What the step does. Three kinds and not a scripting language: a runbook is written by whoever is on call for whoever is on call next, and the moment it needs a language it stops being written. `workflow` is the escape hatch — anything genuinely automated belongs in a workflow, which already has a sandbox, approvals, secrets and a history."
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string",
+            "description": "Markdown — the detail nobody remembers at 03:00."
+          },
+          "workflowId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "For `workflow` steps: which workflow the button runs.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "url": {
+            "type": "string",
+            "description": "For `link` steps. `https:` only."
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "Runbook": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunbookStep"
+            }
+          },
+          "resourceTypeIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Resource types this runbook is about; empty means it is not scoped to a type. Used to answer 'which runbooks apply here', **never** to restrict who may open it — a runbook nobody can find is the failure this feature exists to fix."
+          },
+          "tagKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional tag narrowing. Matched case-insensitively."
+          },
+          "tagValue": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required value of `tagKey`, matched exactly."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Off keeps the row and hides it from the 'what applies here' lookup. Retiring a runbook must not cost you the history of the runs performed against it."
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "createdByName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "runCount": {
+            "type": "integer"
+          },
+          "lastRunAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "steps",
+          "resourceTypeIds",
+          "tagKey",
+          "tagValue",
+          "enabled",
+          "createdByUserId",
+          "createdByName",
+          "createdAt",
+          "updatedAt",
+          "runCount",
+          "lastRunAt"
+        ],
+        "additionalProperties": false
+      },
+      "RunbookList": {
+        "type": "object",
+        "properties": {
+          "runbooks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Runbook"
+            }
+          }
+        },
+        "required": [
+          "runbooks"
+        ],
+        "additionalProperties": false
+      },
+      "RunbookStepInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Omitted for a new step; the server assigns one."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "workflow",
+              "link"
+            ],
+            "description": "What the step does. Three kinds and not a scripting language: a runbook is written by whoever is on call for whoever is on call next, and the moment it needs a language it stops being written. `workflow` is the escape hatch — anything genuinely automated belongs in a workflow, which already has a sandbox, approvals, secrets and a history."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 8000
+          },
+          "workflowId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "RunbookCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunbookStepInput"
+            },
+            "maxItems": 60
+          },
+          "resourceTypeIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 40
+          },
+          "tagKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 128
+          },
+          "tagValue": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 256
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "RunbookUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunbookStepInput"
+            },
+            "maxItems": 60
+          },
+          "resourceTypeIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 40
+          },
+          "tagKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 128
+          },
+          "tagValue": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 256
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RunbookRunStep": {
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "The step's title **when the run started**. Copied rather than joined: a runbook is edited between incidents, and a postmortem showing today's wording against last month's run is not stale, it is quietly wrong."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "workflow",
+              "link"
+            ],
+            "description": "What the step does. Three kinds and not a scripting language: a runbook is written by whoever is on call for whoever is on call next, and the moment it needs a language it stops being written. `workflow` is the escape hatch — anything genuinely automated belongs in a workflow, which already has a sandbox, approvals, secrets and a history."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "done",
+              "skipped",
+              "failed"
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the responder typed — output, or why it was skipped."
+          },
+          "workflowRunId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The workflow run this step kicked off. Recorded here; the run itself goes through the workflow routes with their own permission, approvals and secrets.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "actorUserId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "actorName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "stepId",
+          "title",
+          "kind",
+          "status",
+          "note",
+          "workflowRunId",
+          "actorUserId",
+          "actorName",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "RunbookRun": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "runbookId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "runbookName": {
+            "type": "string",
+            "description": "The runbook's name when the run started."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "abandoned"
+            ]
+          },
+          "incidentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The incident this was performed under. Not a cascading reference: deleting the incident must not delete the record that somebody followed the failover procedure at 03:14.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "startedByUserId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "startedByName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunbookRunStep"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "runbookId",
+          "runbookName",
+          "status",
+          "incidentId",
+          "startedByUserId",
+          "startedByName",
+          "startedAt",
+          "completedAt",
+          "summary",
+          "steps"
+        ],
+        "additionalProperties": false
+      },
+      "RunbookRunStart": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RunbookRunList": {
+        "type": "object",
+        "properties": {
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunbookRun"
+            }
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "additionalProperties": false
+      },
+      "RunbookStepUpdate": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "done",
+              "skipped",
+              "failed"
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000,
+            "description": "Omitted leaves the note alone; `null` clears it."
+          },
+          "workflowRunId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "RunbookRunClose": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "abandoned"
+            ]
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 8000
+          }
+        },
+        "required": [
+          "status"
         ],
         "additionalProperties": false
       },
@@ -48156,6 +48716,654 @@
           }
         },
         "operationId": "deleteOrgOrgIdCalendarSubscriptionsSubscriptionId"
+      }
+    },
+    "/api/org/{orgId}/runbooks": {
+      "get": {
+        "tags": [
+          "Runbooks"
+        ],
+        "summary": "List the organization's runbooks",
+        "description": "Every runbook, with how many times each has been run and when it was last used. Reading takes `resources:read`: the person who can see the infrastructure is the person who will be woken up about it.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runbooks, by name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunbookList"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdRunbooks"
+      },
+      "post": {
+        "tags": [
+          "Runbooks"
+        ],
+        "summary": "Write a runbook",
+        "description": "Editing takes `org:settings:write` — a procedure is an org-wide statement about how something is done, and it is read by strangers under pressure. Names are unique within an organization: two runbooks called \"Failover\" is how the wrong one gets run.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunbookCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The created runbook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Runbook"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdRunbooks"
+      }
+    },
+    "/api/org/{orgId}/runbooks/{runbookId}": {
+      "get": {
+        "tags": [
+          "Runbooks"
+        ],
+        "summary": "Get one runbook",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "runbookId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The runbook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Runbook"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdRunbooksRunbookId"
+      },
+      "patch": {
+        "tags": [
+          "Runbooks"
+        ],
+        "summary": "Edit a runbook",
+        "description": "Omitted fields are left alone. The result is validated **after** merging, so a patch that only changes the steps still has to produce a runbook that is valid as a whole. A step sent with its `id` keeps its identity, so a run in progress still matches it.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "runbookId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunbookUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated runbook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Runbook"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "patchOrgOrgIdRunbooksRunbookId"
+      },
+      "delete": {
+        "tags": [
+          "Runbooks"
+        ],
+        "summary": "Delete a runbook",
+        "description": "Takes its run history with it. To retire a procedure without losing the record of the runs performed against it, set `enabled` to false instead.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "runbookId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The runbook was deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdRunbooksRunbookId"
+      }
+    },
+    "/api/org/{orgId}/runbooks/{runbookId}/runs": {
+      "post": {
+        "tags": [
+          "Runbooks"
+        ],
+        "summary": "Start performing a runbook",
+        "description": "Copies every step's title and kind into the run, so the record of what somebody was asked to do survives the runbook being rewritten next week.\n\nTakes `resources:read`, like ticking a step: performing a checklist is not an act of configuration, and requiring an admin mid-incident is how a team stops using it. Deliberately not deduplicated against a run already in progress — performing the failover twice in one incident is a real thing, and refusing the second would mean it goes unrecorded rather than not happening.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "runbookId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunbookRunStart"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The started run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunbookRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdRunbooksRunbookIdRuns"
+      }
+    },
+    "/api/org/{orgId}/runbooks/runs": {
+      "get": {
+        "tags": [
+          "Runbooks"
+        ],
+        "summary": "List runbook runs",
+        "description": "Newest first, optionally narrowed to one runbook or one incident.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": false,
+            "name": "runbookId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": false,
+            "name": "incidentId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runs, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunbookRunList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdRunbooksRuns"
+      }
+    },
+    "/api/org/{orgId}/runbooks/runs/{runId}": {
+      "get": {
+        "tags": [
+          "Runbooks"
+        ],
+        "summary": "Get one runbook run",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "runId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunbookRun"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdRunbooksRunsRunId"
+      }
+    },
+    "/api/org/{orgId}/runbooks/runs/{runId}/steps/{stepId}": {
+      "patch": {
+        "tags": [
+          "Runbooks"
+        ],
+        "summary": "Tick a step",
+        "description": "One targeted update on one row, so two responders working the same incident can tick different steps at the same moment without either losing the other's work.\n\nA closed run refuses updates, and reopening is not offered: a run is a record of what happened. Start another run to record another attempt.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "runId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "stepId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunbookStepUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunbookRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "patchOrgOrgIdRunbooksRunsRunIdStepsStepId"
+      }
+    },
+    "/api/org/{orgId}/runbooks/runs/{runId}/close": {
+      "post": {
+        "tags": [
+          "Runbooks"
+        ],
+        "summary": "Close a run out",
+        "description": "Closing does **not** settle outstanding steps. A run completed with three steps still pending is a true and useful record — it says the incident ended before the checklist did — and quietly marking them done would erase the one thing a postmortem wants to know.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "runId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunbookRunClose"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The closed run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunbookRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdRunbooksRunsRunIdClose"
       }
     },
     "/api/org/{orgId}/dns": {

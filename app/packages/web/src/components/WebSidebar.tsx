@@ -29,6 +29,7 @@ import {
   BackupsIcon,
   WallboardIcon,
   CalendarIcon,
+  RunbookIcon,
   DomainsIcon,
   EnvironmentDiffIcon,
   FanoutIcon,
@@ -587,6 +588,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <CalendarIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/calendar", params: { orgId: orgId! } }),
+              },
+              {
+                key: "runbooks",
+                label: gt("Runbooks"),
+                icon: <RunbookIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/runbooks", params: { orgId: orgId! } }),
               },
               {
                 key: "dns",

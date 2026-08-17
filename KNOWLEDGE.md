@@ -2948,6 +2948,24 @@ One time axis over six things the org already stores. API **1.28.0**; migration 
 
 Docs: `website/src/content/docs/features/ops-calendar.md`.
 
+## Runbooks (cloud-only)
+
+The org's procedures, made runnable, plus the record of who did what. API **1.33.0**; migration `0117_runbooks` adds three tables.
+
+- **A run is a snapshot, not a pointer.** Starting one copies every step's title and kind into `runbook_run_steps`, and the runbook's name onto the run. A postmortem that renders today's wording against last month's run is not merely stale — it is quietly wrong about what somebody was asked to do. This is the whole reason the run's steps are a table rather than a jsonb column.
+- **The second reason is concurrency, and it is the load-bearing one.** Two responders working the same incident tick different steps at the same moment; a read-modify-write of a shared jsonb loses whichever lands second. Per-step rows make each tick an independent `UPDATE`, so the failure mode cannot occur. The runbook's _own_ steps stay jsonb because they are only ever read and written whole, by one editor — a workflow's `source` exactly.
+- **Three step kinds, deliberately not a scripting language.** A runbook is written by whoever is on call for whoever is on call next, and the moment it needs a language it stops being written. `workflow` is the escape hatch, and it **records** which workflow run was started rather than starting one: the run goes through the workflow routes with their own permission, approvals and secrets, because a second execution path behind a weaker gate is how the first gate stops mattering.
+- **Two permission levels, and the split is the feature.** Reading _and performing_ take `resources:read` — a checklist nobody on call can open is worse than no checklist, and requiring an admin to tick a box mid-incident is how a team stops using it. Editing takes `org:settings:write`.
+- **Closing a run does not settle its outstanding steps**, and reopening is not offered. A run completed with three steps pending says the incident ended before the checklist did, which is the one thing a postmortem wants to know; and a record that can be edited after the fact is not a record. `runbookProgress` counts skipped as settled but not as done, so 100% cannot be reached by skipping everything.
+- **`incident_id` on a run is a plain column, not a cascading FK.** Deleting an incident must not delete the evidence that somebody followed the failover procedure at 03:14. The runbook link _does_ cascade, because deleting a runbook is an explicit "this procedure is gone" — and `enabled: false` exists precisely so nobody has to.
+- **The name conflict comes from the unique index, not a pre-check.** Check-then-insert loses the race, and the race here is two people writing up the same incident afterwards. `asNameConflict` turns the violation into the message the user needs.
+- **A patch is validated after merging**, so a patch that only changes the steps still has to leave a runbook that is valid as a whole — the `updateBackupPolicy` stance. A step sent with its `id` keeps its identity, which is what lets a run in progress still match it.
+- **`normalizeRunbookSteps` drops the reference belonging to the other kind.** A step switched from link to workflow that kept its URL would render a button pointing somewhere nobody meant. Link URLs are `https:` only — `javascript:` is the obvious attack and plain `http:` is barred too, because the one thing a runbook link reliably points at is an internal console.
+- **Surfaces**: `ui/src/runbooks/RunbooksSection.tsx` (list + editor + runs), web `WebRunbooksPanel`, desktop `DesktopRunbooksPanel` (cloud-only, with the Backups sign-in message — a runbook is a shared document and a run is a record of who did what, both org state).
+- **Deliberate omissions.** No resource-detail tab yet, though `runbookMatchesResource` and the stored selector already answer "which runbooks apply here" — only the surface is missing. No SSH-snippet step kind (fan-out targeting is a surface of its own). No mobile surface, no CLI subcommand, no Terraform resource yet.
+
+Docs: `website/src/content/docs/features/runbooks.md`.
+
 ## Pushing in from outside (pages & cost rows over the API)
 
 Two endpoints let a server that isn't Infrawrench push _into_ it — the mirror image of everything else, which pulls. Both are the HTTP twin of a workflow primitive, and in both cases the workflow path was refactored to share the mechanism rather than being copied.

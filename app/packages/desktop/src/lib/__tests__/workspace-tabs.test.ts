@@ -232,6 +232,10 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(getWorkspaceNavigateArgs({ kind: "calendar" })).toEqual({ to: "/calendar" });
   });
 
+  it("returns runbooks route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "runbooks" })).toEqual({ to: "/runbooks" });
+  });
+
   it("returns backups route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "backups" })).toEqual({ to: "/backups" });
   });
@@ -336,6 +340,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the calendar path", () => {
     expect(syncWorkspaceRouteFromPath("/calendar")).toEqual({ kind: "calendar" });
+  });
+
+  it("parses the runbooks path", () => {
+    expect(syncWorkspaceRouteFromPath("/runbooks")).toEqual({ kind: "runbooks" });
   });
 
   it("parses the backups path", () => {

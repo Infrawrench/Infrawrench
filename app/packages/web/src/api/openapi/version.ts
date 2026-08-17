@@ -107,4 +107,9 @@
 // the app server), and `POST /apps/setup` installs it with the host's own
 // package manager and re-probes. Two new routes, a `Linux applications` tag,
 // and the first `application/x-ndjson` response in the document. All additive.
-export const API_VERSION = "1.31.0";
+// 1.33.0: runbooks — the org's procedures as ordered steps (`/runbooks` CRUD),
+// the runs performed against them with their per-step record of who did what
+// (`/runbooks/{id}/runs`, `/runbooks/runs/*`), and a `runbooks` member on the
+// workspace TabTarget kind enum, without which a persisted Runbooks tab is
+// silently dropped on reload. All additive.
+export const API_VERSION = "1.33.0";

@@ -51,6 +51,7 @@ import { DesktopAccessReviewPanel } from "@/components/DesktopAccessReviewPanel"
 import { DesktopBackupsPanel } from "@/components/DesktopBackupsPanel";
 import { DesktopWallboardPanel } from "@/components/DesktopWallboardPanel";
 import { DesktopCalendarPanel } from "@/components/DesktopCalendarPanel";
+import { DesktopRunbooksPanel } from "@/components/DesktopRunbooksPanel";
 import { DesktopDnsPanel } from "@/components/DesktopDnsPanel";
 import { DesktopIacPanel } from "@/components/DesktopIacPanel";
 import { DesktopEnvironmentDiffPanel } from "@/components/DesktopEnvironmentDiffPanel";
@@ -455,6 +456,14 @@ function renderPanel(
         <DesktopCalendarPanel
           // Keyed by mode so switching org (or dropping to local) remounts and
           // refetches rather than showing the previous org's month.
+          key={activeCloudOrgId ?? "local"}
+        />
+      );
+    case "runbooks":
+      return (
+        <DesktopRunbooksPanel
+          // Keyed by mode so switching org (or dropping to local) remounts and
+          // refetches rather than showing the previous org's procedures.
           key={activeCloudOrgId ?? "local"}
         />
       );

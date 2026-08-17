@@ -19,6 +19,8 @@ export type WorkspaceTabTarget =
   | { kind: "wallboard" }
   /** The operations calendar — every dated record on one axis. */
   | { kind: "calendar" }
+  /** Runbooks — the org's written procedures and the runs against them. */
+  | { kind: "runbooks" }
   | { kind: "dns" }
   | { kind: "iac" }
   | { kind: "environment-diff"; a?: string; b?: string }
@@ -151,6 +153,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
     // page, not a new tab per month.
     case "calendar":
       return "calendar";
+    case "runbooks":
+      return "runbooks";
     case "dns":
       return "dns";
     case "iac":
@@ -237,6 +241,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Wallboard";
     case "calendar":
       return "Calendar";
+    case "runbooks":
+      return "Runbooks";
     case "dns":
       return "Domains";
     case "iac":
@@ -297,6 +303,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "backups":
     case "wallboard":
     case "calendar":
+    case "runbooks":
     case "dns":
     case "iac":
     case "environments":

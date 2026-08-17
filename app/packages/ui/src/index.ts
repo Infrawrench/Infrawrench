@@ -345,6 +345,7 @@ export {
   backupsTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
+  runbooksTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -828,6 +829,27 @@ export {
 export { CalendarSection } from "./calendar/CalendarSection.js";
 export type { CalendarSectionProps, CalendarRange } from "./calendar/CalendarSection.js";
 export { CalendarIcon } from "./components/icons/CalendarIcon.js";
+// Runbooks. Types and validation come from client-core like every other
+// section's; only the section and its icon live here.
+export {
+  RUNBOOK_LIMITS,
+  isSafeRunbookUrl,
+  nextPendingStep,
+  runbookMatchesResource,
+  runbookProgress,
+  validateRunbookInput,
+  type Runbook,
+  type RunbookInput,
+  type RunbookRun,
+  type RunbookRunStep,
+  type RunbookStep,
+  type RunbookStepInput,
+  type RunbookStepKind,
+  type RunbookStepStatus,
+} from "@infrawrench/client-core";
+export { RunbooksSection } from "./runbooks/RunbooksSection.js";
+export type { RunbooksSectionProps } from "./runbooks/RunbooksSection.js";
+export { RunbookIcon } from "./components/icons/RunbookIcon.js";
 export {
   DNS_CLASSIFICATION_LABELS,
   computeDnsInventory,

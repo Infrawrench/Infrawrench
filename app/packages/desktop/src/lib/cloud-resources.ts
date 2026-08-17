@@ -14,6 +14,10 @@ import type {
   EnvironmentDiffResponse,
   ExpiryListResponse,
   PostureListResponse,
+  Runbook,
+  RunbookInput,
+  RunbookRun,
+  RunbookStepStatus,
   ResourcePickerOption,
   WallboardResponse,
 } from "@infrawrench/ui";
@@ -219,6 +223,58 @@ export async function revokeCloudCalendarSubscription(
   subscriptionId: string,
 ): Promise<void> {
   await invoke("cloud_calendar_subscription_revoke", { orgId, subscriptionId });
+}
+
+/**
+ * Runbooks and the runs performed against them. Cloud only: both are org state
+ * a single-machine workspace has nowhere to keep.
+ */
+export async function fetchCloudRunbooks(orgId: string): Promise<Runbook[]> {
+  const res = await invoke<{ runbooks: Runbook[] }>("cloud_runbooks", { orgId });
+  return res.runbooks ?? [];
+}
+
+export async function fetchCloudRunbookRuns(orgId: string): Promise<RunbookRun[]> {
+  const res = await invoke<{ runs: RunbookRun[] }>("cloud_runbook_runs", { orgId });
+  return res.runs ?? [];
+}
+
+export async function createCloudRunbook(orgId: string, input: RunbookInput): Promise<void> {
+  await invoke("cloud_runbook_create", { orgId, input });
+}
+
+export async function updateCloudRunbook(
+  orgId: string,
+  runbookId: string,
+  patch: Partial<RunbookInput>,
+): Promise<void> {
+  await invoke("cloud_runbook_update", { orgId, runbookId, patch });
+}
+
+export async function deleteCloudRunbook(orgId: string, runbookId: string): Promise<void> {
+  await invoke("cloud_runbook_delete", { orgId, runbookId });
+}
+
+export async function startCloudRunbookRun(orgId: string, runbookId: string): Promise<void> {
+  await invoke("cloud_runbook_run_start", { orgId, runbookId });
+}
+
+export async function updateCloudRunbookStep(
+  orgId: string,
+  runId: string,
+  stepId: string,
+  patch: { status: RunbookStepStatus; note?: string | null },
+): Promise<void> {
+  await invoke("cloud_runbook_step_update", { orgId, runId, stepId, patch });
+}
+
+export async function closeCloudRunbookRun(
+  orgId: string,
+  runId: string,
+  status: "completed" | "abandoned",
+  summary: string | null,
+): Promise<void> {
+  await invoke("cloud_runbook_run_close", { orgId, runId, body: { status, summary } });
 }
 
 export async function fetchCloudDns(orgId: string): Promise<DnsInventoryResponse> {
