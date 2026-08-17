@@ -21,6 +21,7 @@ import {
   BackupsIcon,
   WallboardIcon,
   CalendarIcon,
+  ScorecardIcon,
   DomainsIcon,
   EnvironmentDiffIcon,
   FanoutIcon,
@@ -51,6 +52,7 @@ import {
   backupsTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
+  scorecardTabTarget,
   dnsTabTarget,
   accessReviewTabTarget,
   iacTabTarget,
@@ -404,6 +406,16 @@ export function SidebarDashboards() {
       icon: <CalendarIcon />,
       onClick: () =>
         void navigateToWorkspaceTarget(navigate, calendarTabTarget(), { label: gt("Calendar") }),
+    },
+    // The scorecard is cloud only: two of its six pillars are org state and
+    // its trend lives in a cloud table, so a local grade would be computed
+    // from a third of the evidence.
+    {
+      key: "scorecard",
+      label: gt("Scorecard"),
+      icon: <ScorecardIcon />,
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, scorecardTabTarget(), { label: gt("Scorecard") }),
     },
     // Domains also has a local half — the inventory is computed from stored
     // state and the locally loaded plugins' DNS declarations. A workspace-tab

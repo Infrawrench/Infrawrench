@@ -16,6 +16,7 @@ import {
   backupsTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
+  scorecardTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -56,6 +57,7 @@ export {
   backupsTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
+  scorecardTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -158,6 +160,8 @@ export function getWorkspaceNavigateArgs(
       return { to: "/wallboard", ...(replace ? { replace: true } : {}) };
     case "calendar":
       return { to: "/calendar", ...(replace ? { replace: true } : {}) };
+    case "scorecard":
+      return { to: "/scorecard", ...(replace ? { replace: true } : {}) };
     case "dns":
       return { to: "/dns", ...(replace ? { replace: true } : {}) };
     case "iac":
@@ -358,6 +362,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "calendar") {
     return calendarTabTarget();
+  }
+  if (segments[0] === "scorecard") {
+    return scorecardTabTarget();
   }
   if (segments[0] === "dns") {
     return dnsTabTarget();

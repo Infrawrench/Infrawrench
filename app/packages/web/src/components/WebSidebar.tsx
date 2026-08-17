@@ -29,6 +29,7 @@ import {
   BackupsIcon,
   WallboardIcon,
   CalendarIcon,
+  ScorecardIcon,
   DomainsIcon,
   EnvironmentDiffIcon,
   FanoutIcon,
@@ -587,6 +588,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <CalendarIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/calendar", params: { orgId: orgId! } }),
+              },
+              {
+                key: "scorecard",
+                label: gt("Scorecard"),
+                icon: <ScorecardIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/scorecard", params: { orgId: orgId! } }),
               },
               {
                 key: "dns",

@@ -345,6 +345,7 @@ export {
   backupsTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
+  scorecardTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -828,6 +829,24 @@ export {
 export { CalendarSection } from "./calendar/CalendarSection.js";
 export type { CalendarSectionProps, CalendarRange } from "./calendar/CalendarSection.js";
 export { CalendarIcon } from "./components/icons/CalendarIcon.js";
+// The infrastructure scorecard. Its arithmetic and wire types come from
+// client-core like every other section's; only the section and its icon live here.
+export {
+  SCORECARD_PILLARS,
+  SCORECARD_WEIGHTS,
+  biggestDrag,
+  combinePillars,
+  scoreToGrade,
+  trendDelta,
+  type ScorecardGrade,
+  type ScorecardPillar,
+  type ScorecardPillarId,
+  type ScorecardResponse,
+  type ScorecardTrendPoint,
+} from "@infrawrench/client-core";
+export { ScorecardSection } from "./scorecard/ScorecardSection.js";
+export type { ScorecardSectionProps } from "./scorecard/ScorecardSection.js";
+export { ScorecardIcon } from "./components/icons/ScorecardIcon.js";
 export {
   DNS_CLASSIFICATION_LABELS,
   computeDnsInventory,

@@ -89,6 +89,10 @@ describe("getWorkspaceTabId", () => {
     expect(getWorkspaceTabId({ kind: "calendar" })).toBe("calendar");
   });
 
+  it("returns the singleton id for the scorecard target", () => {
+    expect(getWorkspaceTabId({ kind: "scorecard" })).toBe("scorecard");
+  });
+
   it("returns the singleton id for the backups target", () => {
     expect(getWorkspaceTabId({ kind: "backups" })).toBe("backups");
   });
@@ -290,6 +294,10 @@ describe("getWorkspaceTabFallbackTitle", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "calendar" })).toBe("Calendar");
   });
 
+  it("returns 'Scorecard' for the scorecard target, matching the sidebar tile", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "scorecard" })).toBe("Scorecard");
+  });
+
   it("returns 'Backups' for the backups target, matching the sidebar tile", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "backups" })).toBe("Backups");
   });
@@ -401,6 +409,10 @@ describe("workspaceTabTargetsEqual", () => {
 
   it("treats two calendar targets as equal (singleton tab)", () => {
     expect(workspaceTabTargetsEqual({ kind: "calendar" }, { kind: "calendar" })).toBe(true);
+  });
+
+  it("treats two scorecard targets as equal (singleton tab)", () => {
+    expect(workspaceTabTargetsEqual({ kind: "scorecard" }, { kind: "scorecard" })).toBe(true);
   });
 
   it("treats two backups targets as equal (singleton tab)", () => {

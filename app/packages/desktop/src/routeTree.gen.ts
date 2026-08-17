@@ -34,6 +34,7 @@ import { Route as PostureRouteImport } from './routes/posture'
 import { Route as ProbesRouteImport } from './routes/probes'
 import { Route as QuotasRouteImport } from './routes/quotas'
 import { Route as SavingsRouteImport } from './routes/savings'
+import { Route as ScorecardRouteImport } from './routes/scorecard'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SshFanoutRouteImport } from './routes/ssh-fanout'
 import { Route as StatusPagesRouteImport } from './routes/status-pages'
@@ -168,6 +169,11 @@ const SavingsRoute = SavingsRouteImport.update({
   path: '/savings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ScorecardRoute = ScorecardRouteImport.update({
+  id: '/scorecard',
+  path: '/scorecard',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -236,6 +242,7 @@ export interface FileRoutesByFullPath {
   '/probes': typeof ProbesRoute
   '/quotas': typeof QuotasRoute
   '/savings': typeof SavingsRoute
+  '/scorecard': typeof ScorecardRoute
   '/settings': typeof SettingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/status-pages': typeof StatusPagesRoute
@@ -271,6 +278,7 @@ export interface FileRoutesByTo {
   '/probes': typeof ProbesRoute
   '/quotas': typeof QuotasRoute
   '/savings': typeof SavingsRoute
+  '/scorecard': typeof ScorecardRoute
   '/settings': typeof SettingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/status-pages': typeof StatusPagesRoute
@@ -307,6 +315,7 @@ export interface FileRoutesById {
   '/probes': typeof ProbesRoute
   '/quotas': typeof QuotasRoute
   '/savings': typeof SavingsRoute
+  '/scorecard': typeof ScorecardRoute
   '/settings': typeof SettingsRoute
   '/ssh-fanout': typeof SshFanoutRoute
   '/status-pages': typeof StatusPagesRoute
@@ -344,6 +353,7 @@ export interface FileRouteTypes {
     | '/probes'
     | '/quotas'
     | '/savings'
+    | '/scorecard'
     | '/settings'
     | '/ssh-fanout'
     | '/status-pages'
@@ -379,6 +389,7 @@ export interface FileRouteTypes {
     | '/probes'
     | '/quotas'
     | '/savings'
+    | '/scorecard'
     | '/settings'
     | '/ssh-fanout'
     | '/status-pages'
@@ -414,6 +425,7 @@ export interface FileRouteTypes {
     | '/probes'
     | '/quotas'
     | '/savings'
+    | '/scorecard'
     | '/settings'
     | '/ssh-fanout'
     | '/status-pages'
@@ -450,6 +462,7 @@ export interface RootRouteChildren {
   ProbesRoute: typeof ProbesRoute
   QuotasRoute: typeof QuotasRoute
   SavingsRoute: typeof SavingsRoute
+  ScorecardRoute: typeof ScorecardRoute
   SettingsRoute: typeof SettingsRoute
   SshFanoutRoute: typeof SshFanoutRoute
   StatusPagesRoute: typeof StatusPagesRoute
@@ -637,6 +650,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SavingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/scorecard': {
+      id: '/scorecard'
+      path: '/scorecard'
+      fullPath: '/scorecard'
+      preLoaderRoute: typeof ScorecardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -722,6 +742,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProbesRoute: ProbesRoute,
   QuotasRoute: QuotasRoute,
   SavingsRoute: SavingsRoute,
+  ScorecardRoute: ScorecardRoute,
   SettingsRoute: SettingsRoute,
   SshFanoutRoute: SshFanoutRoute,
   StatusPagesRoute: StatusPagesRoute,

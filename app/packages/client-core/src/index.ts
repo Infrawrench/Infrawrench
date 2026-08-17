@@ -674,6 +674,9 @@ export * from "./leases";
 // deadlines, commitment terms, scheduled runs and incidents.
 export * from "./calendar";
 export * from "./posture";
+// One graded reading over the radars above. Pure arithmetic only — the pillars
+// themselves are assembled server-side from the feeds they summarise.
+export * from "./scorecard";
 // The customer's cloud principals, not Infrawrench's own roles (permissions
 // catalog) and not the credentials Infrawrench holds (credential-hygiene).
 export * from "./access-review";
