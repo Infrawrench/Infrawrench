@@ -28,6 +28,13 @@ pub struct SessionConfig {
     pub keymap: String,
     /// Environment launched apps inherit, from [`crate::launch_env`].
     pub launch_env: BTreeMap<String, String>,
+    /// Prepended to every application's command line.
+    ///
+    /// `dbus-run-session --`, on a host with no session bus of its own. It is
+    /// a prefix rather than an environment variable because that is the only
+    /// way to give an application a bus that did not exist before it started —
+    /// and GTK4 does not start without one.
+    pub launch_prefix: Vec<String>,
     /// Frames a window may have in flight before we stop encoding for it.
     pub max_in_flight: u32,
     pub encoder: EncoderConfig,
@@ -48,6 +55,7 @@ impl Default for SessionConfig {
             pixel_format: PixelFormat::Bgra8888,
             keymap: String::new(),
             launch_env: BTreeMap::new(),
+            launch_prefix: Vec::new(),
             // Two: one being decoded and one on the wire. Three adds latency
             // you can feel while dragging a window; one stalls on any link
             // with real round-trip time.
@@ -55,6 +63,17 @@ impl Default for SessionConfig {
             encoder: EncoderConfig::default(),
         }
     }
+}
+
+/// `prefix` in front of `argv`, or `argv` alone when there is no prefix.
+fn prefixed(prefix: &[String], argv: Vec<String>) -> Vec<String> {
+    if prefix.is_empty() {
+        return argv;
+    }
+    let mut out = Vec::with_capacity(prefix.len() + argv.len());
+    out.extend_from_slice(prefix);
+    out.extend(argv);
+    out
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -330,7 +349,7 @@ impl<B: Backend, C: Catalog> Session<B, C> {
                 }
                 LaunchSpec {
                     app_id: Some(resolved.app_id),
-                    argv: resolved.argv,
+                    argv: prefixed(&self.config.launch_prefix, resolved.argv),
                     env: self.config.launch_env.clone(),
                     cwd: cwd.or(resolved.cwd),
                 }
@@ -343,7 +362,7 @@ impl<B: Backend, C: Catalog> Session<B, C> {
                 }
                 LaunchSpec {
                     app_id: None,
-                    argv,
+                    argv: prefixed(&self.config.launch_prefix, argv),
                     env: self.config.launch_env.clone(),
                     cwd,
                 }
@@ -1206,6 +1225,65 @@ mod tests {
             }
         }
         assert_eq!(s.tier(1), Some(Tier::Lossless));
+    }
+
+    #[test]
+    fn a_launch_prefix_wraps_the_application() {
+        // How a host with no session bus gets one: the application runs under
+        // dbus-run-session, which cannot be expressed as an environment
+        // variable because the bus does not exist until it starts.
+        let mut s = Session::new(
+            MockBackend::default(),
+            MockCatalog::with_apps(),
+            SessionConfig {
+                launch_prefix: vec!["dbus-run-session".into(), "--".into()],
+                ..SessionConfig::default()
+            },
+        );
+        s.on_client_frame(hello(ClientCaps::default()));
+        s.on_client_frame(control(ClientMessage::Launch {
+            app_id: Some("editor.desktop".into()),
+            exec: None,
+            cwd: None,
+        }));
+        assert_eq!(
+            s.backend_mut().launched[0].argv,
+            vec!["dbus-run-session", "--", "editor"]
+        );
+    }
+
+    #[test]
+    fn a_bare_command_is_wrapped_too() {
+        let mut s = Session::new(
+            MockBackend::default(),
+            MockCatalog::with_apps(),
+            SessionConfig {
+                launch_prefix: vec!["dbus-run-session".into(), "--".into()],
+                ..SessionConfig::default()
+            },
+        );
+        s.on_client_frame(hello(ClientCaps::default()));
+        s.on_client_frame(control(ClientMessage::Launch {
+            app_id: None,
+            exec: Some("xterm -e top".into()),
+            cwd: None,
+        }));
+        assert_eq!(
+            s.backend_mut().launched[0].argv,
+            vec!["dbus-run-session", "--", "xterm", "-e", "top"]
+        );
+    }
+
+    #[test]
+    fn no_prefix_leaves_the_command_alone() {
+        let mut s = session();
+        s.on_client_frame(hello(ClientCaps::default()));
+        s.on_client_frame(control(ClientMessage::Launch {
+            app_id: Some("editor.desktop".into()),
+            exec: None,
+            cwd: None,
+        }));
+        assert_eq!(s.backend_mut().launched[0].argv, vec!["editor"]);
     }
 
     #[test]

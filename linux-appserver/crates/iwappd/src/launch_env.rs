@@ -72,6 +72,30 @@ pub fn launch_env(
     env
 }
 
+/// Apply a resolved session bus to a launch environment.
+///
+/// Separate from [`launch_env`] because only the caller knows what it found on
+/// the host, and because a private bus is a change to the *command* rather
+/// than to the environment.
+pub fn apply_session_bus(env: &mut BTreeMap<String, String>, bus: &SessionBus) -> Vec<String> {
+    match bus {
+        SessionBus::Address(address) => {
+            env.insert("DBUS_SESSION_BUS_ADDRESS".into(), address.clone());
+            Vec::new()
+        }
+        // `--` so an application's own arguments are never read as
+        // dbus-run-session's.
+        SessionBus::RunSession => {
+            env.remove("DBUS_SESSION_BUS_ADDRESS");
+            vec!["dbus-run-session".into(), "--".into()]
+        }
+        SessionBus::None => {
+            env.remove("DBUS_SESSION_BUS_ADDRESS");
+            Vec::new()
+        }
+    }
+}
+
 /// Find a usable `XDG_RUNTIME_DIR`, creating a private one when the host has
 /// none.
 ///
@@ -142,6 +166,74 @@ pub fn current_uid() -> u32 {
     0
 }
 
+/// Where an application will find a session bus, and what it costs to get one.
+///
+/// GTK4 in particular does not merely degrade without a session bus: it waits
+/// for one and never maps a window. The application looks hung, the launcher
+/// shows nothing, and the host's own logs say nothing either, which makes this
+/// the most confusing failure the whole feature has.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionBus {
+    /// One is already reachable — inherited, or the per-user socket systemd
+    /// puts in the runtime directory. Nothing to do but say where it is.
+    Address(String),
+    /// None reachable, but `dbus-run-session` is installed: each application
+    /// gets a private bus that lives exactly as long as it does.
+    RunSession,
+    /// None reachable and no way to make one. Applications that can live
+    /// without a bus still work; the rest fail with the host's own message,
+    /// which is better than this guessing.
+    None,
+}
+
+/// Decide how launched applications will reach a session bus.
+///
+/// Takes what it needs rather than looking around itself, so the decision table
+/// is testable on a machine with no D-Bus at all.
+pub fn resolve_session_bus(
+    inherited: &BTreeMap<String, String>,
+    runtime_bus_exists: bool,
+    runtime_dir: &Path,
+    has_run_session: bool,
+) -> SessionBus {
+    if let Some(address) = inherited
+        .get("DBUS_SESSION_BUS_ADDRESS")
+        .filter(|a| !a.is_empty())
+    {
+        return SessionBus::Address(address.clone());
+    }
+    // What libdbus would find by convention. Naming it explicitly costs
+    // nothing and covers the toolkits that do not implement that fallback.
+    if runtime_bus_exists {
+        return SessionBus::Address(format!("unix:path={}/bus", runtime_dir.to_string_lossy()));
+    }
+    if has_run_session {
+        return SessionBus::RunSession;
+    }
+    SessionBus::None
+}
+
+/// Is `name` an executable on this `PATH`?
+pub fn on_path(path: Option<&str>, name: &str) -> bool {
+    let Some(path) = path else { return false };
+    path.split(':')
+        .filter(|dir| !dir.is_empty())
+        .any(|dir| is_executable(&Path::new(dir).join(name)))
+}
+
+#[cfg(unix)]
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path)
+        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
+}
+
 /// The socket name for a session. Namespaced so two Infrawrench sessions on
 /// one host — a second browser tab, a colleague on the same box — do not
 /// collide.
@@ -156,6 +248,88 @@ pub fn wayland_display_name(session_id: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::{SessionBus, apply_session_bus, resolve_session_bus};
+    use std::collections::BTreeMap;
+    use std::path::Path;
+
+    fn env_with(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn an_inherited_bus_is_used_as_is() {
+        let env = env_with(&[("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus")]);
+        assert_eq!(
+            resolve_session_bus(&env, false, Path::new("/run/user/1000"), true),
+            SessionBus::Address("unix:path=/run/user/1000/bus".into())
+        );
+    }
+
+    #[test]
+    fn the_runtime_directory_socket_is_named_rather_than_left_to_convention() {
+        // libdbus would find this itself; toolkits that do not implement the
+        // fallback would not, and it costs nothing to say.
+        let env = BTreeMap::new();
+        assert_eq!(
+            resolve_session_bus(&env, true, Path::new("/run/user/1000"), false),
+            SessionBus::Address("unix:path=/run/user/1000/bus".into())
+        );
+    }
+
+    #[test]
+    fn with_no_bus_anywhere_each_application_gets_its_own() {
+        let env = BTreeMap::new();
+        assert_eq!(
+            resolve_session_bus(&env, false, Path::new("/tmp/infrawrench-run-1000"), true),
+            SessionBus::RunSession
+        );
+    }
+
+    #[test]
+    fn a_host_with_no_dbus_at_all_says_so_rather_than_guessing() {
+        let env = BTreeMap::new();
+        assert_eq!(
+            resolve_session_bus(&env, false, Path::new("/tmp/x"), false),
+            SessionBus::None
+        );
+    }
+
+    #[test]
+    fn an_empty_inherited_address_does_not_count_as_a_bus() {
+        // Set-but-empty is what a stripped SSH environment leaves behind, and
+        // handing that to an application is worse than handing it nothing.
+        let env = env_with(&[("DBUS_SESSION_BUS_ADDRESS", "")]);
+        assert_eq!(
+            resolve_session_bus(&env, false, Path::new("/tmp/x"), true),
+            SessionBus::RunSession
+        );
+    }
+
+    #[test]
+    fn a_private_bus_is_a_command_prefix_and_not_an_address() {
+        // The address does not exist until dbus-run-session makes it, so
+        // inheriting a stale one would send the application to a bus that is
+        // not there.
+        let mut env = env_with(&[("DBUS_SESSION_BUS_ADDRESS", "unix:path=/gone")]);
+        let prefix = apply_session_bus(&mut env, &SessionBus::RunSession);
+        assert_eq!(
+            prefix,
+            vec!["dbus-run-session".to_string(), "--".to_string()]
+        );
+        assert!(!env.contains_key("DBUS_SESSION_BUS_ADDRESS"));
+    }
+
+    #[test]
+    fn a_resolved_address_is_exported_with_no_prefix() {
+        let mut env = BTreeMap::new();
+        let prefix = apply_session_bus(&mut env, &SessionBus::Address("unix:path=/run/bus".into()));
+        assert!(prefix.is_empty());
+        assert_eq!(env["DBUS_SESSION_BUS_ADDRESS"], "unix:path=/run/bus");
+    }
+
     use super::*;
 
     fn inherited() -> BTreeMap<String, String> {

@@ -43,7 +43,19 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
 
     let backend = WaylandBackend::new(session_id, runtime_dir.clone())
         .map_err(|e| std::io::Error::other(e.to_string()))?;
-    let app_env = launch_env::launch_env(&env, &runtime_dir, backend.socket_name());
+    let mut app_env = launch_env::launch_env(&env, &runtime_dir, backend.socket_name());
+    // A GTK4 application with no session bus waits for one forever rather than
+    // failing, so this is resolved once, here, where looking at the host is
+    // allowed — and reported, because "which bus" is the first question when an
+    // application starts and never appears.
+    let bus = launch_env::resolve_session_bus(
+        &env,
+        runtime_dir.join("bus").exists(),
+        &runtime_dir,
+        launch_env::on_path(env.get("PATH").map(String::as_str), "dbus-run-session"),
+    );
+    let launch_prefix = launch_env::apply_session_bus(&mut app_env, &bus);
+    eprintln!("iwappd: session bus: {}", describe_bus(&bus));
 
     let catalog = FsCatalog::from_env(
         &env,
@@ -67,6 +79,7 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
         pixel_format: PixelFormat::Bgra8888,
         keymap: String::new(),
         launch_env: app_env,
+        launch_prefix,
         ..SessionConfig::default()
     };
 
@@ -162,6 +175,18 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
 
     session.backend_mut().shutdown_processes();
     Ok(())
+}
+
+/// A line for the log, so a session that cannot start an application says why.
+fn describe_bus(bus: &launch_env::SessionBus) -> String {
+    match bus {
+        launch_env::SessionBus::Address(address) => address.clone(),
+        launch_env::SessionBus::RunSession => "per-application, via dbus-run-session".into(),
+        launch_env::SessionBus::None => {
+            "none — install dbus, or enable lingering for this user; GTK4 applications need one"
+                .into()
+        }
+    }
 }
 
 /// What the loop has been spending its time on since the last report.

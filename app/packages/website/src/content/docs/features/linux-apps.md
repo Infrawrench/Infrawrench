@@ -38,8 +38,23 @@ When the motion stops, the window is redrawn exactly. So a video looks like a vi
 - **SSH access**, which you already have if the terminal works.
 - **The applications themselves.** A minimal cloud image usually has none; installing an application through the host's own package manager makes it appear in the launcher.
 - **Software rendering.** Applications that require a GPU need mesa installed on the host. Infrawrench asks every toolkit for its software path, which covers most applications, but it cannot supply a graphics stack the machine does not have.
+- **A session bus**, for anything built on GTK — which is most Linux desktop software. Infrawrench finds one if the host has one and starts a private one per application if it does not, so on most hosts there is nothing to do. On a machine with no D-Bus installed at all, GTK applications wait for a bus that never arrives and never open a window; `apt install dbus` (or your distribution's equivalent) is the whole fix.
+- **Fonts and an icon theme**, if you want the applications to look like themselves. A minimal cloud image often ships neither, which shows up as boxes instead of text and letters instead of icons.
 
 If an application fails to start, the launcher shows the reason the host gave — usually a missing library, named exactly.
+
+### A Debian or Ubuntu host, in one block
+
+```
+sudo loginctl enable-linger "$USER"
+sudo apt update
+sudo apt install -y dbus-user-session libgl1-mesa-dri \
+  fontconfig fonts-dejavu-core hicolor-icon-theme adwaita-icon-theme
+```
+
+Then log out and back in, so the first line takes effect. `enable-linger` is what gives your user a runtime directory — and with it a session bus — outside a login session; everything else on that list is what a bare server image is missing.
+
+Install the applications themselves the same way: anything built on GTK, Qt, Electron, or Firefox works. Applications that only speak X11 — `xterm` and its generation — do not yet.
 
 ## Windows, dialogs and menus
 

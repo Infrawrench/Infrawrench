@@ -34,8 +34,23 @@ pub fn run(options: &Capture) -> std::io::Result<()> {
         .map_err(|e| std::io::Error::other(e.to_string()))?;
     println!("compositor listening on {}", backend.socket_name());
 
-    let app_env = launch_env::launch_env(&env, &runtime_dir, backend.socket_name());
-    let spec = resolve(options, &env, app_env)?;
+    let mut app_env = launch_env::launch_env(&env, &runtime_dir, backend.socket_name());
+    let bus = launch_env::resolve_session_bus(
+        &env,
+        runtime_dir.join("bus").exists(),
+        &runtime_dir,
+        launch_env::on_path(env.get("PATH").map(String::as_str), "dbus-run-session"),
+    );
+    let launch_prefix = launch_env::apply_session_bus(&mut app_env, &bus);
+    println!("session bus: {bus:?}");
+    let mut spec = resolve(options, &env, app_env)?;
+    // The same prefix the serve loop applies, so what this harness exercises is
+    // what a real session does.
+    if !launch_prefix.is_empty() {
+        let mut argv = launch_prefix;
+        argv.extend(spec.argv);
+        spec.argv = argv;
+    }
     println!("launching {:?}", spec.argv);
     backend
         .launch(spec)
