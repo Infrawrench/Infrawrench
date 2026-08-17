@@ -14,6 +14,7 @@ mod spawn;
 mod state;
 
 use std::collections::VecDeque;
+use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -23,6 +24,9 @@ use smithay::reexports::calloop::ping::{Ping, make_ping};
 use smithay::reexports::calloop::{EventLoop, Interest, Mode, PostAction};
 use smithay::reexports::wayland_server::Display;
 use smithay::utils::SERIAL_COUNTER;
+use smithay::wayland::selection::data_device::{
+    request_data_device_client_selection, set_data_device_selection,
+};
 use smithay::wayland::socket::ListeningSocketSource;
 
 use iw_proto::{ButtonState, InputEvent, v120_from_axis};
@@ -49,6 +53,12 @@ pub struct WaylandBackend {
     /// Interrupts [`Self::dispatch`] from another thread. Held so the reader
     /// thread can be handed a clone.
     waker: Ping,
+    /// Events raised off-thread — reading a client's clipboard, which is a
+    /// pipe an application fills at its own pace.
+    async_events: (
+        std::sync::mpsc::Sender<BackendEvent>,
+        std::sync::mpsc::Receiver<BackendEvent>,
+    ),
 }
 
 impl WaylandBackend {
@@ -123,6 +133,7 @@ impl WaylandBackend {
             nursery: Nursery::default(),
             local_events: VecDeque::new(),
             waker,
+            async_events: std::sync::mpsc::channel(),
         })
     }
 
@@ -214,6 +225,7 @@ impl WaylandBackend {
     /// Everything the compositor noticed since the last call.
     pub fn poll_events(&mut self) -> Vec<BackendEvent> {
         let mut events: Vec<BackendEvent> = self.local_events.drain(..).collect();
+        events.extend(self.async_events.1.try_iter());
         events.extend(self.data.state.events.drain(..));
         events
     }
@@ -469,12 +481,43 @@ impl Backend for WaylandBackend {
 
     fn offer_clipboard(&mut self, mime_type: &str, data: &[u8]) -> Result<(), BackendError> {
         self.data.state.client_clipboard = Some((mime_type.to_owned(), data.to_vec()));
+        // Publishing it is what makes it pasteable: until the seat holds a
+        // selection, an application asking for the clipboard is told there is
+        // nothing there. The contents are not sent now — `send_selection`
+        // hands them over when something actually reads.
+        let dh = self.data.state.dh.clone();
+        let seat = self.data.state.seat.clone();
+        set_data_device_selection(&dh, &seat, vec![mime_type.to_owned()], ());
         Ok(())
     }
 
-    fn request_clipboard(&mut self, _mime_type: &str) -> Result<(), BackendError> {
-        // Reading the apps' selection means a pipe and a round trip through the
-        // event loop; the plumbing lands with the clipboard work.
+    /// Ask whichever application owns the selection to write it into a pipe.
+    ///
+    /// The read happens on a thread and the result comes back as an event: the
+    /// application on the other end may take its time, and this is called from
+    /// the middle of the compositor's own loop.
+    fn request_clipboard(&mut self, mime_type: &str) -> Result<(), BackendError> {
+        let (reader, writer) =
+            make_pipe().map_err(|e| BackendError::Compositor(format!("pipe: {e}")))?;
+        let seat = self.data.state.seat.clone();
+        request_data_device_client_selection(&seat, mime_type.to_owned(), writer)
+            .map_err(|e| BackendError::Compositor(format!("selection: {e}")))?;
+
+        let sender = self.async_events.0.clone();
+        let waker = self.waker.clone();
+        let mime_type = mime_type.to_owned();
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut data = Vec::new();
+            let mut reader = std::fs::File::from(reader);
+            // A selection nobody writes ends at EOF with nothing in it, which
+            // is reported as an empty clipboard rather than as a failure.
+            let _ = reader.read_to_end(&mut data);
+            let _ = sender.send(BackendEvent::ClipboardData { mime_type, data });
+            // The loop is asleep on its timeout; without this the clipboard
+            // arrives whenever the next frame happens to.
+            waker.ping();
+        });
         Ok(())
     }
 
@@ -500,6 +543,28 @@ fn button_state(state: ButtonState) -> smithay::backend::input::ButtonState {
         ButtonState::Pressed => smithay::backend::input::ButtonState::Pressed,
         ButtonState::Released => smithay::backend::input::ButtonState::Released,
     }
+}
+
+/// A pipe, as `(read, write)`.
+///
+/// `std::io::pipe` would do this, and is two Rust releases newer than the one
+/// this workspace is pinned to — the binary runs on other people's machines,
+/// so the toolchain floor is a deliberate choice rather than an oversight.
+fn make_pipe() -> std::io::Result<(OwnedFd, OwnedFd)> {
+    use std::os::fd::FromRawFd;
+    let mut fds = [0i32; 2];
+    // SAFETY: `pipe` writes exactly two descriptors into the array we own, and
+    // reports failure through its return value rather than by writing garbage.
+    if unsafe { libc_pipe(fds.as_mut_ptr()) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: both descriptors are freshly created and owned by nobody else.
+    Ok(unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) })
+}
+
+unsafe extern "C" {
+    #[link_name = "pipe"]
+    fn libc_pipe(fds: *mut i32) -> i32;
 }
 
 /// Wayland's 24.8 fixed point back to the f64 the input API takes.

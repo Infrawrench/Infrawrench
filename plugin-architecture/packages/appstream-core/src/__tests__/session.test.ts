@@ -295,6 +295,34 @@ describe("AppSession", () => {
     expect(seen).toEqual([]);
   });
 
+  it("fetches a clipboard the host offers, without being asked", () => {
+    // Fetching on the offer rather than on the paste is what makes a paste
+    // instant; the offer itself carries nothing, so nothing has crossed the
+    // wire until this.
+    const { transport, app } = session();
+    transport.reply(welcome);
+    app.attach(1, 100, 100, 1);
+    transport.sent = [];
+    transport.reply({
+      type: "clipboardOffer",
+      mimeTypes: ["text/plain;charset=utf-8", "TARGETS"],
+    });
+    expect(transport.controls()).toContainEqual({
+      type: "clipboardRequest",
+      mimeType: "text/plain;charset=utf-8",
+    });
+  });
+
+  it("ignores an offer of something it could not paste anyway", () => {
+    // An image on a remote clipboard is megabytes over an SSH connection
+    // nobody agreed to spend.
+    const { transport } = session();
+    transport.reply(welcome);
+    transport.sent = [];
+    transport.reply({ type: "clipboardOffer", mimeTypes: ["image/png"] });
+    expect(transport.controls()).toEqual([]);
+  });
+
   it("hands clipboard payloads over as binary, not text", () => {
     const received: Array<{ mimeType: string; length: number }> = [];
     const { transport } = session({

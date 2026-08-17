@@ -249,6 +249,36 @@ export function AppWindowViewer({
   const started = useMemo(() => Date.now(), []);
   const now = useCallback(() => (Date.now() - started) % 0xffffffff, [started]);
 
+  /**
+   * Hand the browser's clipboard to the host, then ask the application to
+   * paste it.
+   *
+   * The order matters and the shortcut is synthesised rather than forwarded:
+   * the application asks the compositor for the selection the moment it sees
+   * the key, so the text has to be published first. Synthesising also makes
+   * `Cmd+V` work — a Mac user's paste reaches the host as Meta+V, which no
+   * Linux application does anything with.
+   */
+  const onPaste = useCallback(
+    (event: React.ClipboardEvent<HTMLCanvasElement>) => {
+      event.preventDefault();
+      const text = event.clipboardData.getData("text/plain");
+      if (!text) return;
+      session.offerClipboard({
+        mimeType: CLIPBOARD_TEXT,
+        data: new TextEncoder().encode(text),
+      });
+      const timeMs = now();
+      session.sendInput(windowId, [
+        { kind: "key", timeMs, keycode: CONTROL_LEFT, state: ButtonState.Pressed },
+        { kind: "key", timeMs, keycode: KEY_V, state: ButtonState.Pressed },
+        { kind: "key", timeMs, keycode: KEY_V, state: ButtonState.Released },
+        { kind: "key", timeMs, keycode: CONTROL_LEFT, state: ButtonState.Released },
+      ]);
+    },
+    [session, windowId, now],
+  );
+
   // Takes the coordinates rather than a React event, because the wheel sends
   // one too: a scroll has to carry the pointer's position or the compositor has
   // nowhere to deliver it.
@@ -280,10 +310,16 @@ export function AppWindowViewer({
 
   const onKey = useCallback(
     (event: React.KeyboardEvent<HTMLCanvasElement>, state: ButtonState) => {
-      // The remote application owns every key while focused, including the
-      // browser's own shortcuts — otherwise Ctrl-W closes the tab instead of
-      // the document. Done first, or a held Ctrl-W would reach the browser on
-      // the repeat the translator drops.
+      // Paste is the one shortcut the browser has to keep: intercepting it
+      // would mean reading the clipboard ourselves, which needs a permission
+      // prompt, where letting it through produces a `paste` event carrying the
+      // text for free. The keystroke is not forwarded — `onPaste` synthesises
+      // one the application will recognise once the text is on its way.
+      if (isPasteShortcut(event)) return;
+      // The remote application owns every other key while focused, including
+      // the browser's own shortcuts — otherwise Ctrl-W closes the tab instead
+      // of the document. Done first, or a held Ctrl-W would reach the browser
+      // on the repeat the translator drops.
       event.preventDefault();
       const events =
         state === ButtonState.Pressed
@@ -361,6 +397,7 @@ export function AppWindowViewer({
           const { dx, dy } = axisFromWheel(event);
           sendPointer(event, [{ kind: "pointerAxis", timeMs: now(), dx, dy }]);
         }}
+        onPaste={onPaste}
         onKeyDown={(event) => onKey(event, ButtonState.Pressed)}
         onKeyUp={(event) => onKey(event, ButtonState.Released)}
         onContextMenu={(event) => event.preventDefault()}
@@ -389,6 +426,22 @@ export function AppWindowViewer({
       )}
     </div>
   );
+}
+
+/** The text type both ends agree on. */
+const CLIPBOARD_TEXT = "text/plain;charset=utf-8";
+/** evdev codes for the paste this synthesises. */
+const CONTROL_LEFT = 29;
+const KEY_V = 47;
+
+/**
+ * Is this the browser's paste shortcut?
+ *
+ * Both spellings, because the host is Linux and the user may not be. What
+ * follows is a `paste` event either way.
+ */
+function isPasteShortcut(event: { key: string; ctrlKey: boolean; metaKey: boolean }): boolean {
+  return (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v";
 }
 
 /**

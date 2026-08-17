@@ -27,9 +27,12 @@ HTMLCanvasElement.prototype.getContext = () => null;
  */
 function fakeSession() {
   const sent: InputEvent[] = [];
+  const offered: string[] = [];
   const frameListeners: Array<(id: number, payload: PixelPayload) => unknown> = [];
   const session = {
     sendInput: (_windowId: number, events: InputEvent[]) => sent.push(...events),
+    offerClipboard: (blob: { data: Uint8Array }) =>
+      offered.push(new TextDecoder().decode(blob.data)),
     attach: vi.fn(),
     detach: vi.fn(),
     resize: vi.fn(),
@@ -39,11 +42,11 @@ function fakeSession() {
     addCursorListener: vi.fn(),
     removeCursorListener: vi.fn(),
   } as unknown as AppSession;
-  return { session, sent, frameListeners };
+  return { session, sent, offered, frameListeners };
 }
 
 function mount() {
-  const { session, sent, frameListeners } = fakeSession();
+  const { session, sent, offered, frameListeners } = fakeSession();
   render(<AppWindowViewer session={session} windowId={1} />);
   const canvas = screen.getByRole("img");
 
@@ -61,7 +64,7 @@ function mount() {
   } as unknown as PixelPayload;
   for (const listener of frameListeners) listener(1, payload);
   sent.length = 0;
-  return { canvas, sent };
+  return { canvas, sent, offered };
 }
 
 const keys = (sent: InputEvent[]) => sent.filter((e) => e.kind === "key");
@@ -104,6 +107,37 @@ describe("AppWindowViewer keyboard", () => {
     sent.length = 0;
     fireEvent.blur(window);
     expect(keys(sent)).toHaveLength(0);
+  });
+});
+
+describe("AppWindowViewer clipboard", () => {
+  const paste = (canvas: Element, text: string) =>
+    fireEvent.paste(canvas, { clipboardData: { getData: () => text } });
+
+  it("offers the text to the host before asking the application to paste", () => {
+    // The application asks the compositor for the selection the moment it sees
+    // the key, so the order is the whole thing: text first, keystroke second.
+    const { canvas, sent, offered } = mount();
+    paste(canvas, "hello");
+    expect(offered).toEqual(["hello"]);
+    expect(sent.map((e) => (e.kind === "key" ? e.keycode : e.kind))).toEqual([29, 47, 47, 29]);
+  });
+
+  it("synthesises the shortcut rather than forwarding the one that was pressed", () => {
+    // Cmd+V on a Mac reaches a Linux application as Meta+V, which does
+    // nothing at all — so the paste has to be made rather than relayed.
+    const { canvas, sent } = mount();
+    fireEvent.keyDown(canvas, { code: "KeyV", key: "v", metaKey: true });
+    expect(sent).toEqual([]);
+    paste(canvas, "text");
+    expect(sent.filter((e) => e.kind === "key")).toHaveLength(4);
+  });
+
+  it("does nothing for an empty clipboard", () => {
+    const { canvas, sent, offered } = mount();
+    paste(canvas, "");
+    expect(offered).toEqual([]);
+    expect(sent).toEqual([]);
   });
 });
 

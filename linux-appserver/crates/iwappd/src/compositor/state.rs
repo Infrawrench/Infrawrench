@@ -152,6 +152,8 @@ pub struct AppState {
     pub started: Instant,
     /// Clipboard the client offered us, handed to whichever app asks next.
     pub client_clipboard: Option<(String, Vec<u8>)>,
+    /// Kept so a selection can be published after startup.
+    pub dh: DisplayHandle,
 }
 
 impl AppState {
@@ -219,6 +221,7 @@ impl AppState {
             events: VecDeque::new(),
             started: Instant::now(),
             client_clipboard: None,
+            dh: dh.clone(),
         }
     }
 
@@ -973,6 +976,52 @@ impl SeatHandler for AppState {
 
 impl SelectionHandler for AppState {
     type SelectionUserData = ();
+
+    /// An application took the clipboard.
+    ///
+    /// Only the offer is reported; the contents are fetched on demand, because
+    /// a selection is often large, often never pasted, and always someone
+    /// else's data — pulling it eagerly across an SSH connection would be all
+    /// three of slow, wasteful and rude.
+    fn new_selection(
+        &mut self,
+        ty: smithay::wayland::selection::SelectionTarget,
+        source: Option<smithay::wayland::selection::SelectionSource>,
+        _seat: Seat<Self>,
+    ) {
+        if ty != smithay::wayland::selection::SelectionTarget::Clipboard {
+            return;
+        }
+        let Some(source) = source else { return };
+        self.events.push_back(BackendEvent::ClipboardOffer {
+            mime_types: source.mime_types(),
+        });
+    }
+
+    /// An application is reading the clipboard we published.
+    fn send_selection(
+        &mut self,
+        _ty: smithay::wayland::selection::SelectionTarget,
+        mime_type: String,
+        fd: OwnedFd,
+        _seat: Seat<Self>,
+        _user_data: &(),
+    ) {
+        let Some((offered, data)) = self.client_clipboard.clone() else {
+            return;
+        };
+        if offered != mime_type {
+            return;
+        }
+        // On a thread, because the far end of that pipe is an application that
+        // may not read promptly — and a compositor blocked on one client's
+        // read has stopped drawing for everybody.
+        std::thread::spawn(move || {
+            use std::io::Write;
+            let mut pipe = std::fs::File::from(fd);
+            let _ = pipe.write_all(&data);
+        });
+    }
 }
 
 impl DataDeviceHandler for AppState {

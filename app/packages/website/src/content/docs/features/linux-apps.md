@@ -62,6 +62,16 @@ Each window of an application gets its own tab. Dialogs, menus and tooltips are 
 
 Closing a tab closes that window. Closing the **Apps** tab ends the whole session on that host, including any applications it opened.
 
+## Clipboard
+
+Text copies both ways.
+
+**Into an application**: copy anywhere on your own machine, click into the application's window, and paste with the shortcut you always use. Infrawrench hands the text to the host and asks the application to paste it, so `Cmd+V` on a Mac works even though no Linux application knows what `Cmd` is. In a terminal, whose paste is usually `Ctrl+Shift+V`, use that instead — the text is already on the host's clipboard by then either way.
+
+**Out of an application**: select and copy inside the application as you normally would, and the text arrives on your own clipboard. This one needs the browser tab to be focused, because a browser will not let a background tab write your clipboard — so copy first, then switch away.
+
+Images are not carried in either direction. They would be megabytes across an SSH connection for a paste that may never come.
+
 ## Sessions and reconnecting
 
 A session belongs to the Infrawrench window that opened it. Reloading the page, or quitting the app, ends it; applications that were running are stopped along with it.
@@ -85,7 +95,7 @@ Graphical sessions are **not** captured by [session recording](./session-recordi
 ## Limitations
 
 - **Desktop and web only.** The mobile app does not open application sessions.
-- **Clipboard** carries text from your machine to the host; reading the host's clipboard is not implemented yet.
+- **Clipboard** carries text both ways, and images neither way. Pasting into a remote application works with your usual shortcut — `Cmd+V` on a Mac reaches the application as the paste it expects. Copying inside a remote application puts the text on your own clipboard a moment later, provided the tab is focused; browsers refuse clipboard writes from a background tab, so switch away _after_ copying rather than before.
 - **No audio**, no printing, no USB redirection.
 - **Keyboard layouts** are translated by character, so any layout types what its keys say — including the punctuation UK, German and French keyboards move around. Characters no US keyboard has at all (`£`, accents, anything an input method composes) are sent separately and work, with the exception of dead keys, which are not implemented.
 - **X11-only applications** need XWayland, which is not included yet. Applications that speak Wayland — which is most current desktop software — work.

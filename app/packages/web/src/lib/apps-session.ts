@@ -169,6 +169,7 @@ export async function acquireHostSession(
     events: {
       onReady: () => setStatus({ stage: "ready" }),
       onError: (message) => setStatus({ stage: "error", message }),
+      onClipboard: (blob) => writeToClipboard(blob),
     },
   });
 
@@ -205,4 +206,22 @@ function view(entry: Entry): HostAppsSession {
       }
     },
   };
+}
+
+/**
+ * Text copied inside a remote application, put on this machine's clipboard.
+ *
+ * Best effort on purpose. Writing the clipboard needs a permission the browser
+ * grants to a focused tab and withholds from a background one, and this
+ * arrives whenever the application decides to copy rather than in response to
+ * anything the user did *here*. A refusal means the paste does not work this
+ * time, which is worth neither an error nor a prompt.
+ */
+function writeToClipboard(blob: { mimeType: string; data: Uint8Array }): void {
+  if (!blob.mimeType.startsWith("text/plain")) return;
+  const text = new TextDecoder().decode(blob.data);
+  if (!text) return;
+  void navigator.clipboard?.writeText(text).catch(() => {
+    /* not focused, or not permitted; the next copy will try again */
+  });
 }

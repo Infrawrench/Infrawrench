@@ -103,6 +103,15 @@ export interface AppSessionOptions {
   events?: AppSessionEvents;
 }
 
+/**
+ * The clipboard types worth asking for.
+ *
+ * Text only, deliberately: an image on a remote clipboard is megabytes over an
+ * SSH connection that nobody asked to spend, and a paste that arrives a second
+ * late is worse than one that does not arrive.
+ */
+const TEXT_MIME = /^text\/plain/;
+
 export class AppSession {
   #transport: AppSessionTransport;
   #decoder = new FrameDecoder();
@@ -449,7 +458,14 @@ export class AppSession {
         }
         this.#events.onError?.(message.message, message.code);
         break;
-      case "clipboardOffer":
+      case "clipboardOffer": {
+        // An application took the host's clipboard. Fetching it now rather
+        // than when the user pastes is what makes the paste instant — and the
+        // host only ever offers, so nothing has crossed the wire yet.
+        const wanted = message.mimeTypes.find((type) => TEXT_MIME.test(type));
+        if (wanted) this.requestClipboard(wanted);
+        break;
+      }
       case "stats":
       case "pong":
         break;
