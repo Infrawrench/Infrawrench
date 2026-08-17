@@ -848,6 +848,13 @@
       "when": 1787119331320,
       "tag": "0120_restore_drills",
       "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1787119331321,
+      "tag": "0121_query_monitors",
+      "breakpoints": true
     }
   ]
 }

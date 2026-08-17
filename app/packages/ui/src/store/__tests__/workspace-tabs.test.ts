@@ -95,6 +95,10 @@ describe("getWorkspaceTabId", () => {
     expect(getWorkspaceTabId({ kind: "runbooks" })).toBe("runbooks");
   });
 
+  it("returns the singleton id for the query-monitors target", () => {
+    expect(getWorkspaceTabId({ kind: "query-monitors" })).toBe("query-monitors");
+  });
+
   it("returns the singleton id for the backups target", () => {
     expect(getWorkspaceTabId({ kind: "backups" })).toBe("backups");
   });
@@ -300,6 +304,10 @@ describe("getWorkspaceTabFallbackTitle", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "runbooks" })).toBe("Runbooks");
   });
 
+  it("returns 'Query monitors' for the query-monitors target, matching the sidebar tile", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "query-monitors" })).toBe("Query monitors");
+  });
+
   it("returns 'Backups' for the backups target, matching the sidebar tile", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "backups" })).toBe("Backups");
   });
@@ -415,6 +423,12 @@ describe("workspaceTabTargetsEqual", () => {
 
   it("treats two runbooks targets as equal (singleton tab)", () => {
     expect(workspaceTabTargetsEqual({ kind: "runbooks" }, { kind: "runbooks" })).toBe(true);
+  });
+
+  it("treats two query-monitors targets as equal (singleton tab)", () => {
+    expect(workspaceTabTargetsEqual({ kind: "query-monitors" }, { kind: "query-monitors" })).toBe(
+      true,
+    );
   });
 
   it("treats two backups targets as equal (singleton tab)", () => {

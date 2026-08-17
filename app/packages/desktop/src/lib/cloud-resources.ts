@@ -25,6 +25,9 @@ import type {
   RunbookInput,
   RunbookRun,
   RunbookStepStatus,
+  QueryMonitor,
+  QueryMonitorInput,
+  QueryMonitorTestResult,
   ResourcePickerOption,
   WallboardResponse,
 } from "@infrawrench/ui";
@@ -174,8 +177,8 @@ export async function deleteCloudBackupPolicy(orgId: string, policyId: string): 
 }
 
 /**
- * The wallboard. Cloud only: two of its three sources (declared incidents and
- * sync paging) are org state, and the third is run by the cloud poller.
+ * The wallboard. Cloud only: three of its four sources (declared incidents,
+ * query monitors, sync paging) are org state.
  */
 export async function fetchCloudWallboard(orgId: string): Promise<WallboardResponse> {
   return invoke("cloud_wallboard", { orgId });
@@ -299,6 +302,41 @@ export async function recordCloudRestoreDrill(
   input: RestoreDrillInput,
 ): Promise<void> {
   await invoke("cloud_restore_drill_record", { orgId, input });
+}
+
+/**
+ * Query monitors. Cloud only: the schedule is run by the cloud poller, so a
+ * monitor stored locally would only run while the app was open.
+ */
+export async function fetchCloudQueryMonitors(orgId: string): Promise<QueryMonitor[]> {
+  const res = await invoke<{ monitors: QueryMonitor[] }>("cloud_query_monitors", { orgId });
+  return res.monitors ?? [];
+}
+
+export async function createCloudQueryMonitor(
+  orgId: string,
+  input: QueryMonitorInput,
+): Promise<void> {
+  await invoke("cloud_query_monitor_create", { orgId, input });
+}
+
+export async function updateCloudQueryMonitor(
+  orgId: string,
+  monitorId: string,
+  patch: Partial<QueryMonitorInput>,
+): Promise<void> {
+  await invoke("cloud_query_monitor_update", { orgId, monitorId, patch });
+}
+
+export async function deleteCloudQueryMonitor(orgId: string, monitorId: string): Promise<void> {
+  await invoke("cloud_query_monitor_delete", { orgId, monitorId });
+}
+
+export async function testCloudQueryMonitor(
+  orgId: string,
+  input: Partial<QueryMonitorInput>,
+): Promise<QueryMonitorTestResult> {
+  return invoke("cloud_query_monitor_test", { orgId, input });
 }
 
 export async function fetchCloudDns(orgId: string): Promise<DnsInventoryResponse> {

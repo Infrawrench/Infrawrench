@@ -16,6 +16,7 @@ import "./backups";
 import "./wallboard";
 import "./calendar";
 import "./runbooks";
+import "./query-monitors";
 import "./dns";
 import "./environment-diff";
 import "./environments";

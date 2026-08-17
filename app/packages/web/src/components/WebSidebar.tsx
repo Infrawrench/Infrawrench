@@ -30,6 +30,7 @@ import {
   WallboardIcon,
   CalendarIcon,
   RunbookIcon,
+  QueryMonitorIcon,
   DomainsIcon,
   EnvironmentDiffIcon,
   FanoutIcon,
@@ -595,6 +596,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 icon: <RunbookIcon />,
                 onClick: () =>
                   void navigate({ to: "/org/$orgId/runbooks", params: { orgId: orgId! } }),
+              },
+              {
+                key: "query-monitors",
+                label: gt("Query monitors"),
+                icon: <QueryMonitorIcon />,
+                onClick: () =>
+                  void navigate({ to: "/org/$orgId/query-monitors", params: { orgId: orgId! } }),
               },
               {
                 key: "dns",

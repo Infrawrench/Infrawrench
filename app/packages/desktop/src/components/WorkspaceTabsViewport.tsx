@@ -52,6 +52,7 @@ import { DesktopBackupsPanel } from "@/components/DesktopBackupsPanel";
 import { DesktopWallboardPanel } from "@/components/DesktopWallboardPanel";
 import { DesktopCalendarPanel } from "@/components/DesktopCalendarPanel";
 import { DesktopRunbooksPanel } from "@/components/DesktopRunbooksPanel";
+import { DesktopQueryMonitorsPanel } from "@/components/DesktopQueryMonitorsPanel";
 import { DesktopDnsPanel } from "@/components/DesktopDnsPanel";
 import { DesktopIacPanel } from "@/components/DesktopIacPanel";
 import { DesktopEnvironmentDiffPanel } from "@/components/DesktopEnvironmentDiffPanel";
@@ -464,6 +465,13 @@ function renderPanel(
         <DesktopRunbooksPanel
           // Keyed by mode so switching org (or dropping to local) remounts and
           // refetches rather than showing the previous org's procedures.
+          key={activeCloudOrgId ?? "local"}
+        />
+      );
+    case "query-monitors":
+      return (
+        <DesktopQueryMonitorsPanel
+          // Keyed by mode so switching org (or dropping to local) remounts.
           key={activeCloudOrgId ?? "local"}
         />
       );

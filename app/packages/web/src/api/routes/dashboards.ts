@@ -698,6 +698,7 @@ app.post("/validate-tabs", async (c) => {
       target.kind === "wallboard" ||
       target.kind === "calendar" ||
       target.kind === "runbooks" ||
+      target.kind === "query-monitors" ||
       target.kind === "dns" ||
       target.kind === "iac" ||
       target.kind === "environment-diff" ||

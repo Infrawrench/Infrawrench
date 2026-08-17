@@ -17,6 +17,7 @@ import {
   wallboardTabTarget,
   calendarTabTarget,
   runbooksTabTarget,
+  queryMonitorsTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -209,6 +210,12 @@ export function getWorkspaceNavigateArgs(
     case "runbooks":
       return {
         to: "/org/$orgId/runbooks",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "query-monitors":
+      return {
+        to: "/org/$orgId/query-monitors",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -520,6 +527,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "runbooks") {
     return runbooksTabTarget();
+  }
+  if (s[0] === "query-monitors") {
+    return queryMonitorsTabTarget();
   }
   if (s[0] === "dns") {
     return dnsTabTarget();

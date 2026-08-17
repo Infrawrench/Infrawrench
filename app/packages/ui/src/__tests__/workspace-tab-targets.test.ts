@@ -10,6 +10,7 @@ import {
   wallboardTabTarget,
   calendarTabTarget,
   runbooksTabTarget,
+  queryMonitorsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
   probesTabTarget,
@@ -49,6 +50,10 @@ describe("tab target factories", () => {
 
   it("runbooksTabTarget", () => {
     expect(runbooksTabTarget()).toEqual({ kind: "runbooks" });
+  });
+
+  it("queryMonitorsTabTarget", () => {
+    expect(queryMonitorsTabTarget()).toEqual({ kind: "query-monitors" });
   });
 
   it("backupsTabTarget", () => {

@@ -346,6 +346,7 @@ export {
   wallboardTabTarget,
   calendarTabTarget,
   runbooksTabTarget,
+  queryMonitorsTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -868,6 +869,26 @@ export {
   type RestoreDrillInput,
 } from "@infrawrench/client-core";
 export type { DrillCoverage } from "./backups/BackupsSection.js";
+// Query monitors. Types, validation and the read-only SQL guard come from
+// client-core like every other section's; only the section and icon live here.
+export {
+  QUERY_MONITOR_LIMITS,
+  QUERY_MONITOR_OPERATOR_LABELS,
+  describeQueryMonitor,
+  monitorSqlProblem,
+  validateQueryMonitor,
+  type QueryMonitor,
+  type QueryMonitorInput,
+  type QueryMonitorMode,
+  type QueryMonitorOperator,
+  type QueryMonitorState,
+} from "@infrawrench/client-core";
+export { QueryMonitorsSection } from "./query-monitors/QueryMonitorsSection.js";
+export type {
+  QueryMonitorsSectionProps,
+  QueryMonitorTestResult,
+} from "./query-monitors/QueryMonitorsSection.js";
+export { QueryMonitorIcon } from "./components/icons/QueryMonitorIcon.js";
 export {
   DNS_CLASSIFICATION_LABELS,
   computeDnsInventory,

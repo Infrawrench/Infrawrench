@@ -123,4 +123,8 @@
 // backup, how long it took, and whether they checked what came back
 // (`/backups/drills`, `/backups/drills/log`). Additive; the existing backup
 // coverage shapes are unchanged.
-export const API_VERSION = "1.36.0";
+// 1.37.0: query monitors — a read-only SQL query on a schedule with a
+// threshold and an alert (`/query-monitors` CRUD plus `/query-monitors/test`,
+// the editor's unsaved preview), and the wallboard's fourth source back, now
+// that the table it reads exists. All additive.
+export const API_VERSION = "1.37.0";
