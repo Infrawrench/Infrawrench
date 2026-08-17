@@ -74,6 +74,15 @@ export function wallboardTabTarget(): WorkspaceTabTarget {
   return { kind: "wallboard" };
 }
 
+/**
+ * The operations calendar. Single-instance like Posture: which month is shown
+ * is a control on the page rather than part of the tab's identity, so paging
+ * through the year retargets the same tab instead of opening twelve.
+ */
+export function calendarTabTarget(): WorkspaceTabTarget {
+  return { kind: "calendar" };
+}
+
 export function dnsTabTarget(): WorkspaceTabTarget {
   return { kind: "dns" };
 }

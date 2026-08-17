@@ -200,6 +200,7 @@ const TabTarget = strict({
     "access-review",
     "backups",
     "wallboard",
+    "calendar",
     "dns",
     "iac",
     "environment-diff",

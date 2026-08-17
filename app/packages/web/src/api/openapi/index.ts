@@ -52,6 +52,7 @@ import { registerPosturePaths } from "./paths/posture";
 import { registerAccessReviewPaths } from "./paths/access-review";
 import { registerBackupPaths } from "./paths/backups";
 import { registerWallboardPaths } from "./paths/wallboard";
+import { registerCalendarPaths } from "./paths/calendar";
 import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
@@ -183,6 +184,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerAccessReviewPaths(ctx);
   registerBackupPaths(ctx);
   registerWallboardPaths(ctx);
+  registerCalendarPaths(ctx);
   registerDnsPaths(ctx);
   registerEnvironmentDiffPaths(ctx);
   registerMomentPaths(ctx);
@@ -460,6 +462,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Wallboard",
         description:
           'One screen, read from across the room. Every other page here is designed for somebody sitting at it \u2014 dense tables, hover states, filters \u2014 and none of that survives being put on a television four metres away, which is where a team actually wants "is anything wrong". So this is a different reading of the same data, built on one rule: a wallboard may only show things that are true right now and that somebody would cross a room to look at. No history, no trends, no breakdowns. A source that fails is named on the screen and turns the wall amber, because a wall showing green because a query threw is worse than a blank one.',
+      },
+      {
+        name: "Operations calendar",
+        description:
+          "One time axis over six things the organization already stores — change freezes, sleep/wake schedules, declared deadlines, commitment term ends, cron-triggered workflow runs and declared incidents. Nothing on it is a new record: the calendar is a projection recomputed on every read, and each source is guarded independently so one that fails costs its own kind rather than the page. Subscriptions mint an unauthenticated iCalendar URL whose 32-byte token is the sole credential; it carries scheduling facts only, and no organization id.",
       },
       {
         name: "Status pages",

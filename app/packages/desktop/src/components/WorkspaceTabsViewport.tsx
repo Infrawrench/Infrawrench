@@ -50,6 +50,7 @@ import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
 import { DesktopAccessReviewPanel } from "@/components/DesktopAccessReviewPanel";
 import { DesktopBackupsPanel } from "@/components/DesktopBackupsPanel";
 import { DesktopWallboardPanel } from "@/components/DesktopWallboardPanel";
+import { DesktopCalendarPanel } from "@/components/DesktopCalendarPanel";
 import { DesktopDnsPanel } from "@/components/DesktopDnsPanel";
 import { DesktopIacPanel } from "@/components/DesktopIacPanel";
 import { DesktopEnvironmentDiffPanel } from "@/components/DesktopEnvironmentDiffPanel";
@@ -446,6 +447,14 @@ function renderPanel(
       return (
         <DesktopWallboardPanel
           // Keyed by mode so switching org (or dropping to local) remounts.
+          key={activeCloudOrgId ?? "local"}
+        />
+      );
+    case "calendar":
+      return (
+        <DesktopCalendarPanel
+          // Keyed by mode so switching org (or dropping to local) remounts and
+          // refetches rather than showing the previous org's month.
           key={activeCloudOrgId ?? "local"}
         />
       );

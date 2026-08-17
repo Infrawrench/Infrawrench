@@ -20,6 +20,7 @@ import {
   AccessReviewIcon,
   BackupsIcon,
   WallboardIcon,
+  CalendarIcon,
   DomainsIcon,
   EnvironmentDiffIcon,
   FanoutIcon,
@@ -49,6 +50,7 @@ import {
   deploymentsTabTarget,
   backupsTabTarget,
   wallboardTabTarget,
+  calendarTabTarget,
   dnsTabTarget,
   accessReviewTabTarget,
   iacTabTarget,
@@ -393,6 +395,15 @@ export function SidebarDashboards() {
       icon: <WallboardIcon />,
       onClick: () =>
         void navigateToWorkspaceTarget(navigate, wallboardTabTarget(), { label: gt("Wallboard") }),
+    },
+    // The operations calendar is cloud only for the same reason Backups is:
+    // five of its six sources are org state.
+    {
+      key: "calendar",
+      label: gt("Calendar"),
+      icon: <CalendarIcon />,
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, calendarTabTarget(), { label: gt("Calendar") }),
     },
     // Domains also has a local half — the inventory is computed from stored
     // state and the locally loaded plugins' DNS declarations. A workspace-tab

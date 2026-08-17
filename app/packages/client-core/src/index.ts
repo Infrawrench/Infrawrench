@@ -670,6 +670,9 @@ export * from "./moment";
 export * from "./orphans";
 export * from "./expiry";
 export * from "./leases";
+// One time axis over every dated thing above — freezes, sleep windows,
+// deadlines, commitment terms, scheduled runs and incidents.
+export * from "./calendar";
 export * from "./posture";
 // The customer's cloud principals, not Infrawrench's own roles (permissions
 // catalog) and not the credentials Infrawrench holds (credential-hygiene).

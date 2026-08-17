@@ -17,6 +17,8 @@ export type WorkspaceTabTarget =
   | { kind: "backups" }
   /** The wallboard — one screen, read from across the room. */
   | { kind: "wallboard" }
+  /** The operations calendar — every dated record on one axis. */
+  | { kind: "calendar" }
   | { kind: "dns" }
   | { kind: "iac" }
   | { kind: "environment-diff"; a?: string; b?: string }
@@ -145,6 +147,10 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "backups";
     case "wallboard":
       return "wallboard";
+    // Not keyed by the month: paging through the year is a control on the
+    // page, not a new tab per month.
+    case "calendar":
+      return "calendar";
     case "dns":
       return "dns";
     case "iac":
@@ -229,6 +235,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Backups";
     case "wallboard":
       return "Wallboard";
+    case "calendar":
+      return "Calendar";
     case "dns":
       return "Domains";
     case "iac":
@@ -288,6 +296,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "access-review":
     case "backups":
     case "wallboard":
+    case "calendar":
     case "dns":
     case "iac":
     case "environments":

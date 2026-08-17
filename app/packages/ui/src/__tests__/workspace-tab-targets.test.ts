@@ -8,6 +8,7 @@ import {
   accessReviewTabTarget,
   backupsTabTarget,
   wallboardTabTarget,
+  calendarTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
   probesTabTarget,
@@ -39,6 +40,10 @@ describe("tab target factories", () => {
 
   it("wallboardTabTarget", () => {
     expect(wallboardTabTarget()).toEqual({ kind: "wallboard" });
+  });
+
+  it("calendarTabTarget", () => {
+    expect(calendarTabTarget()).toEqual({ kind: "calendar" });
   });
 
   it("backupsTabTarget", () => {

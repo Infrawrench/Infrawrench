@@ -344,6 +344,7 @@ export {
   accessReviewTabTarget,
   backupsTabTarget,
   wallboardTabTarget,
+  calendarTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -807,6 +808,26 @@ export {
 export { WallboardSection } from "./wallboard/WallboardSection.js";
 export type { WallboardSectionProps } from "./wallboard/WallboardSection.js";
 export { WallboardIcon } from "./components/icons/WallboardIcon.js";
+// The operations calendar. Its wire types come from client-core like every
+// other section's; only the section and its icon live here.
+export {
+  CALENDAR_EVENT_KINDS,
+  CALENDAR_MAX_WINDOW_DAYS,
+  buildIcsCalendar,
+  calendarDayKey,
+  calendarMonthGrid,
+  groupCalendarEventsByDay,
+  parseCalendarKinds,
+  type CalendarEvent,
+  type CalendarEventKind,
+  type CalendarEventSeverity,
+  type CalendarResponse,
+  type CalendarSubscription,
+  type CalendarSubscriptionInput,
+} from "@infrawrench/client-core";
+export { CalendarSection } from "./calendar/CalendarSection.js";
+export type { CalendarSectionProps, CalendarRange } from "./calendar/CalendarSection.js";
+export { CalendarIcon } from "./components/icons/CalendarIcon.js";
 export {
   DNS_CLASSIFICATION_LABELS,
   computeDnsInventory,
