@@ -5,6 +5,8 @@ import {
   type BackupCoverageResponse,
   type BackupPolicy,
   type BackupPolicyInput,
+  type DrillCoverage,
+  type RestoreDrillInput,
 } from "@infrawrench/ui";
 import { usePermissions } from "@/auth/permissions-context";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
@@ -24,6 +26,7 @@ interface WebBackupsPanelProps {
 export function WebBackupsPanel({ orgId, openResource }: WebBackupsPanelProps) {
   const [data, setData] = useState<BackupCoverageResponse | null>(null);
   const [policies, setPolicies] = useState<BackupPolicy[] | null>(null);
+  const [drills, setDrills] = useState<DrillCoverage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   // Until the shell's permission read lands `has()` is false, so the policy
@@ -52,6 +55,14 @@ export function WebBackupsPanel({ orgId, openResource }: WebBackupsPanelProps) {
     [orgId],
   );
 
+  const recordDrill = useCallback(
+    async (input: RestoreDrillInput) => {
+      await apiPost(`/api/org/${orgId}/backups/drills`, input);
+      reload.current();
+    },
+    [orgId],
+  );
+
   const deletePolicy = useCallback(
     async (policyId: string) => {
       await apiDelete(`/api/org/${orgId}/backups/policies/${policyId}`);
@@ -69,17 +80,24 @@ export function WebBackupsPanel({ orgId, openResource }: WebBackupsPanelProps) {
     // screen until the new fetch resolves, which reads as this org's data.
     setData(null);
     setPolicies(null);
+    setDrills(null);
     setError(null);
     function load() {
       const request = ++latestRequest;
       Promise.all([
         apiGet<BackupCoverageResponse>(`/api/org/${orgId}/backups`),
         apiGet<{ policies: BackupPolicy[] }>(`/api/org/${orgId}/backups/policies`),
+        // Drills are a third read rather than part of the coverage payload:
+        // the standings are computed *over* the coverage, and folding them in
+        // would make the existing endpoint pay for them on every page that
+        // only wants gaps.
+        apiGet<DrillCoverage>(`/api/org/${orgId}/backups/drills`),
       ])
-        .then(([coverage, policyList]) => {
+        .then(([coverage, policyList, drillCoverage]) => {
           if (!cancelled && request === latestRequest) {
             setData(coverage);
             setPolicies(policyList.policies);
+            setDrills(drillCoverage);
             setError(null);
           }
         })
@@ -110,6 +128,12 @@ export function WebBackupsPanel({ orgId, openResource }: WebBackupsPanelProps) {
       onCreatePolicy={canEdit ? createPolicy : undefined}
       onUpdatePolicy={canEdit ? updatePolicy : undefined}
       onDeletePolicy={canEdit ? deletePolicy : undefined}
+      drills={drills}
+      // Recording a drill is reporting what you did, so it follows
+      // `resources:write` rather than the settings permission the policies
+      // need. The host does not read that permission separately, so the server
+      // is the gate and its 403 surfaces in the section's banner.
+      onRecordDrill={recordDrill}
     />
   );
 }

@@ -7,12 +7,16 @@ import {
   type BackupCoverageResponse,
   type BackupPolicy,
   type BackupPolicyInput,
+  type DrillCoverage,
+  type RestoreDrillInput,
 } from "@infrawrench/ui";
 import {
   createCloudBackupPolicy,
   deleteCloudBackupPolicy,
   fetchCloudBackupPolicies,
   fetchCloudBackups,
+  fetchCloudRestoreDrills,
+  recordCloudRestoreDrill,
   updateCloudBackupPolicy,
 } from "@/lib/cloud-resources";
 
@@ -34,6 +38,7 @@ export function DesktopBackupsPanel({ openResource }: DesktopBackupsPanelProps) 
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const [data, setData] = useState<BackupCoverageResponse | null>(null);
   const [policies, setPolicies] = useState<BackupPolicy[] | null>(null);
+  const [drills, setDrills] = useState<DrillCoverage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   // The load effect owns refreshing; policy mutations trigger one through a
@@ -60,6 +65,15 @@ export function DesktopBackupsPanel({ openResource }: DesktopBackupsPanelProps) 
     [activeCloudOrgId],
   );
 
+  const recordDrill = useCallback(
+    async (input: RestoreDrillInput) => {
+      if (!activeCloudOrgId) return;
+      await recordCloudRestoreDrill(activeCloudOrgId, input);
+      reload.current();
+    },
+    [activeCloudOrgId],
+  );
+
   const deletePolicy = useCallback(
     async (policyId: string) => {
       if (!activeCloudOrgId) return;
@@ -77,16 +91,22 @@ export function DesktopBackupsPanel({ openResource }: DesktopBackupsPanelProps) 
     let latestRequest = 0;
     setData(null);
     setPolicies(null);
+    setDrills(null);
     setError(null);
     function load() {
       const orgId = activeCloudOrgId;
       if (!orgId) return;
       const request = ++latestRequest;
-      Promise.all([fetchCloudBackups(orgId), fetchCloudBackupPolicies(orgId)])
-        .then(([coverage, policyList]) => {
+      Promise.all([
+        fetchCloudBackups(orgId),
+        fetchCloudBackupPolicies(orgId),
+        fetchCloudRestoreDrills(orgId),
+      ])
+        .then(([coverage, policyList, drillCoverage]) => {
           if (!cancelled && request === latestRequest) {
             setData(coverage);
             setPolicies(policyList);
+            setDrills(drillCoverage);
             setError(null);
           }
         })
@@ -134,6 +154,8 @@ export function DesktopBackupsPanel({ openResource }: DesktopBackupsPanelProps) 
       onCreatePolicy={createPolicy}
       onUpdatePolicy={updatePolicy}
       onDeletePolicy={deletePolicy}
+      drills={drills}
+      onRecordDrill={recordDrill}
     />
   );
 }

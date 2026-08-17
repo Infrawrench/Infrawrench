@@ -12,6 +12,22 @@ ipcMain.handle("cloud_backups", async (_e, { orgId }: { orgId: string }) => {
   return cloudFetch(orgId, "/backups");
 });
 
+// Restore drills — the Backups screen's fourth tab. Cloud only for the same
+// reason the rest of the screen is: a drill is evidence the whole team reads.
+ipcMain.handle("cloud_restore_drills", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/backups/drills");
+});
+
+ipcMain.handle(
+  "cloud_restore_drill_record",
+  async (_e, { orgId, input }: { orgId: string; input: unknown }) => {
+    return cloudFetch(orgId, "/backups/drills", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+);
+
 ipcMain.handle("cloud_backup_policies", async (_e, { orgId }: { orgId: string }) => {
   return cloudFetch(orgId, "/backups/policies");
 });

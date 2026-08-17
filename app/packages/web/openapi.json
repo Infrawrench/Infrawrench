@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.35.0",
+    "version": "1.36.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -16379,6 +16379,335 @@
         "required": [
           "resourceId",
           "ruleId"
+        ],
+        "additionalProperties": false
+      },
+      "DrillCoverageRow": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "resourceName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resourceTypeId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "standing": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "stale",
+              "failed",
+              "never"
+            ],
+            "description": "`never` and `stale` are kept apart because they call for different conversations: one is 'nobody has ever tried', the other is 'it worked in March'."
+          },
+          "lastDrillAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastOutcome": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "verified",
+              "restored-unverified",
+              "failed",
+              "blocked"
+            ],
+            "description": "How the drill ended. Only `verified` counts as evidence the backup works: a restore that produced a running system nobody looked inside is exactly how a team discovers, mid-incident, that the dump had been empty for months. `restored-unverified` is recorded because doing the restore is worth recording, but it does not reset the clock."
+          },
+          "lastVerifiedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "verifiedRtoMinutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "daysUntilStale": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "resourceId",
+          "resourceName",
+          "accountId",
+          "accountName",
+          "resourceTypeId",
+          "standing",
+          "lastDrillAt",
+          "lastOutcome",
+          "lastVerifiedAt",
+          "verifiedRtoMinutes",
+          "daysUntilStale"
+        ],
+        "additionalProperties": false
+      },
+      "DrillSummary": {
+        "type": "object",
+        "properties": {
+          "eligibleCount": {
+            "type": "integer",
+            "description": "Resources with something to restore from. A resource with no backup cannot be drilled, and listing it here would duplicate the coverage page's own unprotected finding."
+          },
+          "verifiedCount": {
+            "type": "integer"
+          },
+          "staleCount": {
+            "type": "integer"
+          },
+          "failedCount": {
+            "type": "integer"
+          },
+          "neverCount": {
+            "type": "integer"
+          },
+          "worstRtoMinutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Over currently-verified rows only; null when nothing is verified, never zero."
+          },
+          "medianRtoMinutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "eligibleCount",
+          "verifiedCount",
+          "staleCount",
+          "failedCount",
+          "neverCount",
+          "worstRtoMinutes",
+          "medianRtoMinutes"
+        ],
+        "additionalProperties": false
+      },
+      "RestoreDrill": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "resourceName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accountId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "performedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the drill was performed, which is **not** when it was recorded — people write these up on Monday for a drill they ran on Saturday, and every staleness computation uses this."
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "restored-unverified",
+              "failed",
+              "blocked"
+            ],
+            "description": "How the drill ended. Only `verified` counts as evidence the backup works: a restore that produced a running system nobody looked inside is exactly how a team discovers, mid-incident, that the dump had been empty for months. `restored-unverified` is recorded because doing the restore is worth recording, but it does not reset the clock."
+          },
+          "rtoMinutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Measured wall-clock minutes. Null when the drill never got that far; a blocked drill has no RTO, and an invented one would be the most dangerous number on the page."
+          },
+          "restoredFrom": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Snapshot id, S3 key, a date — free text."
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "performedByUserId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "performedByName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "resourceId",
+          "resourceName",
+          "accountId",
+          "accountName",
+          "performedAt",
+          "outcome",
+          "rtoMinutes",
+          "restoredFrom",
+          "notes",
+          "performedByUserId",
+          "performedByName",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "DrillCoverageResponse": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DrillCoverageRow"
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/DrillSummary"
+          },
+          "validDays": {
+            "type": "integer"
+          },
+          "orphanedDrills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RestoreDrill"
+            },
+            "description": "Drills against a resource no longer in the inventory. Reported rather than dropped: 'we tested this and then removed it' is a fact an auditor asks about."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "rows",
+          "summary",
+          "validDays",
+          "orphanedDrills",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "RestoreDrillCreate": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "performedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "restored-unverified",
+              "failed",
+              "blocked"
+            ],
+            "description": "How the drill ended. Only `verified` counts as evidence the backup works: a restore that produced a running system nobody looked inside is exactly how a team discovers, mid-incident, that the dump had been empty for months. `restored-unverified` is recorded because doing the restore is worth recording, but it does not reset the clock."
+          },
+          "rtoMinutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 10080
+          },
+          "restoredFrom": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 300
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "resourceId",
+          "performedAt",
+          "outcome"
         ],
         "additionalProperties": false
       },
@@ -48763,6 +49092,217 @@
         },
         "operationId": "deleteOrgOrgIdAccessReviewDismissals",
         "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/backups/drills": {
+      "get": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "summary": "Where every protected resource stands on restore",
+        "description": "Backup coverage answers 'is there a backup'. This answers 'does it restore, and how long does it take' — a different question, and the one routinely answered wrongly on the day.\n\nA drill is a **record that somebody tried**, not an automated restore: restoring a customer's database unattended costs real money, can collide with production, and cannot be generically verified. What the product can do is make the exercise scheduled, recorded and visible when it lapses.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 7,
+              "maximum": 730,
+              "description": "How long a verified drill counts for. Defaults to 180 days."
+            },
+            "required": false,
+            "description": "How long a verified drill counts for. Defaults to 180 days.",
+            "name": "validDays",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Standings and the summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrillCoverageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdBackupsDrills"
+      },
+      "post": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "summary": "Record a restore drill",
+        "description": "A `verified` drill **must** carry the measured time: an RPO comes from the backup, and an RTO can only come from somebody with a stopwatch — that number is the entire point of the exercise. A `blocked` drill must not carry one, because it never started.\n\nTakes `resources:write`, not a settings permission: recording a drill is reporting what you did, and the person who spent Saturday restoring a database is rarely the person who set the recovery objective.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreDrillCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The recorded drill",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreDrill"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBackupsDrills"
+      }
+    },
+    "/api/org/{orgId}/backups/drills/log": {
+      "get": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "summary": "List recorded restore drills",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "resourceId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Drills, most recently performed first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "drills": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RestoreDrill"
+                      }
+                    }
+                  },
+                  "required": [
+                    "drills"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdBackupsDrillsLog"
+      }
+    },
+    "/api/org/{orgId}/backups/drills/{drillId}": {
+      "delete": {
+        "tags": [
+          "Backup coverage"
+        ],
+        "summary": "Delete a recorded drill",
+        "description": "For one recorded against the wrong resource or the wrong date. Audited — deleting evidence that a restore failed is exactly the edit a reviewer would want to know about.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "drillId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The drill was deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdBackupsDrillsDrillId"
       }
     },
     "/api/org/{orgId}/backups": {

@@ -2999,6 +2999,24 @@ Who to wake, rather than which channel to shout into. API **1.34.0**; migration 
 
 Docs: `website/src/content/docs/features/on-call.md`.
 
+## Restore drills (cloud-only, a fourth tab on Backups)
+
+Backup coverage answers "is there a backup"; drills answer "does it restore, and how long does it take". API **1.36.0**; migration `0120_restore_drills` adds one table.
+
+- **It records, it does not restore.** Restoring a customer's database unattended costs real money, can collide with production, and cannot be generically verified — so the product will not do it. What it can do is make the exercise scheduled, recorded and visible when it lapses, which is the part organisations actually fail at. Every design decision below follows from that.
+- **Only `verified` counts as evidence.** A restore that produced a running system nobody looked inside (`restored-unverified`) is exactly how a team discovers mid-incident that the dump had been empty for months. It is stored, because doing the restore is worth recording, and it does **not** reset the clock — `drillStanding` reports such a resource as `never`.
+- **A later failure outranks an earlier success.** Somebody tried more recently than the last green tick and it did not work; reporting the resource as verified because March went well is the reading that gets a team hurt. The last success is still reported alongside, so the page can say when it was.
+- **A `verified` drill must carry the measured RTO, and a `blocked` drill must not.** The RPO comes from the backup and the RTO can only come from somebody with a stopwatch — that number is the entire point. A blocked drill never started, so a duration is meaningless, and a meaningless RTO on this page is the most dangerous number on it. Enforced in `validateRestoreDrill`, normalized again in the store, and constrained in SQL — three places agreeing is cheap next to one place being the only thing between a made-up number and the summary that averages it.
+- **The summary's RTOs come from currently-_verified_ rows only.** A measurement from a drill that has since gone stale is a number about a system that has changed underneath it. `worstRtoMinutes` is null rather than zero when nothing is verified.
+- **`performed_at` is not `created_at`.** People write these up on Monday for a drill they ran on Saturday, and every staleness computation uses the performed date. `drillStanding` sorts rather than assuming input order for the same reason.
+- **`resource_id` carries no foreign key**, deliberately. A drill is evidence about a _system_, not about a row: it must survive the resource being re-synced under a new internal id, and it must certainly survive somebody deleting the resource, because "we tested this and then removed it" is a fact an auditor asks about. Those orphans are reported in `orphanedDrills` rather than dropped.
+- **The eligible population is `protected` or `automated` coverage rows.** A resource with no backup cannot be drilled, and listing it here as "never tested" would duplicate the coverage page's own unprotected finding while burying the ones that genuinely can be tested.
+- **Recording takes `resources:write`, not `org:settings:write`.** Recording a drill is reporting what you did, not changing what the org demands, and the person who spent Saturday restoring a database is rarely the person who set the objective. Deletion is audited: removing evidence that a restore failed is exactly the edit a reviewer wants to see.
+- **Surfaces**: a fourth tab on the existing `BackupsSection` rather than a new workspace tab — drills are that screen's missing half, and a separate page would let somebody read the coverage without ever seeing that none of it has been tested. Fetched as a third request rather than folded into the coverage payload, because the standings are computed _over_ the coverage and folding them in would make every caller of `/backups` pay for them.
+- **Deliberate omissions.** No scheduled reminder yet (the standings go stale visibly; a `drillAlerts` routing trigger is the obvious next step). No mobile surface. No CLI subcommand.
+
+Docs: the Drills section of `website/src/content/docs/features/backup-coverage.md`.
+
 ## Pushing in from outside (pages & cost rows over the API)
 
 Two endpoints let a server that isn't Infrawrench push _into_ it — the mirror image of everything else, which pulls. Both are the HTTP twin of a workflow primitive, and in both cases the workflow path was refactored to share the mechanism rather than being copied.

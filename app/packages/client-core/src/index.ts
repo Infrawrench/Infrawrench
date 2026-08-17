@@ -678,6 +678,8 @@ export * from "./posture";
 // catalog) and not the credentials Infrawrench holds (credential-hygiene).
 export * from "./access-review";
 export * from "./backups";
+// The half of a backup nobody tests: does it restore, and how long does it take?
+export * from "./restore-drills";
 export * from "./dns";
 export * from "./environment-diff";
 export * from "./environments";

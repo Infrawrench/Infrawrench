@@ -119,4 +119,8 @@
 // 1.35.0: status page custom domains — attach/refresh/detach a vanity
 // subdomain via Cloudflare for SaaS, plus additive customHostname* fields on
 // StatusPage. All additive.
-export const API_VERSION = "1.35.0";
+// 1.36.0: restore drills — the record that somebody actually restored a
+// backup, how long it took, and whether they checked what came back
+// (`/backups/drills`, `/backups/drills/log`). Additive; the existing backup
+// coverage shapes are unchanged.
+export const API_VERSION = "1.36.0";

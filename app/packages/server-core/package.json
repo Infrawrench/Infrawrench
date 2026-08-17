@@ -125,6 +125,7 @@
     "./backups/store": "./src/backups/store.ts",
     "./calendar/feed": "./src/calendar/feed.ts",
     "./calendar/subscriptions": "./src/calendar/subscriptions.ts",
+    "./backups/drills": "./src/backups/drills.ts",
     "./posture/settings": "./src/posture/settings.ts",
     "./posture/summary": "./src/posture/summary.ts",
     "./dns/feed": "./src/dns/feed.ts",

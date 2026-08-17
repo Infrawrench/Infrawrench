@@ -4331,3 +4331,4 @@ export * from "./calendar-schema.js";
 export * from "./relay-schema.js";
 export * from "./runbook-schema.js";
 export * from "./on-call-schema.js";
+export * from "./restore-drill-schema.js";

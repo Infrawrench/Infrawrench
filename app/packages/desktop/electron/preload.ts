@@ -205,6 +205,8 @@ const INVOKE_CHANNELS = [
   "cloud_runbook_run_start",
   "cloud_runbook_step_update",
   "cloud_runbook_run_close",
+  "cloud_restore_drills",
+  "cloud_restore_drill_record",
   "cloud_dns",
   "cloud_environment_diff",
   "cloud_changes_list",
