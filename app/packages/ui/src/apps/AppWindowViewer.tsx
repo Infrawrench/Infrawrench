@@ -4,12 +4,12 @@ import { decompress } from "fzstd";
 import {
   ButtonState,
   Codec,
+  KeyTranslator,
   RectOp,
   applyPayload,
   axisFromWheel,
   decodeImageTiles,
   dirtyBounds,
-  evdevFromCode,
   pointerButtonFromDom,
   pointerPosition,
   type AppSession,
@@ -127,8 +127,13 @@ export function AppWindowViewer({
     /** Kept rather than rebuilt per frame; it is a view, not a copy. */
     image: ImageData;
   } | null>(null);
-  /** Keys the remote application currently believes are down. */
-  const held = useRef<Set<number>>(new Set());
+  /**
+   * Turns browser key events into what a US-keymapped host will accept.
+   *
+   * Stateful because a press may go out as a different key than the one the
+   * user hit — a UK `@` is US Shift+2 — and the release has to match.
+   */
+  const keys = useRef(new KeyTranslator());
   const [painted, setPainted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string>("default");
@@ -275,36 +280,24 @@ export function AppWindowViewer({
 
   const onKey = useCallback(
     (event: React.KeyboardEvent<HTMLCanvasElement>, state: ButtonState) => {
-      const keycode = evdevFromCode(event.code);
-      if (keycode === undefined) return;
       // The remote application owns every key while focused, including the
       // browser's own shortcuts — otherwise Ctrl-W closes the tab instead of
-      // the document. Done before the repeat check, or a held Ctrl-W would
-      // reach the browser on the second event.
+      // the document. Done first, or a held Ctrl-W would reach the browser on
+      // the repeat the translator drops.
       event.preventDefault();
-      // The browser repeats a held key and so does the application — Wayland
-      // hands clients a repeat rate and they do it themselves. Forwarding the
-      // browser's repeats too means every held key is typed twice over, which
-      // is what "sometimes sends many times" was.
-      if (state === ButtonState.Pressed && event.repeat) return;
-      if (state === ButtonState.Pressed) held.current.add(keycode);
-      else held.current.delete(keycode);
-      session.sendInput(windowId, [{ kind: "key", timeMs: now(), keycode, state }]);
+      const events =
+        state === ButtonState.Pressed
+          ? keys.current.press(event, now())
+          : keys.current.release(event, now());
+      if (events.length > 0) session.sendInput(windowId, events);
     },
     [session, windowId, now],
   );
 
   /** Let go of everything still down. */
   const releaseHeld = useCallback(() => {
-    if (held.current.size === 0) return;
-    const events: InputEvent[] = [...held.current].map((keycode) => ({
-      kind: "key" as const,
-      timeMs: now(),
-      keycode,
-      state: ButtonState.Released,
-    }));
-    held.current.clear();
-    session.sendInput(windowId, events);
+    const events = keys.current.releaseAll(now());
+    if (events.length > 0) session.sendInput(windowId, events);
   }, [session, windowId, now]);
 
   // A key held when the canvas loses focus never gets its keyup — the browser

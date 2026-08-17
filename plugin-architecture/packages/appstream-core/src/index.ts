@@ -69,6 +69,8 @@ export {
   type ZstdDecompress,
 } from "./pixels.js";
 
+export { KeyTranslator, keysymFromCharacter, type KeyLike } from "./keys.js";
+
 export {
   AppSession,
   type AppSessionEvents,

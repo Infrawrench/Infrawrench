@@ -87,4 +87,5 @@ Graphical sessions are **not** captured by [session recording](./session-recordi
 - **Desktop and web only.** The mobile app does not open application sessions.
 - **Clipboard** carries text from your machine to the host; reading the host's clipboard is not implemented yet.
 - **No audio**, no printing, no USB redirection.
+- **Keyboard layouts** are translated by character, so any layout types what its keys say — including the punctuation UK, German and French keyboards move around. Characters no US keyboard has at all (`£`, accents, anything an input method composes) are sent separately and work, with the exception of dead keys, which are not implemented.
 - **X11-only applications** need XWayland, which is not included yet. Applications that speak Wayland — which is most current desktop software — work.

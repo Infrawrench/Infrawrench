@@ -135,6 +135,16 @@ pub struct AppState {
     /// Buffer pixels per logical pixel, as told to the applications through
     /// the output. Set from the viewer's device pixel ratio.
     scale: i32,
+    /// The keymap xkbcommon compiled, as text, read the first time a keysym
+    /// needs binding — reading it needs an `AppState`, which does not exist
+    /// while one is being built.
+    ///
+    /// Bound keysyms are appended to *this* rather than resolved from the xkb
+    /// rules again: the dumped form is self-contained, so a host with no
+    /// `xkeyboard-config` cannot lose a working keyboard to a failed recompile.
+    pub base_keymap: Option<String>,
+    /// Keysyms the layout has no key for, bound to spare keycodes.
+    pub spare_keys: crate::keymap::SpareKeys,
     pub windows: HashMap<u32, WindowRec>,
     pub next_window_id: u32,
     pub events: VecDeque<BackendEvent>,
@@ -157,7 +167,12 @@ impl AppState {
         // The keymap is the default (us, evdev codes). The client maps its
         // browser key events onto that, and reaches anything the layout cannot
         // produce through the keysym path instead.
-        let _ = seat.add_keyboard(Default::default(), 200, 25);
+        if let Err(err) = seat.add_keyboard(Default::default(), 200, 25) {
+            // Without a compiled keymap there is no keyboard at all — which is
+            // what a host missing xkeyboard-config looks like, and what it used
+            // to look like was nothing.
+            eprintln!("iwappd: no keyboard: {err}; is xkeyboard-config installed?");
+        }
         let _ = seat.add_pointer();
 
         // One virtual output. Clients that ask for outputs before mapping —
@@ -197,6 +212,8 @@ impl AppState {
             output,
             windows: HashMap::new(),
             scale: 1,
+            base_keymap: None,
+            spare_keys: crate::keymap::SpareKeys::new(),
             next_window_id: 1,
             events: VecDeque::new(),
             started: Instant::now(),

@@ -160,6 +160,57 @@ impl WaylandBackend {
         Ok(())
     }
 
+    /// The keycode a keysym is bound to, binding it first if it is new.
+    ///
+    /// `None` when there is no keyboard, or when the keymap the binding needs
+    /// would not compile — in which case the old keymap stays and the
+    /// character is dropped, which is what this did for every keysym before.
+    fn bind_keysym(&mut self, keysym: u32) -> Option<u32> {
+        if self.data.state.base_keymap.is_none() {
+            let keyboard = self.data.state.seat.get_keyboard()?;
+            let text = keyboard.with_xkb_state(&mut self.data.state, |context| {
+                let xkb = context.xkb().lock().ok()?;
+                // SAFETY: the keymap is only read, into an owned String; no
+                // reference to it outlives this borrow.
+                Some(
+                    unsafe { xkb.keymap() }
+                        .get_as_string(smithay::input::keyboard::xkb::KEYMAP_FORMAT_TEXT_V1),
+                )
+            })?;
+            self.data.state.base_keymap = Some(text);
+        }
+        let base = self.data.state.base_keymap.clone()?;
+        let (keycode, changed) = self.data.state.spare_keys.bind(keysym);
+        if !changed {
+            return Some(keycode);
+        }
+
+        let named: Vec<(u32, String)> = self
+            .data
+            .state
+            .spare_keys
+            .bindings()
+            .map(|(code, sym)| {
+                (
+                    code,
+                    smithay::input::keyboard::xkb::keysym_get_name(
+                        smithay::input::keyboard::Keysym::new(sym),
+                    ),
+                )
+            })
+            .collect();
+        let text = crate::keymap::inject(&base, &named)?;
+
+        let keyboard = self.data.state.seat.get_keyboard()?;
+        match keyboard.set_keymap_from_string(&mut self.data.state, text) {
+            Ok(()) => Some(keycode),
+            Err(err) => {
+                tracing_warn(&format!("could not bind keysym {keysym:#x}: {err:?}"));
+                None
+            }
+        }
+    }
+
     /// Everything the compositor noticed since the last call.
     pub fn poll_events(&mut self) -> Vec<BackendEvent> {
         let mut events: Vec<BackendEvent> = self.local_events.drain(..).collect();
@@ -287,10 +338,23 @@ impl Backend for WaylandBackend {
                         |_, _, _| smithay::input::keyboard::FilterResult::Forward,
                     );
                 }
-                InputEvent::KeySym { .. } => {
-                    // Reaching a keysym the layout cannot produce needs a
-                    // temporary keymap swap; until that exists, dropping it is
-                    // better than pressing the wrong key.
+                InputEvent::KeySym {
+                    time_ms,
+                    keysym,
+                    state,
+                } => {
+                    let Some(keyboard) = &keyboard else { continue };
+                    let Some(keycode) = self.bind_keysym(keysym) else {
+                        continue;
+                    };
+                    keyboard.input::<(), _>(
+                        &mut self.data.state,
+                        smithay::input::keyboard::Keycode::from(keycode + 8),
+                        key_state(state),
+                        SERIAL_COUNTER.next_serial(),
+                        time_ms,
+                        |_, _, _| smithay::input::keyboard::FilterResult::Forward,
+                    );
                 }
                 InputEvent::PointerMotion { time_ms, x, y } => {
                     let Some(pointer) = &pointer else { continue };
