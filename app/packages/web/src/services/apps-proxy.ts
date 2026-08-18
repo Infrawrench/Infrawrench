@@ -13,21 +13,12 @@
  * executed through the open descriptor, so nothing is left behind.
  */
 
-import ssh2 from "ssh2";
 import type { RawData, WebSocket } from "ws";
-import { and, eq } from "drizzle-orm";
 import { startAppServer, type AppServerSession } from "@infrawrench/appstream-host";
 
-import { db } from "@/db/client";
-import { sshKeys } from "@/db/schema";
-import { buildAad, decrypt } from "@/services/encryption";
-import { resolveSafeHost } from "@/services/host-validation";
-import { HostKeyTrustRequiredError, makeHostKeyVerifier } from "@/services/ssh-host-keys";
 import { logAudit } from "@/services/audit";
 import { getArm64GzBinary, getx86_64GzBinary } from "@/services/iwappd-binaries";
-
-const { Client } = ssh2;
-type Client = InstanceType<typeof Client>;
+import { AppsKeyMissingError, connectAppsHost, type AppsClient } from "@/services/apps-host";
 
 export interface AppsSessionParams {
   organizationId: string;
@@ -48,7 +39,7 @@ const binaryForArch = (arch: "x86_64" | "aarch64") =>
  * Connect, start the app server, and relay frames until either end goes away.
  */
 export async function handleAppsSession(ws: WebSocket, params: AppsSessionParams): Promise<void> {
-  let client: Client | undefined;
+  let client: AppsClient | undefined;
   let session: AppServerSession | undefined;
 
   const fail = (message: string) => {
@@ -107,37 +98,12 @@ export async function handleAppsSession(ws: WebSocket, params: AppsSessionParams
   ws.on("error", teardown);
 
   try {
-    const [key] = await db
-      .select()
-      .from(sshKeys)
-      .where(
-        and(eq(sshKeys.id, params.sshKeyId), eq(sshKeys.organizationId, params.organizationId)),
-      );
-    if (!key?.encryptedPrivateKey || !key.privateKeyIv) {
-      fail("ssh key not found");
-      return;
-    }
-
-    // The host comes off the resource the caller named, but it is still a value
-    // the provider reported, so it goes through the same check the terminal
-    // uses. Dial the address that cleared rather than the name, or a
-    // short-TTL record can answer the check and the connect differently.
-    const dialAddress = await resolveSafeHost(params.host);
-    const privateKey = await decrypt(
-      key.encryptedPrivateKey,
-      key.privateKeyIv,
-      buildAad("sshKey", key.id, "privateKey"),
-    );
-
-    const hostKeyError: { value: HostKeyTrustRequiredError | null } = { value: null };
-    client = await connect({
-      host: dialAddress,
-      port: params.port ?? 22,
-      username: params.username,
-      privateKey,
+    client = await connectAppsHost({
       organizationId: params.organizationId,
-      configuredHost: params.host,
-      hostKeyError,
+      sshKeyId: params.sshKeyId,
+      host: params.host,
+      username: params.username,
+      ...(params.port !== undefined ? { port: params.port } : {}),
     });
 
     session = await startAppServer(client, {
@@ -173,7 +139,12 @@ export async function handleAppsSession(ws: WebSocket, params: AppsSessionParams
       }
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message =
+      error instanceof AppsKeyMissingError
+        ? "ssh key not found"
+        : error instanceof Error
+          ? error.message
+          : String(error);
     console.warn(`[apps] session setup failed: ${message}`);
     fail(message);
     teardown();
@@ -183,43 +154,4 @@ export async function handleAppsSession(ws: WebSocket, params: AppsSessionParams
   // succeeded into a session nobody is watching, so end it rather than leave an
   // app server running on someone's machine until its idle timeout.
   if (gone) teardown();
-}
-
-function connect(options: {
-  host: string;
-  port: number;
-  username: string;
-  privateKey: string;
-  organizationId: string;
-  /** The name the resource reported, which is what the host key is pinned against. */
-  configuredHost: string;
-  /** Filled in by the verifier when the host key is new or has changed. */
-  hostKeyError: { value: HostKeyTrustRequiredError | null };
-}): Promise<Client> {
-  return new Promise((resolve, reject) => {
-    const client = new Client();
-    client.once("ready", () => resolve(client));
-    client.once("error", (error) =>
-      // A changed host key surfaces as a generic handshake failure otherwise,
-      // and "the key changed" is the one SSH error a user must actually read.
-      reject(options.hostKeyError.value ?? error),
-    );
-    client.connect({
-      host: options.host,
-      port: options.port,
-      username: options.username,
-      privateKey: options.privateKey,
-      // Trust-on-first-use against the org's pin store, same as the terminal:
-      // a session that skipped this would be the one place a changed host key
-      // goes unnoticed.
-      hostVerifier: makeHostKeyVerifier(
-        options.organizationId,
-        options.configuredHost,
-        options.port,
-        options.hostKeyError,
-        "apps",
-      ),
-      readyTimeout: 30_000,
-    });
-  });
 }

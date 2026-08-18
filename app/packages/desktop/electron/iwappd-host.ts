@@ -13,7 +13,18 @@
 
 import * as crypto from "node:crypto";
 import { ipcMain, type WebContents } from "electron";
-import { listApps, startAppServer, type AppServerSession } from "@infrawrench/appstream-host";
+import {
+  checkHost,
+  installRequirements,
+  listApps,
+  planInstall,
+  probeHost,
+  startAppServer,
+  type AppServerSession,
+  type HostRequirementsCheck,
+  type InstallOutcome,
+  type RequirementId,
+} from "@infrawrench/appstream-host";
 
 import { connectSshChain, endSshChain, type SshShellConfig } from "./ssh-shell";
 import { getArm64GzBinary, getx86_64GzBinary } from "./iwappd-archive";
@@ -115,6 +126,53 @@ async function listHostApps(config: SshShellConfig, iconSize?: number): Promise<
   }
 }
 
+/**
+ * What the host is missing, before anything is uploaded.
+ *
+ * Its own connection rather than the session's, because the whole point is to
+ * answer on a host where starting a session would fail — no `gunzip` and the
+ * staging step cannot even unpack the binary.
+ */
+async function preflightHost(config: SshShellConfig): Promise<HostRequirementsCheck> {
+  const { client, intermediates } = await connectSshChain(config);
+  try {
+    return await checkHost(client);
+  } finally {
+    endSshChain(client, intermediates);
+  }
+}
+
+/**
+ * Install what the host is missing, streaming the package manager's output
+ * back so the renderer can show it.
+ *
+ * The plan is rebuilt here from a fresh probe rather than taken from the
+ * renderer: the renderer chooses *which* requirements to install, and the
+ * commands that then run are ours. A renderer that could hand over a command
+ * line would be an arbitrary-root-command channel wearing a helpful hat.
+ */
+async function installOnHost(
+  webContents: WebContents,
+  installId: string,
+  config: SshShellConfig,
+  include: RequirementId[] | undefined,
+): Promise<InstallOutcome> {
+  const { client, intermediates } = await connectSshChain(config);
+  try {
+    const preflight = await probeHost(client);
+    const plan = planInstall(preflight, include ? { include } : {});
+    if (!plan) return { log: [], failed: [], preflight };
+
+    const emit = (line: string) => {
+      if (!webContents.isDestroyed()) webContents.send(`apps_install_${installId}`, line);
+    };
+    for (const command of plan.commands) emit(`$ ${command}`);
+    return await installRequirements(client, plan, { onOutput: emit });
+  } finally {
+    endSshChain(client, intermediates);
+  }
+}
+
 export function registerIwappdHandlers(): void {
   ipcMain.handle("apps_session_open", (event, config: SshShellConfig) =>
     openSession(event.sender, config),
@@ -137,6 +195,22 @@ export function registerIwappdHandlers(): void {
     "apps_list",
     (_event, { config, iconSize }: { config: SshShellConfig; iconSize?: number }) =>
       listHostApps(config, iconSize),
+  );
+
+  ipcMain.handle("apps_preflight", (_event, { config }: { config: SshShellConfig }) =>
+    preflightHost(config),
+  );
+
+  ipcMain.handle(
+    "apps_install",
+    (
+      event,
+      {
+        config,
+        installId,
+        include,
+      }: { config: SshShellConfig; installId: string; include?: RequirementId[] },
+    ) => installOnHost(event.sender, installId, config, include),
   );
 }
 

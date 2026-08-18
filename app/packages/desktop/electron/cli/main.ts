@@ -163,6 +163,7 @@ COMMANDS
   blast-radius <id>   what breaks if a resource is deleted: dependants, the dashboards/probes/
                       alerts/leases that point at it, what talks to it, and what wasn't checked
   apps <resource>     graphical applications installed on a Linux host
+                      (--check what it is missing, --install to fix it)
                       (--launch <id> opens one in the app; --key, --user to connect)
   ssh-fanout <cmd>    run one command across many SSH hosts; identical output is collapsed and
                       outliers are diffed against the majority   [--list] [--hosts <q>] [--plugin <id>]

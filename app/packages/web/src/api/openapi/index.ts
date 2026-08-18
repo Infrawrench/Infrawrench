@@ -79,6 +79,7 @@ import { registerSearchPaths } from "./paths/search";
 import { registerConnectPaths } from "./paths/connect";
 import { registerStorageUploadPaths } from "./paths/storage-upload";
 import { registerSftpUploadPaths } from "./paths/sftp-upload";
+import { registerAppsPaths } from "./paths/apps";
 import { registerSshKeyPaths } from "./paths/ssh-keys";
 import { registerSshTunnelPaths } from "./paths/ssh-tunnels";
 import { registerSshFanoutPaths } from "./paths/ssh-fanout";
@@ -212,6 +213,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerConnectPaths(ctx);
   registerStorageUploadPaths(ctx);
   registerSftpUploadPaths(ctx);
+  registerAppsPaths(ctx);
   registerSshKeyPaths(ctx);
   registerSshTunnelPaths(ctx);
   registerSshFanoutPaths(ctx);
@@ -487,6 +489,12 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       { name: "Storage", description: "Object storage helpers (uploads via API key)." },
       { name: "SFTP", description: "SFTP helpers (uploads via API key)." },
       { name: "SSH keys", description: "Org SSH keys for tunnel/SSH access." },
+      {
+        name: "Linux applications",
+        description:
+          "Whether a Linux host can run graphical applications, and installing what it cannot. " +
+          "The application session itself is a WebSocket and is not described here.",
+      },
       { name: "SSH tunnels", description: "Server-side SSH tunnel lifecycle." },
       {
         name: "SSH fan-out",

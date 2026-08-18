@@ -101,4 +101,10 @@
 // never leaves the cloud. What lets the desktop app stream Linux applications
 // directly from a host using a cloud key. One new route, two new schemas and
 // the SshSignAlgorithm enum. Additive.
-export const API_VERSION = "1.30.0";
+// 1.31.0: Linux application host setup — `POST /apps/check` reports what a
+// host is missing before applications can run there (gzip, xkb data, a session
+// bus, fonts, software GL, an icon theme, and somewhere exec-capable to stage
+// the app server), and `POST /apps/setup` installs it with the host's own
+// package manager and re-probes. Two new routes, a `Linux applications` tag,
+// and the first `application/x-ndjson` response in the document. All additive.
+export const API_VERSION = "1.31.0";
