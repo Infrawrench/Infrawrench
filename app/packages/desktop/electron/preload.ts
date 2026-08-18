@@ -46,11 +46,14 @@ const INVOKE_CHANNELS = [
   "ssh_open_tunnel",
   "ssh_get_active_tunnels",
   "ssh_exec_command",
-  // Linux applications: open a session on a host, relay frames, list apps.
+  // Linux applications: open a session on a host, relay frames, list apps,
+  // and check (or fix) what the host is missing before any of that.
   "apps_session_open",
   "apps_session_write",
   "apps_session_close",
   "apps_list",
+  "apps_preflight",
+  "apps_install",
   "ssh_shell_spawn",
   "ssh_shell_write",
   "ssh_shell_resize",
@@ -449,6 +452,7 @@ const EVENT_PREFIXES: readonly string[] = [
   "apps_exit_",
   "apps_stderr_",
   "apps_progress_",
+  "apps_install_",
 ];
 
 function isAllowedEventChannel(channel: string): boolean {

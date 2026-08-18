@@ -7,8 +7,19 @@
 // not have, so `--launch` hands the resource and the application to the desktop
 // app through an `infrawrench://apps` deep link — the same shape the RDP
 // command uses.
+//
+// `--check` and `--install` are the same host setup check the launcher shows,
+// for the case where the answer is wanted before anyone opens a tab — and for
+// the shell script that wants to prepare a fleet of hosts, which is why
+// `--check --json` exists and exits non-zero on a host that is not ready.
 import { shell } from "electron";
-import { listApps } from "@infrawrench/appstream-host";
+import {
+  checkHost,
+  installRequirements,
+  listApps,
+  planInstall,
+  type HostPreflight,
+} from "@infrawrench/appstream-host";
 
 import {
   CliError,
@@ -42,7 +53,8 @@ export async function cmdApps(
 ): Promise<void> {
   if (!resourceId) {
     throw new CliError(
-      "Usage: infrawrench apps <resource-id> [--json] [--launch <app-id>] [--key <path>] [--user <name>]",
+      "Usage: infrawrench apps <resource-id> [--json] [--launch <app-id>] [--check] " +
+        "[--install] [--key <path>] [--user <name>]",
     );
   }
   // Resource ids embed their account: {accountId}:{typeId}:{externalId}.
@@ -99,6 +111,11 @@ export async function cmdApps(
   });
 
   try {
+    if (flags.check || flags.install) {
+      await runHostSetup(ctx, client, flags.install);
+      return;
+    }
+
     const apps = (await listApps(client, { binaryForArch, iconSize: 32 })) as AppRow[];
 
     if (ctx.flags.output === "json") {
@@ -121,6 +138,88 @@ export async function cmdApps(
     println(c.dim(`infrawrench apps ${resourceId} --launch <id>   open one in Infrawrench`));
   } finally {
     endSshChain(client, intermediates);
+  }
+}
+
+/**
+ * `--check`, and `--install` when asked.
+ *
+ * Exits non-zero on a host that is still not ready afterwards, so a shell loop
+ * over a fleet can tell the difference without parsing anything. `--install`
+ * prints the commands before running them for the same reason the UI shows
+ * them: this installs packages as root on someone's machine.
+ */
+async function runHostSetup(
+  ctx: CliContext,
+  client: Parameters<typeof checkHost>[0],
+  install: boolean,
+): Promise<void> {
+  let { preflight, plan } = await checkHost(client);
+
+  if (install && plan?.canInstall) {
+    for (const command of plan.commands) println(c.dim(`$ ${command}`));
+    const outcome = await installRequirements(client, plan, {
+      onOutput: (line) => {
+        // Held back under --json: the whole point of that flag is one parseable
+        // object on stdout.
+        if (ctx.flags.output !== "json") println(c.dim(line));
+      },
+    });
+    preflight = outcome.preflight;
+    plan = planInstall(preflight);
+    if (outcome.failed.length && ctx.flags.output !== "json") {
+      println("");
+      println(c.yellow(`Could not install: ${outcome.failed.join(", ")}`));
+    }
+  }
+
+  if (ctx.flags.output === "json") {
+    printJson({ preflight, plan });
+    if (!preflight.ready) process.exitCode = 1;
+    return;
+  }
+
+  printHostSetup(preflight);
+  if (plan) {
+    println("");
+    if (plan.canInstall && !install) {
+      println(c.dim("Run with --install to install these:"));
+    } else if (!plan.canInstall) {
+      println(c.yellow(plan.blockedReason ?? "These must be installed on the host by hand."));
+      println(c.dim("Run these on the host:"));
+    } else {
+      println(c.dim("Still missing. Run these on the host:"));
+    }
+    for (const command of plan.commands) println(`  ${command}`);
+  }
+  if (!preflight.ready) process.exitCode = 1;
+}
+
+function printHostSetup(preflight: HostPreflight): void {
+  println(`${preflight.osName}  ${c.dim(preflight.arch)}`);
+  println("");
+  const width = Math.max(...preflight.requirements.map((req) => req.title.length));
+  for (const requirement of preflight.requirements) {
+    const mark = requirement.ok
+      ? c.green("ok")
+      : requirement.severity === "required"
+        ? c.red("missing")
+        : c.yellow("absent");
+    println(`  ${requirement.title.padEnd(width)}  ${mark}`);
+    if (!requirement.ok) println(`  ${" ".repeat(width)}  ${c.dim(requirement.summary)}`);
+  }
+  if (!preflight.staging) {
+    println("");
+    println(
+      c.red(
+        "No writable, exec-capable directory to run the app server from — /tmp and /dev/shm are " +
+          "unwritable or mounted noexec. No package fixes this.",
+      ),
+    );
+  }
+  if (preflight.appCount === 0) {
+    println("");
+    println(c.dim("No graphical applications are installed on this host either."));
   }
 }
 

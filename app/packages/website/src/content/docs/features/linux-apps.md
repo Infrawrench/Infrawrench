@@ -4,7 +4,7 @@ description: Open a graphical application from a Linux host in a workspace tab, 
 sidebar_order: 6
 ---
 
-Infrawrench can open a graphical application running on one of your Linux hosts in a workspace tab — one tab per window, with the application's own icon on the tab. It works over the SSH connection you already use for the terminal, and installs nothing on the host.
+Infrawrench can open a graphical application running on one of your Linux hosts in a workspace tab — one tab per window, with the application's own icon on the tab. It works over the SSH connection you already use for the terminal, and leaves nothing on the host — the program that streams the window is run from memory and deleted before it starts. (Infrawrench can also install the handful of packages the applications themselves need, if you ask it to. That is the one thing here that changes the machine, and it never happens without you clicking it.)
 
 <insert [The Apps tab of a Linux VM showing the launcher grid of installed applications with their icons] here>
 
@@ -37,26 +37,48 @@ When the motion stops, the window is redrawn exactly. So a video looks like a vi
 
 ## What the host needs
 
-- **SSH access**, which you already have if the terminal works.
-- **The applications themselves.** A minimal cloud image usually has none; installing an application through the host's own package manager makes it appear in the launcher.
-- **Software rendering.** Applications that require a GPU need mesa installed on the host. Infrawrench asks every toolkit for its software path, which covers most applications, but it cannot supply a graphics stack the machine does not have.
-- **A session bus**, for anything built on GTK — which is most Linux desktop software. Infrawrench finds one if the host has one and starts a private one per application if it does not, so on most hosts there is nothing to do. On a machine with no D-Bus installed at all, GTK applications wait for a bus that never arrives and never open a window; `apt install dbus` (or your distribution's equivalent) is the whole fix.
-- **Fonts and an icon theme**, if you want the applications to look like themselves. A minimal cloud image often ships neither, which shows up as boxes instead of text and letters instead of icons.
+Infrawrench checks before it connects, and offers to fix what it finds.
 
-If an application fails to start, the launcher shows the reason the host gave — usually a missing library, named exactly.
+Open **Apps** on a host that is not ready and you get a checklist instead of the launcher: what is missing, what each missing piece breaks, and the exact commands that would install it. **Install what's missing** runs them on the host through the same SSH connection, shows the package manager's output as it goes, and checks again — because a package manager can exit successfully having not fixed anything, and the second check is the only answer worth reporting.
 
-### A Debian or Ubuntu host, in one block
+<insert [The Apps tab showing the host setup checklist: keyboard layout data and session D-Bus marked missing, the apt-get commands that would install them, and the Install what's missing button] here>
+
+There is nothing to prepare in advance. A host with everything already installed never sees the checklist — the check is one short command and the launcher opens as usual.
+
+### What it checks
+
+|                                               | Without it                                                                                                                                |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **gzip**                                      | The app server cannot be unpacked after upload, so nothing starts at all.                                                                 |
+| **Keyboard layout data** (`xkeyboard-config`) | The compositor cannot build a keymap and typing does nothing — silently.                                                                  |
+| **Session D-Bus**                             | Applications built on GTK — most Linux desktop software — wait for a bus before showing a window, and never report that they are waiting. |
+| **Fonts**                                     | Qt applications exit; GTK ones draw empty boxes where the text should be.                                                                 |
+| **Software OpenGL** (optional)                | Browsers and Electron applications have no GL driver. GTK and Qt are pushed onto software rendering regardless, so they are unaffected.   |
+| **Icon theme** (optional)                     | The launcher shows initials instead of icons, and toolbar buttons come out blank.                                                         |
+
+The two optional items are installed alongside the rest by default, and can be left out with the checkbox. They are optional in the sense that applications still run without them, not that you will not notice.
+
+One thing no package fixes: the app server needs a directory it can both write to and execute from. If `/tmp`, `/dev/shm` and your runtime directory are all unwritable or mounted `noexec`, the check says so and there is nothing to install — one of them has to allow execution.
+
+### When Infrawrench cannot install it for you
+
+The install needs to be root on the host, or to have `sudo` without a password. Otherwise the checklist still shows the commands, with a **Copy** button — run them over SSH yourself and click **Check again**.
+
+The same applies to a distribution whose package manager Infrawrench does not recognise. It knows `apt`, `dnf`, `yum`, `apk`, `pacman` and `zypper`; on anything else it names the packages it would have installed and leaves the rest to you.
+
+### The applications themselves
+
+Infrawrench brings the display; the host brings the applications. A minimal cloud image usually has none, and Infrawrench does not install any — which ones you want is not a decision it should make for you. Install them through the host's own package manager and they appear in the launcher: anything built on GTK, Qt, Electron or Firefox works. Applications that only speak X11 — `xterm` and its generation — do not yet.
+
+If an application then fails to start, the launcher shows the reason the host gave — usually a missing library, named exactly.
+
+### Checking from the command line
 
 ```
-sudo loginctl enable-linger "$USER"
-sudo apt update
-sudo apt install -y dbus-user-session libgl1-mesa-dri \
-  fontconfig fonts-dejavu-core hicolor-icon-theme adwaita-icon-theme
+infrawrench apps <resource-id> --check --key ~/.ssh/id_ed25519
 ```
 
-Then log out and back in, so the first line takes effect. `enable-linger` is what gives your user a runtime directory — and with it a session bus — outside a login session; everything else on that list is what a bare server image is missing.
-
-Install the applications themselves the same way: anything built on GTK, Qt, Electron, or Firefox works. Applications that only speak X11 — `xterm` and its generation — do not yet.
+prints the same checklist in a terminal, and exits non-zero if the host is not ready — so a loop over a fleet can find the hosts that need attention. Add `--install` to fix them, or `--json` for the machine-readable form.
 
 ## Windows, dialogs and menus
 
@@ -101,9 +123,11 @@ infrawrench apps <resource-id> --key ~/.ssh/id_ed25519
 
 lists the applications installed on a host, with `--json` for the machine-readable form. Adding `--launch <app-id>` opens that application in the desktop app — a terminal has nowhere to draw a window, so the CLI hands it over.
 
+`--check` and `--install` do the host setup check described [above](#checking-from-the-command-line) without opening a tab.
+
 ## What is recorded
 
-Starting a session and launching an application are written to the [audit log](../team-and-billing/audit-log.md).
+Starting a session and launching an application are written to the [audit log](../team-and-billing/audit-log.md). So is installing packages on a host through the setup check, with the packages it installed named — it changes the state of a machine you own, and that is the kind of thing someone comes looking for months later. Because it is a change to a host, it also respects [change freezes](../team-and-billing/change-freeze.md).
 
 Graphical sessions are **not** captured by [session recording](./session-recording.md), which records terminal input and output. If you rely on recording for a compliance requirement, treat application sessions as outside its scope.
 

@@ -9,12 +9,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { T, useGT } from "gt-react";
-import { AppLauncherPanel, AppWindowViewer, linuxAppTabTarget, useUIStore } from "@infrawrench/ui";
+import {
+  AppLauncherPanel,
+  AppWindowViewer,
+  HostSetupPanel,
+  linuxAppTabTarget,
+  useHostSetup,
+  useUIStore,
+} from "@infrawrench/ui";
 import type { AppEntry, LaunchResult } from "@infrawrench/appstream-core";
 
 import {
   acquireHostSession,
+  checkHostRequirements,
   hostSessionKey,
+  installHostRequirements,
   joinHostSession,
   type AppsConnectTarget,
   type HostAppsSession,
@@ -67,7 +76,24 @@ function useHostSession(target: AppsConnectTarget | null) {
 
 export function WebAppLauncherPanel({ target }: { target: AppsConnectTarget | null }) {
   const gt = useGT();
-  const { handle, status } = useHostSession(target);
+  // What the check follows, spelled out rather than left to object identity —
+  // the login and the address, since what is installed is a property of the
+  // host and `privilege` of the user, and neither turns on which key proved it.
+  const targetKey = target ? `${target.username}@${target.host}` : null;
+  const setup = useHostSetup(
+    target
+      ? {
+          check: () => checkHostRequirements(target),
+          install: (requirements, onOutput) =>
+            installHostRequirements(target, requirements, onOutput),
+        }
+      : null,
+    targetKey,
+  );
+  // The session waits for the check, for the same reason as on desktop: the
+  // missing piece may be the `gunzip` that unpacks the app server, and starting
+  // a session then only produces a worse version of the same message.
+  const { handle, status } = useHostSession(setup.blocked ? null : target);
   const [apps, setApps] = useState<AppEntry[]>([]);
   const [notice, setNotice] = useState<{ kind: "pending" | "error"; message: string } | null>(null);
   const pinTab = useUIStore((state) => state.pinWorkspaceTab);
@@ -163,6 +189,21 @@ export function WebAppLauncherPanel({ target }: { target: AppsConnectTarget | nu
           </T>
         </p>
       </div>
+    );
+  }
+
+  if (setup.blocked && setup.preflight) {
+    return (
+      <HostSetupPanel
+        preflight={setup.preflight}
+        plan={setup.plan}
+        installing={setup.installing}
+        log={setup.log}
+        error={setup.error}
+        onInstall={setup.install}
+        onRecheck={setup.recheck}
+        onContinueAnyway={setup.dismiss}
+      />
     );
   }
 

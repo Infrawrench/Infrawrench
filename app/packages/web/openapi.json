@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.30.0",
+    "version": "1.31.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -211,6 +211,10 @@
     {
       "name": "SSH keys",
       "description": "Org SSH keys for tunnel/SSH access."
+    },
+    {
+      "name": "Linux applications",
+      "description": "Whether a Linux host can run graphical applications, and installing what it cannot. The application session itself is a WebSocket and is not described here."
     },
     {
       "name": "SSH tunnels",
@@ -25944,6 +25948,288 @@
           "file"
         ],
         "additionalProperties": false
+      },
+      "LinuxAppRequirementId": {
+        "type": "string",
+        "enum": [
+          "gzip",
+          "xkb",
+          "dbus",
+          "fonts",
+          "mesa",
+          "icons"
+        ],
+        "description": "gzip unpacks the uploaded app server; xkb is the keyboard layout data xkbcommon compiles a keymap from; dbus is the session bus GTK applications wait for; fonts, mesa and icons decide what an application then looks like."
+      },
+      "LinuxAppRequirement": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/LinuxAppRequirementId"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "required",
+              "recommended"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "severity",
+          "title",
+          "summary",
+          "ok"
+        ],
+        "additionalProperties": false
+      },
+      "LinuxAppHostPreflight": {
+        "type": "object",
+        "properties": {
+          "arch": {
+            "type": "string"
+          },
+          "osId": {
+            "type": "string"
+          },
+          "osName": {
+            "type": "string"
+          },
+          "packageManager": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "apt-get",
+              "dnf",
+              "yum",
+              "apk",
+              "pacman",
+              "zypper"
+            ]
+          },
+          "privilege": {
+            "type": "string",
+            "enum": [
+              "root",
+              "sudo",
+              "sudo-password",
+              "none"
+            ]
+          },
+          "requirements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinuxAppRequirement"
+            }
+          },
+          "staging": {
+            "type": "boolean",
+            "description": "A writable, exec-capable directory was found to stage the app server in. False means every candidate is missing, unwritable, or mounted noexec — which no package fixes."
+          },
+          "appCount": {
+            "type": "integer"
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "arch",
+          "osId",
+          "osName",
+          "packageManager",
+          "privilege",
+          "requirements",
+          "staging",
+          "appCount",
+          "ready"
+        ],
+        "additionalProperties": false
+      },
+      "LinuxAppInstallPlan": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "packageManager": {
+            "type": "string",
+            "enum": [
+              "apt-get",
+              "dnf",
+              "yum",
+              "apk",
+              "pacman",
+              "zypper"
+            ]
+          },
+          "privilege": {
+            "type": "string",
+            "enum": [
+              "root",
+              "sudo",
+              "sudo-password",
+              "none"
+            ]
+          },
+          "requirements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LinuxAppRequirementId"
+            }
+          },
+          "packages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "commands": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exactly what would run on the host, privilege prefix included."
+          },
+          "canInstall": {
+            "type": "boolean"
+          },
+          "blockedReason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "packageManager",
+          "privilege",
+          "requirements",
+          "packages",
+          "commands",
+          "canInstall"
+        ],
+        "additionalProperties": false
+      },
+      "LinuxAppHostCheck": {
+        "type": "object",
+        "properties": {
+          "preflight": {
+            "$ref": "#/components/schemas/LinuxAppHostPreflight"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/LinuxAppInstallPlan"
+          }
+        },
+        "required": [
+          "preflight",
+          "plan"
+        ],
+        "additionalProperties": false
+      },
+      "LinuxAppHostTarget": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "sshKeyId": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          }
+        },
+        "required": [
+          "accountId",
+          "resourceId",
+          "sshKeyId",
+          "host",
+          "username"
+        ],
+        "additionalProperties": false
+      },
+      "LinuxAppInstallOutcome": {
+        "type": "object",
+        "properties": {
+          "log": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "preflight": {
+            "$ref": "#/components/schemas/LinuxAppHostPreflight"
+          }
+        },
+        "required": [
+          "log",
+          "failed",
+          "preflight"
+        ],
+        "additionalProperties": false
+      },
+      "LinuxAppSetupEvent": {
+        "type": "object",
+        "properties": {
+          "line": {
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/LinuxAppInstallOutcome"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "LinuxAppSetupRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/LinuxAppHostTarget"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "requirements": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/LinuxAppRequirementId"
+                },
+                "minItems": 1,
+                "maxItems": 6
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
       },
       "SshKeyType": {
         "type": "string",
@@ -55375,6 +55661,190 @@
         "operationId": "getOrgOrgIdV1SftpDownload",
         "x-required-permission": "storage:read",
         "description": "_Requires permission: `storage:read`._"
+      }
+    },
+    "/api/org/{orgId}/apps/check": {
+      "post": {
+        "tags": [
+          "Linux applications"
+        ],
+        "summary": "Check whether a host can run Linux applications",
+        "description": "Runs a read-only shell probe over SSH and reports what the host is missing, plus the packages and commands that would fix it. A POST because it opens a connection to the named host and must never be cached — its whole value is saying what the host is now.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinuxAppHostTarget"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What the host has, and what would fix it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinuxAppHostCheck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The host key is new or has changed; trust it and retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The host could not be reached or probed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAppsCheck"
+      }
+    },
+    "/api/org/{orgId}/apps/setup": {
+      "post": {
+        "tags": [
+          "Linux applications"
+        ],
+        "summary": "Install what a host needs to run Linux applications",
+        "description": "Installs the named requirements using the host's own package manager, then re-probes and reports what the host now is. Takes requirement ids, never commands — the commands are derived server-side from a fresh probe. Needs root or passwordless sudo on the host, respects change freezes, and is audited as `linux_app.host_setup`.\n\nResponds with `application/x-ndjson`: one `{\"line\":\"…\"}` per line of package-manager output, then a final `{\"outcome\":{…}}`. A failure arrives as `{\"error\":\"…\"}` inside the stream, because the status line has already been sent by then.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinuxAppSetupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A stream of output lines, then the outcome",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinuxAppSetupEvent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A change freeze is in effect, or the host key needs trusting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAppsSetup"
       }
     },
     "/api/org/{orgId}/ssh-keys": {

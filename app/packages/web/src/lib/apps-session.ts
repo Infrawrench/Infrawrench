@@ -12,7 +12,11 @@ import {
   probeClientCaps,
   type AppSessionTransport,
   type ClientCaps,
+  type HostRequirementsCheck,
+  type InstallOutcome,
+  type RequirementId,
 } from "@infrawrench/appstream-core";
+import { parseNdjsonStream } from "@infrawrench/client-core";
 
 import { apiPost } from "./api";
 
@@ -224,4 +228,74 @@ function writeToClipboard(blob: { mimeType: string; data: Uint8Array }): void {
   void navigator.clipboard?.writeText(text).catch(() => {
     /* not focused, or not permitted; the next copy will try again */
   });
+}
+
+/**
+ * The `{accountId, resourceId, sshKeyId, host, username}` the two setup routes
+ * take — the same destination the WebSocket names, in a body rather than a
+ * query.
+ */
+function setupBody(target: AppsConnectTarget) {
+  return {
+    accountId: target.accountId,
+    resourceId: target.resourceId,
+    sshKeyId: target.sshKeyId,
+    host: target.host,
+    username: target.username,
+  };
+}
+
+/**
+ * What this host is missing before it can run applications.
+ *
+ * Its own request rather than part of the session: the point is to answer on a
+ * host where opening a session would fail, and the missing piece may be the
+ * `gunzip` that unpacks the app server.
+ */
+export async function checkHostRequirements(
+  target: AppsConnectTarget,
+): Promise<HostRequirementsCheck> {
+  return await apiPost<HostRequirementsCheck>(
+    `/api/org/${target.orgId}/apps/check`,
+    setupBody(target),
+  );
+}
+
+/**
+ * Install what is missing, calling `onOutput` per line as the host prints it.
+ *
+ * NDJSON rather than a plain response because an `apt-get install` is tens of
+ * seconds long, and a spinner in front of something installing packages on your
+ * server is not enough information. The final object carries the outcome; an
+ * `error` object is how a failure arrives, since the status line has already
+ * been sent by the time anything can go wrong.
+ */
+export async function installHostRequirements(
+  target: AppsConnectTarget,
+  requirements: RequirementId[],
+  onOutput: (line: string) => void,
+): Promise<InstallOutcome> {
+  const response = await fetch(`/api/org/${target.orgId}/apps/setup`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...setupBody(target), requirements }),
+  });
+  if (!response.ok || !response.body) {
+    const detail = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(detail?.error ?? `Install failed (${response.status})`);
+  }
+
+  let outcome: InstallOutcome | undefined;
+  for await (const event of parseNdjsonStream<{
+    line?: string;
+    outcome?: InstallOutcome;
+    error?: string;
+  }>(response.body)) {
+    if (event.line !== undefined) onOutput(event.line);
+    if (event.error) throw new Error(event.error);
+    if (event.outcome) outcome = event.outcome;
+  }
+  if (!outcome) throw new Error("The host stopped responding during the install.");
+  return outcome;
 }

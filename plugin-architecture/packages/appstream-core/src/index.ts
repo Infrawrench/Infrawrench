@@ -90,3 +90,15 @@ export {
   type LaunchResult,
   type WindowInfo,
 } from "./session.js";
+
+export type {
+  HostPreflight,
+  HostPrivilege,
+  HostRequirementsCheck,
+  InstallOutcome,
+  InstallPlan,
+  PackageManager,
+  RequirementId,
+  RequirementSpec,
+  RequirementStatus,
+} from "./requirements.js";

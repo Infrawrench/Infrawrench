@@ -10,27 +10,44 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { T, useGT } from "gt-react";
-import { AppLauncherPanel, AppWindowViewer, linuxAppTabTarget, useUIStore } from "@infrawrench/ui";
+import {
+  AppLauncherPanel,
+  AppWindowViewer,
+  HostSetupPanel,
+  linuxAppTabTarget,
+  useHostSetup,
+  useUIStore,
+} from "@infrawrench/ui";
 import type { AppEntry, LaunchResult } from "@infrawrench/appstream-core";
 
 import {
   acquireHostSession,
   hostSessionKey,
   joinHostSession,
+  installHostRequirements,
   listHostApps,
+  preflightHostApps,
   type AppsConnectConfig,
   type HostAppsSession,
   type HostStatus,
 } from "@/lib/apps-session";
 
 /** Open (or join) the host's session for as long as this panel is mounted. */
-function useHostSession(sessionKey: string, config: AppsConnectConfig | null) {
-  const [handle, setHandle] = useState<HostAppsSession | null>(null);
-  const [status, setStatus] = useState<HostStatus>({ stage: "connecting" });
-
-  // Identity by value: the route rebuilds the config object on every render,
-  // and re-running this effect would tear the session down mid-session.
-  const configKey = config
+/**
+ * Which host, by value.
+ *
+ * The route rebuilds the config object on every render, so anything that keys
+ * an effect on "the host" has to spell it out — the session would otherwise
+ * tear itself down mid-session, and the setup check would re-probe the host on
+ * every paint.
+ *
+ * The login is in it and the key is not: what is installed is a property of the
+ * host, `privilege` is a property of the user, and which key proved that user —
+ * local or cloud-held — cannot change either answer. The jump chain is in it
+ * because a different chain can reach a different machine.
+ */
+function hostIdentity(config: AppsConnectConfig | null): string | null {
+  return config
     ? [
         config.username,
         config.host,
@@ -38,6 +55,13 @@ function useHostSession(sessionKey: string, config: AppsConnectConfig | null) {
         ...(config.jumpHops ?? []).map((hop) => `${hop.username}@${hop.host}:${hop.port}`),
       ].join("|")
     : null;
+}
+
+function useHostSession(sessionKey: string, config: AppsConnectConfig | null) {
+  const [handle, setHandle] = useState<HostAppsSession | null>(null);
+  const [status, setStatus] = useState<HostStatus>({ stage: "connecting" });
+
+  const configKey = hostIdentity(config);
 
   useEffect(() => {
     if (!config || !configKey) return;
@@ -121,7 +145,26 @@ export function AppLauncherHostPanel({
   config,
 }: AppLauncherHostPanelProps) {
   const gt = useGT();
-  const { handle, status } = useHostSession(hostSessionKey(accountId, resourceId), config);
+  const configKey = hostIdentity(config);
+  const setup = useHostSetup(
+    config
+      ? {
+          check: () => preflightHostApps(config),
+          install: (requirements, onOutput) =>
+            installHostRequirements(config, requirements, onOutput),
+        }
+      : null,
+    configKey,
+  );
+  // The session waits for the check. It has to: the thing the host is missing
+  // may be the `gunzip` that unpacks the app server, in which case starting a
+  // session only produces a worse version of the same message. `blocked` is
+  // false while the check is still running, so the common case — a host with
+  // everything — costs one short exec and then connects.
+  const { handle, status } = useHostSession(
+    hostSessionKey(accountId, resourceId),
+    setup.blocked ? null : config,
+  );
   const [apps, setApps] = useState<AppEntry[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: "pending" | "error"; message: string } | null>(null);
@@ -214,6 +257,21 @@ export function AppLauncherHostPanel({
         })),
     [handle],
   );
+
+  if (setup.blocked && setup.preflight) {
+    return (
+      <HostSetupPanel
+        preflight={setup.preflight}
+        plan={setup.plan}
+        installing={setup.installing}
+        log={setup.log}
+        error={setup.error}
+        onInstall={setup.install}
+        onRecheck={setup.recheck}
+        onContinueAnyway={setup.dismiss}
+      />
+    );
+  }
 
   const message = listError ?? status.message;
   return (

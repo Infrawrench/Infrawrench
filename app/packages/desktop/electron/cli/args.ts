@@ -151,6 +151,10 @@ export interface AppsFlags {
   user?: string | undefined;
   /** Open this application in the desktop app instead of listing. */
   launch?: string | undefined;
+  /** Report what the host is missing before applications can run there. */
+  check: boolean;
+  /** Install what `--check` found missing, using the host's package manager. */
+  install: boolean;
 }
 
 /** How `diff`'s two accounts were named on the command line. */
@@ -271,6 +275,10 @@ export function parseCliArgs(argv: string[]): ParsedCli {
         tag: { type: "string" },
         user: { type: "string" },
         launch: { type: "string" },
+        // `apps --check` / `apps --install`: what a Linux host is missing before
+        // applications can run there, and installing it.
+        check: { type: "boolean", default: false },
+        install: { type: "boolean", default: false },
         snippet: { type: "string" },
         yes: { type: "boolean", short: "y", default: false },
         concurrency: { type: "string" },
@@ -382,6 +390,8 @@ export function parseCliArgs(argv: string[]): ParsedCli {
       key: str("key"),
       user: str("user"),
       launch: str("launch"),
+      check: values.check === true,
+      install: values.install === true,
     },
     fanout: {
       list: values.list === true,

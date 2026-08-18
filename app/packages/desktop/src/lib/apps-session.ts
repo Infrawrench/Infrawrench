@@ -13,6 +13,11 @@ import {
   type AppSessionTransport,
   type ClientCaps,
 } from "@infrawrench/appstream-core";
+import type {
+  HostRequirementsCheck,
+  InstallOutcome,
+  RequirementId,
+} from "@infrawrench/appstream-core";
 
 import { invoke } from "./invoke";
 
@@ -217,6 +222,41 @@ export function joinHostSession(key: string): HostAppsSession | null {
   if (!entry) return null;
   entry.holders += 1;
   return view(entry);
+}
+
+/**
+ * What this host is missing before it can run applications.
+ *
+ * One SSH exec that only looks. Deliberately separate from the session so it
+ * can answer on a host where opening one would fail — the missing thing may be
+ * the `gunzip` that unpacks the app server.
+ */
+export async function preflightHostApps(config: AppsConnectConfig): Promise<HostRequirementsCheck> {
+  return await invoke<HostRequirementsCheck>("apps_preflight", { config });
+}
+
+/**
+ * Install what is missing, relaying the package manager's output as it comes.
+ *
+ * The renderer names which requirements to install; the commands are the main
+ * process's own, built from a fresh probe there.
+ */
+export async function installHostRequirements(
+  config: AppsConnectConfig,
+  include: RequirementId[] | undefined,
+  onOutput: (line: string) => void,
+): Promise<InstallOutcome> {
+  const installId = crypto.randomUUID();
+  const off = onEvent(`apps_install_${installId}`, (line) => onOutput(String(line)));
+  try {
+    return await invoke<InstallOutcome>("apps_install", {
+      config,
+      installId,
+      ...(include ? { include } : {}),
+    });
+  } finally {
+    off();
+  }
 }
 
 /** List a host's applications without opening a session. */
