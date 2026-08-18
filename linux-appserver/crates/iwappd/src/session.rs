@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use iw_codec::{EncodeMode, Encoder, EncoderConfig, Rect, Tier, TierSelector};
 use iw_proto::{
-    AudioChunk, ClientCaps, ClientMessage, ClipboardBlob, ErrorCode, Frame, FrameKind,
+    A11yNode, AudioChunk, ClientCaps, ClientMessage, ClipboardBlob, ErrorCode, Frame, FrameKind,
     PROTOCOL_VERSION, PixelFormat, SESSION_WINDOW, ServerCaps, ServerMessage, WindowCloseReason,
     decode_input_batch, encode_frame,
 };
@@ -111,6 +111,9 @@ pub struct Session<B: Backend, C: Catalog> {
     audio_enabled: bool,
     windows: HashMap<u32, Window>,
     outbox: Vec<Vec<u8>>,
+    /// Accessibility requests waiting for the serve loop to hand to the AT-SPI
+    /// thread — the session is synchronous and a tree walk is not.
+    pending_a11y: Vec<(u32, u32)>,
 }
 
 impl<B: Backend, C: Catalog> Session<B, C> {
@@ -124,6 +127,7 @@ impl<B: Backend, C: Catalog> Session<B, C> {
             audio_enabled: true,
             windows: HashMap::new(),
             outbox: Vec::new(),
+            pending_a11y: Vec::new(),
         }
     }
 
@@ -349,7 +353,60 @@ impl<B: Backend, C: Catalog> Session<B, C> {
             ClientMessage::SetAudio { enabled } => self.audio_enabled = enabled,
             ClientMessage::KillSession => self.end(),
             ClientMessage::Ping { nonce } => self.send(&ServerMessage::Pong { nonce }),
+            ClientMessage::A11yTree {
+                window_id,
+                request_id,
+            } => {
+                // Failures answer on the same channel as successes: the caller
+                // is waiting on this request_id, not on the error stream.
+                if !self.config.caps.a11y {
+                    self.send(&ServerMessage::A11yTree {
+                        window_id,
+                        request_id,
+                        ok: false,
+                        message: Some("this session has no accessibility bus".into()),
+                        tree: None,
+                    });
+                } else if !self.windows.contains_key(&window_id) {
+                    self.send(&ServerMessage::A11yTree {
+                        window_id,
+                        request_id,
+                        ok: false,
+                        message: Some("no such window".into()),
+                        tree: None,
+                    });
+                } else {
+                    self.pending_a11y.push((window_id, request_id));
+                }
+            }
         }
+    }
+
+    /// Accessibility requests the serve loop should hand to the AT-SPI
+    /// thread, as `(window_id, request_id)`. Answered via
+    /// [`Self::on_a11y_result`] whenever the walk finishes.
+    pub fn take_a11y_requests(&mut self) -> Vec<(u32, u32)> {
+        std::mem::take(&mut self.pending_a11y)
+    }
+
+    /// A finished (or failed) tree walk, back from the AT-SPI thread.
+    pub fn on_a11y_result(
+        &mut self,
+        window_id: u32,
+        request_id: u32,
+        tree: Option<A11yNode>,
+        message: Option<String>,
+    ) {
+        if self.phase != Phase::Running {
+            return;
+        }
+        self.send(&ServerMessage::A11yTree {
+            window_id,
+            request_id,
+            ok: tree.is_some(),
+            message,
+            tree,
+        });
     }
 
     fn on_launch(&mut self, app_id: Option<String>, exec: Option<String>, cwd: Option<String>) {
@@ -1371,6 +1428,92 @@ mod tests {
                 ..
             }]
         ));
+    }
+
+    fn a11y_session() -> Session<MockBackend, MockCatalog> {
+        Session::new(
+            MockBackend::default(),
+            MockCatalog::with_apps(),
+            SessionConfig {
+                caps: ServerCaps {
+                    a11y: true,
+                    ..SessionConfig::default().caps
+                },
+                ..SessionConfig::default()
+            },
+        )
+    }
+
+    #[test]
+    fn an_a11y_request_waits_for_the_walker_and_is_answered_by_it() {
+        let mut s = a11y_session();
+        s.on_client_frame(hello(ClientCaps::default()));
+        open_window(&mut s, 1);
+        drain_messages(&mut s);
+
+        s.on_client_frame(control(ClientMessage::A11yTree {
+            window_id: 1,
+            request_id: 7,
+        }));
+        assert!(
+            drain_messages(&mut s).is_empty(),
+            "no answer before the walk"
+        );
+        assert_eq!(s.take_a11y_requests(), vec![(1, 7)]);
+        assert!(s.take_a11y_requests().is_empty(), "taken means taken");
+
+        s.on_a11y_result(1, 7, None, Some("nothing registered".into()));
+        assert!(matches!(
+            drain_messages(&mut s).as_slice(),
+            [ServerMessage::A11yTree {
+                window_id: 1,
+                request_id: 7,
+                ok: false,
+                ..
+            }]
+        ));
+    }
+
+    #[test]
+    fn an_a11y_request_without_the_capability_is_refused_on_its_own_channel() {
+        let mut s = session(); // default caps: a11y false
+        s.on_client_frame(hello(ClientCaps::default()));
+        open_window(&mut s, 1);
+        drain_messages(&mut s);
+        s.on_client_frame(control(ClientMessage::A11yTree {
+            window_id: 1,
+            request_id: 3,
+        }));
+        assert!(matches!(
+            drain_messages(&mut s).as_slice(),
+            [ServerMessage::A11yTree {
+                request_id: 3,
+                ok: false,
+                ..
+            }]
+        ));
+        assert!(s.take_a11y_requests().is_empty());
+    }
+
+    #[test]
+    fn an_a11y_request_for_a_missing_window_is_refused_on_its_own_channel() {
+        let mut s = a11y_session();
+        s.on_client_frame(hello(ClientCaps::default()));
+        drain_messages(&mut s);
+        s.on_client_frame(control(ClientMessage::A11yTree {
+            window_id: 42,
+            request_id: 5,
+        }));
+        assert!(matches!(
+            drain_messages(&mut s).as_slice(),
+            [ServerMessage::A11yTree {
+                window_id: 42,
+                request_id: 5,
+                ok: false,
+                ..
+            }]
+        ));
+        assert!(s.take_a11y_requests().is_empty());
     }
 
     fn chunk(seq: u32) -> AudioChunk {

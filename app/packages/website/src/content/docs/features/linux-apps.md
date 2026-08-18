@@ -125,6 +125,20 @@ lists the applications installed on a host, with `--json` for the machine-readab
 
 `--check` and `--install` do the host setup check described [above](#checking-from-the-command-line) without opening a tab.
 
+## Driving an application from an AI client
+
+Everything the tab does — launch an application, see it, act on it — is also available to an AI client over [MCP](./mcp.md), so a model can operate a graphical application the same way a person does.
+
+The tools launch an application on a resource's host and return a `windowId`, then let the model **see** the window two ways and **act** on it by pixel:
+
+- `screenshot_app_window` returns the window as a PNG the model can look at.
+- `read_app_accessibility_tree` returns what a screen reader reads — every element's role, name, text, value, state and on-screen bounds. It is usually the better one to reach for: it is exact, far cheaper than an image, and each element with bounds carries a `center` point ready to click. It works because `iwappd` acts as the accessibility bus for the session, and most GTK and Qt applications publish their tree to it (see [What the host needs](#what-it-checks) — this needs the session D-Bus).
+- `click_app_window`, `type_in_app_window`, `press_keys_in_app_window` and `scroll_app_window` synthesise the input a person would have produced. Typing goes through the same by-character translation the tab uses, so accented characters work.
+
+The pixels a screenshot shows, the coordinates a click takes, and the bounds the accessibility tree reports are all the same space — so the loop is: read the tree (or a screenshot) to find a target, act on it by pixel, screenshot again to confirm.
+
+The session is reused across calls and shares the resource's [SSH key resolution](../team-and-billing/ssh-keys.md) — a VM resource takes an `sshKeyId`, a host whose plugin supplies SSH natively (Fly, Hetzner) needs none. Every tool carries `resources:execute` and is audit-logged, the same as the terminal.
+
 ## What is recorded
 
 Starting a session and launching an application are written to the [audit log](../team-and-billing/audit-log.md). So is installing packages on a host through the setup check, with the packages it installed named — it changes the state of a machine you own, and that is the kind of thing someone comes looking for months later. Because it is a change to a host, it also respects [change freezes](../team-and-billing/change-freeze.md).

@@ -85,6 +85,26 @@ fn no_compositor() -> ! {
 }
 
 fn host_caps() -> ServerCaps {
+    let env: BTreeMap<String, String> = std::env::vars().collect();
+    let runtime_dir = launch_env::resolve_runtime_dir(
+        env.get("XDG_RUNTIME_DIR").map(String::as_str),
+        current_uid(),
+        std::path::Path::new("/tmp"),
+    );
+    // The same decision serve mode makes: accessibility needs a bus with an
+    // address, because both the applications and our registry must dial it.
+    let a11y = match &runtime_dir {
+        Ok(dir) => matches!(
+            launch_env::resolve_session_bus(
+                &env,
+                dir.join("bus").exists(),
+                dir,
+                launch_env::on_path(env.get("PATH").map(String::as_str), "dbus-run-session"),
+            ),
+            launch_env::SessionBus::Address(_)
+        ),
+        Err(_) => false,
+    };
     ServerCaps {
         // Declared false until the encoders exist, so a client never waits for
         // a tier this build cannot produce.
@@ -97,12 +117,8 @@ fn host_caps() -> ServerCaps {
         // The PulseAudio server is compiled in and needs nothing from the
         // host but a runtime dir for its socket.
         audio: true,
-        runtime_dir: launch_env::resolve_runtime_dir(
-            std::env::var("XDG_RUNTIME_DIR").ok().as_deref(),
-            current_uid(),
-            std::path::Path::new("/tmp"),
-        )
-        .is_ok(),
+        runtime_dir: runtime_dir.is_ok(),
+        a11y,
     }
 }
 
@@ -122,6 +138,7 @@ fn print_caps(json: bool) {
     println!("webp         {}", yes_no(caps.webp));
     println!("xwayland     {}", yes_no(caps.xwayland));
     println!("audio        {}", yes_no(caps.audio));
+    println!("a11y         {}", yes_no(caps.a11y));
 }
 
 fn print_apps(catalog: &mut impl Catalog, json: bool) {

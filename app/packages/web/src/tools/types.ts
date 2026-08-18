@@ -42,6 +42,13 @@ export interface ToolAuthContext {
 
 export interface ToolResult {
   content: Array<{ type: "text"; text: string }>;
+  /**
+   * Optional base64 image blocks. The MCP server forwards these to the client
+   * so a model can see a screenshot; the chat surface ignores them, because its
+   * persisted content contract is text-only and shared with mobile — the text
+   * `content` (a caption) is what it shows there.
+   */
+  images?: Array<{ data: string; mimeType: string }>;
   isError?: boolean;
 }
 
@@ -79,6 +86,17 @@ export function ok(value: unknown): ToolResult {
 
 export function okText(text: string): ToolResult {
   return { content: [{ type: "text", text }] };
+}
+
+/**
+ * A base64 image plus a text caption. The caption is what the chat surface
+ * shows (it cannot carry the image); an MCP client gets the image too.
+ */
+export function okImage(base64: string, mimeType: string, caption: string): ToolResult {
+  return {
+    content: [{ type: "text", text: caption }],
+    images: [{ data: base64, mimeType }],
+  };
 }
 
 export function err(message: string): ToolResult {

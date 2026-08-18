@@ -22,6 +22,7 @@ import { encodeInputBatch, type InputEvent } from "./input.js";
 import {
   decodeServerMessage,
   encodeControl,
+  type A11yNode,
   type AppEntry,
   type ClientCaps,
   type ClientMessage,
@@ -110,6 +111,13 @@ export interface AppSessionOptions {
   events?: AppSessionEvents;
 }
 
+/** A resolved accessibility tree, with the host's caveat when it has one. */
+export interface A11yTreeResult {
+  tree: A11yNode;
+  /** e.g. "tree truncated at 1500 nodes" — the tree is real but incomplete. */
+  caveat?: string;
+}
+
 /**
  * The clipboard types worth asking for.
  *
@@ -143,6 +151,16 @@ export class AppSession {
   #audioListeners = new Set<AudioListener>();
   #sessionId: string | undefined;
   #serverCaps: ServerCaps | undefined;
+  /** Outstanding `a11yTree` requests, by requestId. */
+  #a11yRequests = new Map<
+    number,
+    {
+      resolve: (tree: A11yTreeResult) => void;
+      reject: (error: Error) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
+  #nextA11yRequestId = 1;
 
   constructor(transport: AppSessionTransport, options: AppSessionOptions) {
     this.#transport = transport;
@@ -151,6 +169,7 @@ export class AppSession {
     transport.onMessage((bytes) => this.#receive(bytes));
     transport.onClose(() => {
       this.#closed = true;
+      this.#failA11yRequests("session closed");
       this.#events.onClose?.();
     });
 
@@ -310,6 +329,32 @@ export class AppSession {
     this.#send({ type: "ping", nonce });
   }
 
+  /**
+   * Ask for a window's accessibility tree, as its application reports it over
+   * AT-SPI. Resolves with the tree (and possibly a caveat, e.g. truncation);
+   * rejects when the host cannot produce one — an app whose toolkit has no
+   * accessibility support, a host without the capability, a timeout.
+   */
+  requestA11yTree(windowId: number, options: { timeoutMs?: number } = {}): Promise<A11yTreeResult> {
+    if (this.#closed) {
+      return Promise.reject(new Error("session closed"));
+    }
+    // Only checkable once the welcome has landed; before it, the request is
+    // queued like everything else and the host answers for itself.
+    if (this.#serverCaps && !this.#serverCaps.a11y) {
+      return Promise.reject(new Error("this host does not expose accessibility trees"));
+    }
+    const requestId = this.#nextA11yRequestId++;
+    return new Promise<A11yTreeResult>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.#a11yRequests.delete(requestId);
+        reject(new Error("accessibility request timed out"));
+      }, options.timeoutMs ?? 15_000);
+      this.#a11yRequests.set(requestId, { resolve, reject, timer });
+      this.#send({ type: "a11yTree", windowId, requestId });
+    });
+  }
+
   /** Close every window on the host and end the session. */
   killSession(): void {
     this.#send({ type: "killSession" });
@@ -318,7 +363,17 @@ export class AppSession {
   /** Stop reading. Does not end the remote session — the apps keep running. */
   close(): void {
     this.#closed = true;
+    this.#failA11yRequests("session closed");
     this.#transport.close();
+  }
+
+  #failA11yRequests(reason: string): void {
+    const pending = [...this.#a11yRequests.values()];
+    this.#a11yRequests.clear();
+    for (const request of pending) {
+      clearTimeout(request.timer);
+      request.reject(new Error(reason));
+    }
   }
 
   #send(message: ClientMessage): void {
@@ -514,6 +569,21 @@ export class AppSession {
         // host only ever offers, so nothing has crossed the wire yet.
         const wanted = message.mimeTypes.find((type) => TEXT_MIME.test(type));
         if (wanted) this.requestClipboard(wanted);
+        break;
+      }
+      case "a11yTree": {
+        const pending = this.#a11yRequests.get(message.requestId);
+        if (!pending) return;
+        this.#a11yRequests.delete(message.requestId);
+        clearTimeout(pending.timer);
+        if (message.ok && message.tree) {
+          pending.resolve({
+            tree: message.tree,
+            ...(message.message !== undefined ? { caveat: message.message } : {}),
+          });
+        } else {
+          pending.reject(new Error(message.message ?? "no accessibility tree"));
+        }
         break;
       }
       case "stats":

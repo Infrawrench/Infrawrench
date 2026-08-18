@@ -205,7 +205,18 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
         if (denied) return { content: denied.content, isError: true };
 
         const result = await tool.handler(rest, callAuth);
-        return { content: result.content, isError: result.isError ?? false };
+        // Images ride a side channel on the chat surface (its content contract
+        // is text-only); an MCP client can render them, so a screenshot the
+        // model can actually see is appended in the SDK's image shape.
+        const content = [
+          ...result.content.map((block) => ({ type: "text" as const, text: block.text })),
+          ...(result.images ?? []).map((image) => ({
+            type: "image" as const,
+            data: image.data,
+            mimeType: image.mimeType,
+          })),
+        ];
+        return { content, isError: result.isError ?? false };
       },
     );
   }

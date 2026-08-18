@@ -16,6 +16,7 @@ use iw_codec::Tier;
 use iw_proto::{FrameDecoder, PixelFormat, ServerCaps};
 use smithay::reexports::calloop::ping::Ping;
 
+use crate::backend::Backend;
 use crate::catalog::FsCatalog;
 use crate::compositor::WaylandBackend;
 use crate::launch_env;
@@ -57,6 +58,21 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
     let launch_prefix = launch_env::apply_session_bus(&mut app_env, &bus);
     eprintln!("iwappd: session bus: {}", describe_bus(&bus));
 
+    // Accessibility: only when the bus has an address both the apps and our
+    // registry thread can dial. Started before anything launches, because
+    // toolkits register themselves at startup and need somebody listening.
+    let a11y_enabled = launch_env::apply_a11y(&mut app_env, &bus);
+    let a11y = if let launch_env::SessionBus::Address(address) = &bus {
+        let waker = backend.waker();
+        eprintln!("iwappd: a11y: registry on the session bus");
+        Some(crate::atspi::A11yHandle::start(
+            address.clone(),
+            move || waker.ping(),
+        ))
+    } else {
+        None
+    };
+
     // The audio server. A failure to bind (exotic mount options, path length)
     // costs audio, not the session — apps simply find no PulseAudio, exactly
     // as they would on the bare host.
@@ -96,6 +112,7 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
             xwayland: false,
             audio: audio.is_some(),
             runtime_dir: true,
+            a11y: a11y_enabled && a11y.is_some(),
         },
         pixel_format: PixelFormat::Bgra8888,
         keymap: String::new(),
@@ -154,6 +171,38 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
             .map_err(|e| std::io::Error::other(e.to_string()))?
         {
             session.on_client_frame(frame);
+        }
+
+        // Accessibility requests go to their own thread; a tree walk is
+        // thousands of D-Bus round trips and the loop has frames to encode.
+        for (window_id, request_id) in session.take_a11y_requests() {
+            let pid = session.backend_mut().window_pid(window_id);
+            let handed = a11y.as_ref().is_some_and(|handle| {
+                handle.request(crate::atspi::A11yQuery {
+                    window_id,
+                    request_id,
+                    pid,
+                })
+            });
+            if !handed {
+                session.on_a11y_result(
+                    window_id,
+                    request_id,
+                    None,
+                    Some("the accessibility service is not running".into()),
+                );
+            }
+        }
+        if let Some(handle) = &a11y {
+            for result in handle.try_results() {
+                session.on_a11y_result(
+                    result.window_id,
+                    result.request_id,
+                    result.tree,
+                    result.message,
+                );
+                last_activity = Instant::now();
+            }
         }
 
         let pump_started = Instant::now();

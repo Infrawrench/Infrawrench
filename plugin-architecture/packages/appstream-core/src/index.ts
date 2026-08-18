@@ -38,6 +38,8 @@ export {
   decodeServerMessage,
   encodeControl,
   probeClientCaps,
+  type A11yBounds,
+  type A11yNode,
   type AppEntry,
   type ClientCaps,
   type ClientMessage,
@@ -82,6 +84,7 @@ export { KeyTranslator, keysymFromCharacter, type KeyLike } from "./keys.js";
 
 export {
   AppSession,
+  type A11yTreeResult,
   type AppSessionEvents,
   type AudioListener,
   type FrameListener,

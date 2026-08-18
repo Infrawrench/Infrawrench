@@ -140,6 +140,7 @@ mod tests {
                 xwayland: false,
                 audio: false,
                 runtime_dir: true,
+                a11y: false,
             },
         )
     }

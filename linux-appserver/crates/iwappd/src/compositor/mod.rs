@@ -22,7 +22,7 @@ use std::time::Duration;
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::ping::{Ping, make_ping};
 use smithay::reexports::calloop::{EventLoop, Interest, Mode, PostAction};
-use smithay::reexports::wayland_server::Display;
+use smithay::reexports::wayland_server::{Display, Resource};
 use smithay::utils::SERIAL_COUNTER;
 use smithay::wayland::selection::data_device::{
     request_data_device_client_selection, set_data_device_selection,
@@ -483,6 +483,13 @@ impl Backend for WaylandBackend {
             pixels: &rec.pixels,
             damage: std::mem::take(&mut rec.damage),
         })
+    }
+
+    fn window_pid(&mut self, window_id: u32) -> Option<u32> {
+        let rec = self.data.state.windows.get(&window_id)?;
+        let client = rec.surface.client()?;
+        let credentials = client.get_credentials(&self.data.state.dh).ok()?;
+        u32::try_from(credentials.pid).ok()
     }
 
     fn offer_clipboard(&mut self, mime_type: &str, data: &[u8]) -> Result<(), BackendError> {

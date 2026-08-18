@@ -120,6 +120,12 @@ pub trait Backend {
     /// client draws anything.
     fn take_frame(&mut self, window_id: u32) -> Option<BackendFrame<'_>>;
 
+    /// The process behind a window's Wayland connection, when the platform
+    /// can tell. How a window is matched to its AT-SPI application.
+    fn window_pid(&mut self, _window_id: u32) -> Option<u32> {
+        None
+    }
+
     /// Hand the client's clipboard to whatever app asks for it next.
     fn offer_clipboard(&mut self, mime_type: &str, data: &[u8]) -> Result<(), BackendError>;
 

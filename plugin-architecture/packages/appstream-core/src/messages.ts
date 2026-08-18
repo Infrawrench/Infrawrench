@@ -41,6 +41,46 @@ export interface ServerCaps {
   audio: boolean;
   /** A Wayland socket could be placed somewhere. */
   runtimeDir: boolean;
+  /**
+   * The host answers `a11yTree` requests: it found a session bus with an
+   * address for its AT-SPI registry to live on. Absent on older hosts, which
+   * would treat the request as a bad frame — never send without this.
+   */
+  a11y?: boolean;
+}
+
+/** Window-local bounds of an accessibility node, in logical pixels. */
+export interface A11yBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * One element of a window's accessibility tree, as its application reports it
+ * over AT-SPI. `bounds` is in the same window-local space pointer input uses
+ * at scale 1, so the centre of an element's rectangle is a valid click.
+ */
+export interface A11yNode {
+  /** Canonical AT-SPI role, e.g. `push button`, `text`, `frame`. */
+  role: string;
+  name?: string;
+  description?: string;
+  /** Visible text content, for elements that implement the Text interface. */
+  text?: string;
+  /** Current value of a slider, spin box or progress bar. */
+  value?: number;
+  /**
+   * AT-SPI state names (`focused`, `checked`, `editable`, …). The walker
+   * elides the ones that are on for practically every widget; the absence of
+   * `visible`/`showing` marks a hidden element.
+   */
+  states?: string[];
+  bounds?: A11yBounds;
+  /** AT-SPI action names (`click`, `press`, …) the element declares. */
+  actions?: string[];
+  children?: A11yNode[];
 }
 
 export type PixelFormat = "bgra8888" | "rgba8888";
@@ -91,7 +131,8 @@ export type ClientMessage =
   | { type: "clipboardRequest"; mimeType: string }
   | { type: "setAudio"; enabled: boolean }
   | { type: "killSession" }
-  | { type: "ping"; nonce: number };
+  | { type: "ping"; nonce: number }
+  | { type: "a11yTree"; windowId: number; requestId: number };
 
 export type ServerMessage =
   | {
@@ -130,7 +171,16 @@ export type ServerMessage =
       encodeMsP50: number;
     }
   | { type: "error"; code: ErrorCode; message: string; windowId?: number }
-  | { type: "pong"; nonce: number };
+  | { type: "pong"; nonce: number }
+  | {
+      type: "a11yTree";
+      windowId: number;
+      requestId: number;
+      ok: boolean;
+      /** Why there is no tree — or a caveat (truncation) beside one. */
+      message?: string;
+      tree?: A11yNode;
+    };
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
