@@ -38,13 +38,14 @@ use smithay::wayland::shell::xdg::{
     XdgToplevelSurfaceData,
 };
 use smithay::wayland::shm::{ShmHandler, ShmState, with_buffer_contents};
+use smithay::wayland::viewporter::{ViewportCachedState, ViewporterState, ensure_viewport_valid};
 use smithay::{
     delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
-    delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_viewporter, delegate_xdg_decoration, delegate_xdg_shell,
 };
 
 use crate::backend::BackendEvent;
-use crate::paint::{SurfaceView, Target, blit, clear_region, rescale};
+use crate::paint::{SurfaceView, Target, blit, clear_region, rescale_to};
 
 /// Highest buffer scale we will ask an application to render at.
 ///
@@ -133,9 +134,22 @@ pub struct AppState {
     /// and geometry before they map anything.
     #[allow(dead_code)]
     pub output: Output,
+    /// Held for its global, same as `decoration`. `wp_viewporter` is how a
+    /// client decouples its buffer from its logical size — and Firefox's
+    /// software renderer *requires* it for HiDPI: it renders device-resolution
+    /// pixels into a scale-1 buffer and declares the logical size through a
+    /// viewport. Every desktop compositor offers this, so the no-viewporter
+    /// fallback in clients is effectively untested; Firefox's was to commit
+    /// that same buffer anyway, which read as a window magnified by the output
+    /// scale and cropped to its own canvas.
+    #[allow(dead_code)]
+    pub viewporter: ViewporterState,
     /// Buffer pixels per logical pixel, as told to the applications through
     /// the output. Set from the viewer's device pixel ratio.
     scale: i32,
+    /// The advertised desktop in logical pixels, grown to fit the largest
+    /// window ever configured. The mode is this times the scale.
+    desktop: (i32, i32),
     /// The keymap xkbcommon compiled, as text, read the first time a keysym
     /// needs binding — reading it needs an `AppState`, which does not exist
     /// while one is being built.
@@ -213,8 +227,10 @@ impl AppState {
             seat_state,
             seat,
             output,
+            viewporter: ViewporterState::new::<Self>(dh),
             windows: HashMap::new(),
             scale: 1,
+            desktop: (1920, 1080),
             base_keymap: None,
             spare_keys: crate::keymap::SpareKeys::new(),
             next_window_id: 1,
@@ -244,8 +260,7 @@ impl AppState {
             return false;
         }
         self.scale = scale;
-        self.output
-            .change_current_state(None, None, Some(Scale::Integer(scale)), None);
+        self.push_output_state();
         // A surface that is already mapped has to be told again: it entered the
         // output when the scale was something else, and nothing re-sends that
         // on its own.
@@ -254,6 +269,39 @@ impl AppState {
             self.output.enter(&rec.surface);
         }
         true
+    }
+
+    /// Grow the advertised desktop until a window this big fits on it, in
+    /// logical pixels.
+    ///
+    /// Toolkits clamp windows to the desktop they can see, so a viewer tab
+    /// larger than the advertised output got a window sized to the output
+    /// instead — Firefox visibly shrank itself to fit once the scale pushed
+    /// the logical desktop below the tab. The desktop only ever grows: two
+    /// windows on one output must not fight over it.
+    pub fn ensure_desktop_fits(&mut self, logical: (i32, i32)) {
+        let want = (logical.0.max(self.desktop.0), logical.1.max(self.desktop.1));
+        if want != self.desktop {
+            self.desktop = want;
+            self.push_output_state();
+        }
+    }
+
+    /// Re-advertise the output for the current scale and desktop.
+    ///
+    /// The mode is *physical* pixels, so it moves with the scale: held fixed
+    /// while the scale rose, the logical desktop shrank by the same factor —
+    /// 960×540 at 2× — and every window larger than that got clamped.
+    fn push_output_state(&mut self) {
+        self.output.change_current_state(
+            Some(Mode {
+                size: (self.desktop.0 * self.scale, self.desktop.1 * self.scale).into(),
+                refresh: 60_000,
+            }),
+            None,
+            Some(Scale::Integer(self.scale)),
+            None,
+        );
     }
 
     pub fn window_id_for(&self, surface: &WlSurface) -> Option<u32> {
@@ -333,20 +381,29 @@ impl AppState {
 
                 if let Some(cache) = states.data_map.get::<RefCell<SurfacePixels>>() {
                     let mut cache = cache.borrow_mut();
-                    layout.push((
-                        surface.id().protocol_id(),
-                        at.0,
-                        at.1,
-                        cache.width,
-                        cache.height,
-                    ));
-                    // Damage arrives in the surface's *own* buffer pixels, so a
-                    // child at a different scale from the window reports
-                    // rectangles in a different unit than the canvas uses.
-                    let scale = cache.scale.max(1);
+                    // The layout records the box the surface is *shown* in, not
+                    // its buffer: a viewport change moves that box without a
+                    // buffer resize, and has to read as a layout change.
+                    let dest = cache.dest_on_canvas(root_scale);
+                    layout.push((surface.id().protocol_id(), at.0, at.1, dest.0, dest.1));
+                    // Damage arrives in the surface's *own* buffer pixels, so
+                    // it maps through the box the buffer is shown in — a scale
+                    // ratio for an ordinary surface, the viewport mapping for
+                    // a viewported one. A source crop makes that mapping
+                    // rect-relative; the crop is rare enough that repainting
+                    // the whole box is the better trade.
+                    let (buf_w, buf_h) = (cache.width, cache.height);
+                    let cropped = cache.viewport_src.is_some();
                     let pending: Vec<Rect> = cache.damage.drain(..).collect();
                     for rect in pending {
-                        let rect = rescale(rect, scale, root_scale);
+                        let rect = if cropped {
+                            Rect::new(0, 0, dest.0, dest.1)
+                        } else {
+                            let Some(rect) = rect.clip(buf_w, buf_h) else {
+                                continue;
+                            };
+                            rescale_to(rect, (buf_w, buf_h), dest)
+                        };
                         if let Some(clipped) = translate(rect, at.0, at.1).clip(width, height) {
                             damage.push(clipped);
                         }
@@ -436,7 +493,31 @@ impl SurfacePixels {
             pixels: &self.pixels,
             opaque: self.opaque,
             scale: self.scale,
+            src_rect: self.viewport_src,
+            dest_logical: self.viewport_dst,
         }
+    }
+
+    /// The box this surface occupies on the window canvas, in canvas pixels.
+    ///
+    /// The viewport wins when the client set one; otherwise the size follows
+    /// from the buffer and the two scales, exactly as [`blit`] draws it — the
+    /// layout comparison and the damage mapping have to agree with the paint
+    /// or a viewport change would repaint the wrong box.
+    fn dest_on_canvas(&self, root_scale: i32) -> (u32, u32) {
+        let root_scale = root_scale.max(1);
+        if let Some((w, h)) = self.viewport_dst {
+            return (w * root_scale as u32, h * root_scale as u32);
+        }
+        let (sw, sh) = match self.viewport_src {
+            Some((_, _, w, h)) => (w as i64, h as i64),
+            None => (self.width as i64, self.height as i64),
+        };
+        let scale = self.scale.max(1) as i64;
+        (
+            (sw * root_scale as i64 / scale) as u32,
+            (sh * root_scale as i64 / scale) as u32,
+        )
     }
 }
 
@@ -457,6 +538,14 @@ pub struct SurfacePixels {
     /// subsurface offsets and surface damage arrive in logical ones, so this is
     /// the conversion between them and 1 for a client that ignores DPI.
     scale: i32,
+    /// `wp_viewport.set_source` as of the last commit, in buffer pixels.
+    viewport_src: Option<(u32, u32, u32, u32)>,
+    /// `wp_viewport.set_destination`: the surface's logical size, decoupled
+    /// from the buffer. This is how Firefox's software renderer does HiDPI —
+    /// device-resolution pixels in a scale-1 buffer, the logical size declared
+    /// here — so ignoring it reads that buffer as logical pixels and draws the
+    /// window magnified by the output scale, cropped to the canvas.
+    viewport_dst: Option<(u32, u32)>,
 }
 
 /// Copy a committed `wl_shm` buffer into a surface's cache.
@@ -633,9 +722,31 @@ impl CompositorHandler for AppState {
                 .expect("just inserted");
             let mut cache = cache.borrow_mut();
 
+            // The viewport, from its own cache cell — read here because the
+            // surface-attributes guard below holds that cell for the rest of
+            // the closure.
+            let viewport = *states.cached_state.get::<ViewportCachedState>().current();
+
             let mut guard = states.cached_state.get::<SurfaceAttributes>();
             let attrs = guard.current();
             cache.scale = attrs.buffer_scale.max(1);
+
+            let scale = cache.scale;
+            cache.viewport_dst = viewport
+                .size()
+                .filter(|size| size.w > 0 && size.h > 0)
+                .map(|size| (size.w as u32, size.h as u32));
+            // `set_source` speaks surface-local coordinates; the cache works in
+            // buffer pixels, so the crop converts on the way in.
+            cache.viewport_src = viewport.src.map(|rect| {
+                (
+                    (rect.loc.x * scale as f64).max(0.0).round() as u32,
+                    (rect.loc.y * scale as f64).max(0.0).round() as u32,
+                    (rect.size.w * scale as f64).max(0.0).round() as u32,
+                    (rect.size.h * scale as f64).max(0.0).round() as u32,
+                )
+            });
+            let viewported = cache.viewport_dst.is_some() || cache.viewport_src.is_some();
 
             // Damage is read *before* the buffer is absorbed, because it is
             // what says how much of the buffer has to be copied at all.
@@ -644,7 +755,6 @@ impl CompositorHandler for AppState {
             // already in buffer ones — identical at scale 1, off by a factor of
             // the scale on a HiDPI client, which shows up as a window that
             // repaints a quarter of what it should.
-            let scale = cache.scale;
             let fresh: Vec<Rect> = attrs
                 .damage
                 .drain(..)
@@ -652,12 +762,19 @@ impl CompositorHandler for AppState {
                     Damage::Buffer(rect) => {
                         rect_from(rect.loc.x, rect.loc.y, rect.size.w, rect.size.h)
                     }
-                    Damage::Surface(rect) => rect_from(
+                    Damage::Surface(rect) if !viewported => rect_from(
                         rect.loc.x * scale,
                         rect.loc.y * scale,
                         rect.size.w * scale,
                         rect.size.h * scale,
                     ),
+                    // With a viewport between surface and buffer coordinates
+                    // the conversion is no longer the buffer scale. Clients
+                    // that viewport damage in buffer coordinates in practice,
+                    // so this path is rare — and repainting the whole surface
+                    // beats being subtly stale. Halved to keep `right()` from
+                    // overflowing before the clip.
+                    Damage::Surface(_) => Rect::new(0, 0, u32::MAX / 2, u32::MAX / 2),
                 })
                 .collect();
 
@@ -665,6 +782,18 @@ impl CompositorHandler for AppState {
                 Some(BufferAssignment::NewBuffer(buffer)) => {
                     let before = (cache.width, cache.height);
                     absorb(&mut cache, &buffer, &fresh);
+                    // The crop is checked against the buffer that just arrived;
+                    // an out-of-buffer source is the client's protocol error
+                    // (posted by smithay), and the stored crop is dropped
+                    // rather than sampled out of bounds meanwhile.
+                    let logical = smithay::utils::Size::from((
+                        (cache.width as i32 / scale).max(1),
+                        (cache.height as i32 / scale).max(1),
+                    ));
+                    if !ensure_viewport_valid(states, logical) {
+                        cache.viewport_src = None;
+                        cache.viewport_dst = None;
+                    }
                     if debug {
                         let shm = with_buffer_contents(&buffer, |_, _, d| {
                             format!(
@@ -1050,3 +1179,4 @@ delegate_shm!(AppState);
 delegate_seat!(AppState);
 delegate_data_device!(AppState);
 delegate_output!(AppState);
+delegate_viewporter!(AppState);
