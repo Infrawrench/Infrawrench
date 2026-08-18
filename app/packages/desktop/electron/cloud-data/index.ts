@@ -14,6 +14,7 @@ import "./posture";
 import "./access-review";
 import "./backups";
 import "./wallboard";
+import "./calendar";
 import "./dns";
 import "./environment-diff";
 import "./environments";

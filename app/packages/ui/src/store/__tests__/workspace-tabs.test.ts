@@ -84,6 +84,11 @@ describe("getWorkspaceTabId", () => {
     expect(getWorkspaceTabId({ kind: "wallboard" })).toBe("wallboard");
   });
 
+  it("returns the singleton id for the calendar target", () => {
+    // Paging through months is a control on the page, not a tab per month.
+    expect(getWorkspaceTabId({ kind: "calendar" })).toBe("calendar");
+  });
+
   it("returns the singleton id for the backups target", () => {
     expect(getWorkspaceTabId({ kind: "backups" })).toBe("backups");
   });
@@ -281,6 +286,10 @@ describe("getWorkspaceTabFallbackTitle", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "wallboard" })).toBe("Wallboard");
   });
 
+  it("returns 'Calendar' for the calendar target, matching the sidebar tile", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "calendar" })).toBe("Calendar");
+  });
+
   it("returns 'Backups' for the backups target, matching the sidebar tile", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "backups" })).toBe("Backups");
   });
@@ -388,6 +397,10 @@ describe("workspaceTabTargetsEqual", () => {
 
   it("treats two wallboard targets as equal (singleton tab)", () => {
     expect(workspaceTabTargetsEqual({ kind: "wallboard" }, { kind: "wallboard" })).toBe(true);
+  });
+
+  it("treats two calendar targets as equal (singleton tab)", () => {
+    expect(workspaceTabTargetsEqual({ kind: "calendar" }, { kind: "calendar" })).toBe(true);
   });
 
   it("treats two backups targets as equal (singleton tab)", () => {

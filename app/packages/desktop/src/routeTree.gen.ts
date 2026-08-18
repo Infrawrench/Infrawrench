@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AccessReviewRouteImport } from './routes/access-review'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as BackupsRouteImport } from './routes/backups'
+import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as ChangesRouteImport } from './routes/changes'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as CostReportsRouteImport } from './routes/cost-reports'
@@ -60,6 +61,11 @@ const AgentsRoute = AgentsRouteImport.update({
 const BackupsRoute = BackupsRouteImport.update({
   id: '/backups',
   path: '/backups',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CalendarRoute = CalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChangesRoute = ChangesRouteImport.update({
@@ -209,6 +215,7 @@ export interface FileRoutesByFullPath {
   '/access-review': typeof AccessReviewRoute
   '/agents': typeof AgentsRoute
   '/backups': typeof BackupsRoute
+  '/calendar': typeof CalendarRoute
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
   '/cost-reports': typeof CostReportsRoute
@@ -243,6 +250,7 @@ export interface FileRoutesByTo {
   '/access-review': typeof AccessReviewRoute
   '/agents': typeof AgentsRoute
   '/backups': typeof BackupsRoute
+  '/calendar': typeof CalendarRoute
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
   '/cost-reports': typeof CostReportsRoute
@@ -278,6 +286,7 @@ export interface FileRoutesById {
   '/access-review': typeof AccessReviewRoute
   '/agents': typeof AgentsRoute
   '/backups': typeof BackupsRoute
+  '/calendar': typeof CalendarRoute
   '/changes': typeof ChangesRoute
   '/chat': typeof ChatRoute
   '/cost-reports': typeof CostReportsRoute
@@ -314,6 +323,7 @@ export interface FileRouteTypes {
     | '/access-review'
     | '/agents'
     | '/backups'
+    | '/calendar'
     | '/changes'
     | '/chat'
     | '/cost-reports'
@@ -348,6 +358,7 @@ export interface FileRouteTypes {
     | '/access-review'
     | '/agents'
     | '/backups'
+    | '/calendar'
     | '/changes'
     | '/chat'
     | '/cost-reports'
@@ -382,6 +393,7 @@ export interface FileRouteTypes {
     | '/access-review'
     | '/agents'
     | '/backups'
+    | '/calendar'
     | '/changes'
     | '/chat'
     | '/cost-reports'
@@ -417,6 +429,7 @@ export interface RootRouteChildren {
   AccessReviewRoute: typeof AccessReviewRoute
   AgentsRoute: typeof AgentsRoute
   BackupsRoute: typeof BackupsRoute
+  CalendarRoute: typeof CalendarRoute
   ChangesRoute: typeof ChangesRoute
   ChatRoute: typeof ChatRoute
   CostReportsRoute: typeof CostReportsRoute
@@ -475,6 +488,13 @@ declare module '@tanstack/react-router' {
       path: '/backups'
       fullPath: '/backups'
       preLoaderRoute: typeof BackupsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/calendar': {
+      id: '/calendar'
+      path: '/calendar'
+      fullPath: '/calendar'
+      preLoaderRoute: typeof CalendarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/changes': {
@@ -681,6 +701,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccessReviewRoute: AccessReviewRoute,
   AgentsRoute: AgentsRoute,
   BackupsRoute: BackupsRoute,
+  CalendarRoute: CalendarRoute,
   ChangesRoute: ChangesRoute,
   ChatRoute: ChatRoute,
   CostReportsRoute: CostReportsRoute,

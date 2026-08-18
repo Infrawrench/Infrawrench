@@ -1,10 +1,14 @@
 import type { AssociationSource, CostEstimate } from "@infrawrench/plugin-base";
+import { CALENDAR_EVENT_KINDS } from "@infrawrench/ui";
 import type {
   AccessReviewResponse,
   BlastRadiusReport,
   BackupCoverageResponse,
   BackupPolicy,
   BackupPolicyInput,
+  CalendarEventKind,
+  CalendarResponse,
+  CalendarSubscription,
   DependencyGraphData,
   DnsInventoryResponse,
   EnvironmentDiffResponse,
@@ -164,6 +168,57 @@ export async function deleteCloudBackupPolicy(orgId: string, policyId: string): 
  */
 export async function fetchCloudWallboard(orgId: string): Promise<WallboardResponse> {
   return invoke("cloud_wallboard", { orgId });
+}
+
+/**
+ * The operations calendar for one window. Cloud only for the same reason as
+ * backup coverage: most of what it projects is org state a local workspace has
+ * nowhere to keep.
+ */
+export async function fetchCloudCalendar(
+  orgId: string,
+  range: { from: string; to: string; kinds: CalendarEventKind[] },
+): Promise<CalendarResponse> {
+  return invoke("cloud_calendar", {
+    orgId,
+    from: range.from,
+    to: range.to,
+    // Omitted rather than sent empty: empty means "every kind" server-side,
+    // and enumerating them here would break the day one is added.
+    ...(range.kinds.length > 0 && range.kinds.length < CALENDAR_EVENT_KINDS.length
+      ? { kinds: range.kinds.join(",") }
+      : {}),
+  });
+}
+
+export async function fetchCloudCalendarSubscriptions(
+  orgId: string,
+): Promise<CalendarSubscription[]> {
+  const res = await invoke<{ subscriptions: CalendarSubscription[] }>(
+    "cloud_calendar_subscriptions",
+    { orgId },
+  );
+  return res.subscriptions ?? [];
+}
+
+/** Returns the one-time subscription URL; there is no second chance to read it. */
+export async function createCloudCalendarSubscription(
+  orgId: string,
+  input: { name: string; kinds: CalendarEventKind[] },
+): Promise<string> {
+  const created = await invoke<CalendarSubscription>("cloud_calendar_subscription_create", {
+    orgId,
+    input,
+  });
+  if (!created.url) throw new Error("The server did not return a subscription URL");
+  return created.url;
+}
+
+export async function revokeCloudCalendarSubscription(
+  orgId: string,
+  subscriptionId: string,
+): Promise<void> {
+  await invoke("cloud_calendar_subscription_revoke", { orgId, subscriptionId });
 }
 
 export async function fetchCloudDns(orgId: string): Promise<DnsInventoryResponse> {

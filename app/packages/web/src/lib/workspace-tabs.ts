@@ -15,6 +15,7 @@ import {
   accessReviewTabTarget,
   backupsTabTarget,
   wallboardTabTarget,
+  calendarTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -195,6 +196,12 @@ export function getWorkspaceNavigateArgs(
     case "wallboard":
       return {
         to: "/org/$orgId/wallboard",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "calendar":
+      return {
+        to: "/org/$orgId/calendar",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -500,6 +507,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "wallboard") {
     return wallboardTabTarget();
+  }
+  if (s[0] === "calendar") {
+    return calendarTabTarget();
   }
   if (s[0] === "dns") {
     return dnsTabTarget();

@@ -4306,3 +4306,4 @@ export * from "./incident-schema.js";
 export * from "./backup-schema.js";
 export * from "./iac-schema.js";
 export * from "./environment-schema.js";
+export * from "./calendar-schema.js";

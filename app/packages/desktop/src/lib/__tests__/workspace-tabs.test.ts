@@ -228,6 +228,10 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(getWorkspaceNavigateArgs({ kind: "wallboard" })).toEqual({ to: "/wallboard" });
   });
 
+  it("returns calendar route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "calendar" })).toEqual({ to: "/calendar" });
+  });
+
   it("returns backups route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "backups" })).toEqual({ to: "/backups" });
   });
@@ -328,6 +332,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the wallboard path", () => {
     expect(syncWorkspaceRouteFromPath("/wallboard")).toEqual({ kind: "wallboard" });
+  });
+
+  it("parses the calendar path", () => {
+    expect(syncWorkspaceRouteFromPath("/calendar")).toEqual({ kind: "calendar" });
   });
 
   it("parses the backups path", () => {

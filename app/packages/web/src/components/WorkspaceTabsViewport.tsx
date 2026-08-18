@@ -40,8 +40,11 @@ import {
   workflowsTabTarget,
 } from "@/lib/workspace-tabs";
 import {
+  costsTabTarget,
   environmentDiffTabTarget,
+  expiringTabTarget,
   resourceTabTarget,
+  settingsTabTarget,
   type OrphansClient,
   type RightsizingClient,
   type SchedulesClient,
@@ -57,6 +60,7 @@ import { WebPosturePanel } from "./WebPosturePanel";
 import { WebAccessReviewPanel } from "./WebAccessReviewPanel";
 import { WebBackupsPanel } from "./WebBackupsPanel";
 import { WebWallboardPanel } from "./WebWallboardPanel";
+import { WebCalendarPanel } from "./WebCalendarPanel";
 import { WebDnsPanel } from "./WebDnsPanel";
 import { WebIacPanel } from "./WebIacPanel";
 import { WebEnvironmentDiffPanel } from "./WebEnvironmentDiffPanel";
@@ -472,6 +476,37 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           // showing the previous org's wall.
           key={orgId}
           orgId={orgId}
+        />
+      );
+    case "calendar":
+      return (
+        <WebCalendarPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's month.
+          key={orgId}
+          orgId={orgId}
+          openResource={(target) =>
+            void navigate(
+              getWorkspaceNavigateArgs(resourceTabTarget(target.accountId, target.resourceId)),
+            )
+          }
+          openTab={(tab) =>
+            void navigate(
+              getWorkspaceNavigateArgs(
+                tab === "expiring"
+                  ? expiringTabTarget()
+                  : tab === "incidents"
+                    ? incidentsTabTarget()
+                    : tab === "workflows"
+                      ? workflowsTabTarget()
+                      : tab === "costs"
+                        ? costsTabTarget()
+                        : // The only remaining destination is Settings, and the
+                          // freeze editor lives in its Change Freezes section.
+                          settingsTabTarget("freezes"),
+              ),
+            )
+          }
         />
       );
     case "dns":

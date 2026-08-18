@@ -21,6 +21,7 @@ import { Route as OrgOrgIdIndexRouteImport } from './routes/org.$orgId.index'
 import { Route as OrgOrgIdAccessReviewRouteImport } from './routes/org.$orgId.access-review'
 import { Route as OrgOrgIdAgentsRouteImport } from './routes/org.$orgId.agents'
 import { Route as OrgOrgIdBackupsRouteImport } from './routes/org.$orgId.backups'
+import { Route as OrgOrgIdCalendarRouteImport } from './routes/org.$orgId.calendar'
 import { Route as OrgOrgIdChangesRouteImport } from './routes/org.$orgId.changes'
 import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
 import { Route as OrgOrgIdCostReportsRouteImport } from './routes/org.$orgId.cost-reports'
@@ -138,6 +139,11 @@ const OrgOrgIdAgentsRoute = OrgOrgIdAgentsRouteImport.update({
 const OrgOrgIdBackupsRoute = OrgOrgIdBackupsRouteImport.update({
   id: '/backups',
   path: '/backups',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdCalendarRoute = OrgOrgIdCalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdChangesRoute = OrgOrgIdChangesRouteImport.update({
@@ -463,6 +469,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/access-review': typeof OrgOrgIdAccessReviewRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/backups': typeof OrgOrgIdBackupsRoute
+  '/org/$orgId/calendar': typeof OrgOrgIdCalendarRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
@@ -534,6 +541,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/access-review': typeof OrgOrgIdAccessReviewRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/backups': typeof OrgOrgIdBackupsRoute
+  '/org/$orgId/calendar': typeof OrgOrgIdCalendarRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
   '/org/$orgId/costs': typeof OrgOrgIdCostsRoute
@@ -605,6 +613,7 @@ export interface FileRoutesById {
   '/org/$orgId/access-review': typeof OrgOrgIdAccessReviewRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/backups': typeof OrgOrgIdBackupsRoute
+  '/org/$orgId/calendar': typeof OrgOrgIdCalendarRoute
   '/org/$orgId/changes': typeof OrgOrgIdChangesRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/cost-reports': typeof OrgOrgIdCostReportsRouteWithChildren
@@ -679,6 +688,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/access-review'
     | '/org/$orgId/agents'
     | '/org/$orgId/backups'
+    | '/org/$orgId/calendar'
     | '/org/$orgId/changes'
     | '/org/$orgId/chat'
     | '/org/$orgId/cost-reports'
@@ -750,6 +760,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/access-review'
     | '/org/$orgId/agents'
     | '/org/$orgId/backups'
+    | '/org/$orgId/calendar'
     | '/org/$orgId/changes'
     | '/org/$orgId/cost-reports'
     | '/org/$orgId/costs'
@@ -820,6 +831,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/access-review'
     | '/org/$orgId/agents'
     | '/org/$orgId/backups'
+    | '/org/$orgId/calendar'
     | '/org/$orgId/changes'
     | '/org/$orgId/chat'
     | '/org/$orgId/cost-reports'
@@ -976,6 +988,13 @@ declare module '@tanstack/react-router' {
       path: '/backups'
       fullPath: '/org/$orgId/backups'
       preLoaderRoute: typeof OrgOrgIdBackupsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/calendar': {
+      id: '/org/$orgId/calendar'
+      path: '/calendar'
+      fullPath: '/org/$orgId/calendar'
+      preLoaderRoute: typeof OrgOrgIdCalendarRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/changes': {
@@ -1508,6 +1527,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdAccessReviewRoute: typeof OrgOrgIdAccessReviewRoute
   OrgOrgIdAgentsRoute: typeof OrgOrgIdAgentsRoute
   OrgOrgIdBackupsRoute: typeof OrgOrgIdBackupsRoute
+  OrgOrgIdCalendarRoute: typeof OrgOrgIdCalendarRoute
   OrgOrgIdChangesRoute: typeof OrgOrgIdChangesRoute
   OrgOrgIdChatRoute: typeof OrgOrgIdChatRouteWithChildren
   OrgOrgIdCostReportsRoute: typeof OrgOrgIdCostReportsRouteWithChildren
@@ -1543,6 +1563,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdAccessReviewRoute: OrgOrgIdAccessReviewRoute,
   OrgOrgIdAgentsRoute: OrgOrgIdAgentsRoute,
   OrgOrgIdBackupsRoute: OrgOrgIdBackupsRoute,
+  OrgOrgIdCalendarRoute: OrgOrgIdCalendarRoute,
   OrgOrgIdChangesRoute: OrgOrgIdChangesRoute,
   OrgOrgIdChatRoute: OrgOrgIdChatRouteWithChildren,
   OrgOrgIdCostReportsRoute: OrgOrgIdCostReportsRouteWithChildren,

@@ -86,4 +86,10 @@
 // 1.28.0: the wallboard — one read (`GET /wallboard`) answering "is anything
 // wrong right now" for a screen on a wall, plus a `wallboard` member on the
 // workspace TabTarget kind enum. All additive.
-export const API_VERSION = "1.28.0";
+// 1.29.0: the operations calendar — one dated view over freezes, sleep
+// windows, deadlines, commitment terms, scheduled workflow runs and incidents
+// (`/calendar`), revocable iCalendar subscriptions (`/calendar/subscriptions`),
+// the unauthenticated `GET /api/calendar/{token}.ics` feed those mint, and a
+// `calendar` member on the workspace TabTarget kind enum — without which a
+// persisted Calendar tab is silently dropped on reload. All additive.
+export const API_VERSION = "1.29.0";

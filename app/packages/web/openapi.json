@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.28.0",
+    "version": "1.29.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -179,6 +179,10 @@
     {
       "name": "Wallboard",
       "description": "One screen, read from across the room. Every other page here is designed for somebody sitting at it — dense tables, hover states, filters — and none of that survives being put on a television four metres away, which is where a team actually wants \"is anything wrong\". So this is a different reading of the same data, built on one rule: a wallboard may only show things that are true right now and that somebody would cross a room to look at. No history, no trends, no breakdowns. A source that fails is named on the screen and turns the wall amber, because a wall showing green because a query threw is worse than a blank one."
+    },
+    {
+      "name": "Operations calendar",
+      "description": "One time axis over six things the organization already stores — change freezes, sleep/wake schedules, declared deadlines, commitment term ends, cron-triggered workflow runs and declared incidents. Nothing on it is a new record: the calendar is a projection recomputed on every read, and each source is guarded independently so one that fails costs its own kind rather than the page. Subscriptions mint an unauthenticated iCalendar URL whose 32-byte token is the sole credential; it carries scheduling facts only, and no organization id."
     },
     {
       "name": "Status pages",
@@ -2715,6 +2719,7 @@
               "access-review",
               "backups",
               "wallboard",
+              "calendar",
               "dns",
               "iac",
               "environment-diff",
@@ -17200,6 +17205,311 @@
           "failures",
           "failedSources",
           "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CalendarEventLink": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string",
+                "enum": [
+                  "resource"
+                ]
+              },
+              "accountId": {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              },
+              "resourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "target",
+              "accountId",
+              "resourceId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string",
+                "enum": [
+                  "tab"
+                ]
+              },
+              "tab": {
+                "type": "string",
+                "enum": [
+                  "expiring",
+                  "incidents",
+                  "workflows",
+                  "costs",
+                  "settings"
+                ]
+              }
+            },
+            "required": [
+              "target",
+              "tab"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Where opening the event should go — a hint rather than a URL, because each surface addresses its own pages differently."
+      },
+      "CalendarEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable across renders for the same underlying thing, because it becomes the iCalendar UID. Recurring sources (sleep windows, cron runs) key it by occurrence."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "change-freeze",
+              "sleep-schedule",
+              "expiry",
+              "commitment-expiry",
+              "workflow-schedule",
+              "incident"
+            ],
+            "description": "Which of the organization's own records the event was projected from. The kinds are sources rather than a severity taxonomy: a reader scanning a month wants to know that one bar is a freeze and another is a certificate."
+          },
+          "title": {
+            "type": "string"
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Clamped to the requested window's lower bound when the underlying span began earlier; `openEnded` says so."
+          },
+          "endsAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Null means a point in time — a deadline, a scheduled run — or a span whose end is not known. `openEnded` distinguishes the two."
+          },
+          "openEnded": {
+            "type": "boolean",
+            "description": "The span continues past an edge of the window, or has no declared end at all (a freeze held until further notice, an unresolved incident)."
+          },
+          "allDay": {
+            "type": "boolean",
+            "description": "The event is meaningful only to the day — a deadline read off a date field. Rendering such a thing at the provider's stored midnight would be false precision."
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "warning",
+              "info"
+            ]
+          },
+          "link": {
+            "$ref": "#/components/schemas/CalendarEventLink"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "detail",
+          "startsAt",
+          "endsAt",
+          "openEnded",
+          "allDay",
+          "severity",
+          "link"
+        ],
+        "additionalProperties": false
+      },
+      "CalendarResponse": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarEvent"
+            },
+            "description": "Soonest first; longer spans before shorter ones."
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "emptyKinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "change-freeze",
+                "sleep-schedule",
+                "expiry",
+                "commitment-expiry",
+                "workflow-schedule",
+                "incident"
+              ],
+              "description": "Which of the organization's own records the event was projected from. The kinds are sources rather than a severity taxonomy: a reader scanning a month wants to know that one bar is a freeze and another is a certificate."
+            },
+            "description": "Kinds that were asked for and produced no events in this window."
+          },
+          "failedKinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "change-freeze",
+                "sleep-schedule",
+                "expiry",
+                "commitment-expiry",
+                "workflow-schedule",
+                "incident"
+              ],
+              "description": "Which of the organization's own records the event was projected from. The kinds are sources rather than a severity taxonomy: a reader scanning a month wants to know that one bar is a freeze and another is a certificate."
+            },
+            "description": "Sources that threw. Reported rather than swallowed: 'nothing scheduled' and 'we could not read it' are different answers, and one failing source must not empty the page."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "events",
+          "from",
+          "to",
+          "emptyKinds",
+          "failedKinds",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CalendarSubscription": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "change-freeze",
+                "sleep-schedule",
+                "expiry",
+                "commitment-expiry",
+                "workflow-schedule",
+                "incident"
+              ],
+              "description": "Which of the organization's own records the event was projected from. The kinds are sources rather than a severity taxonomy: a reader scanning a month wants to know that one bar is a freeze and another is a certificate."
+            },
+            "description": "Kinds the feed carries. Empty means every kind, including ones added later."
+          },
+          "url": {
+            "type": "string",
+            "description": "The subscription URL, returned **only** by the create call — the token it contains is stored hashed and cannot be shown again. Lose it and mint a new feed."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastAccessedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Last fetch, written at most hourly. Its purpose is answering 'is anyone still using this?' before revoking, which an hour of staleness cannot change."
+          },
+          "revokedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kinds",
+          "createdAt",
+          "lastAccessedAt",
+          "revokedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CalendarSubscriptionList": {
+        "type": "object",
+        "properties": {
+          "subscriptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarSubscription"
+            }
+          }
+        },
+        "required": [
+          "subscriptions"
+        ],
+        "additionalProperties": false
+      },
+      "CalendarSubscriptionCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "change-freeze",
+                "sleep-schedule",
+                "expiry",
+                "commitment-expiry",
+                "workflow-schedule",
+                "incident"
+              ],
+              "description": "Which of the organization's own records the event was projected from. The kinds are sources rather than a severity taxonomy: a reader scanning a month wants to know that one bar is a freeze and another is a certificate."
+            },
+            "maxItems": 6
+          }
+        },
+        "required": [
+          "name"
         ],
         "additionalProperties": false
       },
@@ -47282,6 +47592,225 @@
           }
         },
         "operationId": "getOrgOrgIdWallboard"
+      }
+    },
+    "/api/org/{orgId}/calendar": {
+      "get": {
+        "tags": [
+          "Operations calendar"
+        ],
+        "summary": "List dated operational events in a window",
+        "description": "One time axis over six things the organization already stores: change freezes, sleep/wake schedules, declared deadlines (certificates, domains, keys and resource leases), commitment term ends, cron-triggered workflow runs, and declared incidents. Nothing here is a new record — the calendar is recomputed on every read, exactly as posture findings and backup coverage are.\n\nThe window defaults to the last 7 and next 35 days and may span at most 400. Recurring sources are expanded to at most 400 occurrences each, so one nightly schedule cannot flood a year-long query.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Inclusive lower bound. Defaults to 7 days ago."
+            },
+            "required": false,
+            "description": "Inclusive lower bound. Defaults to 7 days ago.",
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Exclusive upper bound. Defaults to 35 days ahead."
+            },
+            "required": false,
+            "description": "Exclusive upper bound. Defaults to 35 days ahead.",
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated `CalendarEventKind`s. Unknown members are ignored rather than rejected; omitting the parameter returns every kind."
+            },
+            "required": false,
+            "description": "Comma-separated `CalendarEventKind`s. Unknown members are ignored rather than rejected; omitting the parameter returns every kind.",
+            "name": "kinds",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Events in the window, soonest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCalendar"
+      }
+    },
+    "/api/org/{orgId}/calendar/subscriptions": {
+      "get": {
+        "tags": [
+          "Operations calendar"
+        ],
+        "summary": "List the organization's iCalendar subscriptions",
+        "description": "Feed URLs that have been minted, including revoked ones — a revoked row is kept so the audit trail still resolves. The token itself is never returned.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Subscriptions, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarSubscriptionList"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCalendarSubscriptions"
+      },
+      "post": {
+        "tags": [
+          "Operations calendar"
+        ],
+        "summary": "Mint an iCalendar subscription URL",
+        "description": "Returns the only copy of the feed URL. The token in it is 32 random bytes, stored as a SHA-256 hash, and is the sole credential on a route that runs outside every auth layer — treat the URL as a secret. The URL deliberately contains no organization id.\n\nAn organization may hold 25 live subscriptions; revoking makes room.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalendarSubscriptionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The created subscription, including its one-time `url`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarSubscription"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCalendarSubscriptions"
+      }
+    },
+    "/api/org/{orgId}/calendar/subscriptions/{subscriptionId}": {
+      "delete": {
+        "tags": [
+          "Operations calendar"
+        ],
+        "summary": "Revoke an iCalendar subscription",
+        "description": "The URL stops working immediately. The row is kept, and revoking twice is not an error.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "subscriptionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The revoked subscription",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarSubscription"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdCalendarSubscriptionsSubscriptionId"
       }
     },
     "/api/org/{orgId}/dns": {

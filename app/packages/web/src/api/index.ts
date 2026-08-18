@@ -84,6 +84,8 @@ import { postureRoutes } from "./routes/posture";
 import { accessReviewRoutes } from "./routes/access-review";
 import { backupRoutes } from "./routes/backups";
 import { wallboardRoutes } from "./routes/wallboard";
+import { calendarRoutes } from "./routes/calendar";
+import { publicCalendarRoutes } from "./routes/calendar-feed";
 import { dnsRoutes } from "./routes/dns";
 import { momentRoutes } from "./routes/moment";
 import { scheduleRoutes } from "./routes/schedules";
@@ -272,6 +274,11 @@ api.route("/api/org/:orgId/pages", pageRoutes);
 // assembler (see routes/status-pages.ts).
 api.route("/api/status", publicStatusRoutes);
 
+// Public iCalendar feeds. Outside every auth layer for the same reason as the
+// status pages above — a calendar client can hold no session — with a 32-byte
+// token in the path as the sole credential and no org id anywhere in the URL.
+api.route("/api", publicCalendarRoutes);
+
 // Agent registration and the claim ceremony. Outside every auth layer because
 // its whole purpose is serving a caller with no credentials — the rate limit in
 // `trials/ceremony.ts` is what stands in for authentication here, and it has to,
@@ -369,6 +376,7 @@ orgScoped.route("/posture", postureRoutes);
 orgScoped.route("/access-review", accessReviewRoutes);
 orgScoped.route("/backups", backupRoutes);
 orgScoped.route("/wallboard", wallboardRoutes);
+orgScoped.route("/calendar", calendarRoutes);
 orgScoped.route("/dns", dnsRoutes);
 orgScoped.route("/environment-diff", environmentDiffRoutes);
 orgScoped.route("/moment", momentRoutes);

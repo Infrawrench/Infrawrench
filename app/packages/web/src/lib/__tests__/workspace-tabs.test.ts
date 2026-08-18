@@ -345,6 +345,13 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns calendar route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "calendar" })).toEqual({
+      to: "/org/$orgId/calendar",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns backups route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "backups" })).toEqual({
       to: "/org/$orgId/backups",
@@ -426,6 +433,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the org-scoped wallboard path", () => {
     expect(syncWorkspaceRouteFromPath("/org/test-org/wallboard")).toEqual({ kind: "wallboard" });
+  });
+
+  it("parses the org-scoped calendar path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/calendar")).toEqual({ kind: "calendar" });
   });
 
   it("parses the org-scoped backups path", () => {
