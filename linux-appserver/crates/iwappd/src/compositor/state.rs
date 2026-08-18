@@ -184,7 +184,14 @@ impl AppState {
         // The keymap is the default (us, evdev codes). The client maps its
         // browser key events onto that, and reaches anything the layout cannot
         // produce through the keysym path instead.
-        if let Err(err) = seat.add_keyboard(Default::default(), 200, 25) {
+        //
+        // Repeat rate zero disables the application's own key repeat. Wayland
+        // repeat is a hold-timer in the client, and here "held" includes the
+        // network: a tap whose release frame arrives late reads as a hold, and
+        // the application types characters nobody pressed. The viewer forwards
+        // the browser's real auto-repeat as press events instead, so repeat is
+        // driven by keystrokes that actually happened.
+        if let Err(err) = seat.add_keyboard(Default::default(), 0, 0) {
             // Without a compiled keymap there is no keyboard at all — which is
             // what a host missing xkeyboard-config looks like, and what it used
             // to look like was nothing.

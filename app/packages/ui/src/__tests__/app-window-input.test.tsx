@@ -81,14 +81,16 @@ describe("AppWindowViewer keyboard", () => {
     expect(keys(sent)).toHaveLength(2);
   });
 
-  it("ignores the browser's auto-repeat", () => {
-    // Wayland hands clients a repeat rate and they repeat for themselves, so
-    // forwarding the browser's repeats too types everything twice over.
+  it("forwards the browser's auto-repeat as re-taps", () => {
+    // The remote side has key repeat disabled — a hold-timer over a laggy
+    // link reads a slow release as a hold and types phantom characters — so
+    // the browser's own repeat is the only repeat, sent as release+press.
     const { canvas, sent } = mount();
     fireEvent.keyDown(canvas, { code: "KeyA" });
     for (let i = 0; i < 5; i++) fireEvent.keyDown(canvas, { code: "KeyA", repeat: true });
     fireEvent.keyUp(canvas, { code: "KeyA" });
-    expect(keys(sent)).toHaveLength(2);
+    // 1 press + 5 × (release+press) + 1 release.
+    expect(keys(sent)).toHaveLength(12);
   });
 
   it("releases a key still held when the window loses focus", () => {

@@ -333,8 +333,9 @@ export function AppWindowViewer({
       if (isPasteShortcut(event)) return;
       // The remote application owns every other key while focused, including
       // the browser's own shortcuts — otherwise Ctrl-W closes the tab instead
-      // of the document. Done first, or a held Ctrl-W would reach the browser
-      // on the repeat the translator drops.
+      // of the document. Auto-repeat keydowns are forwarded too: the remote
+      // side has repeat disabled (a hold-timer plus network latency types
+      // phantom characters), so the browser's repeat is the only repeat.
       event.preventDefault();
       const events =
         state === ButtonState.Pressed
@@ -353,8 +354,8 @@ export function AppWindowViewer({
 
   // A key held when the canvas loses focus never gets its keyup — the browser
   // sends that to whatever has focus now. The application is left holding the
-  // key down and repeating it forever, which looks exactly like a stuck
-  // keyboard because it is one.
+  // key down, which for a modifier is a stuck keyboard: every later click and
+  // keystroke arrives as a chord.
   useEffect(() => {
     const onBlur = () => releaseHeld();
     window.addEventListener("blur", onBlur);
