@@ -1234,6 +1234,12 @@ importers:
       '@infrawrench/appstream-core':
         specifier: workspace:*
         version: link:../appstream-core
+      tar:
+        specifier: ^7.5.22
+        version: 7.5.22
+      xz-decompress:
+        specifier: ^0.2.3
+        version: 0.2.3
     devDependencies:
       '@types/node':
         specifier: ^22.20.1

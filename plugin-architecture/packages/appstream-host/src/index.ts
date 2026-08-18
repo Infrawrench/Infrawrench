@@ -39,6 +39,11 @@ export {
   type SshExecutor,
 } from "./exec.js";
 export * from "./preflight.js";
+export {
+  createIwappdBinarySource,
+  type IwappdBinarySource,
+  type IwappdBinarySourceOptions,
+} from "./binaries.js";
 
 export type RemoteArch = "x86_64" | "aarch64";
 
