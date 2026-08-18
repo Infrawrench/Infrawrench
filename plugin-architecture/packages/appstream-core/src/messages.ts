@@ -22,6 +22,11 @@ export interface ClientCaps {
    * differences as if it were an image.
    */
   delta: boolean;
+  /**
+   * This client plays audio chunks. False keeps the host from sending a frame
+   * kind an older client would treat as a protocol error.
+   */
+  audio: boolean;
   /** Largest single frame the client will accept, in bytes. */
   maxFrameBytes: number;
 }
@@ -84,6 +89,7 @@ export type ClientMessage =
   | { type: "ack"; windowId: number; seq: number; decodeMs: number }
   | { type: "clipboardOffer"; mimeTypes: string[] }
   | { type: "clipboardRequest"; mimeType: string }
+  | { type: "setAudio"; enabled: boolean }
   | { type: "killSession" }
   | { type: "ping"; nonce: number };
 
@@ -162,6 +168,9 @@ export async function probeClientCaps(
     // Arithmetic on a canvas this package already owns, so there is nothing to
     // feature-detect: it is true wherever this code runs at all.
     delta: true,
+    // Web Audio is the player; without it the chunks would only be dropped,
+    // so better they never cross the link at all.
+    audio: typeof capabilityGlobals().AudioContext === "function",
     maxFrameBytes: 16 * 1024 * 1024,
   };
 }
@@ -174,6 +183,7 @@ export async function probeClientCaps(
  */
 interface CapabilityGlobals {
   createImageBitmap?: unknown;
+  AudioContext?: unknown;
   VideoDecoder?: {
     isConfigSupported?(config: { codec: string }): Promise<{ supported?: boolean }>;
   };

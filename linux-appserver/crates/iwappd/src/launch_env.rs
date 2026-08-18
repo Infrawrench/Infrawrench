@@ -25,6 +25,14 @@ const STRIPPED: &[&str] = &[
     "__GLX_VENDOR_LIBRARY_NAME",
     "LIBVA_DRIVER_NAME",
     "VDPAU_DRIVER",
+    // Audio goes to our own PulseAudio socket or nowhere: an inherited server
+    // address (or the runtime-path discovery convention, or a cookie that our
+    // server would not know) could route an app's sound to a device on the
+    // host, where nobody is listening.
+    "PULSE_SERVER",
+    "PULSE_COOKIE",
+    "PULSE_RUNTIME_PATH",
+    "PIPEWIRE_REMOTE",
 ];
 
 /// Build the environment for a launched application.
@@ -70,6 +78,28 @@ pub fn launch_env(
     env.insert("WEBKIT_DISABLE_COMPOSITING_MODE".into(), "1".into());
 
     env
+}
+
+/// Point applications' audio at our PulseAudio socket.
+///
+/// Separate from [`launch_env`] for the same reason as the session bus: only
+/// the caller knows whether the audio server actually started, and an app is
+/// better off finding no server than a broken address.
+pub fn apply_audio(env: &mut BTreeMap<String, String>, server: Option<&str>) {
+    if let Some(server) = server {
+        env.insert("PULSE_SERVER".into(), server.to_owned());
+    }
+}
+
+/// Directory for the audio server's socket, under the runtime dir and
+/// namespaced by session like the Wayland socket is.
+pub fn audio_socket_dir(runtime_dir: &Path, session_id: &str) -> PathBuf {
+    let safe: String = session_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .take(32)
+        .collect();
+    runtime_dir.join(format!("iw-pulse-{safe}"))
 }
 
 /// Apply a resolved session bus to a launch environment.

@@ -10,9 +10,9 @@ use std::collections::HashMap;
 
 use iw_codec::{EncodeMode, Encoder, EncoderConfig, Rect, Tier, TierSelector};
 use iw_proto::{
-    ClientCaps, ClientMessage, ClipboardBlob, ErrorCode, Frame, FrameKind, PROTOCOL_VERSION,
-    PixelFormat, SESSION_WINDOW, ServerCaps, ServerMessage, WindowCloseReason, decode_input_batch,
-    encode_frame,
+    AudioChunk, ClientCaps, ClientMessage, ClipboardBlob, ErrorCode, Frame, FrameKind,
+    PROTOCOL_VERSION, PixelFormat, SESSION_WINDOW, ServerCaps, ServerMessage, WindowCloseReason,
+    decode_input_batch, encode_frame,
 };
 
 use crate::backend::{Backend, BackendEvent, LaunchSpec};
@@ -106,6 +106,9 @@ pub struct Session<B: Backend, C: Catalog> {
     config: SessionConfig,
     phase: Phase,
     client_caps: ClientCaps,
+    /// The client can turn the audio stream off (the viewer's mute) without
+    /// tearing anything down; on by default for a client whose caps say audio.
+    audio_enabled: bool,
     windows: HashMap<u32, Window>,
     outbox: Vec<Vec<u8>>,
 }
@@ -118,9 +121,29 @@ impl<B: Backend, C: Catalog> Session<B, C> {
             config,
             phase: Phase::AwaitingHello,
             client_caps: ClientCaps::default(),
+            audio_enabled: true,
             windows: HashMap::new(),
             outbox: Vec::new(),
         }
+    }
+
+    /// Whether mixed audio should be produced at all right now.
+    pub fn wants_audio(&self) -> bool {
+        self.phase == Phase::Running && self.client_caps.audio && self.audio_enabled
+    }
+
+    /// Forward one mixed chunk to the client. Gated on the client having
+    /// declared the capability — an unknown frame kind is a protocol error on
+    /// the other end, not a skipped frame — and on the viewer's mute.
+    pub fn on_audio_chunk(&mut self, chunk: &AudioChunk) {
+        if !self.wants_audio() {
+            return;
+        }
+        self.outbox.push(encode_frame(
+            FrameKind::Audio,
+            SESSION_WINDOW,
+            &chunk.encode(),
+        ));
     }
 
     pub fn is_ended(&self) -> bool {
@@ -180,7 +203,10 @@ impl<B: Backend, C: Catalog> Session<B, C> {
             },
             // Server-bound kinds arriving from a client are a desynchronised
             // stream, not something to act on.
-            FrameKind::ControlServer | FrameKind::Pixels | FrameKind::ClipboardServer => {
+            FrameKind::ControlServer
+            | FrameKind::Pixels
+            | FrameKind::ClipboardServer
+            | FrameKind::Audio => {
                 self.send_error(ErrorCode::Internal, "unexpected server frame", None)
             }
         }
@@ -320,6 +346,7 @@ impl<B: Backend, C: Catalog> Session<B, C> {
             ClientMessage::ClipboardRequest { mime_type } => {
                 let _ = self.backend.request_clipboard(&mime_type);
             }
+            ClientMessage::SetAudio { enabled } => self.audio_enabled = enabled,
             ClientMessage::KillSession => self.end(),
             ClientMessage::Ping { nonce } => self.send(&ServerMessage::Pong { nonce }),
         }
@@ -1341,6 +1368,98 @@ mod tests {
             drain_messages(&mut s).as_slice(),
             [ServerMessage::Error {
                 code: ErrorCode::UnknownWindow,
+                ..
+            }]
+        ));
+    }
+
+    fn chunk(seq: u32) -> AudioChunk {
+        AudioChunk {
+            codec: iw_proto::AudioCodec::PcmS16,
+            channels: 2,
+            flags: 0,
+            seq,
+            sample_rate: 48_000,
+            data: vec![1, 2, 3, 4],
+        }
+    }
+
+    fn drain_audio(session: &mut Session<MockBackend, MockCatalog>) -> Vec<AudioChunk> {
+        let mut decoder = FrameDecoder::new();
+        for bytes in session.drain() {
+            decoder.push(&bytes);
+        }
+        let mut out = Vec::new();
+        while let Some(frame) = decoder.next_frame().unwrap() {
+            if frame.kind == FrameKind::Audio {
+                assert_eq!(frame.window_id, SESSION_WINDOW);
+                out.push(AudioChunk::decode(&frame.payload).unwrap());
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn audio_chunks_reach_a_client_that_declared_the_capability() {
+        let mut s = session();
+        s.on_client_frame(hello(ClientCaps::default()));
+        drain_messages(&mut s);
+        s.on_audio_chunk(&chunk(1));
+        assert_eq!(drain_audio(&mut s), vec![chunk(1)]);
+    }
+
+    #[test]
+    fn audio_is_never_sent_to_a_client_without_the_capability() {
+        // The old-client case: an unknown frame kind is a thrown protocol
+        // error over there, so the gate is load-bearing, not an optimisation.
+        let mut s = session();
+        s.on_client_frame(hello(ClientCaps {
+            audio: false,
+            ..ClientCaps::default()
+        }));
+        drain_messages(&mut s);
+        s.on_audio_chunk(&chunk(1));
+        assert!(drain_audio(&mut s).is_empty());
+    }
+
+    #[test]
+    fn audio_is_not_sent_before_the_handshake() {
+        let mut s = session();
+        s.on_audio_chunk(&chunk(1));
+        assert!(drain_audio(&mut s).is_empty());
+        assert!(!s.wants_audio());
+    }
+
+    #[test]
+    fn set_audio_stops_and_resumes_the_stream() {
+        let mut s = session();
+        s.on_client_frame(hello(ClientCaps::default()));
+        drain_messages(&mut s);
+
+        s.on_client_frame(control(ClientMessage::SetAudio { enabled: false }));
+        assert!(!s.wants_audio());
+        s.on_audio_chunk(&chunk(1));
+        assert!(drain_audio(&mut s).is_empty());
+
+        s.on_client_frame(control(ClientMessage::SetAudio { enabled: true }));
+        s.on_audio_chunk(&chunk(2));
+        assert_eq!(drain_audio(&mut s), vec![chunk(2)]);
+    }
+
+    #[test]
+    fn an_audio_frame_from_the_client_is_a_protocol_error() {
+        let mut s = session();
+        s.on_client_frame(hello(ClientCaps::default()));
+        drain_messages(&mut s);
+        s.on_client_frame(Frame {
+            kind: FrameKind::Audio,
+            window_id: SESSION_WINDOW,
+            payload: chunk(1).encode(),
+        });
+        assert!(matches!(
+            drain_messages(&mut s).as_slice(),
+            [ServerMessage::Error {
+                code: ErrorCode::Internal,
                 ..
             }]
         ));

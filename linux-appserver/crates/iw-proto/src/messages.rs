@@ -30,6 +30,11 @@ pub struct ClientCaps {
     /// rectangle of differences as if they were pixels: garbage, silently.
     #[serde(default)]
     pub delta: bool,
+    /// The client plays [`crate::AudioChunk`] frames. Defaulted **false** for
+    /// the same reason as `delta`: a client that does not know the frame kind
+    /// treats it as a protocol error and ends the whole session.
+    #[serde(default)]
+    pub audio: bool,
     /// Largest single frame the client will accept, in bytes.
     pub max_frame_bytes: u32,
 }
@@ -46,6 +51,7 @@ impl Default for ClientCaps {
             zstd: true,
             jpeg: true,
             delta: true,
+            audio: true,
             max_frame_bytes: 16 * 1024 * 1024,
         }
     }
@@ -239,6 +245,10 @@ pub enum ClientMessage {
     /// An app asked for the clipboard; send this type.
     #[serde(rename_all = "camelCase")]
     ClipboardRequest { mime_type: String },
+    /// Start or stop the audio stream. Muting on the viewer sends `false` so
+    /// the PCM stops crossing the link, not just the speakers.
+    #[serde(rename_all = "camelCase")]
+    SetAudio { enabled: bool },
     /// Close every window and exit. The tab's "end session" button.
     KillSession,
     #[serde(rename_all = "camelCase")]

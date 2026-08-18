@@ -130,6 +130,7 @@ mod tests {
                 jpeg,
                 webp: false,
                 delta: true,
+                audio: false,
                 max_frame_bytes: 16 << 20,
             },
             ServerCaps {

@@ -1108,8 +1108,11 @@ export { useDataString } from "./i18n/data-strings.js";
 export {
   AppLauncherPanel,
   AppWindowViewer,
+  SessionAudio,
+  acquireSessionAudio,
   type AppLauncherPanelProps,
   type AppWindowViewerProps,
+  type AudioContextLike,
 } from "./apps/index.js";
 export { useStableGT } from "./i18n/stable-gt.js";
 // Trial workspaces — the countdown an unclaimed agent trial carries until a

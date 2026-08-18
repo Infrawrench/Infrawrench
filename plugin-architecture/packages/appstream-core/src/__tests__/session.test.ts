@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { AUDIO_HEADER_LEN, AudioCodec, type AudioChunk } from "../audio.js";
 import { FrameDecoder, FrameKind, encodeClipboardBlob, encodeFrame } from "../frame.js";
 import { ButtonState } from "../input.js";
 import { encodeControl, type ClientCaps, type ServerMessage } from "../messages.js";
@@ -11,6 +12,7 @@ const caps: ClientCaps = {
   zstd: true,
   jpeg: true,
   delta: true,
+  audio: true,
   maxFrameBytes: 1 << 20,
 };
 
@@ -442,5 +444,58 @@ describe("AppSession window subscriptions", () => {
     transport.reply({ type: "windowClose", windowId: 3, reason: "crashed" });
 
     expect(closed).toEqual(["3:crashed"]);
+  });
+});
+
+/** A minimal raw-PCM audio chunk frame. */
+function audioFrame(seq: number, samples: number[]): Uint8Array {
+  const payload = new Uint8Array(AUDIO_HEADER_LEN + samples.length * 2);
+  const view = new DataView(payload.buffer);
+  payload[0] = AudioCodec.PcmS16;
+  payload[1] = 2; // channels
+  view.setUint16(2, 0, true); // flags
+  view.setUint32(4, seq, true);
+  view.setUint32(8, 48_000, true);
+  samples.forEach((sample, i) => view.setInt16(AUDIO_HEADER_LEN + i * 2, sample, true));
+  return encodeFrame(FrameKind.Audio, 0, payload);
+}
+
+describe("AppSession audio", () => {
+  it("delivers chunks to audio listeners and never acks them", () => {
+    const { transport, app } = session();
+    transport.reply(welcome);
+    const seen: AudioChunk[] = [];
+    app.addAudioListener((chunk) => seen.push(chunk));
+
+    transport.deliver(audioFrame(7, [100, -100]));
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ codec: AudioCodec.PcmS16, seq: 7, sampleRate: 48_000 });
+    // Acks are the pixel flow-control credit; an audio chunk must not mint one.
+    expect(transport.controls().filter((message) => message.type === "ack")).toHaveLength(0);
+  });
+
+  it("keeps delivering when one listener throws", () => {
+    const { transport, app } = session();
+    transport.reply(welcome);
+    const seen: number[] = [];
+    app.addAudioListener(() => {
+      throw new Error("player exploded");
+    });
+    app.addAudioListener((chunk) => seen.push(chunk.seq));
+
+    transport.deliver(audioFrame(1, [0]));
+    transport.deliver(audioFrame(2, [0]));
+
+    expect(seen).toEqual([1, 2]);
+  });
+
+  it("queues setAudio until the handshake like any control message", () => {
+    const { transport, app } = session();
+    app.setAudioEnabled(false);
+    expect(transport.controls()).toHaveLength(1); // just the hello
+
+    transport.reply(welcome);
+    expect(transport.controls()).toContainEqual({ type: "setAudio", enabled: false });
   });
 });

@@ -41,6 +41,10 @@ function fakeSession() {
     removeFrameListener: vi.fn(),
     addCursorListener: vi.fn(),
     removeCursorListener: vi.fn(),
+    addAudioListener: vi.fn(),
+    removeAudioListener: vi.fn(),
+    setAudioEnabled: vi.fn(),
+    serverCaps: undefined,
   } as unknown as AppSession;
   return { session, sent, offered, frameListeners };
 }

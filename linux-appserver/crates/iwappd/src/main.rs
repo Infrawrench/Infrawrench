@@ -94,7 +94,9 @@ fn host_caps() -> ServerCaps {
         // available — unlike VP9, which has no encoder yet.
         jpeg: true,
         xwayland: false,
-        audio: false,
+        // The PulseAudio server is compiled in and needs nothing from the
+        // host but a runtime dir for its socket.
+        audio: true,
         runtime_dir: launch_env::resolve_runtime_dir(
             std::env::var("XDG_RUNTIME_DIR").ok().as_deref(),
             current_uid(),

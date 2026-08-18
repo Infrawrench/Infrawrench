@@ -62,6 +62,19 @@ Each window of an application gets its own tab. Dialogs, menus and tooltips are 
 
 Closing a tab closes that window. Closing the **Apps** tab ends the whole session on that host, including any applications it opened.
 
+## Sound
+
+Applications play sound. There is nothing to set up on the host: `iwappd` brings its own sound server, applications find it exactly as they would find PulseAudio or PipeWire on a desktop, and everything they play is mixed into one stream and sent to your tab alongside the pixels.
+
+A speaker button in the window's top corner mutes the session. Muting does more than silence the tab — it stops the audio stream crossing the SSH connection at all, which is worth doing on a slow link. All windows of one host share one mute, because they share one stream.
+
+Two browser details worth knowing:
+
+- Browsers refuse to play sound before you have interacted with a page. If a session starts playing before you have clicked or typed anywhere, the audio begins with your first click into the window.
+- The stream is playback only. Applications that want a microphone find none, the same as on a machine with no input device.
+
+<insert [An application window tab playing media, with the speaker mute button visible in the top-right corner next to Close window] here>
+
 ## Clipboard
 
 Text copies both ways.
@@ -96,6 +109,6 @@ Graphical sessions are **not** captured by [session recording](./session-recordi
 
 - **Desktop and web only.** The mobile app does not open application sessions.
 - **Clipboard** carries text both ways, and images neither way. Pasting into a remote application works with your usual shortcut — `Cmd+V` on a Mac reaches the application as the paste it expects. Copying inside a remote application puts the text on your own clipboard a moment later, provided the tab is focused; browsers refuse clipboard writes from a background tab, so switch away _after_ copying rather than before.
-- **No audio**, no printing, no USB redirection.
+- **Audio is playback only** — applications find no microphone. No printing, no USB redirection.
 - **Keyboard layouts** are translated by character, so any layout types what its keys say — including the punctuation UK, German and French keyboards move around. Characters no US keyboard has at all (`£`, accents, anything an input method composes) are sent separately and work, with the exception of dead keys, which are not implemented.
 - **X11-only applications** need XWayland, which is not included yet. Applications that speak Wayland — which is most current desktop software — work.

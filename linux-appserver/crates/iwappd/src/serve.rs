@@ -57,6 +57,27 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
     let launch_prefix = launch_env::apply_session_bus(&mut app_env, &bus);
     eprintln!("iwappd: session bus: {}", describe_bus(&bus));
 
+    // The audio server. A failure to bind (exotic mount options, path length)
+    // costs audio, not the session — apps simply find no PulseAudio, exactly
+    // as they would on the bare host.
+    let audio = {
+        let waker = backend.waker();
+        match crate::pulse::start(
+            &launch_env::audio_socket_dir(&runtime_dir, session_id),
+            move || waker.ping(),
+        ) {
+            Ok(runtime) => {
+                eprintln!("iwappd: audio: serving at {}", runtime.server_env);
+                Some(runtime)
+            }
+            Err(err) => {
+                eprintln!("iwappd: audio: disabled ({err})");
+                None
+            }
+        }
+    };
+    launch_env::apply_audio(&mut app_env, audio.as_ref().map(|a| a.server_env.as_str()));
+
     let catalog = FsCatalog::from_env(
         &env,
         IconBudget {
@@ -73,7 +94,7 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
             webp: false,
             jpeg: true,
             xwayland: false,
-            audio: false,
+            audio: audio.is_some(),
             runtime_dir: true,
         },
         pixel_format: PixelFormat::Bgra8888,
@@ -138,6 +159,13 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
         let pump_started = Instant::now();
         session.pump();
 
+        if let Some(audio) = &audio {
+            for chunk in audio.try_iter() {
+                session.on_audio_chunk(&chunk);
+                last_activity = Instant::now();
+            }
+        }
+
         let outbound = session.drain();
         let outbound_bytes: usize = outbound.iter().map(Vec::len).sum();
         if !outbound.is_empty() {
@@ -174,6 +202,9 @@ pub fn run(session_id: &str, idle_timeout: Duration, icon_size: u32) -> std::io:
     }
 
     session.backend_mut().shutdown_processes();
+    if let Some(audio) = &audio {
+        audio.shutdown();
+    }
     Ok(())
 }
 

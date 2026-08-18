@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { T, useGT } from "gt-react";
 import { decompress } from "fzstd";
+
+import { acquireSessionAudio, type SessionAudio } from "./session-audio.js";
 import {
   ButtonState,
   Codec,
@@ -137,6 +139,19 @@ export function AppWindowViewer({
   const [painted, setPainted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string>("default");
+  const [audio, setAudio] = useState<SessionAudio | null>(null);
+
+  // The session's mixed audio, shared with every other window tab on it. Held
+  // for exactly as long as a viewer is mounted: the last one to leave tells
+  // the host to stop sending PCM nobody would play.
+  useEffect(() => {
+    const player = acquireSessionAudio(session);
+    setAudio(player);
+    return () => {
+      setAudio(null);
+      player.release();
+    };
+  }, [session]);
 
   const scale = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
 
@@ -415,16 +430,64 @@ export function AppWindowViewer({
         </div>
       )}
 
-      {onClose && (
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-3 top-3 rounded-md border border-border bg-surface-overlay px-2 py-1 text-xs text-on-surface-secondary hover:text-on-surface"
-        >
-          <T>Close window</T>
-        </button>
-      )}
+      <div className="absolute right-3 top-3 flex items-center gap-2">
+        {audio?.available && <AudioMuteButton audio={audio} />}
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border bg-surface-overlay px-2 py-1 text-xs text-on-surface-secondary hover:text-on-surface"
+          >
+            <T>Close window</T>
+          </button>
+        )}
+      </div>
     </div>
+  );
+}
+
+/**
+ * Mutes at the source: the toggle stops the PCM crossing the link, not just
+ * the speakers, which on a slow link is the whole point of having it.
+ */
+function AudioMuteButton({ audio }: { audio: SessionAudio }) {
+  const gt = useGT();
+  const muted = useSyncExternalStore(
+    (onChange) => audio.subscribe(onChange),
+    () => audio.muted,
+    () => audio.muted,
+  );
+  const label = muted ? gt("Unmute audio") : gt("Mute audio");
+  return (
+    <button
+      type="button"
+      onClick={() => audio.setMuted(!muted)}
+      title={label}
+      aria-label={label}
+      aria-pressed={muted}
+      className="rounded-md border border-border bg-surface-overlay px-2 py-1 text-xs text-on-surface-secondary hover:text-on-surface"
+    >
+      {muted ? <MutedIcon /> : <SpeakerIcon />}
+    </button>
+  );
+}
+
+function SpeakerIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+      <path d="M8 2.5a.5.5 0 0 0-.83-.38L4.2 4.6H2a.5.5 0 0 0-.5.5v5.8a.5.5 0 0 0 .5.5h2.2l2.97 2.48A.5.5 0 0 0 8 13.5v-11Z" />
+      <path d="M10.3 5.3a.6.6 0 0 1 .85 0 3.83 3.83 0 0 1 0 5.4.6.6 0 0 1-.85-.85 2.63 2.63 0 0 0 0-3.7.6.6 0 0 1 0-.85Z" />
+      <path d="M12.2 3.4a.6.6 0 0 1 .85 0 6.5 6.5 0 0 1 0 9.2.6.6 0 1 1-.85-.85 5.3 5.3 0 0 0 0-7.5.6.6 0 0 1 0-.85Z" />
+    </svg>
+  );
+}
+
+function MutedIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+      <path d="M8 2.5a.5.5 0 0 0-.83-.38L4.2 4.6H2a.5.5 0 0 0-.5.5v5.8a.5.5 0 0 0 .5.5h2.2l2.97 2.48A.5.5 0 0 0 8 13.5v-11Z" />
+      <path d="M10.22 6.28a.6.6 0 0 1 .85 0L12.25 7.5l1.18-1.2a.6.6 0 1 1 .86.85L13.1 8.35l1.19 1.2a.6.6 0 1 1-.86.85l-1.18-1.2-1.18 1.2a.6.6 0 0 1-.85-.85l1.18-1.2-1.18-1.22a.6.6 0 0 1 0-.85Z" />
+    </svg>
   );
 }
 
