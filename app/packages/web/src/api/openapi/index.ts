@@ -51,6 +51,7 @@ import { registerQuotaPaths } from "./paths/quotas";
 import { registerPosturePaths } from "./paths/posture";
 import { registerAccessReviewPaths } from "./paths/access-review";
 import { registerBackupPaths } from "./paths/backups";
+import { registerWallboardPaths } from "./paths/wallboard";
 import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
@@ -181,6 +182,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerPosturePaths(ctx);
   registerAccessReviewPaths(ctx);
   registerBackupPaths(ctx);
+  registerWallboardPaths(ctx);
   registerDnsPaths(ctx);
   registerEnvironmentDiffPaths(ctx);
   registerMomentPaths(ctx);
@@ -453,6 +455,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Incidents",
         description:
           "Incidents the organization declares itself \u2014 not to be confused with the provider status incidents under Resources, which are somebody else's outage. Declaring records the incident and, optionally, opens a change freeze, pins the moment, announces through the org's alert routing rules and posts a public status-page update; each side effect is recorded as an artefact whose failure is stored rather than thrown, so nothing an integration does can lose the declaration. The timeline is assembled on read by joining feeds that already exist, and the postmortem export pre-fills everything except the judgement.",
+      },
+      {
+        name: "Wallboard",
+        description:
+          'One screen, read from across the room. Every other page here is designed for somebody sitting at it \u2014 dense tables, hover states, filters \u2014 and none of that survives being put on a television four metres away, which is where a team actually wants "is anything wrong". So this is a different reading of the same data, built on one rule: a wallboard may only show things that are true right now and that somebody would cross a room to look at. No history, no trends, no breakdowns. A source that fails is named on the screen and turns the wall amber, because a wall showing green because a query threw is worse than a blank one.',
       },
       {
         name: "Status pages",

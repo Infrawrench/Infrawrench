@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.27.0",
+    "version": "1.28.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -175,6 +175,10 @@
     {
       "name": "Incidents",
       "description": "Incidents the organization declares itself — not to be confused with the provider status incidents under Resources, which are somebody else's outage. Declaring records the incident and, optionally, opens a change freeze, pins the moment, announces through the org's alert routing rules and posts a public status-page update; each side effect is recorded as an artefact whose failure is stored rather than thrown, so nothing an integration does can lose the declaration. The timeline is assembled on read by joining feeds that already exist, and the postmortem export pre-fills everything except the judgement."
+    },
+    {
+      "name": "Wallboard",
+      "description": "One screen, read from across the room. Every other page here is designed for somebody sitting at it — dense tables, hover states, filters — and none of that survives being put on a television four metres away, which is where a team actually wants \"is anything wrong\". So this is a different reading of the same data, built on one rule: a wallboard may only show things that are true right now and that somebody would cross a room to look at. No history, no trends, no breakdowns. A source that fails is named on the screen and turns the wall amber, because a wall showing green because a query threw is worse than a blank one."
     },
     {
       "name": "Status pages",
@@ -2710,6 +2714,7 @@
               "posture",
               "access-review",
               "backups",
+              "wallboard",
               "dns",
               "iac",
               "environment-diff",
@@ -17047,6 +17052,155 @@
             "type": "boolean"
           }
         },
+        "additionalProperties": false
+      },
+      "WallboardTile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string",
+            "description": "The number or short phrase, rendered in large type."
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded",
+              "down"
+            ],
+            "description": "Three states rather than five, because at four metres a person distinguishes three colours reliably and nothing more. `down` is reserved for the two things that mean customers are affected now — a sev1 incident or a probe that is down; everything else that is wrong is `degraded`. A source that could not be read is `degraded` and never `ok`."
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "value",
+          "detail",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "WallboardIncidentLine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "severity",
+          "startedAt",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "WallboardFailureLine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "detail",
+          "since"
+        ],
+        "additionalProperties": false
+      },
+      "WallboardResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded",
+              "down"
+            ],
+            "description": "Three states rather than five, because at four metres a person distinguishes three colours reliably and nothing more. `down` is reserved for the two things that mean customers are affected now — a sev1 incident or a probe that is down; everything else that is wrong is `degraded`. A source that could not be read is `degraded` and never `ok`."
+          },
+          "tiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WallboardTile"
+            }
+          },
+          "incidents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WallboardIncidentLine"
+            },
+            "description": "Unresolved incidents, newest first."
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WallboardFailureLine"
+            },
+            "description": "Probes that are down, monitors breaching, accounts that stopped syncing."
+          },
+          "failedSources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sources that could not be read, **named on the screen**. A wallboard showing green because a query failed is worse than a blank one — it is actively telling the room the wrong thing."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "status",
+          "tiles",
+          "incidents",
+          "failures",
+          "failedSources",
+          "generatedAt"
+        ],
         "additionalProperties": false
       },
       "DnsZone": {
@@ -47093,6 +47247,41 @@
           }
         },
         "operationId": "deleteOrgOrgIdBackupsPoliciesPolicyId"
+      }
+    },
+    "/api/org/{orgId}/wallboard": {
+      "get": {
+        "tags": [
+          "Wallboard"
+        ],
+        "summary": "Everything that is wrong right now, for a screen on a wall",
+        "description": "A different reading of data the product already holds, built on one rule: a wallboard may only show things that are true **right now** and that somebody would cross a room to look at. There is deliberately no history, no trend and no breakdown — those belong on the page you open when you do walk over.\n\nFour sources — declared incidents, synthetic probes, query monitors and account sync health — each guarded independently, because a television that goes blank because one query threw is showing nothing to a room that was relying on it.\n\nSession-authenticated on purpose: unlike the calendar feed or a public status page, this carries incident titles, probe names and account names, and a screen in an office is exactly what a visitor photographs. The machine driving the wall signs in once.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The wall, as of now",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WallboardResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdWallboard"
       }
     },
     "/api/org/{orgId}/dns": {

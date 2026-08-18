@@ -14,6 +14,7 @@ import {
   postureTabTarget,
   accessReviewTabTarget,
   backupsTabTarget,
+  wallboardTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -188,6 +189,12 @@ export function getWorkspaceNavigateArgs(
     case "backups":
       return {
         to: "/org/$orgId/backups",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "wallboard":
+      return {
+        to: "/org/$orgId/wallboard",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -490,6 +497,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "backups") {
     return backupsTabTarget();
+  }
+  if (s[0] === "wallboard") {
+    return wallboardTabTarget();
   }
   if (s[0] === "dns") {
     return dnsTabTarget();

@@ -80,6 +80,10 @@ describe("getWorkspaceTabId", () => {
     ).toBe("resource:acc-1:arn:aws");
   });
 
+  it("returns the singleton id for the wallboard target", () => {
+    expect(getWorkspaceTabId({ kind: "wallboard" })).toBe("wallboard");
+  });
+
   it("returns the singleton id for the backups target", () => {
     expect(getWorkspaceTabId({ kind: "backups" })).toBe("backups");
   });
@@ -273,6 +277,10 @@ describe("getWorkspaceTabFallbackTitle", () => {
     ).toBe("SFTP");
   });
 
+  it("returns 'Wallboard' for the wallboard target, matching the sidebar tile", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "wallboard" })).toBe("Wallboard");
+  });
+
   it("returns 'Backups' for the backups target, matching the sidebar tile", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "backups" })).toBe("Backups");
   });
@@ -376,6 +384,10 @@ describe("workspaceTabTargetsEqual", () => {
       view: "details",
     };
     expect(workspaceTabTargetsEqual(a, b)).toBe(true);
+  });
+
+  it("treats two wallboard targets as equal (singleton tab)", () => {
+    expect(workspaceTabTargetsEqual({ kind: "wallboard" }, { kind: "wallboard" })).toBe(true);
   });
 
   it("treats two backups targets as equal (singleton tab)", () => {

@@ -49,6 +49,7 @@ import { DesktopExpiryPanel } from "@/components/DesktopExpiryPanel";
 import { DesktopPosturePanel } from "@/components/DesktopPosturePanel";
 import { DesktopAccessReviewPanel } from "@/components/DesktopAccessReviewPanel";
 import { DesktopBackupsPanel } from "@/components/DesktopBackupsPanel";
+import { DesktopWallboardPanel } from "@/components/DesktopWallboardPanel";
 import { DesktopDnsPanel } from "@/components/DesktopDnsPanel";
 import { DesktopIacPanel } from "@/components/DesktopIacPanel";
 import { DesktopEnvironmentDiffPanel } from "@/components/DesktopEnvironmentDiffPanel";
@@ -439,6 +440,13 @@ function renderPanel(
               ),
             )
           }
+        />
+      );
+    case "wallboard":
+      return (
+        <DesktopWallboardPanel
+          // Keyed by mode so switching org (or dropping to local) remounts.
+          key={activeCloudOrgId ?? "local"}
         />
       );
     case "backups":

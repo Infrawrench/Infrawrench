@@ -19,6 +19,7 @@ import {
   PostureIcon,
   AccessReviewIcon,
   BackupsIcon,
+  WallboardIcon,
   DomainsIcon,
   EnvironmentDiffIcon,
   FanoutIcon,
@@ -47,6 +48,7 @@ import {
   dashboardTabTarget,
   deploymentsTabTarget,
   backupsTabTarget,
+  wallboardTabTarget,
   dnsTabTarget,
   accessReviewTabTarget,
   iacTabTarget,
@@ -382,6 +384,15 @@ export function SidebarDashboards() {
       icon: <BackupsIcon />,
       onClick: () =>
         void navigateToWorkspaceTarget(navigate, backupsTabTarget(), { label: gt("Backups") }),
+    },
+    // The wallboard is cloud only: three of its four sources (incidents, query
+    // monitors, sync paging) are org state.
+    {
+      key: "wallboard",
+      label: gt("Wallboard"),
+      icon: <WallboardIcon />,
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, wallboardTabTarget(), { label: gt("Wallboard") }),
     },
     // Domains also has a local half — the inventory is computed from stored
     // state and the locally loaded plugins' DNS declarations. A workspace-tab

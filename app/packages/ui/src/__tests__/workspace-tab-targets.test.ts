@@ -7,6 +7,7 @@ import {
   postureTabTarget,
   accessReviewTabTarget,
   backupsTabTarget,
+  wallboardTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
   probesTabTarget,
@@ -34,6 +35,10 @@ describe("tab target factories", () => {
 
   it("accountTabTarget", () => {
     expect(accountTabTarget("acc-1")).toEqual({ kind: "account", accountId: "acc-1" });
+  });
+
+  it("wallboardTabTarget", () => {
+    expect(wallboardTabTarget()).toEqual({ kind: "wallboard" });
   });
 
   it("backupsTabTarget", () => {

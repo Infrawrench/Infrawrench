@@ -224,6 +224,10 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(getWorkspaceNavigateArgs(deploymentsTabTarget())).toEqual({ to: "/deployments" });
   });
 
+  it("returns wallboard route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "wallboard" })).toEqual({ to: "/wallboard" });
+  });
+
   it("returns backups route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "backups" })).toEqual({ to: "/backups" });
   });
@@ -320,6 +324,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the deployments path", () => {
     expect(syncWorkspaceRouteFromPath("/deployments")).toEqual({ kind: "deployments" });
+  });
+
+  it("parses the wallboard path", () => {
+    expect(syncWorkspaceRouteFromPath("/wallboard")).toEqual({ kind: "wallboard" });
   });
 
   it("parses the backups path", () => {

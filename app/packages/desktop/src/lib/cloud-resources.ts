@@ -11,6 +11,7 @@ import type {
   ExpiryListResponse,
   PostureListResponse,
   ResourcePickerOption,
+  WallboardResponse,
 } from "@infrawrench/ui";
 import { invoke } from "./invoke";
 
@@ -155,6 +156,14 @@ export async function updateCloudBackupPolicy(
 
 export async function deleteCloudBackupPolicy(orgId: string, policyId: string): Promise<void> {
   await invoke("cloud_backup_policy_delete", { orgId, policyId });
+}
+
+/**
+ * The wallboard. Cloud only: three of its four sources (declared incidents,
+ * query monitors, sync paging) are org state.
+ */
+export async function fetchCloudWallboard(orgId: string): Promise<WallboardResponse> {
+  return invoke("cloud_wallboard", { orgId });
 }
 
 export async function fetchCloudDns(orgId: string): Promise<DnsInventoryResponse> {

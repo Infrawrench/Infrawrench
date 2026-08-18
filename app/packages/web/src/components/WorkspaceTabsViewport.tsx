@@ -56,6 +56,7 @@ import { WebExpiryPanel } from "./WebExpiryPanel";
 import { WebPosturePanel } from "./WebPosturePanel";
 import { WebAccessReviewPanel } from "./WebAccessReviewPanel";
 import { WebBackupsPanel } from "./WebBackupsPanel";
+import { WebWallboardPanel } from "./WebWallboardPanel";
 import { WebDnsPanel } from "./WebDnsPanel";
 import { WebIacPanel } from "./WebIacPanel";
 import { WebEnvironmentDiffPanel } from "./WebEnvironmentDiffPanel";
@@ -462,6 +463,15 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
               getWorkspaceNavigateArgs(resourceTabTarget(target.accountId, target.resourceId)),
             )
           }
+        />
+      );
+    case "wallboard":
+      return (
+        <WebWallboardPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's wall.
+          key={orgId}
+          orgId={orgId}
         />
       );
     case "dns":
