@@ -133,6 +133,26 @@ pub fn clear_region(canvas: &mut [u8], canvas_w: u32, region: Rect) {
     }
 }
 
+/// The toplevel size in logical pixels, from what the viewer asked for.
+///
+/// The viewer asks in the device pixels it will paint — its CSS box times its
+/// device pixel ratio — and Wayland configures a toplevel in *logical* pixels,
+/// so the request divides back down by the ratio, recovering the CSS box. The
+/// division must be by the fractional ratio itself, not the whole buffer scale
+/// rounded up from it: dividing 1.5× pixels by 2 configures a window a quarter
+/// smaller than its box, the application lays out for that smaller window, and
+/// the viewer stretches every frame back up — everything drawn a third too
+/// large, on any display whose ratio is not whole.
+pub fn logical_size(width: u32, height: u32, ratio: f32) -> (i32, i32) {
+    let ratio = if ratio.is_finite() && ratio > 1.0 {
+        ratio
+    } else {
+        1.0
+    };
+    let side = |px: u32| ((px.max(1) as f32 / ratio).round() as i32).max(1);
+    (side(width), side(height))
+}
+
 /// A rectangle from one buffer scale into another, rounded outwards.
 ///
 /// Outwards because this is damage: covering a pixel that did not change costs
@@ -154,7 +174,7 @@ pub fn rescale(rect: Rect, from: i32, to: i32) -> Rect {
 
 #[cfg(test)]
 mod tests {
-    use super::{Rect, SurfaceView, Target, blit, rescale};
+    use super::{Rect, SurfaceView, Target, blit, logical_size, rescale};
 
     fn bytes(width: u32, height: u32, colour: [u8; 4]) -> Vec<u8> {
         colour
@@ -284,6 +304,24 @@ mod tests {
             None,
         );
         assert_eq!(pixel(&pixels, 4, 3, 3), [2, 2, 2, 255]);
+    }
+
+    #[test]
+    fn a_logical_size_is_the_viewers_css_box_at_any_ratio() {
+        // Whole ratios divide exactly.
+        assert_eq!(logical_size(1600, 1200, 2.0), (800, 600));
+        // A fractional ratio divides by *itself*, not by the whole scale it
+        // rounds up to — 1200/1.5 is the 800-pixel box the viewer measured,
+        // where 1200/2 would configure a window 25% smaller than its box and
+        // the application's layout a third too large once stretched back.
+        assert_eq!(logical_size(1200, 900, 1.5), (800, 600));
+        assert_eq!(logical_size(1000, 750, 1.25), (800, 600));
+        // Ratios at or below 1, and nonsense, pass the pixels through.
+        assert_eq!(logical_size(800, 600, 1.0), (800, 600));
+        assert_eq!(logical_size(800, 600, 0.0), (800, 600));
+        assert_eq!(logical_size(800, 600, f32::NAN), (800, 600));
+        // Never zero, whatever was asked.
+        assert_eq!(logical_size(0, 1, 3.0), (1, 1));
     }
 
     #[test]

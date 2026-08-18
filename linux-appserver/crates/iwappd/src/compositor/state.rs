@@ -256,10 +256,6 @@ impl AppState {
         true
     }
 
-    pub fn scale(&self) -> i32 {
-        self.scale
-    }
-
     pub fn window_id_for(&self, surface: &WlSurface) -> Option<u32> {
         self.windows
             .iter()

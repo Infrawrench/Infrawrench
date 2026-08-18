@@ -268,17 +268,23 @@ impl Backend for WaylandBackend {
         // *logical* pixels and the application multiplies by the output scale
         // to get its buffer, so the conversion happens here, once.
         //
-        // The scale is rounded up rather than to nearest: a 1.5× display asks
-        // for 2×, and the browser downsamples the extra pixels. Fractional
-        // scaling would save the difference in bandwidth but not add any
-        // detail, and it needs two more protocols on both ends.
+        // The output scale is the ratio rounded up rather than to nearest: a
+        // 1.5× display asks for 2×, and the browser downsamples the extra
+        // pixels. Fractional scaling would save the difference in bandwidth
+        // but not add any detail, and it needs two more protocols on both
+        // ends. The toplevel's size divides by the *fractional* ratio though —
+        // that recovers the CSS box the viewer measured. At a fractional ratio
+        // the application's buffer (logical × the whole scale) is therefore
+        // larger than the request, which is exactly what the viewer expects to
+        // downsample; dividing the size by the whole scale instead configured
+        // a window smaller than its box, and every frame was stretched back up
+        // — an application drawn too large everywhere.
         let buffer_scale = if scale.is_finite() && scale > 1.0 {
             (scale.ceil() as i32).min(MAX_SCALE)
         } else {
             1
         };
         self.data.state.set_scale(buffer_scale);
-        let buffer_scale = self.data.state.scale();
 
         let rec = self
             .data
@@ -287,13 +293,7 @@ impl Backend for WaylandBackend {
             .get(&window_id)
             .ok_or(BackendError::UnknownWindow(window_id))?;
         rec.toplevel.with_pending_state(|state| {
-            state.size = Some(
-                (
-                    (width.max(1).div_ceil(buffer_scale as u32)) as i32,
-                    (height.max(1).div_ceil(buffer_scale as u32)) as i32,
-                )
-                    .into(),
-            );
+            state.size = Some(crate::paint::logical_size(width, height, scale).into());
         });
         rec.toplevel.send_configure();
         Ok(())
