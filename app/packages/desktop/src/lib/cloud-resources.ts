@@ -163,8 +163,8 @@ export async function deleteCloudBackupPolicy(orgId: string, policyId: string): 
 }
 
 /**
- * The wallboard. Cloud only: three of its four sources (declared incidents,
- * query monitors, sync paging) are org state.
+ * The wallboard. Cloud only: two of its three sources (declared incidents and
+ * sync paging) are org state, and the third is run by the cloud poller.
  */
 export async function fetchCloudWallboard(orgId: string): Promise<WallboardResponse> {
   return invoke("cloud_wallboard", { orgId });

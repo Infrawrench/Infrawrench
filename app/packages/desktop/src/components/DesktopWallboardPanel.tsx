@@ -58,8 +58,8 @@ export function DesktopWallboardPanel() {
         <h1 className="text-xl font-semibold mb-1">{gt("Wallboard")}</h1>
         <T>
           <p className="text-sm text-on-surface-muted">
-            The wallboard is a cloud feature — incidents, query monitors and sync health all live in
-            the cloud. Sign in to an organization to put it on a screen.
+            The wallboard is a cloud feature — incidents, probes and sync health all live in the
+            cloud. Sign in to an organization to put it on a screen.
           </p>
         </T>
       </div>

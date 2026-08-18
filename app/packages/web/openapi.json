@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.29.0",
+    "version": "1.29.1",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -17184,7 +17184,7 @@
             "items": {
               "$ref": "#/components/schemas/WallboardFailureLine"
             },
-            "description": "Probes that are down, monitors breaching, accounts that stopped syncing."
+            "description": "Probes that are down, accounts that stopped syncing."
           },
           "failedSources": {
             "type": "array",
@@ -47565,7 +47565,7 @@
           "Wallboard"
         ],
         "summary": "Everything that is wrong right now, for a screen on a wall",
-        "description": "A different reading of data the product already holds, built on one rule: a wallboard may only show things that are true **right now** and that somebody would cross a room to look at. There is deliberately no history, no trend and no breakdown — those belong on the page you open when you do walk over.\n\nFour sources — declared incidents, synthetic probes, query monitors and account sync health — each guarded independently, because a television that goes blank because one query threw is showing nothing to a room that was relying on it.\n\nSession-authenticated on purpose: unlike the calendar feed or a public status page, this carries incident titles, probe names and account names, and a screen in an office is exactly what a visitor photographs. The machine driving the wall signs in once.",
+        "description": "A different reading of data the product already holds, built on one rule: a wallboard may only show things that are true **right now** and that somebody would cross a room to look at. There is deliberately no history, no trend and no breakdown — those belong on the page you open when you do walk over.\n\nThree sources — declared incidents, synthetic probes and account sync health — each guarded independently, because a television that goes blank because one query threw is showing nothing to a room that was relying on it.\n\nSession-authenticated on purpose: unlike the calendar feed or a public status page, this carries incident titles, probe names and account names, and a screen in an office is exactly what a visitor photographs. The machine driving the wall signs in once.",
         "parameters": [
           {
             "schema": {

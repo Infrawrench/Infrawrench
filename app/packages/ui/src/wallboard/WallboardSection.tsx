@@ -57,6 +57,21 @@ function statusHeadline(gt: ReturnType<typeof useGT>, status: WallboardStatus): 
 }
 
 /**
+ * Wide-screen columns per tile count.
+ *
+ * A wall is looked at from four metres, where an empty cell in the grid reads
+ * as a tile that failed to render rather than as spare room — so the columns
+ * follow the number of tiles the server actually sent. Written out in full
+ * because Tailwind reads class names literally.
+ */
+const TILE_COLUMNS: Record<number, string> = {
+  1: "xl:grid-cols-1",
+  2: "xl:grid-cols-2",
+  3: "xl:grid-cols-3",
+  4: "xl:grid-cols-4",
+};
+
+/**
  * The wallboard — one screen, read from across the room.
  *
  * Deliberately not a dashboard in kiosk mode. Type is large, the palette is
@@ -133,7 +148,9 @@ export function WallboardSection({
       )}
 
       {data !== null && panel === "overview" && (
-        <div className="grid flex-1 grid-cols-2 gap-6 xl:grid-cols-4">
+        <div
+          className={`grid flex-1 grid-cols-2 gap-6 ${TILE_COLUMNS[data.tiles.length] ?? "xl:grid-cols-4"}`}
+        >
           {data.tiles.map((tile) => (
             <div
               key={tile.id}

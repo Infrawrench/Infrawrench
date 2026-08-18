@@ -12,20 +12,20 @@ wrong_.
 **Wallboard** is a different reading of the same data. Open it from the
 sidebar, press full screen, and leave it.
 
-<insert [The Wallboard on the overview panel, dark background, four large tiles (Open incidents, Probes up, Monitors breaching, Accounts syncing) with numbers in very large type] here>
+<insert [The Wallboard on the overview panel, dark background, three large tiles (Open incidents, Probes up, Accounts syncing) with numbers in very large type] here>
 
 ## What is on it — and what is not
 
 One rule decides: **a wallboard may only show things that are true right now
 and that somebody would cross a room to look at.**
 
-So it shows four tiles and, when there is something to say, two more panels:
+So it shows three tiles and, when there is something to say, two more panels:
 
-| Panel           | Shows                                                                                                                         |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| **Overview**    | Open incidents · probes up · monitors breaching · accounts syncing                                                            |
-| **Incidents**   | Each open [incident](./incident-mode.md), its severity, and how long it has been running                                      |
-| **Not healthy** | [Probes](./synthetic-probes.md) that are down, [query monitors](./query-monitors.md) breaching, accounts that stopped syncing |
+| Panel           | Shows                                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------- |
+| **Overview**    | Open incidents · probes up · accounts syncing                                            |
+| **Incidents**   | Each open [incident](./incident-mode.md), its severity, and how long it has been running |
+| **Not healthy** | [Probes](./synthetic-probes.md) that are down, accounts that stopped syncing             |
 
 And that is all. No trends, no history, no cost breakdowns, no charts. Those
 are the things you look at when you _have_ walked over, and they belong on the

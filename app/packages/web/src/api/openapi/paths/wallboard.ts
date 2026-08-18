@@ -42,7 +42,7 @@ export function registerWallboardPaths(ctx: BuildContext) {
     incidents: z.array(WallboardIncidentLine).describe("Unresolved incidents, newest first."),
     failures: z
       .array(WallboardFailureLine)
-      .describe("Probes that are down, monitors breaching, accounts that stopped syncing."),
+      .describe("Probes that are down, accounts that stopped syncing."),
     failedSources: z
       .array(z.string())
       .describe(
@@ -63,9 +63,9 @@ export function registerWallboardPaths(ctx: BuildContext) {
       "only show things that are true **right now** and that somebody would cross a room to look " +
       "at. There is deliberately no history, no trend and no breakdown — those belong on the page " +
       "you open when you do walk over.\n\n" +
-      "Four sources — declared incidents, synthetic probes, query monitors and account sync " +
-      "health — each guarded independently, because a television that goes blank because one " +
-      "query threw is showing nothing to a room that was relying on it.\n\n" +
+      "Three sources — declared incidents, synthetic probes and account sync health — each " +
+      "guarded independently, because a television that goes blank because one query threw is " +
+      "showing nothing to a room that was relying on it.\n\n" +
       "Session-authenticated on purpose: unlike the calendar feed or a public status page, this " +
       "carries incident titles, probe names and account names, and a screen in an office is " +
       "exactly what a visitor photographs. The machine driving the wall signs in once.",
