@@ -145,10 +145,22 @@ describe("keys that are not characters", () => {
 });
 
 describe("holding and losing focus", () => {
-  it("ignores a repeat of a key already down", () => {
+  it("re-taps a repeat of a key already down", () => {
+    // The host does no repeating of its own — over a laggy link a hold-timer
+    // fabricates characters — so the browser's auto-repeat must arrive as
+    // discrete taps.
     const keys = new KeyTranslator();
     keys.press(down("KeyA", "a"), 0);
-    expect(keys.press(down("KeyA", "a"), 1)).toEqual([]);
+    expect(shape(keys.press(down("KeyA", "a"), 1))).toEqual([`-${KEY_A}`, `+${KEY_A}`]);
+    expect(keys.held).toEqual([KEY_A]);
+  });
+
+  it("re-taps with the character the repeat carries, not the one it started with", () => {
+    // Shift pressed mid-hold changes what the browser reports; the re-tap has
+    // to follow it, releasing the old key and synthesising for the new one.
+    const keys = new KeyTranslator();
+    keys.press(down("KeyA", "a"), 0);
+    expect(shape(keys.press(down("KeyA", "A", true), 1))).toEqual([`-${KEY_A}`, `+${KEY_A}`]);
   });
 
   it("releases everything still held", () => {

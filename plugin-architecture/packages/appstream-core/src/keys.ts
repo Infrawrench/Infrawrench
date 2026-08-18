@@ -130,9 +130,21 @@ export class KeyTranslator {
   }
 
   press(event: KeyLike, timeMs: number): InputEvent[] {
-    // A key that is already down is the browser's auto-repeat, or a keyup we
-    // never saw. Either way the host already believes it is held.
-    if (this.#sent.has(event.code)) return [];
+    // A key that is already down is the browser's auto-repeat (or a keyup we
+    // never saw, which is indistinguishable). The host does no repeating of
+    // its own — a hold-timer over a laggy link reads a slow release frame as
+    // a hold and types characters nobody pressed — so each repeat travels as
+    // a fresh release-and-press of whatever the key went out as. Re-entering
+    // rather than replaying keeps the character honest: the user may have
+    // pressed or released Shift mid-hold.
+    const held = this.#sent.get(event.code);
+    if (held !== undefined) {
+      this.#sent.delete(event.code);
+      return [
+        { kind: "key", timeMs, keycode: held, state: ButtonState.Released },
+        ...this.press(event, timeMs),
+      ];
+    }
 
     const position = evdevFromCode(event.code);
     const character = printable(event.key) ? event.key : undefined;
@@ -201,7 +213,8 @@ export class KeyTranslator {
    * Let go of everything.
    *
    * A key held when the window loses focus never gets its release — that goes
-   * to whatever has focus now — and the application would repeat it forever.
+   * to whatever has focus now — and the application is left believing the key
+   * is down, which for a modifier turns every later click into a chord.
    */
   releaseAll(timeMs: number): InputEvent[] {
     const events: InputEvent[] = [...this.#sent.values()].map((keycode) => ({
