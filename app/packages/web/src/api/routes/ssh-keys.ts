@@ -4,6 +4,8 @@ import crypto from "node:crypto";
 import {
   computeSshPublicKeyFingerprint,
   generateEd25519OpenSshKeyPair,
+  isSshSignAlgorithm,
+  signSshData,
 } from "@infrawrench/ssh-tunnel-core";
 import { db } from "../../db/client";
 import { sshKeys, users } from "../../db/schema";
@@ -11,6 +13,7 @@ import { encrypt, decrypt, buildAad } from "../../services/encryption";
 import { validateSshPublicKey } from "../../services/ssh-keys";
 import { requirePermission } from "../../auth/permissions";
 import { hasPermission } from "@infrawrench/server-core/permissions";
+import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -159,6 +162,100 @@ app.post("/import", async (c) => {
     publicKey,
     isImported: true,
   });
+});
+
+// A userauth blob is a session id plus the request fields — a few hundred
+// bytes. The cap only exists so the endpoint cannot be fed arbitrary payloads.
+const MAX_SIGN_DATA_BYTES = 16 * 1024;
+
+// The cloud acting as an SSH agent: sign one publickey-auth challenge with an
+// org key whose private half never leaves the server. The desktop app uses
+// this to open its *own* SSH connection with a cloud key (Linux apps stream
+// directly from the host instead of hairpinning through the cloud); the key
+// material moves nothing, only signatures do.
+//
+// Deliberately gated on `resources:execute`, not `ssh-keys:read` — producing
+// an auth signature is the same authority as opening a shell, exactly as the
+// `/api/ws` and `/api/apps` proxies are gated. Every call is audited.
+app.post("/:id/sign", async (c) => {
+  requirePermission(c, "resources:execute");
+  const organizationId = c.get("organizationId");
+  const { userId } = c.get("session");
+  const id = c.req.param("id");
+  const { data, algorithm, context } = await c.req.json<{
+    data?: string;
+    algorithm?: string;
+    context?: { host?: string; username?: string };
+  }>();
+
+  const auditBase = {
+    organizationId,
+    userId,
+    entityType: "ssh-key",
+    entityId: id,
+  };
+  const auditMeta = {
+    sshKeyId: id,
+    source: "remote-agent",
+    ...(typeof context?.host === "string" ? { sshHost: context.host.slice(0, 256) } : {}),
+    ...(typeof context?.username === "string"
+      ? { sshUsername: context.username.slice(0, 256) }
+      : {}),
+  };
+  const refuse = (status: 400 | 404, error: string, failureReason: string) => {
+    void logAudit({
+      ...auditBase,
+      action: "ssh.agent.sign_failed",
+      metadata: { ...auditMeta, failureReason },
+    });
+    return c.json({ error }, status);
+  };
+
+  if (!data || typeof data !== "string") {
+    return refuse(400, "data (base64) is required", "missing_data");
+  }
+  if (!algorithm || !isSshSignAlgorithm(algorithm)) {
+    return refuse(400, "algorithm must be an SSH signature format identifier", "bad_algorithm");
+  }
+  const payload = Buffer.from(data, "base64");
+  if (payload.length === 0 || payload.length > MAX_SIGN_DATA_BYTES) {
+    return refuse(400, "data must decode to between 1 byte and 16 KiB", "bad_data_size");
+  }
+
+  const [key] = await db
+    .select()
+    .from(sshKeys)
+    .where(and(eq(sshKeys.id, id), eq(sshKeys.organizationId, organizationId)));
+  if (!key) return refuse(404, "SSH key not found", "not_found");
+  if (!key.encryptedPrivateKey || !key.privateKeyIv) {
+    return refuse(
+      400,
+      "This key was imported — its private half is not held by Infrawrench Cloud, so the cloud cannot sign with it",
+      "no_private_key",
+    );
+  }
+
+  const privateKey = await decrypt(
+    key.encryptedPrivateKey,
+    key.privateKeyIv,
+    buildAad("sshKey", key.id, "privateKey"),
+  );
+
+  let signature: Buffer;
+  try {
+    signature = signSshData(privateKey, payload, algorithm);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Signing failed";
+    return refuse(400, message, `sign_error:${message}`);
+  }
+
+  void logAudit({
+    ...auditBase,
+    action: "ssh.agent.sign",
+    metadata: { ...auditMeta, keyType: key.keyType, signatureFormat: algorithm },
+  });
+
+  return c.json({ signature: signature.toString("base64"), algorithm });
 });
 
 // Owners may delete their own keys; team:role:write may delete any key in the

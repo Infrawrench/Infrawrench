@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.29.1",
+    "version": "1.30.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -26114,6 +26114,65 @@
         "required": [
           "name",
           "publicKey"
+        ],
+        "additionalProperties": false
+      },
+      "SshSignAlgorithm": {
+        "type": "string",
+        "enum": [
+          "ssh-ed25519",
+          "ssh-rsa",
+          "rsa-sha2-256",
+          "rsa-sha2-512",
+          "ecdsa-sha2-nistp256",
+          "ecdsa-sha2-nistp384",
+          "ecdsa-sha2-nistp521"
+        ]
+      },
+      "SignSshKeyResponse": {
+        "type": "object",
+        "properties": {
+          "signature": {
+            "type": "string",
+            "description": "Raw signature bytes, base64-encoded — Ed25519/RSA as-is, ECDSA in DER as node produces it."
+          },
+          "algorithm": {
+            "$ref": "#/components/schemas/SshSignAlgorithm"
+          }
+        },
+        "required": [
+          "signature",
+          "algorithm"
+        ],
+        "additionalProperties": false
+      },
+      "SignSshKeyRequest": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "string",
+            "description": "The exact bytes SSH wants signed (a publickey-auth challenge), base64-encoded."
+          },
+          "algorithm": {
+            "$ref": "#/components/schemas/SshSignAlgorithm"
+          },
+          "context": {
+            "type": "object",
+            "properties": {
+              "host": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "description": "Recorded in the audit log entry for this signature."
+          }
+        },
+        "required": [
+          "data",
+          "algorithm"
         ],
         "additionalProperties": false
       },
@@ -55465,6 +55524,81 @@
         "operationId": "postOrgOrgIdSshKeysImport",
         "x-required-permission": "ssh-keys:write",
         "description": "_Requires permission: `ssh-keys:write`._"
+      }
+    },
+    "/api/org/{orgId}/ssh-keys/{id}/sign": {
+      "post": {
+        "tags": [
+          "SSH keys"
+        ],
+        "summary": "Sign an SSH auth challenge with a cloud-held key (the cloud as an SSH agent)",
+        "description": "Signs one publickey-authentication challenge with a server-generated org key whose private half never leaves Infrawrench Cloud. Requires the `resources:execute` permission — producing an auth signature is the same authority as opening a shell. Imported keys cannot sign (only their public half is stored). Every call is audited.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignSshKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signature",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignSshKeyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdSshKeysIdSign"
       }
     },
     "/api/org/{orgId}/ssh-keys/{id}": {

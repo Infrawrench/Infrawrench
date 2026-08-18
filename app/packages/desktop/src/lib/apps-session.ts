@@ -33,6 +33,13 @@ export interface AppsConnectConfig {
   port: number;
   username: string;
   privateKey: string;
+  /**
+   * Set when `privateKey` is `CLOUD_KEY_SENTINEL`: the org key the main
+   * process authenticates with through the cloud signing agent. The private
+   * half never reaches this machine; the app stream still runs directly
+   * between this machine and the host.
+   */
+  cloudKey?: { orgId: string; sshKeyId: string };
   agentForward?: boolean;
   jumpHops?: Array<{ host: string; port: number; username: string; privateKey: string }>;
 }

@@ -14,6 +14,8 @@ Open a Linux host in Infrawrench and click **Apps**, next to SSH and SFTP. Choos
 
 The launcher reads the host's own desktop entries — the same list its own menu would show — so what you see is what is installed, with the names and icons that machine uses.
 
+[Cloud-held keys](../team-and-billing/ssh-keys.md) work here on both apps, and differently on each. In the browser, the cloud holds the key and opens the connection for you. On the desktop, the connection runs directly from your machine to the host — the cloud acts only as an SSH agent, signing the authentication handshake with the key it holds. The private key never leaves the cloud, the pixels never pass through it, and each signature is written to the [audit log](../team-and-billing/audit-log.md). Using a cloud key on the desktop needs an active cloud sign-in; imported keys cannot be used this way, because the cloud stores only their public half.
+
 ## What runs where
 
 Infrawrench brings the display; the host brings the applications.

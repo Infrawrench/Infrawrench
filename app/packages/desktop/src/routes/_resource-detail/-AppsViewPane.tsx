@@ -1,9 +1,11 @@
 import { useMemo } from "react";
 import { T } from "gt-react";
+import { useUIStore } from "@infrawrench/ui";
 
 import { AppLauncherHostPanel } from "../../components/AppsPanels";
 import { SshQuickConnectPanel } from "../../components/SshQuickConnectPanel";
 import type { AppsConnectConfig } from "../../lib/apps-session";
+import { CLOUD_KEY_SENTINEL } from "../../lib/ssh-agent";
 import type { QuickSshConnection, SshConfig } from "./-types";
 
 /**
@@ -38,19 +40,30 @@ export function AppsViewPane({
   quickSshConnection,
   onConnect,
 }: AppsViewPaneProps) {
+  const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const config = useMemo<AppsConnectConfig | null>(() => {
     const host = sshHost ?? sshConfig?.host ?? null;
     if (!host || !quickSshConnection) return null;
-    // A cloud-held key never leaves the server, so it cannot be used from the
-    // renderer's own SSH connection; the cloud path handles those instead.
-    if (quickSshConnection.keySource.type === "cloud") return null;
+    // A cloud-held key never leaves the server; the main process authenticates
+    // through the cloud signing agent, so the app stream itself still runs
+    // directly between this machine and the host.
+    if (quickSshConnection.keySource.type === "cloud") {
+      if (!activeCloudOrgId) return null;
+      return {
+        host,
+        port: sshConfig?.port ?? 22,
+        username: quickSshConnection.username,
+        privateKey: CLOUD_KEY_SENTINEL,
+        cloudKey: { orgId: activeCloudOrgId, sshKeyId: quickSshConnection.keySource.sshKeyId },
+      };
+    }
     return {
       host,
       port: sshConfig?.port ?? 22,
       username: quickSshConnection.username,
       privateKey: quickSshConnection.privateKey,
     };
-  }, [sshHost, sshConfig, quickSshConnection]);
+  }, [sshHost, sshConfig, quickSshConnection, activeCloudOrgId]);
 
   if (!sshHost && !sshConfig?.host) {
     return (
@@ -71,8 +84,8 @@ export function AppsViewPane({
         {quickSshConnection?.keySource.type === "cloud" && (
           <p className="mb-3 text-sm text-on-surface-muted">
             <T>
-              This key is held in Infrawrench Cloud, so its private half never reaches this machine.
-              Applications need a key stored locally — choose another below.
+              This key is held in Infrawrench Cloud, and using it needs an active cloud sign-in.
+              Sign in, or choose a key stored locally below.
             </T>
           </p>
         )}
