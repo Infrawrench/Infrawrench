@@ -96,4 +96,9 @@
 // whose migration had not shipped, so every wall named it as unreadable and
 // sat amber. One fewer tile in `tiles`, which is an unenumerated list, and
 // prose corrections either side of it; no route, shape or field changed.
-export const API_VERSION = "1.29.1";
+// 1.30.0: the cloud as an SSH agent — POST `/ssh-keys/{id}/sign` produces one
+// publickey-auth signature with a server-generated org key whose private half
+// never leaves the cloud. What lets the desktop app stream Linux applications
+// directly from a host using a cloud key. One new route, two new schemas and
+// the SshSignAlgorithm enum. Additive.
+export const API_VERSION = "1.30.0";

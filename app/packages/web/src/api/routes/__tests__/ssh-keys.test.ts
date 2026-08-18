@@ -23,6 +23,11 @@ vi.mock("@infrawrench/server-core/permissions", () => ({
   hasPermission: (...a: unknown[]) => mockHasPermission(...a),
 }));
 
+const mockLogAudit = vi.fn();
+vi.mock("@/services/audit", () => ({
+  logAudit: (...a: unknown[]) => mockLogAudit(...a),
+}));
+
 const { sshKeyRoutes } = await import("@/api/routes/ssh-keys");
 const buildApp = () => buildTestApp(sshKeyRoutes);
 
@@ -170,6 +175,138 @@ describe("SSH key routes", () => {
       const res = await buildApp().request("/k1", { method: "DELETE" });
       expect(res.status).toBe(200);
       expect(mockHasPermission).toHaveBeenCalledWith(["*"], "team:role:write");
+    });
+  });
+
+  describe("POST /:id/sign — the cloud as an SSH agent", () => {
+    const keyRow = (overrides: Record<string, unknown> = {}) => ({
+      id: "k1",
+      organizationId: "org-1",
+      name: "cloud-key",
+      keyType: "ssh-ed25519",
+      isImported: false,
+      encryptedPrivateKey: "enc-priv",
+      privateKeyIv: "iv",
+      ...overrides,
+    });
+
+    function mockKeyLookup(rows: unknown[]): void {
+      const where = vi.fn().mockResolvedValue(rows);
+      const from = vi.fn().mockReturnValue({ where });
+      mockSelect.mockReturnValue({ from });
+    }
+
+    function signRequest(body: Record<string, unknown>) {
+      return buildApp().request("/k1/sign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    }
+
+    it("signs a challenge with the decrypted key and audits it", async () => {
+      const { generateEd25519OpenSshKeyPair } = await import("@infrawrench/ssh-tunnel-core");
+      const { utils } = await import("ssh2");
+      const pair = await generateEd25519OpenSshKeyPair("cloud-key");
+      const { decrypt } = await import("@/services/encryption");
+      vi.mocked(decrypt).mockResolvedValueOnce(pair.privateKey);
+      mockKeyLookup([keyRow()]);
+
+      const data = Buffer.from("userauth-challenge");
+      const res = await signRequest({
+        data: data.toString("base64"),
+        algorithm: "ssh-ed25519",
+        context: { host: "vm.example.com", username: "root" },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.algorithm).toBe("ssh-ed25519");
+
+      const pub = utils.parseKey(pair.publicKey);
+      if (pub instanceof Error || Array.isArray(pub)) throw new Error("bad fixture");
+      expect(pub.verify(data, Buffer.from(body.signature, "base64"))).toBe(true);
+
+      expect(mockLogAudit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "ssh.agent.sign",
+          entityType: "ssh-key",
+          entityId: "k1",
+          metadata: expect.objectContaining({
+            sshKeyId: "k1",
+            source: "remote-agent",
+            sshHost: "vm.example.com",
+            sshUsername: "root",
+            signatureFormat: "ssh-ed25519",
+          }),
+        }),
+      );
+    });
+
+    it("refuses an imported key (no private half) with 400 and a failure audit", async () => {
+      mockKeyLookup([keyRow({ isImported: true, encryptedPrivateKey: null, privateKeyIv: null })]);
+      const res = await signRequest({
+        data: Buffer.from("x").toString("base64"),
+        algorithm: "ssh-ed25519",
+      });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(/imported/);
+      expect(mockLogAudit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "ssh.agent.sign_failed",
+          metadata: expect.objectContaining({ failureReason: "no_private_key" }),
+        }),
+      );
+    });
+
+    it("404s for a key outside the org", async () => {
+      mockKeyLookup([]);
+      const res = await signRequest({
+        data: Buffer.from("x").toString("base64"),
+        algorithm: "ssh-ed25519",
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it("rejects an unknown algorithm", async () => {
+      const res = await signRequest({
+        data: Buffer.from("x").toString("base64"),
+        algorithm: "ssh-dss",
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects missing and oversized data", async () => {
+      expect((await signRequest({ algorithm: "ssh-ed25519" })).status).toBe(400);
+      const huge = Buffer.alloc(17 * 1024).toString("base64");
+      expect((await signRequest({ data: huge, algorithm: "ssh-ed25519" })).status).toBe(400);
+    });
+
+    it("400s when the key cannot produce the requested algorithm", async () => {
+      const { generateEd25519OpenSshKeyPair } = await import("@infrawrench/ssh-tunnel-core");
+      const pair = await generateEd25519OpenSshKeyPair("cloud-key");
+      const { decrypt } = await import("@/services/encryption");
+      vi.mocked(decrypt).mockResolvedValueOnce(pair.privateKey);
+      mockKeyLookup([keyRow()]);
+
+      const res = await signRequest({
+        data: Buffer.from("x").toString("base64"),
+        algorithm: "rsa-sha2-256",
+      });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(/cannot produce/);
+    });
+
+    it("is gated on resources:execute, not ssh-keys:read", async () => {
+      const app = buildTestApp(sshKeyRoutes, ["ssh-keys:read", "ssh-keys:write"]);
+      const res = await app.request("/k1/sign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: Buffer.from("x").toString("base64"),
+          algorithm: "ssh-ed25519",
+        }),
+      });
+      expect(res.status).toBe(403);
     });
   });
 });

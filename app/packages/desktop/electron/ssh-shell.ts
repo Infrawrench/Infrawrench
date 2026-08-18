@@ -4,9 +4,10 @@ import { Client as SshClient } from "ssh2";
 import type { ClientChannel } from "ssh2";
 import type { WebContents } from "electron";
 import { forwardOutHop } from "@infrawrench/plugin-ssh";
-import { ONEPASSWORD_SENTINEL, PAGEANT_SENTINEL } from "./ssh-agent";
+import { CLOUD_KEY_SENTINEL, ONEPASSWORD_SENTINEL, PAGEANT_SENTINEL } from "./ssh-agent";
 import { get1PasswordAgentPath } from "./onepassword-agent";
 import { buildInProcessAgent } from "./ssh-shell-agent";
+import { buildCloudKeyAgent, type CloudKeyRef } from "./cloud-key-agent";
 import {
   ensureHostKeyCacheLoaded,
   verifyOrPinHostKeyInteractive,
@@ -30,6 +31,13 @@ export interface SshShellConfig {
   rows: number;
   agentForward?: boolean;
   /**
+   * Set when `privateKey` is `CLOUD_KEY_SENTINEL`: the org key to authenticate
+   * with. Its private half stays in Infrawrench Cloud — auth goes through a
+   * remote signing agent, so only signatures cross the cloud while the
+   * connection itself stays between this machine and the host.
+   */
+  cloudKey?: CloudKeyRef;
+  /**
    * Optional intermediate jump hops (outermost-first). When present, the host
    * dials each in turn — chaining `forwardOut` → `sock` — and then dials the
    * `host`/`port`/`username`/`privateKey` target through the last hop.
@@ -51,7 +59,8 @@ const shells = new Map<string, ShellRecord>();
  * or through an existing chain via `sock`. Returns the ready client. Each hop
  * gets its own TOFU host-key check.
  */
-type ForwardAgent = ReturnType<typeof buildInProcessAgent> | string | null;
+type ForwardAgent =
+  ReturnType<typeof buildInProcessAgent> | ReturnType<typeof buildCloudKeyAgent> | string | null;
 
 function connectOneHop(opts: {
   host: string;
@@ -65,7 +74,9 @@ function connectOneHop(opts: {
   const client = new SshClient();
   let hostKeyError: HostKeyMismatchError | null = null;
   const useAgentForAuth =
-    opts.privateKey === PAGEANT_SENTINEL || opts.privateKey === ONEPASSWORD_SENTINEL;
+    opts.privateKey === PAGEANT_SENTINEL ||
+    opts.privateKey === ONEPASSWORD_SENTINEL ||
+    opts.privateKey === CLOUD_KEY_SENTINEL;
   return new Promise((resolve, reject) => {
     client.once("ready", () => resolve(client));
     client.once("error", (err) => {
@@ -126,7 +137,18 @@ export async function connectSshChain(
   // happens via our in-process agent. Agent forwarding only applies to the
   // final hop — intermediate hops never see the agent.
   let connectAgent: ForwardAgent = null;
-  if (config.privateKey === PAGEANT_SENTINEL) {
+  if (config.privateKey === CLOUD_KEY_SENTINEL) {
+    if (!config.cloudKey) {
+      throw new Error("A cloud SSH key was selected but the config does not say which one.");
+    }
+    connectAgent = buildCloudKeyAgent(config.cloudKey, {
+      host: config.host,
+      username: config.username,
+    });
+    console.log(
+      `[ssh-shell] auth via Infrawrench Cloud signing agent (key ${config.cloudKey.sshKeyId})`,
+    );
+  } else if (config.privateKey === PAGEANT_SENTINEL) {
     connectAgent = "pageant";
   } else if (config.privateKey === ONEPASSWORD_SENTINEL) {
     const sock = get1PasswordAgentPath();

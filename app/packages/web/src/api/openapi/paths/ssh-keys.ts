@@ -53,6 +53,39 @@ const ImportedKey = strict({
   isImported: z.literal(true),
 }).openapi("ImportedSshKey");
 
+const SshSignAlgorithm = z
+  .enum([
+    "ssh-ed25519",
+    "ssh-rsa",
+    "rsa-sha2-256",
+    "rsa-sha2-512",
+    "ecdsa-sha2-nistp256",
+    "ecdsa-sha2-nistp384",
+    "ecdsa-sha2-nistp521",
+  ])
+  .openapi("SshSignAlgorithm");
+
+const SignRequest = strict({
+  data: z.string().openapi({
+    description: "The exact bytes SSH wants signed (a publickey-auth challenge), base64-encoded.",
+  }),
+  algorithm: SshSignAlgorithm,
+  context: strict({
+    host: z.string().optional(),
+    username: z.string().optional(),
+  })
+    .optional()
+    .openapi({ description: "Recorded in the audit log entry for this signature." }),
+}).openapi("SignSshKeyRequest");
+
+const SignResponse = strict({
+  signature: z.string().openapi({
+    description:
+      "Raw signature bytes, base64-encoded — Ed25519/RSA as-is, ECDSA in DER as node produces it.",
+  }),
+  algorithm: SshSignAlgorithm,
+}).openapi("SignSshKeyResponse");
+
 export function registerSshKeyPaths(ctx: BuildContext) {
   const { registry } = ctx;
 
@@ -97,6 +130,30 @@ export function registerSshKeyPaths(ctx: BuildContext) {
     responses: {
       200: { description: "Imported", content: { "application/json": { schema: ImportedKey } } },
       400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/ssh-keys/{id}/sign",
+    tags: ["SSH keys"],
+    summary: "Sign an SSH auth challenge with a cloud-held key (the cloud as an SSH agent)",
+    description:
+      "Signs one publickey-authentication challenge with a server-generated org key whose " +
+      "private half never leaves Infrawrench Cloud. Requires the `resources:execute` " +
+      "permission — producing an auth signature is the same authority as opening a shell. " +
+      "Imported keys cannot sign (only their public half is stored). Every call is audited.",
+    request: {
+      params: OrgIdParam.extend({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) }),
+      body: { content: { "application/json": { schema: SignRequest } }, required: true },
+    },
+    responses: {
+      200: {
+        description: "Signature",
+        content: { "application/json": { schema: SignResponse } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
     },
   });
 

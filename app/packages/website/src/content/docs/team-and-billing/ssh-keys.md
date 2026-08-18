@@ -31,8 +31,8 @@ There is no field for a private key and none for a passphrase. Importing records
 
 That difference decides where a key works:
 
-- A **generated** key is stored encrypted server-side, so the cloud can use it to open connections for you — web terminals, SFTP, tunnels, and agent-driven SSH all work.
-- An **imported** key has no private half on the server, so the cloud cannot authenticate with it. Picking one for a web SSH session or tunnel fails with _"SSH key has no private key data"_. It is still the right thing to import when you connect from the desktop app, where the private key is on your own disk, or when you only need the public half installed on a new VM.
+- A **generated** key is stored encrypted server-side, so the cloud can use it to open connections for you — web terminals, SFTP, tunnels, and agent-driven SSH all work. The desktop app can also use one for [Linux applications](../features/linux-apps.md) without the private half ever reaching your machine: the cloud acts as an SSH agent and signs the authentication handshake, while the connection itself runs directly from your machine to the host. Each signature is an audited operation (`ssh.agent.sign` in the [audit log](./audit-log.md)).
+- An **imported** key has no private half on the server, so the cloud cannot authenticate — or sign — with it. Picking one for a web SSH session or tunnel fails with _"SSH key has no private key data"_. It is still the right thing to import when you connect from the desktop app, where the private key is on your own disk, or when you only need the public half installed on a new VM.
 
 Either way the public half is shared with everyone in the organization.
 

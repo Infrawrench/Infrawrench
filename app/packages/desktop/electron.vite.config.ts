@@ -126,6 +126,9 @@ export default defineConfig(({ command }) => ({
           // one throws "Cannot find module" the moment the app starts — with
           // no window, just a lit dock icon.
           "@infrawrench/appstream-host",
+          // The shared SSH agents and tunnel core, imported by `ssh-shell-agent.ts`,
+          // `ssh-tunnel.ts`, `ssh-host-keys.ts` and `cloud-key-agent.ts`.
+          "@infrawrench/ssh-tunnel-core",
         ],
       }),
       copyQuickJsWasm(),

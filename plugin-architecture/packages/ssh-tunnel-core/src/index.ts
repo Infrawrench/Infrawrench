@@ -11,6 +11,17 @@ export {
   type SignOutcome,
 } from "./in-process-agent.js";
 
+export { RemoteKeyAgent, buildRemoteKeyAgent, type RemoteKeyBackend } from "./remote-key-agent.js";
+
+export {
+  SSH_SIGN_ALGORITHMS,
+  isSshSignAlgorithm,
+  keyTypeForAlgorithm,
+  signatureAlgorithmFor,
+  signSshData,
+  type SshSignAlgorithm,
+} from "./ssh-signing.js";
+
 export {
   sshWireString,
   buildOpenSshPrivateKey,
