@@ -286,6 +286,12 @@ impl Backend for WaylandBackend {
         };
         self.data.state.set_scale(buffer_scale);
 
+        let logical = crate::paint::logical_size(width, height, scale);
+        // Before the window is asked to take this size, make sure the desktop
+        // is big enough to hold it — a toolkit clamps a window to the output
+        // it can see, and a viewer tab is under no obligation to fit ours.
+        self.data.state.ensure_desktop_fits(logical);
+
         let rec = self
             .data
             .state
@@ -293,7 +299,7 @@ impl Backend for WaylandBackend {
             .get(&window_id)
             .ok_or(BackendError::UnknownWindow(window_id))?;
         rec.toplevel.with_pending_state(|state| {
-            state.size = Some(crate::paint::logical_size(width, height, scale).into());
+            state.size = Some(logical.into());
         });
         rec.toplevel.send_configure();
         Ok(())
