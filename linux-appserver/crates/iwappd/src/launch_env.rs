@@ -33,6 +33,12 @@ const STRIPPED: &[&str] = &[
     "PULSE_COOKIE",
     "PULSE_RUNTIME_PATH",
     "PIPEWIRE_REMOTE",
+    // Accessibility is re-pointed at our own registry by `apply_a11y` when the
+    // session bus allows it; an inherited address would send the tree to a
+    // desktop session's registry instead, and NO_AT_BRIDGE=1 (set by some
+    // distros' profile scripts) would keep the bridge from loading at all.
+    "AT_SPI_BUS_ADDRESS",
+    "NO_AT_BRIDGE",
 ];
 
 /// Build the environment for a launched application.
@@ -124,6 +130,34 @@ pub fn apply_session_bus(env: &mut BTreeMap<String, String>, bus: &SessionBus) -
             Vec::new()
         }
     }
+}
+
+/// Turn the toolkits' AT-SPI bridges on and point them at the session bus,
+/// where our accessibility registry lives. Returns whether it did — which is
+/// what [`iw_proto::ServerCaps::a11y`] reports to the client.
+///
+/// Separate from [`launch_env`] for the same reason as the session bus: only
+/// the caller knows what was resolved. A per-application bus
+/// (`dbus-run-session`) is deliberately left alone — the tree would live on a
+/// private bus nobody else can dial — and so is a host with no bus at all.
+pub fn apply_a11y(env: &mut BTreeMap<String, String>, bus: &SessionBus) -> bool {
+    let SessionBus::Address(address) = bus else {
+        return false;
+    };
+    // Named explicitly: without it toolkits ask `org.a11y.Bus` for an address,
+    // and that daemon is part of a desktop session a server host does not run.
+    env.insert("AT_SPI_BUS_ADDRESS".into(), address.clone());
+    // GTK3 loads its bridge as a module; appended rather than assigned so a
+    // host that sets its own modules keeps them.
+    let modules = match env.get("GTK_MODULES") {
+        Some(existing) if !existing.is_empty() => format!("{existing}:gail:atk-bridge"),
+        _ => "gail:atk-bridge".into(),
+    };
+    env.insert("GTK_MODULES".into(), modules);
+    // GTK4 and Firefox have the bridge built in but gate it; Qt gates its own.
+    env.insert("QT_LINUX_ACCESSIBILITY_ALWAYS_ON".into(), "1".into());
+    env.insert("GNOME_ACCESSIBILITY".into(), "1".into());
+    true
 }
 
 /// Find a usable `XDG_RUNTIME_DIR`, creating a private one when the host has
@@ -358,6 +392,45 @@ mod tests {
         let prefix = apply_session_bus(&mut env, &SessionBus::Address("unix:path=/run/bus".into()));
         assert!(prefix.is_empty());
         assert_eq!(env["DBUS_SESSION_BUS_ADDRESS"], "unix:path=/run/bus");
+    }
+
+    #[test]
+    fn a11y_is_wired_up_only_when_the_bus_has_an_address() {
+        let mut env = BTreeMap::new();
+        assert!(super::apply_a11y(
+            &mut env,
+            &SessionBus::Address("unix:path=/run/bus".into())
+        ));
+        assert_eq!(env["AT_SPI_BUS_ADDRESS"], "unix:path=/run/bus");
+        assert_eq!(env["GTK_MODULES"], "gail:atk-bridge");
+        assert_eq!(env["QT_LINUX_ACCESSIBILITY_ALWAYS_ON"], "1");
+
+        // A private per-app bus would put the tree where nobody can dial it.
+        let mut env = BTreeMap::new();
+        assert!(!super::apply_a11y(&mut env, &SessionBus::RunSession));
+        assert!(!env.contains_key("AT_SPI_BUS_ADDRESS"));
+        assert!(!super::apply_a11y(&mut env, &SessionBus::None));
+    }
+
+    #[test]
+    fn a11y_keeps_a_hosts_own_gtk_modules() {
+        let mut env = env_with(&[("GTK_MODULES", "canberra-gtk-module")]);
+        super::apply_a11y(&mut env, &SessionBus::Address("unix:path=/b".into()));
+        assert_eq!(env["GTK_MODULES"], "canberra-gtk-module:gail:atk-bridge");
+    }
+
+    #[test]
+    fn a_stale_at_spi_address_is_stripped() {
+        let env = launch_env(
+            &env_with(&[
+                ("AT_SPI_BUS_ADDRESS", "unix:path=/gone"),
+                ("NO_AT_BRIDGE", "1"),
+            ]),
+            Path::new("/run/user/1000"),
+            "wayland-iw-a",
+        );
+        assert!(!env.contains_key("AT_SPI_BUS_ADDRESS"));
+        assert!(!env.contains_key("NO_AT_BRIDGE"));
     }
 
     use super::*;

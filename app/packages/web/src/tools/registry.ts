@@ -22,6 +22,7 @@ import { workflowTools } from "./workflows";
 import { deploymentTools } from "./deployments";
 import { sshKeyTools } from "./ssh-keys";
 import { sshHostKeyTools } from "./ssh-host-keys";
+import { linuxAppTools } from "./linux-apps";
 import type { ToolDefinition } from "./types";
 
 let cached: ToolDefinition[] | null = null;
@@ -44,6 +45,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...deploymentTools(),
     ...sshKeyTools(),
     ...sshHostKeyTools(),
+    ...linuxAppTools(),
     ...(await perPluginCreateTools()),
   ];
   cached = tools;

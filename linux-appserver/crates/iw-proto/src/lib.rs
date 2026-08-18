@@ -26,8 +26,8 @@ pub use input::{
     v120_from_axis,
 };
 pub use messages::{
-    AppEntry, ClientCaps, ClientMessage, ClipboardBlob, CursorImage, ErrorCode, PixelFormat,
-    ServerCaps, ServerMessage, WindowCloseReason,
+    A11yBounds, A11yNode, AppEntry, ClientCaps, ClientMessage, ClipboardBlob, CursorImage,
+    ErrorCode, PixelFormat, ServerCaps, ServerMessage, WindowCloseReason,
 };
 
 /// Protocol version. Bumped whenever a frame layout or a required field

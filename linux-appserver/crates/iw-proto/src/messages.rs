@@ -73,6 +73,11 @@ pub struct ServerCaps {
     /// A `wl_shm` client can start at all: we found or created an
     /// `XDG_RUNTIME_DIR` we can put a socket in.
     pub runtime_dir: bool,
+    /// The host can answer [`ClientMessage::A11yTree`]: there is a session bus
+    /// with a known address for the AT-SPI registry to live on. Defaulted
+    /// **false** so an old server's welcome reads as "don't ask".
+    #[serde(default)]
+    pub a11y: bool,
 }
 
 /// Byte order of the pixels in a lossless frame. `wl_shm`'s `Argb8888` is
@@ -253,6 +258,12 @@ pub enum ClientMessage {
     KillSession,
     #[serde(rename_all = "camelCase")]
     Ping { nonce: u32 },
+    /// Ask for a window's accessibility tree, as its app reports it over
+    /// AT-SPI. Answered by a [`ServerMessage::A11yTree`] carrying the same
+    /// `request_id`. Only valid after a welcome whose [`ServerCaps::a11y`]
+    /// was true — an older server treats the unknown message as a bad frame.
+    #[serde(rename_all = "camelCase")]
+    A11yTree { window_id: u32, request_id: u32 },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -348,6 +359,68 @@ pub enum ServerMessage {
     },
     #[serde(rename_all = "camelCase")]
     Pong { nonce: u32 },
+    /// Answer to [`ClientMessage::A11yTree`]. `ok: false` with a `message`
+    /// when the app exposes no accessibility tree (or the walk timed out);
+    /// the window itself is still fine either way.
+    #[serde(rename_all = "camelCase")]
+    A11yTree {
+        window_id: u32,
+        request_id: u32,
+        ok: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tree: Option<A11yNode>,
+    },
+}
+
+/// One element of a window's accessibility tree.
+///
+/// The shape is what a screen reader would consume, flattened to the parts an
+/// agent driving the window needs: what the element is (`role`), what it is
+/// called (`name`), where it is (`bounds`, for aiming a click), and what state
+/// it is in. Field names are the TypeScript field names.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct A11yNode {
+    /// Canonical AT-SPI role, e.g. `push button`, `text`, `frame`. Unknown
+    /// role numbers arrive as `role-<n>` rather than being dropped.
+    pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Visible text content, for elements that implement the Text interface.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Current value of a slider, spin box or progress bar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<f64>,
+    /// AT-SPI state names, e.g. `focused`, `checked`, `editable`. The walker
+    /// elides the states that are on for practically every healthy widget
+    /// (`enabled`, `sensitive`, `opaque`); `visible`/`showing` are kept, so
+    /// their absence marks a hidden element.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub states: Vec<String>,
+    /// Window-local bounds in logical pixels — the same space pointer input
+    /// uses at scale 1, so the centre of this rectangle is a valid click.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounds: Option<A11yBounds>,
+    /// AT-SPI action names (`click`, `press`, …), when the element declares
+    /// any.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<A11yNode>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct A11yBounds {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -452,6 +525,99 @@ mod tests {
             json,
             r#"{"id":"vim.desktop","name":"Vim","needsTerminal":true}"#
         );
+    }
+
+    #[test]
+    fn an_a11y_request_is_tagged_camel_case() {
+        let json = String::from_utf8(
+            ClientMessage::A11yTree {
+                window_id: 4,
+                request_id: 9,
+            }
+            .to_json(),
+        )
+        .unwrap();
+        assert_eq!(json, r#"{"type":"a11yTree","windowId":4,"requestId":9}"#);
+    }
+
+    #[test]
+    fn an_a11y_reply_omits_its_empty_halves_and_round_trips() {
+        let failure = ServerMessage::A11yTree {
+            window_id: 4,
+            request_id: 9,
+            ok: false,
+            message: Some("no accessible application".into()),
+            tree: None,
+        };
+        assert_eq!(
+            String::from_utf8(failure.to_json()).unwrap(),
+            r#"{"type":"a11yTree","windowId":4,"requestId":9,"ok":false,"message":"no accessible application"}"#
+        );
+
+        let success = ServerMessage::A11yTree {
+            window_id: 4,
+            request_id: 10,
+            ok: true,
+            message: None,
+            tree: Some(A11yNode {
+                role: "frame".into(),
+                name: Some("Calculator".into()),
+                description: None,
+                text: None,
+                value: None,
+                states: vec!["active".into()],
+                bounds: Some(A11yBounds {
+                    x: 0,
+                    y: 0,
+                    width: 640,
+                    height: 480,
+                }),
+                actions: vec![],
+                children: vec![A11yNode {
+                    role: "push button".into(),
+                    name: Some("=".into()),
+                    description: None,
+                    text: None,
+                    value: None,
+                    states: vec![],
+                    bounds: None,
+                    actions: vec!["click".into()],
+                    children: vec![],
+                }],
+            }),
+        };
+        assert_eq!(
+            ServerMessage::from_json(&success.to_json()).unwrap(),
+            success
+        );
+    }
+
+    #[test]
+    fn a_leaf_node_is_just_its_role() {
+        let json = serde_json::to_string(&A11yNode {
+            role: "filler".into(),
+            name: None,
+            description: None,
+            text: None,
+            value: None,
+            states: vec![],
+            bounds: None,
+            actions: vec![],
+            children: vec![],
+        })
+        .unwrap();
+        assert_eq!(json, r#"{"role":"filler"}"#);
+    }
+
+    #[test]
+    fn an_old_servers_caps_read_as_no_a11y() {
+        // A welcome serialised before the field existed must not deserialise
+        // into a client that then sends requests the server cannot parse.
+        let caps: ServerCaps = serde_json::from_str(
+            r#"{"vp9":false,"webp":false,"jpeg":true,"xwayland":false,"audio":true,"runtimeDir":true}"#,
+        )
+        .unwrap();
+        assert!(!caps.a11y);
     }
 
     #[test]

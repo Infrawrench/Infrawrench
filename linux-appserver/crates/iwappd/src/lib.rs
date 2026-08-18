@@ -8,6 +8,11 @@
 //! and tests anywhere.
 
 pub mod args;
+/// AT-SPI accessibility: a hand-rolled D-Bus client and the registry role the
+/// apps embed with. Unix-only for the socket; the protocol logic tests
+/// anywhere a unix socket exists.
+#[cfg(unix)]
+pub mod atspi;
 pub mod backend;
 pub mod catalog;
 pub mod keymap;

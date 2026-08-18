@@ -21,6 +21,7 @@ pub struct MockBackend {
     pub clipboard_requests: Vec<String>,
     pub shutdown_called: bool,
     pub fail_launch: Option<String>,
+    pub pids: HashMap<u32, u32>,
     frames: HashMap<u32, (u32, u32, Vec<u8>)>,
 }
 
@@ -81,6 +82,10 @@ impl Backend for MockBackend {
             // the pixels behind it.
             damage: Vec::new(),
         })
+    }
+
+    fn window_pid(&mut self, window_id: u32) -> Option<u32> {
+        self.pids.get(&window_id).copied()
     }
 
     fn offer_clipboard(&mut self, mime_type: &str, data: &[u8]) -> Result<(), BackendError> {

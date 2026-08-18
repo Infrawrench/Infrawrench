@@ -499,3 +499,81 @@ describe("AppSession audio", () => {
     expect(transport.controls()).toContainEqual({ type: "setAudio", enabled: false });
   });
 });
+
+describe("accessibility", () => {
+  const a11yWelcome: ServerMessage = {
+    ...welcome,
+    caps: { ...welcome.caps, a11y: true },
+  };
+
+  it("resolves the request whose id the host answered", async () => {
+    const { transport, app } = session();
+    transport.reply(a11yWelcome);
+    const promise = app.requestA11yTree(3);
+    expect(transport.controls()[1]).toMatchObject({
+      type: "a11yTree",
+      windowId: 3,
+      requestId: 1,
+    });
+
+    transport.reply({
+      type: "a11yTree",
+      windowId: 3,
+      requestId: 1,
+      ok: true,
+      tree: { role: "frame", name: "Calc", children: [{ role: "push button", name: "=" }] },
+    });
+    await expect(promise).resolves.toEqual({
+      tree: { role: "frame", name: "Calc", children: [{ role: "push button", name: "=" }] },
+    });
+  });
+
+  it("carries the host's caveat beside a truncated tree", async () => {
+    const { transport, app } = session();
+    transport.reply(a11yWelcome);
+    const promise = app.requestA11yTree(1);
+    transport.reply({
+      type: "a11yTree",
+      windowId: 1,
+      requestId: 1,
+      ok: true,
+      message: "tree truncated at 1500 nodes",
+      tree: { role: "frame" },
+    });
+    await expect(promise).resolves.toEqual({
+      tree: { role: "frame" },
+      caveat: "tree truncated at 1500 nodes",
+    });
+  });
+
+  it("rejects with the host's reason when there is no tree", async () => {
+    const { transport, app } = session();
+    transport.reply(a11yWelcome);
+    const promise = app.requestA11yTree(1);
+    transport.reply({
+      type: "a11yTree",
+      windowId: 1,
+      requestId: 1,
+      ok: false,
+      message: "no application has registered an accessibility tree yet",
+    });
+    await expect(promise).rejects.toThrow(/no application has registered/);
+  });
+
+  it("refuses locally when the host never declared the capability", async () => {
+    // An old host treats the unknown message as a bad frame, so it must never
+    // be sent at all.
+    const { transport, app } = session();
+    transport.reply(welcome);
+    await expect(app.requestA11yTree(1)).rejects.toThrow(/does not expose/);
+    expect(transport.controls()).toHaveLength(1);
+  });
+
+  it("fails outstanding requests when the transport drops", async () => {
+    const { transport, app } = session();
+    transport.reply(a11yWelcome);
+    const promise = app.requestA11yTree(1);
+    transport.drop();
+    await expect(promise).rejects.toThrow(/closed/);
+  });
+});
