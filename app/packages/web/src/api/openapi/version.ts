@@ -92,4 +92,8 @@
 // the unauthenticated `GET /api/calendar/{token}.ics` feed those mint, and a
 // `calendar` member on the workspace TabTarget kind enum — without which a
 // persisted Calendar tab is silently dropped on reload. All additive.
-export const API_VERSION = "1.29.0";
+// 1.29.1: the wallboard drops its query-monitors source — it read a table
+// whose migration had not shipped, so every wall named it as unreadable and
+// sat amber. One fewer tile in `tiles`, which is an unenumerated list, and
+// prose corrections either side of it; no route, shape or field changed.
+export const API_VERSION = "1.29.1";
