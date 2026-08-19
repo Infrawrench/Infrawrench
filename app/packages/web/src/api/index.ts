@@ -36,6 +36,7 @@ import { profileRoutes } from "./routes/profile";
 
 import { orgManagementRoutes } from "./routes/orgs";
 import { agentAuthRoutes, agentClaimRoutes } from "./routes/agent-auth";
+import relayRoutes from "./routes/internal-relay";
 import { agentRegistrationRoutes } from "./routes/agent-registrations";
 import { invitationAcceptRoutes } from "./routes/invitation-accept";
 import { adminRoutes } from "./routes/admin";
@@ -288,6 +289,11 @@ api.route("/api", publicCalendarRoutes);
 api.route("/api/agent", agentAuthRoutes);
 // The human half of the same ceremony, session-authed on its own router.
 api.route("/api/agent/claim", agentClaimRoutes);
+// Pod-to-pod: run an operation on the replica that holds its session. Outside
+// every auth layer because the caller is another replica, not a person — it
+// authenticates with INTERNAL_RELAY_SECRET and forwards work it already
+// authorised. See routes/internal-relay.ts for why that is the whole check.
+api.route("/api/internal", relayRoutes);
 
 const authed = new Hono();
 authed.use("*", sessionMiddleware);

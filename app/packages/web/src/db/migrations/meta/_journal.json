@@ -813,6 +813,13 @@
       "when": 1787011200006,
       "tag": "0115_ops_calendar",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1787119331316,
+      "tag": "0116_yielding_sprite",
+      "breakpoints": true
     }
   ]
 }

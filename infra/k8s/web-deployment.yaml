@@ -54,6 +54,17 @@ spec:
           env:
             - name: PORT
               value: "3000"
+            # The pod's own cluster IP, for the cross-replica relay
+            # (services/replica-relay.ts). A session that lives in one pod's
+            # memory — a Linux application compositor today — is leased to that
+            # pod by address, and calls that land on a sibling are forwarded
+            # here rather than starting a second one. Unset means "not part of
+            # a replica set", which is exactly right for a dev server, and the
+            # relay then takes its single-process path.
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
           envFrom:
             - secretRef:
                 name: infrawrench-env

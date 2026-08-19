@@ -119,3 +119,21 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
+    # web → web, for the cross-replica relay (`/api/internal/relay`, see
+    # services/replica-relay.ts). Some sessions live in one pod's memory and
+    # cannot be moved — the compositor behind a Linux application session exits
+    # with the SSH channel that opened it — so a pod that receives a call for
+    # someone else's session forwards it to the pod holding the lease. Without
+    # this rule that forward is refused the moment enforcement is turned on,
+    # and the feature goes back to failing on about half of all calls.
+    #
+    # The endpoint authenticates every request with INTERNAL_RELAY_SECRET and
+    # the relay only ever dials private pod addresses out of its own table;
+    # this rule narrows *who may try*, which is the half a policy can express.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: web
+      ports:
+        - protocol: TCP
+          port: 3000

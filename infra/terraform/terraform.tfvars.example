@@ -238,4 +238,26 @@ app_env = {
   # 429 every registration forever, and a malformed one would disable the
   # ceiling silently during the incident it was set for.
   # AGENT_TRIAL_GLOBAL_HOURLY_LIMIT = "500"
+
+  # Shared secret for the cross-replica relay. REQUIRED whenever the web
+  # Deployment runs more than one replica, which it does (`replicas: 2` in
+  # infra/k8s/web-deployment.yaml).
+  #
+  # Some sessions cannot be moved between pods — the compositor behind a Linux
+  # application session exits with the SSH channel that opened it — so
+  # services/replica-relay.ts leases each session to one pod and forwards calls
+  # that land elsewhere to it, over POST /api/internal/relay. This is what that
+  # endpoint authenticates its siblings with.
+  #
+  # Any long random string, identical across replicas: `openssl rand -hex 32`.
+  # Leaving it unset does not break the build or the boot — it degrades, which
+  # is the failure worth naming here: the relay disables itself, and roughly
+  # one call in two for a Linux application session lands on a pod that does
+  # not hold it and fails with "the app server closed before greeting".
+  #
+  # The other half of the pair, POD_IP, is deliberately NOT in this map: it is
+  # each pod's own cluster IP, injected by the downward API in
+  # infra/k8s/web-deployment.yaml, and a single fixed value here would point
+  # every replica at the same address.
+  # INTERNAL_RELAY_SECRET = "..."
 }

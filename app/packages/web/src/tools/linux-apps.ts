@@ -172,7 +172,7 @@ export function linuxAppTools(): ToolDefinition[] {
             sessionRef(resourceId, auth, { sshKeyId, username }),
           );
           return ok(
-            client.windows().map((w) => ({
+            (await client.windows()).map((w) => ({
               windowId: w.windowId,
               title: w.title,
               width: w.width,
@@ -283,7 +283,7 @@ export function linuxAppTools(): ToolDefinition[] {
           const client = await getHeadlessSession(
             sessionRef(resourceId, auth, { sshKeyId, username }),
           );
-          client.click(windowId, x, y, {
+          await client.click(windowId, x, y, {
             ...(button ? { button } : {}),
             ...(doubleClick ? { clicks: 2 } : {}),
           });
@@ -320,7 +320,7 @@ export function linuxAppTools(): ToolDefinition[] {
           const client = await getHeadlessSession(
             sessionRef(resourceId, auth, { sshKeyId, username }),
           );
-          client.typeText(windowId, text);
+          await client.typeText(windowId, text);
           return okText(`Typed ${text.length} character(s).`);
         } catch (error) {
           return toErr(error);
@@ -352,7 +352,7 @@ export function linuxAppTools(): ToolDefinition[] {
           const client = await getHeadlessSession(
             sessionRef(resourceId, auth, { sshKeyId, username }),
           );
-          client.pressKeys(windowId, keys);
+          await client.pressKeys(windowId, keys);
           return okText(`Pressed ${keys}.`);
         } catch (error) {
           return toErr(error);
@@ -390,7 +390,7 @@ export function linuxAppTools(): ToolDefinition[] {
           const client = await getHeadlessSession(
             sessionRef(resourceId, auth, { sshKeyId, username }),
           );
-          client.scroll(windowId, x, y, notches, { ...(horizontal ? { horizontal } : {}) });
+          await client.scroll(windowId, x, y, notches, { ...(horizontal ? { horizontal } : {}) });
           return okText(`Scrolled ${notches} notch(es).`);
         } catch (error) {
           return toErr(error);
@@ -424,14 +424,14 @@ export function linuxAppTools(): ToolDefinition[] {
         };
         try {
           if (endSession) {
-            const had = endHeadlessSession(auth.organizationId, resourceId);
+            const had = await endHeadlessSession(auth.organizationId, resourceId);
             return okText(had ? "Ended the app session." : "No app session was open.");
           }
           if (windowId === undefined) return err("Pass windowId, or endSession:true.");
           const client = await getHeadlessSession(
             sessionRef(resourceId, auth, { sshKeyId, username }),
           );
-          client.closeWindow(windowId);
+          await client.closeWindow(windowId);
           return okText(`Asked window ${windowId} to close.`);
         } catch (error) {
           return toErr(error);
