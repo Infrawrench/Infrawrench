@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { T, useGT } from "gt-react";
 import {
   AppLauncherPanel,
@@ -19,6 +20,7 @@ import {
 } from "@infrawrench/ui";
 import type { AppEntry, LaunchResult } from "@infrawrench/appstream-core";
 
+import { getWorkspaceNavigateArgs, navigateToWorkspaceTarget } from "@/lib/workspace-tabs";
 import {
   acquireHostSession,
   checkHostRequirements,
@@ -96,7 +98,7 @@ export function WebAppLauncherPanel({ target }: { target: AppsConnectTarget | nu
   const { handle, status } = useHostSession(setup.blocked ? null : target);
   const [apps, setApps] = useState<AppEntry[]>([]);
   const [notice, setNotice] = useState<{ kind: "pending" | "error"; message: string } | null>(null);
-  const pinTab = useUIStore((state) => state.pinWorkspaceTab);
+  const navigate = useNavigate();
   const setTabIcon = useUIStore((state) => state.setWorkspaceTabIcon);
   const activate = useUIStore((state) => state.activateWorkspaceTab);
   const tabs = useUIStore((state) => state.workspaceTabs);
@@ -136,10 +138,25 @@ export function WebAppLauncherPanel({ target }: { target: AppsConnectTarget | nu
       if (!window || window.parentWindowId !== undefined) return;
       const sessionId = session.sessionId;
       if (!sessionId) return;
+      // This listener also fires on every title and icon change, and the
+      // window tab keeps those in step itself — re-pinning here would yank
+      // focus to the window each time Firefox retitles on a page load.
+      const already = useUIStore
+        .getState()
+        .workspaceTabs.some(
+          (candidate) =>
+            candidate.target.kind === "linux-app" &&
+            candidate.target.sessionId === sessionId &&
+            candidate.target.windowId === windowId,
+        );
+      if (already) return;
       // The window is the launch's real result; whatever we were saying about
-      // it starting is now answered by a tab appearing.
+      // it starting is now answered by a tab appearing — and navigated to,
+      // not just pinned: pinning without routing leaves the URL on the
+      // launcher for the route sync to snap the active tab back to.
       setNotice(null);
-      pinTab(
+      void navigateToWorkspaceTarget(
+        navigate,
         linuxAppTabTarget({
           accountId: target.accountId,
           resourceId: target.resourceId,
@@ -151,7 +168,7 @@ export function WebAppLauncherPanel({ target }: { target: AppsConnectTarget | nu
           resourceTypeId: target.resourceTypeId,
           ...(window.appId ? { appId: window.appId } : {}),
         }),
-        window.title || gt("App"),
+        { label: window.title || gt("App"), mode: "pin" },
       );
       if (window.icon) {
         const tab = useUIStore
@@ -165,7 +182,7 @@ export function WebAppLauncherPanel({ target }: { target: AppsConnectTarget | nu
     };
     session.addWindowListener(onWindow);
     return () => session.removeWindowListener(onWindow);
-  }, [handle, target, pinTab, setTabIcon, gt]);
+  }, [handle, target, navigate, setTabIcon, gt]);
 
   const running = useMemo(
     () =>
@@ -232,7 +249,9 @@ export function WebAppLauncherPanel({ target }: { target: AppsConnectTarget | nu
           (candidate) =>
             candidate.target.kind === "linux-app" && candidate.target.windowId === windowId,
         );
-        if (tab) activate(tab.id);
+        if (!tab) return;
+        activate(tab.id);
+        void navigate(getWorkspaceNavigateArgs(tab.target));
       }}
     />
   );

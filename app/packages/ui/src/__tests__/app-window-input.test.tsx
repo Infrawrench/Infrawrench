@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
-import type { AppSession, InputEvent, PixelPayload } from "@infrawrench/appstream-core";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import type { AppSession, InputEvent, PixelPayload, WindowInfo } from "@infrawrench/appstream-core";
 import { AppWindowViewer } from "../apps/AppWindowViewer.js";
 
 // jsdom has no canvas, so it has no `ImageData` either. The viewer builds one
@@ -43,6 +43,12 @@ function fakeSession() {
     removeCursorListener: vi.fn(),
     addAudioListener: vi.fn(),
     removeAudioListener: vi.fn(),
+    addWindowListener: vi.fn(),
+    removeWindowListener: vi.fn(),
+    addWindowCloseListener: vi.fn(),
+    removeWindowCloseListener: vi.fn(),
+    windows: [],
+    window: () => undefined,
     setAudioEnabled: vi.fn(),
     serverCaps: undefined,
   } as unknown as AppSession;
@@ -144,6 +150,105 @@ describe("AppWindowViewer clipboard", () => {
     paste(canvas, "");
     expect(offered).toEqual([]);
     expect(sent).toEqual([]);
+  });
+});
+
+/**
+ * A session whose window list can change, for the dialog-overlay tests: a
+ * window the host parents to another must render inside that window's viewer
+ * rather than nowhere.
+ */
+function dialogSession() {
+  const windowListeners: Array<(id: number, info: WindowInfo) => void> = [];
+  const closeListeners: Array<(id: number, reason: string) => void> = [];
+  const attached: Array<{ windowId: number; width: number; height: number }> = [];
+  const windows: WindowInfo[] = [{ windowId: 1, title: "App", width: 200, height: 100 }];
+  const session = {
+    windows,
+    window: (id: number) => windows.find((candidate) => candidate.windowId === id),
+    attach: (windowId: number, width: number, height: number) =>
+      attached.push({ windowId, width, height }),
+    detach: vi.fn(),
+    resize: vi.fn(),
+    sendInput: vi.fn(),
+    offerClipboard: vi.fn(),
+    addFrameListener: vi.fn(),
+    removeFrameListener: vi.fn(),
+    addCursorListener: vi.fn(),
+    removeCursorListener: vi.fn(),
+    addAudioListener: vi.fn(),
+    removeAudioListener: vi.fn(),
+    setAudioEnabled: vi.fn(),
+    addWindowListener: (listener: (id: number, info: WindowInfo) => void) =>
+      windowListeners.push(listener),
+    removeWindowListener: vi.fn(),
+    addWindowCloseListener: (listener: (id: number, reason: string) => void) =>
+      closeListeners.push(listener),
+    removeWindowCloseListener: vi.fn(),
+    serverCaps: undefined,
+  } as unknown as AppSession;
+  return { session, windows, windowListeners, closeListeners, attached };
+}
+
+describe("AppWindowViewer dialogs", () => {
+  it("renders a parented window as an overlay, attached at its own size", () => {
+    const { session, windows, windowListeners, attached } = dialogSession();
+    render(<AppWindowViewer session={session} windowId={1} />);
+    expect(screen.getAllByRole("img")).toHaveLength(1);
+
+    const info: WindowInfo = {
+      windowId: 2,
+      title: "Save as",
+      width: 120,
+      height: 80,
+      parentWindowId: 1,
+    };
+    act(() => {
+      windows.push(info);
+      for (const listener of windowListeners) listener(2, info);
+    });
+
+    expect(screen.getAllByRole("img")).toHaveLength(2);
+    // The dialog is sized by the application, so it attaches at the size the
+    // host reported — not the tab's box, which would stretch it fullscreen.
+    expect(attached.find((entry) => entry.windowId === 2)).toMatchObject({
+      width: 120,
+      height: 80,
+    });
+  });
+
+  it("drops the overlay when the dialog closes", () => {
+    const { session, windows, windowListeners, closeListeners } = dialogSession();
+    render(<AppWindowViewer session={session} windowId={1} />);
+    const info: WindowInfo = {
+      windowId: 2,
+      title: "Save as",
+      width: 120,
+      height: 80,
+      parentWindowId: 1,
+    };
+    act(() => {
+      windows.push(info);
+      for (const listener of windowListeners) listener(2, info);
+    });
+    expect(screen.getAllByRole("img")).toHaveLength(2);
+
+    act(() => {
+      windows.splice(1, 1);
+      for (const listener of closeListeners) listener(2, "closed");
+    });
+    expect(screen.getAllByRole("img")).toHaveLength(1);
+  });
+
+  it("leaves an unrelated window out of the overlay", () => {
+    const { session, windows, windowListeners } = dialogSession();
+    render(<AppWindowViewer session={session} windowId={1} />);
+    const info: WindowInfo = { windowId: 3, title: "Other app", width: 200, height: 100 };
+    act(() => {
+      windows.push(info);
+      for (const listener of windowListeners) listener(3, info);
+    });
+    expect(screen.getAllByRole("img")).toHaveLength(1);
   });
 });
 

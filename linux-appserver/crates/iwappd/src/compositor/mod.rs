@@ -328,12 +328,19 @@ impl Backend for WaylandBackend {
         let scale = f64::from(state::surface_scale(&surface).max(1));
 
         // Keyboard focus follows whichever window is being typed into: with one
-        // window per tab, the tab the user is looking at is the focus.
+        // window per tab, the tab the user is looking at is the focus — unless
+        // a popup holds a grab, in which case the menu owns the keys (its
+        // arrows, its Escape) until it is dismissed.
+        let keyboard_focus = self
+            .data
+            .state
+            .keyboard_target(window_id)
+            .unwrap_or_else(|| surface.clone());
         if let Some(keyboard) = &keyboard
-            && keyboard.current_focus().as_ref() != Some(&surface)
+            && keyboard.current_focus().as_ref() != Some(&keyboard_focus)
         {
             let serial = SERIAL_COUNTER.next_serial();
-            keyboard.set_focus(&mut self.data.state, Some(surface.clone()), serial);
+            keyboard.set_focus(&mut self.data.state, Some(keyboard_focus), serial);
         }
 
         for event in events {
@@ -376,12 +383,23 @@ impl Backend for WaylandBackend {
                 }
                 InputEvent::PointerMotion { time_ms, x, y } => {
                     let Some(pointer) = &pointer else { continue };
-                    let location = (fixed_to_f64(x) / scale, fixed_to_f64(y) / scale).into();
+                    let at = (fixed_to_f64(x) / scale, fixed_to_f64(y) / scale);
+                    // The event lands on whatever is under the point — the
+                    // topmost popup, or the toplevel. The second element of
+                    // the target is that surface's own origin in the same
+                    // coordinates; Smithay subtracts it to make the position
+                    // surface-local, which is how a click inside a menu hits
+                    // the item under the cursor rather than one further down.
+                    let (target, origin) = self
+                        .data
+                        .state
+                        .pointer_target(window_id, at)
+                        .unwrap_or_else(|| (surface.clone(), (0.0, 0.0)));
                     pointer.motion(
                         &mut self.data.state,
-                        Some((surface.clone(), (0.0, 0.0).into())),
+                        Some((target, origin.into())),
                         &smithay::input::pointer::MotionEvent {
-                            location,
+                            location: at.into(),
                             serial: SERIAL_COUNTER.next_serial(),
                             time: time_ms,
                         },
@@ -394,6 +412,15 @@ impl Backend for WaylandBackend {
                     state,
                 } => {
                     let Some(pointer) = &pointer else { continue };
+                    if state == ButtonState::Pressed {
+                        // A grabbed popup is dismissed by a press outside it,
+                        // before the press is delivered — the same order every
+                        // desktop compositor uses.
+                        let at = pointer.current_location();
+                        self.data
+                            .state
+                            .dismiss_popups_outside(window_id, (at.x, at.y));
+                    }
                     pointer.button(
                         &mut self.data.state,
                         &smithay::input::pointer::ButtonEvent {
@@ -472,8 +499,13 @@ impl Backend for WaylandBackend {
 
         // Release the client to draw the next frame only now, as we consume
         // this one. That is what paces an application to the rate we can
-        // actually ship rather than to how fast it can render.
+        // actually ship rather than to how fast it can render. Popups draw
+        // into this same frame, so they are paced with it — a menu whose
+        // callbacks never fired would open once and never animate again.
         send_frame_callbacks(&surface, now);
+        for popup in self.data.state.popup_surfaces(window_id) {
+            send_frame_callbacks(&popup, now);
+        }
 
         let rec = self.data.state.windows.get_mut(&window_id)?;
         Some(BackendFrame {

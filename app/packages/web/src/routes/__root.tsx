@@ -219,18 +219,18 @@ function AuthenticatedShell() {
       return;
     }
     setActiveDashboard(currentTarget.kind === "dashboard" ? currentTarget.dashboardId : null);
-    const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId);
+    // Read tab state via getState and depend only on the location: this effect
+    // must react to navigation, never to store-only changes. Depending on
+    // workspaceTabs made it fire between navigateToWorkspaceTarget's eager
+    // store write and the router committing the new location, re-deriving a
+    // target from the STALE pathname and clobbering the tab that was just
+    // opened (e.g. a freshly launched Linux app tab reverting to the
+    // launcher). Same fix as the desktop's __root.
+    const { workspaceTabs: tabs, activeWorkspaceTabId: activeId } = useUIStore.getState();
+    const activeTab = tabs.find((tab) => tab.id === activeId);
     if (activeTab && workspaceTabTargetsEqual(activeTab.target, currentTarget)) return;
     syncWorkspaceRoute(currentTarget);
-  }, [
-    hash,
-    pathname,
-    activeWorkspaceTabId,
-    setActiveDashboard,
-    syncWorkspaceRoute,
-    tabsHydrated,
-    workspaceTabs,
-  ]);
+  }, [hash, pathname, setActiveDashboard, syncWorkspaceRoute, tabsHydrated]);
 
   useEffect(() => {
     if (!tabsHydrated || tabsValidated) return;

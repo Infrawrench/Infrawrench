@@ -25,7 +25,7 @@ The compositor is real: `iwappd --capture --exec 'firefox-esr https://news.ycomb
 
 ### Not here yet
 
-Popups and dialogs (they are tracked but not composited into their parent), the keysym path for characters a US layout cannot reach, clipboard read-back from applications, VP9 and WebP tiers, and XWayland.
+The keysym path for characters a US layout cannot reach, clipboard read-back from applications, VP9 and WebP tiers, and XWayland.
 
 ## Design notes worth knowing before changing things
 
@@ -37,7 +37,7 @@ Popups and dialogs (they are tracked but not composited into their parent), the 
 
 **The launch environment is where "works on a bare cloud VM" is won.** A stock server image has no GPU, often no mesa, and frequently no `XDG_RUNTIME_DIR` at all. `launch_env` forces every toolkit onto a software path; `GSK_RENDERER=cairo` is the load-bearing one, because GTK4 defaults to a GL renderer and dies outright without mesa.
 
-**A parentless toplevel is a tab; anything with a parent is not.** Dialogs and popups composite into their parent's frame. Without that rule, opening a menu spawns a workspace tab.
+**A parentless toplevel is a tab; anything with a parent is not.** Without that rule, opening a menu spawns a workspace tab. The two parented kinds travel differently: an `xdg_popup` (menus, tooltips, Firefox's padlock panel) is composited server-side into its window's canvas at the positioner's offset, with input hit-tested against it and a grab dismissed by a click outside; a parented toplevel (a Save-as dialog) keeps its own stream and window id, and the _viewer_ draws it as an overlay centred inside the parent's tab. Popups piggyback on the parent's frames because they are anchored to coordinates only the compositor knows; dialogs stay separate streams because they are application-sized windows the client can size, focus and letterbox on its own.
 
 **Paint parents before children, and blend.** A window is a surface _tree_: Firefox puts its shadow frame in the toplevel and the entire browser in a subsurface. `with_surface_tree_downward`'s post-order callback visits children first, so compositing there paints the mostly transparent parent over the content and produces an empty window from a client that drew everything correctly. Paint on the way down, and blend source-over with premultiplied alpha — a straight copy punches holes wherever a surface is transparent.
 

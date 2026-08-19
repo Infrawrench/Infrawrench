@@ -183,6 +183,28 @@ pub fn logical_size(width: u32, height: u32, ratio: f32) -> (i32, i32) {
     (side(width), side(height))
 }
 
+/// Keep a popup's geometry box inside its window, in logical pixels.
+///
+/// `position` is where the positioner put the box, relative to the toplevel's
+/// buffer origin; `bounds` is the window's own size when it is known. The
+/// protocol's flip/slide adjustments have already run by the time this is
+/// called — this is the backstop for a client that set no adjustment at all,
+/// because a popup drawn outside the canvas is simply not drawn, which reads
+/// as a click that did nothing. When the popup is larger than the window it
+/// pins to the top-left so at least its origin is visible.
+pub fn place_popup(
+    position: (i32, i32),
+    size: (i32, i32),
+    bounds: Option<(i32, i32)>,
+) -> (i32, i32) {
+    let Some((width, height)) = bounds else {
+        return position;
+    };
+    let max_x = (width - size.0).max(0);
+    let max_y = (height - size.1).max(0);
+    (position.0.clamp(0, max_x), position.1.clamp(0, max_y))
+}
+
 /// A rectangle from the box it lives in into the box it is shown in, rounded
 /// outwards.
 ///
@@ -214,7 +236,7 @@ pub fn rescale_to(rect: Rect, from: (u32, u32), to: (u32, u32)) -> Rect {
 
 #[cfg(test)]
 mod tests {
-    use super::{Rect, SurfaceView, Target, blit, logical_size, rescale_to};
+    use super::{Rect, SurfaceView, Target, blit, logical_size, place_popup, rescale_to};
 
     fn bytes(width: u32, height: u32, colour: [u8; 4]) -> Vec<u8> {
         colour
@@ -432,6 +454,34 @@ mod tests {
         assert_eq!(logical_size(800, 600, f32::NAN), (800, 600));
         // Never zero, whatever was asked.
         assert_eq!(logical_size(0, 1, 3.0), (1, 1));
+    }
+
+    #[test]
+    fn a_popup_that_fits_keeps_its_position() {
+        assert_eq!(place_popup((10, 20), (100, 50), Some((800, 600))), (10, 20));
+    }
+
+    #[test]
+    fn a_popup_past_an_edge_slides_back_inside() {
+        // The padlock panel opened near the right edge of a narrow window.
+        assert_eq!(
+            place_popup((750, 20), (100, 50), Some((800, 600))),
+            (700, 20)
+        );
+        assert_eq!(
+            place_popup((-30, 590), (100, 50), Some((800, 600))),
+            (0, 550)
+        );
+    }
+
+    #[test]
+    fn a_popup_larger_than_the_window_pins_to_the_origin() {
+        assert_eq!(place_popup((40, 40), (900, 700), Some((800, 600))), (0, 0));
+    }
+
+    #[test]
+    fn a_popup_with_no_known_bounds_is_left_alone() {
+        assert_eq!(place_popup((-5, 999), (10, 10), None), (-5, 999));
     }
 
     #[test]

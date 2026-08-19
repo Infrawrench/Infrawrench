@@ -82,7 +82,7 @@ prints the same checklist in a terminal, and exits non-zero if the host is not r
 
 ## Windows, dialogs and menus
 
-Each window of an application gets its own tab. Dialogs, menus and tooltips are drawn inside the window they belong to, not as tabs of their own, so opening a menu does not clutter your workspace.
+Each window of an application gets its own tab, and launching an application takes you to it — the tab opens focused. Menus, tooltips and popups (a browser's padlock panel, for example) are drawn inside the window they belong to, exactly where the application put them. An application's dialogs — a Save-as box, a print dialog — appear centred over their window, at the size the application chose, so opening one never clutters your workspace with extra tabs.
 
 Closing a tab closes that window. Closing the **Apps** tab ends the whole session on that host, including any applications it opened.
 
