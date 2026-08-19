@@ -31,7 +31,7 @@ function mainExcludeList(): string[] {
   const start = config.indexOf("exclude: [");
   expect(start).toBeGreaterThan(-1);
   const end = config.indexOf("]", start);
-  return [...config.slice(start, end).matchAll(/"(@infrawrench\/[a-z0-9-]+)"/g)].map((m) => m[1]);
+  return [...config.slice(start, end).matchAll(/"(@infrawrench\/[a-z0-9-]+)"/g)].map((m) => m[1]!);
 }
 
 describe("main-process workspace dependencies", () => {
