@@ -582,7 +582,11 @@ jobs:
     runs-on: ubuntu-24.04-arm
     name: Publish release
     needs: [check-if-release, linux-arm64-build, linux-x64-build, macos-build, windows-build]
-    if: needs.check-if-release.outputs.package-version != ''
+    # A skip propagates through the whole needs graph, not just one hop: the
+    # build jobs run past a skipped rust-tar with !cancelled(), but that skip
+    # still reaches here through them, so this condition has to spell out the
+    # results it wants too — !cancelled() turns off the implicit success gate.
+    if: ${{ !cancelled() && needs.check-if-release.outputs.package-version != '' && needs.linux-arm64-build.result == 'success' && needs.linux-x64-build.result == 'success' && needs.macos-build.result == 'success' && needs.windows-build.result == 'success' }}
     steps:
       - name: Download artifacts from R2
         env:
