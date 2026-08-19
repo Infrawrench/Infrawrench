@@ -105,3 +105,60 @@ The command reads the organization's graph, so it needs cloud sync; the desktop 
 ## API
 
 Programmatic access is available at `GET /api/org/{orgId}/dependency-graph`, which returns the node and edge lists (see the [API reference](../team-and-billing/openapi.md)). Each edge carries a `kind` — `output-ref`, `declared`, `containment` or `field-match` — saying which of the four sources it came from, an optional `label` when the plugin worded the relationship, and the response's `truncated` flag says whether the graph was capped. It requires the `resources:read` permission.
+
+## Planning a maintenance window
+
+Beneath the graph is the question it has always been able to answer and was
+never asked: **what order?**
+
+<insert [The "Plan a maintenance window" panel below the dependency graph, with several resources selected and a three-step ordered plan showing an "Also affects" line on one step] here>
+
+Pick what you are about to touch, say whether you are stopping, restarting or
+starting it, and the plan comes back in an order that respects the wiring
+above.
+
+- **Stopping and restarting go dependants first** — drain what sits in front
+  before what sits behind it goes away.
+- **Starting goes dependencies first** — nothing comes up looking for something
+  that is not there yet.
+
+A restart is ordered like a stop, because that is the direction in which a
+resource being briefly absent hurts.
+
+### Steps, not a list
+
+Resources that do not depend on each other come out in the **same step**, so
+twelve services with three real layers is three steps rather than twelve. That
+is the difference between a maintenance window somebody runs and a list they
+abandon halfway through.
+
+Only dependencies _within your selection_ order it. Restarting a web server and
+its database is one ordering question whether or not a load balancer sits
+between them and is being left alone.
+
+### What it also takes down
+
+Each step names the resources **outside your selection** that hang off
+something in it — the collateral nobody remembers until it happens. A start
+shows none, because listing dependants there would read as a warning about a
+recovery.
+
+### When there is no answer
+
+Resources that depend on each other in a loop have no safe order, and the plan
+says so instead of picking one. An arbitrary order presented as a plan is a
+guess wearing a plan's clothes.
+
+Selected resources that are no longer in the graph are named too, so a plan for
+twelve things never quietly becomes a plan for ten. And if the graph itself was
+truncated, the plan says it is a best effort over a partial picture.
+
+### It plans; you run it
+
+Nothing here performs an action. Each step links to its resources and you do
+the work.
+
+That is a boundary rather than an unfinished edge: an unattended sequence of
+destructive actions against production is not something to run off a heuristic,
+and the ordering — which is what people actually get wrong — is what this
+gives you.

@@ -107,4 +107,8 @@
 // the app server), and `POST /apps/setup` installs it with the host's own
 // package manager and re-probes. Two new routes, a `Linux applications` tag,
 // and the first `application/x-ndjson` response in the document. All additive.
-export const API_VERSION = "1.31.0";
+// 1.39.0: the maintenance planner — `POST /maintenance-plan`, which orders a
+// selection of resources into dependency-safe waves for a stop, restart or
+// start and names what each step takes down outside the selection. Plans only;
+// nothing here executes. Additive.
+export const API_VERSION = "1.39.0";

@@ -3,10 +3,12 @@ import { useGT } from "gt-react";
 import {
   RESOURCES_CHANGED_EVENT,
   DependencyGraphView,
+  MaintenancePlanSection,
   type DependencyGraphData,
+  type MaintenancePlan,
   type DependencyGraphNode,
 } from "@infrawrench/ui";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 
 interface WebGraphPanelProps {
   orgId: string;
@@ -84,7 +86,22 @@ export function WebGraphPanel({ orgId, openResource }: WebGraphPanelProps) {
           </p>
         )}
       </div>
-      <DependencyGraphView data={data} onOpenResource={openResource} />
+      <div className="flex-1 overflow-auto">
+        <DependencyGraphView data={data} onOpenResource={openResource} />
+        {/* Beneath the picture that produced it: somebody looking at the wiring
+            is the person about to ask what order to touch it in. */}
+        <MaintenancePlanSection
+          graph={data}
+          onPlan={(input) => apiPost<MaintenancePlan>(`/api/org/${orgId}/maintenance-plan`, input)}
+          // The canvas hands `openResource` a whole node; the planner only has
+          // an id, so it is looked back up rather than the callback widened —
+          // one shape for "open this resource" across the page.
+          onOpenResource={(resourceId) => {
+            const node = data.nodes.find((n) => n.id === resourceId);
+            if (node) openResource(node);
+          }}
+        />
+      </div>
     </div>
   );
 }
