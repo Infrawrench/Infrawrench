@@ -126,6 +126,11 @@ export default defineConfig(({ command }) => ({
           // one throws "Cannot find module" the moment the app starts — with
           // no window, just a lit dock icon.
           "@infrawrench/appstream-host",
+          // The wire half, pulled in transitively by `appstream-host`. A
+          // transitive import is externalized on the same rule as a direct
+          // one, so it needs naming here too — missing it shipped 1.24.0 with
+          // a main process that threw before it ever created a window.
+          "@infrawrench/appstream-core",
           // The shared SSH agents and tunnel core, imported by `ssh-shell-agent.ts`,
           // `ssh-tunnel.ts`, `ssh-host-keys.ts` and `cloud-key-agent.ts`.
           "@infrawrench/ssh-tunnel-core",
