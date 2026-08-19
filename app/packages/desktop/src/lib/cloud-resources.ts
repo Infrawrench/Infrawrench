@@ -1,5 +1,10 @@
 import type { AssociationSource, CostEstimate } from "@infrawrench/plugin-base";
-import { CALENDAR_EVENT_KINDS } from "@infrawrench/ui";
+// From client-core, where it is defined, rather than through the `@infrawrench/ui`
+// barrel that re-exports it: this is the only *value* the cloud API modules take
+// from `ui`, and importing it from there pulls the whole component library into
+// every module graph that touches `cloud-api` — including a node-environment
+// test that renders nothing.
+import { CALENDAR_EVENT_KINDS } from "@infrawrench/client-core";
 import type {
   AccessReviewResponse,
   BlastRadiusReport,
