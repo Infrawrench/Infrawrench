@@ -2377,6 +2377,18 @@ the ui barrel — dragging React and Monaco into a Node test until `cloud-api.te
 Data-layer modules import the React-free entry; only components import the barrel. Same
 precedent as `agents/launch-command`.
 
+**And the same test timed out again**, in August, through a different door: `cloud-resources.ts`
+took `CALENDAR_EVENT_KINDS` — a plain array, defined in `client-core` — from the `@infrawrench/ui`
+barrel that re-exports it, which put the whole component library back in the graph. Cold, that
+made the barrel import ~2.5s instead of ~0.55s; under a saturated `turbo test` it went past the
+20s timeout perhaps two runs in five, and read as a flaky test rather than as an import. **Import
+a value from the package that defines it**, not from a barrel that happens to re-export it. The
+second case in `desktop/src/lib/__tests__/cloud-api.test.ts` now walks the barrel's own import
+graph and fails on any value import from `"@infrawrench/ui"`, so the next one is a red test rather
+than an intermittent one. Types are exempt (erased), subpaths are the escape hatch, and the rule
+covers only what `cloud-api.ts` reaches — thirteen other `src/lib/*-client.ts` modules still take
+`useUIStore` from the barrel and would each need a `./store` entry to stop.
+
 **The Stop button's handle is created by the caller, never handed back by the transport.**
 `DeploySession.stopper` is a required `DeployStopController` (`client-core/src/deploy-stop.ts`)
 that `DeploymentsPanel` constructs before it calls `deploy()`. It used to be an optional
