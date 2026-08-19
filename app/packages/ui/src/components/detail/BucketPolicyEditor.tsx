@@ -368,7 +368,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
                       <T>
                         <div className="text-on-surface-faint text-[10px] font-mono mb-1">
                           Statement #<Var>{i + 1}</Var>
-                          {stmt.Sid ? <Var>{` · ${stmt.Sid}`}</Var> : ""}
+                          <Var>{stmt.Sid ? ` · ${stmt.Sid}` : null}</Var>
                         </div>
                       </T>
                       <SummaryText

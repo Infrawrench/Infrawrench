@@ -160,11 +160,13 @@ export function ExpirySection({ data, error, onRetry, onOpenResource }: ExpirySe
         <T>
           <div role="alert" className="text-sm text-danger">
             Couldn&apos;t load the expiry feed — <Var>{error}</Var>{" "}
-            {onRetry && (
-              <button type="button" onClick={onRetry} className="underline">
-                Retry
-              </button>
-            )}
+            <Var>
+              {onRetry ? (
+                <button type="button" onClick={onRetry} className="underline">
+                  {gt("Retry")}
+                </button>
+              ) : null}
+            </Var>
           </div>
         </T>
       )}

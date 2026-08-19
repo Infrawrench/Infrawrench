@@ -60,36 +60,42 @@ function CoverageLine({ feed }: { feed: NetworkFlowFeed }) {
           </Var>{" "}
           estimated over <Var>{formatFlowBytes(feed.totals.bytes)}</Var> between{" "}
           <Var>{feed.range.from}</Var> and <Var>{feed.range.to}</Var>
-          {leader ? (
-            <>
-              {" "}
-              — mostly{" "}
-              <Var>
+          <Var>
+            {leader ? (
+              <>
+                {" "}
+                {gt("— mostly")}{" "}
                 <span className="font-medium">
                   {gtData(NETWORK_FLOW_SCOPE_LABELS[leader.scope])}{" "}
                   {leader.direction === "egress" ? gt("egress") : gt("ingress")}
                 </span>
-              </Var>
-            </>
-          ) : null}
+              </>
+            ) : null}
+          </Var>
           .
         </p>
       </T>
       <T>
         <p className="text-xs text-on-surface-muted">
           <Var>{Math.round(coverage * 100)}</Var>% of those bytes are attributed to a pair.{" "}
-          {feed.totals.unattributedBytes > 0 && (
-            <>
-              <Var>{formatFlowBytes(feed.totals.unattributedBytes)}</Var> could not be tied to a
-              workload.{" "}
-            </>
-          )}
-          {feed.totals.truncatedBytes > 0 && (
-            <>
-              <Var>{formatFlowBytes(feed.totals.truncatedBytes)}</Var> fell below the stored
-              top-pair cap.{" "}
-            </>
-          )}
+          <Var>
+            {feed.totals.unattributedBytes > 0 ? (
+              <>
+                {gt("{bytes} could not be tied to a workload.", {
+                  bytes: formatFlowBytes(feed.totals.unattributedBytes),
+                })}{" "}
+              </>
+            ) : null}
+          </Var>
+          <Var>
+            {feed.totals.truncatedBytes > 0 ? (
+              <>
+                {gt("{bytes} fell below the stored top-pair cap.", {
+                  bytes: formatFlowBytes(feed.totals.truncatedBytes),
+                })}{" "}
+              </>
+            ) : null}
+          </Var>
           Neither is spread across the rows below.
         </p>
       </T>
@@ -363,15 +369,11 @@ export function NetworkFlowSection({ client }: NetworkFlowSectionProps) {
           <p className="text-xs text-on-surface-muted mt-1">
             Egress and cross-zone traffic by source and destination pair. Every figure is an{" "}
             <strong>estimate</strong>: bytes come from flow logs
-            {sampled && <> (which sample)</>} and are priced at published list rates
-            {asOf && (
-              <>
-                {" "}
-                as of <Var>{asOf}</Var>
-              </>
-            )}
-            , with no free tier, volume tier or negotiated discount applied. Use the ranking; it
-            will not reconcile to the invoice line.
+            <Var>{sampled ? <> {gt("(which sample)")}</> : null}</Var> and are priced at published
+            list rates
+            <Var>{asOf ? <> {gt("as of {date}", { date: asOf })}</> : null}</Var>, with no free
+            tier, volume tier or negotiated discount applied. Use the ranking; it will not reconcile
+            to the invoice line.
           </p>
         </T>
       </div>
@@ -431,18 +433,18 @@ export function NetworkFlowSection({ client }: NetworkFlowSectionProps) {
             <T>
               <p className="text-xs text-on-surface-muted">
                 Collecting these flows runs queries your provider bills to your own cloud account.
-                {feed.accounts.some((a) => a.lastQueryBytesScanned !== null) && (
-                  <>
-                    {" "}
-                    Last collection scanned{" "}
-                    <Var>
-                      {formatFlowBytes(
-                        feed.accounts.reduce((sum, a) => sum + (a.lastQueryBytesScanned ?? 0), 0),
-                      )}
-                    </Var>{" "}
-                    of log data.
-                  </>
-                )}
+                <Var>
+                  {feed.accounts.some((a) => a.lastQueryBytesScanned !== null) ? (
+                    <>
+                      {" "}
+                      {gt("Last collection scanned {amount} of log data.", {
+                        amount: formatFlowBytes(
+                          feed.accounts.reduce((sum, a) => sum + (a.lastQueryBytesScanned ?? 0), 0),
+                        ),
+                      })}
+                    </>
+                  ) : null}
+                </Var>
               </p>
             </T>
           )}

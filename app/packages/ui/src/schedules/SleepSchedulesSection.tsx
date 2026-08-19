@@ -130,20 +130,20 @@ export function SleepSchedulesSection({ client, onOpenResource }: SleepSchedules
           <T>
             <p className="mt-1 text-xs text-on-surface-secondary">
               Off-at/on-at windows for non-prod resources — stopped and started for you on schedule.
-              {totalSaving.size > 0 && (
-                <>
-                  {" "}
-                  Projected saving{" "}
-                  <Var>
+              <Var>
+                {totalSaving.size > 0 ? (
+                  <>
+                    {" "}
+                    {gt("Projected saving")}{" "}
                     <span className="font-medium text-on-surface">
                       {[...totalSaving.entries()]
                         .map(([currency, amount]) => `${formatMoney(amount, currency)}/mo`)
                         .join(" + ")}
                     </span>
-                  </Var>
-                  .
-                </>
-              )}
+                    .
+                  </>
+                ) : null}
+              </Var>
             </p>
           </T>
         </div>

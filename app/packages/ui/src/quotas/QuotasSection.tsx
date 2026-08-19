@@ -202,23 +202,23 @@ function CoverageNotes({
               <Var>{account.accountName}</Var>
             </span>{" "}
             — quotas could not be read: <Var>{account.lastError}</Var>
-            {quotaLinkUrl(account.lastErrorHelpUrl) && (
-              <>
-                {" "}
-                <a
-                  href={quotaLinkUrl(account.lastErrorHelpUrl)!}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline"
-                >
-                  <Var>
+            <Var>
+              {quotaLinkUrl(account.lastErrorHelpUrl) ? (
+                <>
+                  {" "}
+                  <a
+                    href={quotaLinkUrl(account.lastErrorHelpUrl)!}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline"
+                  >
                     {account.lastErrorHelpLabel != null
                       ? gtData(account.lastErrorHelpLabel)
                       : gt("How to fix this")}
-                  </Var>
-                </a>
-              </>
-            )}
+                  </a>
+                </>
+              ) : null}
+            </Var>
           </p>
         </T>
       ))}
@@ -290,11 +290,13 @@ export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSe
         <T>
           <div role="alert" className="text-sm text-danger">
             Couldn&apos;t load the quota radar — <Var>{error}</Var>{" "}
-            {onRetry && (
-              <button type="button" onClick={onRetry} className="underline">
-                Retry
-              </button>
-            )}
+            <Var>
+              {onRetry ? (
+                <button type="button" onClick={onRetry} className="underline">
+                  {gt("Retry")}
+                </button>
+              ) : null}
+            </Var>
           </div>
         </T>
       )}
