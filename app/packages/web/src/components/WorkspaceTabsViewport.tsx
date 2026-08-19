@@ -90,6 +90,11 @@ export function WebWorkspaceTabsViewport({ orgId, tabsValidated }: WebWorkspaceT
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hash = useRouterState({ select: (s) => s.location.hash });
+  // From the same router snapshot as pathname/hash, never window.location:
+  // @tanstack/history flushes history.pushState asynchronously, so the two
+  // can disagree mid-navigation and the parse then lands on the wrong target
+  // (see the route-sync effect in __root.tsx for the bug that caught).
+  const searchStr = useRouterState({ select: (s) => s.location.searchStr });
   const tabsHydrated = useUIStore((s) => s.tabsHydrated);
 
   // The URL is a "tab URL" when syncWorkspaceRouteFromPath returns a target.
@@ -100,7 +105,7 @@ export function WebWorkspaceTabsViewport({ orgId, tabsValidated }: WebWorkspaceT
   // steps aside for the <Outlet/> the same way — and hands the Settings tab's
   // panel over to the layout route, which is the element that holds what the
   // tab opens (see isRouteHostedTabPanel).
-  const routeTarget = syncWorkspaceRouteFromPath(pathname, hash);
+  const routeTarget = syncWorkspaceRouteFromPath(pathname, hash, searchStr);
   const showActive = routeTarget !== null && routeTarget.kind !== "settings";
 
   // Direct URL navigation (deep link, browser back/forward) needs to add the
@@ -110,12 +115,12 @@ export function WebWorkspaceTabsViewport({ orgId, tabsValidated }: WebWorkspaceT
   // array stays primitive (otherwise the fresh object refires every render).
   useEffect(() => {
     if (!tabsHydrated) return;
-    const target = syncWorkspaceRouteFromPath(pathname, hash);
+    const target = syncWorkspaceRouteFromPath(pathname, hash, searchStr);
     if (!target) return;
     const { workspaceTabs: latestTabs } = useUIStore.getState();
     if (latestTabs.some((tab) => workspaceTabTargetsEqual(tab.target, target))) return;
     useUIStore.getState().syncWorkspaceRoute(target);
-  }, [tabsHydrated, pathname, hash]);
+  }, [tabsHydrated, pathname, hash, searchStr]);
 
   return (
     <BaseViewport

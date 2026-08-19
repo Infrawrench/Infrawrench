@@ -328,6 +328,28 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("answers null for a window hash without an identifiable window", () => {
+    // Mid-navigation the router's hash can be ahead of the query string —
+    // @tanstack/history flushes history.pushState asynchronously — so
+    // "#window with no window" is a transient inconsistency, not a request
+    // for the resource page. Demoting to the resource detail here is what
+    // replaced a freshly launched app's tab with the VM info page.
+    expect(
+      syncWorkspaceRouteFromPath(
+        "/org/o1/resources/hetzner/server/res-1",
+        "#window",
+        "?accountId=acc-1",
+      ),
+    ).toBeNull();
+    expect(
+      syncWorkspaceRouteFromPath(
+        "/org/o1/resources/hetzner/server/res-1",
+        "#window",
+        "?accountId=acc-1&window=4",
+      ),
+    ).toBeNull();
+  });
+
   it("returns resource route args with sftp hash", () => {
     const args = getWorkspaceNavigateArgs({
       kind: "resource",

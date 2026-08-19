@@ -537,14 +537,13 @@ describe("syncWorkspaceRouteFromPath", () => {
     });
   });
 
-  it("refuses a window id without the session it belongs to", () => {
-    // Half an address points at a window on a host we have no connection to.
-    expect(syncWorkspaceRouteFromPath("/resource/acc-1/res-1", "#window", "?window=4")).toEqual({
-      kind: "resource",
-      accountId: "acc-1",
-      resourceId: "res-1",
-      view: "details",
-    });
+  it("answers null for a window id without the session it belongs to", () => {
+    // Half an address is a transient inconsistency (mid-navigation, the hash
+    // can be ahead of the query string), not a request for the resource page.
+    // Demoting to the resource detail here is what replaced a freshly
+    // launched app's tab with the VM info page.
+    expect(syncWorkspaceRouteFromPath("/resource/acc-1/res-1", "#window", "?window=4")).toBeNull();
+    expect(syncWorkspaceRouteFromPath("/resource/acc-1/res-1", "#window")).toBeNull();
   });
 
   it("handles resource IDs with slashes", () => {

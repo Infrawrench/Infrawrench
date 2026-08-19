@@ -171,6 +171,14 @@ function AuthenticatedShell() {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hash = useRouterState({ select: (s) => s.location.hash });
+  // The search string must come from the SAME router state snapshot as the
+  // pathname and hash. @tanstack/history flushes the real history.pushState
+  // asynchronously, so window.location.search — which syncWorkspaceRouteFromPath
+  // falls back to — can still be the previous route's query while the router
+  // already reports the new hash. For a freshly launched Linux app that mixed
+  // state read as "#window with no window", parsed as the resource detail, and
+  // replaced the app tab the user just opened with the VM's info page.
+  const searchStr = useRouterState({ select: (s) => s.location.searchStr });
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   // Keyed by org rather than a boolean: switching orgs must re-validate,
   // since the persisted tabs are global and the previous org's tabs point at
@@ -213,7 +221,7 @@ function AuthenticatedShell() {
 
   useEffect(() => {
     if (!tabsHydrated) return;
-    const currentTarget = syncWorkspaceRouteFromPath(pathname, hash);
+    const currentTarget = syncWorkspaceRouteFromPath(pathname, hash, searchStr);
     if (!currentTarget) {
       setActiveDashboard(null);
       return;
@@ -230,7 +238,7 @@ function AuthenticatedShell() {
     const activeTab = tabs.find((tab) => tab.id === activeId);
     if (activeTab && workspaceTabTargetsEqual(activeTab.target, currentTarget)) return;
     syncWorkspaceRoute(currentTarget);
-  }, [hash, pathname, setActiveDashboard, syncWorkspaceRoute, tabsHydrated]);
+  }, [hash, pathname, searchStr, setActiveDashboard, syncWorkspaceRoute, tabsHydrated]);
 
   useEffect(() => {
     if (!tabsHydrated || tabsValidated) return;

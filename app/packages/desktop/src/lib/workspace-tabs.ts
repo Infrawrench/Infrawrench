@@ -440,6 +440,11 @@ export function syncWorkspaceRouteFromPath(
           ...(resourceTypeId ? { resourceTypeId } : {}),
         });
       }
+      // `#window` with no identifiable window is a transient inconsistency,
+      // not a request for the resource page: demoting to the resource detail
+      // is what would replace a freshly launched app's tab with the VM info
+      // page. Answer "no target" and let the settled location decide.
+      return null;
     }
     return resourceTabTarget(segments[1], segments.slice(2).join("/"));
   }
