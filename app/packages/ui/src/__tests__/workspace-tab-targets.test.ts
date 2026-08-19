@@ -9,6 +9,7 @@ import {
   backupsTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
+  scorecardTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
   probesTabTarget,
@@ -44,6 +45,10 @@ describe("tab target factories", () => {
 
   it("calendarTabTarget", () => {
     expect(calendarTabTarget()).toEqual({ kind: "calendar" });
+  });
+
+  it("scorecardTabTarget", () => {
+    expect(scorecardTabTarget()).toEqual({ kind: "scorecard" });
   });
 
   it("backupsTabTarget", () => {

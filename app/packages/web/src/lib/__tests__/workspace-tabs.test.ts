@@ -374,6 +374,13 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns scorecard route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "scorecard" })).toEqual({
+      to: "/org/$orgId/scorecard",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns backups route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "backups" })).toEqual({
       to: "/org/$orgId/backups",
@@ -459,6 +466,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the org-scoped calendar path", () => {
     expect(syncWorkspaceRouteFromPath("/org/test-org/calendar")).toEqual({ kind: "calendar" });
+  });
+
+  it("parses the org-scoped scorecard path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/scorecard")).toEqual({ kind: "scorecard" });
   });
 
   it("parses the org-scoped backups path", () => {

@@ -53,6 +53,7 @@ import { registerAccessReviewPaths } from "./paths/access-review";
 import { registerBackupPaths } from "./paths/backups";
 import { registerWallboardPaths } from "./paths/wallboard";
 import { registerCalendarPaths } from "./paths/calendar";
+import { registerScorecardPaths } from "./paths/scorecard";
 import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
@@ -186,6 +187,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerBackupPaths(ctx);
   registerWallboardPaths(ctx);
   registerCalendarPaths(ctx);
+  registerScorecardPaths(ctx);
   registerDnsPaths(ctx);
   registerEnvironmentDiffPaths(ctx);
   registerMomentPaths(ctx);
@@ -469,6 +471,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Operations calendar",
         description:
           "One time axis over six things the organization already stores — change freezes, sleep/wake schedules, declared deadlines, commitment term ends, cron-triggered workflow runs and declared incidents. Nothing on it is a new record: the calendar is a projection recomputed on every read, and each source is guarded independently so one that fails costs its own kind rather than the page. Subscriptions mint an unauthenticated iCalendar URL whose 32-byte token is the sole credential; it carries scheduling facts only, and no organization id.",
+      },
+      {
+        name: "Scorecard",
+        description:
+          'One weighted grade over six radars the product already computes — posture, backup coverage, deadlines, quota headroom, the access review and ownership — plus the daily history that makes "are we getting better?" answerable. Nothing is re-derived: each pillar reads the same feed its own page does. An unassessed pillar is excluded rather than scored zero, and weights renormalize over what was assessed, so connecting a new provider can never look like a regression.',
       },
       {
         name: "Status pages",

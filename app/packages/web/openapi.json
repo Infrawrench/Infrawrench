@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.31.0",
+    "version": "1.32.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -183,6 +183,10 @@
     {
       "name": "Operations calendar",
       "description": "One time axis over six things the organization already stores — change freezes, sleep/wake schedules, declared deadlines, commitment term ends, cron-triggered workflow runs and declared incidents. Nothing on it is a new record: the calendar is a projection recomputed on every read, and each source is guarded independently so one that fails costs its own kind rather than the page. Subscriptions mint an unauthenticated iCalendar URL whose 32-byte token is the sole credential; it carries scheduling facts only, and no organization id."
+    },
+    {
+      "name": "Scorecard",
+      "description": "One weighted grade over six radars the product already computes — posture, backup coverage, deadlines, quota headroom, the access review and ownership — plus the daily history that makes \"are we getting better?\" answerable. Nothing is re-derived: each pillar reads the same feed its own page does. An unassessed pillar is excluded rather than scored zero, and weights renormalize over what was assessed, so connecting a new provider can never look like a regression."
     },
     {
       "name": "Status pages",
@@ -2724,6 +2728,7 @@
               "backups",
               "wallboard",
               "calendar",
+              "scorecard",
               "dns",
               "iac",
               "environment-diff",
@@ -17514,6 +17519,213 @@
         },
         "required": [
           "name"
+        ],
+        "additionalProperties": false
+      },
+      "ScorecardFact": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "bad": {
+            "type": "boolean",
+            "description": "True when this is the number that hurts."
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "ScorecardPillar": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "security",
+              "recoverability",
+              "deadlines",
+              "headroom",
+              "access",
+              "ownership"
+            ],
+            "description": "Which radar the pillar reads. Each is a view of a feed that already exists, never a re-derivation — so a scorecard number can never disagree with the page it links to."
+          },
+          "score": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Null when the pillar could not be assessed — **never zero**. An organization with no quota-reporting provider has no headroom score, not a headroom score of nought, and an unassessed pillar is excluded from the overall rather than counted as failure."
+          },
+          "weight": {
+            "type": "integer",
+            "description": "Relative weight in the overall. Fixed in this version: security 30, recoverability 25, deadlines 15, access 15, headroom 10, ownership 5. Weights renormalize over the pillars that were assessed, so connecting a new provider cannot make yesterday's score look like a regression."
+          },
+          "headline": {
+            "type": "string",
+            "description": "What the score measures over, in one line."
+          },
+          "unassessedReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why there is no score, phrased so a reader can act on it. Null when scored."
+          },
+          "nextStep": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The single most valuable thing to fix. Null when clean or unassessed."
+          },
+          "facts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScorecardFact"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "score",
+          "weight",
+          "headline",
+          "unassessedReason",
+          "nextStep",
+          "facts"
+        ],
+        "additionalProperties": false
+      },
+      "ScorecardTrendPoint": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "description": "UTC calendar day.",
+            "example": "2026-08-17"
+          },
+          "score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "grade": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "F"
+            ]
+          },
+          "pillars": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Per-pillar scores that day. A pillar unassessed then is **absent**, not zero — a history that cannot tell 'we scored badly' from 'we could not look' would put back into the trend line the lie the live computation refuses to tell."
+          }
+        },
+        "required": [
+          "day",
+          "score",
+          "grade",
+          "pillars"
+        ],
+        "additionalProperties": false
+      },
+      "ScorecardResponse": {
+        "type": "object",
+        "properties": {
+          "score": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Weighted mean over the assessed pillars, or null when none could be assessed — a brand new organization has no infrastructure to grade, and an F on its first day would be a lie told to someone who has done nothing wrong."
+          },
+          "grade": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "F"
+            ]
+          },
+          "pillars": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScorecardPillar"
+            }
+          },
+          "failedPillars": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "security",
+                "recoverability",
+                "deadlines",
+                "headroom",
+                "access",
+                "ownership"
+              ],
+              "description": "Which radar the pillar reads. Each is a view of a feed that already exists, never a re-derivation — so a scorecard number can never disagree with the page it links to."
+            },
+            "description": "Pillars whose computation threw, as opposed to having no data. Excluded from the overall exactly as unassessed ones are, but named separately: one is a fact about the organization and the other is a fact about us."
+          },
+          "trend": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScorecardTrendPoint"
+            },
+            "description": "Stored daily readings, oldest first."
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "score",
+          "grade",
+          "pillars",
+          "failedPillars",
+          "trend",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ScorecardTrendResponse": {
+        "type": "object",
+        "properties": {
+          "trend": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScorecardTrendPoint"
+            }
+          }
+        },
+        "required": [
+          "trend"
         ],
         "additionalProperties": false
       },
@@ -48156,6 +48368,98 @@
           }
         },
         "operationId": "deleteOrgOrgIdCalendarSubscriptionsSubscriptionId"
+      }
+    },
+    "/api/org/{orgId}/scorecard": {
+      "get": {
+        "tags": [
+          "Scorecard"
+        ],
+        "summary": "Grade the organization's infrastructure",
+        "description": "One weighted reading over six radars the product already computes: security posture, backup coverage, declared deadlines, quota headroom, the cross-cloud access review, and resource ownership. Nothing is re-derived — each pillar reads the same feed its page does, so the two can never disagree.\n\nTwo rules keep the number honest. An unassessed pillar is **excluded**, never scored zero. And weights renormalize over what was assessed, so gaining a measurable pillar cannot read as a regression.\n\nThe trend comes from daily snapshots taken by the poller; it is empty until the first one is recorded, and days when nothing could be scored are absent rather than zero.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The scorecard, its pillars and its history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScorecardResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdScorecard"
+      }
+    },
+    "/api/org/{orgId}/scorecard/trend": {
+      "get": {
+        "tags": [
+          "Scorecard"
+        ],
+        "summary": "List stored scorecard readings",
+        "description": "History alone — the cheap half. A dashboard tile that wants only the sparkline should not pay for six feed computations.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 400,
+              "description": "How far back to read. Defaults to 90; readings are kept for 400 days."
+            },
+            "required": false,
+            "description": "How far back to read. Defaults to 90; readings are kept for 400 days.",
+            "name": "days",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stored readings, oldest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScorecardTrendResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdScorecardTrend"
       }
     },
     "/api/org/{orgId}/dns": {

@@ -83,6 +83,14 @@ export function calendarTabTarget(): WorkspaceTabTarget {
   return { kind: "calendar" };
 }
 
+/**
+ * The infrastructure scorecard. Single-instance like Posture: there is one
+ * reading per org, and the pillars are sections of the page rather than tabs.
+ */
+export function scorecardTabTarget(): WorkspaceTabTarget {
+  return { kind: "scorecard" };
+}
+
 export function dnsTabTarget(): WorkspaceTabTarget {
   return { kind: "dns" };
 }

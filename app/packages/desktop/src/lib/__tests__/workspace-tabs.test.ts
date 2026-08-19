@@ -232,6 +232,10 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(getWorkspaceNavigateArgs({ kind: "calendar" })).toEqual({ to: "/calendar" });
   });
 
+  it("returns scorecard route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "scorecard" })).toEqual({ to: "/scorecard" });
+  });
+
   it("returns backups route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "backups" })).toEqual({ to: "/backups" });
   });
@@ -336,6 +340,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the calendar path", () => {
     expect(syncWorkspaceRouteFromPath("/calendar")).toEqual({ kind: "calendar" });
+  });
+
+  it("parses the scorecard path", () => {
+    expect(syncWorkspaceRouteFromPath("/scorecard")).toEqual({ kind: "scorecard" });
   });
 
   it("parses the backups path", () => {

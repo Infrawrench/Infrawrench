@@ -41,8 +41,12 @@ import {
 } from "@/lib/workspace-tabs";
 import {
   costsTabTarget,
+  accessReviewTabTarget,
+  backupsTabTarget,
   environmentDiffTabTarget,
   expiringTabTarget,
+  postureTabTarget,
+  quotasTabTarget,
   resourceTabTarget,
   settingsTabTarget,
   type OrphansClient,
@@ -61,6 +65,7 @@ import { WebAccessReviewPanel } from "./WebAccessReviewPanel";
 import { WebBackupsPanel } from "./WebBackupsPanel";
 import { WebWallboardPanel } from "./WebWallboardPanel";
 import { WebCalendarPanel } from "./WebCalendarPanel";
+import { WebScorecardPanel } from "./WebScorecardPanel";
 import { WebDnsPanel } from "./WebDnsPanel";
 import { WebIacPanel } from "./WebIacPanel";
 import { WebEnvironmentDiffPanel } from "./WebEnvironmentDiffPanel";
@@ -512,6 +517,24 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
               ),
             )
           }
+        />
+      );
+    case "scorecard":
+      return (
+        <WebScorecardPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's grade.
+          key={orgId}
+          orgId={orgId}
+          // Ownership is deliberately absent: it is recorded per resource and
+          // has no org-level page, so its card is not a link.
+          pillarLinks={{
+            security: () => void navigate(getWorkspaceNavigateArgs(postureTabTarget())),
+            recoverability: () => void navigate(getWorkspaceNavigateArgs(backupsTabTarget())),
+            deadlines: () => void navigate(getWorkspaceNavigateArgs(expiringTabTarget())),
+            headroom: () => void navigate(getWorkspaceNavigateArgs(quotasTabTarget())),
+            access: () => void navigate(getWorkspaceNavigateArgs(accessReviewTabTarget())),
+          }}
         />
       );
     case "dns":

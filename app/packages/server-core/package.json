@@ -119,6 +119,8 @@
     "./posture/feed": "./src/posture/feed.ts",
     "./backups/feed": "./src/backups/feed.ts",
     "./wallboard/feed": "./src/wallboard/feed.ts",
+    "./scorecard/compute": "./src/scorecard/compute.ts",
+    "./scorecard/snapshots": "./src/scorecard/snapshots.ts",
     "./backups/store": "./src/backups/store.ts",
     "./calendar/feed": "./src/calendar/feed.ts",
     "./calendar/subscriptions": "./src/calendar/subscriptions.ts",

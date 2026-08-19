@@ -42,6 +42,7 @@ import { Route as OrgOrgIdPostureRouteImport } from './routes/org.$orgId.posture
 import { Route as OrgOrgIdProbesRouteImport } from './routes/org.$orgId.probes'
 import { Route as OrgOrgIdQuotasRouteImport } from './routes/org.$orgId.quotas'
 import { Route as OrgOrgIdSavingsRouteImport } from './routes/org.$orgId.savings'
+import { Route as OrgOrgIdScorecardRouteImport } from './routes/org.$orgId.scorecard'
 import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
 import { Route as OrgOrgIdSshFanoutRouteImport } from './routes/org.$orgId.ssh-fanout'
 import { Route as OrgOrgIdStatusPagesRouteImport } from './routes/org.$orgId.status-pages'
@@ -244,6 +245,11 @@ const OrgOrgIdQuotasRoute = OrgOrgIdQuotasRouteImport.update({
 const OrgOrgIdSavingsRoute = OrgOrgIdSavingsRouteImport.update({
   id: '/savings',
   path: '/savings',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdScorecardRoute = OrgOrgIdScorecardRouteImport.update({
+  id: '/scorecard',
+  path: '/scorecard',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdSettingsRoute = OrgOrgIdSettingsRouteImport.update({
@@ -490,6 +496,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
+  '/org/$orgId/scorecard': typeof OrgOrgIdScorecardRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
@@ -561,6 +568,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
+  '/org/$orgId/scorecard': typeof OrgOrgIdScorecardRoute
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
   '/org/$orgId/wallboard': typeof OrgOrgIdWallboardRoute
@@ -634,6 +642,7 @@ export interface FileRoutesById {
   '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
+  '/org/$orgId/scorecard': typeof OrgOrgIdScorecardRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
@@ -709,6 +718,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/probes'
     | '/org/$orgId/quotas'
     | '/org/$orgId/savings'
+    | '/org/$orgId/scorecard'
     | '/org/$orgId/settings'
     | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/status-pages'
@@ -780,6 +790,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/probes'
     | '/org/$orgId/quotas'
     | '/org/$orgId/savings'
+    | '/org/$orgId/scorecard'
     | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/status-pages'
     | '/org/$orgId/wallboard'
@@ -852,6 +863,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/probes'
     | '/org/$orgId/quotas'
     | '/org/$orgId/savings'
+    | '/org/$orgId/scorecard'
     | '/org/$orgId/settings'
     | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/status-pages'
@@ -1135,6 +1147,13 @@ declare module '@tanstack/react-router' {
       path: '/savings'
       fullPath: '/org/$orgId/savings'
       preLoaderRoute: typeof OrgOrgIdSavingsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/scorecard': {
+      id: '/org/$orgId/scorecard'
+      path: '/scorecard'
+      fullPath: '/org/$orgId/scorecard'
+      preLoaderRoute: typeof OrgOrgIdScorecardRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/settings': {
@@ -1548,6 +1567,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdProbesRoute: typeof OrgOrgIdProbesRoute
   OrgOrgIdQuotasRoute: typeof OrgOrgIdQuotasRoute
   OrgOrgIdSavingsRoute: typeof OrgOrgIdSavingsRoute
+  OrgOrgIdScorecardRoute: typeof OrgOrgIdScorecardRoute
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
   OrgOrgIdSshFanoutRoute: typeof OrgOrgIdSshFanoutRoute
   OrgOrgIdStatusPagesRoute: typeof OrgOrgIdStatusPagesRoute
@@ -1584,6 +1604,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdProbesRoute: OrgOrgIdProbesRoute,
   OrgOrgIdQuotasRoute: OrgOrgIdQuotasRoute,
   OrgOrgIdSavingsRoute: OrgOrgIdSavingsRoute,
+  OrgOrgIdScorecardRoute: OrgOrgIdScorecardRoute,
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,
   OrgOrgIdSshFanoutRoute: OrgOrgIdSshFanoutRoute,
   OrgOrgIdStatusPagesRoute: OrgOrgIdStatusPagesRoute,

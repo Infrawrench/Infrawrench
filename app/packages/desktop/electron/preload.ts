@@ -197,6 +197,7 @@ const INVOKE_CHANNELS = [
   "cloud_calendar_subscriptions",
   "cloud_calendar_subscription_create",
   "cloud_calendar_subscription_revoke",
+  "cloud_scorecard",
   "cloud_dns",
   "cloud_environment_diff",
   "cloud_changes_list",

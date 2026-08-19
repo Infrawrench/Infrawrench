@@ -9,6 +9,11 @@ import {
   environmentDiffTabTarget,
   costReportsTabTarget,
   invoicesTabTarget,
+  accessReviewTabTarget,
+  backupsTabTarget,
+  expiringTabTarget,
+  postureTabTarget,
+  quotasTabTarget,
   resourceTabTarget,
   DeploymentsPanel,
   IssueFilingProvider,
@@ -51,6 +56,7 @@ import { DesktopAccessReviewPanel } from "@/components/DesktopAccessReviewPanel"
 import { DesktopBackupsPanel } from "@/components/DesktopBackupsPanel";
 import { DesktopWallboardPanel } from "@/components/DesktopWallboardPanel";
 import { DesktopCalendarPanel } from "@/components/DesktopCalendarPanel";
+import { DesktopScorecardPanel } from "@/components/DesktopScorecardPanel";
 import { DesktopDnsPanel } from "@/components/DesktopDnsPanel";
 import { DesktopIacPanel } from "@/components/DesktopIacPanel";
 import { DesktopEnvironmentDiffPanel } from "@/components/DesktopEnvironmentDiffPanel";
@@ -456,6 +462,23 @@ function renderPanel(
           // Keyed by mode so switching org (or dropping to local) remounts and
           // refetches rather than showing the previous org's month.
           key={activeCloudOrgId ?? "local"}
+        />
+      );
+    case "scorecard":
+      return (
+        <DesktopScorecardPanel
+          // Keyed by mode so switching org (or dropping to local) remounts and
+          // refetches rather than showing the previous org's grade.
+          key={activeCloudOrgId ?? "local"}
+          // Ownership is deliberately absent: it is recorded per resource and
+          // has no org-level page.
+          pillarLinks={{
+            security: () => void navigate(getWorkspaceNavigateArgs(postureTabTarget())),
+            recoverability: () => void navigate(getWorkspaceNavigateArgs(backupsTabTarget())),
+            deadlines: () => void navigate(getWorkspaceNavigateArgs(expiringTabTarget())),
+            headroom: () => void navigate(getWorkspaceNavigateArgs(quotasTabTarget())),
+            access: () => void navigate(getWorkspaceNavigateArgs(accessReviewTabTarget())),
+          }}
         />
       );
     case "backups":

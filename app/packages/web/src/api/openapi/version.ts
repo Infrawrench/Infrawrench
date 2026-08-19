@@ -107,4 +107,9 @@
 // the app server), and `POST /apps/setup` installs it with the host's own
 // package manager and re-probes. Two new routes, a `Linux applications` tag,
 // and the first `application/x-ndjson` response in the document. All additive.
-export const API_VERSION = "1.31.0";
+// 1.32.0: the infrastructure scorecard — one weighted grade over the posture,
+// backup, expiry, quota, access-review and ownership feeds (`GET /scorecard`),
+// its stored daily history (`GET /scorecard/trend`), and a `scorecard` member on
+// the workspace TabTarget kind enum, without which a persisted Scorecard tab is
+// silently dropped on reload. All additive.
+export const API_VERSION = "1.32.0";

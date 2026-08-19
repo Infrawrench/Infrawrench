@@ -14,6 +14,7 @@ import type {
   EnvironmentDiffResponse,
   ExpiryListResponse,
   PostureListResponse,
+  ScorecardResponse,
   ResourcePickerOption,
   WallboardResponse,
 } from "@infrawrench/ui";
@@ -219,6 +220,15 @@ export async function revokeCloudCalendarSubscription(
   subscriptionId: string,
 ): Promise<void> {
   await invoke("cloud_calendar_subscription_revoke", { orgId, subscriptionId });
+}
+
+/**
+ * The org's infrastructure scorecard. Cloud only for the same reason backup
+ * coverage is: a third of the evidence is org state a local workspace cannot
+ * hold, and the trend lives in a cloud table.
+ */
+export async function fetchCloudScorecard(orgId: string): Promise<ScorecardResponse> {
+  return invoke("cloud_scorecard", { orgId });
 }
 
 export async function fetchCloudDns(orgId: string): Promise<DnsInventoryResponse> {

@@ -19,6 +19,8 @@ export type WorkspaceTabTarget =
   | { kind: "wallboard" }
   /** The operations calendar — every dated record on one axis. */
   | { kind: "calendar" }
+  /** The infrastructure scorecard — six radars, one graded reading. */
+  | { kind: "scorecard" }
   | { kind: "dns" }
   | { kind: "iac" }
   | { kind: "environment-diff"; a?: string; b?: string }
@@ -151,6 +153,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
     // page, not a new tab per month.
     case "calendar":
       return "calendar";
+    case "scorecard":
+      return "scorecard";
     case "dns":
       return "dns";
     case "iac":
@@ -237,6 +241,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Wallboard";
     case "calendar":
       return "Calendar";
+    case "scorecard":
+      return "Scorecard";
     case "dns":
       return "Domains";
     case "iac":
@@ -297,6 +303,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "backups":
     case "wallboard":
     case "calendar":
+    case "scorecard":
     case "dns":
     case "iac":
     case "environments":

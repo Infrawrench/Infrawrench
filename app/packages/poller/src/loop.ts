@@ -32,6 +32,10 @@ import {
 } from "@infrawrench/server-core/ssh-recording/retention";
 import { pruneCreditSnapshots } from "@infrawrench/server-core/credits/feed";
 import { pruneQuotaSnapshots } from "@infrawrench/server-core/quotas/feed";
+import {
+  pruneScorecardSnapshots,
+  runScorecardSnapshotPass,
+} from "@infrawrench/server-core/scorecard/snapshots";
 import { runQuotaAlerts } from "@infrawrench/server-core/quotas/alerts";
 import { pruneIacStates } from "@infrawrench/server-core/iac/store";
 import { TickLoop } from "@infrawrench/server-core/tick-loop";
@@ -54,6 +58,10 @@ import { TokenBucketRegistry } from "./token-bucket";
 export const DEFAULT_TICK_MS = 15_000;
 export const DEFAULT_CONCURRENCY = 8;
 const WORKFLOW_LIMIT = 8;
+/** How often the scorecard sweep may run, per process. */
+const SCORECARD_SWEEP_INTERVAL_MS = 600_000;
+/** Orgs snapshotted per sweep — six feed computations each. */
+const SCORECARD_ORGS_PER_SWEEP = 4;
 const COST_LIMIT = 2;
 
 /** A workflow's `trigger` jsonb, narrowed to the cron fields we read. */
@@ -104,6 +112,16 @@ export class PollerLoop extends TickLoop {
   private quotaCapablePluginIds: string[] | null = null;
   /** Epoch ms of the last retention pass; 0 means "run on the first tick". */
   private lastRetentionAt = 0;
+  /**
+   * Last scorecard snapshot sweep, epoch ms.
+   *
+   * Rate-limited in-process rather than claimed, because the unique
+   * `(organization_id, day)` index already makes the write once-per-day across
+   * replicas. The clock is only here to keep six feed computations per org off
+   * the 15s tick — the sweep is idempotent, so a restarted poller running it
+   * again immediately just finds every org already recorded.
+   */
+  private lastScorecardAt = 0;
 
   constructor(options: LoopOptions = {}) {
     super("poller", options.tickMs ?? DEFAULT_TICK_MS);
@@ -160,6 +178,12 @@ export class PollerLoop extends TickLoop {
     // over several ticks instead of stalling this one. Defensive like the
     // others.
     await this.tickDigests();
+
+    // Fifth pass (a): the daily infrastructure scorecard. Records today's
+    // reading for a bounded batch of orgs that do not have one yet, so an
+    // install with a thousand organizations drains over several ticks instead
+    // of stalling one. Defensive like the others.
+    await this.tickScorecard();
 
     // Fifth pass: retention. Rate-limited to once an hour per process and
     // idempotent, so replicas and restarts just repeat cheap no-ops. Defensive
@@ -533,6 +557,27 @@ export class PollerLoop extends TickLoop {
    * the work off the 15s tick — a restarted poller pruning again immediately
    * finds nothing to delete.
    */
+  /**
+   * Record today's scorecard for orgs that have not been snapshotted yet.
+   *
+   * Each org costs six feed computations, which is why this is rate-limited and
+   * batched rather than run per tick. It settles on its own: an org with a row
+   * for today falls out of the due query, so a steady state costs one indexed
+   * `NOT EXISTS` scan every ten minutes.
+   */
+  private async tickScorecard(): Promise<void> {
+    const now = Date.now();
+    if (this.lastScorecardAt !== 0 && now - this.lastScorecardAt < SCORECARD_SWEEP_INTERVAL_MS) {
+      return;
+    }
+    this.lastScorecardAt = now;
+    try {
+      await runScorecardSnapshotPass({ limit: SCORECARD_ORGS_PER_SWEEP });
+    } catch (e) {
+      console.error("[scorecard] snapshot tick failed:", e);
+    }
+  }
+
   private async tickRetention(): Promise<void> {
     const now = Date.now();
     if (this.lastRetentionAt !== 0 && now - this.lastRetentionAt < CHANGE_RETENTION_INTERVAL_MS) {
@@ -566,6 +611,14 @@ export class PollerLoop extends TickLoop {
       await pruneCreditSnapshots();
     } catch (e) {
       console.error("[poller] credit snapshot retention tick failed:", e);
+    }
+    // Scorecard readings keep 400 days — a year plus a margin, so "how did we
+    // look this time last year" survives a late prune. Same hourly slot, same
+    // reasoning as the others: one answer to "when does old data go".
+    try {
+      await pruneScorecardSnapshots();
+    } catch (e) {
+      console.error("[poller] scorecard snapshot retention tick failed:", e);
     }
     // Quota snapshots keep a year for the same reason credit snapshots do:
     // the rows are tiny, and a longer series is the only way to answer "when
