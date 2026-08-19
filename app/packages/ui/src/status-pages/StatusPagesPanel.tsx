@@ -339,7 +339,8 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
             </div>
             {page.customHostnameStatus === "active" && publicUrl !== slugUrl && (
               <p className="text-xs text-on-surface-faint">
-                Secret link still works: <code className="text-on-surface-tertiary">{slugUrl}</code>
+                {gt("Secret link still works:")}{" "}
+                <code className="text-on-surface-tertiary">{slugUrl}</code>
               </p>
             )}
             <p className="text-xs text-on-surface-faint">
@@ -350,17 +351,17 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
 
             <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-surface-raised/40 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs font-medium text-on-surface">Custom domain</p>
+                <p className="text-xs font-medium text-on-surface">{gt("Custom domain")}</p>
                 {hasDomain && (
                   <span className="text-xs text-on-surface-tertiary">
                     {page.customHostnameStatus === "active"
-                      ? "Active"
+                      ? gt("Active")
                       : page.customHostnameStatus === "pending_ssl"
-                        ? "Waiting for certificate"
+                        ? gt("Waiting for certificate")
                         : page.customHostnameStatus === "pending_dns"
-                          ? "Waiting for DNS"
+                          ? gt("Waiting for DNS")
                           : page.customHostnameStatus === "error"
-                            ? "Error"
+                            ? gt("Error")
                             : page.customHostnameStatus}
                   </span>
                 )}
@@ -371,7 +372,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                     htmlFor={`status-domain-${page.id}`}
                     className="text-xs text-on-surface-tertiary"
                   >
-                    Hostname
+                    {gt("Hostname")}
                   </label>
                   <div className="flex flex-wrap items-center gap-2">
                     <input
@@ -379,6 +380,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                       type="text"
                       value={domainDraft[page.id] ?? ""}
                       onChange={(e) => setDomainDraft((d) => ({ ...d, [page.id]: e.target.value }))}
+                      // i18n-ignore: example hostname
                       placeholder="status.example.com"
                       disabled={busy}
                       className="min-w-[12rem] flex-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface placeholder:text-on-surface-faint"
@@ -389,7 +391,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                       disabled={busy}
                       className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
                     >
-                      Attach
+                      {gt("Attach")}
                     </button>
                   </div>
                 </div>
@@ -431,7 +433,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                         disabled={busy}
                         className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
                       >
-                        Check DNS
+                        {gt("Check DNS")}
                       </button>
                     )}
                     <button
@@ -440,13 +442,13 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                       disabled={busy}
                       className="rounded-lg px-3 py-1.5 text-sm text-on-surface-tertiary hover:text-danger disabled:opacity-50"
                     >
-                      Remove domain
+                      {gt("Remove domain")}
                     </button>
                   </div>
                 </>
               )}
               <p className="text-xs text-on-surface-faint">
-                Paid plan. Subdomains only — CNAME to Infrawrench; we issue the certificate.
+                {gt("Paid plan. Subdomains only — CNAME to Infrawrench; we issue the certificate.")}
               </p>
             </div>
 

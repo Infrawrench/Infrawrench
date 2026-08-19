@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useGT } from "gt-react";
 import { PublicStatusPageView } from "@infrawrench/ui";
 import type { PublicStatusPage } from "@infrawrench/client-core";
 
@@ -8,6 +9,7 @@ import type { PublicStatusPage } from "@infrawrench/client-core";
  * `__root.tsx` detects that and renders this instead of the authenticated app.
  */
 export function PublicStatusPageOnCustomHost() {
+  const gt = useGT();
   const [page, setPage] = useState<PublicStatusPage | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "missing" | "error">("loading");
 
@@ -46,7 +48,7 @@ export function PublicStatusPageOnCustomHost() {
   if (state === "loading") {
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-on-surface-tertiary">
-        <div className="animate-pulse text-sm">Loading…</div>
+        <div className="animate-pulse text-sm">{gt("Loading…")}</div>
       </div>
     );
   }
@@ -56,12 +58,12 @@ export function PublicStatusPageOnCustomHost() {
       <div className="flex h-screen items-center justify-center bg-surface px-4 text-center">
         <div>
           <h1 className="text-lg font-semibold text-on-surface">
-            {state === "missing" ? "Status page not found" : "Status page unavailable"}
+            {state === "missing" ? gt("Status page not found") : gt("Status page unavailable")}
           </h1>
           <p className="mt-2 text-sm text-on-surface-secondary">
             {state === "missing"
-              ? "This domain is not linked to a published status page."
-              : "Something went wrong loading this page. Try again in a moment."}
+              ? gt("This domain is not linked to a published status page.")
+              : gt("Something went wrong loading this page. Try again in a moment.")}
           </p>
         </div>
       </div>
