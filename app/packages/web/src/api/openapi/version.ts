@@ -107,4 +107,7 @@
 // the app server), and `POST /apps/setup` installs it with the host's own
 // package manager and re-probes. Two new routes, a `Linux applications` tag,
 // and the first `application/x-ndjson` response in the document. All additive.
-export const API_VERSION = "1.31.0";
+// 1.38.0: the carbon estimate — `GET /carbon`, estimated operational CO2e per
+// resource, region and account, with its assumptions and its unestimatable
+// rows on the response. Read-only and additive.
+export const API_VERSION = "1.38.0";

@@ -2948,6 +2948,22 @@ One time axis over six things the org already stores. API **1.28.0**; migration 
 
 Docs: `website/src/content/docs/features/ops-calendar.md`.
 
+## Carbon estimate (cloud-only)
+
+Estimated operational CO2e beside the cost. API **1.38.0**; **no migration** — a read over synced inventory plus a static coefficient table.
+
+- **Anything that cannot be placed gets no number.** Unsupported provider, region absent from the coefficient table, or no vCPU count: each produces an `unestimated` row with a reason and contributes nothing. A carbon figure computed against a guessed grid is worse than no figure, because it is a number somebody will put in a report — and the count of unestimatable rows sits _beside the total_ rather than at the bottom, because a total covering two thirds of an estate reads exactly like a complete answer.
+- **The reason order is deliberate**: provider before region. Checking region first would report every Fly machine as "unknown region" and send somebody hunting a region mapping that was never the problem.
+- **Every coefficient is a reproduction, and `carbon-factors.ts` says whose.** Cloud Carbon Footprint (Apache-2.0), 2024 set, read August 2026. The upstream files are metric tons/kWh for AWS and GCP and kg/kWh for Azure; the conversion to **grams/kWh** happens once, in that file, rather than at three call sites — and a test asserts every value lands in a physically plausible 1–1100 g/kWh band, because a unit slip here is a three-orders-of-magnitude error that looks perfectly reasonable in a table.
+- **Utilisation is a constant, and it is on the wire.** 50%, the upstream default. It is the largest single source of error, and the product does not collect per-resource CPU history for every provider — a figure derived from the few that do would be quietly inconsistent across an estate. `assumptions` carries it, the PUEs, the source and the vintage, so the number cannot be read without its basis.
+- **vCPU counts come from `RightsizingDeclaration`**, not from a new plugin contract: the size field and region field are already declared, and the create form's size-picker is already where a provider publishes vCPU counts. A plugin that gains right-sizing gains carbon for free, and asking twice in two shapes is how the two features would come to disagree. Catalogues are cached per (account, type) for the call — 300 instances of 6 types is 6 reads.
+- **Scope is stated on the response**, not only in the docs: operational compute, with storage, network egress, managed services and embodied emissions excluded. A total that silently omitted them while looking complete would be the same failure as the guessed grid.
+- **`services/carbon.ts` lives in web, not server-core**, because resolving an instance type to vCPUs needs a plugin client and credentials — exactly where `rightsizing.ts` lives, for the same reason.
+- **`costs:read`, not `resources:read`.** It is a reporting figure that sits beside spend, is grouped by account the way spend is, and ends up in a board pack; "who may see the org's reporting figures" should be one answer.
+- **Deliberate omissions.** No storage or egress estimate (the coefficients exist but the inventory does not carry the volumes reliably), no embodied emissions (needs hardware lifetimes and machine counts nobody here has), no per-resource time series, no mobile surface.
+
+Docs: `website/src/content/docs/features/carbon.md`.
+
 ## Pushing in from outside (pages & cost rows over the API)
 
 Two endpoints let a server that isn't Infrawrench push _into_ it — the mirror image of everything else, which pulls. Both are the HTTP twin of a workflow primitive, and in both cases the workflow path was refactored to share the mechanism rather than being copied.

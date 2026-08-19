@@ -4,6 +4,7 @@ import { useGT } from "gt-react";
 import { useDataString } from "../i18n/data-strings.js";
 import { Modal } from "../components/Modal.js";
 import { SavingsSection } from "../savings/SavingsSection.js";
+import { CarbonPanelSection } from "./CarbonPanelSection.js";
 import { OversizedSection } from "../savings/OversizedSection.js";
 import { CreditBurndownSection } from "./CreditBurndownSection.js";
 import { CommitmentsSection } from "./CommitmentsSection.js";
@@ -449,6 +450,13 @@ export function CostsPanel({
             below both act on a *resource*, while an egress bill is a property
             of a conversation between two of them. */}
         <NetworkFlowSection client={client} />
+
+        {/* Carbon sits with the other whole-estate figures rather than beside
+            the per-resource findings below: it is a property of the estate the
+            way spend is, and it is grouped by account and region for the same
+            reason. Optional on the client, so a host that does not offer it
+            renders nothing rather than a section that fails to load. */}
+        {client.getCarbonEstimate && <CarbonPanelSection client={client} />}
 
         {orphans && <SavingsSection client={orphans} onOpenResource={onOpenResource} />}
         {rightsizing && (

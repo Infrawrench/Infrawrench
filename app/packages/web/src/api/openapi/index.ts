@@ -53,6 +53,7 @@ import { registerAccessReviewPaths } from "./paths/access-review";
 import { registerBackupPaths } from "./paths/backups";
 import { registerWallboardPaths } from "./paths/wallboard";
 import { registerCalendarPaths } from "./paths/calendar";
+import { registerCarbonPaths } from "./paths/carbon";
 import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
@@ -186,6 +187,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerBackupPaths(ctx);
   registerWallboardPaths(ctx);
   registerCalendarPaths(ctx);
+  registerCarbonPaths(ctx);
   registerDnsPaths(ctx);
   registerEnvironmentDiffPaths(ctx);
   registerMomentPaths(ctx);
@@ -469,6 +471,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Operations calendar",
         description:
           "One time axis over six things the organization already stores — change freezes, sleep/wake schedules, declared deadlines, commitment term ends, cron-triggered workflow runs and declared incidents. Nothing on it is a new record: the calendar is a projection recomputed on every read, and each source is guarded independently so one that fails costs its own kind rather than the page. Subscriptions mint an unauthenticated iCalendar URL whose 32-byte token is the sole credential; it carries scheduling facts only, and no organization id.",
+      },
+      {
+        name: "Carbon",
+        description:
+          "Estimated operational carbon beside the cost, with every assumption on the response. A resource whose provider, region or size cannot be placed against a published figure produces no estimate at all rather than a guessed one \u2014 a carbon number computed against a guessed grid is worse than no number, because it is a number somebody will put in a report. Coefficients are reproduced from the Cloud Carbon Footprint project and are not measured by us; the scope is operational compute, and storage, network and embodied emissions are excluded and said so.",
       },
       {
         name: "Status pages",

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.31.0",
+    "version": "1.38.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -183,6 +183,10 @@
     {
       "name": "Operations calendar",
       "description": "One time axis over six things the organization already stores — change freezes, sleep/wake schedules, declared deadlines, commitment term ends, cron-triggered workflow runs and declared incidents. Nothing on it is a new record: the calendar is a projection recomputed on every read, and each source is guarded independently so one that fails costs its own kind rather than the page. Subscriptions mint an unauthenticated iCalendar URL whose 32-byte token is the sole credential; it carries scheduling facts only, and no organization id."
+    },
+    {
+      "name": "Carbon",
+      "description": "Estimated operational carbon beside the cost, with every assumption on the response. A resource whose provider, region or size cannot be placed against a published figure produces no estimate at all rather than a guessed one — a carbon number computed against a guessed grid is worse than no number, because it is a number somebody will put in a report. Coefficients are reproduced from the Cloud Carbon Footprint project and are not measured by us; the scope is operational compute, and storage, network and embodied emissions are excluded and said so."
     },
     {
       "name": "Status pages",
@@ -17514,6 +17518,256 @@
         },
         "required": [
           "name"
+        ],
+        "additionalProperties": false
+      },
+      "CarbonUnestimatedRow": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "unsupported-provider",
+              "unknown-region",
+              "unknown-size"
+            ],
+            "description": "Why a resource has no estimate. Reported per resource rather than folded into the total: a figure that quietly excluded a third of the estate would read as a complete answer."
+          }
+        },
+        "required": [
+          "resourceId",
+          "displayName",
+          "pluginId",
+          "accountId",
+          "accountName",
+          "region",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "CarbonGroup": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "kgCo2e": {
+            "type": "number"
+          },
+          "kwh": {
+            "type": "number"
+          },
+          "resourceCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "kgCo2e",
+          "kwh",
+          "resourceCount"
+        ],
+        "additionalProperties": false
+      },
+      "CarbonRow": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "accountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vcpus": {
+            "type": "number"
+          },
+          "gridIntensity": {
+            "type": "number",
+            "description": "Grams CO2e per kWh used for this row — the published figure, not a band."
+          },
+          "kwh": {
+            "type": "number"
+          },
+          "kgCo2e": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "resourceId",
+          "displayName",
+          "pluginId",
+          "accountId",
+          "accountName",
+          "region",
+          "vcpus",
+          "gridIntensity",
+          "kwh",
+          "kgCo2e"
+        ],
+        "additionalProperties": false
+      },
+      "CarbonAssumptions": {
+        "type": "object",
+        "properties": {
+          "cpuUtilization": {
+            "type": "number",
+            "description": "Assumed average CPU utilisation, 0–1. **The largest single source of error**, stated here rather than buried in a constant: the product does not collect per-resource CPU history for every provider, and a figure derived from the few that do would be quietly inconsistent across an estate."
+          },
+          "pue": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Power Usage Effectiveness, per contributing provider."
+          },
+          "vcpuWatts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "min": {
+                  "type": "number"
+                },
+                "max": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "min",
+                "max"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "coefficientSource": {
+            "type": "string"
+          },
+          "coefficientVintage": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "description": "What the estimate covers, in one sentence a reader can check."
+          }
+        },
+        "required": [
+          "cpuUtilization",
+          "pue",
+          "vcpuWatts",
+          "coefficientSource",
+          "coefficientVintage",
+          "scope"
+        ],
+        "additionalProperties": false
+      },
+      "CarbonEstimate": {
+        "type": "object",
+        "properties": {
+          "windowDays": {
+            "type": "integer"
+          },
+          "totalKgCo2e": {
+            "type": "number"
+          },
+          "totalKwh": {
+            "type": "number"
+          },
+          "estimatedCount": {
+            "type": "integer"
+          },
+          "unestimated": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CarbonUnestimatedRow"
+            }
+          },
+          "byRegion": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CarbonGroup"
+            }
+          },
+          "byAccount": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CarbonGroup"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CarbonRow"
+            }
+          },
+          "assumptions": {
+            "$ref": "#/components/schemas/CarbonAssumptions"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "windowDays",
+          "totalKgCo2e",
+          "totalKwh",
+          "estimatedCount",
+          "unestimated",
+          "byRegion",
+          "byAccount",
+          "rows",
+          "assumptions",
+          "generatedAt"
         ],
         "additionalProperties": false
       },
@@ -48156,6 +48410,63 @@
           }
         },
         "operationId": "deleteOrgOrgIdCalendarSubscriptionsSubscriptionId"
+      }
+    },
+    "/api/org/{orgId}/carbon": {
+      "get": {
+        "tags": [
+          "Carbon"
+        ],
+        "summary": "Estimated operational carbon, with its assumptions",
+        "description": "An **estimate**, in the same sense the cost estimates here are, and built to be honest about that in three ways.\n\n**A resource that cannot be placed is never guessed.** No published figure for the provider, no entry for the region, no vCPU count — each produces an `unestimated` row with a stated reason and contributes nothing to the total. A carbon figure computed against a guessed grid is worse than no figure, because it is a number somebody will put in a report.\n\n**The assumptions travel with the answer**: utilisation, PUE, the coefficient source and its vintage are all on the response.\n\n**It covers operational compute and says so.** Storage, network egress, managed services and embodied (manufacturing) emissions are excluded.\n\nvCPU counts come from each plugin's own size catalogue via the `rightsizing` declaration, so a provider that gains right-sizing gains a carbon estimate for free — and a type that declares no size field is an explainable gap rather than a guess.\n\nCoefficients are reproduced from the Cloud Carbon Footprint project (Apache-2.0), which sources them from government and grid-operator publications. They are not measured by us.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 365,
+              "description": "Defaults to 30."
+            },
+            "required": false,
+            "description": "Defaults to 30.",
+            "name": "windowDays",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The estimate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CarbonEstimate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCarbon"
       }
     },
     "/api/org/{orgId}/dns": {
