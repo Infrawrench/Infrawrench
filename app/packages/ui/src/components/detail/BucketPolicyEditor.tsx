@@ -576,6 +576,7 @@ function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
         <input
           value={statement.Sid ?? ""}
           onChange={(e) => patch("Sid", e.target.value || undefined)}
+          // i18n-ignore: example IAM statement id
           placeholder="MyStatement"
           aria-label={gt("Statement ID (Sid)")}
           className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
@@ -744,6 +745,7 @@ function ActionPicker({
               add(input.trim());
             }
           }}
+          // i18n-ignore: IAM action syntax example
           placeholder="s3:GetObject…"
           aria-label={gt("Add an action")}
           className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
@@ -971,6 +973,7 @@ function ConditionEditor({
           <input
             value={row.key}
             onChange={(e) => update(i, { key: e.target.value })}
+            // i18n-ignore: IAM condition key example
             placeholder="aws:SecureTransport"
             aria-label={gt("Condition key")}
             className="bg-surface border border-border-strong rounded px-1.5 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"

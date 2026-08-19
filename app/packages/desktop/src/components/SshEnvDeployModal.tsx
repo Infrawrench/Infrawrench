@@ -301,6 +301,7 @@ export function SshEnvDeployModal({
                     }`}
                   >
                     <div className="font-medium">.env</div>
+                    {/* i18n-ignore: env file syntax example */}
                     <div className="text-on-surface-faint mt-0.5">KEY=value</div>
                   </button>
                   <button
@@ -316,6 +317,7 @@ export function SshEnvDeployModal({
                     }`}
                   >
                     <div className="font-medium">{gt("Shell profile")}</div>
+                    {/* i18n-ignore: shell syntax example */}
                     <div className="text-on-surface-faint mt-0.5">export KEY=value</div>
                   </button>
                 </div>

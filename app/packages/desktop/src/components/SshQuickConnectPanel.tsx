@@ -221,6 +221,7 @@ export function SshQuickConnectPanel({
                     <KeyRow
                       groupName={radioGroupName}
                       value="1password"
+                      // i18n-ignore: product name
                       label="1Password"
                       sublabel={gt("running — ")}
                       selected={selectedKey?.type === "1password"}
@@ -236,6 +237,7 @@ export function SshQuickConnectPanel({
                     <KeyRow
                       groupName={radioGroupName}
                       value="pageant"
+                      // i18n-ignore: product name
                       label="Pageant"
                       sublabel={gt("running — ")}
                       selected={selectedKey?.type === "pageant"}
@@ -246,6 +248,7 @@ export function SshQuickConnectPanel({
                 {systemKeys.length > 0 && (
                   <div className="space-y-0.5">
                     <p className="text-xs text-on-surface-faint px-1 pb-0.5">
+                      {/* i18n-ignore: filesystem path */}
                       {gt("System")} (~/.ssh)
                     </p>
                     {systemKeys.map((k) => (

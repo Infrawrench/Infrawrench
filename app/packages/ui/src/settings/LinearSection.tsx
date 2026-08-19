@@ -131,6 +131,7 @@ export function LinearSection() {
   return (
     <div>
       <div className="mb-6">
+        {/* i18n-ignore: product name */}
         <h1 className="text-xl font-semibold">Linear</h1>
         <T>
           <p className="text-sm text-on-surface-muted mt-1">

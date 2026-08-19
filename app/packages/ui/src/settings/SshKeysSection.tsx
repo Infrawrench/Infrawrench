@@ -373,6 +373,7 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
               aria-labelledby="import-ssh-public-key-label"
               value={publicKey}
               onChange={(e) => setPublicKey(e.target.value)}
+              // i18n-ignore: SSH public key format example
               placeholder="ssh-ed25519 AAAA... user@host"
               rows={4}
               className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong font-mono resize-none"

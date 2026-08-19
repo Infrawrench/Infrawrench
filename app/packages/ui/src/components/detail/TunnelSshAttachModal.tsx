@@ -208,6 +208,7 @@ export function TunnelSshAttachModal({
                   type="text"
                   value={hostname}
                   onChange={(e) => setHostname(e.target.value)}
+                  // i18n-ignore: example hostname
                   placeholder="ssh.example.com"
                   className={inputClass}
                   aria-label={gt("Public hostname")}

@@ -365,7 +365,7 @@ function BusinessMetricModal({
                 value={input.name}
                 maxLength={BUSINESS_METRIC_LIMITS.maxNameLength}
                 onChange={(e) => set("name", e.target.value)}
-                placeholder="Active customers"
+                placeholder={gt("Active customers")}
               />
             </div>
             <div>
@@ -459,7 +459,7 @@ function BusinessMetricModal({
               value={input.description ?? ""}
               maxLength={BUSINESS_METRIC_LIMITS.maxDescriptionLength}
               onChange={(e) => set("description", e.target.value)}
-              placeholder="Paying customers at the end of each UTC day"
+              placeholder={gt("Paying customers at the end of each UTC day")}
             />
           </div>
 

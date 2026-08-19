@@ -9946,5 +9946,10 @@
   },
   "cfce2834886ba525": "Cette ressource n'a pas encore d'adresse à laquelle se connecter. Les applications s'exécutent via la même connexion SSH que le terminal.",
   "f5b602dc58728f22": "Cette clé est conservée dans Infrawrench Cloud, et son utilisation nécessite une connexion cloud active. Connectez-vous, ou choisissez une clé stockée localement ci-dessous.",
-  "9b2029ecadd23613": "Ouvrir l'onglet Applications"
+  "9b2029ecadd23613": "Ouvrir l'onglet Applications",
+  "7e99db863445ac58": "Clients actifs",
+  "b2bf8a627936983f": "Clients payants à la fin de chaque jour UTC",
+  "d07c1cbeab7d645b": "Stack de staging",
+  "535023a09c4f343b": "Entrepôt finance (quotidien)",
+  "117053be35f6f366": "p. ex. resources:*:read ou *"
 }

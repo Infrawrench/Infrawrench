@@ -88,6 +88,38 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
 
+  translations:
+    name: Translations
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .turbo
+            node_modules
+          key: ${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      # Gate: every user-facing string is marked for translation or carries an
+      # `i18n-ignore: <reason>` marker. Fails on unmarked strings, reasonless
+      # markers, and stale markers.
+      - run: pnpm --filter @infrawrench/web translations:audit
+
+      # Non-gating on catalog lag (missing entries just render English), but
+      # fails on gt extraction errors — a broken <T> site is a real bug.
+      - run: pnpm --filter @infrawrench/web translations:status
+
   migrations:
     name: Database migrations
     runs-on: ubuntu-24.04-arm

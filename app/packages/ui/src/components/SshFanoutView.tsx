@@ -403,6 +403,7 @@ export function SshFanoutView({
           id="fanout-command"
           value={command}
           onChange={(e) => setCommand(e.target.value)}
+          // i18n-ignore: example shell command
           placeholder="uname -r"
           rows={3}
           className={`${INPUT_CLASSES} font-mono w-full resize-y`}

@@ -114,6 +114,7 @@ function ClaimPage() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && code) void handleLookup(code);
             }}
+            // i18n-ignore: claim code format hint
             placeholder="XXXX-XXXX"
             autoComplete="off"
             spellCheck={false}

@@ -455,6 +455,7 @@ export function SqlEditorView({
             onKeyDown={handleKeyDown}
             spellCheck={false}
             className="flex-1 bg-surface-raised px-4 py-3 text-xs font-mono text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none resize-none"
+            // i18n-ignore: SQL syntax example
             placeholder="SELECT …"
           />
         </div>

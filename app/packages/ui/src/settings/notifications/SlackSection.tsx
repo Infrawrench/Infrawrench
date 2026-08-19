@@ -129,6 +129,7 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
   if (!status) {
     return shell(
       <>
+        {/* i18n-ignore: product name */}
         <h2 className="text-sm font-semibold text-on-surface-secondary">Slack</h2>
         {error ? (
           <p className="text-xs text-danger">{error}</p>
@@ -146,6 +147,7 @@ export function SlackSection({ orgId, embedded = false }: { orgId: string; embed
     <>
       <div className="flex items-center gap-2">
         <SlackMark className="w-4 h-4" />
+        {/* i18n-ignore: product name */}
         <h2 className="text-sm font-semibold text-on-surface-secondary">Slack</h2>
       </div>
 

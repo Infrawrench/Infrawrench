@@ -602,6 +602,7 @@ export function CostFilterEditor({
             rows={2}
             maxLength={COST_QUERY_MAX_LENGTH}
             className={`${selectClass} font-mono`}
+            // i18n-ignore: cost query filter syntax example
             placeholder="provider = 'aws' AND tag['env'] != 'dev'"
             value={text}
             onChange={(e) => onTextChange(e.target.value)}

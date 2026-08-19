@@ -168,6 +168,7 @@ export function SshKeyPicker({
           <div>
             <div className="px-3 py-1 bg-surface-overlay/30 border-b border-border-strong/40">
               <span className="text-[10px] font-semibold text-on-surface-faint uppercase tracking-wide">
+                {/* i18n-ignore: product name */}
                 1Password
               </span>
             </div>
@@ -229,6 +230,7 @@ export function SshKeyPicker({
                   <span className="flex-1 min-w-0">
                     <span className="font-medium font-mono block text-xs">{k.name}</span>
                     <span className="text-[11px] text-on-surface-faint">
+                      {/* i18n-ignore: filesystem path */}
                       ~/.ssh/{k.name}.pub · {keyType}
                     </span>
                   </span>

@@ -337,7 +337,7 @@ function RoleEditor({ role, api, orgId, groups, onClose, onSaved, onError }: Rol
                 aria-labelledby="role-extra-permission-label"
                 value={extraInput}
                 onChange={(e) => setExtraInput(e.target.value)}
-                placeholder="e.g. resources:*:read or *"
+                placeholder={gt("e.g. resources:*:read or *")}
                 className="flex-1 bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm font-mono"
               />
               <button

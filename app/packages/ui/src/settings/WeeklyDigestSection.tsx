@@ -382,6 +382,7 @@ export function WeeklyDigestSection() {
             onKeyDown={(e) => {
               if (e.key === "Enter") void handleAddRecipient();
             }}
+            // i18n-ignore: example email address
             placeholder="finance@example.com"
             aria-label={gt("Email recipient to add")}
             className="flex-1 px-2 py-1.5 text-sm bg-surface-overlay border border-border rounded-lg text-on-surface-secondary"

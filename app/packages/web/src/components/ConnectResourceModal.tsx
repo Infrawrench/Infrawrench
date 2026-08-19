@@ -536,6 +536,7 @@ export function ConnectResourceModal({
                         type="text"
                         value={filePath}
                         onChange={(e) => setFilePath(e.target.value)}
+                        // i18n-ignore: filesystem path example
                         placeholder="~/.env"
                         className="flex-1 rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm font-mono text-on-surface outline-none focus:border-blue-500"
                       />

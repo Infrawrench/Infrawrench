@@ -420,7 +420,7 @@ function CostExportEditor({
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Finance warehouse (daily)"
+                placeholder={gt("Finance warehouse (daily)")}
                 className={INPUT}
               />
             </label>
@@ -480,6 +480,7 @@ function CostExportEditor({
                 type="text"
                 value={form.timezone}
                 onChange={(e) => setForm({ ...form, timezone: e.target.value })}
+                // i18n-ignore: IANA timezone identifier
                 placeholder="Europe/Berlin"
                 className={INPUT}
               />
@@ -756,6 +757,7 @@ function S3DestinationFields({
           type="text"
           value={destination.region}
           onChange={(e) => onChange({ ...destination, region: e.target.value })}
+          // i18n-ignore: provider region code example
           placeholder="us-east-1 (R2: auto)"
           className={INPUT}
         />

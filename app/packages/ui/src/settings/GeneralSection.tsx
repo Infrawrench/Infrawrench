@@ -338,6 +338,7 @@ function ChangeEmailModal({
                   autoComplete="email"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
+                  // i18n-ignore: example email address
                   placeholder="you@example.com"
                   className={INPUT}
                 />

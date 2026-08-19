@@ -9946,5 +9946,10 @@
   },
   "cfce2834886ba525": "Für diese Ressource gibt es noch keine Adresse, zu der eine Verbindung hergestellt werden kann. Anwendungen laufen über dieselbe SSH-Verbindung wie das Terminal.",
   "f5b602dc58728f22": "Dieser Schlüssel wird in Infrawrench Cloud gespeichert; seine Nutzung erfordert eine aktive Cloud-Anmeldung. Melden Sie sich an, oder wählen Sie unten einen lokal gespeicherten Schlüssel.",
-  "9b2029ecadd23613": "Apps-Tab öffnen"
+  "9b2029ecadd23613": "Apps-Tab öffnen",
+  "7e99db863445ac58": "Aktive Kunden",
+  "b2bf8a627936983f": "Zahlende Kunden am Ende jedes UTC-Tages",
+  "d07c1cbeab7d645b": "Staging-Stack",
+  "535023a09c4f343b": "Finanz-Warehouse (täglich)",
+  "117053be35f6f366": "z. B. resources:*:read oder *"
 }

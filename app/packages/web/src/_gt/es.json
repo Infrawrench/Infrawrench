@@ -10162,5 +10162,10 @@
   "8f4518fc40bd4111": "Cerrar pestaña",
   "af9e6ddd746d15dc": "Esta ventana ya no está conectada.",
   "f087df242d061604": "Abra la pestaña Aplicaciones del host para volver a conectarse — la aplicación sigue ejecutándose allí.",
-  "32bced682e8515f3": "Panel de pared"
+  "32bced682e8515f3": "Panel de pared",
+  "7e99db863445ac58": "Clientes activos",
+  "b2bf8a627936983f": "Clientes de pago al final de cada día UTC",
+  "d07c1cbeab7d645b": "Stack de staging",
+  "535023a09c4f343b": "Almacén de finanzas (diario)",
+  "117053be35f6f366": "p. ej., resources:*:read o *"
 }
