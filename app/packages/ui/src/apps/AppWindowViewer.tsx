@@ -34,6 +34,14 @@ export interface AppWindowViewerProps {
   status?: string;
   onClose?: () => void;
   className?: string;
+  /**
+   * Render as a dialog floating inside its parent's viewer rather than a
+   * window filling its tab: sized by the application instead of the box, no
+   * audio of its own (the parent's viewer already holds the session stream),
+   * and focused on mount so typing lands in it. Set by the viewer itself for
+   * the child windows the host reports with a `parentWindowId`.
+   */
+  dialog?: boolean;
 }
 
 /**
@@ -115,6 +123,7 @@ export function AppWindowViewer({
   status,
   onClose,
   className,
+  dialog = false,
 }: AppWindowViewerProps) {
   const gt = useGT();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -140,66 +149,119 @@ export function AppWindowViewer({
   const [error, setError] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string>("default");
   const [audio, setAudio] = useState<SessionAudio | null>(null);
+  /**
+   * A dialog is sized by the application, not by the tab: the box follows the
+   * frames, in buffer pixels. Seeded from what the host said at `windowOpen`
+   * so the overlay has a plausible footprint before the first frame lands.
+   */
+  const [dialogSize, setDialogSize] = useState<{ width: number; height: number } | null>(() => {
+    if (!dialog) return null;
+    const info = session.window(windowId);
+    return info ? { width: info.width, height: info.height } : null;
+  });
+  /**
+   * Windows the host reported as dialogs of this one. Each renders as an
+   * overlay inside this viewer — a dialog belongs within its parent's bounds,
+   * never in a tab of its own — and a dialog's own dialogs recurse.
+   */
+  const [childWindows, setChildWindows] = useState<number[]>([]);
 
   // The session's mixed audio, shared with every other window tab on it. Held
   // for exactly as long as a viewer is mounted: the last one to leave tells
-  // the host to stop sending PCM nobody would play.
+  // the host to stop sending PCM nobody would play. A dialog overlay skips
+  // this — its parent viewer is mounted for as long as it is.
   useEffect(() => {
+    if (dialog) return;
     const player = acquireSessionAudio(session);
     setAudio(player);
     return () => {
       setAudio(null);
       player.release();
     };
-  }, [session]);
+  }, [session, dialog]);
+
+  useEffect(() => {
+    const compute = () => {
+      setChildWindows((previous) => {
+        const next = session.windows
+          .filter((candidate) => candidate.parentWindowId === windowId)
+          .map((candidate) => candidate.windowId);
+        return previous.length === next.length && previous.every((id, index) => id === next[index])
+          ? previous
+          : next;
+      });
+    };
+    compute();
+    const onWindow = () => compute();
+    const onWindowClose = () => compute();
+    session.addWindowListener(onWindow);
+    session.addWindowCloseListener(onWindowClose);
+    return () => {
+      session.removeWindowListener(onWindow);
+      session.removeWindowCloseListener(onWindowClose);
+    };
+  }, [session, windowId]);
 
   const scale = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
 
-  const paint = useCallback(async (payload: PixelPayload) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  const paint = useCallback(
+    async (payload: PixelPayload) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
 
-    let buffer = bufferRef.current;
-    if (!buffer || buffer.width !== payload.width || buffer.height !== payload.height) {
-      const pixels = new Uint8ClampedArray(new ArrayBuffer(payload.width * payload.height * 4));
-      buffer = {
-        pixels,
-        width: payload.width,
-        height: payload.height,
-        image: new ImageData(pixels, payload.width, payload.height),
-      };
-      bufferRef.current = buffer;
-      canvas.width = payload.width;
-      canvas.height = payload.height;
-    }
-
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) return;
-
-    try {
-      if (payload.codec === Codec.JpegTiles) {
-        await paintImageTiles(payload, context, buffer);
-      } else {
-        applyPayload(payload, buffer.pixels, buffer.width, buffer.height, zstdDecompress);
-        // Only the region the frame touched. Handing the whole canvas to
-        // `putImageData` uploads every pixel of the window for a frame that
-        // changed one line of a terminal — which on a HiDPI window is
-        // megabytes, at whatever rate the application redraws.
-        const dirty = dirtyBounds(payload);
-        if (dirty) {
-          context.putImageData(buffer.image, 0, 0, dirty.x, dirty.y, dirty.w, dirty.h);
-        }
+      if (dialog) {
+        // The frames are the truth about a dialog's size — the application may
+        // grow it after opening — and the box follows them.
+        setDialogSize((previous) =>
+          previous && previous.width === payload.width && previous.height === payload.height
+            ? previous
+            : { width: payload.width, height: payload.height },
+        );
       }
-    } catch (cause) {
-      // A frame we cannot decode is not fatal — the next keyframe repairs the
-      // window — but silently painting nothing looks like a hang.
-      setError(cause instanceof Error ? cause.message : String(cause));
-      return;
-    }
 
-    setError(null);
-    setPainted(true);
-  }, []);
+      let buffer = bufferRef.current;
+      if (!buffer || buffer.width !== payload.width || buffer.height !== payload.height) {
+        const pixels = new Uint8ClampedArray(new ArrayBuffer(payload.width * payload.height * 4));
+        buffer = {
+          pixels,
+          width: payload.width,
+          height: payload.height,
+          image: new ImageData(pixels, payload.width, payload.height),
+        };
+        bufferRef.current = buffer;
+        canvas.width = payload.width;
+        canvas.height = payload.height;
+      }
+
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) return;
+
+      try {
+        if (payload.codec === Codec.JpegTiles) {
+          await paintImageTiles(payload, context, buffer);
+        } else {
+          applyPayload(payload, buffer.pixels, buffer.width, buffer.height, zstdDecompress);
+          // Only the region the frame touched. Handing the whole canvas to
+          // `putImageData` uploads every pixel of the window for a frame that
+          // changed one line of a terminal — which on a HiDPI window is
+          // megabytes, at whatever rate the application redraws.
+          const dirty = dirtyBounds(payload);
+          if (dirty) {
+            context.putImageData(buffer.image, 0, 0, dirty.x, dirty.y, dirty.w, dirty.h);
+          }
+        }
+      } catch (cause) {
+        // A frame we cannot decode is not fatal — the next keyframe repairs
+        // the window — but silently painting nothing looks like a hang.
+        setError(cause instanceof Error ? cause.message : String(cause));
+        return;
+      }
+
+      setError(null);
+      setPainted(true);
+    },
+    [dialog],
+  );
 
   // Frames and cursor changes for this window.
   useEffect(() => {
@@ -220,23 +282,34 @@ export function AppWindowViewer({
   }, [session, windowId, paint]);
 
   // Attach on mount, detach on unmount: a tab in the background costs no
-  // bandwidth, and the application keeps running either way.
+  // bandwidth, and the application keeps running either way. A window fills
+  // the tab, so it attaches at the tab's size; a dialog is sized by the
+  // application, so it attaches at the size the host already reported —
+  // asking it to fill the tab would stretch a Save-as box across the screen.
   useEffect(() => {
-    const surface = surfaceRef.current;
-    if (!surface) return;
-    const rect = surface.getBoundingClientRect();
-    session.attach(
-      windowId,
-      Math.max(1, Math.round(rect.width * scale)),
-      Math.max(1, Math.round(rect.height * scale)),
-      scale,
-    );
+    let width: number;
+    let height: number;
+    if (dialog) {
+      const info = session.window(windowId);
+      width = Math.max(1, info?.width ?? 1);
+      height = Math.max(1, info?.height ?? 1);
+    } else {
+      const surface = surfaceRef.current;
+      if (!surface) return;
+      const rect = surface.getBoundingClientRect();
+      width = Math.max(1, Math.round(rect.width * scale));
+      height = Math.max(1, Math.round(rect.height * scale));
+    }
+    session.attach(windowId, width, height, scale);
     return () => session.detach(windowId);
-  }, [session, windowId, scale]);
+  }, [session, windowId, scale, dialog]);
 
   // Follow the tab's size. Debounced, because a drag-resize would otherwise
-  // ask the application to relayout on every animation frame.
+  // ask the application to relayout on every animation frame. Not for a
+  // dialog: its box follows the application's frames, so observing it would
+  // echo every size back as a resize request.
   useEffect(() => {
+    if (dialog) return;
     const surface = surfaceRef.current;
     if (!surface || typeof ResizeObserver === "undefined") return;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -259,7 +332,13 @@ export function AppWindowViewer({
       clearTimeout(timer);
       observer.disconnect();
     };
-  }, [session, windowId, scale]);
+  }, [session, windowId, scale, dialog]);
+
+  // A dialog is what the user is being asked about; typing should land in it
+  // without a click first.
+  useEffect(() => {
+    if (dialog) canvasRef.current?.focus();
+  }, [dialog]);
 
   const started = useMemo(() => Date.now(), []);
   const now = useCallback(() => (Date.now() - started) % 0xffffffff, [started]);
@@ -370,7 +449,24 @@ export function AppWindowViewer({
   return (
     <div
       ref={surfaceRef}
-      className={`relative h-full w-full overflow-hidden bg-surface-sunken ${className ?? ""}`}
+      className={
+        dialog
+          ? `relative overflow-hidden rounded-md border border-border bg-surface-sunken shadow-2xl ${className ?? ""}`
+          : `relative h-full w-full overflow-hidden bg-surface-sunken ${className ?? ""}`
+      }
+      style={
+        dialog
+          ? {
+              // Buffer pixels back down to CSS pixels, capped to the parent:
+              // a dialog larger than the tab scales down via `object-contain`
+              // rather than overflowing it.
+              width: dialogSize ? dialogSize.width / scale : undefined,
+              height: dialogSize ? dialogSize.height / scale : undefined,
+              maxWidth: "95%",
+              maxHeight: "95%",
+            }
+          : undefined
+      }
     >
       <canvas
         ref={canvasRef}
@@ -443,6 +539,19 @@ export function AppWindowViewer({
           </button>
         )}
       </div>
+
+      {/* Dialogs the host parented to this window, shown within its bounds.
+          The scrim keeps clicks meant for the dialog from landing on the
+          window underneath — which is what the application's own modality
+          would ignore anyway. Recursion covers a dialog's dialogs. */}
+      {childWindows.map((childId) => (
+        <div
+          key={childId}
+          className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 p-4"
+        >
+          <AppWindowViewer session={session} windowId={childId} dialog />
+        </div>
+      ))}
     </div>
   );
 }

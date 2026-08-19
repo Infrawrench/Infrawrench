@@ -21,7 +21,7 @@ use smithay::reexports::wayland_server::protocol::{
     wl_buffer, wl_seat, wl_shm, wl_surface::WlSurface,
 };
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
-use smithay::utils::Serial;
+use smithay::utils::{Rectangle, Serial};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
     BufferAssignment, CompositorClientState, CompositorHandler, CompositorState, Damage,
@@ -34,8 +34,8 @@ use smithay::wayland::selection::data_device::{
 };
 use smithay::wayland::shell::xdg::decoration::{XdgDecorationHandler, XdgDecorationState};
 use smithay::wayland::shell::xdg::{
-    PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
-    XdgToplevelSurfaceData,
+    PopupSurface, PositionerState, SurfaceCachedState, ToplevelSurface, XdgShellHandler,
+    XdgShellState, XdgToplevelSurfaceData,
 };
 use smithay::wayland::shm::{ShmHandler, ShmState, with_buffer_contents};
 use smithay::wayland::viewporter::{ViewportCachedState, ViewporterState, ensure_viewport_valid};
@@ -118,6 +118,34 @@ impl WindowRec {
     }
 }
 
+/// Where a popup landed: the owning window, the position of its geometry box
+/// on that window's canvas, and the geometry to configure the client with
+/// (relative to the parent's window-geometry origin).
+type PopupPlacement = (u32, (i32, i32), Rectangle<i32, smithay::utils::Logical>);
+
+/// One popup — a menu, a tooltip, Firefox's padlock panel — composited into
+/// the window it hangs off rather than becoming a window of its own.
+pub struct PopupRec {
+    pub popup: PopupSurface,
+    pub surface: WlSurface,
+    /// The toplevel window whose canvas this popup draws onto. Its direct
+    /// parent may be another popup, but the pixels always land on a toplevel.
+    pub window_id: u32,
+    /// Where the popup's geometry box sits, in logical pixels relative to the
+    /// toplevel surface's buffer origin.
+    pub position: (i32, i32),
+    /// The geometry box's size, as configured. This is the box input is
+    /// hit-tested against — the buffer may be larger by a shadow frame.
+    pub size: (i32, i32),
+    /// The popup asked for an explicit grab: keyboard focus is its while it
+    /// lives, and a click outside dismisses it.
+    pub grabbed: bool,
+    /// `popup_done` has been sent; awaiting the client's destroy.
+    pub dismissed: bool,
+    /// Has committed pixels. Unmapped popups are skipped by the composite.
+    pub mapped: bool,
+}
+
 pub struct AppState {
     pub compositor: CompositorState,
     pub xdg: XdgShellState,
@@ -161,6 +189,10 @@ pub struct AppState {
     /// Keysyms the layout has no key for, bound to spare keycodes.
     pub spare_keys: crate::keymap::SpareKeys,
     pub windows: HashMap<u32, WindowRec>,
+    /// In creation order, which the protocol makes stacking order: a nested
+    /// popup is always newer than its parent, so painting front-to-back is
+    /// painting this list front-to-back.
+    pub popups: Vec<PopupRec>,
     pub next_window_id: u32,
     pub events: VecDeque<BackendEvent>,
     pub started: Instant,
@@ -236,6 +268,7 @@ impl AppState {
             output,
             viewporter: ViewporterState::new::<Self>(dh),
             windows: HashMap::new(),
+            popups: Vec::new(),
             scale: 1,
             desktop: (1920, 1080),
             base_keymap: None,
@@ -318,6 +351,152 @@ impl AppState {
             .map(|(id, _)| *id)
     }
 
+    /// The mapped popup surfaces drawing onto a window, bottom to top.
+    pub fn popup_surfaces(&self, window_id: u32) -> Vec<WlSurface> {
+        self.popups
+            .iter()
+            .filter(|rec| rec.window_id == window_id && rec.mapped)
+            .map(|rec| rec.surface.clone())
+            .collect()
+    }
+
+    /// Where pointer input at `location` — logical pixels, relative to the
+    /// toplevel's buffer origin — should be delivered: the topmost popup under
+    /// the point, or the toplevel itself. The second element is the target
+    /// surface's own origin in the same coordinates, which is what Smithay
+    /// subtracts to make the event surface-local.
+    pub fn pointer_target(
+        &self,
+        window_id: u32,
+        location: (f64, f64),
+    ) -> Option<(WlSurface, (f64, f64))> {
+        for rec in self.popups.iter().rev() {
+            if rec.window_id != window_id || !rec.mapped {
+                continue;
+            }
+            if !popup_contains(rec, location) {
+                continue;
+            }
+            // The event is relative to the popup's *buffer*, which starts a
+            // shadow frame up-left of the geometry box the position names.
+            let offset = xdg_geometry_offset(&rec.surface);
+            return Some((
+                rec.surface.clone(),
+                (
+                    f64::from(rec.position.0 - offset.0),
+                    f64::from(rec.position.1 - offset.1),
+                ),
+            ));
+        }
+        let rec = self.windows.get(&window_id)?;
+        Some((rec.surface.clone(), (0.0, 0.0)))
+    }
+
+    /// The surface keys should go to: the topmost live grabbed popup — a menu
+    /// wants its arrow keys and its Escape — or the toplevel.
+    pub fn keyboard_target(&self, window_id: u32) -> Option<WlSurface> {
+        for rec in self.popups.iter().rev() {
+            if rec.window_id == window_id && rec.mapped && rec.grabbed && !rec.dismissed {
+                return Some(rec.surface.clone());
+            }
+        }
+        self.windows.get(&window_id).map(|rec| rec.surface.clone())
+    }
+
+    /// A button was pressed at `location`. When the window holds a grabbed
+    /// popup and the press is outside every popup, the grab is over: the
+    /// popups are told `popup_done`, newest first, which is how the padlock
+    /// panel closes when the user clicks back into the page.
+    pub fn dismiss_popups_outside(&mut self, window_id: u32, location: (f64, f64)) {
+        let has_grab = self
+            .popups
+            .iter()
+            .any(|rec| rec.window_id == window_id && rec.grabbed && !rec.dismissed);
+        if !has_grab {
+            return;
+        }
+        let inside = self
+            .popups
+            .iter()
+            .any(|rec| rec.window_id == window_id && rec.mapped && popup_contains(rec, location));
+        if inside {
+            return;
+        }
+        for rec in self.popups.iter_mut().rev() {
+            if rec.window_id == window_id && rec.grabbed && !rec.dismissed {
+                rec.dismissed = true;
+                rec.popup.send_popup_done();
+            }
+        }
+    }
+
+    /// Recomposite a window outside the commit path — a popup was destroyed
+    /// or repositioned, so no client commit will trigger the repaint — and
+    /// report the damage so a frame actually goes out.
+    fn refresh_window(&mut self, window_id: u32) {
+        if !self.windows.contains_key(&window_id) {
+            return;
+        }
+        self.composite(window_id);
+        let Some(rec) = self.windows.get_mut(&window_id) else {
+            return;
+        };
+        if !rec.mapped {
+            return;
+        }
+        let damage = std::mem::take(&mut rec.damage);
+        self.events
+            .push_back(BackendEvent::WindowDamaged { window_id, damage });
+    }
+
+    /// Resolve a popup's owning window and the origin of its positioner's
+    /// coordinate space — the parent's window-geometry origin — in logical
+    /// pixels relative to the toplevel's buffer origin.
+    fn popup_base(&self, parent: &WlSurface) -> Option<(u32, (i32, i32))> {
+        if let Some(window_id) = self.window_id_for(parent) {
+            // Positioner coordinates are relative to the parent's *window
+            // geometry*, which for a client-decorated toplevel starts inside
+            // its shadow frame.
+            return Some((window_id, xdg_geometry_offset(parent)));
+        }
+        self.popups
+            .iter()
+            .find(|rec| rec.surface == *parent)
+            .map(|rec| (rec.window_id, rec.position))
+    }
+
+    /// Where a popup goes, from its positioner: the owning window, the final
+    /// position on that window's canvas, and the geometry to configure the
+    /// client with (position relative to the parent's geometry origin).
+    fn place_popup(
+        &self,
+        parent: &WlSurface,
+        positioner: &PositionerState,
+    ) -> Option<PopupPlacement> {
+        let (window_id, base) = self.popup_base(parent)?;
+        // The window's bounds in the positioner's coordinate space, so the
+        // protocol's flip/slide adjustments can keep the popup inside them.
+        let bounds = self.windows.get(&window_id).and_then(|rec| {
+            let scale = surface_scale(&rec.surface).max(1);
+            let (w, h) = (rec.width as i32 / scale, rec.height as i32 / scale);
+            (w > 0 && h > 0).then_some((w, h))
+        });
+        let rel = match bounds {
+            Some((w, h)) => positioner.get_unconstrained_geometry(Rectangle::new(
+                (-base.0, -base.1).into(),
+                (w, h).into(),
+            )),
+            None => positioner.get_geometry(),
+        };
+        let position = crate::paint::place_popup(
+            (base.0 + rel.loc.x, base.1 + rel.loc.y),
+            (rel.size.w, rel.size.h),
+            bounds,
+        );
+        let geometry = Rectangle::new((position.0 - base.0, position.1 - base.1).into(), rel.size);
+        Some((window_id, position, geometry))
+    }
+
     /// Re-draw a window from its whole surface tree.
     ///
     /// A toplevel's own buffer is only half the picture — a Wayland client may
@@ -338,6 +517,26 @@ impl AppState {
             return;
         };
         let root_scale = surface_scale(&root);
+
+        // Popups draw over the toplevel's own tree, bottom to top. Each is a
+        // second root at its own offset: the offset places the popup's
+        // *buffer*, which starts a shadow frame up-left of the geometry box
+        // its position names.
+        let mut walk_roots: Vec<(WlSurface, (i32, i32))> = vec![(root.clone(), (0, 0))];
+        for popup in self
+            .popups
+            .iter()
+            .filter(|popup| popup.window_id == window_id && popup.mapped)
+        {
+            let offset = xdg_geometry_offset(&popup.surface);
+            walk_roots.push((
+                popup.surface.clone(),
+                (
+                    (popup.position.0 - offset.0) * root_scale,
+                    (popup.position.1 - offset.1) * root_scale,
+                ),
+            ));
+        }
 
         // The canvas is kept between commits and only re-composited where
         // something changed. Rebuilding it whole was a fresh allocation, a
@@ -361,67 +560,69 @@ impl AppState {
         let mut layout: Vec<(u32, i32, i32, u32, u32)> = Vec::new();
         let mut damage: Vec<Rect> = Vec::new();
 
-        with_surface_tree_downward(
-            &root,
-            (0i32, 0i32),
-            |surface, states, offset| {
-                // Draw on the way *down*: a parent is painted before its
-                // children, because a subsurface sits on top of the surface it
-                // belongs to. Painting on the way up instead — which is what
-                // the post-order callback does — lets a toplevel's mostly
-                // transparent shadow frame erase the content beneath it, and
-                // produces an empty window from a client that drew everything
-                // correctly.
-                //
-                // Every surface carries subsurface state; for one that is not a
-                // subsurface it is the default (0, 0), so no branch is needed.
-                let mut sub = states.cached_state.get::<SubsurfaceCachedState>();
-                let location = sub.current().location;
-                // A subsurface is positioned in *logical* pixels while the
-                // canvas is in buffer pixels, so on a HiDPI window every child
-                // would land at half its offset — the content drifts up and
-                // left of where the application put it.
-                let at = (
-                    offset.0 + location.x * root_scale,
-                    offset.1 + location.y * root_scale,
-                );
+        for (walk_root, base) in &walk_roots {
+            with_surface_tree_downward(
+                walk_root,
+                *base,
+                |surface, states, offset| {
+                    // Draw on the way *down*: a parent is painted before its
+                    // children, because a subsurface sits on top of the surface it
+                    // belongs to. Painting on the way up instead — which is what
+                    // the post-order callback does — lets a toplevel's mostly
+                    // transparent shadow frame erase the content beneath it, and
+                    // produces an empty window from a client that drew everything
+                    // correctly.
+                    //
+                    // Every surface carries subsurface state; for one that is not a
+                    // subsurface it is the default (0, 0), so no branch is needed.
+                    let mut sub = states.cached_state.get::<SubsurfaceCachedState>();
+                    let location = sub.current().location;
+                    // A subsurface is positioned in *logical* pixels while the
+                    // canvas is in buffer pixels, so on a HiDPI window every child
+                    // would land at half its offset — the content drifts up and
+                    // left of where the application put it.
+                    let at = (
+                        offset.0 + location.x * root_scale,
+                        offset.1 + location.y * root_scale,
+                    );
 
-                if let Some(cache) = states.data_map.get::<RefCell<SurfacePixels>>() {
-                    let mut cache = cache.borrow_mut();
-                    // The layout records the box the surface is *shown* in, not
-                    // its buffer: a viewport change moves that box without a
-                    // buffer resize, and has to read as a layout change.
-                    let dest = cache.dest_on_canvas(root_scale);
-                    layout.push((surface.id().protocol_id(), at.0, at.1, dest.0, dest.1));
-                    // Damage arrives in the surface's *own* buffer pixels, so
-                    // it maps through the box the buffer is shown in — a scale
-                    // ratio for an ordinary surface, the viewport mapping for
-                    // a viewported one. A source crop makes that mapping
-                    // rect-relative; the crop is rare enough that repainting
-                    // the whole box is the better trade.
-                    let (buf_w, buf_h) = (cache.width, cache.height);
-                    let cropped = cache.viewport_src.is_some();
-                    let pending: Vec<Rect> = cache.damage.drain(..).collect();
-                    for rect in pending {
-                        let rect = if cropped {
-                            Rect::new(0, 0, dest.0, dest.1)
-                        } else {
-                            let Some(rect) = rect.clip(buf_w, buf_h) else {
-                                continue;
+                    if let Some(cache) = states.data_map.get::<RefCell<SurfacePixels>>() {
+                        let mut cache = cache.borrow_mut();
+                        // The layout records the box the surface is *shown* in, not
+                        // its buffer: a viewport change moves that box without a
+                        // buffer resize, and has to read as a layout change.
+                        let dest = cache.dest_on_canvas(root_scale);
+                        layout.push((surface.id().protocol_id(), at.0, at.1, dest.0, dest.1));
+                        // Damage arrives in the surface's *own* buffer pixels, so
+                        // it maps through the box the buffer is shown in — a scale
+                        // ratio for an ordinary surface, the viewport mapping for
+                        // a viewported one. A source crop makes that mapping
+                        // rect-relative; the crop is rare enough that repainting
+                        // the whole box is the better trade.
+                        let (buf_w, buf_h) = (cache.width, cache.height);
+                        let cropped = cache.viewport_src.is_some();
+                        let pending: Vec<Rect> = cache.damage.drain(..).collect();
+                        for rect in pending {
+                            let rect = if cropped {
+                                Rect::new(0, 0, dest.0, dest.1)
+                            } else {
+                                let Some(rect) = rect.clip(buf_w, buf_h) else {
+                                    continue;
+                                };
+                                rescale_to(rect, (buf_w, buf_h), dest)
                             };
-                            rescale_to(rect, (buf_w, buf_h), dest)
-                        };
-                        if let Some(clipped) = translate(rect, at.0, at.1).clip(width, height) {
-                            damage.push(clipped);
+                            if let Some(clipped) = translate(rect, at.0, at.1).clip(width, height) {
+                                damage.push(clipped);
+                            }
                         }
                     }
-                }
 
-                TraversalAction::DoChildren(at)
-            },
-            |_, _, _| {},
-            |_, _, _| true,
-        );
+                    TraversalAction::DoChildren(at)
+                },
+                |_, _, _| {},
+                |_, _, _| true,
+            );
+        }
 
         let Some(rec) = self.windows.get_mut(&window_id) else {
             return;
@@ -439,7 +640,6 @@ impl AppState {
         };
 
         if !regions.is_empty() {
-            let root_for_paint = rec.surface.clone();
             for region in &regions {
                 // Compositing is source-over, so the region has to start empty
                 // or the last frame shows through anything translucent drawn
@@ -452,27 +652,29 @@ impl AppState {
                 height,
                 scale: root_scale,
             };
-            with_surface_tree_downward(
-                &root_for_paint,
-                (0i32, 0i32),
-                |_, states, offset| {
-                    let mut sub = states.cached_state.get::<SubsurfaceCachedState>();
-                    let location = sub.current().location;
-                    let at = (
-                        offset.0 + location.x * root_scale,
-                        offset.1 + location.y * root_scale,
-                    );
-                    if let Some(cache) = states.data_map.get::<RefCell<SurfacePixels>>() {
-                        let cache = cache.borrow();
-                        for region in &regions {
-                            blit(&mut target, &cache.view(), at.0, at.1, Some(*region));
+            for (walk_root, base) in &walk_roots {
+                with_surface_tree_downward(
+                    walk_root,
+                    *base,
+                    |_, states, offset| {
+                        let mut sub = states.cached_state.get::<SubsurfaceCachedState>();
+                        let location = sub.current().location;
+                        let at = (
+                            offset.0 + location.x * root_scale,
+                            offset.1 + location.y * root_scale,
+                        );
+                        if let Some(cache) = states.data_map.get::<RefCell<SurfacePixels>>() {
+                            let cache = cache.borrow();
+                            for region in &regions {
+                                blit(&mut target, &cache.view(), at.0, at.1, Some(*region));
+                            }
                         }
-                    }
-                    TraversalAction::DoChildren(at)
-                },
-                |_, _, _| {},
-                |_, _, _| true,
-            );
+                        TraversalAction::DoChildren(at)
+                    },
+                    |_, _, _| {},
+                    |_, _, _| true,
+                );
+            }
         }
 
         let Some(rec) = self.windows.get_mut(&window_id) else {
@@ -486,6 +688,13 @@ impl AppState {
             // Damage from before a resize describes a buffer that no longer
             // exists; the encoder sends a keyframe for the new size instead.
             rec.damage.clear();
+        } else if full {
+            // The whole canvas was rebuilt — a popup opened or closed, a
+            // subsurface moved — and the surfaces' own damage says nothing
+            // about the pixels that were *vacated*. Report the whole window:
+            // the encoder diffs against what it last sent, so over-reporting
+            // costs a compare pass, not wire bytes.
+            rec.damage.push(Rect::new(0, 0, width, height));
         } else {
             rec.damage.extend(damage);
         }
@@ -675,6 +884,28 @@ pub(super) fn surface_scale(surface: &WlSurface) -> i32 {
     })
 }
 
+/// An xdg surface's window-geometry origin: where its geometry box starts
+/// inside its own buffer, in logical pixels. (0, 0) when the client never set
+/// one, which per the protocol means the geometry is the whole surface.
+fn xdg_geometry_offset(surface: &WlSurface) -> (i32, i32) {
+    with_states(surface, |states| {
+        let mut guard = states.cached_state.get::<SurfaceCachedState>();
+        guard
+            .current()
+            .geometry
+            .map(|geometry| (geometry.loc.x, geometry.loc.y))
+            .unwrap_or((0, 0))
+    })
+}
+
+/// Whether a point — logical, toplevel-relative — lands in a popup's
+/// geometry box.
+fn popup_contains(rec: &PopupRec, location: (f64, f64)) -> bool {
+    let (x, y) = (f64::from(rec.position.0), f64::from(rec.position.1));
+    let (w, h) = (f64::from(rec.size.0), f64::from(rec.size.1));
+    location.0 >= x && location.0 < x + w && location.1 >= y && location.1 < y + h
+}
+
 /// The size of a surface's own buffer, which for a toplevel is the window size.
 fn surface_size(surface: &WlSurface) -> Option<(u32, u32)> {
     with_states(surface, |states| {
@@ -716,6 +947,15 @@ impl CompositorHandler for AppState {
                 smithay::utils::Transform::Normal,
             );
         });
+
+        // A popup's first commit carries no buffer; the configure answering it
+        // is what permits the client to attach one. Without this the popup
+        // waits forever — which is exactly what Firefox's padlock panel did.
+        if let Some(rec) = self.popups.iter().find(|rec| rec.surface == *surface)
+            && !rec.popup.is_initial_configure_sent()
+        {
+            let _ = rec.popup.send_configure();
+        }
 
         // Every surface caches its own pixels, whether it is a toplevel or a
         // child three levels down: the compositing pass needs all of them.
@@ -839,14 +1079,30 @@ impl CompositorHandler for AppState {
             cache.damage.extend(fresh);
         });
 
-        // Walk up to the toplevel this surface belongs to: a subsurface commit
-        // is a change to its window, not to itself.
+        // Walk up to the surface this commit belongs to: a subsurface commit
+        // is a change to its window, not to itself. `get_parent` only climbs
+        // the *subsurface* tree, so a popup's root is the popup itself and is
+        // resolved to its owning window through the popup list.
         let mut root = surface.clone();
         while let Some(parent) = get_parent(&root) {
             root = parent;
         }
-        let Some(window_id) = self.window_id_for(&root) else {
-            return;
+        let window_id = match self.window_id_for(&root) {
+            Some(window_id) => window_id,
+            None => {
+                let Some(index) = self.popups.iter().position(|rec| rec.surface == root) else {
+                    return;
+                };
+                let window_id = self.popups[index].window_id;
+                if !self.popups[index].mapped && surface_size(&root).is_some() {
+                    self.popups[index].mapped = true;
+                    // Same as a toplevel's first content: a surface on no
+                    // output reads as invisible to some clients, which then
+                    // stop painting it.
+                    self.output.enter(&root);
+                }
+                window_id
+            }
         };
 
         if debug {
@@ -1007,6 +1263,9 @@ impl XdgShellHandler for AppState {
         else {
             return;
         };
+        // The clients destroy their popups too; dropping the records now just
+        // keeps input hit-testing from ever finding a dead window's popup.
+        self.popups.retain(|rec| rec.window_id != window_id);
         let was_mapped = self.windows.remove(&window_id).is_some_and(|r| r.mapped);
         if was_mapped {
             self.events.push_back(BackendEvent::WindowClosed {
@@ -1016,20 +1275,95 @@ impl XdgShellHandler for AppState {
         }
     }
 
-    fn new_popup(&mut self, _surface: PopupSurface, _positioner: PositionerState) {
-        // Popups render into their parent's frame rather than becoming windows
-        // of their own — a menu must never open a workspace tab. Compositing
-        // them is the next piece of work; until then they simply do not draw.
+    /// A toplevel declared (or changed) its parent. This fires *after*
+    /// `new_toplevel` — Smithay raises that on `get_toplevel`, before the
+    /// client has said anything about the window — so the parent sampled at
+    /// creation is almost always `None`. Re-reading it here is what makes a
+    /// GTK or Qt dialog report a parent, and land inside its parent's tab
+    /// rather than opening one of its own.
+    fn parent_changed(&mut self, surface: ToplevelSurface) {
+        let parent = surface
+            .parent()
+            .and_then(|parent| self.window_id_for(&parent));
+        if let Some(rec) = self
+            .windows
+            .values_mut()
+            .find(|rec| rec.toplevel == surface)
+        {
+            rec.parent = parent;
+        }
     }
 
-    fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {}
+    fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
+        // A popup composites into the toplevel it hangs off — a menu must
+        // never open a workspace tab. A popup whose parent we cannot resolve
+        // is left untracked and never configured, so it never maps.
+        let Some(parent) = surface.get_parent_surface() else {
+            return;
+        };
+        let Some((window_id, position, geometry)) = self.place_popup(&parent, &positioner) else {
+            return;
+        };
+        surface.with_pending_state(|state| {
+            state.geometry = geometry;
+        });
+        // The configure itself waits for the client's first commit, as the
+        // protocol requires — see `commit`.
+        self.popups.push(PopupRec {
+            surface: surface.wl_surface().clone(),
+            popup: surface,
+            window_id,
+            position,
+            size: (geometry.size.w, geometry.size.h),
+            grabbed: false,
+            dismissed: false,
+            mapped: false,
+        });
+    }
+
+    fn popup_destroyed(&mut self, surface: PopupSurface) {
+        let Some(index) = self.popups.iter().position(|rec| rec.popup == surface) else {
+            return;
+        };
+        let rec = self.popups.remove(index);
+        if rec.mapped {
+            // No commit follows a destroy, so the repaint that erases the
+            // popup has to be driven from here.
+            self.refresh_window(rec.window_id);
+        }
+    }
+
+    fn grab(&mut self, surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
+        // Recorded rather than enacted: focus routing reads this on every
+        // input batch (`keyboard_target`), and a press outside the popup ends
+        // the grab with `popup_done` (`dismiss_popups_outside`).
+        if let Some(rec) = self.popups.iter_mut().find(|rec| rec.popup == surface) {
+            rec.grabbed = true;
+        }
+    }
 
     fn reposition_request(
         &mut self,
-        _surface: PopupSurface,
-        _positioner: PositionerState,
-        _token: u32,
+        surface: PopupSurface,
+        positioner: PositionerState,
+        token: u32,
     ) {
+        let Some(parent) = surface.get_parent_surface() else {
+            return;
+        };
+        let Some((window_id, position, geometry)) = self.place_popup(&parent, &positioner) else {
+            return;
+        };
+        surface.with_pending_state(|state| {
+            state.positioner = positioner;
+            state.geometry = geometry;
+        });
+        surface.send_repositioned(token);
+        if let Some(rec) = self.popups.iter_mut().find(|rec| rec.popup == surface) {
+            rec.position = position;
+            rec.size = (geometry.size.w, geometry.size.h);
+        }
+        self.refresh_window(window_id);
     }
 }
 
