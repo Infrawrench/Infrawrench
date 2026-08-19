@@ -107,4 +107,7 @@
 // the app server), and `POST /apps/setup` installs it with the host's own
 // package manager and re-probes. Two new routes, a `Linux applications` tag,
 // and the first `application/x-ndjson` response in the document. All additive.
-export const API_VERSION = "1.31.0";
+// 1.37.0: the alert noise report — one read
+// (`GET /alert-rules/noise`) grouping the delivery log by rule and by trigger
+// and naming the ones nobody has ever acknowledged. Read-only and additive.
+export const API_VERSION = "1.37.0";

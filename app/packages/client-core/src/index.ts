@@ -694,6 +694,8 @@ export * from "./log-workspaces";
 export * from "./log-discovery";
 export * from "./log-tail-options";
 export * from "./alert-routing";
+// Which alerts nobody acts on — the question routing never asked.
+export * from "./alert-noise";
 export * from "./metric-alerts";
 export * from "./org-config";
 export * from "./rightsizing";

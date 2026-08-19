@@ -2948,6 +2948,23 @@ One time axis over six things the org already stores. API **1.28.0**; migration 
 
 Docs: `website/src/content/docs/features/ops-calendar.md`.
 
+## Alert noise report (cloud-only)
+
+Which alerts nobody acts on — the question routing never asked. API **1.37.0**; **no migration**, it is one read of `alert_deliveries`.
+
+- **Only an explicit acknowledgement counts as engagement.** `sent` means the message left the building; treating it as read would make the report tell every org it is doing fine, which is the one answer that would make it worthless.
+- **`couldBeActedOn` is the other half, and it is what keeps the report fair.** Only deliveries with an escalation armed can be acknowledged at all, so a plain `sent` alert with no ack button is excluded from the denominator. Without it the report would indict an org for not pressing a button the product never showed it.
+- **A null acknowledgement rate is not 0%.** A group where nothing asked for a response has no rate; rendering it as zero would be this report's own version of the lie it exists to catch.
+- **Nothing under 10 deliveries is flagged.** Three unacknowledged alerts is not evidence, and a report that cried noise at every new rule would be the second thing people learn to ignore.
+- **The strongest applicable verdict wins**, checked in confidence order: never-acknowledged, then very-frequent, then mostly-ignored. "Never acknowledged once in 200" says far more than "acknowledged 15% of the time", and reporting the weaker one for a group that qualifies for the stronger would understate it.
+- **It never changes anything, and there is deliberately no endpoint that would.** A system that silences its own alerts on a heuristic is one nobody can trust, and the interesting case is exactly the one a heuristic gets wrong: an alert fired 300 times and ignored _because the team fixed the cause and forgot the rule_. The report names and suggests; a person decides.
+- **Deliveries that matched no rule are one group, not dropped.** An org whose alerts all fall through to the defaults is exactly the one this should be shouting at. A _deleted_ rule still appears by name, because `alert_deliveries.rule_name` is denormalized — and a deleted noisy rule is a useful thing to see rather than a gap.
+- **An acknowledgement recorded before its delivery is discarded from the median** rather than clamped: replicas skew, and a negative duration would drag the median somewhere no human could interpret.
+- **Surfaces**: `AlertNoiseCard`, directly beneath the routing rules on the Notifications settings page — it is a reading _of_ those rules, and the person who should see "nobody has ever acknowledged this one" is the person looking at the rule that produced it. Route registered _before_ the rules router so `/alert-rules/noise` resolves ahead of the rules' own paths.
+- **Deliberate omissions.** No trend over time (the window is the control), no per-destination breakdown, no mobile surface, and no automatic muting — see above.
+
+Docs: the "Is anybody reading these?" section of `website/src/content/docs/features/alert-routing.md`.
+
 ## Pushing in from outside (pages & cost rows over the API)
 
 Two endpoints let a server that isn't Infrawrench push _into_ it — the mirror image of everything else, which pulls. Both are the HTTP twin of a workflow primitive, and in both cases the workflow path was refactored to share the mechanism rather than being copied.

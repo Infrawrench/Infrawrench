@@ -102,3 +102,51 @@ Two shapes look like mistakes and are not:
 
 - **A rule with no conditions** matches every alert. Useful as the last rule in the list.
 - **A rule with no destinations** swallows the alerts it matches, and — because it still counts as a match — stops the rules below it from seeing them. That is how you say "never tell anyone about these". The editor warns when a rule is in this state, since it is also what a half-finished rule looks like.
+
+## Is anybody reading these?
+
+Routing decides where an alert goes. Beneath the rules on the Notifications
+page is the other half of the question: **did anybody act on it?**
+
+<insert [The "Is anybody reading these?" card on the Notifications settings page, showing the delivered / asked-for-a-response / acknowledged counts and one flagged rule with its suggestion] here>
+
+An organization with one rule that fires 400 times a month and has never been
+acknowledged does not have a monitoring system. It has a filter people have
+learned to ignore — and the alert that actually mattered went into the same
+channel.
+
+### What counts as being read
+
+Only an **explicit acknowledgement**. A delivery in the `sent` state means the
+message left the building, not that anybody looked at it; counting that as
+engagement would make this report tell every organization it is doing fine,
+which is the one answer that would make it worthless.
+
+Equally, a delivery that never showed an acknowledge button is not counted as
+ignored. Only rules with an escalation armed ask for a response, and indicting
+an organization for not pressing a button it was never shown would be the same
+mistake in the other direction.
+
+A group that has fired fewer than ten times is never flagged. Three
+unacknowledged alerts is not evidence of anything, and a report that cried
+noise at every new rule would be the second thing people learn to ignore.
+
+### Three verdicts
+
+- **Never acknowledged** — it fires often and nobody has ever acted on it once.
+- **Too frequent to read** — more than a hundred in the window, whatever the
+  acknowledgement rate.
+- **Mostly ignored** — acknowledged less than a fifth of the time.
+
+The strongest applicable verdict wins: "never acknowledged once in two hundred"
+says far more than "acknowledged 15% of the time".
+
+### It never changes anything
+
+The report names a rule and suggests what a person might do. It does not
+disable, mute, or re-threshold anything, and there is no endpoint that would.
+
+A system that silences its own alerts on a heuristic is one nobody can trust —
+and the interesting case is exactly the one a heuristic gets wrong: an alert
+fired three hundred times and ignored _because the team fixed the cause and
+forgot to delete the rule_.

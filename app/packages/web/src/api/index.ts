@@ -87,6 +87,7 @@ import { backupRoutes } from "./routes/backups";
 import { wallboardRoutes } from "./routes/wallboard";
 import { calendarRoutes } from "./routes/calendar";
 import { publicCalendarRoutes } from "./routes/calendar-feed";
+import { alertNoiseRoutes } from "./routes/alert-noise";
 import { dnsRoutes } from "./routes/dns";
 import { momentRoutes } from "./routes/moment";
 import { scheduleRoutes } from "./routes/schedules";
@@ -424,6 +425,9 @@ orgScoped.route("/jira", jiraRoutes);
 orgScoped.route("/linear", linearRoutes);
 orgScoped.route("/digest", digestRoutes);
 orgScoped.route("/push", pushOrgRoutes);
+// Registered before the rules router so `/alert-rules/noise` resolves here;
+// every other `/alert-rules/*` path falls through to it.
+orgScoped.route("/alert-rules", alertNoiseRoutes);
 orgScoped.route("/alert-rules", alertRuleRoutes);
 
 api.route("/api/org/:orgId", orgScoped);

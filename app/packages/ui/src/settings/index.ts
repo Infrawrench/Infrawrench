@@ -26,6 +26,7 @@ export { CurrencySection } from "./CurrencySection.js";
 export { CostExportsSection } from "./CostExportsSection.js";
 export { ApprovalsSection } from "./ApprovalsSection.js";
 export { NotificationsSection } from "./NotificationsSection.js";
+export { AlertNoiseCard } from "./AlertNoiseCard.js";
 export { JiraSection } from "./JiraSection.js";
 export { LinearSection } from "./LinearSection.js";
 export { ExpiryAlertsSection } from "./ExpiryAlertsSection.js";
