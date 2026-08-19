@@ -444,11 +444,11 @@ export function FileBrowser({
             {onDelete &&
               (confirmBulkDelete ? (
                 <span className="flex items-center gap-2">
-                  <T>
-                    <span className="text-xs text-on-surface-tertiary">
-                      Delete <Var>{selected.size}</Var> item{selected.size !== 1 ? "s" : ""}?
-                    </span>
-                  </T>
+                  <span className="text-xs text-on-surface-tertiary">
+                    {selected.size === 1
+                      ? gt("Delete 1 item?")
+                      : gt("Delete {count} items?", { count: selected.size })}
+                  </span>
                   <button
                     type="button"
                     onClick={() => void handleBulkDelete()}

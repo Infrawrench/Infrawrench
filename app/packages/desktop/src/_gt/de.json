@@ -5300,10 +5300,6 @@
   "e0ae71da0629c660": "E-Mail-Empfänger",
   "b635dc3ca57137eb": "Durch Komma getrennt, bis zu {max}.",
   "a0aa8c2ed7c23fd0": " Für diese Bereitstellung ist kein Mail-Anbieter konfiguriert — Adressen werden gespeichert, aber es wird nichts an sie zugestellt.",
-  "e8c791ad4e6447d5": "Grafik konnte nicht gerendert werden",
-  "3e3aeb85f9e3c453": "Grafikskript bearbeiten",
-  "09906f1352067f9d": "wird aktualisiert…",
-  "b95530a70443cdae": "Grafik wird ausgeführt…",
   "b232a872ccfb2d98": "Keine Zeilen",
   "913610499506d15c": "Keine Daten",
   "2379b7bf8f0f1833": "Unbenannte Grafik",
@@ -8739,15 +8735,12 @@
   "29f6a932a2820794": "Verbunden, hier gibt es noch nichts anzuzeigen.",
   "98f5dafeb9f7df86": "Keine {groupNames} gefunden. Erstellen Sie eine(n) beim Anbieter und aktualisieren Sie dann.",
   "fa53c0ae608f1aba": "Erstellen Sie eine Ressource beim Anbieter und aktualisieren Sie dann.",
-  "0b01d6ac69d09bc9": "{count} Benutzer",
   "8a2cfb4881dd4f32": "{label} erstellen",
   "a6f0ac0e439d28c0": "Keine Ressourcen gefunden.",
   "0c34b3b5046f6f73": "Zum Kopieren klicken",
   "7b79a814f8c5d8d0": "Ablegen, um K8s-Secret zu erstellen",
   "ed11670675ac6a99": "Secret-Schlüssel werden aus den Outputs der Ressource erstellt",
   "42605ab1ed97886e": "Status: {status}",
-  "fa80dfc3083f09c6": "{count} System-Namespace{suffix} ausblenden",
-  "75383f2afd6fe34e": "{count} System-Namespace{suffix} anzeigen",
   "9afa1e6835819e34": "Shell ausführen",
   "c7e8c38d2ef002d8": "Shell in {name} ausführen",
   "f870fd6d86b50274": "Port weiterleiten",
@@ -9505,7 +9498,6 @@
   "01b216f47622aa76": "Upstream-Zugangsdaten neu generiert.",
   "47b2063c813d9f01": "Reroll fehlgeschlagen: {error}",
   "ecc54e73e54568de": "Ressource nicht geladen",
-  "fd5b33d187d8f570": "Plugin unterstützt keine NoSQL-Befehle",
   "0f3b9eee3afd82f5": "Dieses Feld akzeptiert nur einen literalen Wert.",
   "d53718ba3588dbd6": "Plugin-Client nicht bereit.",
   "968367dd15e8500c": "{field} aktualisiert.",
@@ -9563,28 +9555,6 @@
   "1d702661a023c18a": "Übernommen von {email}",
   "92b6de7e7300c7f0": "Nie von einer Person übernommen",
   "ada2d20e8028e7d0": "Agent-Anmeldedaten",
-  "9521dd28dc2cfc74": "jeden Moment",
-  "507ccabb0594eff3": "{n} Minuten",
-  "9148cf9a6f66c778": "Diesen Arbeitsbereich übernehmen",
-  "d2322db18080e6b9": {
-    "t": "span",
-    "i": 1,
-    "c": [
-      {
-        "t": "strong",
-        "i": 2,
-        "c": "Test-Arbeitsbereich."
-      },
-      " Alles hier wird gelöscht in",
-      " ",
-      {
-        "i": 3,
-        "k": "_gt_value_3",
-        "v": "v"
-      },
-      ", sofern ihn niemand übernimmt."
-    ]
-  },
   "654c18cbd7fe02fa": "Gelöschter Schlüssel",
   "7e1def3ae9575bbf": "Nach API-Schlüssel filtern",
   "7120551a32a0ea21": "Alle API-Schlüssel",
@@ -9618,5 +9588,363 @@
   "5175e1e86175b800": "wird oben angezeigt",
   "caf0b52f13095841": "oben angezeigt",
   "ef36c266220e4ca8": "Protokolle ausblenden",
-  "31e3e8d137ca1b40": "{count} weitere anzeigen"
+  "31e3e8d137ca1b40": "{count} weitere anzeigen",
+  "31a59931c59bb26f": "Anwendungen suchen…",
+  "d196f08f56ed5d27": "Anwendungen suchen",
+  "e749cea86bb64054": "App-Server wird gestartet…",
+  "81af6811ffe6a009": "Für diesen Eintrag wird ein Terminal benötigt — öffnen Sie ihn stattdessen über den SSH-Tab",
+  "ee8e138e93c9f846": "Befehl ausführen…",
+  "0c6072643fb5552e": "Befehl ausführen",
+  "eadfc57f78c59bdf": "Erneut scannen",
+  "622a159ad0eabdcb": "Läuft",
+  "ec82d955e1b89e4f": "Auf diesem Host sind keine grafischen Anwendungen installiert. Infrawrench liefert die Anzeige; der Host liefert die Anwendungen.",
+  "4a9d1ef90a1471fa": "Terminal",
+  "4e87e902dffe3485": "Ausführen",
+  "5eec83455d71676d": "Remote-Anwendungsfenster",
+  "db9fdb5a2010141d": "Warte auf das Fenster…",
+  "e89a5887dd4c21e7": "Ton einschalten",
+  "6486dc85422b0b36": "Ton stummschalten",
+  "86a5571b250a1e7b": "Fenster schließen",
+  "ad28afe624f57ab8": "installiert",
+  "8e80de585ee32952": "fehlt",
+  "3341e1d0edf84fb6": "Entpackt den App-Server nach dem Hochladen. Ohne es kann gar nichts gestartet werden.",
+  "9d058e41960aaf61": "Tastaturlayout-Daten. Ohne sie tut die Tastatur nichts und sagt nie, warum.",
+  "c859c3c2bc68de82": "Ein Sitzungs-Message-Bus. GTK-Anwendungen warten auf einen, bevor sie ein Fenster anzeigen, und melden nicht, dass sie warten.",
+  "ae48613a38b393c8": "Ohne installierte Schriftart zeichnen Anwendungen leere Kästchen oder starten gar nicht.",
+  "1aebd4bbc721da3a": "Software-OpenGL. Browser und Electron-Anwendungen benötigen es; GTK und Qt weichen stattdessen auf Software-Rendering aus.",
+  "b7b2c54617bd2543": "Ein Icon-Theme. Ohne eines zeigt der Launcher Initialen statt Symbolen an, und Symbolleisten-Schaltflächen bleiben leer.",
+  "f08180cc92e38f38": "gzip",
+  "fb455ca3c11bc91e": "Tastaturlayout-Daten",
+  "c8589b078e7ee2e4": "Sitzungs-Message-Bus",
+  "d5a2315fdf236880": "Schriftarten",
+  "d7ac350fe7c4a9db": "Software-OpenGL",
+  "04880546259acd22": "Icon-Theme",
+  "5fa06852411d99fc": "Diesem Host fehlt, was Anwendungen benötigen",
+  "0157121721b19862": "Dieser Host ist bereit — eine Ergänzung lohnt sich noch",
+  "804b070849068aa0": "Infrawrench liefert die Anzeige und lädt den App-Server selbst hoch. Der Host stellt die wenigen Komponenten bereit, auf die die Anwendungen selbst angewiesen sind.",
+  "749428b8de607da5": "optional",
+  "8b7020c59955ab0d": "Auf diesem Host gibt es kein Verzeichnis, aus dem wir den App-Server ausführen können — /tmp und /dev/shm sind entweder nicht beschreibbar oder mit noexec eingehängt. Anwendungen können hier erst ausgeführt werden, wenn eines davon die Ausführung erlaubt.",
+  "88cd260f611950bc": "Was auf dem Host ausgeführt wird",
+  "e7588632064e0364": "Kopiert",
+  "ffd3cdd328e21c9d": "Kopieren",
+  "4fd24c4888b4dd99": "Diese Pakete müssen manuell auf dem Host installiert werden.",
+  "49171b1d485c1cde": "Infrawrench kann diese auf diesem Host nicht selbst installieren — führen Sie die obigen Befehle über SSH aus und prüfen Sie danach erneut.",
+  "dcdd052a4b37a041": "Ausgabe",
+  "3c9d670253128294": "Auch die optionalen Komponenten installieren",
+  "6ab05d286639293e": "Wird installiert…",
+  "021b62ff834041f0": "Fehlendes installieren",
+  "9ec433045537acfc": "Erneut prüfen",
+  "e87f189d912286c8": "Trotzdem öffnen",
+  "9f1baa56a8ba17c5": "Ganztägig",
+  "7e978fe213907a59": "Kalender",
+  "44a3b280cc6e9443": "Kalender konnte nicht geladen werden — {error}",
+  "e4df34e40180ad6d": "Datierte Einträge werden gesammelt…",
+  "80ed44277a41066e": "Aktualisierung fehlgeschlagen — zeigt das zuletzt geladene Zeitfenster. {error}",
+  "a0f7fe0079a04277": "Einige Quellen konnten nicht gelesen werden, daher ist diese Ansicht unvollständig: {kinds}. Alles andere ist aktuell.",
+  "359541910b5c3367": "Freeze-Fenster",
+  "574696d5d1a57277": "Sleep-Fenster",
+  "2a0c83288f218fd0": "Fristen",
+  "e2a811bf38041d67": "Geplante Ausführungen",
+  "1a4cd5f7c6abf589": "Kalenderansichten",
+  "d4fee7165147bb3b": "Monat",
+  "d0b4afc67b2d88d8": "Agenda",
+  "a6212c6757647fc0": "Vorheriger Monat",
+  "c8fadb129a79e5ef": "Nächster Monat",
+  "5e16dde42b3e01f5": "{day} — {count} Ereignisse",
+  "e30ed77eeb2a9cbe": "Nichts geplant.",
+  "1d2dde06926b3d18": "In diesem Zeitraum ist nichts datiert. Versuchen Sie einen weiteren Monat oder schalten Sie einen Filter wieder ein.",
+  "fbf9687c2faebc7f": "Jetzt kopieren — wird nicht erneut angezeigt",
+  "8832c307d05d5ade": "Kalender des Plattform-Teams",
+  "9bd5125e8d0208c6": "Einschließen (keine Auswahl bedeutet alles, einschließlich später hinzugefügter Arten)",
+  "0ca37c8a61cb5238": "Abonnement erstellen",
+  "6cbdccea3a71f112": "Abonnements werden geladen…",
+  "5828aa4b944409a3": "Noch keine Abonnements.",
+  "3bf40445a706e4c9": "Alles",
+  "2204073132206fc2": "Zuletzt abgerufen {when}",
+  "0d442404c22226a2": "Nie abgerufen",
+  "832d1c094cadc639": "{count} widerrufen",
+  "8f8d7d7f91181766": "widerrufen {when}",
+  "644995331c2db05e": {
+    "t": "p",
+    "i": 1,
+    "c": "Alles, was ein Datum hat, auf einer Achse: Change Freezes, Sleep-Fenster, ablaufende Zertifikate und Leases, endende Commitment-Laufzeiten, geplante Workflow-Läufe und gemeldete Incidents. Nichts davon ist ein neuer Datensatz — es sind die Dinge, die Sie bereits haben, endlich nebeneinander. Abonnieren Sie über eine Kalender-App, um es überallhin mitzunehmen."
+  },
+  "7dd7d9e34fff7bfa": {
+    "t": "p",
+    "i": 1,
+    "c": "Ein Abonnement ist eine URL, die Sie in Google Calendar, Outlook oder auf Ihrem Telefon einfügen. Sie aktualisiert sich selbstständig, etwa stündlich. Jeder, der die URL besitzt, kann diesen Kalender lesen — behandeln Sie sie daher wie ein Passwort. Sie enthält Namen und Zeiten, niemals Zugangsdaten, Kosten oder irgendetwas, worauf Sie reagieren könnten."
+  },
+  "4a33ab5ec2fdd34e": "1 Element löschen?",
+  "c95c85b44617942d": "{count} Elemente löschen?",
+  "8dd0468578ae6fff": "1 Konto wartet auf die erste Commitment-Erfassung.",
+  "7e20a788f155847a": "{count} Konten warten auf die erste Commitment-Erfassung.",
+  "a4d654af9a33ce51": "1 Konto ausgeschlossen (Anbieter kann Gebührenarten nicht unterscheiden).",
+  "b59b650c268e2cfa": "{count} Konten ausgeschlossen (Anbieter kann Gebührenarten nicht unterscheiden).",
+  "323c5551c63a83d5": "Marge benötigt eine Umsatzkennzahl und ist daher für dieses Element nicht verfügbar.",
+  "14d44296ee1cdf3d": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Das Diagramm zeigt",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      ". Gruppieren nach, Top-Gruppen, Vergleich und Prognose sind nicht anwendbar — ein Verhältnis pro Gruppe würde eine Kennzahl pro Gruppe erfordern, und ein Zeitraum ohne gemeldeten Wert wird als Lücke statt als Null dargestellt.",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "fac74e2db1f2a40e": "— größtenteils",
+  "a8a4cf34dd17ca69": "{bytes} konnten keiner Workload zugeordnet werden.",
+  "6571c912a6ffc11d": "{bytes} lagen unter der gespeicherten Obergrenze für Top-Paare.",
+  "308ff652263de047": "(welche Stichprobe)",
+  "1a3130a6f1bae8de": "Stand {date}",
+  "4971ee48aac67eca": "Die letzte Erfassung hat {amount} an Protokolldaten gescannt.",
+  "c745267fa56d9ded": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      "geschätzt über ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " zwischen",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      " und ",
+      {
+        "i": 5,
+        "k": "_gt_value_5",
+        "v": "v"
+      },
+      {
+        "i": 6,
+        "k": "_gt_value_6",
+        "v": "v"
+      },
+      "."
+    ]
+  },
+  "967f2a0f4d851a85": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      "% dieser Bytes sind einem Paar zugeordnet.",
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      "Keines von beiden ist auf die Zeilen unten verteilt."
+    ]
+  },
+  "0012e47fb7b3d5b7": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Egress- und Cross-Zone-Traffic nach Quell- und Zielpaar. Jede Zahl ist eine",
+      " ",
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "Schätzung"
+      },
+      ": Die Bytes stammen aus Flow-Logs",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " und werden zu veröffentlichten Listenpreisen bewertet",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      ", ohne Freikontingent, Mengenstaffel oder verhandelten Rabatt. Nutzen Sie das Ranking; es wird nicht mit der Rechnungszeile übereinstimmen."
+    ]
+  },
+  "798684da210449dd": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Das Erfassen dieser Flows führt Abfragen aus, die Ihr Anbieter Ihrem eigenen Cloud-Konto in Rechnung stellt.",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "6ed44c484ffb6706": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      "Der Ablauf-Feed konnte nicht geladen werden — ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "404c0939d3927cc7": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "t": "span",
+        "i": 2,
+        "c": {
+          "i": 3,
+          "k": "_gt_value_3",
+          "v": "v"
+        }
+      },
+      " ",
+      "— Kontingente konnten nicht gelesen werden: ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      {
+        "i": 5,
+        "k": "_gt_value_5",
+        "v": "v"
+      }
+    ]
+  },
+  "cb253d10b829ce01": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      "Das Kontingent-Radar konnte nicht geladen werden — ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "47d936a847c43ce1": "Prognostizierte Einsparung",
+  "8a6ce9e4781de88a": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Aus-/Einschaltfenster für Nicht-Produktionsressourcen — nach Zeitplan automatisch gestoppt und gestartet.",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "d5d0d9d1bc686f0f": "Speichern Sie zuerst die Verbindung, um die Liste zu laden.",
+  "6457fdebe63caab3": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Das Team, das im Fenster “File in Linear” vorausgewählt ist — jedes Linear-Issue gehört zu genau einem Team. Die Liste kommt von Linear, es muss also keine ID nachgeschlagen werden.",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "f1455ec59d72a547": "Alles in Ordnung",
+  "4cdf6024c2544004": "Sollte geprüft werden",
+  "45a8dfb86f7c0e97": "Etwas ist ausgefallen",
+  "bb566b7b22d25bf7": "· wird nicht aktualisiert",
+  "97bafabe806bc386": "Rotation fortsetzen",
+  "4d3e84e16cfe38be": "Dieses Panel anhalten",
+  "ed5fa1eda3f06cf8": "Konnte nicht gelesen werden: {sources}",
+  "7250aa295bc6f1f9": "Offene Incidents",
+  "00db8dca707d03a9": "seit {duration}",
+  "863d59db6f544e15": "Nicht gesund",
+  "9874096c31a19603": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      "Anweisung #",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "ca07118dcbe3cf27": "1 Zeile · {ms}ms",
+  "022d01a191c90822": "{count} Zeilen · {ms}ms",
+  "2740c6e493017192": "Der Host konnte diese Anwendung nicht starten.",
+  "4ae38129a003ea8f": "{name} wird gestartet…",
+  "a20b495b9e6f82b9": "Wird gestartet…",
+  "e94b6d6824078173": "Diese Anwendung wurde auf dem Host unerwartet beendet.",
+  "ff1333f7e8be24af": "Dieses Fenster wurde auf dem Host geschlossen.",
+  "8f4518fc40bd4111": "Tab schließen",
+  "af9e6ddd746d15dc": "Dieses Fenster ist nicht mehr verbunden.",
+  "f087df242d061604": "Öffnen Sie den Apps-Tab des Hosts, um die Verbindung wiederherzustellen — die Anwendung läuft dort weiterhin.",
+  "9a2dfb07cc96f3c6": "Kalender konnte nicht geladen werden",
+  "fa878d284f06a3eb": {
+    "t": "p",
+    "i": 1,
+    "c": "Der Betriebskalender ist eine Cloud-Funktion. Melden Sie sich bei einer Organisation an, um Change Freezes, Sleep-Fenster, ablaufende Zertifikate und Leases, Commitment-Laufzeiten, geplante Workflow-Läufe und Incidents auf einer Achse zu sehen."
+  },
+  "a3864fc1b5fb0af1": "Infrawrench konnte nicht erreicht werden",
+  "32bced682e8515f3": "Infowand",
+  "78b6b179902e0dec": {
+    "t": "p",
+    "i": 1,
+    "c": "Die Infowand ist eine Cloud-Funktion — Incidents, Probes und Sync-Status liegen alle in der Cloud. Melden Sie sich bei einer Organisation an, um sie auf einen Bildschirm zu bringen."
+  },
+  "cfce2834886ba525": "Für diese Ressource gibt es noch keine Adresse, zu der eine Verbindung hergestellt werden kann. Anwendungen laufen über dieselbe SSH-Verbindung wie das Terminal.",
+  "f5b602dc58728f22": "Dieser Schlüssel wird in Infrawrench Cloud gespeichert; seine Nutzung erfordert eine aktive Cloud-Anmeldung. Melden Sie sich an, oder wählen Sie unten einen lokal gespeicherten Schlüssel.",
+  "9b2029ecadd23613": "Apps-Tab öffnen"
 }

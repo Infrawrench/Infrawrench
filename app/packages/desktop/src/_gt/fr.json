@@ -5300,10 +5300,6 @@
   "e0ae71da0629c660": "Destinataires e-mail",
   "b635dc3ca57137eb": "Séparés par des virgules, jusqu'à {max}.",
   "a0aa8c2ed7c23fd0": " Ce déploiement n'a aucun fournisseur de messagerie configuré — les adresses seront enregistrées mais rien ne leur sera livré.",
-  "e8c791ad4e6447d5": "Échec du rendu du graphique",
-  "3e3aeb85f9e3c453": "Modifier le script du graphique",
-  "09906f1352067f9d": "actualisation…",
-  "b95530a70443cdae": "Exécution du graphique…",
   "b232a872ccfb2d98": "Aucune ligne",
   "913610499506d15c": "Aucune donnée",
   "2379b7bf8f0f1833": "Graphique sans titre",
@@ -8739,15 +8735,12 @@
   "29f6a932a2820794": "Connecté, rien à afficher ici pour le moment.",
   "98f5dafeb9f7df86": "Aucun {groupNames} trouvé. Créez-en un chez le fournisseur, puis actualisez.",
   "fa53c0ae608f1aba": "Créez une ressource chez le fournisseur, puis actualisez.",
-  "0b01d6ac69d09bc9": "{count} utilisateur",
   "8a2cfb4881dd4f32": "Créer {label}",
   "a6f0ac0e439d28c0": "Aucune ressource trouvée.",
   "0c34b3b5046f6f73": "Cliquer pour copier",
   "7b79a814f8c5d8d0": "Déposer pour créer un Secret K8s",
   "ed11670675ac6a99": "Les clés du secret seront créées à partir des sorties de la ressource",
   "42605ab1ed97886e": "Statut : {status}",
-  "fa80dfc3083f09c6": "Masquer {count} espace{suffix} de noms système",
-  "75383f2afd6fe34e": "Afficher {count} espace{suffix} de noms système",
   "9afa1e6835819e34": "Ouvrir un shell",
   "c7e8c38d2ef002d8": "Ouvrir un shell dans {name}",
   "f870fd6d86b50274": "Redirection de port",
@@ -9505,7 +9498,6 @@
   "01b216f47622aa76": "Identifiant en amont réinitialisé (reroll).",
   "47b2063c813d9f01": "Échec du reroll : {error}",
   "ecc54e73e54568de": "Ressource non chargée",
-  "fd5b33d187d8f570": "Le plugin ne prend pas en charge les commandes NoSQL",
   "0f3b9eee3afd82f5": "Ce champ n'accepte qu'une valeur littérale.",
   "d53718ba3588dbd6": "Client du plugin non prêt.",
   "968367dd15e8500c": "{field} mis à jour.",
@@ -9563,28 +9555,6 @@
   "1d702661a023c18a": "Revendiqué par {email}",
   "92b6de7e7300c7f0": "Jamais revendiqué par une personne",
   "ada2d20e8028e7d0": "Identifiants d'agent",
-  "9521dd28dc2cfc74": "d'un instant à l'autre",
-  "507ccabb0594eff3": "{n} minutes",
-  "9148cf9a6f66c778": "Revendiquer cet espace de travail",
-  "d2322db18080e6b9": {
-    "t": "span",
-    "i": 1,
-    "c": [
-      {
-        "t": "strong",
-        "i": 2,
-        "c": "Espace de travail d'essai."
-      },
-      " Tout ce qui s'y trouve sera supprimé dans",
-      " ",
-      {
-        "i": 3,
-        "k": "_gt_value_3",
-        "v": "v"
-      },
-      " si personne ne le revendique."
-    ]
-  },
   "654c18cbd7fe02fa": "Clé supprimée",
   "7e1def3ae9575bbf": "Filtrer par clé API",
   "7120551a32a0ea21": "Toutes les clés API",
@@ -9618,5 +9588,363 @@
   "5175e1e86175b800": "diffusé ci-dessus",
   "caf0b52f13095841": "affiché ci-dessus",
   "ef36c266220e4ca8": "Masquer les journaux",
-  "31e3e8d137ca1b40": "Afficher {count} de plus"
+  "31e3e8d137ca1b40": "Afficher {count} de plus",
+  "31a59931c59bb26f": "Rechercher des applications…",
+  "d196f08f56ed5d27": "Rechercher des applications",
+  "e749cea86bb64054": "Démarrage du serveur d'applications…",
+  "81af6811ffe6a009": "Cette entrée nécessite un terminal — ouvrez-la depuis l'onglet SSH à la place",
+  "ee8e138e93c9f846": "Exécuter une commande…",
+  "0c6072643fb5552e": "Exécuter une commande",
+  "eadfc57f78c59bdf": "Réanalyser",
+  "622a159ad0eabdcb": "En cours d'exécution",
+  "ec82d955e1b89e4f": "Aucune application graphique n'est installée sur cet hôte. Infrawrench fournit l'affichage ; l'hôte fournit les applications.",
+  "4a9d1ef90a1471fa": "terminal",
+  "4e87e902dffe3485": "Exécuter",
+  "5eec83455d71676d": "Fenêtre d'application distante",
+  "db9fdb5a2010141d": "En attente de la fenêtre…",
+  "e89a5887dd4c21e7": "Réactiver le son",
+  "6486dc85422b0b36": "Couper le son",
+  "86a5571b250a1e7b": "Fermer la fenêtre",
+  "ad28afe624f57ab8": "installé",
+  "8e80de585ee32952": "manquant",
+  "3341e1d0edf84fb6": "Décompresse le serveur d'applications après son téléversement. Sans cela, rien ne peut démarrer.",
+  "9d058e41960aaf61": "Données de disposition du clavier. Sans elles, le clavier ne fait rien et n'indique jamais pourquoi.",
+  "c859c3c2bc68de82": "Un bus de messages de session. Les applications GTK en attendent un avant d'afficher une fenêtre, sans jamais signaler qu'elles attendent.",
+  "ae48613a38b393c8": "Sans police installée, les applications affichent des cases vides ou refusent de démarrer.",
+  "1aebd4bbc721da3a": "OpenGL logiciel. Les navigateurs et les applications Electron en ont besoin ; GTK et Qt basculent alors sur le rendu logiciel.",
+  "b7b2c54617bd2543": "Un thème d'icônes. Sans cela, le lanceur affiche des initiales à la place des icônes, et les boutons de la barre d'outils restent vides.",
+  "f08180cc92e38f38": "gzip",
+  "fb455ca3c11bc91e": "Données de disposition du clavier",
+  "c8589b078e7ee2e4": "Bus de messages de session",
+  "d5a2315fdf236880": "Polices",
+  "d7ac350fe7c4a9db": "OpenGL logiciel",
+  "04880546259acd22": "Thème d'icônes",
+  "5fa06852411d99fc": "Il manque à cet hôte ce dont les applications ont besoin",
+  "0157121721b19862": "Cet hôte est prêt, avec un élément à ajouter",
+  "804b070849068aa0": "Infrawrench fournit l'affichage et téléverse lui-même le serveur d'applications. L'hôte fournit les quelques éléments dont les applications elles-mêmes dépendent.",
+  "749428b8de607da5": "facultatif",
+  "8b7020c59955ab0d": "Aucun répertoire de cet hôte ne permet d'exécuter le serveur d'applications — /tmp et /dev/shm ne sont pas accessibles en écriture ou sont montés en noexec. Les applications ne peuvent pas s'exécuter ici tant que l'un d'eux n'autorise pas l'exécution.",
+  "88cd260f611950bc": "Ce qui s'exécutera sur l'hôte",
+  "e7588632064e0364": "Copié",
+  "ffd3cdd328e21c9d": "Copier",
+  "4fd24c4888b4dd99": "Ces paquets doivent être installés manuellement sur l'hôte.",
+  "49171b1d485c1cde": "Infrawrench ne peut pas les installer lui-même sur cet hôte — exécutez les commandes ci-dessus via SSH, puis vérifiez à nouveau.",
+  "dcdd052a4b37a041": "Sortie",
+  "3c9d670253128294": "Installer aussi les éléments facultatifs",
+  "6ab05d286639293e": "Installation…",
+  "021b62ff834041f0": "Installer ce qui manque",
+  "9ec433045537acfc": "Vérifier à nouveau",
+  "e87f189d912286c8": "Ouvrir quand même",
+  "9f1baa56a8ba17c5": "Toute la journée",
+  "7e978fe213907a59": "Calendrier",
+  "44a3b280cc6e9443": "Impossible de charger le calendrier — {error}",
+  "e4df34e40180ad6d": "Collecte des enregistrements datés…",
+  "80ed44277a41066e": "Impossible d'actualiser — affichage de la dernière fenêtre chargée. {error}",
+  "a0f7fe0079a04277": "Certaines sources n'ont pas pu être lues, cette vue est donc incomplète : {kinds}. Tout le reste est à jour.",
+  "359541910b5c3367": "Gels",
+  "574696d5d1a57277": "Fenêtres de veille",
+  "2a0c83288f218fd0": "Échéances",
+  "e2a811bf38041d67": "Exécutions planifiées",
+  "1a4cd5f7c6abf589": "Vues du calendrier",
+  "d4fee7165147bb3b": "Mois",
+  "d0b4afc67b2d88d8": "Agenda",
+  "a6212c6757647fc0": "Mois précédent",
+  "c8fadb129a79e5ef": "Mois suivant",
+  "5e16dde42b3e01f5": "{day} — {count} événements",
+  "e30ed77eeb2a9cbe": "Rien de planifié.",
+  "1d2dde06926b3d18": "Rien de daté dans cette fenêtre. Essayez un mois plus large ou réactivez un filtre.",
+  "fbf9687c2faebc7f": "Copiez-le maintenant — il ne sera plus affiché",
+  "8832c307d05d5ade": "Calendrier de l'équipe plateforme",
+  "9bd5125e8d0208c6": "Inclure (aucune sélection signifie tout, y compris les types ajoutés ultérieurement)",
+  "0ca37c8a61cb5238": "Créer un abonnement",
+  "6cbdccea3a71f112": "Chargement des abonnements…",
+  "5828aa4b944409a3": "Aucun abonnement pour l'instant.",
+  "3bf40445a706e4c9": "Tout",
+  "2204073132206fc2": "Dernière récupération {when}",
+  "0d442404c22226a2": "Jamais récupéré",
+  "832d1c094cadc639": "{count} révoqué(s)",
+  "8f8d7d7f91181766": "révoqué {when}",
+  "644995331c2db05e": {
+    "t": "p",
+    "i": 1,
+    "c": "Tout ce qui porte une date, sur un seul axe : gels des changements, fenêtres de veille, certificats et baux arrivant à expiration, fins d'engagements, exécutions de workflows planifiées et incidents déclarés. Rien ici n'est un nouvel enregistrement — ce sont les éléments que vous avez déjà, enfin réunis côte à côte. Abonnez-vous depuis une application de calendrier pour l'emporter avec vous."
+  },
+  "7dd7d9e34fff7bfa": {
+    "t": "p",
+    "i": 1,
+    "c": "Un abonnement est une URL que vous collez dans Google Calendar, Outlook ou votre téléphone. Elle se met à jour toute seule, environ toutes les heures. Toute personne possédant cette URL peut lire ce calendrier, traitez-la donc comme un mot de passe — elle contient des noms et des horaires, jamais d'identifiants, de coûts ni rien d'actionnable."
+  },
+  "4a33ab5ec2fdd34e": "Supprimer 1 élément ?",
+  "c95c85b44617942d": "Supprimer {count} éléments ?",
+  "8dd0468578ae6fff": "1 compte en attente de la première collecte d'engagement.",
+  "7e20a788f155847a": "{count} comptes en attente de la première collecte d'engagement.",
+  "a4d654af9a33ce51": "1 compte exclu (le fournisseur ne peut pas distinguer les types de frais).",
+  "b59b650c268e2cfa": "{count} comptes exclus (le fournisseur ne peut pas distinguer les types de frais).",
+  "323c5551c63a83d5": "La marge nécessite une métrique de revenu, elle n'est donc pas disponible pour celui-ci.",
+  "14d44296ee1cdf3d": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Le graphique montre",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      ". Le regroupement, les principaux groupes, la comparaison et la prévision ne s'appliquent pas — un ratio par groupe nécessiterait une métrique par groupe, et une période sans valeur déclarée est représentée par un vide plutôt que par zéro.",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "fac74e2db1f2a40e": "— principalement",
+  "a8a4cf34dd17ca69": "{bytes} n'ont pas pu être associés à une charge de travail.",
+  "6571c912a6ffc11d": "{bytes} sont passés sous le plafond des paires enregistrées.",
+  "308ff652263de047": "(quel échantillon)",
+  "1a3130a6f1bae8de": "au {date}",
+  "4971ee48aac67eca": "La dernière collecte a analysé {amount} de données de journal.",
+  "c745267fa56d9ded": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      "estimé sur ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " entre",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      " et ",
+      {
+        "i": 5,
+        "k": "_gt_value_5",
+        "v": "v"
+      },
+      {
+        "i": 6,
+        "k": "_gt_value_6",
+        "v": "v"
+      },
+      "."
+    ]
+  },
+  "967f2a0f4d851a85": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      "% de ces octets sont attribués à une paire.",
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      "Aucun des deux n'est réparti dans les lignes ci-dessous."
+    ]
+  },
+  "0012e47fb7b3d5b7": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Trafic sortant et inter-zones par paire source/destination. Chaque chiffre est une",
+      " ",
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "estimation"
+      },
+      ": les octets proviennent des journaux de flux",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " et sont tarifés aux prix catalogue publiés",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      ", sans palier gratuit, palier de volume ni remise négociée appliqués. Utilisez le classement ; il ne se rapprochera pas de la ligne de facture."
+    ]
+  },
+  "798684da210449dd": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "La collecte de ces flux exécute des requêtes que votre fournisseur facture sur votre propre compte cloud.",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "6ed44c484ffb6706": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      "Impossible de charger le flux d'expiration — ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "404c0939d3927cc7": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "t": "span",
+        "i": 2,
+        "c": {
+          "i": 3,
+          "k": "_gt_value_3",
+          "v": "v"
+        }
+      },
+      " ",
+      "— quotas non lus : ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      {
+        "i": 5,
+        "k": "_gt_value_5",
+        "v": "v"
+      }
+    ]
+  },
+  "cb253d10b829ce01": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      "Impossible de charger le radar des quotas — ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "47d936a847c43ce1": "Économie prévue",
+  "8a6ce9e4781de88a": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Fenêtres d'arrêt et de démarrage pour les ressources hors production — arrêtées et redémarrées pour vous selon le calendrier.",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "d5d0d9d1bc686f0f": "Enregistrez d'abord la connexion pour charger la liste.",
+  "6457fdebe63caab3": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "L'équipe présélectionnée à l'ouverture de la fenêtre “File in Linear” — chaque issue Linear appartient à exactement une équipe. La liste provient de Linear, il n'y a donc aucun id à rechercher.",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "f1455ec59d72a547": "Tout va bien",
+  "4cdf6024c2544004": "À vérifier",
+  "45a8dfb86f7c0e97": "Quelque chose est en panne",
+  "bb566b7b22d25bf7": "· pas de mise à jour",
+  "97bafabe806bc386": "Reprendre la rotation",
+  "4d3e84e16cfe38be": "Figer ce panneau",
+  "ed5fa1eda3f06cf8": "Impossible de lire : {sources}",
+  "7250aa295bc6f1f9": "Incidents ouverts",
+  "00db8dca707d03a9": "pendant {duration}",
+  "863d59db6f544e15": "Défaillant",
+  "9874096c31a19603": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      "Instruction #",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "ca07118dcbe3cf27": "1 ligne · {ms}ms",
+  "022d01a191c90822": "{count} lignes · {ms}ms",
+  "2740c6e493017192": "L'hôte n'a pas pu démarrer cette application.",
+  "4ae38129a003ea8f": "Démarrage de {name}…",
+  "a20b495b9e6f82b9": "Démarrage…",
+  "e94b6d6824078173": "Cette application s'est arrêtée de manière inattendue sur l'hôte.",
+  "ff1333f7e8be24af": "Cette fenêtre s'est fermée sur l'hôte.",
+  "8f4518fc40bd4111": "Fermer l'onglet",
+  "af9e6ddd746d15dc": "Cette fenêtre n'est plus connectée.",
+  "f087df242d061604": "Ouvrez l'onglet Applications de l'hôte pour vous reconnecter — l'application y est toujours en cours d'exécution.",
+  "9a2dfb07cc96f3c6": "Échec du chargement du calendrier",
+  "fa878d284f06a3eb": {
+    "t": "p",
+    "i": 1,
+    "c": "Le calendrier des opérations est une fonctionnalité cloud. Connectez-vous à une organisation pour voir, sur un seul axe, ses gels de changement, fenêtres de veille, certificats et baux arrivant à expiration, échéances d'engagements, exécutions de workflows planifiées et incidents."
+  },
+  "a3864fc1b5fb0af1": "Impossible de joindre Infrawrench",
+  "32bced682e8515f3": "Tableau mural",
+  "78b6b179902e0dec": {
+    "t": "p",
+    "i": 1,
+    "c": "Le tableau mural est une fonctionnalité cloud — les incidents, les sondes et l'état de synchronisation vivent tous dans le cloud. Connectez-vous à une organisation pour l'afficher sur un écran."
+  },
+  "cfce2834886ba525": "Cette ressource n'a pas encore d'adresse à laquelle se connecter. Les applications s'exécutent via la même connexion SSH que le terminal.",
+  "f5b602dc58728f22": "Cette clé est conservée dans Infrawrench Cloud, et son utilisation nécessite une connexion cloud active. Connectez-vous, ou choisissez une clé stockée localement ci-dessous.",
+  "9b2029ecadd23613": "Ouvrir l'onglet Applications"
 }

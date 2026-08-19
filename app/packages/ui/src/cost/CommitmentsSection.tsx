@@ -151,12 +151,13 @@ export function CommitmentsSection({ client }: CommitmentsSectionProps) {
       ))}
 
       {feed && feed.pendingAccountIds.length > 0 && (
-        <T>
-          <p className="text-xs text-on-surface-muted">
-            <Var>{feed.pendingAccountIds.length}</Var> account
-            {feed.pendingAccountIds.length === 1 ? "" : "s"} awaiting first commitment collection.
-          </p>
-        </T>
+        <p className="text-xs text-on-surface-muted">
+          {feed.pendingAccountIds.length === 1
+            ? gt("1 account awaiting first commitment collection.")
+            : gt("{count} accounts awaiting first commitment collection.", {
+                count: feed.pendingAccountIds.length,
+              })}
+        </p>
       )}
     </section>
   );
@@ -167,6 +168,7 @@ export function CommitmentsSection({ client }: CommitmentsSectionProps) {
  * currencies, and an all-excluded scope says "unavailable", not 0%.
  */
 function CoverageLine({ feed }: { feed: CommitmentsFeed }) {
+  const gt = useGT();
   const { coverage } = feed;
   if (!coverage.available) {
     if (coverage.excludedAccountIds.length === 0) return null;
@@ -204,13 +206,13 @@ function CoverageLine({ feed }: { feed: CommitmentsFeed }) {
         </T>
       ))}
       {coverage.excludedAccountIds.length > 0 && (
-        <T>
-          <p>
-            <Var>{coverage.excludedAccountIds.length}</Var> account
-            {coverage.excludedAccountIds.length === 1 ? "" : "s"} excluded (provider cannot
-            distinguish charge types).
-          </p>
-        </T>
+        <p>
+          {coverage.excludedAccountIds.length === 1
+            ? gt("1 account excluded (provider cannot distinguish charge types).")
+            : gt("{count} accounts excluded (provider cannot distinguish charge types).", {
+                count: coverage.excludedAccountIds.length,
+              })}
+        </p>
       )}
     </div>
   );

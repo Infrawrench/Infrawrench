@@ -5297,10 +5297,6 @@
   "e0ae71da0629c660": "Destinatarios de correo electrónico",
   "b635dc3ca57137eb": "Separados por comas, hasta {max}.",
   "a0aa8c2ed7c23fd0": " Este despliegue no tiene un proveedor de correo configurado — las direcciones se guardarán pero no se les entregará nada.",
-  "e8c791ad4e6447d5": "No se pudo renderizar el gráfico",
-  "3e3aeb85f9e3c453": "Editar script del gráfico",
-  "09906f1352067f9d": "actualizando…",
-  "b95530a70443cdae": "Ejecutando gráfico…",
   "b232a872ccfb2d98": "Sin filas",
   "913610499506d15c": "Sin datos",
   "2379b7bf8f0f1833": "Gráfico sin título",
@@ -8737,15 +8733,12 @@
   "29f6a932a2820794": "Conectado, aún no hay nada que mostrar aquí.",
   "98f5dafeb9f7df86": "No se encontraron {groupNames}. Crea uno en el proveedor y luego actualiza.",
   "fa53c0ae608f1aba": "Crea un recurso en el proveedor y luego actualiza.",
-  "0b01d6ac69d09bc9": "{count} usuario",
   "8a2cfb4881dd4f32": "Crear {label}",
   "a6f0ac0e439d28c0": "No se encontraron recursos.",
   "0c34b3b5046f6f73": "Haz clic para copiar",
   "7b79a814f8c5d8d0": "Suelta para crear un Secret de K8s",
   "ed11670675ac6a99": "Las claves del secreto se crearán a partir de las salidas del recurso",
   "42605ab1ed97886e": "Estado: {status}",
-  "fa80dfc3083f09c6": "Ocultar {count} namespace{suffix} del sistema",
-  "75383f2afd6fe34e": "Mostrar {count} namespace{suffix} del sistema",
   "9afa1e6835819e34": "Ejecutar shell",
   "c7e8c38d2ef002d8": "Ejecutar shell en {name}",
   "f870fd6d86b50274": "Reenvío de puertos",
@@ -9272,7 +9265,6 @@
       ")"
     ]
   },
-  "24310040bc0d88bf": "No se pudieron cargar los tipos del gráfico",
   "0e703bb0e87cfc4e": "No se pudieron cargar los presupuestos",
   "c561d5907c63af7f": "No se pudieron cargar los informes de costos",
   "fcb9839b00e48cff": "No se pudo eliminar el widget",
@@ -9757,9 +9749,7 @@
   "1d702661a023c18a": "Reclamado por {email}",
   "92b6de7e7300c7f0": "Nunca reclamado por una persona",
   "ada2d20e8028e7d0": "Credenciales de agente",
-  "9521dd28dc2cfc74": "en cualquier momento",
   "507ccabb0594eff3": "{n} minutos",
-  "9148cf9a6f66c778": "Reclamar este espacio de trabajo",
   "9d1b9f28eff4548e": "Ese código no es válido.",
   "72cbdbbc7c5dfaad": "No se pudo reclamar este espacio de trabajo.",
   "a7f3b5c65df28fea": "Reclamar un espacio de trabajo",
@@ -9776,25 +9766,6 @@
   "466753e2d85c9f32": "Traer también las métricas y el historial de costes de este espacio de trabajo. Puede tardar unos minutos en aparecer y cambiará las cifras de los gráficos de costes existentes.",
   "4f9b6926c0b29f61": "Reclamando…",
   "9425bde0a1a6b548": "Reclamar espacio de trabajo",
-  "d2322db18080e6b9": {
-    "t": "span",
-    "i": 1,
-    "c": [
-      {
-        "t": "strong",
-        "i": 2,
-        "c": "Espacio de trabajo de prueba."
-      },
-      " Todo lo que hay aquí se eliminará en",
-      " ",
-      {
-        "i": 3,
-        "k": "_gt_value_3",
-        "v": "v"
-      },
-      " si nadie lo reclama."
-    ]
-  },
   "51b727c1a63225a7": {
     "t": "p",
     "i": 1,
@@ -9846,5 +9817,350 @@
   "5175e1e86175b800": "en directo arriba",
   "caf0b52f13095841": "mostrado arriba",
   "ef36c266220e4ca8": "Ocultar registros",
-  "31e3e8d137ca1b40": "Mostrar {count} más"
+  "31e3e8d137ca1b40": "Mostrar {count} más",
+  "31a59931c59bb26f": "Buscar aplicaciones…",
+  "d196f08f56ed5d27": "Buscar aplicaciones",
+  "e749cea86bb64054": "Iniciando el servidor de aplicaciones…",
+  "81af6811ffe6a009": "Esta entrada necesita un terminal — ábrala desde la pestaña SSH en su lugar",
+  "ee8e138e93c9f846": "Ejecutar un comando…",
+  "0c6072643fb5552e": "Ejecutar un comando",
+  "eadfc57f78c59bdf": "Volver a escanear",
+  "622a159ad0eabdcb": "En ejecución",
+  "ec82d955e1b89e4f": "No hay aplicaciones gráficas instaladas en este host. Infrawrench aporta la pantalla; el host aporta las aplicaciones.",
+  "4a9d1ef90a1471fa": "terminal",
+  "4e87e902dffe3485": "Ejecutar",
+  "5eec83455d71676d": "Ventana de aplicación remota",
+  "db9fdb5a2010141d": "Esperando la ventana…",
+  "e89a5887dd4c21e7": "Activar el audio",
+  "6486dc85422b0b36": "Silenciar el audio",
+  "86a5571b250a1e7b": "Cerrar ventana",
+  "ad28afe624f57ab8": "Instalado",
+  "8e80de585ee32952": "Ausente",
+  "3341e1d0edf84fb6": "Descomprime el servidor de aplicaciones después de subirlo. Sin él, nada puede iniciarse.",
+  "9d058e41960aaf61": "Datos de distribución del teclado. Sin ellos, el teclado no hace nada y nunca dice por qué.",
+  "c859c3c2bc68de82": "Un bus de mensajes de sesión. Las aplicaciones GTK esperan uno antes de mostrar una ventana, y no informan que están esperando.",
+  "ae48613a38b393c8": "Sin una fuente instalada, las aplicaciones dibujan cuadros vacíos o se niegan a iniciarse.",
+  "1aebd4bbc721da3a": "OpenGL por software. Los navegadores y las aplicaciones Electron lo necesitan; GTK y Qt se ven forzados a usar renderizado por software en su lugar.",
+  "b7b2c54617bd2543": "Un tema de iconos. Sin uno, el lanzador muestra iniciales en lugar de iconos, y los botones de la barra de herramientas aparecen en blanco.",
+  "f08180cc92e38f38": "gzip",
+  "fb455ca3c11bc91e": "Datos de distribución del teclado",
+  "c8589b078e7ee2e4": "Bus de mensajes de sesión",
+  "d5a2315fdf236880": "Fuentes",
+  "d7ac350fe7c4a9db": "OpenGL por software",
+  "04880546259acd22": "Tema de iconos",
+  "5fa06852411d99fc": "A este host le falta lo que las aplicaciones necesitan",
+  "0157121721b19862": "Este host está listo, con una cosa que vale la pena añadir",
+  "804b070849068aa0": "Infrawrench aporta la pantalla y sube el propio servidor de aplicaciones. El host proporciona las pocas piezas de las que dependen las propias aplicaciones.",
+  "749428b8de607da5": "opcional",
+  "8b7020c59955ab0d": "No hay ningún directorio en este host desde el que podamos ejecutar el servidor de aplicaciones — /tmp y /dev/shm no admiten escritura o están montados con noexec. Las aplicaciones no pueden ejecutarse aquí hasta que uno de ellos permita la ejecución.",
+  "88cd260f611950bc": "Qué se ejecutará en el host",
+  "e7588632064e0364": "Copiado",
+  "ffd3cdd328e21c9d": "Copiar",
+  "4fd24c4888b4dd99": "Estos paquetes deben instalarse manualmente en el host.",
+  "49171b1d485c1cde": "Infrawrench no puede instalarlos por sí mismo en este host — ejecute los comandos anteriores por SSH y, luego, vuelva a comprobarlo.",
+  "dcdd052a4b37a041": "Salida",
+  "3c9d670253128294": "Instalar también las piezas opcionales",
+  "6ab05d286639293e": "Instalando…",
+  "021b62ff834041f0": "Instalar lo que falta",
+  "9ec433045537acfc": "Volver a comprobar",
+  "e87f189d912286c8": "Abrir de todos modos",
+  "9f1baa56a8ba17c5": "Todo el día",
+  "7e978fe213907a59": "Calendario",
+  "44a3b280cc6e9443": "No se pudo cargar el calendario — {error}",
+  "e4df34e40180ad6d": "Recopilando registros con fecha…",
+  "80ed44277a41066e": "No se pudo actualizar — mostrando la última ventana cargada. {error}",
+  "a0f7fe0079a04277": "No se pudieron leer algunas fuentes, por lo que esta vista está incompleta: {kinds}. Todo lo demás está actualizado.",
+  "359541910b5c3367": "Congelaciones",
+  "574696d5d1a57277": "Ventanas de suspensión",
+  "2a0c83288f218fd0": "Plazos",
+  "e2a811bf38041d67": "Ejecuciones programadas",
+  "1a4cd5f7c6abf589": "Vistas de calendario",
+  "d4fee7165147bb3b": "Mes",
+  "d0b4afc67b2d88d8": "Agenda",
+  "a6212c6757647fc0": "Mes anterior",
+  "c8fadb129a79e5ef": "Mes siguiente",
+  "5e16dde42b3e01f5": "{day} — {count} eventos",
+  "e30ed77eeb2a9cbe": "Nada programado.",
+  "1d2dde06926b3d18": "No hay nada con fecha en esta ventana. Pruebe con un mes más amplio o vuelva a activar un filtro.",
+  "fbf9687c2faebc7f": "Cópielo ahora — no se mostrará de nuevo",
+  "8832c307d05d5ade": "Calendario del equipo de plataforma",
+  "9bd5125e8d0208c6": "Incluir (si no se selecciona ninguno, se incluye todo, incluidos los tipos añadidos más tarde)",
+  "0ca37c8a61cb5238": "Crear suscripción",
+  "6cbdccea3a71f112": "Cargando suscripciones…",
+  "5828aa4b944409a3": "Todavía no hay suscripciones.",
+  "3bf40445a706e4c9": "Todo",
+  "2204073132206fc2": "Obtenido por última vez {when}",
+  "0d442404c22226a2": "Nunca obtenido",
+  "832d1c094cadc639": "{count} revocados",
+  "8f8d7d7f91181766": "revocado {when}",
+  "644995331c2db05e": {
+    "t": "p",
+    "i": 1,
+    "c": "Todo lo que tiene una fecha, en un solo eje: congelaciones de cambios, ventanas de suspensión, certificados y arrendamientos por vencer, plazos de compromisos que finalizan, ejecuciones de flujos de trabajo programadas e incidentes declarados. Nada de esto es un registro nuevo — son las cosas que ya tiene, por fin una junto a la otra. Suscríbase desde una aplicación de calendario para llevarlo consigo."
+  },
+  "7dd7d9e34fff7bfa": {
+    "t": "p",
+    "i": 1,
+    "c": "Una suscripción es una URL que pega en Google Calendar, Outlook o su teléfono. Se actualiza por sí sola, aproximadamente cada hora. Cualquiera que tenga la URL puede leer este calendario, así que trátela como una contraseña — contiene nombres y horarios, nunca credenciales, costos ni nada sobre lo que pueda actuar."
+  },
+  "4a33ab5ec2fdd34e": "¿Eliminar 1 elemento?",
+  "c95c85b44617942d": "¿Eliminar {count} elementos?",
+  "8dd0468578ae6fff": "1 cuenta a la espera de su primera recopilación de compromisos.",
+  "7e20a788f155847a": "{count} cuentas a la espera de su primera recopilación de compromisos.",
+  "a4d654af9a33ce51": "1 cuenta excluida (el proveedor no puede distinguir los tipos de cargo).",
+  "b59b650c268e2cfa": "{count} cuentas excluidas (el proveedor no puede distinguir los tipos de cargo).",
+  "323c5551c63a83d5": "El margen necesita una métrica de ingresos, por lo que no está disponible para este.",
+  "14d44296ee1cdf3d": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "El gráfico muestra",
+      " ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      ". Agrupar por, grupos principales, comparación y previsión no aplican — un ratio por grupo necesitaría una métrica por grupo, y un período sin valor registrado se dibuja como un hueco en lugar de como cero.",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "fac74e2db1f2a40e": "— en su mayoría",
+  "a8a4cf34dd17ca69": "{bytes} no se pudieron atribuir a una carga de trabajo.",
+  "6571c912a6ffc11d": "{bytes} quedaron por debajo del límite almacenado de pares principales.",
+  "308ff652263de047": "(qué muestra)",
+  "1a3130a6f1bae8de": "a fecha de {date}",
+  "4971ee48aac67eca": "La última recopilación analizó {amount} de datos de registro.",
+  "c745267fa56d9ded": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      "estimado durante ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " entre",
+      " ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      " y ",
+      {
+        "i": 5,
+        "k": "_gt_value_5",
+        "v": "v"
+      },
+      {
+        "i": 6,
+        "k": "_gt_value_6",
+        "v": "v"
+      },
+      "."
+    ]
+  },
+  "967f2a0f4d851a85": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      "% de esos bytes están atribuidos a un par.",
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      "Ninguno de los dos se distribuye entre las filas de abajo."
+    ]
+  },
+  "0012e47fb7b3d5b7": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "El tráfico de salida y entre zonas por par de origen y destino. Cada cifra es una",
+      " ",
+      {
+        "t": "strong",
+        "i": 2,
+        "c": "estimación"
+      },
+      ": los bytes provienen de los registros de flujo",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      },
+      " y tienen un precio según las tarifas de lista publicadas",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      ", sin nivel gratuito, nivel por volumen ni descuento negociado aplicado. Use la clasificación; no coincidirá con la línea de la factura."
+    ]
+  },
+  "798684da210449dd": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "La recopilación de estos flujos ejecuta consultas que su proveedor factura a su propia cuenta en la nube.",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "6ed44c484ffb6706": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      "No se pudo cargar el feed de vencimientos — ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "404c0939d3927cc7": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      {
+        "t": "span",
+        "i": 2,
+        "c": {
+          "i": 3,
+          "k": "_gt_value_3",
+          "v": "v"
+        }
+      },
+      " ",
+      "— no se pudieron leer las cuotas: ",
+      {
+        "i": 4,
+        "k": "_gt_value_4",
+        "v": "v"
+      },
+      {
+        "i": 5,
+        "k": "_gt_value_5",
+        "v": "v"
+      }
+    ]
+  },
+  "cb253d10b829ce01": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      "No se pudo cargar el radar de cuotas — ",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      " ",
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "47d936a847c43ce1": "Ahorro previsto",
+  "8a6ce9e4781de88a": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "Ventanas de apagado y encendido para recursos que no son de producción — se detienen y se inician por usted según lo programado.",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "d5d0d9d1bc686f0f": "Guarde primero la conexión para cargar la lista.",
+  "6457fdebe63caab3": {
+    "t": "p",
+    "i": 1,
+    "c": [
+      "El equipo que aparece preseleccionado al abrir la ventana “File in Linear” — cada issue de Linear pertenece exactamente a un equipo. La lista proviene de Linear, así que no hay ningún id que buscar.",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      }
+    ]
+  },
+  "f1455ec59d72a547": "Todo en orden",
+  "4cdf6024c2544004": "Necesita revisión",
+  "45a8dfb86f7c0e97": "Algo está caído",
+  "bb566b7b22d25bf7": "· sin actualizar",
+  "97bafabe806bc386": "Reanudar rotación",
+  "4d3e84e16cfe38be": "Mantener este panel",
+  "ed5fa1eda3f06cf8": "No se pudo leer: {sources}",
+  "7250aa295bc6f1f9": "Incidentes abiertos",
+  "00db8dca707d03a9": "durante {duration}",
+  "863d59db6f544e15": "No saludable",
+  "9874096c31a19603": {
+    "t": "div",
+    "i": 1,
+    "c": [
+      "Sentencia #",
+      {
+        "i": 2,
+        "k": "_gt_value_2",
+        "v": "v"
+      },
+      {
+        "i": 3,
+        "k": "_gt_value_3",
+        "v": "v"
+      }
+    ]
+  },
+  "ca07118dcbe3cf27": "1 fila · {ms}ms",
+  "022d01a191c90822": "{count} filas · {ms}ms",
+  "dec82ae0e39aaa19": "Aplicaciones: {name}",
+  "9b2029ecadd23613": "Abrir pestaña Aplicaciones",
+  "2740c6e493017192": "El host no pudo iniciar esa aplicación.",
+  "4ae38129a003ea8f": "Iniciando {name}…",
+  "9ad81dd0511ffa2a": "Las aplicaciones necesitan una clave SSH en la que este host confíe. Añada una en Configuración → Claves SSH y, luego, vuelva a abrir esta pestaña.",
+  "e94b6d6824078173": "Esta aplicación se detuvo inesperadamente en el host.",
+  "ff1333f7e8be24af": "Esta ventana se ha cerrado en el host.",
+  "8f4518fc40bd4111": "Cerrar pestaña",
+  "af9e6ddd746d15dc": "Esta ventana ya no está conectada.",
+  "f087df242d061604": "Abra la pestaña Aplicaciones del host para volver a conectarse — la aplicación sigue ejecutándose allí.",
+  "32bced682e8515f3": "Panel de pared"
 }

@@ -906,9 +906,14 @@ export function CostGraphConfigModal({
                     . Group by, top groups, comparison and forecast don&rsquo;t apply — a per-group
                     ratio would need a per-group metric, and a period with no reported value is
                     drawn as a gap rather than as zero.
-                    {unitCostMetric && unitCostMetric.kind !== "currency" && (
-                      <> Margin needs a revenue metric, so it is unavailable for this one.</>
-                    )}
+                    <Var>
+                      {unitCostMetric && unitCostMetric.kind !== "currency" ? (
+                        <>
+                          {" "}
+                          {gt("Margin needs a revenue metric, so it is unavailable for this one.")}
+                        </>
+                      ) : null}
+                    </Var>
                   </p>
                 </T>
               )}

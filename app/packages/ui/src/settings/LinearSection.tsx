@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { T, useGT } from "gt-react";
+import { T, Var, useGT } from "gt-react";
 import type {
   LinearIntegration,
   LinearIssueLink,
@@ -206,7 +206,9 @@ export function LinearSection() {
                 The team the &ldquo;File in Linear&rdquo; window opens preselected — every Linear
                 issue belongs to exactly one team. The list comes from Linear, so there is no id to
                 look up.
-                {!integration && " Save the connection first to load it."}
+                <Var>
+                  {!integration ? <> {gt("Save the connection first to load it.")}</> : null}
+                </Var>
               </p>
             </T>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

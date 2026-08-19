@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { T, Var, useGT } from "gt-react";
+import { useGT } from "gt-react";
 import { useDataString } from "../../i18n/data-strings.js";
 import type { QueryCostEstimate, SqlTableMeta } from "@infrawrench/plugin-base";
 
@@ -398,12 +398,14 @@ export function SqlEditorView({
                 </span>
               )}
               {result && (
-                <T>
-                  <span className="text-xs text-on-surface-faint">
-                    <Var>{result.rows.length}</Var> row{result.rows.length !== 1 ? "s" : ""} ·{" "}
-                    <Var>{result.durationMs}</Var>ms
-                  </span>
-                </T>
+                <span className="text-xs text-on-surface-faint">
+                  {result.rows.length === 1
+                    ? gt("1 row · {ms}ms", { ms: result.durationMs })
+                    : gt("{count} rows · {ms}ms", {
+                        count: result.rows.length,
+                        ms: result.durationMs,
+                      })}
+                </span>
               )}
               {result && result.rows.length > 0 && (
                 <button
