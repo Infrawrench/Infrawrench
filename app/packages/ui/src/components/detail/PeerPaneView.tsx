@@ -457,6 +457,7 @@ export function PeerPaneView({
                   className="text-xs font-mono text-success hover:text-success-strong transition-colors"
                   title={gt("Click to copy")}
                 >
+                  {/* i18n-ignore: host:port address */}
                   localhost:{pf.localPort} → {pf.remotePort}
                 </button>
                 <button

@@ -528,6 +528,7 @@ function QuietHoursEditor({
           className={`${INPUT} w-52`}
           aria-label={gt("Quiet hours timezone")}
           value={value.timezone}
+          // i18n-ignore: IANA timezone identifier
           placeholder="Europe/Berlin"
           onChange={(e) => onChange({ ...value, timezone: e.target.value.trim() })}
         />

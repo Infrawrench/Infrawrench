@@ -249,7 +249,7 @@ export function CaptureTemplateModal({
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Staging stack"
+                  placeholder={gt("Staging stack")}
                   className="mt-1 w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface"
                 />
               </label>

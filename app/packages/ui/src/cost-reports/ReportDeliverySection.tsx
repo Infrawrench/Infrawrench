@@ -461,6 +461,7 @@ function ScheduleEditorModal({
               className={`${selectClass} flex-1 min-w-0`}
               value={timezone}
               onChange={(e) => setTimezone(e.target.value)}
+              // i18n-ignore: IANA timezone identifier
               placeholder="Europe/Berlin"
             />
           </div>
@@ -517,6 +518,7 @@ function ScheduleEditorModal({
               rows={2}
               value={emails}
               onChange={(e) => setEmails(e.target.value)}
+              // i18n-ignore: example email addresses
               placeholder="finance@example.com, cfo@example.com"
             />
             <p className="text-xs text-on-surface-faint mt-0.5">

@@ -9946,5 +9946,10 @@
   },
   "cfce2834886ba525": "Este recurso todavía no tiene una dirección a la que conectarse. Las aplicaciones se ejecutan a través de la misma conexión SSH que la terminal.",
   "f5b602dc58728f22": "Esta clave se guarda en Infrawrench Cloud, y para usarla se necesita una sesión activa en la nube. Inicie sesión, o elija una clave almacenada localmente a continuación.",
-  "9b2029ecadd23613": "Abrir pestaña Aplicaciones"
+  "9b2029ecadd23613": "Abrir pestaña Aplicaciones",
+  "7e99db863445ac58": "Clientes activos",
+  "b2bf8a627936983f": "Clientes de pago al final de cada día UTC",
+  "d07c1cbeab7d645b": "Stack de staging",
+  "535023a09c4f343b": "Almacén de finanzas (diario)",
+  "117053be35f6f366": "p. ej., resources:*:read o *"
 }

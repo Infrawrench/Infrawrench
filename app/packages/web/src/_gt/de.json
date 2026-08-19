@@ -10162,5 +10162,10 @@
   "8f4518fc40bd4111": "Tab schließen",
   "af9e6ddd746d15dc": "Dieses Fenster ist nicht mehr verbunden.",
   "f087df242d061604": "Öffnen Sie den Apps-Tab des Hosts, um die Verbindung wiederherzustellen — die Anwendung läuft dort weiterhin.",
-  "32bced682e8515f3": "Infowand"
+  "32bced682e8515f3": "Infowand",
+  "7e99db863445ac58": "Aktive Kunden",
+  "b2bf8a627936983f": "Zahlende Kunden am Ende jedes UTC-Tages",
+  "d07c1cbeab7d645b": "Staging-Stack",
+  "535023a09c4f343b": "Finanz-Warehouse (täglich)",
+  "117053be35f6f366": "z. B. resources:*:read oder *"
 }

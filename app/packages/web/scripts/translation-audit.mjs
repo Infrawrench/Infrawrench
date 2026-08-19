@@ -1,23 +1,32 @@
 /**
- * Finds user-facing strings that are still unmarked for translation.
+ * Gate: no user-facing string may be neither marked for translation nor
+ * explicitly excused.
  *
  * `translations:status` answers "are the catalogs current for what is marked".
- * This answers the prior question — "what has nobody marked yet" — which is
- * the only way to know how much of the UI actually shows in English.
+ * This answers the prior question — "what has nobody marked yet" — and fails
+ * (exit 1) when the answer is not "nothing".
  *
- * It parses every component with Babel and reports two things per file:
- * JSX text nodes, and string literals in user-facing attributes
- * (placeholder / title / aria-label / alt / label) plus toast calls. Anything
- * already inside a <T> element or passed to gt()/t()/msg() is excluded, as are
- * strings with no letters, single words that are obviously identifiers, and
- * the generated plugin manifest.
+ * It parses every component with Babel and flags, per file: JSX text nodes,
+ * string literals in user-facing attributes (placeholder / title / aria-label /
+ * alt / label) and toast calls. Anything already inside a <T> element or passed
+ * to gt()/t()/msg() is excluded, as are strings with no letters, single words
+ * that are obviously identifiers, and the generated plugin manifest.
+ *
+ * A string that is deliberately not translated must carry an ignore marker
+ * with a reason, on the same line or the line above:
+ *
+ *   // i18n-ignore: IANA timezone identifier
+ *   placeholder="Europe/Berlin"
+ *
+ *   {\/* i18n-ignore: product name *\/}
+ *   1Password
+ *
+ * A marker with no reason fails the gate; so does a stale marker that no
+ * longer suppresses anything (delete it, or the excuse outlives the string).
  *
  *   pnpm --filter @infrawrench/web translations:audit
  *   pnpm --filter @infrawrench/web translations:audit --json
  *   pnpm --filter @infrawrench/web translations:audit --dir ui/src/settings
- *
- * A heuristic, deliberately: it is a work-list, not a gate. Read its output as
- * "these look untranslated", then convert and re-run.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, dirname, relative } from "node:path";
@@ -56,6 +65,7 @@ function looksUserFacing(text) {
 }
 
 const results = [];
+const problems = []; // marker misuse: missing reason, stale marker
 
 for (const root of ROOTS) {
   const base = resolve(PACKAGES, root);
@@ -75,6 +85,35 @@ for (const root of ROOTS) {
     } catch {
       continue;
     }
+
+    // Every `i18n-ignore` comment in the file, keyed by the line it ends on.
+    // A marker suppresses hits on that line and the next one.
+    const markers = [];
+    for (const comment of ast.comments ?? []) {
+      const text = comment.value.trim();
+      if (!/^i18n-ignore\b/.test(text)) continue;
+      const reason = text.replace(/^i18n-ignore:?/, "").trim();
+      const marker = { line: comment.loc.end.line, reason, used: false };
+      markers.push(marker);
+      if (!reason) {
+        problems.push({
+          file: rel,
+          line: marker.line,
+          kind: "missing-reason",
+          message: "i18n-ignore has no reason; write `i18n-ignore: <why this stays English>`",
+        });
+      }
+    }
+    const suppressed = (line) => {
+      let found;
+      for (const m of markers) {
+        if (m.line === line || m.line === line - 1) {
+          m.used = true;
+          found = m;
+        }
+      }
+      return found;
+    };
 
     const hits = [];
     const stack = [];
@@ -98,7 +137,11 @@ for (const root of ROOTS) {
 
       if (stack.length === 0) {
         if (node.type === "JSXText" && looksUserFacing(node.value)) {
-          hits.push({ line: node.loc.start.line, kind: "jsx-text", text: node.value.trim() });
+          // The node starts at the previous sibling's closing brace; the line
+          // that matters for marker matching is where the text itself begins.
+          const leading = node.value.match(/^\s*/)[0];
+          const line = node.loc.start.line + (leading.match(/\n/g) ?? []).length;
+          if (!suppressed(line)) hits.push({ line, kind: "jsx-text", text: node.value.trim() });
         }
         if (
           node.type === "JSXAttribute" &&
@@ -106,11 +149,12 @@ for (const root of ROOTS) {
           node.value?.type === "StringLiteral" &&
           looksUserFacing(node.value.value)
         ) {
-          hits.push({
-            line: node.loc.start.line,
-            kind: `attr:${node.name.name}`,
-            text: node.value.value,
-          });
+          if (!suppressed(node.loc.start.line))
+            hits.push({
+              line: node.loc.start.line,
+              kind: `attr:${node.name.name}`,
+              text: node.value.value,
+            });
         }
         if (
           node.type === "CallExpression" &&
@@ -119,7 +163,8 @@ for (const root of ROOTS) {
           node.arguments?.[0]?.type === "StringLiteral" &&
           looksUserFacing(node.arguments[0].value)
         ) {
-          hits.push({ line: node.loc.start.line, kind: "toast", text: node.arguments[0].value });
+          if (!suppressed(node.loc.start.line))
+            hits.push({ line: node.loc.start.line, kind: "toast", text: node.arguments[0].value });
         }
       }
 
@@ -134,28 +179,45 @@ for (const root of ROOTS) {
     };
 
     visit(ast.program, null);
+
+    for (const m of markers) {
+      if (!m.used)
+        problems.push({
+          file: rel,
+          line: m.line,
+          kind: "stale-marker",
+          message: "i18n-ignore no longer suppresses anything; delete it",
+        });
+    }
+
     if (hits.length) results.push({ file: rel, hits });
   }
 }
 
-results.sort((a, b) => b.hits.length - a.hits.length);
+results.sort((a, b) => a.file.localeCompare(b.file));
 const total = results.reduce((n, r) => n + r.hits.length, 0);
+const failed = total > 0 || problems.length > 0;
 
 if (asJson) {
-  console.log(JSON.stringify({ total, files: results }, null, 2));
+  console.log(JSON.stringify({ total, files: results, problems }, null, 2));
 } else {
-  const byArea = new Map();
   for (const r of results) {
-    const area = r.file.split("/").slice(0, 3).join("/");
-    byArea.set(area, (byArea.get(area) ?? 0) + r.hits.length);
+    for (const h of r.hits) {
+      console.log(`${r.file}:${h.line}  ${h.kind}  ${JSON.stringify(h.text)}`);
+    }
   }
-  console.log(`${total} unmarked user-facing strings in ${results.length} files\n`);
-  console.log("By area:");
-  for (const [area, n] of [...byArea.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25)) {
-    console.log(`  ${String(n).padStart(5)}  ${area}`);
+  for (const p of problems) {
+    console.log(`${p.file}:${p.line}  ${p.kind}  ${p.message}`);
   }
-  console.log("\nWorst files:");
-  for (const r of results.slice(0, 20)) {
-    console.log(`  ${String(r.hits.length).padStart(4)}  ${r.file}`);
+  if (failed) {
+    console.log(
+      `\n${total} unmarked user-facing string(s), ${problems.length} marker problem(s).` +
+        '\nMark strings with gt()/<T> (see CLAUDE.md, "UI translations"), or excuse a' +
+        "\ndeliberately-English string with `// i18n-ignore: <reason>` on it or the line above.",
+    );
+  } else {
+    console.log("translations:audit clean — every user-facing string is marked or excused.");
   }
 }
+
+if (failed) process.exitCode = 1;
