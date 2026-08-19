@@ -484,6 +484,16 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Lines of host stderr kept to explain a server that exits during startup. */
+const DIAGNOSTIC_LINES = 10;
+
+/**
+ * How long to keep listening for stderr after the channel closes. The exit
+ * reason and the close event race, and the reason is the half worth waiting
+ * for.
+ */
+const DIAGNOSTIC_GRACE_MS = 250;
+
 /**
  * SSH connection → running compositor → driveable session, in one call.
  * The caller owns the connection, exactly as with {@link startAppServer}.
@@ -492,11 +502,36 @@ export async function startHeadlessAppSession(
   conn: SshExecutor,
   options: SessionOptions & HeadlessOptions & { handshakeTimeoutMs?: number },
 ): Promise<HeadlessAppClient> {
-  const server = await startAppServer(conn, options);
+  // A server that dies during startup says why on stderr and then closes the
+  // channel, and the close is all the handshake can see — leaving the caller
+  // with "closed before greeting" while the actual reason (a socket name
+  // already bound, a missing library, no writable staging dir) goes only to
+  // whatever log `onStderr` feeds. That log is not where the person who made
+  // the call is looking, so keep the tail and answer with it.
+  const diagnostics: string[] = [];
+  const server = await startAppServer(conn, {
+    ...options,
+    onStderr: (line) => {
+      diagnostics.push(line);
+      if (diagnostics.length > DIAGNOSTIC_LINES) diagnostics.shift();
+      options.onStderr?.(line);
+    },
+  });
   const connectOptions: HeadlessOptions & { timeoutMs?: number } = {
     ...(options.width !== undefined ? { width: options.width } : {}),
     ...(options.height !== undefined ? { height: options.height } : {}),
     ...(options.handshakeTimeoutMs !== undefined ? { timeoutMs: options.handshakeTimeoutMs } : {}),
   };
-  return HeadlessAppClient.connect(transportFromAppServer(server), connectOptions);
+  try {
+    return await HeadlessAppClient.connect(transportFromAppServer(server), connectOptions);
+  } catch (error) {
+    await sleep(DIAGNOSTIC_GRACE_MS);
+    const message = error instanceof Error ? error.message : String(error);
+    const detail = diagnostics
+      .map((line) => line.replace(/^iwappd:\s*/, "").trim())
+      .filter(Boolean)
+      .pop();
+    if (!detail || message.includes(detail)) throw error;
+    throw new Error(`${message} — the host said: ${detail}`);
+  }
 }

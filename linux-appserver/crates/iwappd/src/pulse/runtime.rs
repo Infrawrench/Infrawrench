@@ -61,6 +61,15 @@ impl PulseRuntime {
         // Unblock the accept loop with a throwaway connection.
         let _ = UnixStream::connect(&self.socket_path);
         let _ = std::fs::remove_file(&self.socket_path);
+        // And the directory `start` made for it. Removing the socket but not
+        // its directory left an empty `iw-pulse-*` behind in the host's
+        // runtime dir after every session — small, but this whole binary is
+        // built on leaving nothing on someone else's machine. `remove_dir`
+        // rather than a recursive delete: anything else in there is not ours
+        // and staying out of it is the correct failure.
+        if let Some(dir) = self.socket_path.parent() {
+            let _ = std::fs::remove_dir(dir);
+        }
     }
 }
 
@@ -236,5 +245,26 @@ fn mixer_loop(
             return; // serve loop is gone
         }
         waker();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::start;
+
+    /// The binary's whole premise is that it leaves nothing on a host, and an
+    /// empty directory per session is still something. Removing the socket but
+    /// not the directory it lived in left one behind every time.
+    #[test]
+    fn a_finished_session_leaves_no_directory_behind() {
+        let dir = std::env::temp_dir().join(format!("iwappd-pulse-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let runtime = start(&dir, || {}).expect("audio server binds");
+        assert!(dir.join("native").exists(), "the socket is served");
+
+        runtime.shutdown();
+        assert!(!dir.join("native").exists(), "socket removed");
+        assert!(!dir.exists(), "and the directory it lived in");
     }
 }

@@ -100,12 +100,7 @@ pub fn apply_audio(env: &mut BTreeMap<String, String>, server: Option<&str>) {
 /// Directory for the audio server's socket, under the runtime dir and
 /// namespaced by session like the Wayland socket is.
 pub fn audio_socket_dir(runtime_dir: &Path, session_id: &str) -> PathBuf {
-    let safe: String = session_id
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-        .take(32)
-        .collect();
-    runtime_dir.join(format!("iw-pulse-{safe}"))
+    runtime_dir.join(format!("iw-pulse-{}", session_slug(session_id)))
 }
 
 /// Apply a resolved session bus to a launch environment.
@@ -298,16 +293,57 @@ fn is_executable(path: &Path) -> bool {
     path.is_file()
 }
 
+/// How long a slug may be. The socket lives under the runtime dir, and the
+/// whole path has to fit the ~108 bytes a unix socket address allows.
+const SLUG_MAX: usize = 32;
+
+/// Hex digits of the digest a long slug ends with. The full 64-bit hash, so
+/// two ids are distinct unless they genuinely collide in it.
+const SLUG_DIGEST_HEX: usize = 16;
+
+/// FNV-1a. Small, dependency-free, and used here only to keep distinct session
+/// ids apart in a fixed-width name — not for anything a caller could gain by
+/// forging.
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
+/// A session id reduced to something safe and short enough to name a socket.
+///
+/// Truncation alone is not enough, and quietly was not: the ids we are handed
+/// are `<orgId>-<resourceId>`, and the first 32 characters of that are all
+/// organization — so every resource in an org shared one socket, and the
+/// second session to start on a host died with "socket name is already in
+/// use" rather than getting a namespace of its own. Anything that does not fit
+/// therefore keeps a readable prefix and lets a hash of the *whole* id carry
+/// the distinctness.
+fn session_slug(session_id: &str) -> String {
+    let safe: String = session_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .collect();
+    if safe.len() <= SLUG_MAX {
+        return safe;
+    }
+    let prefix: String = safe
+        .chars()
+        .take(SLUG_MAX - SLUG_DIGEST_HEX - 1)
+        .collect::<String>()
+        .trim_end_matches('-')
+        .to_owned();
+    format!("{prefix}-{:016x}", fnv1a64(session_id.as_bytes()))
+}
+
 /// The socket name for a session. Namespaced so two Infrawrench sessions on
 /// one host — a second browser tab, a colleague on the same box — do not
 /// collide.
 pub fn wayland_display_name(session_id: &str) -> String {
-    let safe: String = session_id
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-        .take(32)
-        .collect();
-    format!("wayland-iw-{safe}")
+    format!("wayland-iw-{}", session_slug(session_id))
 }
 
 #[cfg(test)]
@@ -494,6 +530,44 @@ mod tests {
             "wayland-iw-etcpasswd"
         );
         assert!(wayland_display_name(&"x".repeat(200)).len() <= "wayland-iw-".len() + 32);
+    }
+
+    /// The shape the server actually sends: `<orgId>-<resourceId>`, sliced to
+    /// 48 characters. Two resources in one organization agree for far longer
+    /// than a name can be, so truncating alone gave them the same socket and
+    /// the second session on a host failed to bind.
+    #[test]
+    fn two_resources_in_one_org_get_different_sockets() {
+        let org = "5b69f2ad-190f-41b2-957b-4a3151824ac2";
+        let one = format!("{org}-9701510a-68c5-4e3e-b311-8a932ea347bb");
+        let two = format!("{org}-1c0ffee0-1111-2222-3333-444455556666");
+        assert_ne!(
+            wayland_display_name(&one[..48]),
+            wayland_display_name(&two[..48])
+        );
+        assert_ne!(
+            audio_socket_dir(Path::new("/run/user/1000"), &one[..48]),
+            audio_socket_dir(Path::new("/run/user/1000"), &two[..48])
+        );
+    }
+
+    #[test]
+    fn long_display_names_stay_within_the_socket_budget() {
+        let name = wayland_display_name(&"a-".repeat(100));
+        assert_eq!(name.len(), "wayland-iw-".len() + 32);
+        // A name that is all prefix and no digest would collide again.
+        assert!(name.ends_with(|c: char| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn short_session_ids_are_left_alone() {
+        // The readable case is worth keeping readable: no hash where the whole
+        // id already fits.
+        assert_eq!(wayland_display_name("session"), "wayland-iw-session");
+        assert_eq!(
+            audio_socket_dir(Path::new("/run/user/1000"), "session"),
+            Path::new("/run/user/1000/iw-pulse-session")
+        );
     }
 
     #[cfg(unix)]

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { inflateSync } from "node:zlib";
 
 import {
@@ -12,7 +12,8 @@ import {
   type ServerMessage,
 } from "@infrawrench/appstream-core";
 
-import { HeadlessAppClient, headlessClientCaps } from "../headless.js";
+import { HeadlessAppClient, headlessClientCaps, startHeadlessAppSession } from "../headless.js";
+import { FakeSsh } from "./fake-ssh.js";
 import { encodePng } from "../png.js";
 
 const welcome: ServerMessage = {
@@ -279,5 +280,43 @@ describe("png encoder", () => {
 
   it("refuses a buffer that does not match its dimensions", () => {
     expect(() => encodePng(new Uint8Array(3), 2, 2)).toThrow(/expected 16/);
+  });
+});
+
+describe("start-up failures", () => {
+  const gz = Buffer.from("gzipped-binary");
+  const source = { binaryForArch: async () => gz };
+
+  /** Stages successfully, then holds the session channel open. */
+  const readyHost = () =>
+    new FakeSsh([
+      { match: /uname/, stdout: "x86_64" },
+      { match: /gunzip/, stdout: "/dev/shm/.iw.abcd1234" },
+      { match: /proc\/self\/fd/, hold: true },
+    ]);
+
+  it("answers with what the host said, not just that it closed", async () => {
+    // The channel closing is all the handshake sees, and on its own it names
+    // nothing. Losing the line above it turns every start-up failure —
+    // a bound socket, a missing library — into the same unactionable sentence.
+    const ssh = readyHost();
+    const session = startHeadlessAppSession(ssh, { ...source, sessionId: "s" });
+    await vi.waitFor(() => expect(ssh.open).toHaveLength(1));
+
+    const { channel } = ssh.open[0]!;
+    channel.emitStderr("iwappd: bind wayland-iw-abc: Requested socket name is already in use\n");
+    channel.emitClose(1);
+
+    await expect(session).rejects.toThrow(/socket name is already in use/);
+  });
+
+  it("still reports the close when the host said nothing", async () => {
+    const ssh = readyHost();
+    const session = startHeadlessAppSession(ssh, { ...source, sessionId: "s" });
+    await vi.waitFor(() => expect(ssh.open).toHaveLength(1));
+
+    ssh.open[0]!.channel.emitClose(1);
+
+    await expect(session).rejects.toThrow(/closed before greeting/);
   });
 });
