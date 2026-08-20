@@ -990,6 +990,55 @@ func (c *Client) DeleteWorkflowSchedule(ctx context.Context, workflowID string) 
 	return c.Delete(ctx, "/workflows/"+seg(workflowID)+"/schedule")
 }
 
+/* ---------------------------- on-call rotations ---------------------------- */
+
+// ListOnCallSchedules unwraps the {"schedules": […]} envelope.
+func (c *Client) ListOnCallSchedules(ctx context.Context) ([]OnCallSchedule, error) {
+	var envelope struct {
+		Schedules []OnCallSchedule `json:"schedules"`
+	}
+	if err := c.Get(ctx, "/on-call/schedules", &envelope); err != nil {
+		return nil, err
+	}
+	return envelope.Schedules, nil
+}
+
+// GetOnCallSchedule lists and filters — there is no single-GET route. The 404 is
+// synthesised here so a rotation deleted in the app reads back as gone rather
+// than as an empty list Terraform would treat as success.
+func (c *Client) GetOnCallSchedule(ctx context.Context, id string) (*OnCallSchedule, error) {
+	all, err := c.ListOnCallSchedules(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		if all[i].ID == id {
+			return &all[i], nil
+		}
+	}
+	return nil, notFound(http.MethodGet, "/on-call/schedules", id)
+}
+
+func (c *Client) CreateOnCallSchedule(ctx context.Context, in OnCallScheduleCreate) (*OnCallSchedule, error) {
+	var out OnCallSchedule
+	if err := c.Post(ctx, "/on-call/schedules", in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) UpdateOnCallSchedule(ctx context.Context, id string, in OnCallScheduleUpdate) (*OnCallSchedule, error) {
+	var out OnCallSchedule
+	if err := c.Patch(ctx, "/on-call/schedules/"+seg(id), in, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) DeleteOnCallSchedule(ctx context.Context, id string) error {
+	return c.Delete(ctx, "/on-call/schedules/"+seg(id))
+}
+
 /* --------------------------- read-only reference --------------------------- */
 
 // ListAccountResources lists the synced resources of one account.

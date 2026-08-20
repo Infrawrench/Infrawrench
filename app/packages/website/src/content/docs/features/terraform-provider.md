@@ -4,7 +4,7 @@ description: Manage Infrawrench's own configuration — budgets and cost policy,
 sidebar_order: 7
 ---
 
-The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 45 resources and 6 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
+The Infrawrench Terraform provider manages **Infrawrench's own configuration** as Terraform resources: cost allocation and reporting, monitoring, lifecycle governance, connected accounts and access control, and alert delivery. 47 resources and 6 data sources, each with its own plan, its own drift detection, and its own `terraform import`.
 
 It is for teams who already keep infrastructure in Terraform and want the rest of their platform configuration to arrive the same way — through a pull request, reviewed, with a plan that says exactly what will change.
 
@@ -445,6 +445,7 @@ Use them only with a state backend you'd put any other secret in — encrypted, 
 | Resource                         | Manages                                                                                                   |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | `infrawrench_alert_routing`      | The whole ordered [alert routing](./alert-routing.md) table, quiet hours and escalation policies included |
+| `infrawrench_on_call_schedule`   | An [on-call rotation](./on-call.md) a routing rule can name as a destination                              |
 | `infrawrench_slack_channel`      | [Slack](./slack-alerts.md) channels as destinations                                                       |
 | `infrawrench_msteams_webhook`    | [Teams](./teams-alerts.md) webhooks as destinations                                                       |
 | `infrawrench_digest_settings`    | When the [weekly digest](./weekly-digest.md) is sent                                                      |

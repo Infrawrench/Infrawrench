@@ -190,6 +190,7 @@ func (p *infrawrenchProvider) Resources(_ context.Context) []func() resource.Res
 		NewCustomGraphResource,
 
 		// Lifecycle governance.
+		NewOnCallScheduleResource,
 		NewScheduleResource,
 		NewChangeFreezeResource,
 		NewDriftAlertSettingsResource,

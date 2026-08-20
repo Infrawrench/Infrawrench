@@ -158,11 +158,12 @@ Optional:
 
 Required:
 
-- `kind` (String) One of `push`, `slack`, `msteams`. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.
+- `kind` (String) One of `push`, `slack`, `msteams`, `on-call`. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.
 
 Optional:
 
 - `channel_id` (String) Required when `kind` is `slack`: the `id` of an `infrawrench_slack_channel`.
+- `schedule_id` (String) Required when `kind` is `on-call`: the `id` of an `infrawrench_on_call_schedule`. The rule then reaches whoever is holding that rotation when the alert fires, rather than a person named when the rule was written. A disabled rotation contributes nobody and the rule's other destinations still deliver.
 - `webhook_id` (String) Required when `kind` is `msteams`: the `id` of an `infrawrench_msteams_webhook`.
 
 
@@ -179,11 +180,12 @@ Optional:
 
 Required:
 
-- `kind` (String) One of `push`, `slack`, `msteams`.
+- `kind` (String) One of `push`, `slack`, `msteams`, `on-call`.
 
 Optional:
 
 - `channel_id` (String) Required when `kind` is `slack`.
+- `schedule_id` (String) Required when `kind` is `on-call`.
 - `webhook_id` (String) Required when `kind` is `msteams`.
 
 

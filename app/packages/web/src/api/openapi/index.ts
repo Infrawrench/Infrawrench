@@ -54,6 +54,7 @@ import { registerBackupPaths } from "./paths/backups";
 import { registerWallboardPaths } from "./paths/wallboard";
 import { registerCalendarPaths } from "./paths/calendar";
 import { registerRunbookPaths } from "./paths/runbooks";
+import { registerOnCallPaths } from "./paths/on-call";
 import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
@@ -188,6 +189,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerWallboardPaths(ctx);
   registerCalendarPaths(ctx);
   registerRunbookPaths(ctx);
+  registerOnCallPaths(ctx);
   registerDnsPaths(ctx);
   registerEnvironmentDiffPaths(ctx);
   registerMomentPaths(ctx);
@@ -476,6 +478,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "Runbooks",
         description:
           "The checklist somebody wrote at 03:00, made runnable — an ordered set of steps, each either a manual tick, a link, or a button that records which workflow run was started. Performing one snapshots every step's title into the run, so the record of what somebody was asked to do survives the runbook being rewritten next week; two responders can tick different steps at the same moment without losing each other's work; and closing a run never settles its outstanding steps, because a checklist that ended early is exactly what a postmortem needs to know. Reading and performing take `resources:read` — a checklist nobody on call can open is worse than no checklist — while editing takes `org:settings:write`.",
+      },
+      {
+        name: "On-call",
+        description:
+          "Who to wake, rather than which channel to shout into. A rotation is a list of people, a shift length and a handover time in a named zone; a routing rule's `on-call` destination resolves to one person at delivery time, so a rule reading \"database alerts \u2192 whoever is on call\" needs no edit at handover. Shift boundaries are calendar-day arithmetic in the rotation's own zone \u2014 a rotation stepped in fixed milliseconds drifts an hour at each daylight-saving change. Covers beat the rotation for exactly their window and are audit-logged, which is what lets any member arrange one at 17:55 on a Friday without an admin.",
       },
       {
         name: "Status pages",

@@ -679,13 +679,16 @@ type DigestRecipient struct {
 
 /* ------------------------------ alert routing ------------------------------ */
 
-// AlertDestination is a tagged union over the three delivery targets. It
+// AlertDestination is a tagged union over the four delivery targets. It
 // marshals to exactly the branch its Kind names, because the server's schema is
 // a strict oneOf and a push destination carrying a stray channelId is rejected.
 type AlertDestination struct {
 	Kind      string  `json:"kind"`
 	ChannelID *string `json:"channelId,omitempty"`
 	WebhookID *string `json:"webhookId,omitempty"`
+	// ScheduleID names an on-call rotation rather than a person: who it reaches
+	// is decided when the alert fires, not when the rule is written.
+	ScheduleID *string `json:"scheduleId,omitempty"`
 }
 
 // MarshalJSON emits only the keys belonging to the named branch.
@@ -713,8 +716,17 @@ func (d AlertDestination) MarshalJSON() ([]byte, error) {
 			Kind      string `json:"kind"`
 			WebhookID string `json:"webhookId"`
 		}{Kind: "msteams", WebhookID: id})
+	case "on-call":
+		id := ""
+		if d.ScheduleID != nil {
+			id = *d.ScheduleID
+		}
+		return json.Marshal(struct {
+			Kind       string `json:"kind"`
+			ScheduleID string `json:"scheduleId"`
+		}{Kind: "on-call", ScheduleID: id})
 	default:
-		return nil, fmt.Errorf("unknown alert destination kind %q (want \"push\", \"slack\" or \"msteams\")", d.Kind)
+		return nil, fmt.Errorf("unknown alert destination kind %q (want \"push\", \"slack\", \"msteams\" or \"on-call\")", d.Kind)
 	}
 }
 
@@ -845,6 +857,7 @@ type AlertRulesResponse struct {
 	SlackChannels   []json.RawMessage `json:"slackChannels,omitempty"`
 	MSTeamsWebhooks []json.RawMessage `json:"msTeamsWebhooks,omitempty"`
 	Accounts        []json.RawMessage `json:"accounts,omitempty"`
+	OnCallSchedules []json.RawMessage `json:"onCallSchedules,omitempty"`
 }
 
 /* ------------------------- resource alert settings ------------------------- */
@@ -1030,4 +1043,56 @@ type OrgMember struct {
 	RoleName      *string `json:"roleName"`
 	RoleSystemKey *string `json:"roleSystemKey"`
 	CreatedAt     string  `json:"createdAt"`
+}
+
+/* ---------------------------- on-call rotations ---------------------------- */
+
+// OnCallParticipant is one person in the rotation order. Name and email are the
+// server's, resolved from the org's membership; the provider carries them so the
+// drift check sees the shape covered, and writes only the ids into state.
+type OnCallParticipant struct {
+	UserID string  `json:"userId"`
+	Name   *string `json:"name"`
+	Email  *string `json:"email"`
+}
+
+// OnCallSchedule is a rotation: an ordered list of people, a shift length, and
+// the instant the first shift began. Every later handover is derived from those
+// three, which is why StartDate re-anchors the whole rotation rather than
+// affecting only the next shift.
+type OnCallSchedule struct {
+	ID           string              `json:"id"`
+	Name         string              `json:"name"`
+	Timezone     string              `json:"timezone"`
+	RotationDays int64               `json:"rotationDays"`
+	HandoffTime  string              `json:"handoffTime"`
+	StartDate    string              `json:"startDate"`
+	Participants []OnCallParticipant `json:"participants"`
+	Enabled      bool                `json:"enabled"`
+	CreatedAt    string              `json:"createdAt"`
+	UpdatedAt    string              `json:"updatedAt"`
+}
+
+// OnCallScheduleCreate is the POST body. Enabled is a pointer because the server
+// defaults it to true, and a false the caller meant must survive the difference.
+type OnCallScheduleCreate struct {
+	Name               string   `json:"name"`
+	Timezone           string   `json:"timezone"`
+	RotationDays       int64    `json:"rotationDays"`
+	HandoffTime        string   `json:"handoffTime"`
+	StartDate          string   `json:"startDate"`
+	ParticipantUserIDs []string `json:"participantUserIds"`
+	Enabled            *bool    `json:"enabled,omitempty"`
+}
+
+// OnCallScheduleUpdate is the PATCH body: every field optional, absent meaning
+// unchanged.
+type OnCallScheduleUpdate struct {
+	Name               *string  `json:"name,omitempty"`
+	Timezone           *string  `json:"timezone,omitempty"`
+	RotationDays       *int64   `json:"rotationDays,omitempty"`
+	HandoffTime        *string  `json:"handoffTime,omitempty"`
+	StartDate          *string  `json:"startDate,omitempty"`
+	ParticipantUserIDs []string `json:"participantUserIds,omitempty"`
+	Enabled            *bool    `json:"enabled,omitempty"`
 }

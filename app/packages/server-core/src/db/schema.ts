@@ -4309,3 +4309,4 @@ export * from "./environment-schema.js";
 export * from "./calendar-schema.js";
 export * from "./relay-schema.js";
 export * from "./runbook-schema.js";
+export * from "./on-call-schema.js";

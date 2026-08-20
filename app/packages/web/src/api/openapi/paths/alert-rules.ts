@@ -23,10 +23,17 @@ const AlertDestination = z
       kind: z.literal("msteams"),
       webhookId: z.string().openapi({ description: "An msteams webhook id from /msteams/status" }),
     }),
+    strict({
+      kind: z.literal("on-call"),
+      scheduleId: z
+        .string()
+        .openapi({ description: "An on-call rotation id from /on-call/schedules" }),
+    }),
   ])
   .openapi("AlertDestination", {
     description:
-      "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.",
+      "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.\n\n" +
+      '`on-call` resolves to one person at delivery time, so a rule reading "database alerts → whoever is on call" needs no edit at handover. A rotation that resolves to nobody — disabled, empty, not yet started — contributes nobody and the rule\'s **other** destinations still deliver: an alert lost to a misconfigured rotation would be the worst outcome the feature could have.',
   });
 
 const AlertCondition = z
@@ -144,6 +151,13 @@ const AlertRulesResponse = strict({
   slackChannels: z.array(strict({ id: z.string(), name: z.string(), isPrivate: z.boolean() })),
   msTeamsWebhooks: z.array(strict({ id: z.string(), label: z.string() })),
   accounts: z.array(strict({ id: z.string(), displayName: z.string(), pluginId: z.string() })),
+  onCallSchedules: z
+    .array(strict({ id: z.string(), name: z.string() }))
+    .describe(
+      "Live on-call rotations, so the editor can offer 'whoever is on call' as a destination. " +
+        "Disabled rotations are omitted for the same reason a disconnected Slack install is: " +
+        "offering one would let the editor build a rule that routes nowhere.",
+    ),
 }).openapi("AlertRulesResponse");
 
 const AlertDelivery = strict({

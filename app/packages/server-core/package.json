@@ -121,6 +121,7 @@
     "./wallboard/feed": "./src/wallboard/feed.ts",
     "./runbooks/store": "./src/runbooks/store.ts",
     "./runbooks/runs": "./src/runbooks/runs.ts",
+    "./on-call/store": "./src/on-call/store.ts",
     "./backups/store": "./src/backups/store.ts",
     "./calendar/feed": "./src/calendar/feed.ts",
     "./calendar/subscriptions": "./src/calendar/subscriptions.ts",

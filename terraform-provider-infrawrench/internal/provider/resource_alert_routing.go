@@ -59,9 +59,10 @@ type alertConditionModel struct {
 }
 
 type alertDestinationModel struct {
-	Kind      types.String `tfsdk:"kind"`
-	ChannelID types.String `tfsdk:"channel_id"`
-	WebhookID types.String `tfsdk:"webhook_id"`
+	Kind       types.String `tfsdk:"kind"`
+	ChannelID  types.String `tfsdk:"channel_id"`
+	WebhookID  types.String `tfsdk:"webhook_id"`
+	ScheduleID types.String `tfsdk:"schedule_id"`
 }
 
 type alertQuietHoursModel struct {
@@ -87,9 +88,10 @@ var alertConditionAttrTypes = map[string]attr.Type{
 }
 
 var alertDestinationAttrTypes = map[string]attr.Type{
-	"kind":       types.StringType,
-	"channel_id": types.StringType,
-	"webhook_id": types.StringType,
+	"kind":        types.StringType,
+	"channel_id":  types.StringType,
+	"webhook_id":  types.StringType,
+	"schedule_id": types.StringType,
 }
 
 var (
@@ -136,7 +138,7 @@ var (
 		"in", "notIn", "gte", "eq", "lt", "contains", "notContains",
 	}
 	alertSeverities      = []string{"info", "warning", "critical"}
-	alertDestinationKind = []string{"push", "slack", "msteams"}
+	alertDestinationKind = []string{"push", "slack", "msteams", "on-call"}
 	alertTriggers        = []string{
 		"syncIncidents", "budgetAlerts", "anomalyAlerts", "costChangeAlerts", "commitmentExpiryAlerts",
 		"commitmentIdleAlerts", "unitCostRegressionAlerts", "metricAlerts", "resourceDrift", "workflowPages",
@@ -280,6 +282,14 @@ func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaReques
 										MarkdownDescription: "Required when `kind` is `msteams`: the `id` of an " +
 											"`infrawrench_msteams_webhook`.",
 									},
+									"schedule_id": schema.StringAttribute{
+										Optional: true,
+										MarkdownDescription: "Required when `kind` is `on-call`: the `id` of an " +
+											"`infrawrench_on_call_schedule`. The rule then reaches whoever is " +
+											"holding that rotation when the alert fires, rather than a person " +
+											"named when the rule was written. A disabled rotation contributes " +
+											"nobody and the rule's other destinations still deliver.",
+									},
 								},
 							},
 						},
@@ -350,6 +360,10 @@ func (r *alertRoutingResource) Schema(_ context.Context, _ resource.SchemaReques
 											"webhook_id": schema.StringAttribute{
 												Optional:            true,
 												MarkdownDescription: "Required when `kind` is `msteams`.",
+											},
+											"schedule_id": schema.StringAttribute{
+												Optional:            true,
+												MarkdownDescription: "Required when `kind` is `on-call`.",
 											},
 										},
 									},
@@ -593,9 +607,10 @@ func alertDestinationsFrom(ctx context.Context, list types.List) ([]iw.AlertDest
 
 	for _, b := range blocks {
 		out = append(out, iw.AlertDestination{
-			Kind:      b.Kind.ValueString(),
-			ChannelID: stringPtr(b.ChannelID),
-			WebhookID: stringPtr(b.WebhookID),
+			Kind:       b.Kind.ValueString(),
+			ChannelID:  stringPtr(b.ChannelID),
+			WebhookID:  stringPtr(b.WebhookID),
+			ScheduleID: stringPtr(b.ScheduleID),
 		})
 	}
 	return out, diags
@@ -632,9 +647,10 @@ func alertRoutingStateFrom(ctx context.Context, orgID string, rules []iw.AlertRu
 		destinations := make([]alertDestinationModel, 0, len(rule.Destinations))
 		for _, dest := range rule.Destinations {
 			destinations = append(destinations, alertDestinationModel{
-				Kind:      types.StringValue(dest.Kind),
-				ChannelID: stringValue(dest.ChannelID),
-				WebhookID: stringValue(dest.WebhookID),
+				Kind:       types.StringValue(dest.Kind),
+				ChannelID:  stringValue(dest.ChannelID),
+				WebhookID:  stringValue(dest.WebhookID),
+				ScheduleID: stringValue(dest.ScheduleID),
 			})
 		}
 		destinationList, d := types.ListValueFrom(ctx, alertDestinationObjectType, destinations)
@@ -705,9 +721,10 @@ func alertEscalationTo(ctx context.Context, escalation *iw.EscalationPolicy) (ty
 	destinations := make([]alertDestinationModel, 0, len(escalation.Destinations))
 	for _, dest := range escalation.Destinations {
 		destinations = append(destinations, alertDestinationModel{
-			Kind:      types.StringValue(dest.Kind),
-			ChannelID: stringValue(dest.ChannelID),
-			WebhookID: stringValue(dest.WebhookID),
+			Kind:       types.StringValue(dest.Kind),
+			ChannelID:  stringValue(dest.ChannelID),
+			WebhookID:  stringValue(dest.WebhookID),
+			ScheduleID: stringValue(dest.ScheduleID),
 		})
 	}
 	list, d := types.ListValueFrom(ctx, alertDestinationObjectType, destinations)

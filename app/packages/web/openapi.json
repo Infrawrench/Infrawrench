@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.33.0",
+    "version": "1.34.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -187,6 +187,10 @@
     {
       "name": "Runbooks",
       "description": "The checklist somebody wrote at 03:00, made runnable — an ordered set of steps, each either a manual tick, a link, or a button that records which workflow run was started. Performing one snapshots every step's title into the run, so the record of what somebody was asked to do survives the runbook being rewritten next week; two responders can tick different steps at the same moment without losing each other's work; and closing a run never settles its outstanding steps, because a checklist that ended early is exactly what a postmortem needs to know. Reading and performing take `resources:read` — a checklist nobody on call can open is worse than no checklist — while editing takes `org:settings:write`."
+    },
+    {
+      "name": "On-call",
+      "description": "Who to wake, rather than which channel to shout into. A rotation is a list of people, a shift length and a handover time in a named zone; a routing rule's `on-call` destination resolves to one person at delivery time, so a rule reading \"database alerts → whoever is on call\" needs no edit at handover. Shift boundaries are calendar-day arithmetic in the rotation's own zone — a rotation stepped in fixed milliseconds drifts an hour at each daylight-saving change. Covers beat the rotation for exactly their window and are audit-logged, which is what lets any member arrange one at 17:55 on a Friday without an admin."
     },
     {
       "name": "Status pages",
@@ -18077,6 +18081,444 @@
         ],
         "additionalProperties": false
       },
+      "OnCallShift": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "rotation",
+              "override"
+            ]
+          },
+          "rotationIndex": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "startsAt",
+          "endsAt",
+          "userId",
+          "name",
+          "email",
+          "source",
+          "rotationIndex"
+        ],
+        "additionalProperties": false
+      },
+      "OnCallParticipant": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "userId",
+          "name",
+          "email"
+        ],
+        "additionalProperties": false,
+        "description": "The next person in the rotation — where an escalation goes. Resolved from the rotation and never from a cover: a cover is somebody standing in for one shift."
+      },
+      "OnCallNowEntry": {
+        "type": "object",
+        "properties": {
+          "scheduleId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "scheduleName": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "shift": {
+            "$ref": "#/components/schemas/OnCallShift"
+          },
+          "next": {
+            "$ref": "#/components/schemas/OnCallParticipant"
+          }
+        },
+        "required": [
+          "scheduleId",
+          "scheduleName",
+          "enabled",
+          "shift",
+          "next"
+        ],
+        "additionalProperties": false
+      },
+      "OnCallNowResponse": {
+        "type": "object",
+        "properties": {
+          "onCall": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OnCallNowEntry"
+            }
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "onCall",
+          "generatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "OnCallSchedule": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string",
+            "example": "Europe/London"
+          },
+          "rotationDays": {
+            "type": "integer",
+            "description": "Days per shift. 7 is the common case; 1 gives a daily rotation."
+          },
+          "handoffTime": {
+            "type": "string",
+            "description": "Wall-clock time in `timezone` at which the shift changes hands.",
+            "example": "09:00"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "The calendar date in `timezone` the first shift begins on. Every later boundary is derived from it, so moving this re-anchors the whole rotation.",
+            "example": "2026-08-03"
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/OnCallParticipant"
+                },
+                {
+                  "type": "object"
+                }
+              ]
+            },
+            "description": "Rotation order. Reordering re-plans the future, deliberately."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Off resolves to nobody. A routing destination pointing at a disabled rotation contributes nobody and the rule's other destinations still deliver."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "timezone",
+          "rotationDays",
+          "handoffTime",
+          "startDate",
+          "participants",
+          "enabled",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "OnCallScheduleList": {
+        "type": "object",
+        "properties": {
+          "schedules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OnCallSchedule"
+            }
+          }
+        },
+        "required": [
+          "schedules"
+        ],
+        "additionalProperties": false
+      },
+      "OnCallScheduleCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "rotationDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31
+          },
+          "handoffTime": {
+            "type": "string"
+          },
+          "startDate": {
+            "type": "string"
+          },
+          "participantUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "minItems": 1,
+            "maxItems": 60
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "timezone",
+          "rotationDays",
+          "handoffTime",
+          "startDate",
+          "participantUserIds"
+        ],
+        "additionalProperties": false
+      },
+      "OnCallScheduleUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "rotationDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31
+          },
+          "handoffTime": {
+            "type": "string"
+          },
+          "startDate": {
+            "type": "string"
+          },
+          "participantUserIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "minItems": 1,
+            "maxItems": 60
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "OnCallOverride": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "scheduleId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "userName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdByUserId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "scheduleId",
+          "userId",
+          "userName",
+          "startsAt",
+          "endsAt",
+          "reason",
+          "createdByUserId",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "OnCallShiftsResponse": {
+        "type": "object",
+        "properties": {
+          "shifts": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/OnCallShift"
+                },
+                {
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "overrides": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OnCallOverride"
+            },
+            "description": "Covers overlapping the previewed window, returned **separately** rather than merged into the shifts: a preview that folded them in would make it impossible to see what the rotation itself does, which is the thing being edited."
+          }
+        },
+        "required": [
+          "shifts",
+          "overrides"
+        ],
+        "additionalProperties": false
+      },
+      "OnCallOverrideCreate": {
+        "type": "object",
+        "properties": {
+          "scheduleId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "scheduleId",
+          "userId",
+          "startsAt",
+          "endsAt"
+        ],
+        "additionalProperties": false
+      },
       "DnsZone": {
         "type": "object",
         "properties": {
@@ -29903,9 +30345,29 @@
               "webhookId"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "on-call"
+                ]
+              },
+              "scheduleId": {
+                "type": "string",
+                "description": "An on-call rotation id from /on-call/schedules"
+              }
+            },
+            "required": [
+              "kind",
+              "scheduleId"
+            ],
+            "additionalProperties": false
           }
         ],
-        "description": "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings."
+        "description": "One place a matched alert goes. `push` reaches the organization's phones, still filtered by each member's own mutes — an organization rule decides whether the org is told, a member decides whether their phone rings.\n\n`on-call` resolves to one person at delivery time, so a rule reading \"database alerts → whoever is on call\" needs no edit at handover. A rotation that resolves to nobody — disabled, empty, not yet started — contributes nobody and the rule's **other** destinations still deliver: an alert lost to a misconfigured rotation would be the worst outcome the feature could have."
       },
       "QuietHours": {
         "type": [
@@ -30118,6 +30580,26 @@
               ],
               "additionalProperties": false
             }
+          },
+          "onCallSchedules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Live on-call rotations, so the editor can offer 'whoever is on call' as a destination. Disabled rotations are omitted for the same reason a disconnected Slack install is: offering one would let the editor build a rule that routes nowhere."
           }
         },
         "required": [
@@ -30125,7 +30607,8 @@
           "usingDefaults",
           "slackChannels",
           "msTeamsWebhooks",
-          "accounts"
+          "accounts",
+          "onCallSchedules"
         ],
         "additionalProperties": false
       },
@@ -49364,6 +49847,507 @@
           }
         },
         "operationId": "postOrgOrgIdRunbooksRunsRunIdClose"
+      }
+    },
+    "/api/org/{orgId}/on-call/now": {
+      "get": {
+        "tags": [
+          "On-call"
+        ],
+        "summary": "Who is on call right now",
+        "description": "One entry per rotation: the shift in effect, and the next person in the rotation. Takes `team:read` — knowing who is on call is something every member needs and nobody should have to ask an admin for.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The current shift per rotation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnCallNowResponse"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdOnCallNow"
+      }
+    },
+    "/api/org/{orgId}/on-call/schedules": {
+      "get": {
+        "tags": [
+          "On-call"
+        ],
+        "summary": "List on-call rotations",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rotations, by name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnCallScheduleList"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdOnCallSchedules"
+      },
+      "post": {
+        "tags": [
+          "On-call"
+        ],
+        "summary": "Create an on-call rotation",
+        "description": "Shift boundaries are calendar-day arithmetic in the rotation's own zone, not 24-hour arithmetic: a rotation stepped in fixed milliseconds drifts an hour at each daylight-saving change until the 09:00 Monday handover happens at 08:00 — or until two people each think the other is on call.\n\nWriting takes `org:settings:write`: a rotation decides who gets woken up.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnCallScheduleCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The created rotation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnCallSchedule"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdOnCallSchedules"
+      }
+    },
+    "/api/org/{orgId}/on-call/schedules/{scheduleId}": {
+      "patch": {
+        "tags": [
+          "On-call"
+        ],
+        "summary": "Edit an on-call rotation",
+        "description": "Omitted fields are left alone, and the result is validated after merging. Sending `participantUserIds` replaces the list wholesale — position is rotation order, so reordering re-plans the future.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "scheduleId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnCallScheduleUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated rotation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnCallSchedule"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "patchOrgOrgIdOnCallSchedulesScheduleId"
+      },
+      "delete": {
+        "tags": [
+          "On-call"
+        ],
+        "summary": "Delete an on-call rotation",
+        "description": "Takes its covers with it. Routing rules naming it resolve to nobody afterwards.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "scheduleId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The rotation was deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdOnCallSchedulesScheduleId"
+      }
+    },
+    "/api/org/{orgId}/on-call/schedules/{scheduleId}/shifts": {
+      "get": {
+        "tags": [
+          "On-call"
+        ],
+        "summary": "Preview upcoming shifts",
+        "description": "The same computation the alert path resolves with, so a preview can never disagree with who actually gets woken up.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "scheduleId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60
+            },
+            "required": false,
+            "name": "count",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upcoming shifts and the covers over them",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnCallShiftsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdOnCallSchedulesScheduleIdShifts"
+      }
+    },
+    "/api/org/{orgId}/on-call/overrides": {
+      "get": {
+        "tags": [
+          "On-call"
+        ],
+        "summary": "List covers",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": false,
+            "name": "scheduleId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Covers, soonest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "overrides": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/OnCallOverride"
+                      }
+                    }
+                  },
+                  "required": [
+                    "overrides"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdOnCallOverrides"
+      },
+      "post": {
+        "tags": [
+          "On-call"
+        ],
+        "summary": "Arrange cover",
+        "description": "A cover beats the rotation for exactly its window. Among several overlapping covers the one that **started most recently** wins, so a later-written cover supersedes an earlier one rather than the answer depending on row order.\n\nTakes `team:read`, not a settings permission: cover is arranged at 17:55 on a Friday and the person handing over is rarely an org admin. Every cover is audit-logged, which is the control that makes the looser permission safe.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnCallOverrideCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The cover",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnCallOverride"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdOnCallOverrides"
+      }
+    },
+    "/api/org/{orgId}/on-call/overrides/{overrideId}": {
+      "delete": {
+        "tags": [
+          "On-call"
+        ],
+        "summary": "Cancel a cover",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "overrideId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The cover was cancelled"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdOnCallOverridesOverrideId"
       }
     },
     "/api/org/{orgId}/dns": {

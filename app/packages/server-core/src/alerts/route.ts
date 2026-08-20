@@ -45,7 +45,7 @@ import {
 
 import { db } from "../db/client";
 import { alertDeliveries } from "../db/schema";
-import { sendPushToOrg } from "../push/dispatch";
+import { sendPushToOrg, sendPushToOrgUser } from "../push/dispatch";
 import type { PushData } from "../push/types";
 import {
   type SlackMessageButton,
@@ -55,6 +55,7 @@ import {
 } from "../slack";
 import { sendMsTeamsToWebhooks } from "../msteams";
 import { resolveRoutingRules } from "./rules";
+import { resolveOnCallNow } from "../on-call/store";
 
 /**
  * Everything a detector knows about the thing it is reporting.
@@ -232,10 +233,16 @@ async function deliverDestinations(
   const def = alertTriggerDef(event.trigger);
   const slackIds: string[] = [];
   const teamsIds: string[] = [];
+  const onCallScheduleIds: string[] = [];
   let wantsPush = false;
 
   for (const d of destinations) {
     switch (d.kind) {
+      case "on-call":
+        // Resolved below, after the loop, because it needs a database read and
+        // several rules may name the same rotation.
+        if (!def.channelOnly && event.pushData) onCallScheduleIds.push(d.scheduleId);
+        break;
       case "push":
         // A channel-only trigger silently drops its push destination rather
         // than erroring: a rule that says "weekly digest → phones" is a
@@ -264,7 +271,22 @@ async function deliverDestinations(
   const buttons = [...(options.slackButtons ?? []), ...extraButtons];
   const slackAlert = buttons.length > 0 ? { ...alert, buttons } : alert;
 
-  const [push, slack, teams] = await Promise.all([
+  // Resolve the rotations to people before sending. Deduplicated by *user*
+  // rather than by schedule: two rules naming two rotations that happen to have
+  // the same person on call this week must not ring their phone twice.
+  const onCallUserIds = new Set<string>();
+  if (onCallScheduleIds.length > 0) {
+    const resolved = await Promise.all(
+      [...new Set(onCallScheduleIds)].map((scheduleId) =>
+        resolveOnCallNow(event.organizationId, scheduleId),
+      ),
+    );
+    for (const entry of resolved) {
+      if (entry.shift) onCallUserIds.add(entry.shift.userId);
+    }
+  }
+
+  const [push, slack, teams, onCall] = await Promise.all([
     wantsPush
       ? sendPushToOrg(event.organizationId, event.trigger, {
           title: event.title,
@@ -283,6 +305,28 @@ async function deliverDestinations(
     teamsIds.length > 0
       ? sendMsTeamsToWebhooks(event.organizationId, teamsIds, teamsAlert)
       : Promise.resolve({ attempted: 0, succeeded: 0, failed: 0 }),
+    // One personal push per on-call person. `sendPushToOrgUser` applies the
+    // same per-member trigger mutes as the org fan-out: an organization rule
+    // decides whether the org is told, a member decides whether their phone
+    // rings — and being on call does not override that, because a rotation is
+    // not a licence to bypass somebody's own settings.
+    onCallUserIds.size > 0
+      ? Promise.all(
+          [...onCallUserIds].map((userId) =>
+            sendPushToOrgUser(event.organizationId, userId, event.trigger, {
+              title: event.title,
+              body: event.pushBody ?? event.body,
+              data: event.pushData as PushData,
+            }),
+          ),
+        ).then((results) => ({
+          // Counted per *person*, not per device: a rule names "whoever is on
+          // call" once, and counting devices would make one person with three
+          // phones look like three destinations.
+          attempted: results.length,
+          succeeded: results.filter((r) => r.succeeded > 0).length,
+        }))
+      : Promise.resolve({ attempted: 0, succeeded: 0 }),
   ]);
 
   return {
@@ -291,8 +335,8 @@ async function deliverDestinations(
     // 40-person org look like it delivered 40 times to one destination. The
     // device count is still reported, under `counts.push`, because that is the
     // number the callers who show one to the user have always shown.
-    attempted: (wantsPush ? 1 : 0) + slack.attempted + teams.attempted,
-    succeeded: (push.succeeded > 0 ? 1 : 0) + slack.succeeded + teams.succeeded,
+    attempted: (wantsPush ? 1 : 0) + slack.attempted + teams.attempted + onCall.attempted,
+    succeeded: (push.succeeded > 0 ? 1 : 0) + slack.succeeded + teams.succeeded + onCall.succeeded,
     counts: { push: push.succeeded, slack: slack.succeeded, msTeams: teams.succeeded },
     attemptedCounts: {
       push: push.attempted,

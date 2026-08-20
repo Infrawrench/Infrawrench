@@ -15,7 +15,7 @@
 
 Manages **Infrawrench's own configuration** as code: cost allocation and
 reporting, monitoring, lifecycle governance, connected accounts and access
-control, and alert delivery. 45 resources and 6 data sources, each with its own
+control, and alert delivery. 47 resources and 6 data sources, each with its own
 plan, its own drift detection and a real `terraform import`.
 
 It does **not** manage your cloud resources. Those belong to your cloud's own
@@ -701,6 +701,7 @@ secret store that consumes it rather than into an output.
 | Resource                         | Import    | Notes                                                       |
 | -------------------------------- | --------- | ----------------------------------------------------------- |
 | `infrawrench_alert_routing`      | by org id | The whole ordered table; destroy restores the defaults      |
+| `infrawrench_on_call_schedule`   | by id     | Rotation order is the list order; covers stay in the app    |
 | `infrawrench_slack_channel`      | by id     | The workspace connection is an OAuth flow, read not written |
 | `infrawrench_msteams_webhook`    | by id     | URL is write-only and Microsoft-host-restricted             |
 | `infrawrench_digest_settings`    | by org id | Org singleton; destinations come from the routing table     |
