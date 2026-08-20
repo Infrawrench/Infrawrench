@@ -21,6 +21,7 @@ import {
   BackupsIcon,
   WallboardIcon,
   CalendarIcon,
+  RunbookIcon,
   DomainsIcon,
   EnvironmentDiffIcon,
   FanoutIcon,
@@ -51,6 +52,7 @@ import {
   backupsTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
+  runbooksTabTarget,
   dnsTabTarget,
   accessReviewTabTarget,
   iacTabTarget,
@@ -404,6 +406,15 @@ export function SidebarDashboards() {
       icon: <CalendarIcon />,
       onClick: () =>
         void navigateToWorkspaceTarget(navigate, calendarTabTarget(), { label: gt("Calendar") }),
+    },
+    // Runbooks are cloud only: a procedure is a shared document and a run is a
+    // record of who did what, so both are org state.
+    {
+      key: "runbooks",
+      label: gt("Runbooks"),
+      icon: <RunbookIcon />,
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, runbooksTabTarget(), { label: gt("Runbooks") }),
     },
     // Domains also has a local half — the inventory is computed from stored
     // state and the locally loaded plugins' DNS declarations. A workspace-tab

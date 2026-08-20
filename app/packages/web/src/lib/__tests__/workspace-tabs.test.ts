@@ -374,6 +374,13 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns runbooks route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "runbooks" })).toEqual({
+      to: "/org/$orgId/runbooks",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns backups route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "backups" })).toEqual({
       to: "/org/$orgId/backups",
@@ -459,6 +466,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the org-scoped calendar path", () => {
     expect(syncWorkspaceRouteFromPath("/org/test-org/calendar")).toEqual({ kind: "calendar" });
+  });
+
+  it("parses the org-scoped runbooks path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/runbooks")).toEqual({ kind: "runbooks" });
   });
 
   it("parses the org-scoped backups path", () => {

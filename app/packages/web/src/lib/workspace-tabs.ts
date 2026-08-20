@@ -16,6 +16,7 @@ import {
   backupsTabTarget,
   wallboardTabTarget,
   calendarTabTarget,
+  runbooksTabTarget,
   dnsTabTarget,
   iacTabTarget,
   environmentDiffTabTarget,
@@ -202,6 +203,12 @@ export function getWorkspaceNavigateArgs(
     case "calendar":
       return {
         to: "/org/$orgId/calendar",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
+    case "runbooks":
+      return {
+        to: "/org/$orgId/runbooks",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -510,6 +517,9 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "calendar") {
     return calendarTabTarget();
+  }
+  if (s[0] === "runbooks") {
+    return runbooksTabTarget();
   }
   if (s[0] === "dns") {
     return dnsTabTarget();

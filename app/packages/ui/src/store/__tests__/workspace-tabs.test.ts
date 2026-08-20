@@ -89,6 +89,12 @@ describe("getWorkspaceTabId", () => {
     expect(getWorkspaceTabId({ kind: "calendar" })).toBe("calendar");
   });
 
+  it("returns the singleton id for the runbooks target", () => {
+    // A runbook and a run are both addressed inside the page, so following two
+    // procedures at once keeps one tab.
+    expect(getWorkspaceTabId({ kind: "runbooks" })).toBe("runbooks");
+  });
+
   it("returns the singleton id for the backups target", () => {
     expect(getWorkspaceTabId({ kind: "backups" })).toBe("backups");
   });
@@ -290,6 +296,10 @@ describe("getWorkspaceTabFallbackTitle", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "calendar" })).toBe("Calendar");
   });
 
+  it("returns 'Runbooks' for the runbooks target, matching the sidebar tile", () => {
+    expect(getWorkspaceTabFallbackTitle({ kind: "runbooks" })).toBe("Runbooks");
+  });
+
   it("returns 'Backups' for the backups target, matching the sidebar tile", () => {
     expect(getWorkspaceTabFallbackTitle({ kind: "backups" })).toBe("Backups");
   });
@@ -401,6 +411,10 @@ describe("workspaceTabTargetsEqual", () => {
 
   it("treats two calendar targets as equal (singleton tab)", () => {
     expect(workspaceTabTargetsEqual({ kind: "calendar" }, { kind: "calendar" })).toBe(true);
+  });
+
+  it("treats two runbooks targets as equal (singleton tab)", () => {
+    expect(workspaceTabTargetsEqual({ kind: "runbooks" }, { kind: "runbooks" })).toBe(true);
   });
 
   it("treats two backups targets as equal (singleton tab)", () => {

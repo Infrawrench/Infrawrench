@@ -201,6 +201,7 @@ const TabTarget = strict({
     "backups",
     "wallboard",
     "calendar",
+    "runbooks",
     "dns",
     "iac",
     "environment-diff",

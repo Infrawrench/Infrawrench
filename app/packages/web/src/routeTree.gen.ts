@@ -41,6 +41,7 @@ import { Route as OrgOrgIdMomentRouteImport } from './routes/org.$orgId.moment'
 import { Route as OrgOrgIdPostureRouteImport } from './routes/org.$orgId.posture'
 import { Route as OrgOrgIdProbesRouteImport } from './routes/org.$orgId.probes'
 import { Route as OrgOrgIdQuotasRouteImport } from './routes/org.$orgId.quotas'
+import { Route as OrgOrgIdRunbooksRouteImport } from './routes/org.$orgId.runbooks'
 import { Route as OrgOrgIdSavingsRouteImport } from './routes/org.$orgId.savings'
 import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
 import { Route as OrgOrgIdSshFanoutRouteImport } from './routes/org.$orgId.ssh-fanout'
@@ -239,6 +240,11 @@ const OrgOrgIdProbesRoute = OrgOrgIdProbesRouteImport.update({
 const OrgOrgIdQuotasRoute = OrgOrgIdQuotasRouteImport.update({
   id: '/quotas',
   path: '/quotas',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdRunbooksRoute = OrgOrgIdRunbooksRouteImport.update({
+  id: '/runbooks',
+  path: '/runbooks',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdSavingsRoute = OrgOrgIdSavingsRouteImport.update({
@@ -489,6 +495,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
   '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
+  '/org/$orgId/runbooks': typeof OrgOrgIdRunbooksRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
@@ -560,6 +567,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
   '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
+  '/org/$orgId/runbooks': typeof OrgOrgIdRunbooksRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
   '/org/$orgId/status-pages': typeof OrgOrgIdStatusPagesRoute
@@ -633,6 +641,7 @@ export interface FileRoutesById {
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
   '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
+  '/org/$orgId/runbooks': typeof OrgOrgIdRunbooksRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/ssh-fanout': typeof OrgOrgIdSshFanoutRoute
@@ -708,6 +717,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/posture'
     | '/org/$orgId/probes'
     | '/org/$orgId/quotas'
+    | '/org/$orgId/runbooks'
     | '/org/$orgId/savings'
     | '/org/$orgId/settings'
     | '/org/$orgId/ssh-fanout'
@@ -779,6 +789,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/posture'
     | '/org/$orgId/probes'
     | '/org/$orgId/quotas'
+    | '/org/$orgId/runbooks'
     | '/org/$orgId/savings'
     | '/org/$orgId/ssh-fanout'
     | '/org/$orgId/status-pages'
@@ -851,6 +862,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/posture'
     | '/org/$orgId/probes'
     | '/org/$orgId/quotas'
+    | '/org/$orgId/runbooks'
     | '/org/$orgId/savings'
     | '/org/$orgId/settings'
     | '/org/$orgId/ssh-fanout'
@@ -1128,6 +1140,13 @@ declare module '@tanstack/react-router' {
       path: '/quotas'
       fullPath: '/org/$orgId/quotas'
       preLoaderRoute: typeof OrgOrgIdQuotasRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/runbooks': {
+      id: '/org/$orgId/runbooks'
+      path: '/runbooks'
+      fullPath: '/org/$orgId/runbooks'
+      preLoaderRoute: typeof OrgOrgIdRunbooksRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/savings': {
@@ -1547,6 +1566,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdPostureRoute: typeof OrgOrgIdPostureRoute
   OrgOrgIdProbesRoute: typeof OrgOrgIdProbesRoute
   OrgOrgIdQuotasRoute: typeof OrgOrgIdQuotasRoute
+  OrgOrgIdRunbooksRoute: typeof OrgOrgIdRunbooksRoute
   OrgOrgIdSavingsRoute: typeof OrgOrgIdSavingsRoute
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
   OrgOrgIdSshFanoutRoute: typeof OrgOrgIdSshFanoutRoute
@@ -1583,6 +1603,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdPostureRoute: OrgOrgIdPostureRoute,
   OrgOrgIdProbesRoute: OrgOrgIdProbesRoute,
   OrgOrgIdQuotasRoute: OrgOrgIdQuotasRoute,
+  OrgOrgIdRunbooksRoute: OrgOrgIdRunbooksRoute,
   OrgOrgIdSavingsRoute: OrgOrgIdSavingsRoute,
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,
   OrgOrgIdSshFanoutRoute: OrgOrgIdSshFanoutRoute,

@@ -83,6 +83,15 @@ export function calendarTabTarget(): WorkspaceTabTarget {
   return { kind: "calendar" };
 }
 
+/**
+ * Runbooks. Single-instance: a runbook and a run are both addressed *within*
+ * the page, so following two procedures at once keeps one tab rather than
+ * scattering an incident across several.
+ */
+export function runbooksTabTarget(): WorkspaceTabTarget {
+  return { kind: "runbooks" };
+}
+
 export function dnsTabTarget(): WorkspaceTabTarget {
   return { kind: "dns" };
 }

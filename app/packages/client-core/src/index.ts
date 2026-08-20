@@ -688,6 +688,8 @@ export * from "./wallboard";
 export * from "./help-links";
 export * from "./quotas";
 export * from "./incidents";
+// The checklist somebody wrote at 03:00, made runnable.
+export * from "./runbooks";
 export * from "./status-pages";
 export * from "./ownership";
 export * from "./log-workspaces";
