@@ -38,9 +38,17 @@ Worker does not second-guess publish state.
    pnpm --filter @infrawrench/status-page-edge deploy
    ```
 
-5. Ensure a Workers route sends SaaS traffic to this Worker (custom domain on
-   the fallback host, or a `*/*` route on the SaaS zone — see
-   [Worker as origin](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/start/advanced-settings/worker-as-origin/)).
+5. Ensure a Workers **route** sends SaaS traffic to this Worker. A Worker
+   custom domain on the fallback host is **not** enough: SaaS requests carry
+   the customer's Host header, match no custom domain, and Cloudflare dials
+   the fallback record's literal `100::` — every attached domain 522s (this
+   shipped once and did exactly that). Per
+   [Worker as origin](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/start/advanced-settings/worker-as-origin/),
+   the supported pattern is a `*/*` route on the SaaS zone. `infrawrench.com`
+   cannot carry a `*/*` route (it would swallow `app.`, `www.` and every
+   other Worker), so hostnames inside the zone get explicit per-hostname
+   routes in `wrangler.jsonc`, and opening this feature to customer-owned
+   domains requires a dedicated SaaS zone first.
 
 6. Set on the web/poller pods (see `.env.example` / `terraform.tfvars.example`):
 

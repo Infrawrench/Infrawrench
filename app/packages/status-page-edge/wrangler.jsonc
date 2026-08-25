@@ -14,8 +14,16 @@
     "enabled": true,
   },
   // Fallback origin hostname for Cloudflare for SaaS (originless AAAA 100::
-  // on this name, Worker route */*). Custom customer hostnames land here.
-  "routes": [{ "pattern": "status-origin.infrawrench.com", "custom_domain": true }],
+  // on this name, set as the zone's fallback origin). A Worker custom domain
+  // does NOT intercept SaaS traffic — requests arrive with the customer's
+  // Host, match no route, and Cloudflare dials the literal 100:: (a 522).
+  // Each served hostname therefore needs an explicit zone route below;
+  // customer domains outside the zone need a */* catch-all, which the shared
+  // infrawrench.com zone cannot carry — see the README before adding one.
+  "routes": [
+    { "pattern": "status-origin.infrawrench.com", "custom_domain": true },
+    { "pattern": "status.infrawrench.com/*", "zone_name": "infrawrench.com" },
+  ],
   "vars": {
     "ORIGIN": "https://app.infrawrench.com",
   },
