@@ -61,7 +61,8 @@ function fakeDb() {
 
 vi.mock("../db/client", () => ({ db: fakeDb() }));
 
-const { RunbookInputError, createRunbook, updateRunbook } = await import("../runbooks/store");
+const { RunbookInputError, createRunbook, listRunbooks, updateRunbook } =
+  await import("../runbooks/store");
 const { startRunbookRun } = await import("../runbooks/runs");
 
 const existingRunbook = {
@@ -162,6 +163,22 @@ describe("updateRunbook", () => {
     await expect(updateRunbook("org", "missing", { name: "X" })).rejects.toMatchObject({
       status: 404,
     });
+  });
+});
+
+describe("listRunbooks", () => {
+  it("tolerates the driver returning last_run_at as a zoneless string", async () => {
+    // `lastRunAt` is a raw-sql subquery, so drizzle's timestamp mapping never
+    // runs on it: postgres-js hands back "2026-08-25 16:42:28.855". Calling
+    // `.toISOString()` on that directly is the crash that 500ed the runbooks
+    // list the moment the org's first run existed — and a bare `new Date()`
+    // would parse it as server-local time rather than the UTC it stores.
+    selectResults.set("runbooks", [
+      { ...existingRunbook, runCount: "3", lastRunAt: "2026-08-25 16:42:28.855" },
+    ]);
+    const [book] = await listRunbooks("org");
+    expect(book?.lastRunAt).toBe("2026-08-25T16:42:28.855Z");
+    expect(book?.runCount).toBe(3);
   });
 });
 

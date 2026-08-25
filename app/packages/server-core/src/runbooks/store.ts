@@ -15,6 +15,7 @@ import {
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
+import { rawTimestampToDate } from "../db/raw-timestamp";
 import { users } from "../db/schema";
 import { runbookRuns, runbooks } from "../db/runbook-schema";
 
@@ -43,7 +44,13 @@ interface RunbookRow {
   createdAt: Date;
   updatedAt: Date;
   runCount: number;
-  lastRunAt: Date | null;
+  /**
+   * A raw-`sql` selection, so drizzle's timestamp mapping never runs on it and
+   * postgres-js hands back the wire string. Typed honestly so `toWire` has to
+   * convert rather than call `.toISOString()` on a string (which is a crash
+   * that only appears once a runbook has been run).
+   */
+  lastRunAt: Date | string | null;
 }
 
 function toWire(row: RunbookRow): Runbook {
@@ -61,7 +68,7 @@ function toWire(row: RunbookRow): Runbook {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     runCount: Number(row.runCount ?? 0),
-    lastRunAt: row.lastRunAt?.toISOString() ?? null,
+    lastRunAt: row.lastRunAt != null ? rawTimestampToDate(row.lastRunAt).toISOString() : null,
   };
 }
 
@@ -90,10 +97,11 @@ function selectRunbooks() {
         sql<number>`(SELECT count(*) FROM ${runbookRuns} WHERE ${runbookRuns.runbookId} = ${runbooks.id})`.as(
           "run_count",
         ),
-      lastRunAt:
-        sql<Date | null>`(SELECT max(${runbookRuns.startedAt}) FROM ${runbookRuns} WHERE ${runbookRuns.runbookId} = ${runbooks.id})`.as(
-          "last_run_at",
-        ),
+      lastRunAt: sql<
+        Date | string | null
+      >`(SELECT max(${runbookRuns.startedAt}) FROM ${runbookRuns} WHERE ${runbookRuns.runbookId} = ${runbooks.id})`.as(
+        "last_run_at",
+      ),
     })
     .from(runbooks)
     .leftJoin(users, eq(users.id, runbooks.createdByUserId));

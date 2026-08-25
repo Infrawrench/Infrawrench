@@ -9,6 +9,7 @@ import { gunzipSync } from "node:zlib";
 import type { SessionRecordingStatus, SessionRecordingUsage } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
+import { rawTimestampToDate } from "../db/raw-timestamp";
 import {
   sshSessionRecordingChunks,
   sshSessionRecordings,
@@ -258,7 +259,9 @@ export async function getSessionRecordingUsage(
     .select({
       recordingCount: sql<number>`count(*)::int`,
       capturedBytes: sql<number>`coalesce(sum(${sshSessionRecordings.outputBytes}), 0)::bigint`,
-      oldestStartedAt: sql<Date | null>`min(${sshSessionRecordings.startedAt})`,
+      // Raw aggregate, so drizzle's timestamp mapping never runs; the driver
+      // returns the zoneless wire string — see `rawTimestampToDate`.
+      oldestStartedAt: sql<Date | string | null>`min(${sshSessionRecordings.startedAt})`,
     })
     .from(sshSessionRecordings)
     .where(eq(sshSessionRecordings.organizationId, organizationId));
@@ -270,7 +273,7 @@ export async function getSessionRecordingUsage(
     .from(sshSessionRecordingChunks)
     .where(eq(sshSessionRecordingChunks.organizationId, organizationId));
 
-  const oldest = counts?.oldestStartedAt ? new Date(counts.oldestStartedAt) : null;
+  const oldest = counts?.oldestStartedAt ? rawTimestampToDate(counts.oldestStartedAt) : null;
   return {
     recordingCount: Number(counts?.recordingCount ?? 0),
     storedBytes: Number(stored?.storedBytes ?? 0),

@@ -35,6 +35,7 @@ import type {
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
+import { rawTimestampToDate } from "../db/raw-timestamp";
 import { apiKeys, auditLogs, organizationMembers, roles, sshKeys, users } from "../db/schema";
 import { expandPermission, hasPermission } from "../permissions/catalog";
 import { isSystemRoleKey, systemRolePermissions } from "../permissions/system-roles";
@@ -378,7 +379,9 @@ async function sshKeyLastUse(organizationId: string, since: Date): Promise<Map<s
   const rows = await db
     .select({
       sshKeyId: sql<string>`${auditLogs.metadata}->>'sshKeyId'`,
-      usedAt: sql<Date>`max(${auditLogs.createdAt})`,
+      // Raw aggregate, so drizzle's timestamp mapping never runs; the driver
+      // returns the zoneless wire string — see `rawTimestampToDate`.
+      usedAt: sql<Date | string>`max(${auditLogs.createdAt})`,
     })
     .from(auditLogs)
     .where(
@@ -392,7 +395,7 @@ async function sshKeyLastUse(organizationId: string, since: Date): Promise<Map<s
 
   const out = new Map<string, Date>();
   for (const row of rows) {
-    if (row.sshKeyId) out.set(row.sshKeyId, new Date(row.usedAt));
+    if (row.sshKeyId) out.set(row.sshKeyId, rawTimestampToDate(row.usedAt));
   }
   return out;
 }
