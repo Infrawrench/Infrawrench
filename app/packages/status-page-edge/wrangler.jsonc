@@ -22,9 +22,7 @@
   "kv_namespaces": [
     {
       "binding": "STATUS_HOSTS",
-      // Create with: wrangler kv namespace create STATUS_HOSTS
-      // Then put the id here and in STATUS_PAGE_KV_NAMESPACE_ID on the web pods.
-      "id": "REPLACE_WITH_STATUS_HOSTS_KV_NAMESPACE_ID",
+      "id": "0b66ec315f3b45febf9dd1768ae9b944",
     },
   ],
 }
