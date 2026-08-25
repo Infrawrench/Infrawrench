@@ -53,6 +53,7 @@ import { DesktopBackupsPanel } from "@/components/DesktopBackupsPanel";
 import { DesktopWallboardPanel } from "@/components/DesktopWallboardPanel";
 import { DesktopCalendarPanel } from "@/components/DesktopCalendarPanel";
 import { DesktopRunbooksPanel } from "@/components/DesktopRunbooksPanel";
+import { DesktopQueryMonitorsPanel } from "@/components/DesktopQueryMonitorsPanel";
 import { DesktopDnsPanel } from "@/components/DesktopDnsPanel";
 import { DesktopIacPanel } from "@/components/DesktopIacPanel";
 import { DesktopEnvironmentDiffPanel } from "@/components/DesktopEnvironmentDiffPanel";
@@ -469,6 +470,13 @@ function renderPanel(
           openWorkflow={(workflowId) =>
             void navigate(getWorkspaceNavigateArgs(workflowsTabTarget(workflowId)))
           }
+        />
+      );
+    case "query-monitors":
+      return (
+        <DesktopQueryMonitorsPanel
+          // Keyed by mode so switching org (or dropping to local) remounts.
+          key={activeCloudOrgId ?? "local"}
         />
       );
     case "backups":

@@ -381,6 +381,13 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("returns query-monitors route args", () => {
+    expect(getWorkspaceNavigateArgs({ kind: "query-monitors" })).toEqual({
+      to: "/org/$orgId/query-monitors",
+      params: { orgId: "test-org" },
+    });
+  });
+
   it("returns backups route args", () => {
     expect(getWorkspaceNavigateArgs({ kind: "backups" })).toEqual({
       to: "/org/$orgId/backups",
@@ -470,6 +477,12 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("parses the org-scoped runbooks path", () => {
     expect(syncWorkspaceRouteFromPath("/org/test-org/runbooks")).toEqual({ kind: "runbooks" });
+  });
+
+  it("parses the org-scoped query-monitors path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/test-org/query-monitors")).toEqual({
+      kind: "query-monitors",
+    });
   });
 
   it("parses the org-scoped backups path", () => {

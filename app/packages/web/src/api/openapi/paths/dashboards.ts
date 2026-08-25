@@ -202,6 +202,7 @@ const TabTarget = strict({
     "wallboard",
     "calendar",
     "runbooks",
+    "query-monitors",
     "dns",
     "iac",
     "environment-diff",

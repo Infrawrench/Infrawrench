@@ -4332,3 +4332,4 @@ export * from "./relay-schema.js";
 export * from "./runbook-schema.js";
 export * from "./on-call-schema.js";
 export * from "./restore-drill-schema.js";
+export * from "./query-monitor-schema.js";

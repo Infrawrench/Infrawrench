@@ -92,6 +92,14 @@ export function runbooksTabTarget(): WorkspaceTabTarget {
   return { kind: "runbooks" };
 }
 
+/**
+ * Query monitors. Single-instance like Metric alerts: a monitor is edited
+ * within the page, so writing two of them keeps one tab.
+ */
+export function queryMonitorsTabTarget(): WorkspaceTabTarget {
+  return { kind: "query-monitors" };
+}
+
 export function dnsTabTarget(): WorkspaceTabTarget {
   return { kind: "dns" };
 }

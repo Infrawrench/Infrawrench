@@ -1,16 +1,17 @@
 /**
  * Assemble the wallboard from what is true right now.
  *
- * Three sources: declared incidents, synthetic probes and account sync health.
- * Every one of them is a read of a table this product already keeps, and every
- * one is guarded independently — a wallboard that goes blank because one query
- * threw is a television showing nothing to a room that was relying on it.
+ * Four sources: declared incidents, synthetic probes, query monitors and
+ * account sync health. Every one of them is a read of a table this product
+ * already keeps, and every one is guarded independently — a wallboard that goes
+ * blank because one query threw is a television showing nothing to a room that
+ * was relying on it.
  *
- * A source belongs here once the table it reads exists. Query monitors are the
- * cautionary tale: the first cut of this module read `query_monitors` with raw
- * SQL against a database whose migration had not shipped, so the guard reported
- * a missing table as a failed source and every screen in the building sat amber
- * over a feature no org had yet. That source arrives with the feature.
+ * A source belongs here once the table it reads exists — the query monitors
+ * source arrives in the same change as `query_monitors` itself for that reason.
+ * An earlier attempt to read it ahead of its migration, tolerating the absence,
+ * put "Could not read: query monitors" on every wall in the building instead:
+ * a guard cannot tell a missing table from a broken query, and should not try.
  *
  * **A source that fails is named on the screen and makes the wall amber.** The
  * alternative — swallowing the error and rendering the remaining sources green
@@ -23,6 +24,7 @@
  */
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
+  QUERY_MONITOR_OPERATOR_LABELS,
   WALLBOARD_LIMITS,
   wallboardStatus,
   type WallboardFailureLine,
@@ -32,7 +34,7 @@ import {
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
-import { accounts, incidents, pagingIncidents, syntheticProbes } from "../db/schema";
+import { accounts, incidents, pagingIncidents, queryMonitors, syntheticProbes } from "../db/schema";
 
 export interface WallboardOptions {
   /** Scan instant; defaults to `Date.now()`. Fixed in tests. */
@@ -42,6 +44,20 @@ export interface WallboardOptions {
 interface SourceResult<T> {
   value: T;
   failed: boolean;
+}
+
+/** "4213 > 1000" — what the monitor saw, against what it watches for. */
+function describeBreach(monitor: {
+  mode: "scalar" | "rowCount";
+  operator: keyof typeof QUERY_MONITOR_OPERATOR_LABELS;
+  threshold: number;
+  lastValue: number | null;
+}): string {
+  const comparison = `${QUERY_MONITOR_OPERATOR_LABELS[monitor.operator]} ${monitor.threshold}`;
+  if (monitor.lastValue === null) {
+    return `${monitor.mode === "rowCount" ? "row count" : "value"} ${comparison}`;
+  }
+  return `${monitor.lastValue} ${comparison}`;
 }
 
 /**
@@ -69,7 +85,7 @@ export async function getWallboard(
 ): Promise<WallboardResponse> {
   const now = options.now ?? Date.now();
 
-  const [incidentResult, probeResult, accountResult] = await Promise.all([
+  const [incidentResult, probeResult, monitorResult, accountResult] = await Promise.all([
     guard("incidents", [] as WallboardIncidentLine[], async () => {
       const rows = await db
         .select({
@@ -125,6 +141,55 @@ export async function getWallboard(
       };
     }),
 
+    // Query monitors: what the data says, which is the half of an incident no
+    // metric reports. Both states that mean "not fine" go on the wall — a
+    // monitor that is breaching, and one whose query failed, because a monitor
+    // that cannot run has told the room nothing and rendering that as green is
+    // exactly the lie this feature exists to avoid. A monitor that has never
+    // run has not failed, the same rule the probes follow.
+    guard(
+      "monitors",
+      { lines: [] as WallboardFailureLine[], breaching: 0, silent: 0 },
+      async () => {
+        const rows = await db
+          .select({
+            id: queryMonitors.id,
+            name: queryMonitors.name,
+            state: queryMonitors.state,
+            mode: queryMonitors.mode,
+            operator: queryMonitors.operator,
+            threshold: queryMonitors.threshold,
+            lastValue: queryMonitors.lastValue,
+            lastError: queryMonitors.lastError,
+            lastRunAt: queryMonitors.lastRunAt,
+          })
+          .from(queryMonitors)
+          .where(
+            and(eq(queryMonitors.organizationId, organizationId), eq(queryMonitors.enabled, true)),
+          )
+          .orderBy(desc(queryMonitors.lastRunAt));
+
+        const breaching = rows.filter((row) => row.state === "breaching");
+        const silent = rows.filter(
+          (row) => row.state === "unknown" && row.lastRunAt !== null && row.lastError !== null,
+        );
+        return {
+          lines: [...breaching, ...silent].slice(0, WALLBOARD_LIMITS.maxLines).map((row) => ({
+            id: `monitor:${row.id}`,
+            label: row.name,
+            detail:
+              row.state === "breaching" ? describeBreach(row) : (row.lastError ?? "did not run"),
+            // The breach's own start is not kept — a monitor stores its last
+            // outcome, not a history — and inventing one from the streak would
+            // put a number on the wall that nothing backs.
+            since: null,
+          })),
+          breaching: breaching.length,
+          silent: silent.length,
+        };
+      },
+    ),
+
     // Sync health comes from the *paging* incidents rather than from a column
     // on the account, because that is the signal the org already gets woken up
     // by: a wall that disagreed with the pager about whether an account is
@@ -170,13 +235,15 @@ export async function getWallboard(
   const failedSources = [
     ...(incidentResult.failed ? ["incidents"] : []),
     ...(probeResult.failed ? ["probes"] : []),
+    ...(monitorResult.failed ? ["query monitors"] : []),
     ...(accountResult.failed ? ["accounts"] : []),
   ];
 
-  const failures = [...probeResult.value.down, ...accountResult.value.broken].slice(
-    0,
-    WALLBOARD_LIMITS.maxLines,
-  );
+  const failures = [
+    ...probeResult.value.down,
+    ...monitorResult.value.lines,
+    ...accountResult.value.broken,
+  ].slice(0, WALLBOARD_LIMITS.maxLines);
 
   const status = wallboardStatus({
     incidents: incidentResult.value,
@@ -205,6 +272,22 @@ export async function getWallboard(
       value: `${probeResult.value.total - probeResult.value.down.length}/${probeResult.value.total}`,
       detail: probeResult.failed ? "could not be read" : null,
       status: probeResult.failed ? "degraded" : probeResult.value.down.length > 0 ? "down" : "ok",
+    },
+    {
+      id: "monitors",
+      label: "Monitors breaching",
+      value: String(monitorResult.value.breaching),
+      // A monitor that cannot run is not breaching and is not fine either, so
+      // it is counted under the number rather than folded into it.
+      detail: monitorResult.failed
+        ? "could not be read"
+        : monitorResult.value.silent > 0
+          ? `${monitorResult.value.silent} not reporting`
+          : null,
+      status:
+        monitorResult.failed || monitorResult.value.breaching > 0 || monitorResult.value.silent > 0
+          ? "degraded"
+          : "ok",
     },
     {
       id: "accounts",

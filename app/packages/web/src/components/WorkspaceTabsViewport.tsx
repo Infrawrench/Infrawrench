@@ -62,6 +62,7 @@ import { WebBackupsPanel } from "./WebBackupsPanel";
 import { WebWallboardPanel } from "./WebWallboardPanel";
 import { WebCalendarPanel } from "./WebCalendarPanel";
 import { WebRunbooksPanel } from "./WebRunbooksPanel";
+import { WebQueryMonitorsPanel } from "./WebQueryMonitorsPanel";
 import { WebDnsPanel } from "./WebDnsPanel";
 import { WebIacPanel } from "./WebIacPanel";
 import { WebEnvironmentDiffPanel } from "./WebEnvironmentDiffPanel";
@@ -525,6 +526,15 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
           openWorkflow={(workflowId) =>
             void navigate(getWorkspaceNavigateArgs(workflowsTabTarget(workflowId)))
           }
+        />
+      );
+    case "query-monitors":
+      return (
+        <WebQueryMonitorsPanel
+          // Keyed by org so switching org remounts and refetches rather than
+          // showing the previous org's monitors.
+          key={orgId}
+          orgId={orgId}
         />
       );
     case "dns":

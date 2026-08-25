@@ -17,6 +17,7 @@ import {
 } from "@infrawrench/server-core/environments/pass";
 import { runLogAlertPass } from "@infrawrench/server-core/log-workspaces/pass";
 import { runMetricAlertPass } from "@infrawrench/server-core/metric-alerts/pass";
+import { runQueryMonitorPass } from "@infrawrench/server-core/query-monitors/pass";
 import { runProbePass } from "@infrawrench/server-core/probes/pass";
 import { pruneAlertDeliveries, runAlertFollowUpPass } from "@infrawrench/server-core/alerts/pass";
 import { runCostExportPass } from "@infrawrench/server-core/cost-exports/pass";
@@ -228,6 +229,11 @@ export class PollerLoop extends TickLoop {
     // the lease), judges each rule's trailing window against ClickHouse, and
     // opens/resolves firing events. Defensive like the others.
     await this.tickMetricAlerts();
+
+    // Query monitors: a small batch of due SQL checks, claimed with the same
+    // SKIP LOCKED lease the account poll uses. Deliberately small — each one
+    // opens a connection to a customer database. Defensive like the others.
+    await this.tickQueryMonitors();
 
     // Eleventh pass: synthetic probes. Claims due probes with the accounts
     // lease protocol (`synthetic_probes.next_probe_at` doubles as the lease —
@@ -476,6 +482,21 @@ export class PollerLoop extends TickLoop {
   }
 
   /** Run any synthetic probes that have come due. */
+  /**
+   * Run the query monitors that have come due.
+   *
+   * The batch is deliberately small: every monitor opens a connection to
+   * somebody else's production database, and the pass runs them sequentially
+   * for the same reason.
+   */
+  private async tickQueryMonitors(): Promise<void> {
+    try {
+      await runQueryMonitorPass({ limit: 5 });
+    } catch (e) {
+      console.error("[query-monitors] tick failed:", e);
+    }
+  }
+
   private async tickProbes(): Promise<void> {
     try {
       await runProbePass({ limit: 8 });

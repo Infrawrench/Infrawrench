@@ -701,6 +701,8 @@ export * from "./alert-routing";
 // Who to wake, rather than which channel to shout into.
 export * from "./on-call";
 export * from "./metric-alerts";
+// A SQL query on a schedule: what the data says, which no metric reports.
+export * from "./query-monitors";
 export * from "./org-config";
 export * from "./rightsizing";
 export * from "./session-recordings";

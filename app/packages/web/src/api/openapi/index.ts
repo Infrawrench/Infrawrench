@@ -55,6 +55,7 @@ import { registerWallboardPaths } from "./paths/wallboard";
 import { registerCalendarPaths } from "./paths/calendar";
 import { registerRunbookPaths } from "./paths/runbooks";
 import { registerOnCallPaths } from "./paths/on-call";
+import { registerQueryMonitorPaths } from "./paths/query-monitors";
 import { registerDnsPaths } from "./paths/dns";
 import { registerMomentPaths } from "./paths/moment";
 import { registerSchedulePaths } from "./paths/schedules";
@@ -190,6 +191,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerCalendarPaths(ctx);
   registerRunbookPaths(ctx);
   registerOnCallPaths(ctx);
+  registerQueryMonitorPaths(ctx);
   registerDnsPaths(ctx);
   registerEnvironmentDiffPaths(ctx);
   registerMomentPaths(ctx);
@@ -483,6 +485,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         name: "On-call",
         description:
           "Who to wake, rather than which channel to shout into. A rotation is a list of people, a shift length and a handover time in a named zone; a routing rule's `on-call` destination resolves to one person at delivery time, so a rule reading \"database alerts \u2192 whoever is on call\" needs no edit at handover. Shift boundaries are calendar-day arithmetic in the rotation's own zone \u2014 a rotation stepped in fixed milliseconds drifts an hour at each daylight-saving change. Covers beat the rotation for exactly their window and are audit-logged, which is what lets any member arrange one at 17:55 on a Friday without an admin.",
+      },
+      {
+        name: "Query monitors",
+        description:
+          "A SQL query on a schedule, with a threshold and an alert. Metric alerts watch what the provider reports \u2014 CPU, connections, queue depth. Nothing watched what the data itself says, which is where a whole class of incidents lives: the orders table stopped growing, the dead-letter queue has 4,000 rows in it, yesterday's ETL wrote nought. A monitor may only run a single read-only statement, enforced by an allowlist of leading keywords on every execution rather than only on save; a failed run is `unknown` rather than `ok`, because it has told you nothing about the data; and the alert fires on the run that reaches the consecutive-breach threshold and not on every run past it.",
       },
       {
         name: "Status pages",

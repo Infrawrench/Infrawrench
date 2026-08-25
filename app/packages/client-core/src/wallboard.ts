@@ -21,9 +21,9 @@
  *
  * Three states rather than five, because at four metres a person distinguishes
  * three colours reliably and nothing more. `degraded` is deliberately the
- * catch-all: an unresolved incident of any severity, an account that stopped
- * syncing. The screen's job is to make somebody walk over, not to grade the
- * problem for them.
+ * catch-all: an unresolved incident of any severity, a query monitor
+ * breaching, an account that stopped syncing. The screen's job is to make
+ * somebody walk over, not to grade the problem for them.
  */
 export type WallboardStatus = "ok" | "degraded" | "down";
 
@@ -61,7 +61,7 @@ export interface WallboardResponse {
   tiles: WallboardTile[];
   /** Unresolved incidents, newest first. Empty is the normal case. */
   incidents: WallboardIncidentLine[];
-  /** Probes that are down, accounts that stopped syncing. */
+  /** Probes that are down, monitors breaching, accounts that stopped syncing. */
   failures: WallboardFailureLine[];
   /**
    * Sources that could not be read. Named on the wall itself, because a
@@ -77,8 +77,8 @@ export interface WallboardResponse {
  *
  * `down` is reserved for the two things that mean customers are affected right
  * now: a sev1 incident, or a probe that is down. Everything else that is wrong
- * — a lower-severity incident, an account that stopped syncing — is
- * `degraded`.
+ * — a lower-severity incident, a breaching monitor, an account that stopped
+ * syncing — is `degraded`.
  *
  * A failed source is `degraded` and never `ok`: a wall that shows green because
  * a query threw is worse than a blank one.

@@ -21,6 +21,8 @@ export type WorkspaceTabTarget =
   | { kind: "calendar" }
   /** Runbooks — the org's written procedures and the runs against them. */
   | { kind: "runbooks" }
+  /** Query monitors — a read-only SQL check on a schedule. */
+  | { kind: "query-monitors" }
   | { kind: "dns" }
   | { kind: "iac" }
   | { kind: "environment-diff"; a?: string; b?: string }
@@ -155,6 +157,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "calendar";
     case "runbooks":
       return "runbooks";
+    case "query-monitors":
+      return "query-monitors";
     case "dns":
       return "dns";
     case "iac":
@@ -243,6 +247,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Calendar";
     case "runbooks":
       return "Runbooks";
+    case "query-monitors":
+      return "Query monitors";
     case "dns":
       return "Domains";
     case "iac":
@@ -304,6 +310,7 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "wallboard":
     case "calendar":
     case "runbooks":
+    case "query-monitors":
     case "dns":
     case "iac":
     case "environments":

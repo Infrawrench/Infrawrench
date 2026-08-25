@@ -40,6 +40,7 @@ import { Route as OrgOrgIdMetricAlertsRouteImport } from './routes/org.$orgId.me
 import { Route as OrgOrgIdMomentRouteImport } from './routes/org.$orgId.moment'
 import { Route as OrgOrgIdPostureRouteImport } from './routes/org.$orgId.posture'
 import { Route as OrgOrgIdProbesRouteImport } from './routes/org.$orgId.probes'
+import { Route as OrgOrgIdQueryMonitorsRouteImport } from './routes/org.$orgId.query-monitors'
 import { Route as OrgOrgIdQuotasRouteImport } from './routes/org.$orgId.quotas'
 import { Route as OrgOrgIdRunbooksRouteImport } from './routes/org.$orgId.runbooks'
 import { Route as OrgOrgIdSavingsRouteImport } from './routes/org.$orgId.savings'
@@ -236,6 +237,11 @@ const OrgOrgIdPostureRoute = OrgOrgIdPostureRouteImport.update({
 const OrgOrgIdProbesRoute = OrgOrgIdProbesRouteImport.update({
   id: '/probes',
   path: '/probes',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdQueryMonitorsRoute = OrgOrgIdQueryMonitorsRouteImport.update({
+  id: '/query-monitors',
+  path: '/query-monitors',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdQuotasRoute = OrgOrgIdQuotasRouteImport.update({
@@ -500,6 +506,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
   '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
+  '/org/$orgId/query-monitors': typeof OrgOrgIdQueryMonitorsRoute
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
   '/org/$orgId/runbooks': typeof OrgOrgIdRunbooksRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
@@ -573,6 +580,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
   '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
+  '/org/$orgId/query-monitors': typeof OrgOrgIdQueryMonitorsRoute
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
   '/org/$orgId/runbooks': typeof OrgOrgIdRunbooksRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
@@ -648,6 +656,7 @@ export interface FileRoutesById {
   '/org/$orgId/moment': typeof OrgOrgIdMomentRoute
   '/org/$orgId/posture': typeof OrgOrgIdPostureRoute
   '/org/$orgId/probes': typeof OrgOrgIdProbesRoute
+  '/org/$orgId/query-monitors': typeof OrgOrgIdQueryMonitorsRoute
   '/org/$orgId/quotas': typeof OrgOrgIdQuotasRoute
   '/org/$orgId/runbooks': typeof OrgOrgIdRunbooksRoute
   '/org/$orgId/savings': typeof OrgOrgIdSavingsRoute
@@ -725,6 +734,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/moment'
     | '/org/$orgId/posture'
     | '/org/$orgId/probes'
+    | '/org/$orgId/query-monitors'
     | '/org/$orgId/quotas'
     | '/org/$orgId/runbooks'
     | '/org/$orgId/savings'
@@ -798,6 +808,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/moment'
     | '/org/$orgId/posture'
     | '/org/$orgId/probes'
+    | '/org/$orgId/query-monitors'
     | '/org/$orgId/quotas'
     | '/org/$orgId/runbooks'
     | '/org/$orgId/savings'
@@ -872,6 +883,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/moment'
     | '/org/$orgId/posture'
     | '/org/$orgId/probes'
+    | '/org/$orgId/query-monitors'
     | '/org/$orgId/quotas'
     | '/org/$orgId/runbooks'
     | '/org/$orgId/savings'
@@ -1145,6 +1157,13 @@ declare module '@tanstack/react-router' {
       path: '/probes'
       fullPath: '/org/$orgId/probes'
       preLoaderRoute: typeof OrgOrgIdProbesRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/query-monitors': {
+      id: '/org/$orgId/query-monitors'
+      path: '/query-monitors'
+      fullPath: '/org/$orgId/query-monitors'
+      preLoaderRoute: typeof OrgOrgIdQueryMonitorsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/quotas': {
@@ -1586,6 +1605,7 @@ interface OrgOrgIdRouteChildren {
   OrgOrgIdMomentRoute: typeof OrgOrgIdMomentRoute
   OrgOrgIdPostureRoute: typeof OrgOrgIdPostureRoute
   OrgOrgIdProbesRoute: typeof OrgOrgIdProbesRoute
+  OrgOrgIdQueryMonitorsRoute: typeof OrgOrgIdQueryMonitorsRoute
   OrgOrgIdQuotasRoute: typeof OrgOrgIdQuotasRoute
   OrgOrgIdRunbooksRoute: typeof OrgOrgIdRunbooksRoute
   OrgOrgIdSavingsRoute: typeof OrgOrgIdSavingsRoute
@@ -1623,6 +1643,7 @@ const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdMomentRoute: OrgOrgIdMomentRoute,
   OrgOrgIdPostureRoute: OrgOrgIdPostureRoute,
   OrgOrgIdProbesRoute: OrgOrgIdProbesRoute,
+  OrgOrgIdQueryMonitorsRoute: OrgOrgIdQueryMonitorsRoute,
   OrgOrgIdQuotasRoute: OrgOrgIdQuotasRoute,
   OrgOrgIdRunbooksRoute: OrgOrgIdRunbooksRoute,
   OrgOrgIdSavingsRoute: OrgOrgIdSavingsRoute,

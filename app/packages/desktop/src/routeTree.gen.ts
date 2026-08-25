@@ -32,6 +32,7 @@ import { Route as MetricAlertsRouteImport } from './routes/metric-alerts'
 import { Route as MomentRouteImport } from './routes/moment'
 import { Route as PostureRouteImport } from './routes/posture'
 import { Route as ProbesRouteImport } from './routes/probes'
+import { Route as QueryMonitorsRouteImport } from './routes/query-monitors'
 import { Route as QuotasRouteImport } from './routes/quotas'
 import { Route as RunbooksRouteImport } from './routes/runbooks'
 import { Route as SavingsRouteImport } from './routes/savings'
@@ -159,6 +160,11 @@ const ProbesRoute = ProbesRouteImport.update({
   path: '/probes',
   getParentRoute: () => rootRouteImport,
 } as any)
+const QueryMonitorsRoute = QueryMonitorsRouteImport.update({
+  id: '/query-monitors',
+  path: '/query-monitors',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const QuotasRoute = QuotasRouteImport.update({
   id: '/quotas',
   path: '/quotas',
@@ -240,6 +246,7 @@ export interface FileRoutesByFullPath {
   '/moment': typeof MomentRoute
   '/posture': typeof PostureRoute
   '/probes': typeof ProbesRoute
+  '/query-monitors': typeof QueryMonitorsRoute
   '/quotas': typeof QuotasRoute
   '/runbooks': typeof RunbooksRoute
   '/savings': typeof SavingsRoute
@@ -276,6 +283,7 @@ export interface FileRoutesByTo {
   '/moment': typeof MomentRoute
   '/posture': typeof PostureRoute
   '/probes': typeof ProbesRoute
+  '/query-monitors': typeof QueryMonitorsRoute
   '/quotas': typeof QuotasRoute
   '/runbooks': typeof RunbooksRoute
   '/savings': typeof SavingsRoute
@@ -313,6 +321,7 @@ export interface FileRoutesById {
   '/moment': typeof MomentRoute
   '/posture': typeof PostureRoute
   '/probes': typeof ProbesRoute
+  '/query-monitors': typeof QueryMonitorsRoute
   '/quotas': typeof QuotasRoute
   '/runbooks': typeof RunbooksRoute
   '/savings': typeof SavingsRoute
@@ -351,6 +360,7 @@ export interface FileRouteTypes {
     | '/moment'
     | '/posture'
     | '/probes'
+    | '/query-monitors'
     | '/quotas'
     | '/runbooks'
     | '/savings'
@@ -387,6 +397,7 @@ export interface FileRouteTypes {
     | '/moment'
     | '/posture'
     | '/probes'
+    | '/query-monitors'
     | '/quotas'
     | '/runbooks'
     | '/savings'
@@ -423,6 +434,7 @@ export interface FileRouteTypes {
     | '/moment'
     | '/posture'
     | '/probes'
+    | '/query-monitors'
     | '/quotas'
     | '/runbooks'
     | '/savings'
@@ -460,6 +472,7 @@ export interface RootRouteChildren {
   MomentRoute: typeof MomentRoute
   PostureRoute: typeof PostureRoute
   ProbesRoute: typeof ProbesRoute
+  QueryMonitorsRoute: typeof QueryMonitorsRoute
   QuotasRoute: typeof QuotasRoute
   RunbooksRoute: typeof RunbooksRoute
   SavingsRoute: typeof SavingsRoute
@@ -636,6 +649,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProbesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/query-monitors': {
+      id: '/query-monitors'
+      path: '/query-monitors'
+      fullPath: '/query-monitors'
+      preLoaderRoute: typeof QueryMonitorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/quotas': {
       id: '/quotas'
       path: '/quotas'
@@ -740,6 +760,7 @@ const rootRouteChildren: RootRouteChildren = {
   MomentRoute: MomentRoute,
   PostureRoute: PostureRoute,
   ProbesRoute: ProbesRoute,
+  QueryMonitorsRoute: QueryMonitorsRoute,
   QuotasRoute: QuotasRoute,
   RunbooksRoute: RunbooksRoute,
   SavingsRoute: SavingsRoute,

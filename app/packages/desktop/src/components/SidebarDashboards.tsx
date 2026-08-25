@@ -22,6 +22,7 @@ import {
   WallboardIcon,
   CalendarIcon,
   RunbookIcon,
+  QueryMonitorIcon,
   DomainsIcon,
   EnvironmentDiffIcon,
   FanoutIcon,
@@ -53,6 +54,7 @@ import {
   wallboardTabTarget,
   calendarTabTarget,
   runbooksTabTarget,
+  queryMonitorsTabTarget,
   dnsTabTarget,
   accessReviewTabTarget,
   iacTabTarget,
@@ -415,6 +417,18 @@ export function SidebarDashboards() {
       icon: <RunbookIcon />,
       onClick: () =>
         void navigateToWorkspaceTarget(navigate, runbooksTabTarget(), { label: gt("Runbooks") }),
+    },
+    // Query monitors are cloud only: the schedule is run by the poller, so a
+    // monitor that only existed on one laptop would only run while that laptop
+    // was open — which is the opposite of what a monitor is for.
+    {
+      key: "query-monitors",
+      label: gt("Query monitors"),
+      icon: <QueryMonitorIcon />,
+      onClick: () =>
+        void navigateToWorkspaceTarget(navigate, queryMonitorsTabTarget(), {
+          label: gt("Query monitors"),
+        }),
     },
     // Domains also has a local half — the inventory is computed from stored
     // state and the locally loaded plugins' DNS declarations. A workspace-tab
