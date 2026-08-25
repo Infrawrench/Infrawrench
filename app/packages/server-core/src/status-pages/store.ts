@@ -392,16 +392,21 @@ export async function rotateStatusPageSlugRecord(
     const restore = kvRestore.current;
     if (restore) {
       // Re-take the row lock around the slug check + KV rewind so a concurrent
-      // rotation cannot commit between the read and the put.
+      // rotation cannot commit between the read and the put. The hostname must
+      // still be attached to this page too: a detach (or detach-and-reattach
+      // elsewhere) in the gap leaves the rolled-back slug in place, and a
+      // slug-only guard would resurrect a mapping this page no longer owns.
       try {
         await db.transaction(async (tx) => {
           const [row] = await tx
-            .select({ slug: statusPages.slug })
+            .select({ slug: statusPages.slug, customHostname: statusPages.customHostname })
             .from(statusPages)
             .where(and(eq(statusPages.organizationId, organizationId), eq(statusPages.id, pageId)))
             .limit(1)
             .for("update");
-          if (row?.slug !== restore.previousSlug) return;
+          if (row?.slug !== restore.previousSlug || row.customHostname !== restore.hostname) {
+            return;
+          }
           const { syncCustomHostnameKvForPage } = await import("./custom-hostname");
           await syncCustomHostnameKvForPage({
             customHostname: restore.hostname,
