@@ -137,6 +137,28 @@ describe.each([
   });
 });
 
+describe("accent fills", () => {
+  // `text-on-accent` sits on solid accent fills (primary buttons), not on the
+  // surfaces, so it gets its own check: AA against the accent it is paired
+  // with and against the hover shade the same button transitions to. This
+  // token not existing was the original defect — the utility silently compiled
+  // to nothing and the label inherited white onto dark mode's light-blue
+  // accent.
+  it.each([
+    ["light", lightVars],
+    ["dark", darkVars],
+  ])("%s --color-on-accent clears WCAG AA on accent and accent-hover", (scheme, vars) => {
+    expect(vars["on-accent"], `--color-on-accent missing in ${scheme}`).toMatch(/^#[0-9a-f]{6}$/);
+    for (const fill of ["accent", "accent-hover"]) {
+      const ratio = contrastRatio(vars["on-accent"]!, vars[fill]!);
+      expect(
+        Number(ratio.toFixed(2)),
+        `${scheme} --color-on-accent (${vars["on-accent"]}) on --color-${fill} (${vars[fill]})`,
+      ).toBeGreaterThanOrEqual(AA);
+    }
+  });
+});
+
 describe("token hierarchy", () => {
   // Prominence order has to survive the contrast fix: a "faint" label that
   // out-contrasts a "tertiary" one next to it reads as the more important of

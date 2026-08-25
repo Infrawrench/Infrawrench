@@ -38,6 +38,10 @@
   --color-accent-muted: #eff6ff;
   --color-accent-muted-border: #bfdbfe;
   --color-accent-on-muted: #1e40af;
+  /* Text sitting on a solid accent fill (primary buttons). Light mode's
+     accent is dark enough for white; dark mode's accent is a light blue, so
+     the label flips dark — `theme-contrast.test.ts` holds both above AA. */
+  --color-on-accent: #ffffff;
 
   /* ── Status ──
      Semantic status text colours. Reach for these instead of a Tailwind
@@ -125,6 +129,7 @@
     --color-accent-muted: #172554;
     --color-accent-muted-border: #1e3a5f;
     --color-accent-on-muted: #93c5fd;
+    --color-on-accent: #172554;
 
     /* ── Status ──
        The palette shades these replace (red-400, amber-400, green-400, …),
