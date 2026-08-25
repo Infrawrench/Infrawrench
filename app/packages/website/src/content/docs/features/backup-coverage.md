@@ -17,6 +17,8 @@ Open it from the sidebar. It has three views:
 - **Coverage** — every stateful resource we can judge, what protects it, how
   old that protection is, and which policy applies.
 - **Policies** — the recovery objectives everything else is measured against.
+- **Drills** — whether anyone has actually restored these backups, and how long
+  it took.
 
 ![The Backups workspace tab on the Gaps view, showing the three summary cards (Worst RPO, Unprotected, Orphaned backups) above a table of findings with mixed severities](https://agent-assets.infrawrench.com/docs-screenshots/features/backup-coverage/gaps-view.png)
 
@@ -149,3 +151,75 @@ the target that says so.
 - [Expiry radar](./expiry-radar.md) — what is about to run out
 - [Posture checks](./posture-checks.md) — what is exposed
 - [Orphan finder](./orphan-finder.md) — what is idle or unattached
+
+## Drills — the half nobody tests
+
+Everything above answers _is there a backup, and how old is it_. It cannot
+answer the question that decides the day: **does it restore, and how long does
+it take?**
+
+Those are different questions, and the second is routinely answered wrongly —
+by a snapshot that restores into a region with no capacity, a dump taken from a
+replica that was already broken, an encrypted volume whose key was rotated
+last quarter.
+
+<insert [The Backups Drills tab showing the four summary cards (Verified, Stale, Never verified, Worst measured RTO) above a list of protected resources with their standings, one expanded to show the record-a-drill form] here>
+
+### It records, it does not restore
+
+A drill is **a record that somebody tried**. Infrawrench does not restore your
+database on a schedule, and it is not going to: an unattended restore costs
+real money, can collide with production, and there is no generic way to check
+that what came back is correct.
+
+What the product _can_ do is make the exercise scheduled, recorded, and visible
+when it lapses — which is the part teams actually fail at.
+
+### Four outcomes, and only one of them counts
+
+| Outcome                   | Means                                         |
+| ------------------------- | --------------------------------------------- |
+| **Restored and checked**  | It came back, and you looked inside.          |
+| **Restored, not checked** | It came back. Nobody verified what was in it. |
+| **Restore failed**        | You tried and it did not work.                |
+| **Could not attempt**     | No capacity, no key, no time.                 |
+
+Only **restored and checked** counts as evidence. A restore that produced a
+running database nobody looked inside is exactly how a team discovers, during
+an incident, that the dump had been empty for three months. The attempt is
+still worth recording — it just does not reset the clock.
+
+A verified drill **must** carry the measured time. An RPO comes from the
+backup; an RTO can only come from somebody with a stopwatch, and that number is
+the whole point of the exercise. A blocked drill must not carry one, because it
+never started — a made-up RTO would be the most dangerous number on this page.
+
+### Standings
+
+- **Verified** — a checked restore inside the window (180 days by default).
+- **Stale** — it worked, but a while ago.
+- **Last attempt failed** — somebody tried more recently than the last success
+  and it did not work. This outranks the success: reporting the resource as
+  verified because March went well is the reading that gets a team hurt.
+- **Never verified** — nobody has produced evidence, including the case where
+  every drill was a restore nobody checked.
+
+"Never" and "stale" are shown separately because they call for different
+conversations: one is _nobody has ever tried_, the other is _it worked in
+March_.
+
+Only resources with something to restore appear here. A resource with **no**
+backup is a coverage gap, which the Gaps tab already says — listing it as
+"never tested" would bury the ones that genuinely can be.
+
+Drills recorded against a resource that has since been deleted are kept and
+shown separately. "We tested this and then removed it" is a fact an auditor
+asks about.
+
+### Permissions
+
+Recording a drill needs **Resources: write**, not the settings permission the
+policies need — recording is reporting what you did, and the person who spent
+Saturday restoring a database is rarely the person who set the objective.
+Deleting a drill is audited, because removing evidence that a restore failed is
+exactly the edit a reviewer would want to know about.

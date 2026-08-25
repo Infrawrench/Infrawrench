@@ -15,6 +15,8 @@ import type {
   CalendarResponse,
   CalendarSubscription,
   DependencyGraphData,
+  DrillCoverage,
+  RestoreDrillInput,
   DnsInventoryResponse,
   EnvironmentDiffResponse,
   ExpiryListResponse,
@@ -280,6 +282,23 @@ export async function closeCloudRunbookRun(
   summary: string | null,
 ): Promise<void> {
   await invoke("cloud_runbook_run_close", { orgId, runId, body: { status, summary } });
+}
+
+/**
+ * Restore-drill standings — the Backups screen's fourth tab. A third read
+ * rather than part of the coverage payload: the standings are computed *over*
+ * the coverage, and folding them in would make the coverage endpoint pay for
+ * them on every surface that only wants gaps.
+ */
+export async function fetchCloudRestoreDrills(orgId: string): Promise<DrillCoverage> {
+  return invoke("cloud_restore_drills", { orgId });
+}
+
+export async function recordCloudRestoreDrill(
+  orgId: string,
+  input: RestoreDrillInput,
+): Promise<void> {
+  await invoke("cloud_restore_drill_record", { orgId, input });
 }
 
 export async function fetchCloudDns(orgId: string): Promise<DnsInventoryResponse> {

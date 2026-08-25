@@ -850,6 +850,24 @@ export {
 export { RunbooksSection } from "./runbooks/RunbooksSection.js";
 export type { RunbooksSectionProps } from "./runbooks/RunbooksSection.js";
 export { RunbookIcon } from "./components/icons/RunbookIcon.js";
+// Restore drills — the Backups screen's fourth tab. Types and the standing
+// rule come from client-core like every other section's.
+export {
+  DRILL_OUTCOMES,
+  RESTORE_DRILL_LIMITS,
+  drillStanding,
+  formatRto,
+  isEvidenceOfRecovery,
+  summarizeDrills,
+  validateRestoreDrill,
+  type DrillCoverageRow,
+  type DrillOutcome,
+  type DrillStanding,
+  type DrillSummary,
+  type RestoreDrill,
+  type RestoreDrillInput,
+} from "@infrawrench/client-core";
+export type { DrillCoverage } from "./backups/BackupsSection.js";
 export {
   DNS_CLASSIFICATION_LABELS,
   computeDnsInventory,

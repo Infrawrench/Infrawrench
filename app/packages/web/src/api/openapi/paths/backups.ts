@@ -227,6 +227,191 @@ export function registerBackupPaths(ctx: BuildContext) {
     enabled: z.boolean().optional(),
   }).openapi("BackupPolicyUpdate");
 
+  const DrillOutcome = z.enum(["verified", "restored-unverified", "failed", "blocked"]).openapi({
+    description:
+      "How the drill ended. Only `verified` counts as evidence the backup works: a restore that " +
+      "produced a running system nobody looked inside is exactly how a team discovers, " +
+      "mid-incident, that the dump had been empty for months. `restored-unverified` is recorded " +
+      "because doing the restore is worth recording, but it does not reset the clock.",
+  });
+
+  const DrillStanding = z.enum(["verified", "stale", "failed", "never"]).openapi({
+    description:
+      "`never` and `stale` are kept apart because they call for different conversations: one is " +
+      "'nobody has ever tried', the other is 'it worked in March'.",
+  });
+
+  const RestoreDrill = strict({
+    id: Uuid,
+    resourceId: z.string(),
+    resourceName: z.string().nullable(),
+    accountId: Uuid.nullable(),
+    accountName: z.string().nullable(),
+    performedAt: IsoDateTime.describe(
+      "When the drill was performed, which is **not** when it was recorded — people write these " +
+        "up on Monday for a drill they ran on Saturday, and every staleness computation uses this.",
+    ),
+    outcome: DrillOutcome,
+    rtoMinutes: z
+      .number()
+      .int()
+      .nullable()
+      .describe(
+        "Measured wall-clock minutes. Null when the drill never got that far; a blocked drill has " +
+          "no RTO, and an invented one would be the most dangerous number on the page.",
+      ),
+    restoredFrom: z.string().nullable().describe("Snapshot id, S3 key, a date — free text."),
+    notes: z.string().nullable(),
+    performedByUserId: Uuid.nullable(),
+    performedByName: z.string().nullable(),
+    createdAt: IsoDateTime,
+  }).openapi("RestoreDrill");
+
+  const DrillCoverageRow = strict({
+    resourceId: z.string(),
+    resourceName: z.string().nullable(),
+    accountId: Uuid.nullable(),
+    accountName: z.string().nullable(),
+    resourceTypeId: z.string().nullable(),
+    standing: DrillStanding,
+    lastDrillAt: IsoDateTime.nullable(),
+    lastOutcome: DrillOutcome.nullable(),
+    lastVerifiedAt: IsoDateTime.nullable(),
+    verifiedRtoMinutes: z.number().int().nullable(),
+    daysUntilStale: z.number().int().nullable(),
+  }).openapi("DrillCoverageRow");
+
+  const DrillSummary = strict({
+    eligibleCount: z
+      .number()
+      .int()
+      .describe(
+        "Resources with something to restore from. A resource with no backup cannot be drilled, " +
+          "and listing it here would duplicate the coverage page's own unprotected finding.",
+      ),
+    verifiedCount: z.number().int(),
+    staleCount: z.number().int(),
+    failedCount: z.number().int(),
+    neverCount: z.number().int(),
+    worstRtoMinutes: z
+      .number()
+      .int()
+      .nullable()
+      .describe("Over currently-verified rows only; null when nothing is verified, never zero."),
+    medianRtoMinutes: z.number().int().nullable(),
+  }).openapi("DrillSummary");
+
+  const DrillCoverageResponse = strict({
+    rows: z.array(DrillCoverageRow),
+    summary: DrillSummary,
+    validDays: z.number().int(),
+    orphanedDrills: z
+      .array(RestoreDrill)
+      .describe(
+        "Drills against a resource no longer in the inventory. Reported rather than dropped: " +
+          "'we tested this and then removed it' is a fact an auditor asks about.",
+      ),
+    generatedAt: IsoDateTime,
+  }).openapi("DrillCoverageResponse");
+
+  const RestoreDrillCreate = strict({
+    resourceId: z.string(),
+    performedAt: IsoDateTime,
+    outcome: DrillOutcome,
+    rtoMinutes: z.number().int().min(0).max(10080).nullable().optional(),
+    restoredFrom: z.string().max(300).nullable().optional(),
+    notes: z.string().max(4000).nullable().optional(),
+  }).openapi("RestoreDrillCreate");
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/backups/drills",
+    tags: ["Backup coverage"],
+    summary: "Where every protected resource stands on restore",
+    description:
+      "Backup coverage answers 'is there a backup'. This answers 'does it restore, and how long " +
+      "does it take' — a different question, and the one routinely answered wrongly on the day.\n\n" +
+      "A drill is a **record that somebody tried**, not an automated restore: restoring a " +
+      "customer's database unattended costs real money, can collide with production, and cannot " +
+      "be generically verified. What the product can do is make the exercise scheduled, recorded " +
+      "and visible when it lapses.",
+    request: {
+      params: OrgIdParam,
+      query: z.object({
+        validDays: z.coerce
+          .number()
+          .int()
+          .min(7)
+          .max(730)
+          .optional()
+          .describe("How long a verified drill counts for. Defaults to 180 days."),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Standings and the summary",
+        content: { "application/json": { schema: DrillCoverageResponse } },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/backups/drills/log",
+    tags: ["Backup coverage"],
+    summary: "List recorded restore drills",
+    request: {
+      params: OrgIdParam,
+      query: z.object({ resourceId: z.string().optional() }),
+    },
+    responses: {
+      200: {
+        description: "Drills, most recently performed first",
+        content: {
+          "application/json": { schema: strict({ drills: z.array(RestoreDrill) }) },
+        },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/backups/drills",
+    tags: ["Backup coverage"],
+    summary: "Record a restore drill",
+    description:
+      "A `verified` drill **must** carry the measured time: an RPO comes from the backup, and an " +
+      "RTO can only come from somebody with a stopwatch — that number is the entire point of the " +
+      "exercise. A `blocked` drill must not carry one, because it never started.\n\n" +
+      "Takes `resources:write`, not a settings permission: recording a drill is reporting what " +
+      "you did, and the person who spent Saturday restoring a database is rarely the person who " +
+      "set the recovery objective.",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: RestoreDrillCreate } } },
+    },
+    responses: {
+      200: {
+        description: "The recorded drill",
+        content: { "application/json": { schema: RestoreDrill } },
+      },
+      400: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/api/org/{orgId}/backups/drills/{drillId}",
+    tags: ["Backup coverage"],
+    summary: "Delete a recorded drill",
+    description:
+      "For one recorded against the wrong resource or the wrong date. Audited — deleting evidence " +
+      "that a restore failed is exactly the edit a reviewer would want to know about.",
+    request: { params: OrgIdParam.extend({ drillId: Uuid }) },
+    responses: { 204: { description: "The drill was deleted" }, 404: ErrorResponses[404] },
+  });
+
   registry.registerPath({
     method: "get",
     path: "/api/org/{orgId}/backups",
