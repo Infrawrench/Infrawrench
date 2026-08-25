@@ -9,6 +9,10 @@ ipcMain.handle("cloud_query_monitors", async (_e, { orgId }: { orgId: string }) 
   return cloudFetch(orgId, "/query-monitors");
 });
 
+ipcMain.handle("cloud_query_monitor_targets", async (_e, { orgId }: { orgId: string }) => {
+  return cloudFetch(orgId, "/query-monitors/targets");
+});
+
 ipcMain.handle(
   "cloud_query_monitor_create",
   async (_e, { orgId, input }: { orgId: string; input: unknown }) => {

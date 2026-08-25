@@ -900,6 +900,16 @@ export interface ResourceTypeDefinition {
     /** The output key to resolve for the connection string */
     connectionStringOutputKey: string;
   };
+  /**
+   * Instances of this type can be queried through the plugin client's
+   * `executeQuery` (a REST-based SQL API rather than a node driver, e.g.
+   * BigQuery datasets, Spanner databases). Purely declarative — the runtime
+   * path is `executeQuery` itself, which is a plugin-wide method; this flag is
+   * what lets hosts offer the *right* resources of such a plugin in SQL target
+   * pickers (query monitors) without instantiating a client. Types that
+   * declare `resourceSqlDriver` don't need it; pickers accept either.
+   */
+  supportsRestQuery?: boolean;
   /** If true, the host renders a Metrics tab and calls fetchMetricSeries */
   supportsMetrics?: boolean;
   /**

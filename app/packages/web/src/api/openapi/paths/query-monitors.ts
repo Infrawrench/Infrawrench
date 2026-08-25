@@ -79,6 +79,26 @@ export function registerQueryMonitorPaths(ctx: BuildContext) {
 
   const QueryMonitorUpdate = QueryMonitorCreate.partial().openapi("QueryMonitorUpdate");
 
+  const QueryMonitorTargetResource = strict({
+    id: z.string(),
+    name: z.string(),
+    resourceTypeId: z.string(),
+    typeName: z.string().describe("The resource type's display name, e.g. 'D1 Database'."),
+  }).openapi("QueryMonitorTargetResource");
+
+  const QueryMonitorTargetAccount = strict({
+    id: Uuid,
+    name: z.string(),
+    accountSql: z
+      .boolean()
+      .describe("The account itself has a SQL driver, so it is a valid target on its own."),
+    resources: z.array(QueryMonitorTargetResource),
+  }).openapi("QueryMonitorTargetAccount");
+
+  const QueryMonitorTargets = strict({
+    accounts: z.array(QueryMonitorTargetAccount),
+  }).openapi("QueryMonitorTargets");
+
   const QueryMonitorTestResult = strict({
     value: z.number().nullable(),
     state: QueryMonitorState,
@@ -128,6 +148,28 @@ export function registerQueryMonitorPaths(ctx: BuildContext) {
       400: ErrorResponses[400],
       404: ErrorResponses[404],
       409: ErrorResponses[409],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/query-monitors/targets",
+    tags: ["Query monitors"],
+    summary: "List what a monitor can run against",
+    description:
+      "The editor's target picker: each account with a SQL driver of its own, plus the " +
+      "SQL-capable resources inside it — a database that is a *resource* (a ClickHouse service, " +
+      "a D1 or Turso database, a Databricks SQL warehouse, a BigQuery dataset) rather than the " +
+      "account's own connection. Accounts with neither are omitted; a monitor pointed at one " +
+      "could only ever fail. Pass a resource's `id` (and optionally its `resourceTypeId` — the " +
+      "server fills it from the synced resource either way) when creating a monitor to scope " +
+      "the query to that resource.",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Targets, grouped by account",
+        content: { "application/json": { schema: QueryMonitorTargets } },
+      },
     },
   });
 

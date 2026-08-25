@@ -28,4 +28,5 @@ export const BigQueryDatasetResourceType = rt({
   ],
   outputs: [],
   supportsCreate: true,
+  supportsRestQuery: true,
 });

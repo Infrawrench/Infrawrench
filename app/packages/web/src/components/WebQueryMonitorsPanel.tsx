@@ -3,6 +3,7 @@ import {
   QueryMonitorsSection,
   type QueryMonitor,
   type QueryMonitorInput,
+  type QueryMonitorTargetAccount,
   type QueryMonitorTestResult,
 } from "@infrawrench/ui";
 import { usePermissions } from "@/auth/permissions-context";
@@ -10,11 +11,6 @@ import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 
 interface WebQueryMonitorsPanelProps {
   orgId: string;
-}
-
-interface AccountRow {
-  id: string;
-  displayName: string;
 }
 
 /**
@@ -26,7 +22,7 @@ interface AccountRow {
  */
 export function WebQueryMonitorsPanel({ orgId }: WebQueryMonitorsPanelProps) {
   const [monitors, setMonitors] = useState<QueryMonitor[] | null>(null);
-  const [accounts, setAccounts] = useState<Array<{ id: string; name: string }>>([]);
+  const [targets, setTargets] = useState<QueryMonitorTargetAccount[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const { has } = usePermissions();
@@ -60,18 +56,16 @@ export function WebQueryMonitorsPanel({ orgId }: WebQueryMonitorsPanelProps) {
     };
   }, [orgId, reloadKey]);
 
-  // The account list only feeds the editor's picker, so a failure costs the
+  // The target list only feeds the editor's picker, so a failure costs the
   // picker and not the page.
   useEffect(() => {
     let cancelled = false;
-    apiGet<AccountRow[]>(`/api/org/${orgId}/accounts`)
-      .then((rows) => {
-        if (!cancelled) {
-          setAccounts((rows ?? []).map((row) => ({ id: row.id, name: row.displayName })));
-        }
+    apiGet<{ accounts: QueryMonitorTargetAccount[] }>(`/api/org/${orgId}/query-monitors/targets`)
+      .then((response) => {
+        if (!cancelled) setTargets(response.accounts ?? []);
       })
       .catch(() => {
-        if (!cancelled) setAccounts([]);
+        if (!cancelled) setTargets([]);
       });
     return () => {
       cancelled = true;
@@ -113,7 +107,7 @@ export function WebQueryMonitorsPanel({ orgId }: WebQueryMonitorsPanelProps) {
       monitors={monitors}
       error={error}
       onRetry={retry}
-      accountOptions={accounts}
+      targetOptions={targets}
       onCreate={canExecute ? create : undefined}
       onUpdate={canExecute ? update : undefined}
       onDelete={canExecute ? remove : undefined}

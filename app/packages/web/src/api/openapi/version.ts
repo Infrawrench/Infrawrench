@@ -132,4 +132,11 @@
 // rolled back pending an edge-routing fix; a reapply PR restores it. Strictly
 // a removal, but versioned as a minor because the surface existed briefly and
 // unannounced; treat 1.35–1.37 clients of those routes as unsupported.
-export const API_VERSION = "1.38.0";
+// 1.39.0: query monitor targets — `/query-monitors/targets` lists what a
+// monitor can run against: accounts with their own SQL driver plus the
+// SQL-capable resources inside each (ClickHouse services, D1/Turso databases,
+// Databricks warehouses, BigQuery datasets), which is what lets a monitor
+// watch a database that is a resource rather than the account. Create/update
+// now also validate a monitor's resource against the synced rows and fill
+// `resourceTypeId` from the resource, so callers may omit it. All additive.
+export const API_VERSION = "1.39.0";

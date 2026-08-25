@@ -22,7 +22,16 @@ Open it from the sidebar.
 
 ## Writing one
 
-Pick the account, write the query, choose what to measure and when to alert.
+Pick what to run against, write the query, choose what to measure and when to
+alert.
+
+**Run against** lists everything a monitor's query can reach, grouped by
+account: an account whose credentials are themselves a database connection
+(a Postgres or MySQL account) shows up as _Entire account_, and a database
+that is a **resource inside an account** shows up under its own name — a
+ClickHouse service, a Cloudflare D1 or Turso database, a Databricks SQL
+warehouse, a BigQuery dataset or Spanner database. Accounts with neither are
+not offered; a monitor pointed at one could only ever fail.
 
 - **First value** compares the first column of the first row — the shape of
   `SELECT count(*) …`.
@@ -104,6 +113,10 @@ connection spike against your own production.
 
 ## Over the API
 
-`/api/org/{orgId}/query-monitors` for the monitors, and
-`/api/org/{orgId}/query-monitors/test` to run one without saving. See the
+`/api/org/{orgId}/query-monitors` for the monitors,
+`/api/org/{orgId}/query-monitors/test` to run one without saving, and
+`/api/org/{orgId}/query-monitors/targets` for what a monitor can run against.
+To scope a monitor to a database that is a resource, pass the resource's `id`
+from the targets response — the server fills `resourceTypeId` in from the
+synced resource, so you may omit it. See the
 [OpenAPI reference](../team-and-billing/openapi.md).

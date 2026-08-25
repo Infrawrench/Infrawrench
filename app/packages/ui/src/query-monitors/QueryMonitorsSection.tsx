@@ -11,6 +11,7 @@ import {
   type QueryMonitorMode,
   type QueryMonitorOperator,
   type QueryMonitorState,
+  type QueryMonitorTargetAccount,
 } from "@infrawrench/client-core";
 
 export interface QueryMonitorTestResult {
@@ -25,8 +26,12 @@ export interface QueryMonitorsSectionProps {
   monitors: QueryMonitor[] | null;
   error?: string | null | undefined;
   onRetry?: (() => void) | undefined;
-  /** Accounts the query can run against. Empty and the editor says so. */
-  accountOptions?: ReadonlyArray<{ id: string; name: string }> | undefined;
+  /**
+   * What the query can run against: accounts with their own SQL driver, and
+   * the SQL-capable resources inside each (a ClickHouse service, a D1 or
+   * Turso database, a BigQuery dataset). Empty and the editor says so.
+   */
+  targetOptions?: ReadonlyArray<QueryMonitorTargetAccount> | undefined;
   onCreate?: ((input: QueryMonitorInput) => Promise<void>) | undefined;
   onUpdate?: ((monitorId: string, patch: Partial<QueryMonitorInput>) => Promise<void>) | undefined;
   onDelete?: ((monitorId: string) => Promise<void>) | undefined;
@@ -40,6 +45,9 @@ interface Draft {
   name: string;
   description: string;
   accountId: string;
+  /** Set when the query runs against one resource rather than the account. */
+  resourceId: string | null;
+  resourceTypeId: string | null;
   sql: string;
   mode: QueryMonitorMode;
   operator: QueryMonitorOperator;
@@ -47,6 +55,24 @@ interface Draft {
   intervalMinutes: number;
   consecutiveBreaches: number;
   enabled: boolean;
+}
+
+/** One selectable row of the target picker. */
+interface TargetChoice {
+  key: string;
+  accountId: string;
+  resourceId: string | null;
+  resourceTypeId: string | null;
+  label: string;
+}
+
+/**
+ * The select's option value. Resource ids may contain any character the
+ * provider put in an external id, so the separator is a newline — the one
+ * thing neither an account id nor a resource id can carry.
+ */
+function targetKey(accountId: string, resourceId: string | null): string {
+  return `${accountId}\n${resourceId ?? ""}`;
 }
 
 const STATE_CLASSES: Record<QueryMonitorState, string> = {
@@ -69,11 +95,13 @@ function stateLabel(gt: Gt, state: QueryMonitorState): string {
   }
 }
 
-function emptyDraft(accountId: string): Draft {
+function emptyDraft(target: TargetChoice): Draft {
   return {
     name: "",
     description: "",
-    accountId,
+    accountId: target.accountId,
+    resourceId: target.resourceId,
+    resourceTypeId: target.resourceTypeId,
     sql: "SELECT count(*) FROM ",
     mode: "scalar",
     operator: "gt",
@@ -89,6 +117,8 @@ function draftFrom(monitor: QueryMonitor): Draft {
     name: monitor.name,
     description: monitor.description ?? "",
     accountId: monitor.accountId,
+    resourceId: monitor.resourceId,
+    resourceTypeId: monitor.resourceTypeId,
     sql: monitor.sql,
     mode: monitor.mode,
     operator: monitor.operator,
@@ -104,6 +134,10 @@ function toInput(draft: Draft): QueryMonitorInput {
     name: draft.name.trim(),
     description: draft.description.trim() || null,
     accountId: draft.accountId,
+    // Sent even when null, so switching a monitor from a resource back to its
+    // account actually clears the scope on save.
+    resourceId: draft.resourceId,
+    resourceTypeId: draft.resourceTypeId,
     sql: draft.sql,
     mode: draft.mode,
     operator: draft.operator,
@@ -125,14 +159,14 @@ export function QueryMonitorsSection({
   monitors,
   error,
   onRetry,
-  accountOptions,
+  targetOptions,
   onCreate,
   onUpdate,
   onDelete,
   onTest,
 }: QueryMonitorsSectionProps) {
   const gt = useGT();
-  const accounts = accountOptions ?? [];
+  const targets = targetOptions ?? [];
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -142,6 +176,66 @@ export function QueryMonitorsSection({
   const canEdit = Boolean(onCreate || onUpdate || onDelete);
   // Recomputed as the user types, from the same guard the server runs.
   const sqlWarning = useMemo(() => (draft ? monitorSqlProblem(draft.sql) : null), [draft]);
+
+  // The picker, one optgroup per account: the account's own connection when it
+  // has a SQL driver, then each SQL-capable resource inside it.
+  const targetGroups = useMemo(
+    () =>
+      targets.map((account) => ({
+        id: account.id,
+        name: account.name,
+        choices: [
+          ...(account.accountSql
+            ? [
+                {
+                  key: targetKey(account.id, null),
+                  accountId: account.id,
+                  resourceId: null,
+                  resourceTypeId: null,
+                  label: gt("Entire account"),
+                } satisfies TargetChoice,
+              ]
+            : []),
+          ...account.resources.map(
+            (resource) =>
+              ({
+                key: targetKey(account.id, resource.id),
+                accountId: account.id,
+                resourceId: resource.id,
+                resourceTypeId: resource.resourceTypeId,
+                label: `${resource.name} · ${resource.typeName}`,
+              }) satisfies TargetChoice,
+          ),
+        ],
+      })),
+    [targets, gt],
+  );
+  const targetChoices = useMemo(() => targetGroups.flatMap((g) => g.choices), [targetGroups]);
+
+  // A monitor can point at a target the picker no longer offers — the resource
+  // was deleted, or the monitor was created over the API against something the
+  // picker does not enumerate. Editing it must not silently reassign the
+  // query, so the current target is kept selectable under its stored name.
+  const editingMonitor =
+    editingId != null ? (monitors?.find((m) => m.id === editingId) ?? null) : null;
+  const draftTargetKey = draft ? targetKey(draft.accountId, draft.resourceId) : null;
+  // Derived from the monitor rather than the draft, so switching the select
+  // away and back does not make the stored target vanish mid-edit.
+  const monitorTargetKey = editingMonitor
+    ? targetKey(editingMonitor.accountId, editingMonitor.resourceId)
+    : null;
+  const orphanTarget: TargetChoice | null =
+    editingMonitor && monitorTargetKey && !targetChoices.some((c) => c.key === monitorTargetKey)
+      ? {
+          key: monitorTargetKey,
+          accountId: editingMonitor.accountId,
+          resourceId: editingMonitor.resourceId,
+          resourceTypeId: editingMonitor.resourceTypeId,
+          label: editingMonitor.resourceId
+            ? (editingMonitor.resourceName ?? gt("Current resource"))
+            : (editingMonitor.accountName ?? gt("Current account")),
+        }
+      : null;
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -221,15 +315,19 @@ export function QueryMonitorsSection({
           {canEdit && draft === null && (
             <button
               type="button"
-              disabled={accounts.length === 0}
+              disabled={targetChoices.length === 0}
               onClick={() => {
-                setDraft(emptyDraft(accounts[0]?.id ?? ""));
+                const first = targetChoices[0];
+                if (!first) return;
+                setDraft(emptyDraft(first));
                 setEditingId(null);
                 setTestResult(null);
               }}
               className="mb-4 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-on-accent disabled:opacity-50"
             >
-              {accounts.length === 0 ? gt("Connect a database account first") : gt("New monitor")}
+              {targetChoices.length === 0
+                ? gt("Connect a database account first")
+                : gt("New monitor")}
             </button>
           )}
 
@@ -247,16 +345,34 @@ export function QueryMonitorsSection({
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-on-surface-tertiary">
-                  {gt("Account")}
+                  {gt("Run against")}
                   <select
-                    value={draft.accountId}
-                    onChange={(e) => setDraft({ ...draft, accountId: e.target.value })}
+                    value={draftTargetKey ?? ""}
+                    onChange={(e) => {
+                      const choice =
+                        orphanTarget && orphanTarget.key === e.target.value
+                          ? orphanTarget
+                          : targetChoices.find((c) => c.key === e.target.value);
+                      if (choice) {
+                        setDraft({
+                          ...draft,
+                          accountId: choice.accountId,
+                          resourceId: choice.resourceId,
+                          resourceTypeId: choice.resourceTypeId,
+                        });
+                      }
+                    }}
                     className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-on-surface"
                   >
-                    {accounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name}
-                      </option>
+                    {orphanTarget && <option value={orphanTarget.key}>{orphanTarget.label}</option>}
+                    {targetGroups.map((group) => (
+                      <optgroup key={group.id} label={group.name}>
+                        {group.choices.map((choice) => (
+                          <option key={choice.key} value={choice.key}>
+                            {choice.label}
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
                 </label>
@@ -431,6 +547,7 @@ export function QueryMonitorsSection({
                     )}
                     <span className="text-xs text-on-surface-tertiary">
                       {describeQueryMonitor(monitor)}
+                      {monitor.resourceName ? ` · ${monitor.resourceName}` : ""}
                       {monitor.accountName ? ` · ${monitor.accountName}` : ""}
                     </span>
                     <span className="text-xs tabular-nums text-on-surface-faint">

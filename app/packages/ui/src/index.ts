@@ -882,6 +882,8 @@ export {
   type QueryMonitorMode,
   type QueryMonitorOperator,
   type QueryMonitorState,
+  type QueryMonitorTargetAccount,
+  type QueryMonitorTargetResource,
 } from "@infrawrench/client-core";
 export { QueryMonitorsSection } from "./query-monitors/QueryMonitorsSection.js";
 export type {

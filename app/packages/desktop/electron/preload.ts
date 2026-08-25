@@ -208,6 +208,7 @@ const INVOKE_CHANNELS = [
   "cloud_restore_drills",
   "cloud_restore_drill_record",
   "cloud_query_monitors",
+  "cloud_query_monitor_targets",
   "cloud_query_monitor_create",
   "cloud_query_monitor_update",
   "cloud_query_monitor_delete",

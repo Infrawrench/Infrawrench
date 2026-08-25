@@ -10167,5 +10167,9 @@
   "b2bf8a627936983f": "Clientes de pago al final de cada día UTC",
   "d07c1cbeab7d645b": "Stack de staging",
   "535023a09c4f343b": "Almacén de finanzas (diario)",
-  "117053be35f6f366": "p. ej., resources:*:read o *"
+  "117053be35f6f366": "p. ej., resources:*:read o *",
+  "a23345f0c9f9cc2d": "Ejecutar en",
+  "f171a425488b3098": "Toda la cuenta",
+  "817d3ffcaa625711": "Recurso actual",
+  "c21f94a5eddd8aa6": "Cuenta actual"
 }

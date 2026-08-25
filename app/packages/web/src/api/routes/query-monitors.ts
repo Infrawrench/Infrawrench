@@ -23,6 +23,7 @@ import {
   createQueryMonitor,
   deleteQueryMonitor,
   getQueryMonitor,
+  listQueryMonitorTargets,
   listQueryMonitors,
   runMonitorQuery,
   updateQueryMonitor,
@@ -112,6 +113,19 @@ function readMonitorBody(
 app.get("/", async (c) => {
   requirePermission(c, "resources:read");
   return c.json({ monitors: await listQueryMonitors(c.get("organizationId")) });
+});
+
+/**
+ * GET /api/org/:orgId/query-monitors/targets — what a monitor can run against.
+ *
+ * Powers the editor's target picker: each account with a SQL driver of its
+ * own, plus the SQL-capable resources inside it (a ClickHouse service, a D1 or
+ * Turso database, a BigQuery dataset). Registered before `/:monitorId` so
+ * "targets" is never read as a monitor id.
+ */
+app.get("/targets", async (c) => {
+  requirePermission(c, "resources:read");
+  return c.json({ accounts: await listQueryMonitorTargets(c.get("organizationId")) });
 });
 
 /**

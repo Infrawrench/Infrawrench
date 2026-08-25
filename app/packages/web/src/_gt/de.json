@@ -10167,5 +10167,9 @@
   "b2bf8a627936983f": "Zahlende Kunden am Ende jedes UTC-Tages",
   "d07c1cbeab7d645b": "Staging-Stack",
   "535023a09c4f343b": "Finanz-Warehouse (täglich)",
-  "117053be35f6f366": "z. B. resources:*:read oder *"
+  "117053be35f6f366": "z. B. resources:*:read oder *",
+  "a23345f0c9f9cc2d": "Ausführen auf",
+  "f171a425488b3098": "Gesamtes Konto",
+  "817d3ffcaa625711": "Aktuelle Ressource",
+  "c21f94a5eddd8aa6": "Aktuelles Konto"
 }

@@ -85,6 +85,26 @@ export interface QueryMonitorInput {
   enabled?: boolean;
 }
 
+/** A SQL-capable resource inside an account — a database that is a resource
+ * (ClickHouse service, D1, Turso, Databricks warehouse, BigQuery dataset)
+ * rather than the account's own connection. */
+export interface QueryMonitorTargetResource {
+  id: string;
+  name: string;
+  resourceTypeId: string;
+  /** The resource type's display name, for the picker ("D1 Database"). */
+  typeName: string;
+}
+
+/** One account the editor can point a monitor at, with what is queryable in it. */
+export interface QueryMonitorTargetAccount {
+  id: string;
+  name: string;
+  /** The account itself has a SQL driver, so it is a valid target on its own. */
+  accountSql: boolean;
+  resources: QueryMonitorTargetResource[];
+}
+
 export const QUERY_MONITOR_LIMITS = {
   maxPerOrg: 100,
   maxNameLength: 120,

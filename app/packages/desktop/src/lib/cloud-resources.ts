@@ -27,6 +27,7 @@ import type {
   RunbookStepStatus,
   QueryMonitor,
   QueryMonitorInput,
+  QueryMonitorTargetAccount,
   QueryMonitorTestResult,
   ResourcePickerOption,
   WallboardResponse,
@@ -311,6 +312,16 @@ export async function recordCloudRestoreDrill(
 export async function fetchCloudQueryMonitors(orgId: string): Promise<QueryMonitor[]> {
   const res = await invoke<{ monitors: QueryMonitor[] }>("cloud_query_monitors", { orgId });
   return res.monitors ?? [];
+}
+
+export async function fetchCloudQueryMonitorTargets(
+  orgId: string,
+): Promise<QueryMonitorTargetAccount[]> {
+  const res = await invoke<{ accounts: QueryMonitorTargetAccount[] }>(
+    "cloud_query_monitor_targets",
+    { orgId },
+  );
+  return res.accounts ?? [];
 }
 
 export async function createCloudQueryMonitor(

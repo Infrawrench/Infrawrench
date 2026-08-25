@@ -5,11 +5,13 @@ import {
   useUIStore,
   type QueryMonitor,
   type QueryMonitorInput,
+  type QueryMonitorTargetAccount,
   type QueryMonitorTestResult,
 } from "@infrawrench/ui";
 import {
   createCloudQueryMonitor,
   deleteCloudQueryMonitor,
+  fetchCloudQueryMonitorTargets,
   fetchCloudQueryMonitors,
   testCloudQueryMonitor,
   updateCloudQueryMonitor,
@@ -25,11 +27,29 @@ export function DesktopQueryMonitorsPanel() {
   const gt = useGT();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const [monitors, setMonitors] = useState<QueryMonitor[] | null>(null);
+  const [targets, setTargets] = useState<QueryMonitorTargetAccount[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const reload = useRef<() => void>(() => {});
 
   const retry = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  // The target list only feeds the editor's picker, so a failure costs the
+  // picker and not the page.
+  useEffect(() => {
+    if (!activeCloudOrgId) return;
+    let cancelled = false;
+    fetchCloudQueryMonitorTargets(activeCloudOrgId)
+      .then((accounts) => {
+        if (!cancelled) setTargets(accounts);
+      })
+      .catch(() => {
+        if (!cancelled) setTargets([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCloudOrgId]);
 
   useEffect(() => {
     if (!activeCloudOrgId) return;
@@ -114,6 +134,7 @@ export function DesktopQueryMonitorsPanel() {
       monitors={monitors}
       error={error}
       onRetry={retry}
+      targetOptions={targets}
       // The desktop does not read `/team/me`, so the editors are always offered
       // and a member without `resources:execute` gets the server's 403 in the
       // section's error banner — the Backups stance.

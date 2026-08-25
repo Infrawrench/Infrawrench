@@ -12,7 +12,7 @@
  * belongs where the statement is executed rather than where it is stored.
  */
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import {
   QUERY_MONITOR_LIMITS,
   monitorSqlProblem,
@@ -21,12 +21,14 @@ import {
   type QueryMonitor,
   type QueryMonitorInput,
   type QueryMonitorMode,
+  type QueryMonitorTargetAccount,
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client";
 import { accounts, resources } from "../db/schema";
 import { queryMonitors } from "../db/query-monitor-schema";
 import { getOrgAccountClient } from "../org-accounts";
+import { getPlugin } from "../plugin-loader";
 import { rewriteConnectionForTunnel } from "../tunnel-resolver";
 import { sqlDrivers } from "../drivers";
 
@@ -110,6 +112,101 @@ export async function listQueryMonitors(organizationId: string): Promise<QueryMo
   return rows.map(toWire);
 }
 
+/**
+ * What a resource type must declare for its instances to be offered as monitor
+ * targets: a per-resource SQL driver, or a REST query API (`supportsRestQuery`,
+ * the BigQuery/Spanner shape). Exported for the targets test.
+ */
+export function isSqlTargetType(typeDef: {
+  resourceSqlDriver?: unknown;
+  supportsRestQuery?: boolean | undefined;
+}): boolean {
+  return Boolean(typeDef.resourceSqlDriver ?? typeDef.supportsRestQuery);
+}
+
+/**
+ * The accounts and resources a monitor's query can actually run against —
+ * what the editor's target picker shows.
+ *
+ * Derived from static plugin metadata rather than by instantiating clients:
+ * `manifest.sqlDriver` marks an account-level connection, and a resource
+ * qualifies when its type passes {@link isSqlTargetType}. Accounts with
+ * neither are omitted entirely — offering them would only manufacture
+ * "That account has no SQL driver" runs.
+ */
+export async function listQueryMonitorTargets(
+  organizationId: string,
+): Promise<QueryMonitorTargetAccount[]> {
+  const accountRows = await db
+    .select({ id: accounts.id, name: accounts.displayName, pluginId: accounts.pluginId })
+    .from(accounts)
+    .where(eq(accounts.organizationId, organizationId))
+    .orderBy(asc(accounts.displayName));
+  const resourceRows = await db
+    .select({
+      id: resources.id,
+      name: resources.displayName,
+      accountId: resources.accountId,
+      resourceTypeId: resources.resourceTypeId,
+    })
+    .from(resources)
+    .where(and(eq(resources.organizationId, organizationId), isNull(resources.deletedAt)))
+    .orderBy(asc(resources.displayName));
+
+  const targets: QueryMonitorTargetAccount[] = [];
+  for (const account of accountRows) {
+    const loaded = await getPlugin(account.pluginId);
+    if (!loaded) continue;
+    const types = new Map(loaded.plugin.resourceTypes.map((t) => [t.id, t]));
+    const accountSql = Boolean(loaded.plugin.manifest.sqlDriver);
+    const accountResources = resourceRows.flatMap((resource) => {
+      if (resource.accountId !== account.id) return [];
+      const typeDef = types.get(resource.resourceTypeId);
+      if (!typeDef || !isSqlTargetType(typeDef)) return [];
+      return [
+        {
+          id: resource.id,
+          name: resource.name,
+          resourceTypeId: resource.resourceTypeId,
+          typeName: typeDef.displayName,
+        },
+      ];
+    });
+    if (accountSql || accountResources.length > 0) {
+      targets.push({ id: account.id, name: account.name, accountSql, resources: accountResources });
+    }
+  }
+  return targets;
+}
+
+/**
+ * Resolve and validate a monitor's resource scope against the synced rows.
+ *
+ * The row's stored type is authoritative — the caller's `resourceTypeId` is
+ * replaced by it, which removes the id/type-mismatch failure class instead of
+ * reporting it (and lets an API caller omit the type entirely). Returns the
+ * type id to store, or the caller's value untouched for an account-level
+ * monitor, so the both-or-neither validation still bites on a bare type id.
+ */
+async function resolveMonitorResourceType(
+  organizationId: string,
+  accountId: string,
+  resourceId: string | null,
+  resourceTypeId: string | null,
+): Promise<string | null> {
+  if (!resourceId) return resourceTypeId;
+  const [resource] = await db
+    .select({ accountId: resources.accountId, resourceTypeId: resources.resourceTypeId })
+    .from(resources)
+    .where(and(eq(resources.organizationId, organizationId), eq(resources.id, resourceId)))
+    .limit(1);
+  if (!resource) throw new QueryMonitorInputError("No such resource.", 404);
+  if (resource.accountId !== accountId) {
+    throw new QueryMonitorInputError("That resource belongs to a different account.");
+  }
+  return resource.resourceTypeId;
+}
+
 export async function getQueryMonitor(
   organizationId: string,
   monitorId: string,
@@ -125,7 +222,16 @@ export async function createQueryMonitor(
   input: QueryMonitorInput,
   userId: string | null,
 ): Promise<QueryMonitor> {
-  const problem = validateQueryMonitor(input);
+  const normalized: QueryMonitorInput = {
+    ...input,
+    resourceTypeId: await resolveMonitorResourceType(
+      organizationId,
+      input.accountId,
+      input.resourceId ?? null,
+      input.resourceTypeId ?? null,
+    ),
+  };
+  const problem = validateQueryMonitor(normalized);
   if (problem) throw new QueryMonitorInputError(problem);
 
   const existing = await db
@@ -151,9 +257,9 @@ export async function createQueryMonitor(
     await db.insert(queryMonitors).values({
       id,
       organizationId,
-      accountId: input.accountId,
-      resourceId: input.resourceId ?? null,
-      resourceTypeId: input.resourceTypeId ?? null,
+      accountId: normalized.accountId,
+      resourceId: normalized.resourceId ?? null,
+      resourceTypeId: normalized.resourceTypeId ?? null,
       name: input.name.trim(),
       description: input.description?.trim() || null,
       sql: input.sql,
@@ -181,13 +287,19 @@ export async function updateQueryMonitor(
   const current = await getQueryMonitor(organizationId, monitorId);
   if (!current) throw new QueryMonitorInputError("No such monitor.", 404);
 
+  const accountId = patch.accountId ?? current.accountId;
+  const resourceId = patch.resourceId !== undefined ? patch.resourceId : current.resourceId;
   const merged: QueryMonitorInput = {
     name: patch.name ?? current.name,
     description: patch.description !== undefined ? patch.description : current.description,
-    accountId: patch.accountId ?? current.accountId,
-    resourceId: patch.resourceId !== undefined ? patch.resourceId : current.resourceId,
-    resourceTypeId:
-      patch.resourceTypeId !== undefined ? patch.resourceTypeId : current.resourceTypeId,
+    accountId,
+    resourceId,
+    resourceTypeId: await resolveMonitorResourceType(
+      organizationId,
+      accountId,
+      resourceId ?? null,
+      (patch.resourceTypeId !== undefined ? patch.resourceTypeId : current.resourceTypeId) ?? null,
+    ),
     sql: patch.sql ?? current.sql,
     mode: patch.mode ?? current.mode,
     operator: patch.operator ?? current.operator,

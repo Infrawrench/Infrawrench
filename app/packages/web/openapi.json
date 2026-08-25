@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.38.0",
+    "version": "1.39.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -19114,6 +19114,76 @@
           "operator",
           "threshold",
           "intervalMinutes"
+        ],
+        "additionalProperties": false
+      },
+      "QueryMonitorTargetResource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "typeName": {
+            "type": "string",
+            "description": "The resource type's display name, e.g. 'D1 Database'."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "resourceTypeId",
+          "typeName"
+        ],
+        "additionalProperties": false
+      },
+      "QueryMonitorTargetAccount": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "accountSql": {
+            "type": "boolean",
+            "description": "The account itself has a SQL driver, so it is a valid target on its own."
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueryMonitorTargetResource"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "accountSql",
+          "resources"
+        ],
+        "additionalProperties": false
+      },
+      "QueryMonitorTargets": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueryMonitorTargetAccount"
+            }
+          }
+        },
+        "required": [
+          "accounts"
         ],
         "additionalProperties": false
       },
@@ -51383,6 +51453,41 @@
           }
         },
         "operationId": "postOrgOrgIdQueryMonitors"
+      }
+    },
+    "/api/org/{orgId}/query-monitors/targets": {
+      "get": {
+        "tags": [
+          "Query monitors"
+        ],
+        "summary": "List what a monitor can run against",
+        "description": "The editor's target picker: each account with a SQL driver of its own, plus the SQL-capable resources inside it — a database that is a *resource* (a ClickHouse service, a D1 or Turso database, a Databricks SQL warehouse, a BigQuery dataset) rather than the account's own connection. Accounts with neither are omitted; a monitor pointed at one could only ever fail. Pass a resource's `id` (and optionally its `resourceTypeId` — the server fills it from the synced resource either way) when creating a monitor to scope the query to that resource.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Targets, grouped by account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryMonitorTargets"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdQueryMonitorsTargets"
       }
     },
     "/api/org/{orgId}/query-monitors/test": {

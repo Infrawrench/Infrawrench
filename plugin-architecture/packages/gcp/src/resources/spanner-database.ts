@@ -29,4 +29,5 @@ export const SpannerDatabaseResourceType = rt({
   backupPolicy: { protectedBy: ["spanner-backup"] },
   parentTypeId: "spanner-instance",
   supportsCreate: true,
+  supportsRestQuery: true,
 });
