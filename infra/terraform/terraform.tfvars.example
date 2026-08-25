@@ -190,6 +190,9 @@ app_env = {
   # Optional: status page custom domains (Cloudflare for SaaS). Without these,
   # secret slug URLs keep working; attaching a vanity hostname returns a clear
   # configuration error. See app/packages/status-page-edge/README.md.
+  # The token needs Zone > SSL and Certificates > Edit on the SaaS zone (that
+  # permission covers the custom_hostnames API) and Account > Workers KV
+  # Storage > Edit.
   STATUS_PAGE_CF_ACCOUNT_ID    = "..."
   STATUS_PAGE_CF_ZONE_ID       = "..."
   STATUS_PAGE_CF_API_TOKEN     = "..."

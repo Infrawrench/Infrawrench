@@ -46,7 +46,10 @@ Worker does not second-guess publish state.
 
    - `STATUS_PAGE_CF_ACCOUNT_ID`
    - `STATUS_PAGE_CF_ZONE_ID`
-   - `STATUS_PAGE_CF_API_TOKEN` (Custom Hostnames + Workers KV edit)
+   - `STATUS_PAGE_CF_API_TOKEN` — token with Zone > SSL and Certificates >
+     Edit on the SaaS zone (the permission that authorizes the
+     custom_hostnames API; none is named "Custom Hostnames") and Account >
+     Workers KV Storage > Edit
    - `STATUS_PAGE_CNAME_TARGET` (what customers CNAME to — usually the SaaS
      CNAME target Cloudflare shows for the zone)
    - `STATUS_PAGE_KV_NAMESPACE_ID`
