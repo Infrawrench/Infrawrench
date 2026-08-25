@@ -144,6 +144,7 @@
     "./probes/metric-ids": "./src/probes/metric-ids.ts",
     "./status-pages/store": "./src/status-pages/store.ts",
     "./status-pages/notices": "./src/status-pages/notices.ts",
+    "./status-pages/custom-hostname": "./src/status-pages/custom-hostname.ts",
     "./incidents/store": "./src/incidents/store.ts",
     "./ownership/store": "./src/ownership/store.ts",
     "./ownership/notify": "./src/ownership/notify.ts",

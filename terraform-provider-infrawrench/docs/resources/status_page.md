@@ -29,6 +29,10 @@ resource "infrawrench_status_page" "public" {
   # exactly the change worth putting through review.
   published = true
 
+  # Paid-plan vanity subdomain. You still CNAME status.example.com at the
+  # Infrawrench target shown in the app; certificate issuance is managed.
+  custom_hostname = "status.example.com"
+
   # Order is the public render order, and a write replaces the whole set — so
   # these blocks are the page, not additions to it.
   component {
@@ -48,6 +52,7 @@ resource "infrawrench_status_page" "public" {
 ### Optional
 
 - `component` (Block List) A probe placed on the page. **Order is the public render order**, and a write replaces the whole set — so the blocks here are the page, not additions to it. (see [below for nested schema](#nestedblock--component))
+- `custom_hostname` (String) Vanity subdomain for the public page, e.g. `status.example.com`. Subdomains only — apex domains are rejected. Requires a paid plan. Infrawrench creates a Cloudflare Custom Hostname; you still CNAME the subdomain at the target shown in the app. The secret `/status/<slug>` URL keeps working.
 - `description` (String) Sub-heading shown under the title.
 - `published` (Boolean) Defaults to `false`, and a fresh page is never reachable. Publishing is the one-line change that makes the page public — which is exactly the change worth reviewing.
 - `show_history` (Boolean) Show the day-by-day incident history strip.
@@ -56,6 +61,8 @@ resource "infrawrench_status_page" "public" {
 
 ### Read-Only
 
+- `custom_hostname_error` (String) Last Cloudflare verification or certificate error, when status is `error`.
+- `custom_hostname_status` (String) Provisioning state: `none`, `pending_dns`, `pending_ssl`, `active`, or `error`.
 - `id` (String) Server-assigned page id. Use it with `terraform import`.
 - `slug` (String) The public URL segment, at `/status/<slug>`. Generated with real entropy rather than derived from the title, so it cannot be guessed from the organization's name.
 

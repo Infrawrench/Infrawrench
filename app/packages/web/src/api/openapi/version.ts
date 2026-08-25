@@ -116,4 +116,7 @@
 // shift previews and covers, plus a new `on-call` member on the
 // AlertDestination union so a routing rule can name "whoever is on call"
 // instead of a fixed channel. All additive.
-export const API_VERSION = "1.34.0";
+// 1.35.0: status page custom domains — attach/refresh/detach a vanity
+// subdomain via Cloudflare for SaaS, plus additive customHostname* fields on
+// StatusPage. All additive.
+export const API_VERSION = "1.35.0";

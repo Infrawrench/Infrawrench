@@ -1,7 +1,7 @@
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import {
   formatUptime,
-  statusPageUrl,
+  statusPagePublicUrl,
   type StatusPage,
   type SyntheticProbe,
 } from "@infrawrench/client-core";
@@ -88,9 +88,8 @@ export function ProbesScreen() {
  * omission this screen already makes for probes.
  */
 function StatusPageRow({ page }: { page: StatusPage }) {
-  // The public page is served by the same app the API is on, which is what
-  // CLOUD_URL points at.
-  const url = statusPageUrl(CLOUD_URL, page.slug);
+  // Prefer an active vanity hostname; otherwise the secret slug on CLOUD_URL.
+  const url = statusPagePublicUrl(CLOUD_URL, page);
   const live = page.published;
   return (
     <Pressable
@@ -106,6 +105,9 @@ function StatusPageRow({ page }: { page: StatusPage }) {
         </Text>
         <Text style={styles.subtitle} numberOfLines={1}>
           {page.components.length} component{page.components.length === 1 ? "" : "s"}
+          {page.customHostname && page.customHostnameStatus === "active"
+            ? ` · ${page.customHostname}`
+            : ""}
         </Text>
       </View>
       <Text style={[styles.status, { color: live ? colors.success : colors.textFaint }]}>
