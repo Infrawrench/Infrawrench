@@ -193,17 +193,19 @@ async function kvDelete(cfg: CfConfig, hostname: string): Promise<void> {
   }
 }
 
-function mapCfStatus(ch: CfCustomHostname): {
+export function mapCfStatus(ch: CfCustomHostname): {
   status: StatusPageCustomHostnameStatus;
   error: string | null;
 } {
   const hostnameActive = ch.status === "active";
   const sslStatus = ch.ssl?.status ?? "";
   const sslActive = sslStatus === "active";
-  const errors = [
-    ...(ch.verification_errors ?? []),
-    ...(ch.ssl?.validation_errors?.map((e) => e.message).filter(Boolean) as string[]),
-  ].filter(Boolean);
+  // A fresh hostname has no validation_errors array at all — Cloudflare only
+  // includes it once validation has failed at least once.
+  const sslErrors = (ch.ssl?.validation_errors ?? [])
+    .map((e) => e.message)
+    .filter((m): m is string => Boolean(m));
+  const errors = [...(ch.verification_errors ?? []), ...sslErrors].filter(Boolean);
 
   if (hostnameActive && sslActive) return { status: "active", error: null };
   if (errors.length > 0 && ch.status === "moved" /* unlikely */) {
