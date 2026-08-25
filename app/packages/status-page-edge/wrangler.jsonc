@@ -1,0 +1,36 @@
+// Vanity-host origin for public status pages — see src/index.ts and README.md.
+//
+// STATUS_HOSTS KV is filled by the cloud API when a customer attaches a custom
+// domain (hostname → status-page slug). Replace the placeholder id with the
+// real namespace before the first deploy; the CI workflow deploys this config
+// as-is.
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "infrawrench-status-page-edge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-01",
+  "workers_dev": false,
+  "observability": {
+    "enabled": true,
+  },
+  // Fallback origin hostname for Cloudflare for SaaS (originless AAAA 100::
+  // on this name, set as the zone's fallback origin). A Worker custom domain
+  // does NOT intercept SaaS traffic — requests arrive with the customer's
+  // Host, match no route, and Cloudflare dials the literal 100:: (a 522).
+  // Each served hostname therefore needs an explicit zone route below;
+  // customer domains outside the zone need a */* catch-all, which the shared
+  // infrawrench.com zone cannot carry — see the README before adding one.
+  "routes": [
+    { "pattern": "status-origin.infrawrench.com", "custom_domain": true },
+    { "pattern": "status.infrawrench.com/*", "zone_name": "infrawrench.com" },
+  ],
+  "vars": {
+    "ORIGIN": "https://app.infrawrench.com",
+  },
+  "kv_namespaces": [
+    {
+      "binding": "STATUS_HOSTS",
+      "id": "0b66ec315f3b45febf9dd1768ae9b944",
+    },
+  ],
+}

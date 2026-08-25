@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.38.0",
+    "version": "1.39.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -24978,6 +24978,40 @@
         ],
         "additionalProperties": false
       },
+      "StatusPageCustomHostnameStatus": {
+        "type": "string",
+        "enum": [
+          "none",
+          "pending_dns",
+          "pending_ssl",
+          "active",
+          "error"
+        ]
+      },
+      "StatusPageHostnameVerification": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "cnameTarget": {
+            "type": "string",
+            "description": "Target of the customer's CNAME (e.g. statuspages.infrawrench.com)."
+          },
+          "txtName": {
+            "type": "string",
+            "description": "Ownership TXT name, when Cloudflare asked for one."
+          },
+          "txtValue": {
+            "type": "string",
+            "description": "Ownership TXT value, when Cloudflare asked for one."
+          }
+        },
+        "required": [
+          "cnameTarget"
+        ],
+        "additionalProperties": false
+      },
       "StatusPageComponent": {
         "type": "object",
         "properties": {
@@ -25047,7 +25081,7 @@
           },
           "slug": {
             "type": "string",
-            "description": "The public URL segment, and the page's only access credential. Generated with real entropy rather than derived from the title."
+            "description": "The public URL segment on the app host, and the page's access credential there. Generated with real entropy rather than derived from the title."
           },
           "title": {
             "type": "string"
@@ -25074,6 +25108,25 @@
               "null"
             ]
           },
+          "customHostname": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Vanity subdomain (e.g. status.acme.com), or null when none is attached."
+          },
+          "customHostnameStatus": {
+            "$ref": "#/components/schemas/StatusPageCustomHostnameStatus"
+          },
+          "customHostnameError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "customHostnameVerification": {
+            "$ref": "#/components/schemas/StatusPageHostnameVerification"
+          },
           "components": {
             "type": "array",
             "items": {
@@ -25098,6 +25151,10 @@
           "showHistory",
           "showUptime",
           "supportUrl",
+          "customHostname",
+          "customHostnameStatus",
+          "customHostnameError",
+          "customHostnameVerification",
           "components",
           "createdAt",
           "updatedAt"
@@ -25221,6 +25278,19 @@
             "description": "When present, replaces the whole set."
           }
         },
+        "additionalProperties": false
+      },
+      "StatusPageCustomHostnameAttach": {
+        "type": "object",
+        "properties": {
+          "hostname": {
+            "type": "string",
+            "description": "Subdomain to attach, e.g. status.example.com. Apex domains are not supported."
+          }
+        },
+        "required": [
+          "hostname"
+        ],
         "additionalProperties": false
       },
       "StatusHistoryDay": {
@@ -56538,7 +56608,7 @@
           "Status pages"
         ],
         "summary": "Issue a new public link",
-        "description": "Replaces the slug, revoking the current public URL immediately — the reroll for a link that ended up somewhere unintended. The page stays published.\n\n_Requires permission: `resources:write`._",
+        "description": "Replaces the slug, revoking the current public URL immediately — the reroll for a link that ended up somewhere unintended. The page stays published. If a custom hostname is attached, its hostname→slug mapping is updated so the vanity URL keeps working.\n\n_Requires permission: `resources:write`._",
         "parameters": [
           {
             "schema": {
@@ -56586,6 +56656,208 @@
         },
         "operationId": "postOrgOrgIdStatusPagesIdRotateSlug",
         "x-required-permission": "resources:write"
+      }
+    },
+    "/api/org/{orgId}/status-pages/{id}/custom-hostname": {
+      "post": {
+        "tags": [
+          "Status pages"
+        ],
+        "summary": "Attach a custom domain",
+        "description": "Creates a Cloudflare Custom Hostname for a subdomain and returns the DNS records the customer must add. Paid plan only. Apex domains are rejected. At most one hostname per page.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusPageCustomHostnameAttach"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The page with custom-hostname fields populated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required — the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdStatusPagesIdCustomHostname"
+      },
+      "delete": {
+        "tags": [
+          "Status pages"
+        ],
+        "summary": "Detach a custom domain",
+        "description": "Removes the Cloudflare Custom Hostname and the edge hostname→slug mapping. The secret slug URL is unaffected.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page with custom-hostname fields cleared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusPage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdStatusPagesIdCustomHostname"
+      }
+    },
+    "/api/org/{orgId}/status-pages/{id}/custom-hostname/refresh": {
+      "post": {
+        "tags": [
+          "Status pages"
+        ],
+        "summary": "Refresh custom domain status",
+        "description": "Re-fetches Cloudflare hostname and certificate status and updates the page record.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page with refreshed custom-hostname fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdStatusPagesIdCustomHostnameRefresh"
       }
     },
     "/api/status/{slug}": {

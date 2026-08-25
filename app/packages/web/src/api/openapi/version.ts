@@ -129,7 +129,8 @@
 // that the table it reads exists. All additive.
 // 1.38.0: withdraw the 1.35.0 status-page custom domain surface (the
 // `custom-hostname` routes and `customHostname*` fields on StatusPage) —
-// rolled back pending an edge-routing fix; a reapply PR restores it. Strictly
-// a removal, but versioned as a minor because the surface existed briefly and
-// unannounced; treat 1.35–1.37 clients of those routes as unsupported.
-export const API_VERSION = "1.38.0";
+// rolled back pending an edge-routing fix; this entry records the withdrawal.
+// 1.39.0: reapply the status-page custom domain surface withdrawn in 1.38.0,
+// unchanged on the wire: attach/refresh/detach routes and the additive
+// customHostname* fields on StatusPage.
+export const API_VERSION = "1.39.0";
