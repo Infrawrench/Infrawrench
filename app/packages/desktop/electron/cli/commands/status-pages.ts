@@ -20,8 +20,11 @@ import type { StatusPage, StatusPageListResponse } from "@infrawrench/client-cor
 import { c, printJson, println, printTable, type Column } from "../output";
 import { CLOUD_URL } from "../../../env";
 
-/** The public URL of a page. Mirrors client-core's `statusPageUrl`. */
+/** Prefer the vanity hostname when live; otherwise the secret slug URL. */
 function pageUrl(origin: string, page: StatusPage): string {
+  if (page.customHostname && page.customHostnameStatus === "active") {
+    return `https://${page.customHostname}/`;
+  }
   return `${origin.replace(/\/+$/, "")}/status/${page.slug}`;
 }
 
@@ -73,6 +76,11 @@ export async function cmdStatusPages(ctx: CliContext, pageArg?: string): Promise
     // The URL is printed for drafts too: knowing where a page *will* be is how
     // you check it before publishing.
     { header: "url", value: (p) => c.dim(pageUrl(CLOUD_URL, p)) },
+    {
+      header: "domain",
+      value: (p) =>
+        p.customHostname ? c.dim(`${p.customHostname} (${p.customHostnameStatus})`) : c.dim("—"),
+    },
   ];
 
   println(
@@ -102,6 +110,11 @@ function printPageDetail(ctx: CliContext, page: StatusPage): void {
   if (page.description) println(c.dim(page.description));
   println();
   println(`${c.dim("url")}  ${pageUrl(CLOUD_URL, page)}`);
+  if (page.customHostname) {
+    println(
+      `${c.dim("domain")}  ${page.customHostname} ${c.dim(`(${page.customHostnameStatus})`)}`,
+    );
+  }
   println(
     `${c.dim("shows")}  ${
       [page.showUptime ? "24h uptime" : null, page.showHistory ? "90d history" : null]

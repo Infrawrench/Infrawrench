@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -26,15 +27,18 @@ func NewStatusPageResource() resource.Resource { return &statusPageResource{} }
 type statusPageResource struct{ client *iw.Client }
 
 type statusPageResourceModel struct {
-	ID          types.String `tfsdk:"id"`
-	Slug        types.String `tfsdk:"slug"`
-	Title       types.String `tfsdk:"title"`
-	Description types.String `tfsdk:"description"`
-	Published   types.Bool   `tfsdk:"published"`
-	ShowHistory types.Bool   `tfsdk:"show_history"`
-	ShowUptime  types.Bool   `tfsdk:"show_uptime"`
-	SupportURL  types.String `tfsdk:"support_url"`
-	Component   types.List   `tfsdk:"component"`
+	ID                   types.String `tfsdk:"id"`
+	Slug                 types.String `tfsdk:"slug"`
+	Title                types.String `tfsdk:"title"`
+	Description          types.String `tfsdk:"description"`
+	Published            types.Bool   `tfsdk:"published"`
+	ShowHistory          types.Bool   `tfsdk:"show_history"`
+	ShowUptime           types.Bool   `tfsdk:"show_uptime"`
+	SupportURL           types.String `tfsdk:"support_url"`
+	CustomHostname       types.String `tfsdk:"custom_hostname"`
+	CustomHostnameStatus types.String `tfsdk:"custom_hostname_status"`
+	CustomHostnameError  types.String `tfsdk:"custom_hostname_error"`
+	Component            types.List   `tfsdk:"component"`
 }
 
 type statusPageComponentModel struct {
@@ -100,6 +104,21 @@ func (r *statusPageResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Optional:            true,
 				MarkdownDescription: "Link shown for people who need to reach you.",
 			},
+			"custom_hostname": schema.StringAttribute{
+				Optional: true,
+				MarkdownDescription: "Vanity subdomain for the public page, e.g. `status.example.com`. " +
+					"Subdomains only — apex domains are rejected. Requires a paid plan. Infrawrench " +
+					"creates a Cloudflare Custom Hostname; you still CNAME the subdomain at the " +
+					"target shown in the app. The secret `/status/<slug>` URL keeps working.",
+			},
+			"custom_hostname_status": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "Provisioning state: `none`, `pending_dns`, `pending_ssl`, `active`, or `error`.",
+			},
+			"custom_hostname_error": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "Last Cloudflare verification or certificate error, when status is `error`.",
+			},
 		},
 		Blocks: map[string]schema.Block{
 			"component": schema.ListNestedBlock{
@@ -151,7 +170,25 @@ func (r *statusPageResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
+	// Persist the page id before the hostname attach: if attach fails, the next
+	// apply must update this page rather than create another unmanaged one.
 	state, diags := statusPageStateFrom(ctx, created)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	created, err = r.syncCustomHostname(ctx, created, plan.CustomHostname)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to attach custom hostname", err.Error())
+		return
+	}
+
+	state, diags = statusPageStateFrom(ctx, created)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -212,6 +249,12 @@ func (r *statusPageResource) Update(ctx context.Context, req resource.UpdateRequ
 			return
 		}
 		resp.Diagnostics.AddError("Unable to update status page", err.Error())
+		return
+	}
+
+	updated, err = r.syncCustomHostname(ctx, updated, plan.CustomHostname)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to update custom hostname", err.Error())
 		return
 	}
 
@@ -295,14 +338,47 @@ func statusPageStateFrom(ctx context.Context, remote *iw.StatusPage) (statusPage
 	diags.Append(d...)
 
 	return statusPageResourceModel{
-		ID:          types.StringValue(remote.ID),
-		Slug:        types.StringValue(remote.Slug),
-		Title:       types.StringValue(remote.Title),
-		Description: stringValue(remote.Description),
-		Published:   types.BoolValue(remote.Published),
-		ShowHistory: types.BoolValue(remote.ShowHistory),
-		ShowUptime:  types.BoolValue(remote.ShowUptime),
-		SupportURL:  stringValue(remote.SupportURL),
-		Component:   list,
+		ID:                   types.StringValue(remote.ID),
+		Slug:                 types.StringValue(remote.Slug),
+		Title:                types.StringValue(remote.Title),
+		Description:          stringValue(remote.Description),
+		Published:            types.BoolValue(remote.Published),
+		ShowHistory:          types.BoolValue(remote.ShowHistory),
+		ShowUptime:           types.BoolValue(remote.ShowUptime),
+		SupportURL:           stringValue(remote.SupportURL),
+		CustomHostname:       stringValue(remote.CustomHostname),
+		CustomHostnameStatus: types.StringValue(remote.CustomHostnameStatus),
+		CustomHostnameError:  stringValue(remote.CustomHostnameError),
+		Component:            list,
 	}, diags
+}
+
+// syncCustomHostname attaches, replaces, or detaches the vanity host to match plan.
+func (r *statusPageResource) syncCustomHostname(
+	ctx context.Context,
+	page *iw.StatusPage,
+	planned types.String,
+) (*iw.StatusPage, error) {
+	want := ""
+	if !planned.IsNull() && !planned.IsUnknown() {
+		want = strings.TrimSpace(strings.ToLower(planned.ValueString()))
+	}
+	have := ""
+	if page.CustomHostname != nil {
+		have = strings.ToLower(*page.CustomHostname)
+	}
+	if want == have {
+		return page, nil
+	}
+	if have != "" {
+		detached, err := r.client.DetachStatusPageCustomHostname(ctx, page.ID)
+		if err != nil {
+			return nil, err
+		}
+		page = detached
+	}
+	if want == "" {
+		return page, nil
+	}
+	return r.client.AttachStatusPageCustomHostname(ctx, page.ID, want)
 }

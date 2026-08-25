@@ -3,9 +3,12 @@ import type { StatusPagesClient } from "@infrawrench/ui";
 import { CLOUD_URL } from "../../env";
 import { listCloudProbes } from "./cloud-probes";
 import {
+  attachCloudStatusPageHostname,
   createCloudStatusPage,
   deleteCloudStatusPage,
+  detachCloudStatusPageHostname,
   listCloudStatusPages,
+  refreshCloudStatusPageHostname,
   rotateCloudStatusPageSlug,
   updateCloudStatusPage,
 } from "./cloud-status-pages";
@@ -32,6 +35,10 @@ export function createDesktopStatusPagesClient(): StatusPagesClient {
     updateStatusPage: (pageId, patch) => updateCloudStatusPage(requireOrgId(), pageId, patch),
     deleteStatusPage: (pageId) => deleteCloudStatusPage(requireOrgId(), pageId),
     rotateSlug: (pageId) => rotateCloudStatusPageSlug(requireOrgId(), pageId),
+    attachCustomHostname: (pageId, body) =>
+      attachCloudStatusPageHostname(requireOrgId(), pageId, body.hostname),
+    refreshCustomHostname: (pageId) => refreshCloudStatusPageHostname(requireOrgId(), pageId),
+    detachCustomHostname: (pageId) => detachCloudStatusPageHostname(requireOrgId(), pageId),
     listProbes: async () =>
       (await listCloudProbes(requireOrgId())).probes.map((p) => ({ id: p.id, name: p.name })),
   };

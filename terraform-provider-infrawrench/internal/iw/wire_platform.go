@@ -162,21 +162,39 @@ type StatusPageInput struct {
 // StatusPage is a public uptime page.
 //
 // Slug is server-minted with real entropy rather than derived from the title,
-// and it is the page's only access credential — anyone holding the URL can read
-// it. Rotating it is an explicit action on the API, deliberately not something
-// a Terraform plan can do by accident.
+// and it is the page's only access credential on the app host — anyone holding
+// the URL can read it. Rotating it is an explicit action on the API,
+// deliberately not something a Terraform plan can do by accident. An optional
+// customHostname is a vanity subdomain served by Infrawrench's status-page
+// edge Worker (Cloudflare for SaaS); attaching it is a separate API call.
 type StatusPage struct {
-	ID          string                `json:"id"`
-	Slug        string                `json:"slug"`
-	Title       string                `json:"title"`
-	Description *string               `json:"description"`
-	Published   bool                  `json:"published"`
-	ShowHistory bool                  `json:"showHistory"`
-	ShowUptime  bool                  `json:"showUptime"`
-	SupportURL  *string               `json:"supportUrl"`
-	Components  []StatusPageComponent `json:"components"`
-	CreatedAt   string                `json:"createdAt"`
-	UpdatedAt   string                `json:"updatedAt"`
+	ID                         string                          `json:"id"`
+	Slug                       string                          `json:"slug"`
+	Title                      string                          `json:"title"`
+	Description                *string                         `json:"description"`
+	Published                  bool                            `json:"published"`
+	ShowHistory                bool                            `json:"showHistory"`
+	ShowUptime                 bool                            `json:"showUptime"`
+	SupportURL                 *string                         `json:"supportUrl"`
+	CustomHostname             *string                         `json:"customHostname"`
+	CustomHostnameStatus       string                          `json:"customHostnameStatus"`
+	CustomHostnameError        *string                         `json:"customHostnameError"`
+	CustomHostnameVerification *StatusPageHostnameVerification `json:"customHostnameVerification"`
+	Components                 []StatusPageComponent           `json:"components"`
+	CreatedAt                  string                          `json:"createdAt"`
+	UpdatedAt                  string                          `json:"updatedAt"`
+}
+
+// StatusPageHostnameVerification is the DNS the customer must create.
+type StatusPageHostnameVerification struct {
+	CnameTarget string  `json:"cnameTarget"`
+	TxtName     *string `json:"txtName"`
+	TxtValue    *string `json:"txtValue"`
+}
+
+// StatusPageCustomHostnameAttach is the POST body for attaching a vanity host.
+type StatusPageCustomHostnameAttach struct {
+	Hostname string `json:"hostname"`
 }
 
 /* ----------------------------- sleep schedules ----------------------------- */

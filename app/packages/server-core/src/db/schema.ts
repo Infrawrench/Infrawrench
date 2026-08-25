@@ -1657,6 +1657,26 @@ export const statusPages = pgTable(
     showUptime: boolean("show_uptime").notNull().default(true),
     /** Optional "contact support" link rendered in the footer. */
     supportUrl: text("support_url"),
+    /**
+     * Customer vanity hostname (e.g. `status.acme.com`). Globally unique when
+     * set; served by the status-page-edge Worker via Cloudflare for SaaS.
+     */
+    customHostname: text("custom_hostname"),
+    /** Cloudflare Custom Hostname + certificate provisioning state. */
+    customHostnameStatus: text("custom_hostname_status")
+      .$type<"none" | "pending_dns" | "pending_ssl" | "active" | "error">()
+      .notNull()
+      .default("none"),
+    /** Cloudflare Custom Hostname id — needed to delete / refresh. */
+    cloudflareCustomHostnameId: text("cloudflare_custom_hostname_id"),
+    /** Last verification / SSL error from Cloudflare, when status is `error`. */
+    customHostnameError: text("custom_hostname_error"),
+    /** DNS records the customer must create (CNAME + optional ownership TXT). */
+    customHostnameVerification: jsonb("custom_hostname_verification").$type<{
+      cnameTarget: string;
+      txtName?: string;
+      txtValue?: string;
+    } | null>(),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -1666,6 +1686,7 @@ export const statusPages = pgTable(
   (t) => ({
     orgIdx: index("status_pages_org_idx").on(t.organizationId),
     slugUnique: uniqueIndex("status_pages_slug_unique").on(t.slug),
+    customHostnameUnique: uniqueIndex("status_pages_custom_hostname_unique").on(t.customHostname),
   }),
 );
 

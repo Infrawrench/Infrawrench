@@ -11,6 +11,10 @@ resource "infrawrench_status_page" "public" {
   # exactly the change worth putting through review.
   published = true
 
+  # Paid-plan vanity subdomain. You still CNAME status.example.com at the
+  # Infrawrench target shown in the app; certificate issuance is managed.
+  custom_hostname = "status.example.com"
+
   # Order is the public render order, and a write replaces the whole set — so
   # these blocks are the page, not additions to it.
   component {

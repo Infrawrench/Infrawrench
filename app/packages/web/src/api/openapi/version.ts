@@ -127,9 +127,4 @@
 // threshold and an alert (`/query-monitors` CRUD plus `/query-monitors/test`,
 // the editor's unsaved preview), and the wallboard's fourth source back, now
 // that the table it reads exists. All additive.
-// 1.38.0: withdraw the 1.35.0 status-page custom domain surface (the
-// `custom-hostname` routes and `customHostname*` fields on StatusPage) —
-// rolled back pending an edge-routing fix; a reapply PR restores it. Strictly
-// a removal, but versioned as a minor because the surface existed briefly and
-// unannounced; treat 1.35–1.37 clients of those routes as unsupported.
-export const API_VERSION = "1.38.0";
+export const API_VERSION = "1.37.0";
