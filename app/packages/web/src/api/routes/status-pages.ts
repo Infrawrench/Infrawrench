@@ -8,12 +8,6 @@ import {
   rotateStatusPageSlugRecord,
   updateStatusPageRecord,
 } from "@infrawrench/server-core/status-pages/store";
-import {
-  attachCustomHostname,
-  detachCustomHostname,
-  refreshCustomHostname,
-} from "@infrawrench/server-core/status-pages/custom-hostname";
-import { PlanRequiredError } from "@infrawrench/server-core/entitlements";
 import type {
   StatusPageComponentInput,
   StatusPageCreate,
@@ -68,9 +62,6 @@ async function parseObjectBody(c: Context): Promise<ParsedBody> {
 function statusPageErrorResponse(c: Context, err: unknown) {
   if (err instanceof StatusPageInputError) {
     return c.json({ error: err.message }, err.status);
-  }
-  if (err instanceof PlanRequiredError) {
-    return c.json({ error: err.message }, 402);
   }
   console.error("[status-pages] unexpected error:", err);
   return c.json({ error: "Status page operation failed" }, 500);
@@ -222,64 +213,6 @@ app.post("/:id/rotate-slug", async (c) => {
       entityId: rotated.id,
     });
     return c.json(rotated);
-  } catch (err) {
-    return statusPageErrorResponse(c, err);
-  }
-});
-
-/** POST /:id/custom-hostname — attach a vanity subdomain (paid plan). */
-app.post("/:id/custom-hostname", async (c) => {
-  requirePermission(c, "resources:write");
-  const organizationId = c.get("organizationId");
-  const session = c.get("session");
-  const { body, error } = await parseObjectBody(c);
-  if (error) return error;
-  if (typeof body["hostname"] !== "string") {
-    return c.json({ error: "hostname is required" }, 400);
-  }
-  try {
-    const updated = await attachCustomHostname(organizationId, c.req.param("id"), body["hostname"]);
-    void logAudit({
-      organizationId,
-      userId: session?.userId,
-      action: "status_page.custom_hostname_attach",
-      entityType: "status_page",
-      entityId: updated.id,
-      metadata: { hostname: updated.customHostname },
-    });
-    return c.json(updated);
-  } catch (err) {
-    return statusPageErrorResponse(c, err);
-  }
-});
-
-/** POST /:id/custom-hostname/refresh — re-check Cloudflare hostname + SSL. */
-app.post("/:id/custom-hostname/refresh", async (c) => {
-  requirePermission(c, "resources:write");
-  const organizationId = c.get("organizationId");
-  try {
-    const updated = await refreshCustomHostname(organizationId, c.req.param("id"));
-    return c.json(updated);
-  } catch (err) {
-    return statusPageErrorResponse(c, err);
-  }
-});
-
-/** DELETE /:id/custom-hostname — detach vanity domain. */
-app.delete("/:id/custom-hostname", async (c) => {
-  requirePermission(c, "resources:write");
-  const organizationId = c.get("organizationId");
-  const session = c.get("session");
-  try {
-    const updated = await detachCustomHostname(organizationId, c.req.param("id"));
-    void logAudit({
-      organizationId,
-      userId: session?.userId,
-      action: "status_page.custom_hostname_detach",
-      entityType: "status_page",
-      entityId: updated.id,
-    });
-    return c.json(updated);
   } catch (err) {
     return statusPageErrorResponse(c, err);
   }

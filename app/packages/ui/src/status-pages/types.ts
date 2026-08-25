@@ -1,9 +1,4 @@
-import type {
-  StatusPage,
-  StatusPageCreate,
-  StatusPageCustomHostnameAttach,
-  StatusPagePatch,
-} from "@infrawrench/client-core";
+import type { StatusPage, StatusPageCreate, StatusPagePatch } from "@infrawrench/client-core";
 
 export type {
   PublicStatusPage,
@@ -11,9 +6,6 @@ export type {
   StatusPageComponent,
   StatusPageComponentInput,
   StatusPageCreate,
-  StatusPageCustomHostnameAttach,
-  StatusPageCustomHostnameStatus,
-  StatusPageHostnameVerification,
   StatusPageListResponse,
   StatusPagePatch,
 } from "@infrawrench/client-core";
@@ -36,12 +28,6 @@ export interface StatusPagesClient {
   deleteStatusPage(pageId: string): Promise<void>;
   /** Issue a fresh slug, revoking the current public URL. */
   rotateSlug(pageId: string): Promise<StatusPage>;
-  /** Attach a vanity subdomain (paid plan). */
-  attachCustomHostname(pageId: string, body: StatusPageCustomHostnameAttach): Promise<StatusPage>;
-  /** Re-check Cloudflare hostname + certificate status. */
-  refreshCustomHostname(pageId: string): Promise<StatusPage>;
-  /** Detach the vanity subdomain. */
-  detachCustomHostname(pageId: string): Promise<StatusPage>;
   /** Probes available to publish — id + name, from the org's probe list. */
   listProbes(): Promise<{ id: string; name: string }[]>;
 }

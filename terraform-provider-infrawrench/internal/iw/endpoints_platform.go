@@ -135,30 +135,6 @@ func (c *Client) DeleteStatusPage(ctx context.Context, id string) error {
 	return c.Delete(ctx, "/status-pages/"+seg(id))
 }
 
-func (c *Client) AttachStatusPageCustomHostname(ctx context.Context, id, hostname string) (*StatusPage, error) {
-	var out StatusPage
-	if err := c.Post(ctx, "/status-pages/"+seg(id)+"/custom-hostname", StatusPageCustomHostnameAttach{Hostname: hostname}, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-func (c *Client) RefreshStatusPageCustomHostname(ctx context.Context, id string) (*StatusPage, error) {
-	var out StatusPage
-	if err := c.Post(ctx, "/status-pages/"+seg(id)+"/custom-hostname/refresh", struct{}{}, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-func (c *Client) DetachStatusPageCustomHostname(ctx context.Context, id string) (*StatusPage, error) {
-	var out StatusPage
-	if err := c.DeleteInto(ctx, "/status-pages/"+seg(id)+"/custom-hostname", &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
 /* ----------------------------- sleep schedules ----------------------------- */
 
 // ListSleepSchedules unwraps the {"schedules": […]} envelope.

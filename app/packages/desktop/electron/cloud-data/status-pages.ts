@@ -41,33 +41,3 @@ ipcMain.handle(
     return cloudFetch(orgId, `/status-pages/${encodeURIComponent(pageId)}`, { method: "DELETE" });
   },
 );
-
-ipcMain.handle(
-  "cloud_status_pages_attach_hostname",
-  async (_e, { orgId, pageId, hostname }: { orgId: string; pageId: string; hostname: string }) => {
-    return cloudFetch(orgId, `/status-pages/${encodeURIComponent(pageId)}/custom-hostname`, {
-      method: "POST",
-      body: JSON.stringify({ hostname }),
-    });
-  },
-);
-
-ipcMain.handle(
-  "cloud_status_pages_refresh_hostname",
-  async (_e, { orgId, pageId }: { orgId: string; pageId: string }) => {
-    return cloudFetch(
-      orgId,
-      `/status-pages/${encodeURIComponent(pageId)}/custom-hostname/refresh`,
-      { method: "POST" },
-    );
-  },
-);
-
-ipcMain.handle(
-  "cloud_status_pages_detach_hostname",
-  async (_e, { orgId, pageId }: { orgId: string; pageId: string }) => {
-    return cloudFetch(orgId, `/status-pages/${encodeURIComponent(pageId)}/custom-hostname`, {
-      method: "DELETE",
-    });
-  },
-);

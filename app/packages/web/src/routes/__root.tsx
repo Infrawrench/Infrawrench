@@ -23,7 +23,6 @@ import { ProviderIncidentShellBanner } from "@/components/ProviderIncidentShellB
 import { SpotlightSearch } from "@/components/SpotlightSearch";
 import { WebWorkspaceTabsViewport } from "@/components/WorkspaceTabsViewport";
 import { OrgProviders } from "@/components/OrgProviders";
-import { PublicStatusPageOnCustomHost } from "@/components/PublicStatusPageOnCustomHost";
 import { apiGet, apiPost } from "@/lib/api";
 import {
   dashboardTabTarget,
@@ -59,19 +58,9 @@ interface TunnelAttachState {
  * Hitting an authenticated endpoint would redirect an anonymous visitor to
  * sign-in, which is precisely what a public status page cannot do — the page
  * exists for people who have no relationship with the org beyond the link.
- *
- * Custom domains are served by status-page-edge, which injects
- * `<meta name="iw-status-host">` into the SPA shell. Detecting that marker —
- * not a hard-coded hostname list — keeps staging and self-hosted app URLs on
- * the authenticated shell.
  */
-function isCustomStatusHost(): boolean {
-  if (typeof document === "undefined") return false;
-  return document.querySelector('meta[name="iw-status-host"]') !== null;
-}
-
 function isPublicRoute(pathname: string): boolean {
-  return pathname.startsWith("/status/") || isCustomStatusHost();
+  return pathname.startsWith("/status/");
 }
 
 /**
@@ -143,9 +132,6 @@ function RootLayout() {
         /* apiFetch redirects on 401 */
       });
   }, [navigate, pathname]);
-
-  // Vanity hosts never run the authenticated shell.
-  if (isCustomStatusHost()) return <PublicStatusPageOnCustomHost />;
 
   // Rendered before any auth state is consulted — see isPublicRoute.
   if (isPublicRoute(pathname)) return <Outlet />;

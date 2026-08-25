@@ -39,25 +39,3 @@ export async function rotateCloudStatusPageSlug(
 export async function deleteCloudStatusPage(orgId: string, pageId: string): Promise<void> {
   await invoke("cloud_status_pages_delete", { orgId, pageId });
 }
-
-export async function attachCloudStatusPageHostname(
-  orgId: string,
-  pageId: string,
-  hostname: string,
-): Promise<StatusPage> {
-  return invoke("cloud_status_pages_attach_hostname", { orgId, pageId, hostname });
-}
-
-export async function refreshCloudStatusPageHostname(
-  orgId: string,
-  pageId: string,
-): Promise<StatusPage> {
-  return invoke("cloud_status_pages_refresh_hostname", { orgId, pageId });
-}
-
-export async function detachCloudStatusPageHostname(
-  orgId: string,
-  pageId: string,
-): Promise<StatusPage> {
-  return invoke("cloud_status_pages_detach_hostname", { orgId, pageId });
-}

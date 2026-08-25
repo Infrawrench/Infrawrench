@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useGT } from "gt-react";
 import { useDataString } from "../i18n/data-strings.js";
 import {
-  statusPagePublicUrl,
   statusPageUrl,
   type StatusPage,
   type StatusPageComponentInput,
@@ -34,7 +33,6 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
   const [editing, setEditing] = useState<{ page: StatusPage | null } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [domainDraft, setDomainDraft] = useState<Record<string, string>>({});
 
   // Bumped per request so a slow response can't overwrite a later refresh.
   const requestSeq = useRef(0);
@@ -147,7 +145,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
   };
 
   const copyLink = async (page: StatusPage) => {
-    const url = statusPagePublicUrl(client.appOrigin, page);
+    const url = statusPageUrl(client.appOrigin, page.slug);
     try {
       await navigator.clipboard.writeText(url);
       setCopiedId(page.id);
@@ -155,60 +153,6 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
     } catch {
       // Clipboard access can be denied; the URL is on screen either way.
       setError(gt("Couldn't copy — select the link and copy it manually."));
-    }
-  };
-
-  const attachDomain = async (page: StatusPage) => {
-    const hostname = (domainDraft[page.id] ?? "").trim();
-    if (!hostname) {
-      setError("Enter a subdomain, e.g. status.example.com");
-      return;
-    }
-    setBusyId(page.id);
-    try {
-      await client.attachCustomHostname(page.id, { hostname });
-      setDomainDraft((d) => {
-        const next = { ...d };
-        delete next[page.id];
-        return next;
-      });
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const refreshDomain = async (page: StatusPage) => {
-    setBusyId(page.id);
-    try {
-      await client.refreshCustomHostname(page.id);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const detachDomain = async (page: StatusPage) => {
-    if (
-      !window.confirm(
-        `Remove the custom domain ${page.customHostname}? The secret link keeps working; ` +
-          `DNS can be removed after this.`,
-      )
-    ) {
-      return;
-    }
-    setBusyId(page.id);
-    try {
-      await client.detachCustomHostname(page.id);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusyId(null);
     }
   };
 
@@ -273,10 +217,8 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
       )}
 
       {pages?.map((page) => {
-        const slugUrl = statusPageUrl(client.appOrigin, page.slug);
-        const publicUrl = statusPagePublicUrl(client.appOrigin, page);
+        const url = statusPageUrl(client.appOrigin, page.slug);
         const busy = busyId === page.id;
-        const hasDomain = page.customHostname != null && page.customHostnameStatus !== "none";
         return (
           <div key={page.id} className="flex flex-col gap-2 rounded-xl border border-border p-4">
             <div className="flex items-start justify-between gap-3">
@@ -317,7 +259,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
 
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <code className="truncate rounded-lg border border-border bg-surface-raised px-2 py-1 text-on-surface-secondary">
-                {publicUrl}
+                {url}
               </code>
               <button
                 type="button"
@@ -328,7 +270,7 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
               </button>
               {page.published && (
                 <a
-                  href={publicUrl}
+                  href={url}
                   target="_blank"
                   rel="noreferrer noopener"
                   className="text-on-surface-tertiary underline hover:text-on-surface"
@@ -337,120 +279,11 @@ export function StatusPagesPanel({ client, onOpenProbes }: StatusPagesPanelProps
                 </a>
               )}
             </div>
-            {page.customHostnameStatus === "active" && publicUrl !== slugUrl && (
-              <p className="text-xs text-on-surface-faint">
-                {gt("Secret link still works:")}{" "}
-                <code className="text-on-surface-tertiary">{slugUrl}</code>
-              </p>
-            )}
             <p className="text-xs text-on-surface-faint">
               {gt(
                 "The link is the only thing protecting this page. Anyone who has it can read it.",
               )}
             </p>
-
-            <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-surface-raised/40 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs font-medium text-on-surface">{gt("Custom domain")}</p>
-                {hasDomain && (
-                  <span className="text-xs text-on-surface-tertiary">
-                    {page.customHostnameStatus === "active"
-                      ? gt("Active")
-                      : page.customHostnameStatus === "pending_ssl"
-                        ? gt("Waiting for certificate")
-                        : page.customHostnameStatus === "pending_dns"
-                          ? gt("Waiting for DNS")
-                          : page.customHostnameStatus === "error"
-                            ? gt("Error")
-                            : page.customHostnameStatus}
-                  </span>
-                )}
-              </div>
-              {!hasDomain ? (
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    htmlFor={`status-domain-${page.id}`}
-                    className="text-xs text-on-surface-tertiary"
-                  >
-                    {gt("Hostname")}
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      id={`status-domain-${page.id}`}
-                      type="text"
-                      value={domainDraft[page.id] ?? ""}
-                      onChange={(e) => setDomainDraft((d) => ({ ...d, [page.id]: e.target.value }))}
-                      // i18n-ignore: example hostname
-                      placeholder="status.example.com"
-                      disabled={busy}
-                      className="min-w-[12rem] flex-1 rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-on-surface placeholder:text-on-surface-faint"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void attachDomain(page)}
-                      disabled={busy}
-                      className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
-                    >
-                      {gt("Attach")}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <code className="text-xs text-on-surface-secondary">{page.customHostname}</code>
-                  {page.customHostnameVerification && (
-                    <div className="space-y-1 text-xs text-on-surface-tertiary">
-                      <p>
-                        CNAME{" "}
-                        <code className="text-on-surface-secondary">{page.customHostname}</code> →{" "}
-                        <code className="text-on-surface-secondary">
-                          {page.customHostnameVerification.cnameTarget}
-                        </code>
-                      </p>
-                      {page.customHostnameVerification.txtName &&
-                        page.customHostnameVerification.txtValue && (
-                          <p>
-                            TXT{" "}
-                            <code className="text-on-surface-secondary">
-                              {page.customHostnameVerification.txtName}
-                            </code>{" "}
-                            ={" "}
-                            <code className="text-on-surface-secondary">
-                              {page.customHostnameVerification.txtValue}
-                            </code>
-                          </p>
-                        )}
-                    </div>
-                  )}
-                  {page.customHostnameError && (
-                    <p className="text-xs text-danger">{page.customHostnameError}</p>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    {page.customHostnameStatus !== "active" && (
-                      <button
-                        type="button"
-                        onClick={() => void refreshDomain(page)}
-                        disabled={busy}
-                        className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-on-surface hover:border-border-strong disabled:opacity-50"
-                      >
-                        {gt("Check DNS")}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => void detachDomain(page)}
-                      disabled={busy}
-                      className="rounded-lg px-3 py-1.5 text-sm text-on-surface-tertiary hover:text-danger disabled:opacity-50"
-                    >
-                      {gt("Remove domain")}
-                    </button>
-                  </div>
-                </>
-              )}
-              <p className="text-xs text-on-surface-faint">
-                {gt("Paid plan. Subdomains only — CNAME to Infrawrench; we issue the certificate.")}
-              </p>
-            </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <button

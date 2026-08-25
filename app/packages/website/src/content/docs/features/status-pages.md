@@ -42,27 +42,6 @@ working immediately and the page stays published at its new one.
 Unpublishing does the same thing more bluntly: the page 404s for everyone until you publish it
 again.
 
-## Custom domain
-
-On a paid plan you can put the page on a subdomain you own — `https://status.acme.com/` —
-instead of (or as well as) the secret slug link. Infrawrench manages TLS via Cloudflare: you
-CNAME the subdomain at the target the app shows, and we issue the certificate.
-
-1. Open the page on the **Probes** tab → **Status pages**.
-2. Under **Custom domain**, enter a subdomain (apex domains are not supported yet) and press
-   **Attach**.
-3. Add the CNAME (and ownership TXT, if shown) at your DNS provider.
-4. Press **Check DNS** until the status reads **Active**.
-
-The secret `/status/…` link keeps working. **New link** still rotates that slug — the vanity
-hostname stays put and is remapped. **Remove domain** detaches the hostname; unpublishing a
-page does not.
-
-Custom domains need the paid plan. Without the Cloudflare side of the deployment configured,
-**Attach** returns a clear configuration error rather than a half-attached hostname.
-
-<insert [Status page editor showing an attached custom domain with CNAME instructions and a Pending DNS badge] here>
-
 ## What a visitor can see, and what they can't
 
 The public payload is built specifically for publication, not filtered down from the internal one.

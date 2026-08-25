@@ -131,11 +131,6 @@ func (c *Client) Delete(ctx context.Context, path string) error {
 	return c.do(ctx, http.MethodDelete, path, nil, nil)
 }
 
-// DeleteInto issues DELETE path and decodes a JSON body into out.
-func (c *Client) DeleteInto(ctx context.Context, path string, out any) error {
-	return c.do(ctx, http.MethodDelete, path, nil, out)
-}
-
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
 	var reader io.Reader
 	if body != nil {

@@ -30,25 +30,13 @@ export function registerStatusPagePaths(ctx: BuildContext) {
     probeEnabled: z.boolean().describe("False when the probe is paused."),
   }).openapi("StatusPageComponent");
 
-  const StatusPageHostnameVerification = strict({
-    cnameTarget: z
-      .string()
-      .describe("Target of the customer's CNAME (e.g. statuspages.infrawrench.com)."),
-    txtName: z.string().optional().describe("Ownership TXT name, when Cloudflare asked for one."),
-    txtValue: z.string().optional().describe("Ownership TXT value, when Cloudflare asked for one."),
-  }).openapi("StatusPageHostnameVerification");
-
-  const StatusPageCustomHostnameStatus = z
-    .enum(["none", "pending_dns", "pending_ssl", "active", "error"])
-    .openapi("StatusPageCustomHostnameStatus");
-
   const StatusPage = strict({
     id: Uuid,
     slug: z
       .string()
       .describe(
-        "The public URL segment on the app host, and the page's access credential there. " +
-          "Generated with real entropy rather than derived from the title.",
+        "The public URL segment, and the page's only access credential. Generated with real " +
+          "entropy rather than derived from the title.",
       ),
     title: z.string(),
     description: z.string().nullable(),
@@ -58,23 +46,10 @@ export function registerStatusPagePaths(ctx: BuildContext) {
     showHistory: z.boolean(),
     showUptime: z.boolean(),
     supportUrl: z.string().nullable(),
-    customHostname: z
-      .string()
-      .nullable()
-      .describe("Vanity subdomain (e.g. status.acme.com), or null when none is attached."),
-    customHostnameStatus: StatusPageCustomHostnameStatus,
-    customHostnameError: z.string().nullable(),
-    customHostnameVerification: StatusPageHostnameVerification.nullable(),
     components: z.array(StatusPageComponent),
     createdAt: IsoDateTime,
     updatedAt: IsoDateTime,
   }).openapi("StatusPage");
-
-  const StatusPageCustomHostnameAttach = strict({
-    hostname: z
-      .string()
-      .describe("Subdomain to attach, e.g. status.example.com. Apex domains are not supported."),
-  }).openapi("StatusPageCustomHostnameAttach");
 
   const StatusPageList = strict({ pages: z.array(StatusPage) }).openapi("StatusPageListResponse");
 
@@ -210,71 +185,11 @@ export function registerStatusPagePaths(ctx: BuildContext) {
     summary: "Issue a new public link",
     description:
       "Replaces the slug, revoking the current public URL immediately — the reroll for a link " +
-      "that ended up somewhere unintended. The page stays published. If a custom hostname is " +
-      "attached, its hostname→slug mapping is updated so the vanity URL keeps working.",
+      "that ended up somewhere unintended. The page stays published.",
     request: { params: OrgIdParam.extend({ id: Uuid }) },
     responses: {
       200: {
         description: "The page, with its new slug",
-        content: { "application/json": { schema: StatusPage } },
-      },
-      404: ErrorResponses[404],
-    },
-  });
-
-  registry.registerPath({
-    method: "post",
-    path: "/api/org/{orgId}/status-pages/{id}/custom-hostname",
-    tags: ["Status pages"],
-    summary: "Attach a custom domain",
-    description:
-      "Creates a Cloudflare Custom Hostname for a subdomain and returns the DNS records the " +
-      "customer must add. Paid plan only. Apex domains are rejected. At most one hostname per page.",
-    request: {
-      params: OrgIdParam.extend({ id: Uuid }),
-      body: { content: { "application/json": { schema: StatusPageCustomHostnameAttach } } },
-    },
-    responses: {
-      200: {
-        description: "The page with custom-hostname fields populated",
-        content: { "application/json": { schema: StatusPage } },
-      },
-      400: ErrorResponses[400],
-      402: ErrorResponses[402],
-      404: ErrorResponses[404],
-    },
-  });
-
-  registry.registerPath({
-    method: "post",
-    path: "/api/org/{orgId}/status-pages/{id}/custom-hostname/refresh",
-    tags: ["Status pages"],
-    summary: "Refresh custom domain status",
-    description:
-      "Re-fetches Cloudflare hostname and certificate status and updates the page record.",
-    request: { params: OrgIdParam.extend({ id: Uuid }) },
-    responses: {
-      200: {
-        description: "The page with refreshed custom-hostname fields",
-        content: { "application/json": { schema: StatusPage } },
-      },
-      400: ErrorResponses[400],
-      404: ErrorResponses[404],
-    },
-  });
-
-  registry.registerPath({
-    method: "delete",
-    path: "/api/org/{orgId}/status-pages/{id}/custom-hostname",
-    tags: ["Status pages"],
-    summary: "Detach a custom domain",
-    description:
-      "Removes the Cloudflare Custom Hostname and the edge hostname→slug mapping. The secret " +
-      "slug URL is unaffected.",
-    request: { params: OrgIdParam.extend({ id: Uuid }) },
-    responses: {
-      200: {
-        description: "The page with custom-hostname fields cleared",
         content: { "application/json": { schema: StatusPage } },
       },
       404: ErrorResponses[404],

@@ -204,10 +204,6 @@ describe("StatusPageEditorModal accessible names", () => {
           showUptime: true,
           published: false,
           slug: "acme",
-          customHostname: null,
-          customHostnameStatus: "none",
-          customHostnameError: null,
-          customHostnameVerification: null,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
           components: [

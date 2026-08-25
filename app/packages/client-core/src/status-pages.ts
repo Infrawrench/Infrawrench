@@ -71,27 +71,9 @@ export interface StatusPageComponent {
   probeEnabled: boolean;
 }
 
-/**
- * Cloudflare Custom Hostname provisioning for a vanity status-page domain.
- * `none` means no hostname is attached; the rest mirror Cloudflare's
- * hostname + SSL readiness (see status-page-edge).
- */
-export type StatusPageCustomHostnameStatus =
-  "none" | "pending_dns" | "pending_ssl" | "active" | "error";
-
-/** DNS records the customer must create to finish attaching a custom domain. */
-export interface StatusPageHostnameVerification {
-  /** Target of the customer's CNAME (e.g. `statuspages.infrawrench.com`). */
-  cnameTarget: string;
-  /** Ownership TXT name, when Cloudflare asked for one. */
-  txtName?: string;
-  /** Ownership TXT value, when Cloudflare asked for one. */
-  txtValue?: string;
-}
-
 export interface StatusPage {
   id: string;
-  /** The public URL segment — the page's only access credential on the app host. */
+  /** The public URL segment — the page's only access credential. */
   slug: string;
   title: string;
   description: string | null;
@@ -100,11 +82,6 @@ export interface StatusPage {
   showHistory: boolean;
   showUptime: boolean;
   supportUrl: string | null;
-  /** Vanity hostname (e.g. `status.acme.com`), or null when none is attached. */
-  customHostname: string | null;
-  customHostnameStatus: StatusPageCustomHostnameStatus;
-  customHostnameError: string | null;
-  customHostnameVerification: StatusPageHostnameVerification | null;
   components: StatusPageComponent[];
   createdAt: string;
   updatedAt: string;
@@ -355,25 +332,6 @@ export function statusPageUrl(origin: string, slug: string): string {
 }
 
 /**
- * Prefer the vanity hostname when it is live; otherwise the secret slug URL.
- * Draft pages still get a slug URL so editors can preview before DNS is ready.
- */
-export function statusPagePublicUrl(
-  origin: string,
-  page: Pick<StatusPage, "slug" | "customHostname" | "customHostnameStatus">,
-): string {
-  if (page.customHostname && page.customHostnameStatus === "active") {
-    return `https://${page.customHostname}/`;
-  }
-  return statusPageUrl(origin, page.slug);
-}
-
-/** Body of `POST .../custom-hostname`. */
-export interface StatusPageCustomHostnameAttach {
-  hostname: string;
-}
-
-/**
  * Group components in render order without sorting them.
  *
  * Order is the org's choice, so groups appear in the order their first member
@@ -462,43 +420,6 @@ export async function rotateStatusPageSlug(
   });
 }
 
-/** Attach a custom hostname (`resources:write`, paid plan). */
-export async function attachStatusPageCustomHostname(
-  api: CloudFetch,
-  orgId: string,
-  pageId: string,
-  body: StatusPageCustomHostnameAttach,
-): Promise<StatusPage | null> {
-  return api.org<StatusPage>(orgId, `/status-pages/${encodeURIComponent(pageId)}/custom-hostname`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
-
-/** Re-check Cloudflare hostname + SSL status (`resources:write`). */
-export async function refreshStatusPageCustomHostname(
-  api: CloudFetch,
-  orgId: string,
-  pageId: string,
-): Promise<StatusPage | null> {
-  return api.org<StatusPage>(
-    orgId,
-    `/status-pages/${encodeURIComponent(pageId)}/custom-hostname/refresh`,
-    { method: "POST" },
-  );
-}
-
-/** Detach the custom hostname (`resources:write`). */
-export async function detachStatusPageCustomHostname(
-  api: CloudFetch,
-  orgId: string,
-  pageId: string,
-): Promise<StatusPage | null> {
-  return api.org<StatusPage>(orgId, `/status-pages/${encodeURIComponent(pageId)}/custom-hostname`, {
-    method: "DELETE",
-  });
-}
-
 /**
  * Read a public status page by slug. Deliberately a plain `fetch` against the
  * app origin with no credentials: this endpoint takes no auth, and sending a
@@ -510,21 +431,6 @@ export async function fetchPublicStatusPage(
 ): Promise<PublicStatusPage | null> {
   const res = await fetch(`${origin.replace(/\/+$/, "")}/api/status/${encodeURIComponent(slug)}`, {
     headers: { Accept: "application/json" },
-  });
-  if (!res.ok) return null;
-  return (await res.json()) as PublicStatusPage;
-}
-
-/**
- * Read the public page on a vanity host. The status-page-edge Worker resolves
- * Host → slug and proxies to `/api/status/{slug}`; callers use a relative URL
- * so the request stays on the custom domain.
- */
-export async function fetchPublicStatusPageOnHost(origin = ""): Promise<PublicStatusPage | null> {
-  const base = origin.replace(/\/+$/, "");
-  const res = await fetch(`${base}/api/status`, {
-    headers: { Accept: "application/json" },
-    credentials: "omit",
   });
   if (!res.ok) return null;
   return (await res.json()) as PublicStatusPage;

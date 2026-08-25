@@ -206,9 +206,8 @@ resource "infrawrench_probe" "api" {
 }
 
 resource "infrawrench_status_page" "public" {
-  title           = "Acme status"
-  published       = true
-  custom_hostname = "status.example.com"
+  title     = "Acme status"
+  published = true
 
   component {
     probe_id = infrawrench_probe.api.id
