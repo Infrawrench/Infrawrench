@@ -71,13 +71,17 @@ export function WebRunbooksPanel({ orgId, openWorkflow }: WebRunbooksPanelProps)
   }, [orgId, reloadKey]);
 
   // Workflows are only needed by the editor's step picker, so a failure here
-  // costs the picker and nothing else.
+  // costs the picker and nothing else. The route returns the array bare.
   useEffect(() => {
     if (!canEdit) return;
     let cancelled = false;
-    apiGet<{ workflows: WorkflowSummary[] }>(`/api/org/${orgId}/workflows`)
+    apiGet<WorkflowSummary[]>(`/api/org/${orgId}/workflows`)
       .then((response) => {
-        if (!cancelled) setWorkflows(response.workflows ?? []);
+        if (!cancelled) {
+          setWorkflows(
+            (Array.isArray(response) ? response : []).map(({ id, name }) => ({ id, name })),
+          );
+        }
       })
       .catch(() => {
         if (!cancelled) setWorkflows([]);

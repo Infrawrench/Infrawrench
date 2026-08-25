@@ -18,6 +18,12 @@ import {
   updateCloudRunbook,
   updateCloudRunbookStep,
 } from "@/lib/cloud-resources";
+import { listCloudWorkflows } from "@/lib/cloud-workflows";
+
+interface DesktopRunbooksPanelProps {
+  /** Open a workflow a step names in its workspace tab. */
+  openWorkflow: (workflowId: string) => void;
+}
 
 /**
  * Desktop host for the shared runbooks screen. Cloud only: a runbook is a
@@ -25,11 +31,12 @@ import {
  * a single-machine workspace has nowhere to keep. Local mode gets the
  * Changes/Costs treatment — an explicit "sign in" message.
  */
-export function DesktopRunbooksPanel() {
+export function DesktopRunbooksPanel({ openWorkflow }: DesktopRunbooksPanelProps) {
   const gt = useGT();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const [runbooks, setRunbooks] = useState<Runbook[] | null>(null);
   const [runs, setRuns] = useState<RunbookRun[] | null>(null);
+  const [workflows, setWorkflows] = useState<Array<{ id: string; name: string }>>([]);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const reload = useRef<() => void>(() => {});
@@ -65,6 +72,23 @@ export function DesktopRunbooksPanel() {
       cancelled = true;
     };
   }, [activeCloudOrgId, reloadKey]);
+
+  // Workflows are only needed by the editor's step picker, so a failure here
+  // costs the picker and nothing else.
+  useEffect(() => {
+    if (!activeCloudOrgId) return;
+    let cancelled = false;
+    listCloudWorkflows(activeCloudOrgId)
+      .then((rows) => {
+        if (!cancelled) setWorkflows(rows.map(({ id, name }) => ({ id, name })));
+      })
+      .catch(() => {
+        if (!cancelled) setWorkflows([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCloudOrgId]);
 
   const create = useCallback(
     async (input: RunbookInput) => {
@@ -144,6 +168,7 @@ export function DesktopRunbooksPanel() {
       runs={runs}
       error={error}
       onRetry={retry}
+      workflowOptions={workflows}
       // The desktop does not read `/team/me`, so the editors are always offered
       // and a member without `org:settings:write` gets the server's 403 in the
       // section's error banner — the Backups stance.
@@ -153,6 +178,7 @@ export function DesktopRunbooksPanel() {
       onStartRun={startRun}
       onUpdateStep={updateStep}
       onCloseRun={closeRun}
+      onOpenWorkflow={openWorkflow}
     />
   );
 }

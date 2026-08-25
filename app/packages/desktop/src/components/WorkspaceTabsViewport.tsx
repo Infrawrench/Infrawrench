@@ -10,6 +10,7 @@ import {
   costReportsTabTarget,
   invoicesTabTarget,
   resourceTabTarget,
+  workflowsTabTarget,
   DeploymentsPanel,
   IssueFilingProvider,
   useUIStore,
@@ -465,6 +466,9 @@ function renderPanel(
           // Keyed by mode so switching org (or dropping to local) remounts and
           // refetches rather than showing the previous org's procedures.
           key={activeCloudOrgId ?? "local"}
+          openWorkflow={(workflowId) =>
+            void navigate(getWorkspaceNavigateArgs(workflowsTabTarget(workflowId)))
+          }
         />
       );
     case "backups":
