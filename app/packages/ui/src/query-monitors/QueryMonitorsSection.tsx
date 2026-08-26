@@ -29,7 +29,9 @@ export interface QueryMonitorsSectionProps {
   /**
    * What the query can run against: accounts with their own SQL driver, and
    * the SQL-capable resources inside each (a ClickHouse service, a D1 or
-   * Turso database, a BigQuery dataset). Empty and the editor says so.
+   * Turso database, a BigQuery dataset, or a managed database reached through
+   * a SQL peer integration — a Neon database, an RDS instance). Empty and the
+   * editor says so.
    */
   targetOptions?: ReadonlyArray<QueryMonitorTargetAccount> | undefined;
   onCreate?: ((input: QueryMonitorInput) => Promise<void>) | undefined;

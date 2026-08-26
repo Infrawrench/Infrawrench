@@ -24,10 +24,17 @@ import {
   type QueryMonitorTargetAccount,
 } from "@infrawrench/client-core";
 
+import {
+  evaluatePeerIntegrationUnreachable,
+  type PeerPluginIntegration,
+  type ResourceTypeDefinition,
+} from "@infrawrench/plugin-base";
+
 import { db } from "../db/client";
 import { accounts, resources } from "../db/schema";
 import { queryMonitors } from "../db/query-monitor-schema";
 import { getOrgAccountClient } from "../org-accounts";
+import { buildPeerPluginClient, filterVisiblePeerIntegrations } from "../peer-clients";
 import { getPlugin } from "../plugin-loader";
 import { rewriteConnectionForTunnel } from "../tunnel-resolver";
 import { sqlDrivers } from "../drivers";
@@ -116,6 +123,9 @@ export async function listQueryMonitors(organizationId: string): Promise<QueryMo
  * What a resource type must declare for its instances to be offered as monitor
  * targets: a per-resource SQL driver, or a REST query API (`supportsRestQuery`,
  * the BigQuery/Spanner shape). Exported for the targets test.
+ *
+ * This is the *own-declaration* check only — a type with neither can still
+ * qualify through {@link sqlPeerIntegrationsOf}, the peer-integration shape.
  */
 export function isSqlTargetType(typeDef: {
   resourceSqlDriver?: unknown;
@@ -125,14 +135,63 @@ export function isSqlTargetType(typeDef: {
 }
 
 /**
+ * The third way a resource can be a SQL target: a peer integration onto a
+ * plugin that *is* a SQL driver. A Neon database maps its connection string
+ * onto the `postgres` plugin, an RDS instance onto `postgres`/`mysql`, an
+ * Azure SQL database onto `mssql` — none of them declare `resourceSqlDriver`,
+ * because the SQL editor reaches them through the peer tab. The monitor picker
+ * and runner must reach them the same way, or a whole class of managed
+ * databases silently cannot be monitored.
+ *
+ * This is the static half: the peer plugin declares `manifest.sqlDriver`, the
+ * driver is one this host ships, and the integration maps something onto the
+ * driver's `credentialKey`. Per-resource gates (`showWhen`, `requiresFields`,
+ * `unreachableWhen`) need the resource's fields and are applied by callers via
+ * {@link visibleSqlPeerIntegrations}. Exported for the targets test.
+ */
+export async function sqlPeerIntegrationsOf(
+  typeDef: Pick<ResourceTypeDefinition, "peerIntegrations">,
+): Promise<PeerPluginIntegration[]> {
+  const candidates: PeerPluginIntegration[] = [];
+  for (const integration of typeDef.peerIntegrations ?? []) {
+    const peer = await getPlugin(integration.pluginId);
+    const peerSql = peer?.plugin.manifest.sqlDriver;
+    if (!peerSql || !sqlDrivers.has(peerSql.driver)) continue;
+    if (!integration.credentialMappings.some((m) => m.credentialKey === peerSql.credentialKey)) {
+      continue;
+    }
+    candidates.push(integration);
+  }
+  return candidates;
+}
+
+/**
+ * The subset of a type's SQL peer integrations a specific resource's fields
+ * let through — the same `showWhen`/`requiresFields` filtering the peer tabs
+ * apply (an engine-gated DO cluster running Redis has a `postgres` integration
+ * declared but not visible), minus any the provider marked unreachable from
+ * here (private-IP-only Cloud SQL).
+ */
+function visibleSqlPeerIntegrations(
+  candidates: PeerPluginIntegration[],
+  fields: Record<string, unknown> | undefined,
+): PeerPluginIntegration[] {
+  return filterVisiblePeerIntegrations(candidates, fields).filter(
+    (i) => !evaluatePeerIntegrationUnreachable(i, fields),
+  );
+}
+
+/**
  * The accounts and resources a monitor's query can actually run against —
  * what the editor's target picker shows.
  *
  * Derived from static plugin metadata rather than by instantiating clients:
  * `manifest.sqlDriver` marks an account-level connection, and a resource
- * qualifies when its type passes {@link isSqlTargetType}. Accounts with
- * neither are omitted entirely — offering them would only manufacture
- * "That account has no SQL driver" runs.
+ * qualifies when its type passes {@link isSqlTargetType} or carries a SQL
+ * peer integration its synced fields let through ({@link sqlPeerIntegrationsOf}
+ * — the Neon/RDS/Cloud SQL shape). Accounts with none of these are omitted
+ * entirely — offering them would only manufacture "That account has no SQL
+ * driver" runs.
  */
 export async function listQueryMonitorTargets(
   organizationId: string,
@@ -148,30 +207,44 @@ export async function listQueryMonitorTargets(
       name: resources.displayName,
       accountId: resources.accountId,
       resourceTypeId: resources.resourceTypeId,
+      // The peer-integration gates (engine checks, "must have a public
+      // endpoint") read fields, so the synced field bag rides along.
+      fields: resources.fieldsJson,
     })
     .from(resources)
     .where(and(eq(resources.organizationId, organizationId), isNull(resources.deletedAt)))
     .orderBy(asc(resources.displayName));
 
   const targets: QueryMonitorTargetAccount[] = [];
+  const peerCandidates = new Map<ResourceTypeDefinition, PeerPluginIntegration[]>();
   for (const account of accountRows) {
     const loaded = await getPlugin(account.pluginId);
     if (!loaded) continue;
     const types = new Map(loaded.plugin.resourceTypes.map((t) => [t.id, t]));
     const accountSql = Boolean(loaded.plugin.manifest.sqlDriver);
-    const accountResources = resourceRows.flatMap((resource) => {
-      if (resource.accountId !== account.id) return [];
+    const accountResources: QueryMonitorTargetAccount["resources"] = [];
+    for (const resource of resourceRows) {
+      if (resource.accountId !== account.id) continue;
       const typeDef = types.get(resource.resourceTypeId);
-      if (!typeDef || !isSqlTargetType(typeDef)) return [];
-      return [
-        {
-          id: resource.id,
-          name: resource.name,
-          resourceTypeId: resource.resourceTypeId,
-          typeName: typeDef.displayName,
-        },
-      ];
-    });
+      if (!typeDef) continue;
+      let qualifies = isSqlTargetType(typeDef);
+      if (!qualifies) {
+        let candidates = peerCandidates.get(typeDef);
+        if (!candidates) {
+          candidates = await sqlPeerIntegrationsOf(typeDef);
+          peerCandidates.set(typeDef, candidates);
+        }
+        const fields = (resource.fields ?? undefined) as Record<string, unknown> | undefined;
+        qualifies = visibleSqlPeerIntegrations(candidates, fields).length > 0;
+      }
+      if (!qualifies) continue;
+      accountResources.push({
+        id: resource.id,
+        name: resource.name,
+        resourceTypeId: resource.resourceTypeId,
+        typeName: typeDef.displayName,
+      });
+    }
     if (accountSql || accountResources.length > 0) {
       targets.push({ id: account.id, name: account.name, accountSql, resources: accountResources });
     }
@@ -387,11 +460,12 @@ const MAX_PREVIEW_ROWS = 20;
 /**
  * Run one monitor's query against its account.
  *
- * Mirrors the three connection paths the SQL editor route resolves — a
- * REST-based `executeQuery`, a per-resource driver, and the account-level
- * driver — because a monitor must be able to watch anything the editor can
- * query. It lives here rather than in the web route so the poller, which has no
- * HTTP context, runs exactly the same resolution.
+ * Mirrors the connection paths the SQL editor resolves — a REST-based
+ * `executeQuery`, a per-resource driver, a SQL peer integration (the Neon /
+ * RDS / Cloud SQL shape, which the editor reaches through the peer tab), and
+ * the account-level driver — because a monitor must be able to watch anything
+ * the editor can query. It lives here rather than in the web route so the
+ * poller, which has no HTTP context, runs exactly the same resolution.
  *
  * Never throws: a failed query is an outcome (`unknown`), not an exception, and
  * the pass that calls this must not be able to fail a poller tick.
@@ -428,21 +502,90 @@ export async function runMonitorQuery(
     } else if (monitor.resourceId && monitor.resourceTypeId) {
       const typeDef = plugin.resourceTypes.find((t) => t.id === monitor.resourceTypeId);
       const rtDriver = typeDef?.resourceSqlDriver;
-      if (!rtDriver) {
+      if (rtDriver) {
+        const driver = sqlDrivers.get(rtDriver.driver);
+        if (!driver) {
+          return { ...empty, error: `Unknown SQL driver: ${rtDriver.driver}`, durationMs: 0 };
+        }
+        let connection = await client.resolveOutput(
+          monitor.resourceTypeId,
+          monitor.resourceId,
+          rtDriver.connectionStringOutputKey,
+          monitor.accountId,
+        );
+        connection = await rewriteConnectionForTunnel(monitor.accountId, connection);
+        rows = (await driver.query(connection, monitor.sql)) as Record<string, unknown>[];
+      } else if (typeDef) {
+        // A database reached through a peer integration — the target the
+        // picker offered via sqlPeerIntegrationsOf. Resolve the peer plugin's
+        // credentials from the parent resource's outputs (running the
+        // credential rewriters, exactly as the peer tab does) and run the
+        // peer's account-level driver on them.
+        const candidates = await sqlPeerIntegrationsOf(typeDef);
+        if (candidates.length === 0) {
+          return { ...empty, error: "That resource type has no SQL driver.", durationMs: 0 };
+        }
+        const instance = await client
+          .getResource(monitor.resourceTypeId, monitor.resourceId, monitor.accountId)
+          .catch(() => null);
+        // The visibility gates read fields; when the provider can't produce
+        // the live instance, fall back to the synced row so a transient
+        // provider error surfaces as a query failure, not a vanished target.
+        let fields = instance?.fields as Record<string, unknown> | undefined;
+        if (!fields) {
+          const [row] = await db
+            .select({ fields: resources.fieldsJson })
+            .from(resources)
+            .where(
+              and(
+                eq(resources.organizationId, organizationId),
+                eq(resources.id, monitor.resourceId),
+              ),
+            )
+            .limit(1);
+          fields = (row?.fields ?? undefined) as Record<string, unknown> | undefined;
+        }
+        const integration = filterVisiblePeerIntegrations(candidates, fields)[0];
+        if (!integration) {
+          return { ...empty, error: "That resource has no SQL surface.", durationMs: 0 };
+        }
+        const guidance = evaluatePeerIntegrationUnreachable(integration, fields);
+        if (guidance) {
+          return { ...empty, error: guidance.title, durationMs: 0 };
+        }
+        const built = await buildPeerPluginClient({
+          parentClient: client,
+          parentPluginId: plugin.manifest.id,
+          parentResourceTypeId: monitor.resourceTypeId,
+          parentResourceId: monitor.resourceId,
+          parentResource: instance,
+          integration,
+          accountId: monitor.accountId,
+          organizationId,
+        });
+        const peerSql = built?.plugin.manifest.sqlDriver;
+        if (!built || !peerSql) {
+          return {
+            ...empty,
+            error: `The ${integration.pluginId} plugin is not available.`,
+            durationMs: 0,
+          };
+        }
+        const driver = sqlDrivers.get(peerSql.driver);
+        if (!driver) {
+          return { ...empty, error: `Unknown SQL driver: ${peerSql.driver}`, durationMs: 0 };
+        }
+        let connection = built.credentials[peerSql.credentialKey] ?? "";
+        connection = await rewriteConnectionForTunnel(monitor.accountId, connection);
+        const caCert = peerSql.caCertKey ? (built.credentials[peerSql.caCertKey] ?? "") : "";
+        rows = (await driver.query(
+          connection,
+          monitor.sql,
+          caCert ? { caCert } : undefined,
+        )) as Record<string, unknown>[];
+      } else {
         return { ...empty, error: "That resource type has no SQL driver.", durationMs: 0 };
       }
-      const driver = sqlDrivers.get(rtDriver.driver);
-      if (!driver) {
-        return { ...empty, error: `Unknown SQL driver: ${rtDriver.driver}`, durationMs: 0 };
-      }
-      let connection = await client.resolveOutput(
-        monitor.resourceTypeId,
-        monitor.resourceId,
-        rtDriver.connectionStringOutputKey,
-        monitor.accountId,
-      );
-      connection = await rewriteConnectionForTunnel(monitor.accountId, connection);
-      rows = (await driver.query(connection, monitor.sql)) as Record<string, unknown>[];
     } else if (plugin.manifest.sqlDriver) {
       const driver = sqlDrivers.get(plugin.manifest.sqlDriver.driver);
       if (!driver) {
@@ -454,7 +597,14 @@ export async function runMonitorQuery(
       }
       let connection = credentials[plugin.manifest.sqlDriver.credentialKey] ?? "";
       connection = await rewriteConnectionForTunnel(monitor.accountId, connection);
-      rows = (await driver.query(connection, monitor.sql)) as Record<string, unknown>[];
+      const caCert = plugin.manifest.sqlDriver.caCertKey
+        ? (credentials[plugin.manifest.sqlDriver.caCertKey] ?? "")
+        : "";
+      rows = (await driver.query(
+        connection,
+        monitor.sql,
+        caCert ? { caCert } : undefined,
+      )) as Record<string, unknown>[];
     }
 
     if (rows === null) {

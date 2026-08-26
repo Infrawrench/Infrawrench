@@ -14,8 +14,13 @@ import { fakePostgres } from "./helpers/fake-postgres";
 const pg = fakePostgres();
 vi.mock("../db/client", () => ({ db: pg.db }));
 
-const { createQueryMonitor, isSqlTargetType, listQueryMonitorTargets, QueryMonitorInputError } =
-  await import("../query-monitors/store");
+const {
+  createQueryMonitor,
+  isSqlTargetType,
+  listQueryMonitorTargets,
+  QueryMonitorInputError,
+  sqlPeerIntegrationsOf,
+} = await import("../query-monitors/store");
 const { BUNDLED_PLUGINS } = await import("../plugin-loader");
 
 beforeEach(() => {
@@ -45,6 +50,35 @@ describe("isSqlTargetType", () => {
   });
 });
 
+describe("sqlPeerIntegrationsOf", () => {
+  it("finds the managed databases that expose SQL through a peer plugin", async () => {
+    // None of these declare resourceSqlDriver — their SQL surface is a peer
+    // integration mapping a connection string onto postgres/mysql/mssql.
+    expect(isSqlTargetType(typeOf("neon", "neon-database"))).toBe(false);
+    await expect(sqlPeerIntegrationsOf(typeOf("neon", "neon-database"))).resolves.toMatchObject([
+      { pluginId: "postgres" },
+    ]);
+    await expect(sqlPeerIntegrationsOf(typeOf("aws", "rds-instance"))).resolves.not.toHaveLength(0);
+    await expect(
+      sqlPeerIntegrationsOf(typeOf("azure", "azure-sql-database")).then((l) =>
+        l.map((i) => i.pluginId),
+      ),
+    ).resolves.toContain("mssql");
+    // DO's managed database declares engine-gated peers; the static half keeps
+    // the SQL ones (postgres, mysql) and drops redis/valkey/mongodb.
+    const doIntegrations = await sqlPeerIntegrationsOf(typeOf("digitalocean", "managed-database"));
+    expect(doIntegrations.map((i) => i.pluginId).sort()).toEqual(["mysql", "postgres"]);
+  });
+
+  it("returns nothing for a type with no SQL peers", async () => {
+    await expect(sqlPeerIntegrationsOf(typeOf("gcp", "gce-instance"))).resolves.toEqual([]);
+    // A Kubernetes peer maps a kubeconfig, not a SQL connection.
+    await expect(sqlPeerIntegrationsOf(typeOf("digitalocean", "doks-cluster"))).resolves.toEqual(
+      [],
+    );
+  });
+});
+
 describe("listQueryMonitorTargets", () => {
   it("offers account-level drivers, per-resource databases, and omits the rest", async () => {
     // Accounts, in the projection order (id, name, pluginId).
@@ -54,27 +88,36 @@ describe("listQueryMonitorTargets", () => {
       { id: "acc-hz", name: "Hetzner", pluginId: "hetzner" },
       { id: "acc-pg", name: "Prod PG", pluginId: "postgres" },
     ]);
-    // Resources, in the projection order (id, name, accountId, resourceTypeId).
+    // Resources, in the projection order (id, name, accountId, resourceTypeId, fields).
     pg.queueRows([
       {
         id: "acc-ch:service:s1",
         name: "analytics",
         accountId: "acc-ch",
         resourceTypeId: "ch-service",
+        fields: {},
       },
       {
         id: "acc-gcp:bigquery-dataset:events",
         name: "events",
         accountId: "acc-gcp",
         resourceTypeId: "bigquery-dataset",
+        fields: {},
       },
       {
         id: "acc-gcp:gce-instance:vm1",
         name: "vm1",
         accountId: "acc-gcp",
         resourceTypeId: "gce-instance",
+        fields: {},
       },
-      { id: "acc-hz:server:h1", name: "worker", accountId: "acc-hz", resourceTypeId: "server" },
+      {
+        id: "acc-hz:server:h1",
+        name: "worker",
+        accountId: "acc-hz",
+        resourceTypeId: "server",
+        fields: {},
+      },
     ]);
 
     const targets = await listQueryMonitorTargets("org-1");
@@ -101,6 +144,56 @@ describe("listQueryMonitorTargets", () => {
     const postgresAccount = targets.find((t) => t.id === "acc-pg")!;
     expect(postgresAccount.accountSql).toBe(true);
     expect(postgresAccount.resources).toEqual([]);
+  });
+
+  it("offers databases whose SQL surface is a peer integration, gated by fields", async () => {
+    pg.queueRows([
+      { id: "acc-do", name: "DO", pluginId: "digitalocean" },
+      { id: "acc-neon", name: "Neon", pluginId: "neon" },
+    ]);
+    pg.queueRows([
+      // Engine-gated: the postgres peer is visible only when engine is pg, so
+      // the Valkey cluster is not a SQL target and the Postgres cluster is.
+      {
+        id: "acc-do:managed-database:cache",
+        name: "cache",
+        accountId: "acc-do",
+        resourceTypeId: "managed-database",
+        fields: { engine: "valkey" },
+      },
+      {
+        id: "acc-do:managed-database:main",
+        name: "main",
+        accountId: "acc-do",
+        resourceTypeId: "managed-database",
+        fields: { engine: "pg" },
+      },
+      // The reported gap: a Neon database is a postgres peer with no gates.
+      {
+        id: "acc-neon:neon-database:app",
+        name: "app",
+        accountId: "acc-neon",
+        resourceTypeId: "neon-database",
+        fields: {},
+      },
+    ]);
+
+    const targets = await listQueryMonitorTargets("org-1");
+    expect(targets.map((t) => t.id)).toEqual(["acc-do", "acc-neon"]);
+
+    const doAccount = targets.find((t) => t.id === "acc-do")!;
+    expect(doAccount.accountSql).toBe(false);
+    expect(doAccount.resources.map((r) => r.id)).toEqual(["acc-do:managed-database:main"]);
+
+    const neon = targets.find((t) => t.id === "acc-neon")!;
+    expect(neon.resources).toEqual([
+      {
+        id: "acc-neon:neon-database:app",
+        name: "app",
+        resourceTypeId: "neon-database",
+        typeName: typeOf("neon", "neon-database").displayName,
+      },
+    ]);
   });
 });
 

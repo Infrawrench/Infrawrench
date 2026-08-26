@@ -30,8 +30,14 @@ account: an account whose credentials are themselves a database connection
 (a Postgres or MySQL account) shows up as _Entire account_, and a database
 that is a **resource inside an account** shows up under its own name — a
 ClickHouse service, a Cloudflare D1 or Turso database, a Databricks SQL
-warehouse, a BigQuery dataset or Spanner database. Accounts with neither are
-not offered; a monitor pointed at one could only ever fail.
+warehouse, a BigQuery dataset or Spanner database. Managed databases that
+open a database tab on their detail page qualify the same way: a Neon
+project, branch or database, a PlanetScale branch, an RDS instance or
+cluster, Redshift, Cloud SQL, AlloyDB, an Azure SQL database or flexible
+server, and DigitalOcean, OVH or Scaleway managed databases (SQL engines
+only — a cluster running Valkey or MongoDB is not offered, and neither is an
+instance without a reachable endpoint). Accounts with none of these are not
+offered; a monitor pointed at one could only ever fail.
 
 - **First value** compares the first column of the first row — the shape of
   `SELECT count(*) …`.
