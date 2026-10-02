@@ -212,7 +212,17 @@ export class TailscaleClient implements PluginClient {
           children: [
             {
               kind: "key-value-list",
-              items: labeledFieldItems(resource.fields, [deviceType], "device"),
+              // Fields stay boolean for status logic; show them as Yes/No.
+              items: labeledFieldItems(
+                Object.fromEntries(
+                  Object.entries(resource.fields).map(([k, v]) => [
+                    k,
+                    typeof v === "boolean" ? (v ? "Yes" : "No") : v,
+                  ]),
+                ),
+                [deviceType],
+                "device",
+              ),
             },
             {
               kind: "text",

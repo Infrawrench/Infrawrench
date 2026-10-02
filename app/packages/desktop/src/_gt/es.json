@@ -9964,7 +9964,7 @@
   "e1377509aef7f1a6": "Actualiza la cuenta de servicio para ver sus dispositivos.",
   "9d128425cb2f13fa": "Cuenta de servicio",
   "6bddc0fc3444f89f": "Selecciona una cuenta",
-  "2eead672a3a45589": "Añade primero una cuenta de Tailscale y vuelve aquí para registrar este servidor.",
+  "8495bcb78cee8d9d": "Ninguna de tus cuentas puede instalar un servicio por SSH todavía. Añade una y vuelve aquí.",
   "544caedd0b5c5f91": "Instalando…",
   "a308ee4b57d2cbf1": "Instalar y conectar",
   "bb7379afe5b0892a": "Puerto SSH",

@@ -44,7 +44,7 @@ export function SshInstallSheet({
           ) : (
             <Text style={{ color: colors.text }}>
               {query.error?.message ||
-                "Add a Tailscale account on web or desktop first, then return here to enroll this server."}
+                "None of your accounts can install a service over SSH yet. Add one on web or desktop, then return here."}
             </Text>
           )}
           {query.isError && <Button label="Retry" onPress={() => void query.refetch()} />}
@@ -94,7 +94,12 @@ export function SshInstallSheet({
     <PromptCommandSheet
       visible
       title="Install service on server"
-      description="Installs Tailscale over SSH and joins your tailnet. Requires Linux, root or passwordless sudo, and outbound HTTPS. Device approval may be required. Existing SSH and DNS settings are preserved."
+      // Each installer describes itself; with several, the choice is made in the picker.
+      description={
+        query.data.accounts.length === 1
+          ? query.data.accounts[0]!.description
+          : "Installs the selected account's service on this server over SSH."
+      }
       fields={fields}
       submitLabel="Install and connect"
       onCancel={onClose}

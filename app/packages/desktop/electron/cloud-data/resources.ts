@@ -1,5 +1,7 @@
 import { ipcMain } from "electron";
-import { cloudFetch } from "./shared";
+import { cloudFetch, fetchWithHostKeyPrompt } from "./shared";
+import { getAccessToken } from "../cloud-auth";
+import { CLOUD_URL } from "../../env";
 
 ipcMain.handle(
   "cloud_dependency_graph",
@@ -459,6 +461,34 @@ ipcMain.handle(
 ipcMain.handle("cloud_ssh_install_accounts", async (_e, { orgId }: { orgId: string }) =>
   cloudFetch(orgId, "/resources/ssh-install/accounts"),
 );
-ipcMain.handle("cloud_ssh_install", async (_e, { orgId, body }: { orgId: string; body: unknown }) =>
-  cloudFetch(orgId, "/resources/ssh-install", { method: "POST", body: JSON.stringify(body) }),
+// The install connects to the host from the cloud, so a first contact answers
+// 409 ssh_host_key_trust_required; prompt and retry like SFTP does.
+ipcMain.handle(
+  "cloud_ssh_install",
+  async (_e, { orgId, body }: { orgId: string; body: unknown }) => {
+    const token = await getAccessToken();
+    if (!token) throw new Error("Not authenticated to Infrawrench Cloud");
+    const res = await fetchWithHostKeyPrompt(
+      orgId,
+      `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}/resources/ssh-install`,
+      () => ({
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      token,
+    );
+    const text = await res.text();
+    if (!res.ok) {
+      let message = text;
+      try {
+        const parsed = JSON.parse(text) as { error?: unknown; message?: unknown };
+        message = String(parsed.message ?? parsed.error ?? text);
+      } catch {
+        /* not JSON; keep the raw text */
+      }
+      throw new Error(message || `SSH installation failed (${res.status}).`);
+    }
+    return JSON.parse(text) as unknown;
+  },
 );

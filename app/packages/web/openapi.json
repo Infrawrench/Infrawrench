@@ -13010,6 +13010,10 @@
           "hasSftpBrowser": {
             "type": "boolean"
           },
+          "supportsSshInstall": {
+            "type": "boolean",
+            "description": "Whether the generic SSH service installer can target this resource."
+          },
           "sshHost": {
             "type": [
               "string",

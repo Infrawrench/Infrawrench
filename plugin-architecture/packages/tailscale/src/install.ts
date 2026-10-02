@@ -11,7 +11,8 @@ export const INSTALL_MESSAGES = [
 // https://tailscale.com/docs/install/linux
 // https://tailscale.com/docs/reference/tailscale-cli/up
 const MARKER = "__INFRAWRENCH_TAILSCALE_STATUS__";
-const statusCommand = `printf '\\n${MARKER}\\n'; tailscale status --json || true`;
+const UP_ERROR_MARKER = "__INFRAWRENCH_TAILSCALE_UP_ERROR__";
+const statusCommand = `printf '\\n${MARKER}\\n'; tailscale status --json </dev/null || true`;
 
 function asRoot(script: string): string {
   return `set -eu
@@ -39,7 +40,9 @@ if ! command -v tailscale >/dev/null 2>&1; then
   else
     echo 'Install curl or wget before installing Tailscale.' >&2; exit 1
   fi
-  sh "$installer"
+  # The script reaches this shell on stdin; where sh is bash, a package
+  # manager reading stdin would swallow the rest of it.
+  sh "$installer" </dev/null
 fi
 ${statusCommand}`);
 
@@ -48,15 +51,34 @@ interface Status {
   Self?: { ID?: string; TailscaleIPs?: string[]; DNSName?: string };
 }
 
+const NOT_RUNNING =
+  "Tailscale did not report its status. Check that the tailscaled service is running on this server (it needs systemd or another init system to start it).";
+
 export function parseStatus(output: string): Status {
   const start = output.lastIndexOf(MARKER);
   if (start < 0) throw new Error("Tailscale did not return its status.");
-  const status = JSON.parse(output.slice(start + MARKER.length).trim()) as Status;
-  if (!status || typeof status.BackendState !== "string") {
-    throw new Error("Tailscale returned an invalid status. Check that tailscaled is running.");
+  let status: Status;
+  try {
+    status = JSON.parse(output.slice(start + MARKER.length).trim()) as Status;
+  } catch {
+    // `tailscale status` prints nothing on stdout when it cannot reach tailscaled.
+    throw new Error(NOT_RUNNING);
   }
+  if (!status || typeof status.BackendState !== "string") throw new Error(NOT_RUNNING);
   return status;
 }
+
+/** What `tailscale up` printed when it failed, if it did. */
+export function parseUpError(output: string): string | undefined {
+  const start = output.indexOf(UP_ERROR_MARKER);
+  if (start < 0) return undefined;
+  const end = output.indexOf(MARKER, start);
+  const text = output.slice(start + UP_ERROR_MARKER.length, end < 0 ? undefined : end).trim();
+  return text || undefined;
+}
+
+const CUSTOM_SETTINGS =
+  "Tailscale on this server was previously configured with custom settings, so it will not accept new ones without them. Run `tailscale up` there with its existing flags (or `--reset` to discard them), then try again.";
 
 export function enrollmentScript(key: string): string {
   // Constrain the only interpolated secret, even when the API returns unexpected data.
@@ -68,7 +90,10 @@ key_file=$(mktemp)
 trap 'rm -f "$key_file"' EXIT HUP INT TERM
 printf '%s' '${key}' > "$key_file"
 # Do not enable Tailscale SSH, reset preferences, or take over DNS on the host.
-tailscale up --auth-key="file:$key_file" --accept-dns=false --timeout=60s || {
+err_file=$(mktemp)
+trap 'rm -f "$key_file" "$err_file"' EXIT HUP INT TERM
+tailscale up --auth-key="file:$key_file" --accept-dns=false --timeout=60s </dev/null 2>"$err_file" || {
+  printf '\\n${UP_ERROR_MARKER}\\n'; tail -c 4000 "$err_file"
   ${statusCommand}
   exit 0
 }
@@ -112,9 +137,14 @@ export async function installOnSsh(
   let cleanupFailed = false;
   let failure: Error | undefined;
   try {
-    const after = parseStatus(await context.exec(enrollmentScript(key.key)));
+    const output = await context.exec(enrollmentScript(key.key));
+    const after = parseStatus(output);
     if (after.BackendState !== "Running" && after.BackendState !== "NeedsMachineAuth") {
-      throw new Error(`Tailscale enrollment did not finish (${after.BackendState}).`);
+      const upError = parseUpError(output);
+      if (upError && /non-default flags|--reset/.test(upError)) throw new Error(CUSTOM_SETTINGS);
+      throw new Error(
+        `Tailscale enrollment did not finish (${after.BackendState}).${upError ? `\n${upError}` : ""}`,
+      );
     }
     if (after.BackendState === "Running") {
       const devices = await api.devices();

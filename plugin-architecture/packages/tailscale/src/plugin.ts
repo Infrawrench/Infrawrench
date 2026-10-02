@@ -15,6 +15,7 @@ export const deviceType = rt({
     f("addresses", "Addresses", { editable: false }),
     f("tags", "Tags", { editable: false }),
     f("authorized", "Approved", { editable: false }),
+    f("connected", "Connected", { editable: false }),
     f("clientVersion", "Client version", { editable: false }),
     f("lastSeen", "Last seen", { editable: false }),
     f("expires", "Key expires", { editable: false }),

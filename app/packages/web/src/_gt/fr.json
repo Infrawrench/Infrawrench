@@ -10181,7 +10181,7 @@
   "e1377509aef7f1a6": "Actualisez le compte de service pour afficher ses appareils.",
   "9d128425cb2f13fa": "Compte de service",
   "6bddc0fc3444f89f": "Sélectionnez un compte",
-  "2eead672a3a45589": "Ajoutez d’abord un compte Tailscale, puis revenez ici pour enregistrer ce serveur.",
+  "8495bcb78cee8d9d": "Aucun de vos comptes ne peut encore installer de service via SSH. Ajoutez-en un, puis revenez ici.",
   "544caedd0b5c5f91": "Installation…",
   "a308ee4b57d2cbf1": "Installer et connecter",
   "bb7379afe5b0892a": "Port SSH",

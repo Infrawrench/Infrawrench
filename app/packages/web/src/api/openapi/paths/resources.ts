@@ -102,6 +102,10 @@ const ResourceDetailResponse = strict({
   hasDockerActions: z.boolean(),
   hasSshTerminal: z.boolean(),
   hasSftpBrowser: z.boolean(),
+  supportsSshInstall: z
+    .boolean()
+    .optional()
+    .describe("Whether the generic SSH service installer can target this resource."),
   sshHost: z.string().nullable(),
   sshPrivateHost: z.string().nullable().optional(),
   defaultSshUsername: z.string().nullable(),

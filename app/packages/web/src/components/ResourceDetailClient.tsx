@@ -161,6 +161,7 @@ interface Props {
   isMongoDb?: boolean | undefined;
   hasDockerActions?: boolean | undefined;
   hasSshTerminal?: boolean | undefined;
+  supportsSshInstall?: boolean | undefined;
   hasSftpBrowser?: boolean | undefined;
   sshHost?: string | undefined;
   sshPrivateHost?: string | undefined;
@@ -209,6 +210,7 @@ export function ResourceDetailClient({
   isMongoDb,
   hasDockerActions,
   hasSshTerminal,
+  supportsSshInstall,
   hasSftpBrowser,
   sshHost,
   sshPrivateHost,
@@ -1329,7 +1331,7 @@ export function ResourceDetailClient({
                 {gt("Connect through jumpbox…")}
               </button>
             )}
-            {hasSshPanel && (
+            {supportsSshInstall && (
               <button
                 type="button"
                 onClick={() => setShowSshInstall(true)}

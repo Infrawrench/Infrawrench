@@ -3,7 +3,12 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { enrollmentScript, installAndInspectScript, installOnSsh } from "../install.js";
+import {
+  enrollmentScript,
+  installAndInspectScript,
+  installOnSsh,
+  parseStatus,
+} from "../install.js";
 
 const key = { id: "key-id", key: "tskey-auth-test-secret" };
 const status = (BackendState: string, id?: string) =>
@@ -22,6 +27,35 @@ function setup() {
 }
 
 describe("Tailscale enrollment", () => {
+  it("keeps the official installer from reading the rest of the piped script", () => {
+    expect(installAndInspectScript).toContain('sh "$installer" </dev/null');
+  });
+  it("explains an unreachable tailscaled instead of a JSON parse error", () => {
+    expect(() => parseStatus("__INFRAWRENCH_TAILSCALE_STATUS__\n")).toThrow("tailscaled");
+  });
+  it("explains a host whose earlier custom settings block `tailscale up`", async () => {
+    const { exec, api } = setup();
+    exec
+      .mockReset()
+      .mockResolvedValueOnce(status("NeedsLogin"))
+      .mockResolvedValueOnce(
+        `__INFRAWRENCH_TAILSCALE_UP_ERROR__\nError: changing settings via 'tailscale up' requires mentioning all non-default flags.\n${status("NeedsLogin")}`,
+      );
+    await expect(installOnSsh({ exec }, api)).rejects.toThrow("custom settings");
+    expect(api.revokeKey).toHaveBeenCalledWith(key.id);
+  });
+  it("surfaces what `tailscale up` printed when enrollment stalls", async () => {
+    const { exec, api } = setup();
+    exec
+      .mockReset()
+      .mockResolvedValueOnce(status("NeedsLogin"))
+      .mockResolvedValueOnce(
+        `__INFRAWRENCH_TAILSCALE_UP_ERROR__\nbackend error: invalid key: ${key.key} expired\n${status("NeedsLogin")}`,
+      );
+    const error = await installOnSsh({ exec }, api).catch((e: Error) => e);
+    expect(error.message).toContain("backend error: invalid key");
+    expect(error.message).not.toContain(key.key);
+  });
   it("checks the host before creating a one-use key and revokes it after success", async () => {
     const { exec, api } = setup();
     const result = await installOnSsh({ exec }, api);

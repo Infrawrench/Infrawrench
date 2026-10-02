@@ -139,5 +139,6 @@
 // watch a database that is a resource rather than the account. Create/update
 // now also validate a monitor's resource against the synced rows and fill
 // `resourceTypeId` from the resource, so callers may omit it. All additive.
-// 1.40.0: Tailscale plugin and cross-provider SSH service enrollment. Additive.
+// 1.40.0: Tailscale plugin, cross-provider SSH service enrollment, and
+// `supportsSshInstall` on resource detail. Additive.
 export const API_VERSION = "1.40.0";

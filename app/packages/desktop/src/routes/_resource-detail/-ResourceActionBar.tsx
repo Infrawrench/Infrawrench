@@ -3,6 +3,7 @@ import { useGT } from "gt-react";
 interface ResourceActionBarProps {
   hasSftpBrowser: boolean;
   hasSshPanel: boolean;
+  supportsSshInstall: boolean;
   sshHost: string | null;
   onOpenSftpTab: () => void;
   onOpenSshTab: () => void;
@@ -16,6 +17,7 @@ interface ResourceActionBarProps {
 export function ResourceActionBar({
   hasSftpBrowser,
   hasSshPanel,
+  supportsSshInstall,
   sshHost,
   onOpenSftpTab,
   onOpenSshTab,
@@ -55,7 +57,7 @@ export function ResourceActionBar({
           {gt("Open Apps tab")}
         </button>
       )}
-      {hasSshPanel && (
+      {supportsSshInstall && (
         <button
           type="button"
           onClick={onShowSshInstall}

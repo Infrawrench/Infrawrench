@@ -52,6 +52,8 @@ export async function runLocalSshInstall(
   const installer = await createPluginClient(account.accountId, account.pluginId);
   if (!installer.installOnSsh) throw new Error("This service cannot be installed over SSH.");
   const plugin = await getPlugin(row.plugin_id);
+  if (plugin?.plugin.manifest.sshInstall)
+    throw new Error("This resource cannot be a target of an SSH service installer.");
   const type = plugin?.plugin.resourceTypes.find((t) => t.id === input.target.resourceTypeId);
   const native = targetClient.getSshConfig?.();
   if (!type?.sshEndpoint && !(type?.supportsTerminal && native))

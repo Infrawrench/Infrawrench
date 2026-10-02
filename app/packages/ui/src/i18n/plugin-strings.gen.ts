@@ -994,6 +994,7 @@ export const PLUGIN_STRINGS: readonly string[] = [
   msg("ConfigMaps"),
   msg("Configured"),
   msg("Connect through"),
+  msg("Connected"),
   msg("Connection Draining (s)"),
   msg("Connection ID"),
   msg("Connection Name"),

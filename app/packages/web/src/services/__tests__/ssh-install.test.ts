@@ -26,9 +26,11 @@ const install = vi.fn();
 const close = vi.fn();
 let rows: unknown[][];
 let native: boolean;
+let targetManifest: Record<string, unknown>;
 beforeEach(() => {
   vi.clearAllMocks();
   native = false;
+  targetManifest = { id: "provider", displayName: "Provider" };
   rows = [
     [{ id: "installer", displayName: "Tailnet", pluginId: "service" }],
     [{ id: "host-resource" }],
@@ -54,6 +56,7 @@ beforeEach(() => {
       ? { plugin: { manifest }, client: { installOnSsh: install } }
       : {
           plugin: {
+            manifest: targetManifest,
             resourceTypes: [
               {
                 id: "server",
@@ -127,6 +130,11 @@ describe("cross-provider service installation", () => {
     rows[1] = [];
     await expect(runSshInstall("org", input)).rejects.toThrow("SSH target not found");
     expect(install).not.toHaveBeenCalled();
+  });
+  it("refuses a resource whose own plugin is an SSH installer", async () => {
+    targetManifest = { id: "service", sshInstall: { description: "Install" } };
+    await expect(runSshInstall("org", input)).rejects.toThrow("cannot be a target");
+    expect(connect).not.toHaveBeenCalled();
   });
   it("closes the SSH transport after installation fails", async () => {
     install.mockRejectedValue(new Error("Install failed"));

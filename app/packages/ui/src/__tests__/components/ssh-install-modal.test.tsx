@@ -33,7 +33,8 @@ function show(overrides: Partial<Parameters<typeof SshInstallModal>[0]> = {}) {
 describe("SSH service installer", () => {
   it("requires an account and explains how to add one", () => {
     show({ accounts: [] });
-    expect(screen.getByText(/Add a Tailscale account first/)).toBeInTheDocument();
+    expect(screen.getByText(/can install a service over SSH yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/Tailscale/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Install and connect" })).toBeDisabled();
   });
   it("waits for SSH credentials before allowing installation", () => {

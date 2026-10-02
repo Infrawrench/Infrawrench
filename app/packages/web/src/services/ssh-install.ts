@@ -63,6 +63,8 @@ export async function runSshInstall(
   const installer = await getClientForAccount(input.installerAccountId, organizationId);
   if (!target || !installer?.plugin.manifest.sshInstall || !installer.client.installOnSsh)
     throw new Error("SSH installer unavailable.");
+  if (target.plugin.manifest.sshInstall)
+    throw new Error("This resource cannot be a target of an SSH service installer.");
   const type = target.plugin.resourceTypes.find((t) => t.id === input.target.resourceTypeId);
   if (!type?.sshEndpoint && !(type?.supportsTerminal && target.client.getSshConfig))
     throw new Error("This resource does not expose SSH.");

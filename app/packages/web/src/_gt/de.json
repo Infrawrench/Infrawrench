@@ -10181,7 +10181,7 @@
   "e1377509aef7f1a6": "Aktualisieren Sie das Dienstkonto, um seine Geräte anzuzeigen.",
   "9d128425cb2f13fa": "Dienstkonto",
   "6bddc0fc3444f89f": "Konto auswählen",
-  "2eead672a3a45589": "Fügen Sie zuerst ein Tailscale-Konto hinzu und kehren Sie dann hierher zurück, um diesen Server zu registrieren.",
+  "8495bcb78cee8d9d": "Keines Ihrer Konten kann bisher einen Dienst über SSH installieren. Fügen Sie eines hinzu und kehren Sie dann hierher zurück.",
   "544caedd0b5c5f91": "Wird installiert…",
   "a308ee4b57d2cbf1": "Installieren und verbinden",
   "bb7379afe5b0892a": "SSH-Port",

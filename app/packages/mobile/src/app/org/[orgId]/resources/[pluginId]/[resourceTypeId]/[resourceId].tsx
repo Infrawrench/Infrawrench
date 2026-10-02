@@ -53,6 +53,7 @@ interface DetailResponse {
   resourceTypeLabel: string;
   hasSqlEditor: boolean;
   hasSshTerminal: boolean;
+  supportsSshInstall?: boolean;
   hasKvConsole: boolean;
   hasKvBrowser: boolean;
   hasSftpBrowser: boolean;
@@ -250,7 +251,7 @@ export default function ResourceDetailScreen() {
           {(data.detailSchema.headerActions ?? []).map((action, i) => (
             <SchemaNodeView key={`ha-${i}`} node={action} />
           ))}
-          {(data.hasSshTerminal || data.sshHost) && (
+          {data.supportsSshInstall && (
             <Button label="Install service…" onPress={() => setShowSshInstall(true)} />
           )}
           {showSshInstall && (

@@ -95,7 +95,9 @@ export function SshInstallModal({
             </select>
             {!loading && !loadError && accounts.length === 0 && (
               <p className="text-sm text-on-surface-muted">
-                {gt("Add a Tailscale account first, then return here to enroll this server.")}
+                {gt(
+                  "None of your accounts can install a service over SSH yet. Add one, then return here.",
+                )}
               </p>
             )}
             {account && <p className="text-xs text-on-surface-muted">{ds(account.description)}</p>}
