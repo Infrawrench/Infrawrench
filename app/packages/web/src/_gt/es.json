@@ -10196,7 +10196,7 @@
   "ac0de2a59d9c8860": "Dispositivo",
   "9cc48e5c9ee46026": "Dispositivos",
   "555b7e1a403e7051": "Nombre DNS",
-  "ebc4e9a785eb744e": "Instala Tailscale en un servidor Linux y únelo al tailnet de esta cuenta. Requiere root o sudo sin contraseña y acceso HTTPS saliente. Se conservan los ajustes SSH y DNS existentes. La política de tu tailnet puede requerir la aprobación del dispositivo.",
+  "0f1ccfc6a8731d1f": "Instala Tailscale en un servidor Linux y únelo al tailnet de esta cuenta. Requiere root o sudo sin contraseña y acceso HTTPS saliente. Se conservan los ajustes SSH y DNS existentes. Si tu tailnet requiere la aprobación de dispositivos, el servidor se aprueba con esta cuenta.",
   "c9e4a7cb35894fdc": "Caducidad de la clave",
   "675b3101769ea091": "Caducidad de la clave desactivada",
   "baa47cd37a6ed1e3": "Deja el valor - para usar el tailnet asociado a tu token de API.",
@@ -10206,7 +10206,8 @@
   "a63f53a180973593": "Tailscale",
   "88437c8c6a8a1a8d": "IP de Tailscale",
   "20563e4e9ad5b447": "Tailscale está instalado y conectado a tu tailnet.",
-  "3f90895a11e21bbc": "Tailscale está instalado. Aprueba este dispositivo en tu tailnet para completar la conexión.",
+  "195afba5a217d0d5": "Tailscale está instalado y el dispositivo está aprobado. Aparecerá como conectado en unos segundos.",
+  "2cdb7e3723325d02": "Tailscale está instalado, pero esta cuenta no pudo aprobar el dispositivo. Apruébalo en tu tailnet para completar la conexión.",
   "8ff3e759dfa3c994": "No se pudo revocar la clave de registro temporal. Caduca automáticamente a los cinco minutos.",
   "455f5b9fa2db94e4": "Este servidor ya está conectado a este tailnet."
 }

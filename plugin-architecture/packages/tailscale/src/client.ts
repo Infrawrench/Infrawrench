@@ -180,11 +180,19 @@ export class TailscaleClient implements PluginClient {
       createKey: () =>
         this.request<{ id: string; key: string }>(`/tailnet/${this.tailnet}/keys`, "POST", {
           capabilities: {
-            devices: { create: { reusable: false, ephemeral: false, preauthorized: false } },
+            // Pre-approved: we enroll the server on the account holder's behalf.
+            // https://tailscale.com/kb/1085/auth-keys
+            devices: { create: { reusable: false, ephemeral: false, preauthorized: true } },
           },
           expirySeconds: 300,
           description: "Infrawrench server enrollment",
         }),
+      // https://tailscale.com/kb/1099/device-approval
+      approve: async (deviceId) => {
+        await this.request(`/device/${encodeURIComponent(deviceId)}/authorized`, "POST", {
+          authorized: true,
+        });
+      },
       revokeKey: async (id) => {
         try {
           await this.request<void>(

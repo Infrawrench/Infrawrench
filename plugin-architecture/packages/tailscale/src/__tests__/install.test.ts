@@ -22,6 +22,7 @@ function setup() {
     devices: vi.fn().mockResolvedValue([{ id: "1", nodeId: "node-1" }]),
     createKey: vi.fn().mockResolvedValue(key),
     revokeKey: vi.fn().mockResolvedValue(undefined),
+    approve: vi.fn().mockResolvedValue(undefined),
   };
   return { exec, api };
 }
@@ -95,14 +96,33 @@ describe("Tailscale enrollment", () => {
     await expect(installOnSsh({ exec }, api)).rejects.toThrow("failed: [redacted]");
     expect(api.revokeKey).toHaveBeenCalledWith(key.id);
   });
-  it("reports device approval as pending and still revokes the key", async () => {
+  it("approves a device left awaiting approval and still revokes the key", async () => {
     const { exec, api } = setup();
     exec
       .mockReset()
       .mockResolvedValueOnce(status("NeedsLogin"))
       .mockResolvedValueOnce(status("NeedsMachineAuth", "node-1"));
-    expect((await installOnSsh({ exec }, api)).message).toContain("Approve");
+    expect((await installOnSsh({ exec }, api)).message).toContain("device is approved");
+    expect(api.approve).toHaveBeenCalledWith("node-1");
     expect(api.revokeKey).toHaveBeenCalled();
+  });
+  it("leaves approval to a human when this account cannot approve devices", async () => {
+    const { exec, api } = setup();
+    api.approve.mockRejectedValue(new Error("Tailscale API error 403: forbidden"));
+    exec
+      .mockReset()
+      .mockResolvedValueOnce(status("NeedsLogin"))
+      .mockResolvedValueOnce(status("NeedsMachineAuth", "node-1"));
+    const result = await installOnSsh({ exec }, api);
+    expect(result.message).toContain("could not approve");
+    expect(result.message).not.toContain("403");
+  });
+  it("approves an already-joined server awaiting approval without minting a key", async () => {
+    const { exec, api } = setup();
+    exec.mockReset().mockResolvedValue(status("NeedsMachineAuth", "node-1"));
+    expect((await installOnSsh({ exec }, api)).message).toContain("device is approved");
+    expect(api.approve).toHaveBeenCalledWith("node-1");
+    expect(api.createKey).not.toHaveBeenCalled();
   });
   it("reports failed cleanup without claiming enrollment failed", async () => {
     const { exec, api } = setup();

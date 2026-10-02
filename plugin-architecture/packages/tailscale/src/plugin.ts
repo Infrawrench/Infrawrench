@@ -38,7 +38,7 @@ export const plugin: Plugin = {
     sshInstall: {
       messages: INSTALL_MESSAGES,
       description:
-        "Install Tailscale on a Linux server and join this account's tailnet. Requires root or passwordless sudo and outbound HTTPS. Existing SSH and DNS settings are preserved. Device approval may be required by your tailnet policy.",
+        "Install Tailscale on a Linux server and join this account's tailnet. Requires root or passwordless sudo and outbound HTTPS. Existing SSH and DNS settings are preserved. If your tailnet requires device approval, the server is approved with this account.",
     },
     credentialFields: [
       {

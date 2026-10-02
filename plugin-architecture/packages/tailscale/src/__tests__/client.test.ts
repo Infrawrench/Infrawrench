@@ -80,7 +80,7 @@ describe("Tailscale plugin", () => {
       }),
     );
   });
-  it("mints only a short-lived single-use key without bypassing device approval", async () => {
+  it("mints only a short-lived, single-use, pre-approved key", async () => {
     const { request, client: c } = client();
     request
       .mockResolvedValueOnce({
@@ -98,7 +98,7 @@ describe("Tailscale plugin", () => {
     const create = request.mock.calls[0]![0];
     expect(JSON.parse(create.body)).toEqual({
       capabilities: {
-        devices: { create: { reusable: false, ephemeral: false, preauthorized: false } },
+        devices: { create: { reusable: false, ephemeral: false, preauthorized: true } },
       },
       expirySeconds: 300,
       description: "Infrawrench server enrollment",
@@ -108,5 +108,34 @@ describe("Tailscale plugin", () => {
       method: "DELETE",
       url: "https://api.tailscale.com/api/v2/tailnet/-/keys/key-1",
     });
+  });
+  it("approves a device still awaiting approval through the device API", async () => {
+    const { request, client: c } = client();
+    request
+      .mockResolvedValueOnce({
+        status: 200,
+        body: JSON.stringify({ id: "key-1", key: "tskey-auth-one-use" }),
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        body: JSON.stringify({
+          devices: [{ id: "123", nodeId: "nNode1", name: "a", hostname: "a", addresses: [] }],
+        }),
+      })
+      .mockResolvedValueOnce({ status: 200, body: "" })
+      .mockResolvedValueOnce({ status: 204, body: "" });
+    const exec = vi
+      .fn()
+      .mockResolvedValueOnce(`__INFRAWRENCH_TAILSCALE_STATUS__\n{"BackendState":"NeedsLogin"}`)
+      .mockResolvedValueOnce(
+        `__INFRAWRENCH_TAILSCALE_STATUS__\n{"BackendState":"NeedsMachineAuth","Self":{"ID":"nNode1"}}`,
+      );
+    const result = await c.installOnSsh!({ exec });
+    expect(request.mock.calls[2]![0]).toMatchObject({
+      method: "POST",
+      url: "https://api.tailscale.com/api/v2/device/nNode1/authorized",
+    });
+    expect(JSON.parse(request.mock.calls[2]![0].body)).toEqual({ authorized: true });
+    expect(result.message).toContain("approved");
   });
 });

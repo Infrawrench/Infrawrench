@@ -2,9 +2,10 @@ import type { SshInstallContext, SshInstallResult } from "@infrawrench/plugin-ba
 
 export const INSTALL_MESSAGES = [
   "This server is already connected to this tailnet.",
-  "Tailscale is installed. Approve this device in your tailnet to finish connecting.",
+  "Tailscale is installed, but this account could not approve the device. Approve it in your tailnet to finish connecting.",
   "Tailscale is installed and connected to your tailnet.",
   "The temporary enrollment key could not be revoked. It expires automatically after five minutes.",
+  "Tailscale is installed and the device is approved. It shows as connected within a few seconds.",
 ];
 
 // Official installation and file-backed auth-key support:
@@ -105,6 +106,25 @@ export interface EnrollmentApi {
   devices(): Promise<Array<{ id: string; nodeId?: string }>>;
   createKey(): Promise<{ id: string; key: string }>;
   revokeKey(id: string): Promise<void>;
+  /** Approve a device waiting for device approval. */
+  approve(deviceId: string): Promise<void>;
+}
+
+/**
+ * Approve the device behind `selfId` with this account. We are enrolling it on
+ * the account holder's behalf, so waiting for a second, manual approval adds
+ * nothing. Best effort: a token without the admin role leaves it for a human.
+ */
+async function approveDevice(api: EnrollmentApi, selfId: string | undefined): Promise<boolean> {
+  if (!selfId) return false;
+  try {
+    const device = (await api.devices()).find((d) => d.nodeId === selfId || d.id === selfId);
+    if (!device) return false;
+    await api.approve(device.nodeId || device.id);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** No API token crosses SSH; one-use keys are revoked even when setup fails. */
@@ -122,6 +142,14 @@ export async function installOnSsh(
       );
     if (before.BackendState === "Running") {
       return { message: INSTALL_MESSAGES[0]!, ...addressOf(before) };
+    }
+    if (before.BackendState === "NeedsMachineAuth") {
+      // Joined earlier but never approved: finish the job instead of re-keying.
+      const approved = await approveDevice(api, before.Self.ID);
+      return {
+        message: approved ? INSTALL_MESSAGES[4]! : INSTALL_MESSAGES[1]!,
+        ...addressOf(before),
+      };
     }
     if (before.BackendState === "Stopped") {
       throw new Error("Tailscale is stopped on this server. Start it before enrolling it again.");
@@ -157,11 +185,15 @@ export async function installOnSsh(
         );
       }
     }
-    result = {
-      message:
-        after.BackendState === "NeedsMachineAuth" ? INSTALL_MESSAGES[1]! : INSTALL_MESSAGES[2]!,
-      ...addressOf(after),
-    };
+    // The key is pre-approved, so this only happens when the token cannot
+    // approve devices; try the API once more before leaving it to a human.
+    const message =
+      after.BackendState === "Running"
+        ? INSTALL_MESSAGES[2]!
+        : (await approveDevice(api, after.Self?.ID))
+          ? INSTALL_MESSAGES[4]!
+          : INSTALL_MESSAGES[1]!;
+    result = { message, ...addressOf(after) };
   } catch (error) {
     // Remote tools sometimes echo their arguments. Never surface a key in errors.
     const message = error instanceof Error ? error.message : String(error);

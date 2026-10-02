@@ -9979,7 +9979,7 @@
   "ac0de2a59d9c8860": "Gerät",
   "9cc48e5c9ee46026": "Geräte",
   "555b7e1a403e7051": "DNS-Name",
-  "ebc4e9a785eb744e": "Installieren Sie Tailscale auf einem Linux-Server und verbinden Sie ihn mit dem Tailnet dieses Kontos. Erfordert root oder sudo ohne Passwort sowie ausgehenden HTTPS-Zugriff. Bestehende SSH- und DNS-Einstellungen bleiben erhalten. Ihre Tailnet-Richtlinie kann eine Gerätegenehmigung erfordern.",
+  "0f1ccfc6a8731d1f": "Installieren Sie Tailscale auf einem Linux-Server und verbinden Sie ihn mit dem Tailnet dieses Kontos. Erfordert root oder sudo ohne Passwort sowie ausgehenden HTTPS-Zugriff. Bestehende SSH- und DNS-Einstellungen bleiben erhalten. Wenn Ihr Tailnet eine Gerätegenehmigung erfordert, wird der Server mit diesem Konto genehmigt.",
   "c9e4a7cb35894fdc": "Schlüssel läuft ab",
   "675b3101769ea091": "Schlüsselablauf deaktiviert",
   "baa47cd37a6ed1e3": "Belassen Sie den Wert bei -, um das Tailnet Ihres API-Tokens zu verwenden.",
@@ -9989,7 +9989,8 @@
   "a63f53a180973593": "Tailscale",
   "88437c8c6a8a1a8d": "Tailscale-IP",
   "20563e4e9ad5b447": "Tailscale ist installiert und mit Ihrem Tailnet verbunden.",
-  "3f90895a11e21bbc": "Tailscale ist installiert. Genehmigen Sie dieses Gerät in Ihrem Tailnet, um die Verbindung abzuschließen.",
+  "195afba5a217d0d5": "Tailscale ist installiert und das Gerät ist genehmigt. Es wird innerhalb weniger Sekunden als verbunden angezeigt.",
+  "2cdb7e3723325d02": "Tailscale ist installiert, aber dieses Konto konnte das Gerät nicht genehmigen. Genehmigen Sie es in Ihrem Tailnet, um die Verbindung abzuschließen.",
   "8ff3e759dfa3c994": "Der temporäre Registrierungsschlüssel konnte nicht widerrufen werden. Er läuft nach fünf Minuten automatisch ab.",
   "455f5b9fa2db94e4": "Dieser Server ist bereits mit diesem Tailnet verbunden."
 }

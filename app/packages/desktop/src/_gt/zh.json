@@ -9979,7 +9979,7 @@
   "ac0de2a59d9c8860": "设备",
   "9cc48e5c9ee46026": "设备",
   "555b7e1a403e7051": "DNS 名称",
-  "ebc4e9a785eb744e": "在 Linux 服务器上安装 Tailscale 并加入此账户的 tailnet。需要 root 权限或免密码 sudo，以及出站 HTTPS 访问。现有的 SSH 和 DNS 设置将保留。你的 tailnet 策略可能要求批准设备。",
+  "0f1ccfc6a8731d1f": "在 Linux 服务器上安装 Tailscale 并加入此账户的 tailnet。需要 root 权限或免密码 sudo，以及出站 HTTPS 访问。现有的 SSH 和 DNS 设置将保留。如果你的 tailnet 需要设备批准，服务器将通过此账户获得批准。",
   "c9e4a7cb35894fdc": "密钥到期时间",
   "675b3101769ea091": "密钥到期已禁用",
   "baa47cd37a6ed1e3": "保留为 - 以使用你的 API 令牌所属的 tailnet。",
@@ -9989,7 +9989,8 @@
   "a63f53a180973593": "Tailscale",
   "88437c8c6a8a1a8d": "Tailscale IP",
   "20563e4e9ad5b447": "Tailscale 已安装并连接到你的 tailnet。",
-  "3f90895a11e21bbc": "Tailscale 已安装。请在你的 tailnet 中批准此设备以完成连接。",
+  "195afba5a217d0d5": "Tailscale 已安装，设备已获批准。几秒钟内将显示为已连接。",
+  "2cdb7e3723325d02": "Tailscale 已安装，但此账户无法批准该设备。请在你的 tailnet 中批准它以完成连接。",
   "8ff3e759dfa3c994": "无法撤销临时注册密钥。它将在五分钟后自动过期。",
   "455f5b9fa2db94e4": "此服务器已连接到此 tailnet。"
 }
