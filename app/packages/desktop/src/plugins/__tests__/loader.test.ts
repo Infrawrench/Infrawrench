@@ -56,6 +56,7 @@ vi.mock("@infrawrench/plugin-neon", () => stub("neon"));
 vi.mock("@infrawrench/plugin-redis", () => stub("redis"));
 vi.mock("@infrawrench/plugin-scaleway", () => stub("scaleway"));
 vi.mock("@infrawrench/plugin-ssh", () => stub("ssh"));
+vi.mock("@infrawrench/plugin-tailscale", () => stub("tailscale"));
 vi.mock("@infrawrench/plugin-cloudflare", () => stub("cloudflare"));
 vi.mock("@infrawrench/plugin-ovh", () => stub("ovh"));
 vi.mock("@infrawrench/plugin-databricks", () => stub("databricks"));

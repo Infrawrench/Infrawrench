@@ -189,6 +189,11 @@ export const providerGroups: ProviderGroup[] = [
         resources: ["Container (list, start, stop, restart)"],
       },
       {
+        name: "Tailscale",
+        detail: "Private networking",
+        resources: ["Device"],
+      },
+      {
         name: "SSH",
         detail: "Any Linux server",
         resources: ["SSH Terminal", "SSH Tunnel", "SFTP Browser"],

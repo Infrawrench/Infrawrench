@@ -31,6 +31,7 @@ const PLUGIN_MODULES: Array<() => Promise<{ plugin: Plugin }>> = [
   () => import("@infrawrench/plugin-redis"),
   () => import("@infrawrench/plugin-scaleway"),
   () => import("@infrawrench/plugin-ssh"),
+  () => import("@infrawrench/plugin-tailscale"),
   () => import("@infrawrench/plugin-cloudflare"),
   () => import("@infrawrench/plugin-ovh"),
   () => import("@infrawrench/plugin-databricks"),

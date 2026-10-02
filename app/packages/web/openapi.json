@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.39.0",
+    "version": "1.40.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -1222,6 +1222,7 @@
           "scaleway",
           "speechmatics",
           "ssh",
+          "tailscale",
           "together",
           "turso",
           "uploadthing",
@@ -1944,6 +1945,7 @@
           "dedicated-inference",
           "deployed-model",
           "deployment",
+          "device",
           "directory",
           "directory-group",
           "directory-user",
@@ -12520,6 +12522,156 @@
         },
         "required": [
           "cleared"
+        ],
+        "additionalProperties": false
+      },
+      "SshInstallAccount": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "serviceName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "displayName",
+          "pluginId",
+          "serviceName",
+          "description"
+        ],
+        "additionalProperties": false
+      },
+      "SshInstallResult": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "SshInstallTrustRequired": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "ssh_host_key_trust_required"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "mismatch"
+            ]
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "presentedFingerprint": {
+            "type": "string"
+          },
+          "storedFingerprint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "error",
+          "message",
+          "kind",
+          "host",
+          "port",
+          "presentedFingerprint",
+          "storedFingerprint"
+        ],
+        "additionalProperties": false
+      },
+      "SshInstallRequest": {
+        "type": "object",
+        "properties": {
+          "installerAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "target": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "format": "uuid",
+                "example": "00000000-0000-0000-0000-000000000000"
+              },
+              "resourceTypeId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "resourceId": {
+                "$ref": "#/components/schemas/ResourceId"
+              }
+            },
+            "required": [
+              "accountId",
+              "resourceTypeId",
+              "resourceId"
+            ],
+            "additionalProperties": false
+          },
+          "sshKeyId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "username": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          }
+        },
+        "required": [
+          "installerAccountId",
+          "target"
         ],
         "additionalProperties": false
       },
@@ -46069,6 +46221,138 @@
         },
         "operationId": "deleteOrgOrgIdPages",
         "x-required-permission": "pages:write"
+      }
+    },
+    "/api/org/{orgId}/resources/ssh-install/accounts": {
+      "get": {
+        "tags": [
+          "Resources"
+        ],
+        "summary": "List service accounts that can enroll an SSH server",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Available service accounts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SshInstallAccount"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdResourcesSshInstallAccounts"
+      }
+    },
+    "/api/org/{orgId}/resources/ssh-install": {
+      "post": {
+        "tags": [
+          "Resources"
+        ],
+        "summary": "Install and enroll a service on an existing SSH target",
+        "description": "Requires resources:write and resources:execute. Uses the selected target's saved SSH connection or an org SSH key. Respects change freezes and host-key trust. Enrollment credentials never appear in the response or audit log.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SshInstallRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Installation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SshInstallResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "SSH host-key trust is required before installation can begin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SshInstallTrustRequired"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "Blocked by an active change freeze. Retry with the `x-change-freeze-override: true` header if you hold `freezes:override`; both blocks and overrides are audit-logged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeFreezeBlocked"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdResourcesSshInstall"
       }
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/detail": {

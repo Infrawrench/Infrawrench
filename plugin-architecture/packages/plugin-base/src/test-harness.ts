@@ -69,6 +69,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     username: "root",
     privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\ntest\n-----END OPENSSH PRIVATE KEY-----",
   },
+  tailscale: { apiKey: "tskey-api-test", tailnet: "-" },
   databricks: { host: "https://adb-test.azuredatabricks.net", token: "dapi-test" },
   deepgram: { apiKey: "test-deepgram-key" },
   azure: {

@@ -435,6 +435,76 @@ const MetricsResponse = strict({ series: z.array(MetricSeries) }).openapi("Metri
 
 export function registerResourcePaths(ctx: BuildContext) {
   const { registry, enums } = ctx;
+  const SshInstallAccount = strict({
+    accountId: Uuid,
+    displayName: z.string(),
+    pluginId: z.string(),
+    serviceName: z.string(),
+    description: z.string(),
+  }).openapi("SshInstallAccount");
+  const SshInstallRequest = strict({
+    installerAccountId: Uuid,
+    target: strict({ accountId: Uuid, resourceTypeId: z.string().min(1), resourceId: ResourceId }),
+    sshKeyId: Uuid.optional(),
+    username: z.string().min(1).max(64).optional(),
+    port: z.number().int().min(1).max(65535).optional(),
+  }).openapi("SshInstallRequest");
+  const SshInstallResult = strict({
+    message: z.string(),
+    address: z.string().optional(),
+    warnings: z.array(z.string()).optional(),
+  }).openapi("SshInstallResult");
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/resources/ssh-install/accounts",
+    tags: ["Resources"],
+    summary: "List service accounts that can enroll an SSH server",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Available service accounts",
+        content: { "application/json": { schema: z.array(SshInstallAccount) } },
+      },
+      403: ErrorResponses[403],
+    },
+  });
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/resources/ssh-install",
+    tags: ["Resources"],
+    summary: "Install and enroll a service on an existing SSH target",
+    description:
+      "Requires resources:write and resources:execute. Uses the selected target's saved SSH connection or an org SSH key. Respects change freezes and host-key trust. Enrollment credentials never appear in the response or audit log.",
+    request: {
+      params: OrgIdParam,
+      body: { required: true, content: { "application/json": { schema: SshInstallRequest } } },
+    },
+    responses: {
+      200: {
+        description: "Installation result",
+        content: { "application/json": { schema: SshInstallResult } },
+      },
+      400: ErrorResponses[400],
+      403: ErrorResponses[403],
+      409: {
+        description: "SSH host-key trust is required before installation can begin",
+        content: {
+          "application/json": {
+            schema: strict({
+              error: z.literal("ssh_host_key_trust_required"),
+              message: z.string(),
+              kind: z.enum(["unknown", "mismatch"]),
+              host: z.string(),
+              port: z.number().int(),
+              presentedFingerprint: z.string(),
+              storedFingerprint: z.string().nullable(),
+            }).openapi("SshInstallTrustRequired"),
+          },
+        },
+      },
+      423: FreezeLockedResponse,
+    },
+  });
 
   const pluginTypeParams = OrgIdParam.extend({
     pluginId: enums.PluginId.openapi({ param: { name: "pluginId", in: "path" } }),

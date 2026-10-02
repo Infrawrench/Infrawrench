@@ -1,4 +1,5 @@
 import type { Hono } from "hono";
+import { registerSshInstallRoutes } from "./ssh-install";
 import { eq, and, isNull, or } from "drizzle-orm";
 import { db } from "../../../db/client";
 import { resources } from "../../../db/schema";
@@ -28,6 +29,7 @@ import {
  * - metrics — historical time-series read from ClickHouse.
  */
 export function registerActionRoutes(app: Hono): void {
+  registerSshInstallRoutes(app);
   /** POST /api/resources/invoke-action — invoke a plugin-defined action against a resource. */
   app.post("/invoke-action", async (c) => {
     requirePermission(c, "resources:write");

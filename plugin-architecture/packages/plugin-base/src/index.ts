@@ -411,3 +411,4 @@ export {
 export { isInertSvg, findUnsafeSvgConstructs } from "./svg-safety.js";
 
 export { base64ToBytes, bytesToBase64, utf8ToBase64, base64ToUtf8 } from "./base64.js";
+export * from "./ssh-install.js";

@@ -455,3 +455,10 @@ ipcMain.handle(
     );
   },
 );
+
+ipcMain.handle("cloud_ssh_install_accounts", async (_e, { orgId }: { orgId: string }) =>
+  cloudFetch(orgId, "/resources/ssh-install/accounts"),
+);
+ipcMain.handle("cloud_ssh_install", async (_e, { orgId, body }: { orgId: string; body: unknown }) =>
+  cloudFetch(orgId, "/resources/ssh-install", { method: "POST", body: JSON.stringify(body) }),
+);

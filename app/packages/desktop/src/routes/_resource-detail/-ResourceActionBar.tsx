@@ -9,6 +9,7 @@ interface ResourceActionBarProps {
   onOpenAppsTab: () => void;
   onShowTunnelModal: () => void;
   onShowDockerSetup: () => void;
+  onShowSshInstall: () => void;
   onShowDropSpotlight: () => void;
 }
 
@@ -21,6 +22,7 @@ export function ResourceActionBar({
   onOpenAppsTab,
   onShowTunnelModal,
   onShowDockerSetup,
+  onShowSshInstall,
   onShowDropSpotlight,
 }: ResourceActionBarProps) {
   const gt = useGT();
@@ -51,6 +53,15 @@ export function ResourceActionBar({
           className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
         >
           {gt("Open Apps tab")}
+        </button>
+      )}
+      {hasSshPanel && (
+        <button
+          type="button"
+          onClick={onShowSshInstall}
+          className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
+        >
+          {gt("Install service…")}
         </button>
       )}
       {sshHost && (

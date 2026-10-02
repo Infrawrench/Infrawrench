@@ -1222,3 +1222,7 @@ export {
 export { useStableGT } from "./i18n/stable-gt.js";
 // Trial workspaces — the countdown an unclaimed agent trial carries until a
 // person claims it. See server-core/trials for the lifecycle behind it.
+export {
+  SshInstallModal,
+  SshInstallConnectionFields,
+} from "./components/detail/SshInstallModal.js";

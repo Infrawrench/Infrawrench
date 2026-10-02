@@ -153,6 +153,7 @@
     "@infrawrench/plugin-scaleway": "workspace:*",
     "@infrawrench/plugin-speechmatics": "workspace:*",
     "@infrawrench/plugin-ssh": "workspace:*",
+    "@infrawrench/plugin-tailscale": "workspace:*",
     "@infrawrench/plugin-together": "workspace:*",
     "@infrawrench/plugin-turso": "workspace:*",
     "@infrawrench/plugin-uploadthing": "workspace:*",

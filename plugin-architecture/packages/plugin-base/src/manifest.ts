@@ -98,6 +98,8 @@ interface KubernetesDriverDeclaration {
 }
 
 export interface PluginManifest {
+  /** Enables this account in the generic SSH service installer. */
+  sshInstall?: { description: string; messages?: string[] };
   /** Unique plugin identifier, e.g. "digitalocean" */
   id: string;
   version: string;
@@ -359,6 +361,10 @@ export interface PeerPaneContext {
 }
 
 export interface PluginClient {
+  /** Install/enroll this service on a host. Provider logic stays inside the plugin. */
+  installOnSsh?(
+    context: import("./ssh-install.js").SshInstallContext,
+  ): Promise<import("./ssh-install.js").SshInstallResult>;
   /**
    * Probe the provider with this client's credentials and report what each
    * declared capability can actually do — ok / missing (with which

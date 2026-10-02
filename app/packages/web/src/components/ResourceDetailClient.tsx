@@ -1,3 +1,4 @@
+import { SshInstallDialog } from "./SshInstallDialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGT } from "gt-react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
@@ -373,6 +374,7 @@ export function ResourceDetailClient({
   const [showSshTunnel, setShowSshTunnel] = useState(false);
   const [showJumpboxDialog, setShowJumpboxDialog] = useState(false);
   const [showDockerSetup, setShowDockerSetup] = useState(false);
+  const [showSshInstall, setShowSshInstall] = useState(false);
   const agentForwardStorageKey = `ssh:agentForward:${accountId}:${resourceId}`;
   const [agentForward, setAgentForward] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
@@ -1327,6 +1329,15 @@ export function ResourceDetailClient({
                 {gt("Connect through jumpbox…")}
               </button>
             )}
+            {hasSshPanel && (
+              <button
+                type="button"
+                onClick={() => setShowSshInstall(true)}
+                className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
+              >
+                {gt("Install service…")}
+              </button>
+            )}
             {sshHost && (
               <button
                 type="button"
@@ -1763,6 +1774,15 @@ export function ResourceDetailClient({
         />
       )}
 
+      {showSshInstall && (
+        <SshInstallDialog
+          target={{ accountId, resourceTypeId, resourceId }}
+          hostName={resourceDisplayName}
+          defaultUsername={defaultSshUsername}
+          nativeConnection={!!hasSshTerminal && !sshHost}
+          onClose={() => setShowSshInstall(false)}
+        />
+      )}
       {showDockerSetup && sshHost && (
         <DockerSetupModal
           sshHost={sshHost}
