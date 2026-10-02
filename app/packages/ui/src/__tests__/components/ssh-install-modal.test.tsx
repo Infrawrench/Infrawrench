@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { SshInstallModal } from "../../components/detail/SshInstallModal.js";
+import { SshInstallKeyField, SshInstallModal } from "../../components/detail/SshInstallModal.js";
 
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = function () {
@@ -72,5 +72,23 @@ describe("SSH service installer", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Install and connect" })).toBeEnabled(),
     );
+  });
+});
+describe("SSH install key field", () => {
+  const keys = [
+    { id: "k1", name: "ops", ownerName: "Astrid Gealer" },
+    { id: "k2", name: "deploy", ownerName: "CI" },
+  ];
+  it("lists org keys as radios with their owners and reports the chosen id", () => {
+    const onChange = vi.fn();
+    render(<SshInstallKeyField keys={keys} selectedId="k1" onChange={onChange} />);
+    expect(screen.getByRole("radio", { name: "ops" })).toBeChecked();
+    expect(screen.getByText("Astrid Gealer")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "deploy" }));
+    expect(onChange).toHaveBeenCalledWith("k2");
+  });
+  it("points to Settings when the org has no keys", () => {
+    render(<SshInstallKeyField keys={[]} selectedId="" onChange={vi.fn()} />);
+    expect(screen.getByText(/Go to Settings to create one/)).toBeInTheDocument();
   });
 });

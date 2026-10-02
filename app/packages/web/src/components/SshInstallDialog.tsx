@@ -1,12 +1,19 @@
 import { useGT } from "gt-react";
-import { useEffect, useId, useState } from "react";
-import { SshInstallModal, SshInstallConnectionFields } from "@infrawrench/ui";
+import { useEffect, useState } from "react";
+import {
+  SshInstallModal,
+  SshInstallConnectionFields,
+  SshInstallKeyField,
+  deriveSSHUsername,
+  pickQuickConnectKeyId,
+} from "@infrawrench/ui";
 import type {
   SshInstallAccount,
   SshInstallInput,
   SshInstallResult,
 } from "@infrawrench/plugin-base";
 import { apiGet, apiPost } from "@/lib/api";
+import type { SshKey } from "@/lib/api-types";
 import { useOrgId } from "@/lib/useOrgId";
 import { useHostKeyTrust } from "@/lib/useHostKeyTrust";
 
@@ -26,10 +33,9 @@ export function SshInstallDialog({
   const gt = useGT();
   const loadErrorMessage = gt("Could not load service accounts");
   const orgId = useOrgId();
-  const id = useId();
   const { withTrustPrompt, dialog } = useHostKeyTrust(orgId);
   const [accounts, setAccounts] = useState<SshInstallAccount[]>([]);
-  const [keys, setKeys] = useState<Array<{ id: string; name: string }>>([]);
+  const [keys, setKeys] = useState<SshKey[]>([]);
   const [keyId, setKeyId] = useState("");
   const [username, setUsername] = useState(defaultUsername || "root");
   const [port, setPort] = useState(22);
@@ -39,15 +45,22 @@ export function SshInstallDialog({
     let cancelled = false;
     void Promise.all([
       apiGet<SshInstallAccount[]>(`/api/org/${orgId}/resources/ssh-install/accounts`),
-      nativeConnection
-        ? Promise.resolve([])
-        : apiGet<Array<{ id: string; name: string }>>(`/api/org/${orgId}/ssh-keys`),
+      nativeConnection ? Promise.resolve([]) : apiGet<SshKey[]>(`/api/org/${orgId}/ssh-keys`),
     ])
       .then(([a, k]) => {
         if (!cancelled) {
           setAccounts(a);
           setKeys(k);
-          setKeyId(k[0]?.id ?? "");
+          // Same defaults as SSH quick connect: a key matching the login, else
+          // the first, and the key owner's name as the login when none is declared.
+          const picked = pickQuickConnectKeyId({
+            keys: k,
+            previousId: null,
+            effectiveUsername: defaultUsername || "root",
+          });
+          setKeyId(picked ?? "");
+          const owner = k.find((key) => key.id === picked)?.ownerName;
+          if (!defaultUsername && owner) setUsername(deriveSSHUsername(owner));
         }
       })
       .catch((e: unknown) => {
@@ -59,7 +72,7 @@ export function SshInstallDialog({
     return () => {
       cancelled = true;
     };
-  }, [orgId, nativeConnection, loadErrorMessage]);
+  }, [orgId, nativeConnection, loadErrorMessage, defaultUsername]);
   return (
     <>
       <SshInstallModal
@@ -83,24 +96,15 @@ export function SshInstallDialog({
               onUsernameChange={setUsername}
               onPortChange={setPort}
             >
-              <label htmlFor={id} className="block text-sm text-on-surface">
-                {gt("SSH key")}
-              </label>
-              <select
-                id={id}
-                value={keyId}
-                onChange={(e) => setKeyId(e.target.value)}
-                className="w-full p-2 bg-surface-overlay text-on-surface text-sm border border-border rounded-lg"
-              >
-                <option value="" disabled>
-                  {gt("Select an SSH key")}
-                </option>
-                {keys.map((key) => (
-                  <option key={key.id} value={key.id}>
-                    {key.name}
-                  </option>
-                ))}
-              </select>
+              <SshInstallKeyField
+                keys={keys}
+                selectedId={keyId}
+                onChange={(next) => {
+                  setKeyId(next);
+                  const owner = keys.find((k) => k.id === next)?.ownerName;
+                  if (!defaultUsername && owner) setUsername(deriveSSHUsername(owner));
+                }}
+              />
             </SshInstallConnectionFields>
           )
         }

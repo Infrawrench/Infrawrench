@@ -6,6 +6,7 @@ import type {
   SshInstallInput,
   SshInstallResult,
 } from "@infrawrench/plugin-base";
+import { deriveSSHUsername, pickQuickConnectKeyId, type SshKey } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { PromptCommandSheet } from "@/components/PromptCommandSheet";
 import { Button, LoadingView } from "@/components/ui";
@@ -28,9 +29,7 @@ export function SshInstallSheet({
     queryFn: async () => {
       const [accounts, keys] = await Promise.all([
         api.org<SshInstallAccount[]>(orgId, "/resources/ssh-install/accounts"),
-        nativeConnection
-          ? Promise.resolve([])
-          : api.org<Array<{ id: string; name: string }>>(orgId, "/ssh-keys"),
+        nativeConnection ? Promise.resolve([]) : api.org<SshKey[]>(orgId, "/ssh-keys"),
       ]);
       return { accounts: accounts ?? [], keys: keys ?? [] };
     },
@@ -52,6 +51,18 @@ export function SshInstallSheet({
         </View>
       </Modal>
     );
+  // Same defaults as SSH quick connect: a key matching the login, else the first,
+  // and a username derived from the key's owner when the resource names none.
+  const keys = query.data.keys;
+  const username = defaultUsername || "root";
+  const defaultKeyId = pickQuickConnectKeyId({
+    keys,
+    previousId: null,
+    effectiveUsername: username,
+  });
+  const defaultKeyOwner = keys.find((k) => k.id === defaultKeyId)?.ownerName;
+  const suggestedUsername =
+    !defaultUsername && defaultKeyOwner ? deriveSSHUsername(defaultKeyOwner) : username;
   const fields: CreateFieldConfig[] = [
     {
       key: "installerAccountId",
@@ -71,7 +82,7 @@ export function SshInstallSheet({
             label: "SSH username",
             kind: "text" as const,
             required: true,
-            defaultValue: defaultUsername || "root",
+            defaultValue: suggestedUsername,
           },
           {
             key: "port",
@@ -85,7 +96,12 @@ export function SshInstallSheet({
             label: "SSH key",
             kind: "select" as const,
             required: true,
-            options: query.data.keys.map((key) => ({ id: key.id, label: key.name })),
+            ...(defaultKeyId ? { defaultValue: defaultKeyId } : {}),
+            options: keys.map((key) => ({
+              id: key.id,
+              label: key.name,
+              description: [key.ownerName, key.keyType].filter(Boolean).join(" · "),
+            })),
           },
         ]
       : []),

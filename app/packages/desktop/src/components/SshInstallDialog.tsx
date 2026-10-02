@@ -1,6 +1,13 @@
 import { useGT } from "gt-react";
-import { useEffect, useId, useState } from "react";
-import { SshInstallModal, SshInstallConnectionFields, useUIStore } from "@infrawrench/ui";
+import { useEffect, useState } from "react";
+import {
+  SshInstallModal,
+  SshInstallConnectionFields,
+  SshInstallKeyField,
+  deriveSSHUsername,
+  pickQuickConnectKeyId,
+  useUIStore,
+} from "@infrawrench/ui";
 import type {
   SshInstallAccount,
   SshInstallInput,
@@ -9,6 +16,12 @@ import type {
 import { invoke } from "../lib/invoke";
 import { listLocalSshInstallAccounts, runLocalSshInstall } from "../lib/ssh-install";
 import { SshKeyPicker } from "./SshKeyPicker";
+
+interface CloudSshKey {
+  id: string;
+  name: string;
+  ownerName?: string;
+}
 
 export function SshInstallDialog({
   target,
@@ -26,9 +39,8 @@ export function SshInstallDialog({
   const gt = useGT();
   const loadErrorMessage = gt("Could not load service accounts");
   const orgId = useUIStore((s) => s.activeCloudOrgId);
-  const id = useId();
   const [accounts, setAccounts] = useState<SshInstallAccount[]>([]);
-  const [keys, setKeys] = useState<Array<{ id: string; name: string }>>([]);
+  const [keys, setKeys] = useState<CloudSshKey[]>([]);
   const [keyId, setKeyId] = useState("");
   const [privateKey, setPrivateKey] = useState("");
   const [username, setUsername] = useState(defaultUsername || "root");
@@ -42,14 +54,23 @@ export function SshInstallDialog({
         ? invoke<SshInstallAccount[]>("cloud_ssh_install_accounts", { orgId })
         : listLocalSshInstallAccounts(),
       orgId && !nativeConnection
-        ? invoke<Array<{ id: string; name: string }>>("cloud_list_ssh_keys", { orgId })
+        ? invoke<CloudSshKey[]>("cloud_list_ssh_keys", { orgId })
         : Promise.resolve([]),
     ])
       .then(([a, k]) => {
         if (!cancelled) {
           setAccounts(a);
           setKeys(k);
-          setKeyId(k[0]?.id ?? "");
+          // Same defaults as SSH quick connect: a key matching the login, else
+          // the first, and the key owner's name as the login when none is declared.
+          const picked = pickQuickConnectKeyId({
+            keys: k,
+            previousId: null,
+            effectiveUsername: defaultUsername || "root",
+          });
+          setKeyId(picked ?? "");
+          const owner = k.find((key) => key.id === picked)?.ownerName;
+          if (!defaultUsername && owner) setUsername(deriveSSHUsername(owner));
         }
       })
       .catch((e: unknown) => {
@@ -61,7 +82,7 @@ export function SshInstallDialog({
     return () => {
       cancelled = true;
     };
-  }, [orgId, nativeConnection, loadErrorMessage]);
+  }, [orgId, nativeConnection, loadErrorMessage, defaultUsername]);
   return (
     <SshInstallModal
       hostName={hostName}
@@ -90,26 +111,15 @@ export function SshInstallDialog({
             onPortChange={setPort}
           >
             {orgId ? (
-              <>
-                <label htmlFor={id} className="block text-sm text-on-surface">
-                  {gt("SSH key")}
-                </label>
-                <select
-                  id={id}
-                  value={keyId}
-                  onChange={(e) => setKeyId(e.target.value)}
-                  className="w-full p-2 bg-surface-overlay text-on-surface text-sm border border-border rounded-lg"
-                >
-                  <option value="" disabled>
-                    {gt("Select an SSH key")}
-                  </option>
-                  {keys.map((key) => (
-                    <option key={key.id} value={key.id}>
-                      {key.name}
-                    </option>
-                  ))}
-                </select>
-              </>
+              <SshInstallKeyField
+                keys={keys}
+                selectedId={keyId}
+                onChange={(next) => {
+                  setKeyId(next);
+                  const owner = keys.find((k) => k.id === next)?.ownerName;
+                  if (!defaultUsername && owner) setUsername(deriveSSHUsername(owner));
+                }}
+              />
             ) : (
               <SshKeyPicker
                 username={username}

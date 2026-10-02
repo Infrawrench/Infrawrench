@@ -3,6 +3,7 @@ import { useGT } from "gt-react";
 import type { SshInstallAccount, SshInstallResult } from "@infrawrench/plugin-base";
 import { Modal } from "../Modal.js";
 import { useDataString } from "../../i18n/data-strings.js";
+import { SshKeyRadioGroup } from "../SshKeyRadioGroup.js";
 
 export interface SshInstallModalProps {
   hostName: string;
@@ -179,6 +180,38 @@ export function SshInstallConnectionFields({
         className="w-full p-2 text-sm bg-surface-overlay border border-border rounded-lg text-on-surface"
       />
       {children}
+    </div>
+  );
+}
+
+/** Org SSH key choice for a cloud-run installation, in the same radio list as the other SSH dialogs. */
+export function SshInstallKeyField({
+  keys,
+  selectedId,
+  onChange,
+}: {
+  keys: Array<{ id: string; name: string; ownerName?: string | undefined }>;
+  selectedId: string;
+  onChange(id: string): void;
+}) {
+  const gt = useGT();
+  return (
+    <div className="space-y-1">
+      <p className="block text-sm text-on-surface">{gt("SSH key")}</p>
+      {keys.length === 0 ? (
+        <p className="text-xs text-on-surface-muted">
+          {gt("No SSH keys found. Go to Settings to create one.")}
+        </p>
+      ) : (
+        <div className="max-h-48 overflow-y-auto">
+          <SshKeyRadioGroup
+            ariaLabel={gt("SSH key")}
+            selectedId={selectedId || null}
+            onChange={(id) => onChange(id)}
+            keys={keys.map((k) => ({ id: k.id, label: k.name, meta: k.ownerName }))}
+          />
+        </div>
+      )}
     </div>
   );
 }

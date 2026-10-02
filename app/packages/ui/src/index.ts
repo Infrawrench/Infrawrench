@@ -1225,4 +1225,5 @@ export { useStableGT } from "./i18n/stable-gt.js";
 export {
   SshInstallModal,
   SshInstallConnectionFields,
+  SshInstallKeyField,
 } from "./components/detail/SshInstallModal.js";
