@@ -24,11 +24,23 @@
  * bearer credential (a pre-signed URL carries its own signature), so it is
  * stored encrypted, never returned, and sent byte-for-byte as stored: see
  * {@link uploadToHttp} for why nothing may be appended to its query string.
+ *
+ * Every request either sink makes goes through {@link destinationFetch}
+ * (`egress.ts`): https only, no internal addresses, no redirects. And a failed
+ * response's body is never copied into the error, because that error is shown
+ * to the user: echoing it would turn a destination into a way to read whatever
+ * answers at the URL. See {@link failure}.
  */
 import { Readable } from "node:stream";
 import { signedS3Fetch } from "@infrawrench/plugin-base";
 import type { CostExportDestination } from "@infrawrench/client-core";
 import type { CostExportCredentials } from "./store";
+import {
+  DestinationRefusedError,
+  destinationFetch,
+  normalizeS3Endpoint,
+  S3_REGION_PATTERN,
+} from "./egress";
 
 /**
  * 8 MiB. Above S3's 5 MiB multipart minimum with headroom, and small enough
@@ -117,11 +129,27 @@ async function* chunked(
   if (heldBytes > 0) yield Buffer.concat(held, heldBytes);
 }
 
+/** The region to sign with, re-validated here because it reaches a hostname. */
+function s3Region(dest: Extract<CostExportDestination, { kind: "s3" }>): string {
+  const region = dest.region || "us-east-1";
+  if (!S3_REGION_PATTERN.test(region)) {
+    throw new CostExportUploadError("The destination's region is not a valid region name");
+  }
+  return region;
+}
+
 /** Origin for an S3-compatible endpoint, defaulting to AWS S3 for the region. */
 function s3Origin(dest: Extract<CostExportDestination, { kind: "s3" }>): string {
-  const explicit = dest.endpoint.trim().replace(/\/+$/, "");
-  if (explicit) return explicit.includes("://") ? explicit : `https://${explicit}`;
-  return `https://s3.${dest.region}.amazonaws.com`;
+  // Rows written before the store validated these as strictly are re-checked
+  // on every use rather than trusted.
+  let explicit: string;
+  try {
+    explicit = normalizeS3Endpoint(dest.endpoint);
+  } catch (e) {
+    throw new CostExportUploadError(e instanceof Error ? e.message : "Invalid endpoint");
+  }
+  if (explicit) return explicit;
+  return `https://s3.${s3Region(dest)}.amazonaws.com`;
 }
 
 /** Full object URL, honouring virtual-hosted vs path-style addressing. */
@@ -151,16 +179,86 @@ function xmlTag(body: string, tag: string): string | null {
   return match?.[1]?.trim() ?? null;
 }
 
+/**
+ * S3 error codes worth naming to the user. The code is the one part of an S3
+ * error body that can be shown safely, and only when it is one of these: a
+ * fixed vocabulary reveals nothing about the responder beyond "it speaks S3",
+ * where free text would echo back whatever the URL serves.
+ */
+const S3_ERROR_CODES = new Set([
+  "AccessDenied",
+  "AccountProblem",
+  "AllAccessDisabled",
+  "AuthorizationHeaderMalformed",
+  "EntityTooLarge",
+  "EntityTooSmall",
+  "ExpiredToken",
+  "InternalError",
+  "InvalidAccessKeyId",
+  "InvalidBucketName",
+  "InvalidPart",
+  "InvalidPartOrder",
+  "InvalidRequest",
+  "InvalidToken",
+  "KeyTooLongError",
+  "NoSuchBucket",
+  "NoSuchUpload",
+  "PermanentRedirect",
+  "QuotaExceeded",
+  "RequestTimeTooSkewed",
+  "ServiceUnavailable",
+  "SignatureDoesNotMatch",
+  "SlowDown",
+]);
+
+/** A short, fixed explanation for the statuses a user can act on. */
+function statusHint(status: number): string | null {
+  if (status >= 300 && status < 400) return "redirects are not followed";
+  if (status === 401 || status === 403) return "access denied";
+  if (status === 404) return "not found";
+  if (status === 413) return "object too large for the destination";
+  if (status === 429) return "rate limited";
+  if (status >= 500) return "destination error";
+  return null;
+}
+
+/**
+ * Turn a failed response into the error the user sees: the status, plus an
+ * allowlisted S3 error code or a fixed hint. Never the body. The body is
+ * logged (truncated) for operators instead; it does not carry our credentials,
+ * and the destination URL, which can, is not logged.
+ */
 async function failure(res: Response, what: string): Promise<CostExportUploadError> {
   const text = await res.text().catch(() => "");
-  // S3 error bodies are XML with a human-readable <Message>; surfacing that
-  // verbatim is the difference between "403" and "the key has no s3:PutObject
-  // on this prefix", which is what the settings UI has to show.
-  const message = xmlTag(text, "Message") ?? text.slice(0, 400);
+  const code = xmlTag(text, "Code");
+  const detail = code && S3_ERROR_CODES.has(code) ? code : statusHint(res.status);
+  if (text) {
+    console.warn(`[cost-export] ${what} failed (${res.status}): ${text.slice(0, 400)}`);
+  }
   return new CostExportUploadError(
-    `${what} failed (${res.status})${message ? `: ${message}` : ""}`,
+    `${what} failed (${res.status})${detail ? `: ${detail}` : ""}`,
     res.status,
   );
+}
+
+/**
+ * Run a destination request, mapping a refused destination or a network error
+ * onto a fixed message. A raw network error can name an address or a TLS
+ * detail of whatever the URL pointed at, which is not for the user to see.
+ */
+async function send(what: string, request: () => Promise<Response>): Promise<Response> {
+  try {
+    return await request();
+  } catch (e) {
+    if (e instanceof CostExportUploadError) throw e;
+    if (e instanceof DestinationRefusedError) {
+      throw new CostExportUploadError(`${what} refused: ${e.message}`);
+    }
+    const cause = e instanceof Error && e.cause instanceof DestinationRefusedError ? e.cause : null;
+    if (cause) throw new CostExportUploadError(`${what} refused: ${cause.message}`);
+    console.warn(`[cost-export] ${what} could not connect:`, e);
+    throw new CostExportUploadError(`${what} could not connect to the destination`);
+  }
 }
 
 async function uploadToS3(req: UploadRequest): Promise<UploadResult> {
@@ -172,7 +270,8 @@ async function uploadToS3(req: UploadRequest): Promise<UploadResult> {
   const sign = {
     accessKey: creds.accessKeyId,
     secretKey: creds.secretAccessKey,
-    region: dest.region || "us-east-1",
+    region: s3Region(dest),
+    fetch: destinationFetch,
   };
   const meta = stampHeaders(req.stamp, "x-amz-meta-infrawrench-");
 
@@ -185,13 +284,15 @@ async function uploadToS3(req: UploadRequest): Promise<UploadResult> {
   if (firstChunk.byteLength <= SINGLE_PUT_LIMIT) {
     const peek = await parts.next();
     if (peek.done) {
-      const res = await signedS3Fetch({
-        ...sign,
-        method: "PUT",
-        url: s3ObjectUrl(dest, req.key),
-        headers: { "content-type": req.contentType, ...meta },
-        body: firstChunk,
-      });
+      const res = await send("S3 PUT", () =>
+        signedS3Fetch({
+          ...sign,
+          method: "PUT",
+          url: s3ObjectUrl(dest, req.key),
+          headers: { "content-type": req.contentType, ...meta },
+          body: firstChunk,
+        }),
+      );
       if (!res.ok) throw await failure(res, "S3 PUT");
       return { byteCount: firstChunk.byteLength };
     }
@@ -204,18 +305,25 @@ async function uploadToS3(req: UploadRequest): Promise<UploadResult> {
 
 async function multipartUpload(
   dest: Extract<CostExportDestination, { kind: "s3" }>,
-  sign: { accessKey: string; secretKey: string; region: string },
+  sign: {
+    accessKey: string;
+    secretKey: string;
+    region: string;
+    fetch: typeof destinationFetch;
+  },
   req: UploadRequest,
   meta: Record<string, string>,
   pending: Buffer[],
   rest: AsyncGenerator<Buffer, void, undefined>,
 ): Promise<UploadResult> {
-  const createRes = await signedS3Fetch({
-    ...sign,
-    method: "POST",
-    url: s3ObjectUrl(dest, req.key, "?uploads="),
-    headers: { "content-type": req.contentType, ...meta },
-  });
+  const createRes = await send("S3 CreateMultipartUpload", () =>
+    signedS3Fetch({
+      ...sign,
+      method: "POST",
+      url: s3ObjectUrl(dest, req.key, "?uploads="),
+      headers: { "content-type": req.contentType, ...meta },
+    }),
+  );
   if (!createRes.ok) throw await failure(createRes, "S3 CreateMultipartUpload");
   const uploadId = xmlTag(await createRes.text(), "UploadId");
   if (!uploadId) {
@@ -225,18 +333,20 @@ async function multipartUpload(
   const etags: string[] = [];
   let byteCount = 0;
   try {
-    const send = async (chunk: Buffer): Promise<void> => {
+    const sendPart = async (chunk: Buffer): Promise<void> => {
       const partNumber = etags.length + 1;
-      const res = await signedS3Fetch({
-        ...sign,
-        method: "PUT",
-        url: s3ObjectUrl(
-          dest,
-          req.key,
-          `?partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}`,
-        ),
-        body: chunk,
-      });
+      const res = await send(`S3 UploadPart ${partNumber}`, () =>
+        signedS3Fetch({
+          ...sign,
+          method: "PUT",
+          url: s3ObjectUrl(
+            dest,
+            req.key,
+            `?partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}`,
+          ),
+          body: chunk,
+        }),
+      );
       if (!res.ok) throw await failure(res, `S3 UploadPart ${partNumber}`);
       const etag = res.headers.get("etag");
       if (!etag) {
@@ -246,8 +356,8 @@ async function multipartUpload(
       byteCount += chunk.byteLength;
     };
 
-    for (const chunk of pending) await send(chunk);
-    for await (const chunk of rest) await send(chunk);
+    for (const chunk of pending) await sendPart(chunk);
+    for await (const chunk of rest) await sendPart(chunk);
 
     const xml = `<CompleteMultipartUpload>${etags
       .map(
@@ -255,20 +365,26 @@ async function multipartUpload(
           `<Part><PartNumber>${i + 1}</PartNumber><ETag>${etag.replace(/"/g, "&quot;")}</ETag></Part>`,
       )
       .join("")}</CompleteMultipartUpload>`;
-    const completeRes = await signedS3Fetch({
-      ...sign,
-      method: "POST",
-      url: s3ObjectUrl(dest, req.key, `?uploadId=${encodeURIComponent(uploadId)}`),
-      headers: { "content-type": "application/xml" },
-      body: xml,
-    });
+    const completeRes = await send("S3 CompleteMultipartUpload", () =>
+      signedS3Fetch({
+        ...sign,
+        method: "POST",
+        url: s3ObjectUrl(dest, req.key, `?uploadId=${encodeURIComponent(uploadId)}`),
+        headers: { "content-type": "application/xml" },
+        body: xml,
+      }),
+    );
     if (!completeRes.ok) throw await failure(completeRes, "S3 CompleteMultipartUpload");
     // S3 answers 200 with an error document for some Complete failures: the
     // status alone is not the outcome.
     const completeBody = await completeRes.text();
     if (xmlTag(completeBody, "Error") !== null || completeBody.includes("<Error>")) {
+      const code = xmlTag(completeBody, "Code");
+      console.warn(
+        `[cost-export] S3 CompleteMultipartUpload returned an error document: ${completeBody.slice(0, 400)}`,
+      );
       throw new CostExportUploadError(
-        `S3 CompleteMultipartUpload failed: ${xmlTag(completeBody, "Message") ?? "unknown error"}`,
+        `S3 CompleteMultipartUpload failed: ${code && S3_ERROR_CODES.has(code) ? code : "unknown error"}`,
       );
     }
     return { byteCount };
@@ -335,7 +451,10 @@ async function uploadToHttp(req: UploadRequest): Promise<UploadResult> {
   // Even for an unsigned URL, quietly overwriting a `key` parameter the user
   // deliberately put in their endpoint is a surprise nobody debugs quickly.
   // Never append to this URL.
-  const res = await fetch(creds.url, init);
+  //
+  // `destinationFetch` checks the URL without rewriting it, and refuses an
+  // internal address or a redirect.
+  const res = await send(`HTTP ${dest.method}`, () => destinationFetch(creds.url, init));
 
   if (!res.ok) throw await failure(res, `HTTP ${dest.method}`);
   await res.body?.cancel().catch(() => {});

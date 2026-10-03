@@ -47,7 +47,7 @@ The two branches do not mix: the server's destination schema is a strict discrim
 - `enabled` (Boolean) Whether the schedule runs. Disabling pauses delivery without discarding the stored credential.
 - `query` (Block, Optional) Which rows and columns the export emits. Required. (see [below for nested schema](#nestedblock--query))
 - `secret_access_key` (String, Sensitive) Secret access key for an `s3` destination. Write-only, with the same consequences as `access_key_id`: no drift detection, and omission means keep.
-- `url` (String, Sensitive) Full webhook URL for an `http` destination, including any secret in its path or query. It travels as a top-level credential rather than inside the `destination` block precisely because it is secret material. Write-only: no drift detection, and omission means keep. Supplying a new one recomputes `destination.url_hint`.
+- `url` (String, Sensitive) Full webhook URL for an `http` destination, including any secret in its path or query. It must be `https`, carry no username or password, and not point at a private, loopback, link-local or otherwise reserved address; redirects are not followed. It travels as a top-level credential rather than inside the `destination` block precisely because it is secret material. Write-only: no drift detection, and omission means keep. Supplying a new one recomputes `destination.url_hint`.
 
 ### Read-Only
 
@@ -65,11 +65,11 @@ Required:
 Optional:
 
 - `bucket` (String) Bucket name. `s3` only.
-- `endpoint` (String) Custom S3 endpoint for a non-AWS implementation such as R2, MinIO or Spaces. `s3` only; leave unset for AWS.
+- `endpoint` (String) Custom S3 endpoint for a non-AWS implementation such as R2, MinIO or Spaces: a bare host or an `https://` origin, with an optional port and no path. Plain `http` is refused, as is any host that is or resolves to a private, loopback, link-local or otherwise reserved address. `s3` only; leave unset for AWS.
 - `force_path_style` (Boolean) Address objects as `endpoint/bucket/key` rather than as a virtual host. Most self-hosted S3 implementations need this. `s3` only.
 - `method` (String) HTTP method each file is delivered with, `POST` or `PUT`. `http` only.
 - `prefix` (String) Key prefix objects are written under. `s3` only.
-- `region` (String) Bucket region, e.g. `eu-west-2`. `s3` only.
+- `region` (String) Bucket region, e.g. `eu-west-2`; 1 to 32 lowercase letters, digits or hyphens. `s3` only.
 
 Read-Only:
 

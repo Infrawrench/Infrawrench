@@ -13,8 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *  - **URL construction**, where path-style vs virtual-hosted addressing is
  *    the difference between working on MinIO and working on AWS, and, for
  *    HTTPS, where any mutation of a pre-signed URL is a total upload outage;
- *  - **error text**, because "403" is not something a user can act on and
- *    S3's own `<Message>` is.
+ *  - **error text**, which has to say enough to act on ("403: AccessDenied")
+ *    without echoing the destination's response body back to the user;
+ *  - **the egress guard**: every request goes through the guarded fetch, and
+ *    a region or endpoint that would steer it somewhere else is refused.
  */
 
 interface SignedCall {
@@ -22,6 +24,7 @@ interface SignedCall {
   url: string;
   headers?: Record<string, string> | undefined;
   bodyLength: number;
+  guarded: boolean;
 }
 
 const signedCalls: SignedCall[] = [];
@@ -33,6 +36,7 @@ vi.mock("@infrawrench/plugin-base", () => ({
     url: string;
     headers?: Record<string, string>;
     body?: string | Uint8Array;
+    fetch?: unknown;
   }) => {
     const call: SignedCall = {
       method: opts.method,
@@ -40,14 +44,24 @@ vi.mock("@infrawrench/plugin-base", () => ({
       headers: opts.headers,
       bodyLength:
         typeof opts.body === "string" ? Buffer.byteLength(opts.body) : (opts.body?.byteLength ?? 0),
+      guarded: opts.fetch === destinationFetch,
     };
     signedCalls.push(call);
     return signedResponder(call);
   },
 }));
 
+// The HTTPS sink calls undici's `fetch` with a guarded dispatcher. Route it
+// through the global so the tests below can spy on one function.
+vi.mock("undici", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("undici")>()),
+  fetch: (url: unknown, init: unknown) =>
+    (globalThis.fetch as (u: unknown, i: unknown) => Promise<Response>)(url, init),
+}));
+
 const { PART_SIZE, uploadCostExportObject, CostExportUploadError } =
   await import("../cost-exports/destinations");
+const { destinationFetch } = await import("../cost-exports/egress");
 
 const stamp = {
   periodStart: "2026-08-07",
@@ -94,6 +108,7 @@ describe("S3 upload — small objects", () => {
 
     expect(result.byteCount).toBe(11);
     expect(signedCalls).toHaveLength(1);
+    expect(signedCalls[0]!.guarded).toBe(true);
     expect(signedCalls[0]!.method).toBe("PUT");
     expect(signedCalls[0]!.url).toBe(
       "https://finance.s3.eu-central-1.amazonaws.com/warehouse/cost-export/exp-1/daily/2026-08-07.csv",
@@ -156,9 +171,11 @@ describe("S3 upload — small objects", () => {
     expect(signedCalls[0]!.url).toBe("https://finance.fra1.digitaloceanspaces.com/a.csv");
   });
 
-  it("surfaces S3's own message, not just the status", async () => {
+  it("surfaces a known S3 error code, not just the status", async () => {
     signedResponder = () =>
-      new Response("<Error><Message>Access Denied</Message></Error>", { status: 403 });
+      new Response("<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>", {
+        status: 403,
+      });
     await expect(
       uploadCostExportObject({
         destination: s3Destination,
@@ -168,7 +185,48 @@ describe("S3 upload — small objects", () => {
         body: body("x"),
         stamp,
       }),
-    ).rejects.toThrow(/403.*Access Denied/);
+    ).rejects.toThrow(/403.*AccessDenied/);
+  });
+
+  it("never echoes the response body into the error", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    signedResponder = () =>
+      new Response(
+        "<Error><Code>secret-internal-value</Code><Message>top secret</Message></Error>",
+        {
+          status: 400,
+        },
+      );
+    const err = await uploadCostExportObject({
+      destination: s3Destination,
+      credentials: s3Credentials,
+      key: "k.csv",
+      contentType: "text/csv",
+      body: body("x"),
+      stamp,
+    }).catch((e: unknown) => e as Error);
+    expect(err).toBeInstanceOf(CostExportUploadError);
+    expect((err as Error).message).toBe("S3 PUT failed (400)");
+  });
+
+  it.each([
+    ["a region that rewrites the host", { region: "x@evil.example:443/" }],
+    ["a plaintext endpoint", { endpoint: "http://minio.example.com" }],
+    ["an endpoint with userinfo", { endpoint: "https://user@minio.example.com" }],
+    ["a loopback endpoint", { endpoint: "https://127.0.0.1:9000" }],
+    ["a metadata endpoint", { endpoint: "169.254.169.254" }],
+  ])("refuses %s at upload time, before any request", async (_label, patch) => {
+    await expect(
+      uploadCostExportObject({
+        destination: { ...s3Destination, ...patch },
+        credentials: s3Credentials,
+        key: "k.csv",
+        contentType: "text/csv",
+        body: body("x"),
+        stamp,
+      }),
+    ).rejects.toBeInstanceOf(CostExportUploadError);
+    expect(signedCalls).toHaveLength(0);
   });
 
   it("refuses to run with credentials of the wrong kind", async () => {
@@ -245,7 +303,7 @@ describe("S3 upload — large objects", () => {
         return new Response("<Result><UploadId>up-1</UploadId></Result>");
       }
       if (call.method === "PUT") {
-        return new Response("<Error><Message>Slow Down</Message></Error>", { status: 503 });
+        return new Response("<Error><Code>SlowDown</Code></Error>", { status: 503 });
       }
       return new Response("");
     };
@@ -259,7 +317,7 @@ describe("S3 upload — large objects", () => {
         body: bigBody(PART_SIZE + 10),
         stamp,
       }),
-    ).rejects.toThrow(/Slow Down/);
+    ).rejects.toThrow(/SlowDown/);
 
     const abort = signedCalls.filter((c) => c.method === "DELETE" && c.url.includes("uploadId="));
     expect(abort).toHaveLength(1);
@@ -274,7 +332,7 @@ describe("S3 upload — large objects", () => {
         return new Response("", { status: 200, headers: { etag: '"abc"' } });
       }
       if (call.method === "DELETE") return new Response("");
-      return new Response("<Error><Message>InternalError</Message></Error>", { status: 200 });
+      return new Response("<Error><Code>InternalError</Code></Error>", { status: 200 });
     };
 
     await expect(
@@ -328,6 +386,7 @@ describe("HTTPS upload", () => {
       "x-infrawrench-collection-watermark": "2026-08-06",
     });
     expect((seenInit as { duplex?: string }).duplex).toBe("half");
+    expect(seenInit.redirect).toBe("manual");
     fetchSpy.mockRestore();
   });
 
@@ -381,6 +440,67 @@ describe("HTTPS upload", () => {
         stamp,
       }),
     ).rejects.toThrow(/500/);
+    fetchSpy.mockRestore();
+  });
+
+  it("treats a redirect as a failure instead of following it", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response("", { status: 302, headers: { location: "http://169.254.169.254/" } }),
+      );
+    await expect(
+      uploadCostExportObject({
+        destination: { kind: "http", method: "POST", urlHint: "x" },
+        credentials: { kind: "http", url: "https://wh.example.com/ingest" },
+        key: "k.csv",
+        contentType: "text/csv",
+        body: body("x"),
+        stamp,
+      }),
+    ).rejects.toThrow("HTTP POST failed (302): redirects are not followed");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    fetchSpy.mockRestore();
+  });
+
+  it("does not echo the body of a failed response", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response('{"AccessKeyId":"ASIA-from-metadata"}', { status: 418 }));
+    const err = await uploadCostExportObject({
+      destination: { kind: "http", method: "POST", urlHint: "x" },
+      credentials: { kind: "http", url: "https://wh.example.com/ingest" },
+      key: "k.csv",
+      contentType: "text/csv",
+      body: body("x"),
+      stamp,
+    }).catch((e: unknown) => e as Error);
+    expect((err as Error).message).toBe("HTTP POST failed (418)");
+    fetchSpy.mockRestore();
+  });
+
+  it.each([
+    "http://wh.example.com/ingest",
+    "https://127.0.0.1/ingest",
+    "https://[::1]/ingest",
+    "https://169.254.169.254/latest/meta-data/",
+    "https://10.0.0.5/",
+    "https://localhost/ingest",
+    "https://user:pass@wh.example.com/ingest",
+  ])("refuses %s without sending anything", async (url) => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    await expect(
+      uploadCostExportObject({
+        destination: { kind: "http", method: "POST", urlHint: "x" },
+        credentials: { kind: "http", url },
+        key: "k.csv",
+        contentType: "text/csv",
+        body: body("x"),
+        stamp,
+      }),
+    ).rejects.toThrow(/refused/);
+    expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
 });

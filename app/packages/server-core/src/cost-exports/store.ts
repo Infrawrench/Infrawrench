@@ -34,6 +34,7 @@ import { costExports } from "../db/schema";
 import { buildAad, decrypt, encrypt } from "../encryption";
 import { isValidTimeZone } from "../digest/compose";
 import { nextCostExportRunAt } from "./periods";
+import { assertDestinationUrl, normalizeS3Endpoint, S3_REGION_PATTERN } from "./egress";
 
 export type CostExportRecord = typeof costExports.$inferSelect;
 
@@ -116,7 +117,7 @@ function normalizeQuery(raw: unknown): CostExportQuery {
  * credential, so it lives in the encrypted bundle and only its host survives
  * into the non-secret config as {@link CostExportHttpDestination.urlHint}.
  */
-function normalizeDestination(raw: unknown, url: string | undefined): CostExportDestination {
+export function normalizeDestination(raw: unknown, url: string | undefined): CostExportDestination {
   const d = (raw ?? {}) as Record<string, unknown>;
   const kind = requireOneOf(d["kind"], COST_EXPORT_DESTINATION_KINDS, "destination.kind");
 
@@ -127,14 +128,24 @@ function normalizeDestination(raw: unknown, url: string | undefined): CostExport
       throw new CostExportInputError("destination.bucket is not a valid bucket name");
     }
     const endpoint = String(d["endpoint"] ?? "").trim();
-    if (endpoint && !/^(https?:\/\/)?[a-z0-9.\-]+(:\d+)?$/i.test(endpoint)) {
-      throw new CostExportInputError("destination.endpoint must be a host or https:// origin");
+    // The endpoint and region decide which host the poller connects to, so
+    // they are checked here and again at upload time (`destinations.ts`).
+    try {
+      normalizeS3Endpoint(endpoint);
+    } catch (e) {
+      throw new CostExportInputError(e instanceof Error ? e.message : String(e));
+    }
+    const region = String(d["region"] ?? "").trim() || "us-east-1";
+    if (!S3_REGION_PATTERN.test(region)) {
+      throw new CostExportInputError(
+        "destination.region must be 1-32 lowercase letters, digits or hyphens",
+      );
     }
     return {
       kind: "s3",
       bucket,
       prefix: normalizeKeyPrefix(String(d["prefix"] ?? "")),
-      region: String(d["region"] ?? "").trim() || "us-east-1",
+      region,
       endpoint,
       forcePathStyle: d["forcePathStyle"] === true,
     };
@@ -143,17 +154,15 @@ function normalizeDestination(raw: unknown, url: string | undefined): CostExport
   const method = d["method"] === "PUT" ? "PUT" : "POST";
   let urlHint = String(d["urlHint"] ?? "");
   if (url !== undefined) {
+    // Org spend over plaintext HTTP is not a trade-off worth offering. There is
+    // no localhost or private-network carve-out either: the poller runs in the
+    // cluster, so such a destination could only ever reach our own services.
+    // The upload re-checks all of this, plus the resolved address.
     let parsed: URL;
     try {
-      parsed = new URL(url);
-    } catch {
-      throw new CostExportInputError("url must be an absolute https:// URL");
-    }
-    if (parsed.protocol !== "https:") {
-      // Org spend over plaintext HTTP is not a trade-off worth offering. There
-      // is no localhost carve-out either: the poller runs in the cluster, so a
-      // loopback destination could only ever mean a mistake.
-      throw new CostExportInputError("url must use https");
+      parsed = assertDestinationUrl(url, "url");
+    } catch (e) {
+      throw new CostExportInputError(e instanceof Error ? e.message : String(e));
     }
     urlHint = `${parsed.host}/…${url.slice(-4)}`;
   }
