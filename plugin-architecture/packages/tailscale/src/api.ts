@@ -179,6 +179,29 @@ export interface LogStreamStatus {
   numTotalRequests?: number;
 }
 
+/** One direction-pair of a flow, counted from the logging node's side. */
+export interface ConnectionCounts {
+  proto?: string;
+  src?: string;
+  dst?: string;
+  txPkts?: number;
+  txBytes?: number;
+  rxPkts?: number;
+  rxBytes?: number;
+}
+
+/** One node's traffic over one logging window (about five seconds). */
+export interface NetworkFlowLog {
+  logged?: string;
+  nodeId?: string;
+  start?: string;
+  end?: string;
+  virtualTraffic?: ConnectionCounts[];
+  subnetTraffic?: ConnectionCounts[];
+  exitTraffic?: ConnectionCounts[];
+  physicalTraffic?: ConnectionCounts[];
+}
+
 export interface ConfigurationAuditLog {
   eventTime?: string;
   origin?: string;

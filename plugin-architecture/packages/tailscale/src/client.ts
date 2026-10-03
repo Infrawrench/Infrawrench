@@ -7,6 +7,7 @@ import type {
   HostServices,
   LogsFetchParams,
   LogsFetchResult,
+  MetricSeries,
   PluginClient,
   PolicyOption,
   ResourceInstance,
@@ -21,6 +22,7 @@ import type {
   Key,
   LogStreamConfig,
   LogStreamStatus,
+  NetworkFlowLog,
   PostureIntegration,
   Service,
   ServiceHost,
@@ -43,6 +45,7 @@ import {
   mapWebhook,
   splitList,
 } from "./mappers.js";
+import { flowSeries, flowWindow, formatFlowLogs } from "./network-flows.js";
 import { renderDetail, sidebarStatus } from "./render.js";
 import { INVITE_ROLES, POSTURE_PROVIDERS, WEBHOOK_EVENTS } from "./resource-types.js";
 
@@ -1146,14 +1149,31 @@ export class TailscaleClient implements PluginClient {
   // Logs, stats, rendering
   // ---------------------------------------------------------------------------
 
-  /** The configuration audit log: who changed what in the tailnet. */
+  /**
+   * The tailnet has two logs: the configuration audit log (who changed what)
+   * and network flow logs; a device has its own slice of the flow logs.
+   */
   async getLogs(
     typeId: string,
-    _resourceId: string,
-    _accountId: string,
+    resourceId: string,
+    accountId: string,
     params: LogsFetchParams,
   ): Promise<LogsFetchResult> {
-    if (typeId !== "tailnet") throw new Error("Only the tailnet has logs.");
+    if (typeId === "device") {
+      const nodeId = resourceId.slice(`${accountId}:device:`.length);
+      const lines = await this.flowLogLines(nodeId);
+      return {
+        text: tailText(lines, params.tailLines),
+        containers: ["network"],
+        activeContainer: "network",
+      };
+    }
+    if (typeId !== "tailnet") throw new Error("Only the tailnet and its devices have logs.");
+    const containers = ["configuration", "network"];
+    if (params.container === "network") {
+      const lines = await this.flowLogLines();
+      return { text: tailText(lines, params.tailLines), containers, activeContainer: "network" };
+    }
     const end = new Date();
     const start = new Date(end.getTime() - 30 * 86_400_000);
     const query = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() });
@@ -1161,12 +1181,64 @@ export class TailscaleClient implements PluginClient {
       this.tailnetPath(`/logging/configuration?${query.toString()}`),
     );
     const lines = (response.logs ?? []).map(formatAuditLog);
-    const tail = params.tailLines ? lines.slice(-params.tailLines) : lines;
     return {
-      text: tail.map((line) => `${line}\n`).join(""),
-      containers: ["configuration"],
+      text: tailText(lines, params.tailLines),
+      containers,
       activeContainer: "configuration",
     };
+  }
+
+  /** Network flow logs for a window, with a hint when the tailnet cannot have them. */
+  private async networkFlowLogs(startMs: number, endMs: number): Promise<NetworkFlowLog[]> {
+    const query = new URLSearchParams({
+      start: new Date(startMs).toISOString(),
+      end: new Date(endMs).toISOString(),
+    });
+    try {
+      const response = await this.request<{ logs?: NetworkFlowLog[] }>(
+        this.tailnetPath(`/logging/network?${query.toString()}`),
+      );
+      return response?.logs ?? [];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/^Tailscale API error (403|404):/.test(message)) {
+        throw new Error(
+          `Network flow logs are unavailable: they need a Premium or Enterprise plan, network flow logging turned on for the tailnet, and a token with the logs:network:read scope. (${message})`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  /** The last few minutes of flow logs as text, device names in place of IPs. */
+  private async flowLogLines(nodeId?: string): Promise<string[]> {
+    const endMs = Date.now();
+    const [logs, devices] = await Promise.all([
+      this.networkFlowLogs(endMs - FLOW_LOG_TAIL_MS, endMs),
+      this.devices().catch(() => [] as Device[]),
+    ]);
+    const names = new Map<string, string>();
+    for (const device of devices) {
+      const name = device.hostname || device.name;
+      if (device.nodeId) names.set(device.nodeId, name);
+      for (const address of device.addresses ?? []) names.set(address, name);
+    }
+    return formatFlowLogs(logs, names, nodeId);
+  }
+
+  /** Traffic from network flow logs: per device, or summed over the tailnet. */
+  async fetchMetricSeries(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (typeId !== "device" && typeId !== "tailnet") return [];
+    const window = flowWindow(timeRange);
+    const logs = await this.networkFlowLogs(window.startMs, window.endMs);
+    const nodeId =
+      typeId === "device" ? resourceId.slice(`${accountId}:device:`.length) : undefined;
+    return flowSeries(logs, window, nodeId);
   }
 
   async fetchDashboardStats(
@@ -1259,6 +1331,14 @@ export class TailscaleClient implements PluginClient {
     if (!device) return;
     await this.request(`/device/${encodeURIComponent(device.nodeId || device.id)}`, "DELETE");
   }
+}
+
+/** How far back the network container of a Logs tab reads. */
+const FLOW_LOG_TAIL_MS = 15 * 60 * 1000;
+
+function tailText(lines: string[], tailLines: number | undefined): string {
+  const tail = tailLines ? lines.slice(-tailLines) : lines;
+  return tail.map((line) => `${line}\n`).join("");
 }
 
 function formatAuditLog(entry: ConfigurationAuditLog): string {
