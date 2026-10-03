@@ -9,6 +9,7 @@ import {
   ebsVolumeMetrics,
   ecsServiceMetrics,
   appRunnerServiceMetrics,
+  eksClusterMetrics,
 } from "../metrics/compute-metrics.js";
 import {
   rdsInstanceMetrics,
@@ -131,6 +132,22 @@ describe("compute metrics", () => {
     const out = await lambdaFunctionMetrics(ctx, res({ name: "fn" }));
     expect(out.find((s) => s.label === "Invocations")).toBeTruthy();
   });
+  it("lambdaFunctionMetrics includes the async and recursion series", async () => {
+    const { ctx, calls } = ctxWithData();
+    const out = await lambdaFunctionMetrics(ctx, res({ name: "fn" }));
+    const metrics = calls.map((c) => c[1]);
+    expect(metrics).toEqual(
+      expect.arrayContaining([
+        "AsyncEventsReceived",
+        "AsyncEventsDropped",
+        "DestinationDeliveryFailures",
+        "RecursiveInvocationsDropped",
+        "OffsetLag",
+      ]),
+    );
+    expect(calls.every((c) => c[0] === "AWS/Lambda")).toBe(true);
+    expect(out.find((s) => s.label === "Async Event Age")?.unit).toBe("ms");
+  });
   it("autoScalingGroupMetrics", async () => {
     const { ctx } = ctxWithData();
     expect((await autoScalingGroupMetrics(ctx, res({ name: "asg" }))).length).toBe(3);
@@ -145,7 +162,33 @@ describe("compute metrics", () => {
     const { ctx } = ctxWithData();
     expect(await ecsServiceMetrics(ctx, res({ serviceName: "s" }))).toEqual([]);
     const out = await ecsServiceMetrics(ctx, res({ clusterName: "c", serviceName: "s" }));
-    expect(out.length).toBe(2);
+    expect(out.length).toBe(11);
+    expect(out.slice(0, 2).map((s) => s.label)).toEqual(["CPU Utilization", "Memory Utilization"]);
+    expect(out.find((s) => s.label === "Network In")?.unit).toBe("bytes/s");
+  });
+  it("ecsServiceMetrics reads task counts from Container Insights", async () => {
+    const { ctx, calls } = ctxWithData();
+    await ecsServiceMetrics(ctx, res({ clusterName: "c", serviceName: "s" }));
+    const running = calls.find((c) => c[1] === "RunningTaskCount");
+    expect(running?.[0]).toBe("ECS/ContainerInsights");
+    expect(running?.[2]).toEqual([
+      { Name: "ClusterName", Value: "c" },
+      { Name: "ServiceName", Value: "s" },
+    ]);
+  });
+  it("eksClusterMetrics reads the vended AWS/EKS control plane metrics", async () => {
+    const { ctx, calls } = ctxWithData();
+    expect(await eksClusterMetrics(ctx, res({}, {}, ""))).toEqual([]);
+    const out = await eksClusterMetrics(ctx, res({ name: "prod" }));
+    expect(out.length).toBe(calls.length);
+    expect(calls.every((c) => c[0] === "AWS/EKS")).toBe(true);
+    expect(calls[0]?.[2]).toEqual([{ Name: "ClusterName", Value: "prod" }]);
+    const req = calls.find((c) => c[1] === "apiserver_request_total");
+    expect(req?.[3]).toBe("Sum");
+    const pending = calls.find((c) => c[1] === "scheduler_pending_pods");
+    expect(pending?.[3]).toBe("Maximum");
+    expect(out.find((s) => s.label === "etcd Size In Use")?.unit).toBe("bytes");
+    expect(out.find((s) => s.label === "GET Latency p99")?.unit).toBe("s");
   });
   it("appRunnerServiceMetrics", async () => {
     const { ctx } = ctxWithData();

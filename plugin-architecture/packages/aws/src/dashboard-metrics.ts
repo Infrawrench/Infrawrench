@@ -8,6 +8,7 @@ import {
   ebsVolumeMetrics,
   ecsServiceMetrics,
   appRunnerServiceMetrics,
+  eksClusterMetrics,
 } from "./metrics/compute-metrics.js";
 import {
   rdsInstanceMetrics,
@@ -250,6 +251,8 @@ export async function fetchMetricSeries(
       return route53HealthCheckMetrics(ctx, resource);
     case "backup-vault":
       return backupVaultMetrics(ctx, resource);
+    case "eks-cluster":
+      return eksClusterMetrics(ctx, resource);
     default:
       return [];
   }

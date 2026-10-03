@@ -15,6 +15,8 @@ import type {
   CostFetchResult,
   CredentialExport,
   HostServices,
+  LogsFetchParams,
+  LogsFetchResult,
   NetworkFlowFetchRange,
   NetworkFlowFetchResult,
   PreflightResult,
@@ -144,6 +146,7 @@ import { executeDynamoDbCommand } from "./dynamodb-handlers.js";
 import { publishSqs, publishSns, publishKinesis, publishEventBridge } from "./publish-handlers.js";
 import { fetchSigned } from "./signed-request.js";
 import { runAwsPreflight } from "./preflight.js";
+import { AWS_LOG_TYPES, getAwsLogs } from "./logs.js";
 
 export class AWSClient implements PluginClient {
   private readonly creds: AwsCredentials;
@@ -659,12 +662,25 @@ export class AWSClient implements PluginClient {
     // Every type `fetchMetricSeries` handles declares `supportsMetrics`, so
     // the Metrics tab is derived from the declaration rather than restated
     // per type. `makeMetricsContext` defaults to the last hour.
-    return withMetricsCapability(
+    const detail = withMetricsCapability(
       renderDetailImpl(resource, this.resourceTypes, region),
       this.resourceTypes,
       resource.resourceTypeId,
       3_600_000,
     );
+    if (AWS_LOG_TYPES.has(resource.resourceTypeId)) detail.logs = { defaultTailLines: 200 };
+    return detail;
+  }
+
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    const resource = await this.getResource(typeId, resourceId, accountId);
+    const region = String(resource.fields["region"] ?? this.creds.region);
+    return getAwsLogs(this.credsFor(region), resource, typeId, params);
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {

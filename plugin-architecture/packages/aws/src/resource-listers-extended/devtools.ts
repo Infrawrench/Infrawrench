@@ -25,6 +25,8 @@ export async function listCodeBuildProjects(
     const name = String(p["name"] ?? "");
     const source = p["source"] as Record<string, unknown> | undefined;
     const environment = p["environment"] as Record<string, unknown> | undefined;
+    const cwLogs = (p["logsConfig"] as Record<string, unknown> | undefined)?.["cloudWatchLogs"] as
+      Record<string, unknown> | undefined;
 
     return {
       id: ctx.id(accountId, "codebuild-project", name),
@@ -41,6 +43,9 @@ export async function listCodeBuildProjects(
         computeType: String(environment?.["computeType"] ?? ""),
         lastBuildStatus: String(p["lastBuildStatus"] ?? ""),
         badge: (p["badge"] as Record<string, unknown> | undefined)?.["badgeEnabled"] === true,
+        // Read by the Logs tab. Underscored so they stay out of the Details list.
+        _logGroupName: String(cwLogs?.["groupName"] ?? ""),
+        _logStreamPrefix: String(cwLogs?.["streamName"] ?? ""),
       },
       resolvedOutputs: {
         projectArn: String(p["arn"] ?? ""),
