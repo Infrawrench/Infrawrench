@@ -107,7 +107,7 @@ func (r *tagPolicyResource) Configure(_ context.Context, req resource.ConfigureR
 //
 // There is no POST route, because the policy already exists for every
 // organization from the moment it is created. So "creating" this resource is a
-// PUT that overwrites whatever the policy currently says — the same call Update
+// PUT that overwrites whatever the policy currently says: the same call Update
 // makes. Anything configured in the UI beforehand is replaced, which is the
 // usual Terraform bargain and worth knowing before the first apply.
 func (r *tagPolicyResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -207,7 +207,7 @@ func (r *tagPolicyResource) Update(ctx context.Context, req resource.UpdateReque
 // The API has no DELETE for the singleton, so the honest choices are to do
 // nothing or to neutralise the policy. Doing nothing would leave an enforcing
 // policy behind after `terraform destroy` removed the resource that documents
-// it — a rule nobody owns, still rejecting resource creation, with no config
+// it: a rule nobody owns, still rejecting resource creation, with no config
 // left to explain why. So this writes the empty, unenforced policy back: no
 // required tags and enforcement off. The row still exists, as it must, but it
 // no longer does anything.

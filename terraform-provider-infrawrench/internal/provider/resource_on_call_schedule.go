@@ -243,7 +243,7 @@ func (r *onCallScheduleResource) ImportState(ctx context.Context, req resource.I
 // The read shape carries each participant's name and email alongside their id.
 // Neither is written into state: both are facts about a member, not about the
 // rotation, and a rename would otherwise show as drift on a plan that changes
-// nothing. The ids are, and in order — that order *is* the rotation.
+// nothing. The ids are, and in order: that order *is* the rotation.
 func onCallScheduleStateFrom(ctx context.Context, remote *iw.OnCallSchedule) (onCallScheduleResourceModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 

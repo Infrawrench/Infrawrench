@@ -129,7 +129,7 @@ func (r *linearIntegrationResource) write(ctx context.Context, plan linearIntegr
 	diags.Append(state.Set(ctx, &next)...)
 }
 
-// linearStateFrom carries the key forward from the prior model — it is
+// linearStateFrom carries the key forward from the prior model: it is
 // write-only, and refreshing must not drop it out of state.
 func linearStateFrom(orgID string, remote *iw.LinearIntegration, prior linearIntegrationResourceModel) linearIntegrationResourceModel {
 	return linearIntegrationResourceModel{

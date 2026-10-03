@@ -255,7 +255,7 @@ func (r *costReportNotificationResource) ImportState(ctx context.Context, req re
 //
 // The two day fields are sent only when the cadence reads them. Sending a
 // weekday alongside a monthly cadence would store a number nothing ever looks
-// at, and the server would echo its own default back — which reads as drift
+// at, and the server would echo its own default back, which reads as drift
 // against a configuration that never mentioned it.
 func reportNotificationInputFrom(ctx context.Context, model costReportNotificationResourceModel) (iw.ReportNotificationInput, diag.Diagnostics) {
 	var diags diag.Diagnostics
@@ -292,7 +292,7 @@ func reportNotificationInputFrom(ctx context.Context, model costReportNotificati
 // reportNotificationStateFrom maps the server's schedule into state.
 //
 // The two day fields are read back only for the cadence that uses them. The
-// server always returns both — they are non-null columns with defaults — and
+// server always returns both (they are non-null columns with defaults) and
 // writing the unused one into state would show a permanent diff against a
 // configuration that correctly leaves it out.
 func reportNotificationStateFrom(ctx context.Context, remote *iw.ReportNotification) (costReportNotificationResourceModel, diag.Diagnostics) {

@@ -32,7 +32,7 @@ type anomalySettingsResourceModel struct {
 }
 
 // anomalyDefaults are the server's documented defaults, and what destroy
-// restores. There is no DELETE on this route — the settings row always exists —
+// restores. There is no DELETE on this route (the settings row always exists)
 // so "remove it from Terraform" has to mean "put it back the way it shipped".
 var anomalyDefaults = iw.CostAnomalySettings{
 	Sigmas:            3,

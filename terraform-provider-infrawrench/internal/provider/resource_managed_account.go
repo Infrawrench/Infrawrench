@@ -285,8 +285,8 @@ func managedAccountInputFrom(ctx context.Context, model managedAccountResourceMo
 // managedAccountStateFrom maps a customer into state.
 //
 // Both id sets are mapped faithfully, `[]` included. They are Optional and
-// Computed, so a configuration that omits one — a customer scoped by accounts
-// only, say — leaves an unknown that the server's `[]` satisfies; folding `[]`
+// Computed, so a configuration that omits one (a customer scoped by accounts
+// only, say) leaves an unknown that the server's `[]` satisfies; folding `[]`
 // to null instead would fail the consistency check for a configuration that
 // writes the empty set out.
 func managedAccountStateFrom(ctx context.Context, remote *iw.ManagedAccount) (managedAccountResourceModel, diag.Diagnostics) {

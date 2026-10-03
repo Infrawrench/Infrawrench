@@ -113,7 +113,7 @@ func (r *bastionResource) Create(ctx context.Context, req resource.CreateRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-// Read refreshes the row. A revoked bastion is treated as gone — DELETE revokes
+// Read refreshes the row. A revoked bastion is treated as gone: DELETE revokes
 // rather than removing, and iw.Client.GetBastion synthesises the 404.
 func (r *bastionResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state bastionResourceModel
@@ -143,7 +143,7 @@ func (r *bastionResource) Read(ctx context.Context, req resource.ReadRequest, re
 	resp.Diagnostics.Append(resp.State.Set(ctx, &refreshed)...)
 }
 
-// Update is unreachable — the only configurable attribute forces replacement.
+// Update is unreachable: the only configurable attribute forces replacement.
 func (r *bastionResource) Update(_ context.Context, _ resource.UpdateRequest, resp *resource.UpdateResponse) {
 	resp.Diagnostics.AddError(
 		"Bastions cannot be updated",
@@ -152,7 +152,7 @@ func (r *bastionResource) Update(_ context.Context, _ resource.UpdateRequest, re
 }
 
 // Delete revokes the enrollment. Accounts bound to it lose their route to the
-// private network, so destroy the bastion after — or together with — the
+// private network, so destroy the bastion after (or together with) the
 // accounts that use it; Terraform's graph does that automatically when the
 // binding is expressed as `bastion_id = infrawrench_bastion.x.id`.
 func (r *bastionResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

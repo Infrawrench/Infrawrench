@@ -177,7 +177,7 @@ func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 // Delete removes the role.
 //
 // The server refuses to delete a role that members still hold, and that 409
-// surfaces here as a failed destroy rather than being retried or forced —
+// surfaces here as a failed destroy rather than being retried or forced:
 // silently reassigning people to a different permission set is not something a
 // `terraform destroy` should decide.
 func (r *roleResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

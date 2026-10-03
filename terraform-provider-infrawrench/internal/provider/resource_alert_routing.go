@@ -620,7 +620,7 @@ func alertDestinationsFrom(ctx context.Context, list types.List) ([]iw.AlertDest
 //
 // `position` is dropped: it is the list's own index, so storing it would be
 // recording the same fact twice and inviting the two to disagree. Everything
-// else the route carries is surfaced, quiet hours and escalation included —
+// else the route carries is surfaced, quiet hours and escalation included:
 // anything this resource failed to read back would be written away as null on
 // the next apply, because the write is a whole-list replacement.
 func alertRoutingStateFrom(ctx context.Context, orgID string, rules []iw.AlertRule) (alertRoutingResourceModel, diag.Diagnostics) {

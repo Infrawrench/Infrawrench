@@ -11,7 +11,7 @@ import (
 // APIError is a non-2xx response, decoded as far as the server's error
 // envelope allows.
 //
-// The server answers errors as `{"error": "..."}`, sometimes with extra keys —
+// The server answers errors as `{"error": "..."}`, sometimes with extra keys:
 // `referents` on a 409 delete-while-referenced, `queryError` on a malformed
 // cost query. Those extras are what make a diagnostic actionable, so they are
 // carried through rather than flattened into the message.
@@ -86,7 +86,7 @@ func IsNotFound(err error) bool {
 	return false
 }
 
-// IsConflict reports whether err is a 409 — a name collision, or a delete
+// IsConflict reports whether err is a 409: a name collision, or a delete
 // refused because something still references the object.
 func IsConflict(err error) bool {
 	var apiErr *APIError
@@ -108,7 +108,7 @@ func AsAPIError(err error) (*APIError, bool) {
 // alone does not let you act on.
 //
 // The org tree accepts `iwk_` API keys, but a short deny-list closes a few
-// paths to them whatever scopes they hold — minting credentials and granting
+// paths to them whatever scopes they hold: minting credentials and granting
 // authority to other principals are acts a person performs, and a key that can
 // mint a longer-lived key outlives its own revocation. Two of this provider's
 // resources sit behind that list, so a practitioner running Terraform with an
@@ -122,8 +122,8 @@ const apiKeyDeniedHint = "The configured api_key starts with \"iwk_\", and this 
 	"access token."
 
 // apiKeyUnauthorizedHint covers the 401 case. An API key reaching this is a
-// key problem — revoked, expired, past its hash sunset, or aimed at an org its
-// owner has left — rather than the categorical rejection it used to be.
+// key problem (revoked, expired, past its hash sunset, or aimed at an org its
+// owner has left) rather than the categorical rejection it used to be.
 const apiKeyUnauthorizedHint = "The configured api_key starts with \"iwk_\". The org-scoped " +
 	"API does accept API keys, so a 401 here means the key itself was refused: revoked, " +
 	"expired, past its legacy-hash sunset, or owned by somebody who is no longer a member of " +
@@ -143,7 +143,7 @@ const (
 )
 
 // apiKeyWrongOrgHint covers org pinning. There is no cross-org key, so nothing
-// about the credential can fix this one — naming the organization the provider
+// about the credential can fix this one: naming the organization the provider
 // is configured for is what makes the mismatch visible.
 func apiKeyWrongOrgHint(orgID string) string {
 	return fmt.Sprintf("The configured api_key was minted in a different organization, and a key "+

@@ -127,7 +127,7 @@ func (r *apiKeyResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 
 	// The create response carries only the id and the secret, so the rest of the
-	// row — notably the prefix — comes from a read. A failure here is not fatal:
+	// row (notably the prefix) comes from a read. A failure here is not fatal:
 	// the key exists and its secret is in hand, and losing that to a tidy error
 	// message would mean an orphaned credential nobody knows about.
 	state := plan
@@ -152,7 +152,7 @@ func (r *apiKeyResource) Create(ctx context.Context, req resource.CreateRequest,
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-// Read refreshes the row. A revoked key is treated as gone — see
+// Read refreshes the row. A revoked key is treated as gone: see
 // iw.Client.GetAPIKey, which synthesises the 404 the listing does not.
 func (r *apiKeyResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state apiKeyResourceModel
@@ -212,7 +212,7 @@ func (r *apiKeyResource) ImportState(ctx context.Context, req resource.ImportSta
 /* -------------------------------- mapping --------------------------------- */
 
 // apiKeyStateFrom maps a key row into state, carrying the secret forward from
-// the prior state rather than inventing one — the API never returns it again.
+// the prior state rather than inventing one: the API never returns it again.
 func apiKeyStateFrom(ctx context.Context, remote *iw.APIKey, prior apiKeyResourceModel) (apiKeyResourceModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 

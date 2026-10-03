@@ -20,7 +20,7 @@ import (
 // registered resource that never reached the documentation.
 //
 // These tests close that. They are string matching over Markdown rather than
-// anything clever, which is the right amount of machinery for the job — the
+// anything clever, which is the right amount of machinery for the job: the
 // failure they prevent is "shipped a resource nobody can find", and the fix is
 // always one line of prose.
 
@@ -113,7 +113,7 @@ func TestEveryTypeIsInTheReadme(t *testing.T) {
 
 // The website page is the user-facing half of the same convention. It is checked
 // one way only: it is prose rather than a reference, so it is allowed to omit a
-// resource's *mention* nowhere — but a resource that appears in no table on it
+// resource's *mention* nowhere, but a resource that appears in no table on it
 // is one a reader cannot discover.
 func TestEveryTypeIsOnTheWebsitePage(t *testing.T) {
 	path, err := filepath.Abs("../../../app/packages/website/src/content/docs/features/terraform-provider.md")

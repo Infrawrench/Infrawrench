@@ -96,7 +96,7 @@ func (r *jiraIntegrationResource) Create(ctx context.Context, req resource.Creat
 }
 
 // Read refreshes the connection. A disconnected organization returns a null
-// integration, which iw.Client.GetJiraIntegration turns into a 404 — so
+// integration, which iw.Client.GetJiraIntegration turns into a 404, so
 // disconnecting in the app makes the next plan a create rather than an update.
 func (r *jiraIntegrationResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state jiraIntegrationResourceModel
@@ -135,7 +135,7 @@ func (r *jiraIntegrationResource) Delete(ctx context.Context, _ resource.DeleteR
 }
 
 // ImportState adopts an existing connection. The token is not recoverable, so
-// supply `api_token` in configuration afterwards — or leave it out, since an
+// supply `api_token` in configuration afterwards, or leave it out, since an
 // omitted token keeps whatever is stored.
 func (r *jiraIntegrationResource) ImportState(ctx context.Context, _ resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	importOrgSingleton(ctx, r.client.OrgID(), resp)

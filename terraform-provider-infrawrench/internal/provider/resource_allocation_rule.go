@@ -279,7 +279,7 @@ func allocationRuleInputFrom(ctx context.Context, model allocationRuleResourceMo
 // allocationRuleStateFrom maps a server rule into Terraform state.
 //
 // The `match` block is a SingleNestedBlock, so an omitted block plans as a null
-// object rather than as an object full of nulls — and the two are different
+// object rather than as an object full of nulls, and the two are different
 // values as far as Terraform's "inconsistent result after apply" check is
 // concerned, even though they mean the same thing to the API. When the server
 // echoes an entirely empty match we therefore keep whichever shape `prior` had,

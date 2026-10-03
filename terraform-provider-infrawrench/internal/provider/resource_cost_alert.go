@@ -275,7 +275,7 @@ func (r *costAlertResource) ImportState(ctx context.Context, req resource.Import
 // costAlertInputFrom maps Terraform configuration onto the write body.
 //
 // The two threshold fields travel as explicit JSON nulls rather than omitted
-// keys — that is why they have no omitempty on the wire struct. Omitting one
+// keys: that is why they have no omitempty on the wire struct. Omitting one
 // would be indistinguishable from clearing it, and since every write here is a
 // full replace, "I no longer want an absolute threshold" has to be sayable.
 func costAlertInputFrom(ctx context.Context, model costAlertResourceModel) (iw.CostAlertInput, diag.Diagnostics) {

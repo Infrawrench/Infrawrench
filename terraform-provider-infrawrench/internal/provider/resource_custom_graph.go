@@ -91,7 +91,7 @@ func (r *customGraphResource) Create(ctx context.Context, req resource.CreateReq
 //
 // Custom graphs are soft-deleted: a deleted row keeps its id and gains a
 // `deletedAt`. The single-GET route filters those out and 404s, so nothing
-// special is needed here — but it is the reason the wire struct decodes
+// special is needed here, but it is the reason the wire struct decodes
 // `deletedAt` at all rather than ignoring it.
 func (r *customGraphResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state customGraphResourceModel
@@ -179,8 +179,8 @@ func customGraphInputFrom(model customGraphResourceModel) iw.CustomGraphInput {
 // customGraphStateFrom maps a graph into state.
 //
 // An empty source reads back as null rather than as "", so a configuration that
-// omits `source` — a graph registered as a placeholder before its code is
-// written — does not show a diff against the empty string the server stores.
+// omits `source` (a graph registered as a placeholder before its code is
+// written) does not show a diff against the empty string the server stores.
 func customGraphStateFrom(remote *iw.CustomGraph) customGraphResourceModel {
 	source := types.StringNull()
 	if remote.Source != "" {

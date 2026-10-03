@@ -105,7 +105,7 @@ func (r *workflowScheduleResource) Create(ctx context.Context, req resource.Crea
 // Read refreshes the schedule.
 //
 // A workflow whose trigger is no longer cron returns a null schedule, which
-// iw.Client.GetWorkflowSchedule reports as a 404 — so switching a workflow to a
+// iw.Client.GetWorkflowSchedule reports as a 404, so switching a workflow to a
 // manual trigger in the editor makes the next plan a create rather than an
 // update against something that is not there.
 func (r *workflowScheduleResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -138,7 +138,7 @@ func (r *workflowScheduleResource) Update(ctx context.Context, req resource.Upda
 	r.write(ctx, plan, &resp.Diagnostics, &resp.State)
 }
 
-// Delete detaches the cron. The workflow survives — it simply stops firing on a
+// Delete detaches the cron. The workflow survives: it simply stops firing on a
 // timetable, which is what removing a schedule ought to mean.
 func (r *workflowScheduleResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state workflowScheduleResourceModel
@@ -178,7 +178,7 @@ func (r *workflowScheduleResource) write(ctx context.Context, plan workflowSched
 
 // workflowScheduleStateFrom maps a schedule into state.
 //
-// `nextRuns` — the preview of upcoming fire times — is deliberately dropped: it
+// `nextRuns` (the preview of upcoming fire times) is deliberately dropped: it
 // is recomputed at read time from the current clock, so putting it in state
 // would make every refresh a change.
 func workflowScheduleStateFrom(workflowID string, remote *iw.WorkflowSchedule) workflowScheduleResourceModel {

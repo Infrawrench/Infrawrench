@@ -104,7 +104,7 @@ func (r *digestRecipientResource) Read(ctx context.Context, req resource.ReadReq
 	resp.Diagnostics.Append(resp.State.Set(ctx, &refreshed)...)
 }
 
-// Update is unreachable — the only configurable attribute forces replacement.
+// Update is unreachable: the only configurable attribute forces replacement.
 func (r *digestRecipientResource) Update(_ context.Context, _ resource.UpdateRequest, resp *resource.UpdateResponse) {
 	resp.Diagnostics.AddError(
 		"Digest recipients cannot be updated",

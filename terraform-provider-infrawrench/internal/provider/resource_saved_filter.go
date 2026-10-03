@@ -195,8 +195,8 @@ func (r *savedFilterResource) Delete(ctx context.Context, req resource.DeleteReq
 
 		// A 409 here means budgets, reports or dashboard cards still point at
 		// this filter by id. That is not a transient condition and retrying
-		// cannot clear it — something else has to stop referencing the filter
-		// first — so the only useful thing to do is name the referents. The
+		// cannot clear it (something else has to stop referencing the filter
+		// first) so the only useful thing to do is name the referents. The
 		// server sends them in the error envelope and APIError.Error() already
 		// renders them, so the diagnostic just has to pass the text through.
 		if apiErr, ok := iw.AsAPIError(err); ok && iw.IsConflict(err) {
@@ -250,8 +250,8 @@ func savedFilterInputFrom(ctx context.Context, model savedFilterResourceModel) (
 
 // savedFilterStateFrom maps a server saved filter into Terraform state.
 //
-// The server canonicalises both representations — it rewrites a hand-written
-// query into normal form and derives the clause list from it — but the two
+// The server canonicalises both representations (it rewrites a hand-written
+// query into normal form and derives the clause list from it) but the two
 // halves cannot be treated the same way here, and the asymmetry is forced by
 // what the framework allows rather than by taste.
 //
@@ -269,7 +269,7 @@ func savedFilterInputFrom(ctx context.Context, model savedFilterResourceModel) (
 // would be describing the same filter twice and losing on the second telling.
 //
 // When the practitioner wrote blocks instead, the response's clauses are what
-// gets stored — they echo what was sent, and taking them from the server is what
+// gets stored: they echo what was sent, and taking them from the server is what
 // surfaces a genuine edit made elsewhere.
 func savedFilterStateFrom(ctx context.Context, remote *iw.SavedCostFilter, prior savedFilterResourceModel) (savedFilterResourceModel, diag.Diagnostics) {
 	var diags diag.Diagnostics

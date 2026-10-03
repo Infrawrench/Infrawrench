@@ -12,7 +12,7 @@ import (
 //
 //  1. A field the server treats as "omitted means clear it" is a pointer with
 //     `omitempty`. Terraform always sends the whole configuration, so a null in
-//     config becomes an omitted key becomes a cleared value — which is what the
+//     config becomes an omitted key becomes a cleared value, which is what the
 //     practitioner asked for.
 //
 //  2. A field the server treats as "omitted means leave it alone" is a pointer
@@ -71,7 +71,7 @@ type BudgetInput struct {
 // GET returns BudgetWithStatus (live spend, no timestamps); POST and PUT return
 // the raw row (timestamps, no spend). Decoding both into one struct with
 // pointers everywhere that differs is the only way a Create followed by a Read
-// does not look like drift — the fields the write response omits stay nil and
+// does not look like drift: the fields the write response omits stay nil and
 // the Read fills them in.
 type Budget struct {
 	ID                string            `json:"id"`
@@ -87,7 +87,7 @@ type Budget struct {
 	CostBasis         *string           `json:"costBasis"`
 	UseAdjustedSpend  *bool             `json:"useAdjustedSpend"`
 
-	// Status fields — present on GET only.
+	// Status fields: present on GET only.
 	Month                 *string     `json:"month,omitempty"`
 	ActualCents           *int64      `json:"actualCents,omitempty"`
 	RawActualCents        *int64      `json:"rawActualCents,omitempty"`
@@ -95,7 +95,7 @@ type Budget struct {
 	ScenarioForecastCents *int64      `json:"scenarioForecastCents,omitempty"`
 	Placements            []Placement `json:"placements,omitempty"`
 
-	// Row fields — present on POST/PUT only.
+	// Row fields: present on POST/PUT only.
 	CreatedByUserID *string `json:"createdByUserId,omitempty"`
 	CreatedAt       *string `json:"createdAt,omitempty"`
 	UpdatedAt       *string `json:"updatedAt,omitempty"`
@@ -163,7 +163,7 @@ type RequiredTag struct {
 	AllowedValues []string `json:"allowedValues,omitempty"`
 }
 
-// TagPolicy is an org singleton — no id, no POST, no DELETE.
+// TagPolicy is an org singleton: no id, no POST, no DELETE.
 type TagPolicy struct {
 	RequiredTags    []RequiredTag `json:"requiredTags"`
 	EnforceOnCreate bool          `json:"enforceOnCreate"`
@@ -200,7 +200,7 @@ type SavedCostFilter struct {
 // CostDateRange is a tagged union: a relative preset or an absolute span.
 //
 // It marshals to exactly the branch its Kind names, because the server's schema
-// is strict — an absolute range carrying a stray `preset` key is rejected.
+// is strict: an absolute range carrying a stray `preset` key is rejected.
 type CostDateRange struct {
 	Kind   string  `json:"kind"`
 	Preset *string `json:"preset,omitempty"`
@@ -339,7 +339,7 @@ type CostAlert struct {
 
 // CostScenarioAdjustment is one what-if line in a scenario model.
 //
-// ID is caller-assigned and must be stable across updates — the server does not
+// ID is caller-assigned and must be stable across updates: the server does not
 // mint it. The provider derives it from the adjustment's label so a practitioner
 // never has to invent one, and reordering the list does not renumber anything.
 //
@@ -381,7 +381,7 @@ type CostScenarioModel struct {
 
 /* ------------------------------- billing rules ----------------------------- */
 
-// BillingRuleMatch is a superset of AllocationRuleMatch — it can also match on
+// BillingRuleMatch is a superset of AllocationRuleMatch: it can also match on
 // charge type.
 type BillingRuleMatch struct {
 	TagKey     *string `json:"tagKey,omitempty"`
@@ -500,7 +500,7 @@ type CostExportQuery struct {
 // CostExportInput is the POST/PUT body.
 //
 // AccessKeyID, SecretAccessKey and URL are write-only credentials. The server
-// never returns them, and omitting one on PUT means "keep the stored value" —
+// never returns them, and omitting one on PUT means "keep the stored value",
 // not "clear it". They are omitempty pointers so an unknown or unset credential
 // leaves the stored one intact rather than blanking it.
 type CostExportInput struct {
@@ -713,7 +713,7 @@ type CurrencySettings struct {
 	DisplayCurrency *string `json:"displayCurrency"`
 }
 
-// CurrencyConfig is what GET /currency returns — the display currency plus the
+// CurrencyConfig is what GET /currency returns: the display currency plus the
 // whole stated rate table.
 type CurrencyConfig struct {
 	DisplayCurrency *string        `json:"displayCurrency"`
@@ -760,7 +760,7 @@ type Account struct {
 
 // PluginSummary describes an available provider plugin. The listing also
 // carries the plugin's logo SVG and credential-field metadata, neither of which
-// belongs in Terraform state — the data source drops them.
+// belongs in Terraform state: the data source drops them.
 type PluginSummary struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"displayName"`

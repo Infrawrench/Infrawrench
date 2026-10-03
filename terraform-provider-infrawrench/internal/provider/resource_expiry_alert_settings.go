@@ -97,7 +97,7 @@ func (r *expiryAlertSettingsResource) Update(ctx context.Context, req resource.U
 	r.write(ctx, plan, &resp.Diagnostics, &resp.State)
 }
 
-// Delete is a no-op — the settings row has no DELETE and no documented reset.
+// Delete is a no-op: the settings row has no DELETE and no documented reset.
 func (r *expiryAlertSettingsResource) Delete(_ context.Context, _ resource.DeleteRequest, _ *resource.DeleteResponse) {
 }
 

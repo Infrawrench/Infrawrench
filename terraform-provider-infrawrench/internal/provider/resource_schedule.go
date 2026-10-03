@@ -132,7 +132,7 @@ func (r *scheduleResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	// The create route has no `paused` field — a new schedule is always active.
+	// The create route has no `paused` field: a new schedule is always active.
 	// Honouring `paused = true` therefore takes a second call, which is done
 	// here rather than left as a surprise diff on the next plan.
 	//
@@ -140,7 +140,7 @@ func (r *scheduleResource) Create(ctx context.Context, req resource.CreateReques
 	// state has to record it anyway. Returning empty-handed would leave a live
 	// schedule powering somebody's machine on and off with nothing managing it,
 	// and every later apply would try to create another one. Saving state and
-	// then erroring is what the framework asks for — Terraform persists the
+	// then erroring is what the framework asks for: Terraform persists the
 	// state a failed Create returned and marks the resource tainted, so the next
 	// apply replaces it rather than duplicating it.
 	pauseErr := error(nil)

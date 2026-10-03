@@ -150,7 +150,7 @@ func TestQueryErrorIsDecoded(t *testing.T) {
 // is valid everywhere else is rejected by this route tree. The hint has to be
 // attached, and only for API keys.
 // The org tree accepts `iwk_` keys, so a 401 or a 403 there means something a
-// key holder can act on — but only if the provider says which. These pin the
+// key holder can act on, but only if the provider says which. These pin the
 // two hints apart, and pin that neither reaches a WorkOS-token caller, for whom
 // both would be nonsense.
 func TestAPIKeyHints(t *testing.T) {
@@ -187,7 +187,7 @@ func TestAPIKeyHints(t *testing.T) {
 		_, _ = w.Write([]byte(`{"error":"Missing permission: budgets:write"}`))
 	}
 
-	// Org pinning. The server's own words, and they name an API key too — which
+	// Org pinning. The server's own words, and they name an API key too, which
 	// is why the deny-list is matched on its phrasing rather than on "API key".
 	wrongOrg := func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
@@ -297,7 +297,7 @@ func TestListEnvelopesAreUnwrapped(t *testing.T) {
 
 // Cost centres, allocation rules and report folders have no single-GET route.
 // Their wrappers list and filter, and must synthesise a 404 when the id is
-// gone — otherwise a deletion outside Terraform never reaches RemoveResource.
+// gone, otherwise a deletion outside Terraform never reaches RemoveResource.
 func TestListAndFilterSynthesisesNotFound(t *testing.T) {
 	client, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`[{"id":"cc1","name":"Platform"}]`))
@@ -355,7 +355,7 @@ func TestCostDateRangeMarshalsOneBranch(t *testing.T) {
 	}
 }
 
-// Same contract for export destinations — and the http branch must never carry
+// Same contract for export destinations, and the http branch must never carry
 // s3 keys, nor echo the write-only url back onto the wire.
 func TestCostExportDestinationMarshalsOneBranch(t *testing.T) {
 	bucket, region := "spend-exports", "eu-west-1"

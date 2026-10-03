@@ -166,7 +166,7 @@ func (r *sshKeyResource) Read(ctx context.Context, req resource.ReadRequest, res
 	resp.Diagnostics.Append(resp.State.Set(ctx, &refreshed)...)
 }
 
-// Update is unreachable — every attribute forces replacement.
+// Update is unreachable: every attribute forces replacement.
 func (r *sshKeyResource) Update(_ context.Context, _ resource.UpdateRequest, resp *resource.UpdateResponse) {
 	resp.Diagnostics.AddError(
 		"SSH keys cannot be updated",

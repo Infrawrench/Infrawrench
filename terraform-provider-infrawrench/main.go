@@ -1,4 +1,4 @@
-// terraform-provider-infrawrench manages Infrawrench's own configuration —
+// terraform-provider-infrawrench manages Infrawrench's own configuration:
 // cost allocation and reporting, monitoring, lifecycle governance, connected
 // accounts and access control, and alert delivery.
 //

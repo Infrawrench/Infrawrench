@@ -151,7 +151,7 @@ func nilStringList(ctx context.Context, values []string) (types.List, diag.Diagn
 	return types.ListValueFrom(ctx, types.StringType, values)
 }
 
-// nilStringSet is nilStringList for a set-typed attribute — used where order
+// nilStringSet is nilStringList for a set-typed attribute: used where order
 // carries no meaning and a reordered configuration must not plan a change.
 func nilStringSet(ctx context.Context, values []string) (types.Set, diag.Diagnostics) {
 	if values == nil {
@@ -183,7 +183,7 @@ func int64List(ctx context.Context, values []int64) (types.List, diag.Diagnostic
 	return types.ListValueFrom(ctx, types.Int64Type, values)
 }
 
-// int64ListOrNull is nilStringList for numbers — nil becomes null, `[]` stays
+// int64ListOrNull is nilStringList for numbers: nil becomes null, `[]` stays
 // `[]`. Used for quiet hours' weekday list, where the empty list means "every
 // day" and a configuration that writes it out must read back unchanged.
 func int64ListOrNull(ctx context.Context, values []int64) (types.List, diag.Diagnostics) {
@@ -213,7 +213,7 @@ func stringMap(ctx context.Context, m types.Map) (map[string]string, diag.Diagno
 // Create and Update are the same write for an organization singleton, and both
 // have to land the result in state. Rather than duplicating the body twice per
 // resource across a dozen of them, each singleton has one `write` method taking
-// the two things Create and Update differ in — which response's diagnostics to
+// the two things Create and Update differ in, which response's diagnostics to
 // append to, and which response's state to set. These aliases keep that
 // signature readable without every file importing tfsdk.
 
@@ -224,7 +224,7 @@ type tfState = tfsdk.State
 /* ------------------------------ import helpers ----------------------------- */
 
 // importOrgSingleton is ImportState for the resources that are one row per
-// organization — tag policy, the alert settings, currency, the issue-tracker
+// organization: tag policy, the alert settings, currency, the issue-tracker
 // connections.
 //
 // They have no id of their own, so the import address is the organization id

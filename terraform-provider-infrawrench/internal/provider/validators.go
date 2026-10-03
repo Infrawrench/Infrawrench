@@ -24,8 +24,8 @@ type (
 // oneOfValidator is the enum check used throughout the schemas.
 //
 // The server's zod schemas are `strict()` with closed enums, so an invalid
-// value is a guaranteed 400. Catching it at plan time turns a failed apply —
-// which may already have created half the resources in a graph — into a plan
+// value is a guaranteed 400. Catching it at plan time turns a failed apply
+// (which may already have created half the resources in a graph) into a plan
 // error that costs nothing.
 func oneOfValidator(allowed ...string) validator.String {
 	return stringvalidator.OneOf(allowed...)
@@ -43,7 +43,7 @@ func oneOfValidator(allowed ...string) validator.String {
 //
 //   - Most of these routes *reject* an out-of-range value. Validating converts a
 //     failed apply into a plan error.
-//   - The probe's timings are *clamped* instead — 90 seconds becomes 60 and the
+//   - The probe's timings are *clamped* instead: 90 seconds becomes 60 and the
 //     write succeeds. That is worse than a rejection, because the configuration
 //     and the stored object now disagree forever and every subsequent plan shows
 //     a diff that applying cannot fix. Validating is the only way to surface it.
@@ -62,7 +62,7 @@ func betweenFloat(minimum, maximum float64) validator.Float64 {
 	return float64validator.Between(minimum, maximum)
 }
 
-// elementsBetween bounds every element of an integer list — the weekday lists,
+// elementsBetween bounds every element of an integer list: the weekday lists,
 // and the efficiency alert's notice horizons. An out-of-range element is as
 // rejectable as an out-of-range scalar and just as knowable in advance.
 func elementsBetween(minimum, maximum int64) validator.List {
@@ -70,7 +70,7 @@ func elementsBetween(minimum, maximum int64) validator.List {
 }
 
 // sizeBetween bounds how many elements a list may hold, where the API caps it.
-// Applies to nested blocks as well as list attributes — both are validator.List.
+// Applies to nested blocks as well as list attributes: both are validator.List.
 func sizeBetween(minimum, maximum int) validator.List {
 	return listvalidator.SizeBetween(minimum, maximum)
 }

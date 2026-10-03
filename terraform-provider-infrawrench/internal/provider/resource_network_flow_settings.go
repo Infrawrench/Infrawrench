@@ -113,7 +113,7 @@ func (r *networkFlowSettingsResource) Update(ctx context.Context, req resource.U
 // The other settings singletons are no-ops or restore-to-defaults, and this one
 // is deliberately neither: leaving collection running would keep charging the
 // practitioner's own cloud account for a resource they deleted, in perpetuity,
-// with nothing in Terraform left to show why. The lookback is left as stored —
+// with nothing in Terraform left to show why. The lookback is left as stored:
 // it costs nothing while disabled, and it is the setting somebody would want
 // back if they re-enable.
 func (r *networkFlowSettingsResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -144,13 +144,13 @@ func (r *networkFlowSettingsResource) ImportState(ctx context.Context, _ resourc
 }
 
 // defaultNetworkFlowLookbackDays mirrors the server's own default. Used only to
-// keep the destroy body valid when state somehow carries no lookback — the PUT
+// keep the destroy body valid when state somehow carries no lookback: the PUT
 // requires the field, and inventing a bigger number there would be inventing a
 // bill.
 const defaultNetworkFlowLookbackDays = 7
 
 func (r *networkFlowSettingsResource) write(ctx context.Context, plan networkFlowSettingsResourceModel, diags *diagnostics, state *tfState) {
-	// An unknown lookback — the practitioner omitted the attribute — has to
+	// An unknown lookback (the practitioner omitted the attribute) has to
 	// resolve to something before the body is built, because the field is
 	// required on the wire. Reading the stored value first is what makes
 	// "omitted" mean "leave it alone" rather than "reset it to 7".

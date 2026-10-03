@@ -18,7 +18,7 @@ import (
 //
 //   - Objects without one (cost centres, allocation rules, report folders) are
 //     read by listing and filtering client-side. Those wrappers synthesise the
-//     404 themselves — notFound below — so that a deletion outside Terraform
+//     404 themselves (notFound below) so that a deletion outside Terraform
 //     still reaches the caller as IsNotFound and lands as "needs recreating"
 //     rather than as an opaque error or, worse, silent success.
 func notFound(method, path, id string) error {
@@ -76,7 +76,7 @@ func (c *Client) ListCostCentres(ctx context.Context) ([]CostCentre, error) {
 	return out, err
 }
 
-// GetCostCentre lists and filters — there is no GET /cost-centres/{id}.
+// GetCostCentre lists and filters: there is no GET /cost-centres/{id}.
 func (c *Client) GetCostCentre(ctx context.Context, id string) (*CostCentre, error) {
 	all, err := c.ListCostCentres(ctx)
 	if err != nil {
@@ -118,7 +118,7 @@ func (c *Client) ListAllocationRules(ctx context.Context) ([]AllocationRule, err
 	return out, err
 }
 
-// GetAllocationRule lists and filters — there is no GET for a single rule.
+// GetAllocationRule lists and filters: there is no GET for a single rule.
 func (c *Client) GetAllocationRule(ctx context.Context, id string) (*AllocationRule, error) {
 	all, err := c.ListAllocationRules(ctx)
 	if err != nil {
@@ -238,7 +238,7 @@ func (c *Client) ListCostReportFolders(ctx context.Context) ([]CostReportFolder,
 	return out, err
 }
 
-// GetCostReportFolder lists and filters — there is no single-GET route.
+// GetCostReportFolder lists and filters: there is no single-GET route.
 func (c *Client) GetCostReportFolder(ctx context.Context, id string) (*CostReportFolder, error) {
 	all, err := c.ListCostReportFolders(ctx)
 	if err != nil {
@@ -470,7 +470,7 @@ func (c *Client) ListCostAnnotations(ctx context.Context) ([]CostAnnotation, err
 	return envelope.Annotations, nil
 }
 
-// GetCostAnnotation lists and filters — there is no single-GET route.
+// GetCostAnnotation lists and filters: there is no single-GET route.
 func (c *Client) GetCostAnnotation(ctx context.Context, id string) (*CostAnnotation, error) {
 	all, err := c.ListCostAnnotations(ctx)
 	if err != nil {
@@ -517,7 +517,7 @@ func (c *Client) ListReportNotifications(ctx context.Context, reportID string) (
 	return out, err
 }
 
-// GetReportNotification lists a report's schedules and filters — there is no
+// GetReportNotification lists a report's schedules and filters: there is no
 // single-GET route for one schedule.
 func (c *Client) GetReportNotification(ctx context.Context, reportID, id string) (*ReportNotification, error) {
 	all, err := c.ListReportNotifications(ctx, reportID)
@@ -618,7 +618,7 @@ func (c *Client) UpsertExchangeRate(ctx context.Context, in ExchangeRateInput) (
 	return &out, nil
 }
 
-// GetExchangeRate reads the whole rate table and filters — rates are only ever
+// GetExchangeRate reads the whole rate table and filters: rates are only ever
 // returned as part of the currency config.
 func (c *Client) GetExchangeRate(ctx context.Context, id string) (*ExchangeRate, error) {
 	config, err := c.GetCurrencyConfig(ctx)

@@ -9,8 +9,8 @@ import (
 )
 
 // Acceptance coverage for the surfaces outside cost allocation. Gated exactly as
-// acceptance_test.go describes — TF_ACC plus credentials plus a Terraform binary
-// — and pointed at a scratch organization.
+// acceptance_test.go describes (TF_ACC plus credentials plus a Terraform binary)
+// and pointed at a scratch organization.
 //
 // These do not cover every new resource. They cover the shapes that are easy to
 // get wrong and that a unit test cannot reach: an object with server-side
@@ -180,8 +180,8 @@ resource "infrawrench_business_metric" "test" {
 	})
 }
 
-// TestAccRoleResource covers the resource whose plan matters most — a set of
-// permission grants — and the property that a set does not diff on reordering.
+// TestAccRoleResource covers the resource whose plan matters most (a set of
+// permission grants) and the property that a set does not diff on reordering.
 func TestAccRoleResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },

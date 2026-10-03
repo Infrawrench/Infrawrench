@@ -70,7 +70,7 @@ func TestSplitImportID(t *testing.T) {
 }
 
 // The cadence-irrelevant day field must stay null in state. The server always
-// returns both — they are non-null columns with defaults — so writing the unused
+// returns both (they are non-null columns with defaults) so writing the unused
 // one back would show a permanent diff against a configuration that correctly
 // leaves it out.
 func TestReportNotificationStateDropsTheUnusedDayField(t *testing.T) {
@@ -228,7 +228,7 @@ func TestWriteOnlyFieldsSurviveARefresh(t *testing.T) {
 // and only a genuinely absent key becomes null.
 //
 // The temptation is to fold `[]` into null, because on the drift settings the
-// two mean the same thing — every account. Terraform's consistency check
+// two mean the same thing: every account. Terraform's consistency check
 // forbids it: a configuration that spells `account_ids = []` produces a *known*
 // empty list in the plan, and answering a known plan value with null is
 // "inconsistent result after apply". Only an omitted attribute leaves an
@@ -296,7 +296,7 @@ func TestCustomGraphEmptySourceIsNull(t *testing.T) {
 }
 
 // The selector fields are how "match anything" is spelled, and the server
-// requires all five keys — so an omitted attribute has to reach it as an
+// requires all five keys, so an omitted attribute has to reach it as an
 // explicit null rather than as an absent key.
 func TestMetricAlertSelectorNullsAreSent(t *testing.T) {
 	input := metricAlertInputFrom(metricAlertResourceModel{
@@ -316,7 +316,7 @@ func TestMetricAlertSelectorNullsAreSent(t *testing.T) {
 }
 
 // Status page components round trip in order, and the probe's own live status is
-// deliberately not written into state — it changes without the page changing.
+// deliberately not written into state: it changes without the page changing.
 func TestStatusPageComponentsRoundTripInOrder(t *testing.T) {
 	ctx := context.Background()
 
@@ -395,7 +395,7 @@ func TestAlertRoutingRoundTripPreservesRuleIDs(t *testing.T) {
 // The write is a whole-list replacement and the route normalises an omitted
 // `quietHours` to an explicit null, so a provider that read a rule without
 // carrying these two forward would silently delete a window or an escalation
-// policy configured in the app — on the very next apply, with nothing in the
+// policy configured in the app: on the very next apply, with nothing in the
 // plan to warn anybody. That is what this test exists to stop.
 func TestAlertRoutingCarriesQuietHoursAndEscalation(t *testing.T) {
 	ctx := context.Background()

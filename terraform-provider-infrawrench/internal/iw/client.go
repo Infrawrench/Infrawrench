@@ -3,7 +3,7 @@
 //
 // Nothing in internal/provider builds a request URL or a JSON body by hand:
 // every call goes through Client, and every payload is one of the structs in
-// wire.go. That is the whole point of the split — the Terraform schemas can
+// wire.go. That is the whole point of the split: the Terraform schemas can
 // drift from the API in exactly one file, and wire_spec_test.go checks that
 // file against the checked-in OpenAPI document.
 package iw
@@ -40,7 +40,7 @@ type Client struct {
 // Config is what the provider block resolves to.
 type Config struct {
 	// BaseURL is the Infrawrench installation root, e.g.
-	// "https://app.infrawrench.com" — not including /api.
+	// "https://app.infrawrench.com", not including /api.
 	BaseURL string
 	// Token is an Infrawrench API key ("iwk_…") or a WorkOS access token.
 	Token string
@@ -88,7 +88,7 @@ func (c *Client) OrgID() string { return c.orgID }
 
 // TokenIsAPIKey reports whether the configured token is an Infrawrench API key
 // rather than a WorkOS access token. Used to attach the actionable hint on a
-// 401 — see APIError.Hint.
+// 401: see APIError.Hint.
 func (c *Client) TokenIsAPIKey() bool { return strings.HasPrefix(c.token, "iwk_") }
 
 // URLFor renders the absolute URL for an org-relative path, for diagnostics.
@@ -117,7 +117,7 @@ func (c *Client) Put(ctx context.Context, path string, body, out any) error {
 // Patch sends body as JSON and decodes the response into out. out may be nil.
 //
 // A handful of routes outside cost management are genuine partial updates
-// rather than replaces — accounts, roles, Slack channels, Teams webhooks and
+// rather than replaces: accounts, roles, Slack channels, Teams webhooks and
 // deploy triggers. For those the wire struct's omitted keys mean "leave alone",
 // which is the opposite of what an omitted key means on a PUT, so the two verbs
 // are kept visibly distinct rather than papered over here.

@@ -469,8 +469,8 @@ func costReportInputFrom(ctx context.Context, model costReportResourceModel) (iw
 //
 // `prior` is the plan (on write) or the previous state (on refresh). It covers
 // the two graph-config fields the server omits from its response when they hold
-// their implicit default — `costBasis` and `adjusted` are omitempty on the wire
-// — where taking the response literally would write a null over a value the
+// their implicit default (`costBasis` and `adjusted` are omitempty on the wire)
+// where taking the response literally would write a null over a value the
 // config spells out and fail the apply as an inconsistent result.
 func costReportStateFrom(ctx context.Context, remote *iw.CostReport, prior costReportResourceModel) (costReportResourceModel, diag.Diagnostics) {
 	var diags diag.Diagnostics

@@ -424,7 +424,7 @@ func (r *costExportResource) Delete(ctx context.Context, req resource.DeleteRequ
 	}
 }
 
-// ImportState takes the export id and reads everything the API will give back —
+// ImportState takes the export id and reads everything the API will give back,
 // which does not include the credential.
 //
 // An imported export therefore lands in state with `access_key_id`,
@@ -433,7 +433,7 @@ func (r *costExportResource) Delete(ctx context.Context, req resource.DeleteRequ
 // they could be reconstructed from. The practitioner must put the real values
 // back into the configuration after importing; the first apply then writes them
 // through. Until that happens the plan will show the credentials being added,
-// which is accurate — Terraform genuinely does not know them.
+// which is accurate: Terraform genuinely does not know them.
 //
 // `has_credentials` and `credential_hint` do import correctly, so they are the
 // way to confirm which key the export is currently delivering with.
@@ -490,7 +490,7 @@ func costExportInputFrom(ctx context.Context, model costExportResourceModel) (iw
 		// MarshalJSON emits only the ones belonging to Kind: the server's schema
 		// is a strict discriminated union and a stray key from the other branch is
 		// a 400, not a field it ignores. The http branch's URL is not part of this
-		// struct at all — it is secret material and travels as a top-level
+		// struct at all: it is secret material and travels as a top-level
 		// write-only credential below.
 		destination = iw.CostExportDestination{
 			Kind:           dest.Kind.ValueString(),
@@ -516,7 +516,7 @@ func costExportInputFrom(ctx context.Context, model costExportResourceModel) (iw
 
 		// The three write-only credentials. stringPtr yields nil for a null or
 		// unknown attribute, and the corresponding wire fields are omitempty
-		// pointers, so an omitted credential is an omitted JSON key — which the
+		// pointers, so an omitted credential is an omitted JSON key, which the
 		// server reads as "keep the stored one". That is exactly the semantics we
 		// want and it needs no special casing: a practitioner who supplies the
 		// secret through a variable in CI and leaves it out locally does not blank
@@ -540,8 +540,8 @@ func costExportInputFrom(ctx context.Context, model costExportResourceModel) (iw
 // never plan a change for it. `has_credentials` and `credential_hint` do come
 // from the server and are the only signal that anything is stored.
 //
-// Operational fields on the response — lastRunAt, lastStatus, lastError,
-// lastObjectCount, lastRowCount, nextRunAt — are read and discarded. They change
+// Operational fields on the response (lastRunAt, lastStatus, lastError,
+// lastObjectCount, lastRowCount, nextRunAt) are read and discarded. They change
 // on every refresh and belong in the UI, not in a plan diff, the same way budget
 // spend status is left off `infrawrench_budget`.
 func costExportStateFrom(ctx context.Context, remote *iw.CostExport, prior costExportResourceModel) (costExportResourceModel, diag.Diagnostics) {
@@ -593,7 +593,7 @@ func costExportStateFrom(ctx context.Context, remote *iw.CostExport, prior costE
 		RestatementDays: types.Int64Value(remote.RestatementDays),
 		Enabled:         types.BoolValue(remote.Enabled),
 
-		// Carried through, never read from the response — see the doc comment.
+		// Carried through, never read from the response: see the doc comment.
 		AccessKeyID:     prior.AccessKeyID,
 		SecretAccessKey: prior.SecretAccessKey,
 		URL:             prior.URL,

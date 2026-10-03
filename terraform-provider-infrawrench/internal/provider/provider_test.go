@@ -11,7 +11,7 @@ import (
 )
 
 // wantResources and wantDataSources are the registry's expected size, asserted
-// from two directions — the Go constructors here, and the served gRPC schema in
+// from two directions: the Go constructors here, and the served gRPC schema in
 // schema_validation_test.go. They are deliberately hand-maintained: the number
 // is the reminder that adding a resource also means adding a row to the
 // README's table and to the docs page, neither of which any test can check.
@@ -70,7 +70,7 @@ func TestResourcesAndDataSourcesConstruct(t *testing.T) {
 		t.Errorf("provider exposes %d data sources, want %d", len(dataSources), wantDataSources)
 	}
 
-	// A duplicated TypeName is a real bug — the second registration silently
+	// A duplicated TypeName is a real bug: the second registration silently
 	// shadows the first, and the framework only notices when the plugin is
 	// served. Collecting the names into a set catches a copy-pasted Metadata.
 	seen := map[string]bool{}

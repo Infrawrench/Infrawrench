@@ -162,7 +162,7 @@ func (r *slackChannelResource) Update(ctx context.Context, req resource.UpdateRe
 }
 
 // Delete removes the registration. Any alert rule still naming this channel
-// stops delivering there — the rule keeps the id, and the id no longer resolves.
+// stops delivering there: the rule keeps the id, and the id no longer resolves.
 func (r *slackChannelResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state slackChannelResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)

@@ -13,7 +13,7 @@ import (
 // This test is the substitute for code generation.
 //
 // The provider's wire structs are hand-written, because two of the objects it
-// manages — scenario models and billing rules — are not in the checked-in
+// manages (scenario models and billing rules) are not in the checked-in
 // OpenAPI document at all, and the repository's SDK generator degrades exactly
 // the schemas this provider needs most (tagged unions become `any`, and
 // `readOnly` and `default` are dropped, which are precisely the signals that
@@ -59,7 +59,7 @@ func specChecks() []specCheck {
 			schema: "BudgetWithStatus",
 			value:  Budget{},
 			// This month's firing history. Operational state, not
-			// configuration — it would change under a plan that changes
+			// configuration: it would change under a plan that changes
 			// nothing.
 			ignored: []string{"currentMonthEvents"},
 		},
@@ -254,8 +254,8 @@ func specChecks() []specCheck {
 			schema: "Resource",
 			value:  Resource{},
 			// Unbounded provider-shaped blobs. Putting them in state would write
-			// a resource's whole configuration — including anything sensitive in
-			// it — into every state file that lists resources.
+			// a resource's whole configuration (including anything sensitive in
+			// it) into every state file that lists resources.
 			ignored: []string{"fieldsJson", "outputsJson"},
 		},
 		{schema: "OrgMember", value: OrgMember{}},

@@ -9,7 +9,7 @@ import (
 // destination carrying a stray channelId, or a severity clause carrying an empty
 // values array, is a 400 rather than a field the server ignores. The flattened
 // Go structs are what let Terraform express these as one repeatable block, and
-// the custom marshallers are what keep the wire honest — so they are worth
+// the custom marshallers are what keep the wire honest, so they are worth
 // pinning directly.
 
 func decode(t *testing.T, v any) map[string]any {
@@ -131,7 +131,7 @@ func TestAlertConditionMarshalsOnlyItsBranch(t *testing.T) {
 }
 
 // SMSConfigured is derived server-side and rejected by the strict PUT schema.
-// The struct decodes it for reads, so the write path has to clear it — which
+// The struct decodes it for reads, so the write path has to clear it, which
 // PutAnomalySettings does. This pins the tag that makes that possible.
 func TestAnomalySettingsOmitsDerivedFlagWhenUnset(t *testing.T) {
 	got := decode(t, CostAnomalySettings{Sigmas: 3, MinDeltaCents: 1000, NewSourceMinCents: 2500, SMSAlerts: "off"})
@@ -142,7 +142,7 @@ func TestAnomalySettingsOmitsDerivedFlagWhenUnset(t *testing.T) {
 
 // The three destination lists on a report notification are required keys. A nil
 // slice would marshal as null and be refused, so the provider always builds
-// them as empty slices — this is the shape that has to hold.
+// them as empty slices: this is the shape that has to hold.
 func TestReportNotificationEmptyListsMarshalAsArrays(t *testing.T) {
 	got := decode(t, ReportNotificationInput{
 		Cadence: "daily", Hour: 9, Timezone: "UTC",

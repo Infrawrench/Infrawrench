@@ -23,7 +23,7 @@ func (c *Client) ListProbes(ctx context.Context) ([]SyntheticProbe, error) {
 	return envelope.Probes, nil
 }
 
-// GetProbe lists and filters — there is no single-GET route.
+// GetProbe lists and filters: there is no single-GET route.
 func (c *Client) GetProbe(ctx context.Context, id string) (*SyntheticProbe, error) {
 	all, err := c.ListProbes(ctx)
 	if err != nil {
@@ -100,7 +100,7 @@ func (c *Client) ListStatusPages(ctx context.Context) ([]StatusPage, error) {
 	return envelope.Pages, nil
 }
 
-// GetStatusPage lists and filters — there is no single-GET route on the
+// GetStatusPage lists and filters: there is no single-GET route on the
 // org-scoped tree. (`/api/status/{slug}` is the public render, not this shape.)
 func (c *Client) GetStatusPage(ctx context.Context, id string) (*StatusPage, error) {
 	all, err := c.ListStatusPages(ctx)
@@ -148,7 +148,7 @@ func (c *Client) ListSleepSchedules(ctx context.Context) ([]SleepSchedule, error
 	return envelope.Schedules, nil
 }
 
-// GetSleepSchedule lists and filters — there is no single-GET route.
+// GetSleepSchedule lists and filters: there is no single-GET route.
 func (c *Client) GetSleepSchedule(ctx context.Context, id string) (*SleepSchedule, error) {
 	all, err := c.ListSleepSchedules(ctx)
 	if err != nil {
@@ -190,7 +190,7 @@ func (c *Client) ListChangeFreezes(ctx context.Context) ([]ChangeFreeze, error) 
 	return out, err
 }
 
-// GetChangeFreeze lists and filters — there is no single-GET route.
+// GetChangeFreeze lists and filters: there is no single-GET route.
 func (c *Client) GetChangeFreeze(ctx context.Context, id string) (*ChangeFreeze, error) {
 	all, err := c.ListChangeFreezes(ctx)
 	if err != nil {
@@ -267,7 +267,7 @@ func (c *Client) ListLogQueries(ctx context.Context) ([]LogWorkspaceQuery, error
 	return envelope.Queries, nil
 }
 
-// GetLogQuery lists and filters — there is no single-GET route.
+// GetLogQuery lists and filters: there is no single-GET route.
 func (c *Client) GetLogQuery(ctx context.Context, id string) (*LogWorkspaceQuery, error) {
 	all, err := c.ListLogQueries(ctx)
 	if err != nil {
@@ -309,7 +309,7 @@ func (c *Client) ListRoles(ctx context.Context) ([]Role, error) {
 	return out, err
 }
 
-// GetRole lists and filters — there is no single-GET route.
+// GetRole lists and filters: there is no single-GET route.
 func (c *Client) GetRole(ctx context.Context, id string) (*Role, error) {
 	all, err := c.ListRoles(ctx)
 	if err != nil {
@@ -362,7 +362,7 @@ func (c *Client) ListSSHKeys(ctx context.Context) ([]SSHKey, error) {
 	return out, err
 }
 
-// GetSSHKey lists and filters — there is no single-GET route.
+// GetSSHKey lists and filters: there is no single-GET route.
 func (c *Client) GetSSHKey(ctx context.Context, id string) (*SSHKey, error) {
 	all, err := c.ListSSHKeys(ctx)
 	if err != nil {
@@ -488,7 +488,7 @@ func (c *Client) ListSSHSnippets(ctx context.Context) ([]SSHSnippet, error) {
 	return out, err
 }
 
-// GetSSHSnippet lists and filters — there is no single-GET route.
+// GetSSHSnippet lists and filters: there is no single-GET route.
 func (c *Client) GetSSHSnippet(ctx context.Context, id string) (*SSHSnippet, error) {
 	all, err := c.ListSSHSnippets(ctx)
 	if err != nil {
@@ -524,7 +524,7 @@ func (c *Client) DeleteSSHSnippet(ctx context.Context, id string) error {
 
 /* --------------------------------- accounts -------------------------------- */
 
-// GetAccount lists and filters — the single-GET route is `/accounts/{id}/detail`,
+// GetAccount lists and filters: the single-GET route is `/accounts/{id}/detail`,
 // which joins in every synced resource and is far more than a read needs.
 func (c *Client) GetAccount(ctx context.Context, id string) (*Account, error) {
 	all, err := c.ListAccounts(ctx)
@@ -600,7 +600,7 @@ func (c *Client) ListDeployTriggers(ctx context.Context) ([]DeployTrigger, error
 	return out, err
 }
 
-// GetDeployTrigger lists and filters — there is no single-GET route.
+// GetDeployTrigger lists and filters: there is no single-GET route.
 func (c *Client) GetDeployTrigger(ctx context.Context, id string) (*DeployTrigger, error) {
 	all, err := c.ListDeployTriggers(ctx)
 	if err != nil {
@@ -640,7 +640,7 @@ func (c *Client) DeleteDeployTrigger(ctx context.Context, id string) error {
 /* ------------------------------ slack / teams ------------------------------ */
 
 // GetSlackStatus reads the whole Slack picture. There is no listing route for
-// channels or for installations — this one response is where both live, which
+// channels or for installations: this one response is where both live, which
 // is why the channel resource and the installations data source share it.
 func (c *Client) GetSlackStatus(ctx context.Context) (*SlackStatus, error) {
 	var out SlackStatus
@@ -905,7 +905,7 @@ func (c *Client) PutNetworkFlowSettings(ctx context.Context, in NetworkFlowSetti
 
 // GetJiraIntegration unwraps the {"integration": …} envelope. A disconnected
 // org returns a null integration, which is a 404 as far as Terraform is
-// concerned — there is nothing to refresh.
+// concerned: there is nothing to refresh.
 func (c *Client) GetJiraIntegration(ctx context.Context) (*JiraIntegration, error) {
 	var envelope struct {
 		Integration *JiraIntegration `json:"integration"`
@@ -1003,7 +1003,7 @@ func (c *Client) ListOnCallSchedules(ctx context.Context) ([]OnCallSchedule, err
 	return envelope.Schedules, nil
 }
 
-// GetOnCallSchedule lists and filters — there is no single-GET route. The 404 is
+// GetOnCallSchedule lists and filters: there is no single-GET route. The 404 is
 // synthesised here so a rotation deleted in the app reads back as gone rather
 // than as an empty list Terraform would treat as success.
 func (c *Client) GetOnCallSchedule(ctx context.Context, id string) (*OnCallSchedule, error) {

@@ -198,7 +198,7 @@ func (r *costCentreResource) ImportState(ctx context.Context, req resource.Impor
 // ParentID is passed straight through as a pointer rather than being elided
 // when null, because iw.CostCentreInput deliberately marshals a nil parentId as
 // an explicit JSON null. An absent key would tell the server to leave the centre
-// where it is, and a null Terraform attribute means the opposite of that — it
+// where it is, and a null Terraform attribute means the opposite of that: it
 // means the practitioner wants the centre at the root.
 func costCentreInputFrom(_ context.Context, model costCentreResourceModel) (iw.CostCentreInput, diag.Diagnostics) {
 	var diags diag.Diagnostics

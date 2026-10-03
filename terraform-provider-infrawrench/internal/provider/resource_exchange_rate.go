@@ -76,8 +76,8 @@ func (r *exchangeRateResource) Configure(_ context.Context, req resource.Configu
 	r.client = clientFromResourceConfigure(req, resp)
 }
 
-// Create upserts. There is no POST — the route is a PUT keyed on
-// (from, to, effective_from) — so creating a rate for a day another
+// Create upserts. There is no POST: the route is a PUT keyed on
+// (from, to, effective_from), so creating a rate for a day another
 // configuration already stated will adopt that row rather than fail. That is
 // the server's model rather than a shortcut here, and it is why the resource
 // records the returned id instead of assuming a fresh one.

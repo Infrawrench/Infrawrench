@@ -166,7 +166,7 @@ func (r *driftAlertSettingsResource) write(ctx context.Context, plan driftAlertS
 
 // driftAlertSettingsStateFrom maps the stored settings into state.
 //
-// The account list is mapped faithfully — `[]` stays `[]` — even though `[]` and
+// The account list is mapped faithfully (`[]` stays `[]`) even though `[]` and
 // an omitted attribute mean the same thing to this route. Folding one into the
 // other would fail Terraform's consistency check for a configuration that
 // spells the empty list out.

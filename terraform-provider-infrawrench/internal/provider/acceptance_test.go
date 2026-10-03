@@ -101,7 +101,7 @@ resource "infrawrench_budget" "test" {
 }
 
 // TestAccCostCentreResource exercises an object with no single-GET route, so
-// the list-and-filter Read path is covered too — including the synthesised 404
+// the list-and-filter Read path is covered too, including the synthesised 404
 // that makes an outside deletion show as needing recreation.
 func TestAccCostCentreResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{

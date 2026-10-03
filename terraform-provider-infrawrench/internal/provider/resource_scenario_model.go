@@ -319,8 +319,8 @@ func (r *scenarioModelResource) Delete(ctx context.Context, req resource.DeleteR
 		}
 		// A 409 means a budget or a cost report still points at this model. It is
 		// not a transient condition and retrying cannot clear it, so the delete
-		// fails once with the referents the server named — APIError.Error()
-		// already renders them — and the practitioner decides where those objects
+		// fails once with the referents the server named: APIError.Error()
+		// already renders them, and the practitioner decides where those objects
 		// should point instead.
 		if iw.IsConflict(err) {
 			resp.Diagnostics.AddError(

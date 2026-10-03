@@ -427,7 +427,7 @@ func billingRuleInputFrom(ctx context.Context, model billingRuleResourceModel) (
 // `prior` is the plan (on write) or the previous state (on refresh). It matters
 // for exactly one thing here: whether an all-empty match comes back as a null
 // object or as an object of nulls. Terraform treats those as different values,
-// and a config with no `match` block plans a null — so echoing an object would
+// and a config with no `match` block plans a null, so echoing an object would
 // fail the apply with "provider produced inconsistent result". See
 // billingRuleMatchTo.
 func billingRuleStateFrom(ctx context.Context, remote *iw.BillingRule, prior billingRuleResourceModel) (billingRuleResourceModel, diag.Diagnostics) {
@@ -465,7 +465,7 @@ func billingRuleStateFrom(ctx context.Context, remote *iw.BillingRule, prior bil
 // plans as a null object; the server round-trips it as `{}` and the naive
 // mapping would hand back an object whose six attributes are all null. Those
 // are not the same value to Terraform. Keeping null when the prior value was
-// null — and only when the server genuinely returned nothing — means a
+// null (and only when the server genuinely returned nothing) means a
 // catch-all rule refreshes clean, while a match added outside Terraform still
 // shows up as drift.
 func billingRuleMatchTo(ctx context.Context, m iw.BillingRuleMatch, prior types.Object) (types.Object, diag.Diagnostics) {

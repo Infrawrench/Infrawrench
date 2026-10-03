@@ -8,7 +8,7 @@ import (
 // Wire shapes for the configuration surfaces outside cost management:
 // monitoring, lifecycle governance, access control and alert delivery.
 //
-// The two conventions from wire.go hold here unchanged — an omitempty pointer
+// The two conventions from wire.go hold here unchanged: an omitempty pointer
 // means "omitted clears it", a pointer without omitempty marshals nil as an
 // explicit null because the server distinguishes the two. What is new in this
 // file is a third shape the cost surface never had: several of these routes are
@@ -146,9 +146,9 @@ type StatusPageComponent struct {
 	ProbeEnabled bool    `json:"probeEnabled"`
 }
 
-// StatusPageInput is both the POST body and the PUT body. The PUT is a patch —
-// an absent key is left alone, and an absent components list leaves the whole
-// set alone — so the provider always sends every field.
+// StatusPageInput is both the POST body and the PUT body. The PUT is a patch
+// (an absent key is left alone, and an absent components list leaves the whole
+// set alone) so the provider always sends every field.
 type StatusPageInput struct {
 	Title       string                     `json:"title"`
 	Description *string                    `json:"description"`
@@ -162,7 +162,7 @@ type StatusPageInput struct {
 // StatusPage is a public uptime page.
 //
 // Slug is server-minted with real entropy rather than derived from the title,
-// and it is the page's only access credential — anyone holding the URL can read
+// and it is the page's only access credential: anyone holding the URL can read
 // it. Rotating it is an explicit action on the API, deliberately not something
 // a Terraform plan can do by accident.
 type StatusPage struct {
@@ -182,7 +182,7 @@ type StatusPage struct {
 /* ----------------------------- sleep schedules ----------------------------- */
 
 // SleepScheduleCreate is the POST body. The resource and account are fixed at
-// creation — the update route does not carry them — so changing either one
+// creation (the update route does not carry them) so changing either one
 // replaces the schedule.
 type SleepScheduleCreate struct {
 	ResourceID string  `json:"resourceId"`
@@ -237,7 +237,7 @@ type SleepSchedule struct {
 //
 // StartsAt is an omitempty pointer with an asymmetric server rule worth knowing:
 // on create an absent start means "now", and on *update* an absent start leaves
-// the stored one alone — while an absent Reason or EndsAt clears them. That is
+// the stored one alone, while an absent Reason or EndsAt clears them. That is
 // why the Terraform attribute is Optional and Computed rather than merely
 // Optional.
 type ChangeFreezeInput struct {
@@ -558,7 +558,7 @@ type DeployTriggerInput struct {
 }
 
 // DeployTrigger redeploys a repo when its branch moves. The only mutable field
-// is Enabled — repo, branch and env are fixed at creation.
+// is Enabled: repo, branch and env are fixed at creation.
 type DeployTrigger struct {
 	ID        string  `json:"id"`
 	Repo      string  `json:"repo"`
@@ -569,7 +569,7 @@ type DeployTrigger struct {
 	LastRunAt *string `json:"lastRunAt"`
 }
 
-// DeployTriggerEnabled is the PATCH body — the whole mutable surface.
+// DeployTriggerEnabled is the PATCH body: the whole mutable surface.
 type DeployTriggerEnabled struct {
 	Enabled bool `json:"enabled"`
 }
@@ -584,7 +584,7 @@ type SlackChannelCreate struct {
 	IsPrivate      *bool  `json:"isPrivate,omitempty"`
 }
 
-// SlackChannelUpdate is the PATCH body — the display name is the only thing an
+// SlackChannelUpdate is the PATCH body: the display name is the only thing an
 // edit can change; rebinding to another channel replaces the row.
 type SlackChannelUpdate struct {
 	ChannelName string `json:"channelName"`
@@ -600,7 +600,7 @@ type SlackChannel struct {
 }
 
 // SlackInstallation is one connected Slack workspace. Installations are created
-// by the OAuth flow, never by this provider — a channel references one by id.
+// by the OAuth flow, never by this provider: a channel references one by id.
 type SlackInstallation struct {
 	ID       string  `json:"id"`
 	TeamID   string  `json:"teamId"`
@@ -828,7 +828,7 @@ type AlertRuleInput struct {
 }
 
 // AlertRule is a stored routing rule. Position is the evaluation order, which
-// the list's own order defines — the server assigns it, so it is read-only.
+// the list's own order defines: the server assigns it, so it is read-only.
 type AlertRule struct {
 	ID              string             `json:"id"`
 	Name            string             `json:"name"`
@@ -852,7 +852,7 @@ type AlertRulesResponse struct {
 	UsingDefaults bool        `json:"usingDefaults"`
 
 	// Reference data the editor uses. Decoded so the drift check can see the
-	// route is fully covered, but not surfaced as Terraform attributes — the
+	// route is fully covered, but not surfaced as Terraform attributes: the
 	// dedicated data sources exist for that.
 	SlackChannels   []json.RawMessage `json:"slackChannels,omitempty"`
 	MSTeamsWebhooks []json.RawMessage `json:"msTeamsWebhooks,omitempty"`
@@ -943,7 +943,7 @@ type SessionRecordingSettings struct {
 //
 // Both fields are required on PUT, so neither is a pointer. The route reads an
 // omitted InitialLookbackDays as "keep the stored one", but the provider always
-// sends both — a Terraform attribute with a value is a value.
+// sends both: a Terraform attribute with a value is a value.
 type NetworkFlowSettings struct {
 	Enabled             bool  `json:"enabled"`
 	InitialLookbackDays int64 `json:"initialLookbackDays"`
@@ -999,7 +999,7 @@ type WorkflowScheduleInput struct {
 
 // WorkflowSchedule is the cron attached to an existing workflow.
 //
-// The workflow itself is not managed by this provider — its definition lives in
+// The workflow itself is not managed by this provider: its definition lives in
 // the workflow editor or in a git-backed repository, neither of which this API
 // surface writes. Enabled mirrors the workflow's own flag.
 type WorkflowSchedule struct {
@@ -1015,7 +1015,7 @@ type WorkflowSchedule struct {
 
 // Resource is a synced cloud resource, as an account's listing returns it.
 //
-// The provider never writes these — ejecting them to HCL is what
+// The provider never writes these: ejecting them to HCL is what
 // `Plugin.terraformExport` is for, and creating them is the cloud's own
 // provider's job. Reading them matters because a probe, a sleep schedule and a
 // log query all address a resource by id, and hard-coding one in HCL is exactly

@@ -90,7 +90,7 @@ func (r *accountResource) Configure(_ context.Context, req resource.ConfigureReq
 //
 // A first sync that fails is reported as a warning rather than an error: the
 // account exists, and failing the apply would leave a connected account outside
-// Terraform's state — the worst of both outcomes. A credential that is actually
+// Terraform's state; the worst of both outcomes. A credential that is actually
 // wrong shows up as a sync error in the app, where it can be fixed.
 func (r *accountResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan accountResourceModel
@@ -163,8 +163,8 @@ func (r *accountResource) Read(ctx context.Context, req resource.ReadRequest, re
 // Update writes the name and bastion binding, and rotates the credentials when
 // they changed.
 //
-// They are two routes because they are gated on different permissions — renaming
-// an account is `accounts:write`, replacing its secret is `secrets:write` — so a
+// They are two routes because they are gated on different permissions (renaming
+// an account is `accounts:write`, replacing its secret is `secrets:write`) so a
 // token that may do one and not the other gets a clear failure on the half it
 // may not do, rather than being refused the whole update.
 func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -198,7 +198,7 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	// The rename has already landed at this point. If the credential rotation
 	// then fails, state has to record the half that succeeded and keep the *old*
-	// credentials — writing the plan's wholesale would claim a rotation that did
+	// credentials: writing the plan's wholesale would claim a rotation that did
 	// not happen, and the next apply would see no diff and never retry it.
 	next := plan
 	next.ID = state.ID
@@ -225,7 +225,7 @@ func (r *accountResource) Update(ctx context.Context, req resource.UpdateRequest
 }
 
 // Delete disconnects the account and removes the resources synced from it. The
-// cloud resources themselves are untouched — this is a credential, not the
+// cloud resources themselves are untouched: this is a credential, not the
 // account at the provider.
 func (r *accountResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state accountResourceModel

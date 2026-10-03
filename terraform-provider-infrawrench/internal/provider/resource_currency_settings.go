@@ -104,7 +104,7 @@ func (r *currencySettingsResource) Update(ctx context.Context, req resource.Upda
 }
 
 // Delete clears the display currency rather than deleting a row. The rate table
-// is deliberately untouched — see the schema description.
+// is deliberately untouched: see the schema description.
 func (r *currencySettingsResource) Delete(ctx context.Context, _ resource.DeleteRequest, resp *resource.DeleteResponse) {
 	if _, err := r.client.PutCurrencySettings(ctx, iw.CurrencySettings{DisplayCurrency: nil}); err != nil {
 		resp.Diagnostics.AddError("Unable to clear the display currency", err.Error())
