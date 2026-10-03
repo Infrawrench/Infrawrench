@@ -11,8 +11,8 @@ import type { SqlNodeDriver, SqlNodeDriverOptions } from "@infrawrench/plugin-ba
  * mysql2 delivers `query`/`execute` through a mixin (`QueryableBase(...)`)
  * rather than declaring them on `Connection`, and the checker does not surface
  * mixin-returned members on the class. There is no way to reach them through
- * the published types, so we restate the two signatures we use — narrowed to
- * the single `QueryResult` arm each call site expects — and widen the
+ * the published types, so we restate the two signatures we use (narrowed to
+ * the single `QueryResult` arm each call site expects) and widen the
  * connection to them at the call. Everything below still uses mysql2's own
  * packet types, so a breaking change in the driver shows up here.
  */
@@ -22,7 +22,7 @@ type Queryable = {
 };
 
 /**
- * mysql2 doesn't read `ssl` out of the connection-string URI — you have to
+ * mysql2 doesn't read `ssl` out of the connection-string URI: you have to
  * pass it as an option object. When a vendor CA is provided we open the
  * connection via the config-object overload so the driver verifies the
  * chain against the supplied CA; otherwise we use the URI overload.

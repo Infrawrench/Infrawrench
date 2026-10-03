@@ -1,14 +1,14 @@
 /**
  * ClickHouse Cloud public status feed (incident.io emulating the Statuspage
- * v2 API, https://status.clickhouse.com — verified 2026-08).
+ * v2 API, https://status.clickhouse.com: verified 2026-08).
  *
  * incident.io hosts 404 on /incidents/unresolved.json, so this fetches
  * /api/v2/incidents.json (full history) and filters to unresolved after
- * parsing. Incident objects carry no components — the parser marks them
+ * parsing. Incident objects carry no components: the parser marks them
  * provider-wide automatically. The component mapper is future-proofing:
- * components on this page are regions with inconsistent naming — "AWS
+ * components on this page are regions with inconsistent naming: "AWS
  * ap-east-1", "GCP us-west1", "AWS  us-west-2" (double space), bare
- * "us-east-2" — so the region slug is the last whitespace-separated token.
+ * "us-east-2", so the region slug is the last whitespace-separated token.
  */
 import type {
   StatusComponentMapping,
@@ -34,7 +34,7 @@ function mapComponent(name: string): StatusComponentMapping | null {
 }
 
 export function parseStatusFeed(body: string): StatusIncident[] {
-  // The feed is full history — keep only active incidents; the host closes
+  // The feed is full history: keep only active incidents; the host closes
   // cached rows that disappear from the parsed set.
   return parseStatuspageIncidents(body, {
     mapComponent,

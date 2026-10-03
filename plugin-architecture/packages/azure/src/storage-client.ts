@@ -1,5 +1,5 @@
 /**
- * Blob Storage operations — list, upload, mkdir, delete.
+ * Blob Storage operations: list, upload, mkdir, delete.
  *
  * Uses an AAD storage-scoped bearer token (`storage.azure.com`) and talks to the
  * REST surface at `https://<account>.blob.core.windows.net`. Parsing is done
@@ -28,7 +28,7 @@ export async function listStorageObjects(
   });
   const url = `https://${bucket}.blob.core.windows.net/?${params}`;
   // The enumeration response is XML, which crosses the host boundary as text
-  // just as happily as JSON — `azureRequest` never assumes a JSON body.
+  // just as happily as JSON: `azureRequest` never assumes a JSON body.
   const res = await azureRequest(ctx.http, url, {
     headers: {
       Authorization: `Bearer ${tok}`,
@@ -94,7 +94,7 @@ export async function uploadStorageObject(
   const url = `https://${bucket}.blob.core.windows.net/${containerName}/${blobName}`;
   // Bytes, not a stream: `File.arrayBuffer()` already buffers the whole blob
   // in memory, so handing the host a Uint8Array costs one more copy and no
-  // additional peak — and it is the only body shape the host accepts.
+  // additional peak, and it is the only body shape the host accepts.
   const bytes = new Uint8Array(await file.arrayBuffer());
   const res = await azureRequest(ctx.http, url, {
     method: "PUT",
@@ -114,7 +114,7 @@ export async function makeStorageFolder(
   bucket: string,
   key: string,
 ): Promise<void> {
-  // Azure doesn't have real folders — upload a zero-byte blob with trailing /
+  // Azure doesn't have real folders: upload a zero-byte blob with trailing /
   const tok = await ctx.storageToken();
   const containerName = key.split("/")[0] ?? "$root";
   const folderKey = key.split("/").slice(1).join("/") || key;

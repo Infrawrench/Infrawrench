@@ -144,7 +144,7 @@ export function renderTerraformBundle(
   });
   parts.push(`terraform {\n  required_providers {\n${providerLines.join("\n")}\n  }\n}`);
 
-  // variable blocks — provider-level plus per-result extras, deduped by name.
+  // variable blocks: provider-level plus per-result extras, deduped by name.
   const variables = new Map<string, TerraformVariable>();
   for (const section of active) {
     for (const v of section.capability.variables) {

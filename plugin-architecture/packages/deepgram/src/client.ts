@@ -41,7 +41,7 @@ const MAX_TTS_CHARACTERS = 2000;
  * Largest clip the Speech panel will accept, in bytes.
  *
  * This is deliberately far below the provider's own ceiling. The panel ships
- * audio base64-encoded inside a JSON body, and base64 inflates by 4/3 — with
+ * audio base64-encoded inside a JSON body, and base64 inflates by 4/3: with
  * the web ingress at `proxy-body-size: 36m` the real raw-audio ceiling is
  * ~27 MB, and a clip large enough to matter also blows up `FileReader`
  * (`RangeError: Invalid string length`) before it ever reaches the network.
@@ -49,7 +49,7 @@ const MAX_TTS_CHARACTERS = 2000;
  */
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // Deepgram accepts 2 GB; our transport does not.
 
-/** Fallback when `/v1/models` can't be reached — Deepgram's own documented defaults. */
+/** Fallback when `/v1/models` can't be reached: Deepgram's own documented defaults. */
 const FALLBACK_TTS_VOICE = "aura-2-thalia-en";
 const FALLBACK_STT_MODEL = "nova-3";
 
@@ -163,7 +163,7 @@ interface DgModelList {
  * One bucket from `GET /v1/projects/{id}/usage/breakdown`.
  *
  * The per-bucket timestamps live on the nested `grouping` object, **not** at
- * the top level of the result — `results[].grouping.start`, not
+ * the top level of the result: `results[].grouping.start`, not
  * `results[].start`. The top-level `start`/`end` on the envelope describe the
  * whole window.
  */
@@ -212,7 +212,7 @@ interface DgListenAlternative {
   /**
    * Present only under `language=multi` (Nova-3 code-switching), sorted by
    * word count descending. The `detect_language` flag reports on the channel
-   * instead — two different shapes for the same question.
+   * instead: two different shapes for the same question.
    */
   languages?: string[];
 }
@@ -279,7 +279,7 @@ function memberName(member: { first_name?: string; last_name?: string; email?: s
 
 /**
  * A one-line voice/model blurb for the picker's second line. TTS entries have
- * the richer payload — accent, age and characteristic tags — while STT entries
+ * the richer payload (accent, age and characteristic tags) while STT entries
  * only carry languages and an architecture.
  */
 function modelDescription(model: DgModel): string {
@@ -320,7 +320,7 @@ function byGenerationDesc(a: { id: string }, b: { id: string }): number {
  * projects and which management endpoints answer; an owner-scoped key sees
  * everything, a member-scoped key sees its own project only.
  *
- * Auth is `Authorization: Token <key>` — Deepgram does **not** accept
+ * Auth is `Authorization: Token <key>`: Deepgram does **not** accept
  * `Bearer`. See https://developers.deepgram.com/docs/authenticating
  */
 export class DeepgramClient implements PluginClient {
@@ -342,7 +342,7 @@ export class DeepgramClient implements PluginClient {
 
   /**
    * JSON control-plane call. Always routed through the host's HTTP service
-   * when one is present — that is the only path that picks up bastion egress
+   * when one is present: that is the only path that picks up bastion egress
    * routing and a custom CA.
    */
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -397,14 +397,14 @@ export class DeepgramClient implements PluginClient {
    * Prepaid balances across every project the key can see.
    *
    * Deepgram scopes balances to a project and an account can hold several, so
-   * the pot key is `<projectId>:<balanceId>` — one project running dry while
+   * the pot key is `<projectId>:<balanceId>`: one project running dry while
    * another has headroom is exactly the situation this feature exists to
    * surface, and summing them would hide it.
    *
    * `units` is Deepgram's own word for what the amount is denominated in
    * ("usd"); anything else is passed through uppercased rather than assumed to
    * be dollars. Projects the key lacks scope for fail individually, the same
-   * stance `listForEachProject` takes — a member-scoped key sees no balances
+   * stance `listForEachProject` takes: a member-scoped key sees no balances
    * at all, which is a permission gap rather than a zero balance.
    */
   async fetchCreditBalance(): Promise<CreditBalance[]> {
@@ -470,7 +470,7 @@ export class DeepgramClient implements PluginClient {
 
   /**
    * https://developers.deepgram.com/reference/management-api/models/list-project
-   * Project-scoped list — only the models this project is entitled to. Falls
+   * Project-scoped list, only the models this project is entitled to. Falls
    * back to the account-wide catalogue when the project route is unavailable.
    */
   private async fetchModels(projectId?: string): Promise<DgModelList> {
@@ -541,7 +541,7 @@ export class DeepgramClient implements PluginClient {
         expirationDate: key.expiration_date ?? "",
         memberEmail: entry.member?.email ?? "",
       },
-      // The secret is only ever present on the create response — Deepgram
+      // The secret is only ever present on the create response: Deepgram
       // does not return it from the list endpoint.
       resolvedOutputs: { apiKeyId: key.api_key_id },
       secretStates: [],
@@ -680,7 +680,7 @@ export class DeepgramClient implements PluginClient {
       const instance = this.mapProject(accountId, project);
       // `renderDetail` is synchronous, so the Speech tab's voice and model
       // pickers can't do their own round trip. Pre-bake the catalogue here and
-      // stash it as JSON — the Cloudflare queue plugin uses the same
+      // stash it as JSON: the Cloudflare queue plugin uses the same
       // `__doubleUnderscore__` convention for its consumer list.
       instance.resolvedOutputs = {
         ...instance.resolvedOutputs,
@@ -716,7 +716,7 @@ export class DeepgramClient implements PluginClient {
     }
 
     // Members, invites and models have no per-item read worth a second code
-    // path — the list already carries every field.
+    // path: the list already carries every field.
     const siblings =
       typeId === "member"
         ? await this.listMembers(accountId, projectId)
@@ -750,7 +750,7 @@ export class DeepgramClient implements PluginClient {
 
   /**
    * Build the Speech tab's voice + model pickers from Deepgram's own catalogue.
-   * `GET /v1/models` returns two arrays — `tts` (voices, with the richest
+   * `GET /v1/models` returns two arrays; `tts` (voices, with the richest
    * metadata of any provider we ship: accent, characteristics, avatar image
    * and a preview clip) and `stt` (transcription models).
    */
@@ -780,7 +780,7 @@ export class DeepgramClient implements PluginClient {
         .sort(byGenerationDesc);
       return { stt, tts };
     } catch {
-      // A key without the models scope shouldn't blank the whole detail page —
+      // A key without the models scope shouldn't blank the whole detail page:
       // fall back to Deepgram's documented defaults.
       return { stt: [], tts: [] };
     }
@@ -863,7 +863,7 @@ export class DeepgramClient implements PluginClient {
   /**
    * https://developers.deepgram.com/reference/management-api/usage/breakdown
    *
-   * Consumption only — Deepgram exposes no quota ceiling, so there is nothing
+   * Consumption only: Deepgram exposes no quota ceiling, so there is nothing
    * to draw a used-vs-limit gauge from. Prepaid customers get a separate
    * `balances.amount`, which the Overview surfaces instead.
    */
@@ -1028,7 +1028,7 @@ export class DeepgramClient implements PluginClient {
 
   /**
    * A project picker, unless the create was launched from a project's detail
-   * page — in which case the parent already answers the question.
+   * page: in which case the parent already answers the question.
    */
   private async projectPickerField(
     parentResourceId?: string,
@@ -1177,7 +1177,7 @@ export class DeepgramClient implements PluginClient {
   }
 
   // -------------------------------------------------------------------------
-  // Speech — binary transport
+  // Speech: binary transport
   // -------------------------------------------------------------------------
 
   /**
@@ -1188,7 +1188,7 @@ export class DeepgramClient implements PluginClient {
    * carry the `dg-request-id` / `dg-char-count` headers the Speech tab
    * surfaces, which the helper discards. This path uses the global `fetch`
    * directly and therefore **bypasses bastion egress routing and any custom
-   * CA** — an accepted trade for the interactive playground.
+   * CA**: an accepted trade for the interactive playground.
    */
   private async speechFetch(
     url: string,
@@ -1217,7 +1217,7 @@ export class DeepgramClient implements PluginClient {
   }
 
   /**
-   * `POST /v1/speak` — https://developers.deepgram.com/reference/text-to-speech-api/speak
+   * `POST /v1/speak`: https://developers.deepgram.com/reference/text-to-speech-api/speak
    *
    * The voice/model, encoding and sample rate are **query** parameters; the
    * JSON body carries nothing but `{"text": "..."}`. mp3 is requested
@@ -1266,12 +1266,12 @@ export class DeepgramClient implements PluginClient {
   }
 
   /**
-   * `POST /v1/listen` — https://developers.deepgram.com/reference/speech-to-text-api/listen
+   * `POST /v1/listen`: https://developers.deepgram.com/reference/speech-to-text-api/listen
    *
    * Deepgram accepts the raw audio bytes with the clip's own `Content-Type`,
    * which is exactly what the Speech tab hands us: `MediaRecorder` produces
    * `audio/webm;codecs=opus` on Chromium and `audio/mp4` on Safari, and both
-   * are forwarded untouched — no multipart wrapper, no transcoding.
+   * are forwarded untouched; no multipart wrapper, no transcoding.
    *
    * `punctuate`, `smart_format`, `diarize` and `utterances` are all on so the
    * result carries speaker labels and per-word timings.
@@ -1311,7 +1311,7 @@ export class DeepgramClient implements PluginClient {
     const alternative = channel?.alternatives?.[0];
     const utterances = parsed.results?.utterances ?? [];
 
-    // Prefer the utterance words — they carry the diarisation speaker label
+    // Prefer the utterance words: they carry the diarisation speaker label
     // for every token. Fall back to the flat alternative word list.
     const source: DgListenWord[] =
       utterances.length > 0
@@ -1821,7 +1821,7 @@ function summariseUsage(buckets: DgUsageBucket[]): {
 
 /**
  * Language options for the transcription half. `multi` is Nova-3's
- * code-switching mode — it detects and transcribes several languages inside a
+ * code-switching mode: it detects and transcribes several languages inside a
  * single clip; the older `detect_language` flag is Nova-2 only.
  */
 const DEEPGRAM_LANGUAGES: SpeechPanelOption[] = [

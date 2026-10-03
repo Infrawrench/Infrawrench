@@ -10,8 +10,8 @@ import type { SqlNodeDriver } from "@infrawrench/plugin-base";
  * mysql2 delivers `query`/`execute` through a mixin (`QueryableBase(...)`)
  * rather than declaring them on `Connection`, and the checker does not surface
  * mixin-returned members on the class. There is no way to reach them through
- * the published types, so we restate the two signatures we use — narrowed to
- * the single `QueryResult` arm each call site expects — and widen the
+ * the published types, so we restate the two signatures we use (narrowed to
+ * the single `QueryResult` arm each call site expects) and widen the
  * connection to them at the call. Everything below still uses mysql2's own
  * packet types, so a breaking change in the driver shows up here.
  */
@@ -22,7 +22,7 @@ type Queryable = {
 
 /**
  * PlanetScale SQL node driver.
- * Wraps mysql2 with TLS forced on — PlanetScale requires encrypted connections.
+ * Wraps mysql2 with TLS forced on: PlanetScale requires encrypted connections.
  * Connection string format: mysql://user:pass@host/database
  */
 export const driver = {

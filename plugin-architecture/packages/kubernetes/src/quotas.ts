@@ -1,5 +1,5 @@
 /**
- * Kubernetes quota readings — the cluster's own `ResourceQuota` objects.
+ * Kubernetes quota readings: the cluster's own `ResourceQuota` objects.
  *
  * This is the one provider where the quota contract is not an adaptation of
  * something else: a `ResourceQuota`'s `status` carries `hard` and `used` maps
@@ -15,7 +15,7 @@
  *                            "used": { "requests.cpu": "8500m", "limits.memory": "12Gi" } } } ] }
  * ```
  *
- * Values are `resource.Quantity` strings, not numbers — `8500m` is 8.5 CPUs
+ * Values are `resource.Quantity` strings, not numbers: `8500m` is 8.5 CPUs
  * and `40Gi` is 42,949,672,960 bytes. `quantity.ts` already parses them,
  * including the `M` (10^6) versus `Mi` (2^20) trap that under-counts memory by
  * 4.9% in the same direction every time, so it never looks like a bug.
@@ -25,8 +25,8 @@
  * - **`LimitRange`.** It bounds an individual pod, not an aggregate, so it has
  *   no "used" and cannot be a utilisation.
  * - **Node capacity.** A cluster running out of allocatable CPU is a real and
- *   common outage, but it is not a *quota* — nobody approves an increase, you
- *   add nodes — and folding it in would put a row on the radar whose call to
+ *   common outage, but it is not a *quota*: nobody approves an increase, you
+ *   add nodes, and folding it in would put a row on the radar whose call to
  *   action is nothing like every other row's.
  */
 
@@ -54,7 +54,7 @@ export interface K8sQuotaContext {
 
 /**
  * Human labels for the standard resource names. Kubernetes' own keys are
- * precise and unreadable — `count/persistentvolumeclaims` beside
+ * precise and unreadable: `count/persistentvolumeclaims` beside
  * `limits.memory` in a list is not a set of labels a person scans.
  *
  * An unmapped key is titled from itself rather than dropped: `ResourceQuota`
@@ -94,7 +94,7 @@ export function resourceLabel(key: string): string {
 /**
  * The unit a parsed quantity is now in.
  *
- * `parseQuantity` normalises to base units — cores for CPU, bytes for memory —
+ * `parseQuantity` normalises to base units (cores for CPU, bytes for memory)
  * so the unit has to describe the *parsed* number, not the string it came
  * from. Saying "GB" next to a byte count is off by nine orders of magnitude,
  * and the surface has no way to notice.
@@ -111,13 +111,13 @@ export function unitForResource(key: string): string | undefined {
  *
  * Iterates `hard`, not `used`: `hard` is the set of things this quota actually
  * limits, and a key present in `used` but absent from `hard` is a resource
- * being consumed under no ceiling — which has no utilisation and belongs on a
+ * being consumed under no ceiling, which has no utilisation and belongs on a
  * usage screen, not a radar.
  *
  * A `used` key that is *missing* is read as zero rather than dropped, because
  * that is what it means: the API server omits a used entry only when nothing
  * in the namespace consumes that resource. A key that is present but
- * **unparseable** is dropped instead — that is a fact we do not have, and
+ * **unparseable** is dropped instead: that is a fact we do not have, and
  * calling it zero would draw an empty bar under a ceiling that may be full.
  */
 export function quotaReadingsFor(quota: K8sResourceQuota): QuotaUsage[] {
@@ -150,14 +150,14 @@ export function quotaReadingsFor(quota: K8sResourceQuota): QuotaUsage[] {
       // name alone would collapse every team's CPU quota into one series.
       id: `resourcequota/${namespace}/${name}/${key}`,
       // The namespace is the service, because it is the thing a reader groups
-      // by — "which team is out of headroom" is the question, and the quota
+      // by: "which team is out of headroom" is the question, and the quota
       // object's own name is an implementation detail of how they wrote it.
       service: namespace,
       name: `${resourceLabel(key)} (${name})`,
       limit,
       used: usedValue,
       ...(unit ? { unit } : {}),
-      // A `ResourceQuota` is a cluster object the user can edit — there is no
+      // A `ResourceQuota` is a cluster object the user can edit: there is no
       // support ticket and no provider to ask. `false` would say "you cannot
       // change this", which is the opposite of true.
       adjustable: true,
@@ -176,7 +176,7 @@ export function quotaReadingsFor(quota: K8sResourceQuota): QuotaUsage[] {
  * clusters have none. It is the one provider here where an empty result is a
  * true statement about the cluster rather than a hint that something is
  * misconfigured, so unlike AWS and GCP this never throws a
- * {@link QuotaAccessError} on emptiness — a genuinely missing permission comes
+ * {@link QuotaAccessError} on emptiness: a genuinely missing permission comes
  * back from the API server as a 403 and propagates as itself.
  */
 export async function fetchK8sQuotas(ctx: K8sQuotaContext): Promise<QuotaUsage[]> {

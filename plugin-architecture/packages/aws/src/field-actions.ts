@@ -2,8 +2,8 @@
  * Dispatcher for create-form field actions. The plugin declares actions on
  * specific fields (e.g. a "+ Generate role" button next to a Lambda role
  * selector); this module maps a (typeId, fieldKey, actionId) triple to the
- * concrete work — typically minting an IAM role via the generic
- * `generateServiceRole` helper — and returns the new value plus a synthetic
+ * concrete work (typically minting an IAM role via the generic
+ * `generateServiceRole` helper) and returns the new value plus a synthetic
  * option entry the host can splice into the select's options.
  *
  * To support a new field action, add an entry below. Keep entries thin:
@@ -23,7 +23,7 @@ interface FieldActionEntry {
    * Mint the resource. `fields` is the outer create form's current values
    * (region, instance name, …); `actionFields` is the action's own inline
    * mini-form values (declared via `FieldAction.formFields`). Most existing
-   * entries ignore both — they only mint home-region IAM roles.
+   * entries ignore both: they only mint home-region IAM roles.
    */
   generate(
     creds: AwsCredentials,

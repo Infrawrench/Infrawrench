@@ -46,7 +46,7 @@ const MAX_POLL_WAIT_MS = 120_000;
  * Largest clip the Speech panel will accept, in bytes.
  *
  * This is deliberately far below the provider's own ceiling. The panel ships
- * audio base64-encoded inside a JSON body, and base64 inflates by 4/3 — with
+ * audio base64-encoded inside a JSON body, and base64 inflates by 4/3: with
  * the web ingress at `proxy-body-size: 36m` the real raw-audio ceiling is
  * ~27 MB, and a clip large enough to matter also blows up `FileReader`
  * (`RangeError: Invalid string length`) before it ever reaches the network.
@@ -159,7 +159,7 @@ function vocabularyStatusDot(status: string): "healthy" | "error" | "provisionin
 /**
  * Assemble the transcript exactly the way Rev AI intends.
  *
- * Every element is concatenated — including the `punct` ones, which is where
+ * Every element is concatenated, including the `punct` ones, which is where
  * the spaces live. Joining with `" "` instead would double every space and
  * push punctuation off its word.
  */
@@ -219,7 +219,7 @@ export class RevAiClient implements PluginClient {
   }
 
   /**
-   * Issue a request whose response body we do not want parsed as JSON — the
+   * Issue a request whose response body we do not want parsed as JSON: the
    * `DELETE` endpoints answer 204 with no body.
    */
   private async requestVoid(path: string, method: string): Promise<void> {
@@ -249,7 +249,7 @@ export class RevAiClient implements PluginClient {
 
   /**
    * Rewrite Rev AI's less obvious status codes into something a user can act
-   * on. 405 in particular does not mean "method not allowed" here — Rev AI
+   * on. 405 in particular does not mean "method not allowed" here: Rev AI
    * uses it for "Invalid Job Properties".
    */
   private explainError(error: unknown, path: string): Error {
@@ -517,7 +517,7 @@ export class RevAiClient implements PluginClient {
     }
 
     const metadata = fields["metadata"] ?? "";
-    // POST /vocabularies — verified 2026-07-28 against
+    // POST /vocabularies: verified 2026-07-28 against
     // https://docs.rev.ai/api/custom-vocabulary/reference/vocabularies/submitcustomvocabulary.md
     const created = await this.fetch<RevAiVocabulary>("/vocabularies", {
       method: "POST",
@@ -534,7 +534,7 @@ export class RevAiClient implements PluginClient {
     const externalId = externalIdOf(resourceId);
 
     if (typeId === "job") {
-      // DELETE /jobs/{id} — 204 No Content. 409 when the job is still
+      // DELETE /jobs/{id}: 204 No Content. 409 when the job is still
       // in_progress: only transcribed/failed jobs are deletable.
       await this.requestVoid(`/jobs/${encodeURIComponent(externalId)}`, "DELETE");
       return;
@@ -544,7 +544,7 @@ export class RevAiClient implements PluginClient {
       if (!this.supportsVocabularies) {
         throw new Error("Rev AI plugin: the EU deployment has no /vocabularies collection");
       }
-      // DELETE /vocabularies/{id} — 204 No Content, 409 while in_progress.
+      // DELETE /vocabularies/{id}: 204 No Content, 409 while in_progress.
       await this.requestVoid(`/vocabularies/${encodeURIComponent(externalId)}`, "DELETE");
       return;
     }
@@ -647,7 +647,7 @@ export class RevAiClient implements PluginClient {
   }
 
   /**
-   * POST /jobs (multipart) — verified 2026-07-28 against
+   * POST /jobs (multipart): verified 2026-07-28 against
    * https://docs.rev.ai/api/asynchronous/reference/jobs/submittranscriptionjob.md
    *
    * Exactly two parts: `media` (the bytes) and `options` (a JSON **string**).
@@ -656,7 +656,7 @@ export class RevAiClient implements PluginClient {
    * The body is encoded by hand (see ./multipart.ts) instead of using
    * `FormData`, so the call still routes through the host HTTP service and
    * keeps bastion egress + a custom CA. The clip's Content-Type is whatever
-   * MediaRecorder or the file picker produced — forwarded verbatim.
+   * MediaRecorder or the file picker produced: forwarded verbatim.
    */
   private async submitJob(
     bytes: Uint8Array,
@@ -713,7 +713,7 @@ export class RevAiClient implements PluginClient {
   }
 
   /**
-   * GET /jobs/{id} — verified 2026-07-28 against
+   * GET /jobs/{id}: verified 2026-07-28 against
    * https://docs.rev.ai/api/asynchronous/reference/
    */
   private async fetchJob(jobId: string): Promise<RevAiJob> {
@@ -721,7 +721,7 @@ export class RevAiClient implements PluginClient {
   }
 
   /**
-   * GET /jobs — verified 2026-07-28. Returns a **bare JSON array** (no
+   * GET /jobs: verified 2026-07-28. Returns a **bare JSON array** (no
    * envelope), newest first, covering only the last 30 days. Paging walks the
    * last id of each page through `starting_after`.
    */
@@ -745,7 +745,7 @@ export class RevAiClient implements PluginClient {
   }
 
   /**
-   * GET /jobs/{id}/transcript — verified 2026-07-28.
+   * GET /jobs/{id}/transcript: verified 2026-07-28.
    *
    * The output format is an **Accept header**, and the wildcard Accept that
    * `fetch` and curl send by default is rejected with 406, so the header is
@@ -760,14 +760,14 @@ export class RevAiClient implements PluginClient {
   }
 
   /**
-   * GET /account — verified 2026-07-28. Returns the USD balances;
+   * GET /account: verified 2026-07-28. Returns the USD balances;
    * `balance_seconds` is deprecated and always 0, so it is never read.
    */
   private async fetchAccount(): Promise<RevAiAccount> {
     return this.fetch<RevAiAccount>("/account");
   }
 
-  /** GET /vocabularies — most recent custom vocabularies. US deployment only. */
+  /** GET /vocabularies: most recent custom vocabularies. US deployment only. */
   private async fetchVocabularies(): Promise<RevAiVocabulary[]> {
     const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
     const list = await this.fetch<RevAiVocabulary[]>(`/vocabularies?${query.toString()}`);

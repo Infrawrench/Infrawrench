@@ -13,8 +13,8 @@ declare module "memjs" {
   }
   /**
    * `stats` is the one command memjs never promisified. It takes a required
-   * callback that fires **once per server** — and once more with a null
-   * `server` to signal the end of the walk — so there is no single value to
+   * callback that fires **once per server**, and once more with a null
+   * `server` to signal the end of the walk, so there is no single value to
    * resolve. See `lib/memjs/memjs.js` (`Client.prototype.stats`), which
    * forwards straight to `statsWithKey('', callback)`.
    */

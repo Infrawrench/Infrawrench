@@ -6,7 +6,7 @@ import type {
 import { fieldBool, fieldNumber, fieldString, tf } from "@infrawrench/plugin-base";
 
 /**
- * Terraform mapping for Neon — community provider `kislerdm/neon`.
+ * Terraform mapping for Neon: community provider `kislerdm/neon`.
  * Attribute names verified against Neon docs + provider registry
  * (registry.terraform.io/providers/kislerdm/neon, neon.com/docs/reference/terraform):
  *   - neon_project: `name` required; `region_id`, `pg_version` optional.
@@ -16,7 +16,7 @@ import { fieldBool, fieldNumber, fieldString, tf } from "@infrawrench/plugin-bas
  *   - neon_role: `project_id`, `branch_id`, `name` required.
  * Import IDs: project/branch/endpoint by id; branch composite `projectId/branchId`;
  * role composite `projectId/branchId/roleName`; database `projectId/branchId/dbName`.
- * The API key is always `var.neon_api_key` — never inlined.
+ * The API key is always `var.neon_api_key`, never inlined.
  */
 export const neonTerraformExport: TerraformExportCapability = {
   provider: { name: "neon", source: "kislerdm/neon", version: "~> 0.6" },

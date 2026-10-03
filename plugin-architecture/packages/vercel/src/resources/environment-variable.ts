@@ -16,7 +16,7 @@ export const VercelEnvironmentVariableResourceType = rt({
     f("updatedAt", "Updated At", { required: false }),
   ],
   outputs: [o("envKey", "Variable Key"), o("envValue", "Variable Value", { sensitive: true })],
-  // The lister stores the project's name, not its id — match on the project's
+  // The lister stores the project's name, not its id: match on the project's
   // `name` field rather than the `prj_…` external id.
   dependsOn: [
     {

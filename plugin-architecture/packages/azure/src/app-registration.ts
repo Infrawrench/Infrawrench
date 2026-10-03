@@ -1,5 +1,5 @@
 /**
- * App registration listing — uses Microsoft Graph rather than ARM.
+ * App registration listing: uses Microsoft Graph rather than ARM.
  *
  * Graph doesn't support an `IN`-style filter on `appId`, so service principal
  * lookups are made one at a time. The client-credentials flow has no `/me`,
@@ -45,7 +45,7 @@ export async function listAppRegistrations(
     nextLink = data["@odata.nextLink"];
   }
 
-  // Look up service principals one at a time — Graph doesn't support IN filters on appId,
+  // Look up service principals one at a time: Graph doesn't support IN filters on appId,
   // and the batch endpoint adds complexity. Owned-by scopes are typically small.
   for (const app of apps) {
     const appId = String(app["appId"] ?? "");
@@ -59,7 +59,7 @@ export async function listAppRegistrations(
       const spId = spList.value[0]?.["id"];
       if (typeof spId === "string") servicePrincipals.set(appId, spId);
     } catch {
-      // skip — SP lookup failure shouldn't block listing
+      // skip: SP lookup failure shouldn't block listing
     }
   }
 

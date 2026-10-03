@@ -65,8 +65,8 @@ interface CloudinaryUploadPresetList {
 }
 
 /**
- * A preset's `transformation` comes back either as a string — a named
- * reference (`"t_thumb"`) or a raw spec (`"w_100,c_fill"`) — or as a
+ * A preset's `transformation` comes back either as a string: a named
+ * reference (`"t_thumb"`) or a raw spec (`"w_100,c_fill"`), or as a
  * structured array/object. Strings are kept verbatim; only the structured
  * forms are serialized.
  *

@@ -13,7 +13,7 @@ import { jsonRestFetch, externalIdOf } from "@infrawrench/plugin-base";
 
 /**
  * DeepSeek's canonical base URL. The documented paths carry **no `/v1`
- * segment** — `/chat/completions`, `/models`, `/user/balance`. `/v1` is
+ * segment**: `/chat/completions`, `/models`, `/user/balance`. `/v1` is
  * accepted purely so the OpenAI SDK can be pointed at DeepSeek unchanged; it
  * is not the canonical form and we don't use it.
  * https://api-docs.deepseek.com/
@@ -76,7 +76,7 @@ function formatMoney(amount: number, currency: string): string {
  *
  * This is deliberately small because DeepSeek's REST surface is deliberately
  * small: two GET endpoints, one API key, no admin plane. There is no key
- * management API, no usage or cost API, and no speech API — so this plugin
+ * management API, no usage or cost API, and no speech API, so this plugin
  * does not pretend otherwise. Everything it shows comes from `GET /models` and
  * `GET /user/balance`.
  */
@@ -120,7 +120,7 @@ export class DeepSeekClient implements PluginClient {
   }
 
   /**
-   * GET /models — verified 2026-07-28 against
+   * GET /models: verified 2026-07-28 against
    * https://api-docs.deepseek.com/api/list-models
    *
    * Note the canonical path has no `/v1`. There is no pagination: the response
@@ -153,7 +153,7 @@ export class DeepSeekClient implements PluginClient {
   }
 
   /**
-   * GET /user/balance — verified 2026-07-28 against
+   * GET /user/balance: verified 2026-07-28 against
    * https://api-docs.deepseek.com/api/get-user-balance
    *
    * Returns one entry per currency (CNY and/or USD). Every amount is a decimal
@@ -197,14 +197,14 @@ export class DeepSeekClient implements PluginClient {
   /**
    * The prepaid balance, one entry per currency.
    *
-   * The same `GET /user/balance` the Balance resource type lists — but shaped
+   * The same `GET /user/balance` the Balance resource type lists, but shaped
    * for the host's credit tracking rather than for a resource table, so the
    * host can collect it on a slow cadence and derive a burn rate from the
    * series. Currency is the pot key: DeepSeek returns CNY and USD separately
    * and summing them would produce a number that means nothing.
    *
    * `granted_balance` is the promotional grant, not the total ever added, so
-   * it is deliberately not reported as `granted` — a "12 of 50 remaining" bar
+   * it is deliberately not reported as `granted`: a "12 of 50 remaining" bar
    * built on it would be wrong for any account that has topped up.
    */
   async fetchCreditBalance(): Promise<CreditBalance[]> {
@@ -252,7 +252,7 @@ export class DeepSeekClient implements PluginClient {
    * has, so it goes on the dashboard card.
    *
    * (`PluginClient.fetchStats` is the SQL/KV/Docker connection-probe hook and
-   * is only ever called for those drivers — the generic labelled-stat surface
+   * is only ever called for those drivers: the generic labelled-stat surface
    * the host renders on cards is this one.)
    */
   async fetchDashboardStats(

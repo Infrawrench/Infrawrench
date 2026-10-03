@@ -9,7 +9,7 @@ function statsAll(
   return new Promise((resolve, reject) => {
     const rows: { server: string; stats: Record<string, string> }[] = [];
     // `stats` fires once per server, then once more with a null server to mark
-    // the end of the walk — see the signature in `memjs.d.ts`.
+    // the end of the walk: see the signature in `memjs.d.ts`.
     client.stats((err, server, stats) => {
       if (err) {
         reject(err);

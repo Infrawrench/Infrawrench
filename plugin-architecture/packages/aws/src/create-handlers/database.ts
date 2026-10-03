@@ -390,7 +390,7 @@ export async function databaseCreateResource(
     const keySchema: Array<{ AttributeName: string; KeyType: string }> = [
       { AttributeName: fields["partitionKey"] ?? "id", KeyType: "HASH" },
     ];
-    // Deduplicate attribute definitions by name — CreateTable rejects payloads
+    // Deduplicate attribute definitions by name: CreateTable rejects payloads
     // that declare the same attribute twice. We collect via map then flatten.
     const attrMap = new Map<string, string>();
     attrMap.set(fields["partitionKey"] ?? "id", fields["partitionKeyType"] ?? "S");
@@ -897,7 +897,7 @@ function buildLsiPayloads(
     if (!name) throw new Error(`${label}: missing "name".`);
     if (!sk) throw new Error(`${label} (${name}): missing "sortKey".`);
     attrMap.set(sk, (l.sortKeyType ?? "S").toUpperCase());
-    // LSIs share the table's partition key — DynamoDB requires it to appear
+    // LSIs share the table's partition key: DynamoDB requires it to appear
     // as the HASH attribute in the LSI's KeySchema.
     return {
       IndexName: name,

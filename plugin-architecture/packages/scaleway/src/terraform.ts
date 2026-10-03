@@ -16,7 +16,7 @@ function scalewayRdbEngine(resource: ResourceInstance): string | null {
 }
 
 /**
- * Terraform mapping for Scaleway — provider `scaleway/scaleway`.
+ * Terraform mapping for Scaleway: provider `scaleway/scaleway`.
  * Attribute names verified against the provider docs
  * (registry.terraform.io/providers/scaleway/scaleway):
  *   - scaleway_instance_server: `type`, `image` required; `zone`, `name` optional.
@@ -24,7 +24,7 @@ function scalewayRdbEngine(resource: ResourceInstance): string | null {
  *   - scaleway_object_bucket: `name` required; `region` optional.
  *   - scaleway_rdb_instance: `name`, `node_type`, `engine` required.
  *   - scaleway_k8s_cluster: `name`, `version` required; `region` optional.
- * Zonal/regional import IDs use `{zone|region}/{id}` — matches externalId.
+ * Zonal/regional import IDs use `{zone|region}/{id}`: matches externalId.
  * Credentials: access_key, secret_key, project_id as variables.
  */
 export const scalewayTerraformExport: TerraformExportCapability = {

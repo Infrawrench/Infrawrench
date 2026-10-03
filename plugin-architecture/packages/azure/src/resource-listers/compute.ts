@@ -40,7 +40,7 @@ export async function listVMs(ctx: ListerContext, accountId: string): Promise<Re
       ? `${imageRef["publisher"] ?? ""}/${imageRef["offer"] ?? ""}/${imageRef["sku"] ?? ""}`
       : "";
 
-    // Managed disks come straight off the VM payload — no extra request.
+    // Managed disks come straight off the VM payload: no extra request.
     const dataDisks = storageProfile?.["dataDisks"] as Array<Record<string, unknown>> | undefined;
     const osDiskName = extractName(refId(osDisk, "managedDisk"));
     const dataDiskNames = joinRefs(
@@ -395,7 +395,7 @@ export async function listAppServicePlans(
         capacity: Number(sku?.["capacity"] ?? 0),
         workerCount: Number(props?.["numberOfWorkers"] ?? 0),
         maximumWorkers: Number(props?.["maximumNumberOfWorkers"] ?? 0),
-        // `reserved` is ARM's Linux flag on a server farm — true means Linux
+        // `reserved` is ARM's Linux flag on a server farm: true means Linux
         // workers, false (the default) means Windows.
         operatingSystem: props?.["reserved"] === true ? "Linux" : "Windows",
         siteCount: Number(props?.["numberOfSites"] ?? 0),

@@ -26,7 +26,7 @@ export const DockerContainerResourceType = rt({
     { fieldKey: "image", targetTypeId: "docker-image", targetKey: "tags", label: "runs image" },
     { fieldKey: "image", targetTypeId: "docker-image", label: "runs image" },
     // `NetworkSettings.Networks` is keyed by network name, while a network's
-    // external id is its 64-char id — match the network's `name` field.
+    // external id is its 64-char id: match the network's `name` field.
     {
       fieldKey: "networks",
       targetTypeId: "docker-network",

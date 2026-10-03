@@ -54,7 +54,7 @@ export function joinIds(values: unknown[]): string {
 
 /**
  * The `sg-…` ids inside an RDS-family `VpcSecurityGroups` container. Shared by
- * DB instances, Aurora/DocumentDB/Neptune clusters — they all come off the same
+ * DB instances, Aurora/DocumentDB/Neptune clusters: they all come off the same
  * RDS control plane and use the `VpcSecurityGroupMembership` member tag.
  */
 export function rdsSecurityGroupIds(entity: Record<string, unknown>): string {
@@ -105,7 +105,7 @@ export async function listEC2Instances(
         if (id) amiNameByImageId.set(id, name);
       }
     } catch {
-      // DescribeImages permission missing or rate-limited — proceed without
+      // DescribeImages permission missing or rate-limited: proceed without
       // username resolution. The empty fallback path is harmless.
     }
   }
@@ -143,7 +143,7 @@ export async function listEC2Instances(
           const cidr = String(r["cidrIp"] ?? "");
           if (cidr) cidrs.push(cidr);
         }
-        // IPv6 — same shape under a different key.
+        // IPv6: same shape under a different key.
         const ranges6 = ensureArray(
           (rule["ipv6Ranges"] as Record<string, unknown> | undefined)?.["item"],
         ) as Record<string, unknown>[];
@@ -324,7 +324,7 @@ export async function listVPCs(ctx: ListerContext, accountId: string): Promise<R
 /**
  * Generate an EKS auth token by presigning an STS GetCallerIdentity request
  * with an `x-k8s-aws-id` header. This is what `aws eks get-token` produces
- * under the hood — doing it in-process means we don't have to invoke the AWS
+ * under the hood: doing it in-process means we don't have to invoke the AWS
  * CLI (which the host's user-level profile / assume-role config would hijack)
  * and don't need it installed on the host at all.
  *
@@ -366,7 +366,7 @@ async function generateEksToken(
   return `k8s-aws-v1.${toBase64Url(fullUrl)}`;
 }
 
-/** base64url without padding — works in both Node (Buffer) and browser (btoa) hosts. */
+/** base64url without padding: works in both Node (Buffer) and browser (btoa) hosts. */
 function toBase64Url(input: string): string {
   let b64: string;
   if (typeof Buffer !== "undefined") {
@@ -434,7 +434,7 @@ export async function listEKSClusters(
       const caData = String(
         (c["certificateAuthority"] as Record<string, unknown> | undefined)?.["data"] ?? "",
       );
-      // The VPC placement is already in the DescribeCluster payload — keeping
+      // The VPC placement is already in the DescribeCluster payload: keeping
       // it means the graph can draw the cluster into its network without a
       // second call.
       const vpcConfig = c["resourcesVpcConfig"] as Record<string, unknown> | undefined;
@@ -468,10 +468,10 @@ export async function listEKSClusters(
           }
         }
       } catch {
-        // No permission to list node groups — leave fields empty
+        // No permission to list node groups: leave fields empty
       }
 
-      // Don't let kubeconfig generation hide the cluster from the list — the
+      // Don't let kubeconfig generation hide the cluster from the list: the
       // cluster might still be useful even without a working kubeconfig (e.g.
       // when SignatureV4 / Buffer aren't available in the host runtime).
       let kubeconfig = "";
@@ -652,7 +652,7 @@ export async function listLambdaFunctions(
   return functions.map((fn) => {
     const name = String(fn["FunctionName"] ?? "");
     // ListFunctions returns the full FunctionConfiguration, VPC attachment
-    // included — no per-function GetFunctionConfiguration needed.
+    // included: no per-function GetFunctionConfiguration needed.
     const vpcConfig = fn["VpcConfig"] as Record<string, unknown> | undefined;
     return {
       id: ctx.id(accountId, "lambda-function", name),
@@ -781,7 +781,7 @@ export async function listDynamoDBTables(
       );
       // Stash schema + indexes as JSON so the detail renderer can show a
       // "Schema & indexes" tab without re-calling DescribeTable. The leading
-      // underscore marks the field as internal — render-resource.ts strips
+      // underscore marks the field as internal: render-resource.ts strips
       // it before populating the Details key-value list.
       const indexesPayload = {
         attributeDefinitions: (t["AttributeDefinitions"] as unknown[]) ?? [],
@@ -1046,7 +1046,7 @@ export async function listECRRepositories(
       resolvedOutputs: {
         repositoryUri,
         repositoryArn: String(repo["repositoryArn"] ?? ""),
-        // Registry host for docker login — the repositoryUri minus the
+        // Registry host for docker login: the repositoryUri minus the
         // per-repo path. The docker credentials themselves (username /
         // password / dockerConfigJson) are minted on demand in resolveOutput.
         serverUrl: repositoryUri.split("/")[0] ?? "",
@@ -1083,7 +1083,7 @@ export async function listSecretsManagerSecrets(
         description: String(s["Description"] ?? ""),
         lastAccessedDate: String(s["LastAccessedDate"] ?? ""),
         lastChangedDate: String(s["LastChangedDate"] ?? ""),
-        // Empty when AWS has never recorded a rotation — expiry evaluation
+        // Empty when AWS has never recorded a rotation: expiry evaluation
         // falls back to createdDate via the type's fallbackFieldKey.
         lastRotatedDate: String(s["LastRotatedDate"] ?? ""),
         createdDate: String(s["CreatedDate"] ?? ""),
@@ -1104,7 +1104,7 @@ export async function listCloudFrontDistributions(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  // CloudFront is a REST-XML API — `ListDistributions` answers with a
+  // CloudFront is a REST-XML API: `ListDistributions` answers with a
   // `<DistributionList>` document, never JSON, so this has to go through the
   // XML transport. `parseXml` strips the single root element, which means what
   // lands here is the *body* of `<DistributionList>`: an `<Items>` container

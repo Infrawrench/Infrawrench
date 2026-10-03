@@ -231,7 +231,7 @@ export async function observabilityCreateResource(
     const region = fields["region"] ?? ctx.creds.region;
     const rctx = ctx.withRegion(region);
     const alarmName = fields["alarmName"] ?? "";
-    // CloudWatch speaks awsQuery, not JSON-RPC — the JSON form returns 404.
+    // CloudWatch speaks awsQuery, not JSON-RPC: the JSON form returns 404.
     await rctx.queryPost<Record<string, unknown>>("monitoring", "PutMetricAlarm", "2010-08-01", {
       AlarmName: alarmName,
       Namespace: fields["namespace"] ?? "",

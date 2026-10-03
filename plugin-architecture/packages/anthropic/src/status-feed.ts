@@ -1,12 +1,12 @@
 /**
  * Anthropic public status feed (Atlassian Statuspage,
- * https://status.claude.com — verified 2026-08; status.anthropic.com 301s
+ * https://status.claude.com: verified 2026-08; status.anthropic.com 301s
  * there, so the moved host is used directly).
  *
  * Components: "Claude API (api.anthropic.com)" and "Claude Console
  * (platform.claude.com)" cover the API surfaces this plugin manages and
- * escalate to provider-wide. The consumer surfaces — "claude.ai",
- * "Claude Code", "Claude Cowork", "Claude for Government" — are not API
+ * escalate to provider-wide. The consumer surfaces ("claude.ai",
+ * "Claude Code", "Claude Cowork", "Claude for Government") are not API
  * resources and are ignored.
  */
 import type {
@@ -27,7 +27,7 @@ function mapComponent(name: string): StatusComponentMapping | null {
   if (name.startsWith("Claude API") || name.startsWith("Claude Console")) {
     return { services: [name], providerWide: true };
   }
-  // Consumer surfaces — not API resources.
+  // Consumer surfaces, not API resources.
   if (
     name === "claude.ai" ||
     name.startsWith("Claude Code") ||

@@ -1,7 +1,7 @@
 /**
  * Turning an allocation into things you can actually put on screen.
  *
- * `PeerPaneSchema` carries grouped pills and nothing else — no charts, no
+ * `PeerPaneSchema` carries grouped pills and nothing else: no charts, no
  * tables, no numeric fields. The only per-item surface it has is `subtitle`
  * (a short string) and `status`. So the derived cost has to be *written into
  * the subtitle*, which means it has to be short enough to read inside a pill.
@@ -28,7 +28,7 @@ export interface CostIndex {
   cluster: ClusterAllocation;
   currency: string;
   rateSource: RateSource;
-  /** No node had a rate — show capacity and efficiency, never a made-up price. */
+  /** No node had a rate: show capacity and efficiency, never a made-up price. */
   unpriced: boolean;
   utilizationAvailable: boolean;
   /** Why utilization is missing, when it is. Drives the peer pane's guidance. */
@@ -39,7 +39,7 @@ export interface CostIndex {
    * Stamped once here rather than read from a clock inside the renderers, for
    * two reasons: `renderDetail` is synchronous and would otherwise date the
    * report to the moment of *rendering* rather than of measurement, and a
-   * report a user shares has to say when its numbers are from — a cluster
+   * report a user shares has to say when its numbers are from; a cluster
    * snapshot with no timestamp is indistinguishable from a stale one.
    */
   generatedAt: string;
@@ -90,7 +90,7 @@ interface Costed {
  * The bit appended to a pill subtitle: `· ~$1.80/day · 18% CPU`.
  *
  * Returns `""` when there is nothing honest to say. Deliberately caps at two
- * fragments — a pill is one line, and a subtitle that wraps is worse than a
+ * fragments: a pill is one line, and a subtitle that wraps is worse than a
  * subtitle that omits the memory figure.
  */
 export function costSubtitleSuffix(entry: Costed | undefined, currency: string): string {
@@ -104,7 +104,7 @@ export function costSubtitleSuffix(entry: Costed | undefined, currency: string):
   return parts.length ? ` · ${parts.join(" · ")}` : "";
 }
 
-/** The worse of the two efficiency figures — the one worth acting on. */
+/** The worse of the two efficiency figures: the one worth acting on. */
 export function tightestEfficiency(efficiency: Efficiency): string {
   const cpu = efficiency.cpu;
   const memory = efficiency.memory;
@@ -121,7 +121,7 @@ export function tightestEfficiency(efficiency: Efficiency): string {
  *
  * Never *upgrades*: a CrashLoopBackOff pod that also happens to be efficient
  * is still broken, and health beats thrift. Only ever fires when live
- * utilization exists — requests alone prove nothing about waste.
+ * utilization exists: requests alone prove nothing about waste.
  */
 export function applyCostStatus(
   base: ResourceStatus,
@@ -166,5 +166,5 @@ export const SYSTEM_RESERVED_BUCKET_LABEL = "(system reserved · kubelet)";
  * as for one running ten thousand.
  */
 export const CONTROL_PLANE_BUCKET_LABEL = "(control plane · managed cluster fee)";
-/** Bound volumes no running pod mounts — idle capacity, in disk form. */
+/** Bound volumes no running pod mounts: idle capacity, in disk form. */
 export const UNATTACHED_STORAGE_BUCKET_LABEL = "(unattached volumes · mounted by nothing)";

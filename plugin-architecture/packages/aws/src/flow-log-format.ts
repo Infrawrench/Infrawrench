@@ -5,9 +5,9 @@
  * grouped result crossed.
  *
  * It is split out from `network-flows.ts` because all of it is a pure function
- * of provider metadata, and the interesting failure modes here — a flow log in
+ * of provider metadata, and the interesting failure modes here: a flow log in
  * the default format, a `traffic-path` we misread, a `parse` pattern that
- * silently shifts every field by one — are exactly the ones that are cheap to
+ * silently shifts every field by one; are exactly the ones that are cheap to
  * test and expensive to discover in production.
  *
  * Reference: VPC Flow Logs record fields, versions 2–11.
@@ -23,7 +23,7 @@
  * end of the conversation.
  *
  * **The default record format has none of the optional fields and no
- * `flow-direction`** — it is version 2, and `flow-direction` arrived in version
+ * `flow-direction`**: it is version 2, and `flow-direction` arrived in version
  * 5. So a flow log created without an explicit custom format cannot be used
  * here, and the honest thing to do about that is say so with the fix rather
  * than quietly produce a screen of zeroes.
@@ -36,7 +36,7 @@ const DOCS_URL = "https://docs.aws.amazon.com/vpc/latest/userguide/flow-log-reco
  * The field names in a flow log's record format, in record order.
  *
  * `DescribeFlowLogs` returns `LogFormat` as the literal template string the log
- * was created with — `"${version} ${account-id} ${interface-id} …"` — or an
+ * was created with (`"${version} ${account-id} ${interface-id} …"`) or an
  * empty string for a log using the default format. An empty/absent format is
  * reported as the version-2 default, which is what it is, so the caller can
  * explain precisely which fields are missing.
@@ -149,7 +149,7 @@ function filterClauses(fields: string[]): string[] {
  * The pair query: top pairs for one day, aggregated **inside CloudWatch**.
  *
  * Addresses appear in the grouping here and nowhere afterwards. They are the
- * only join key a flow record offers, so the group must be keyed on them — but
+ * only join key a flow record offers, so the group must be keyed on them, but
  * they are also unbounded cardinality and churn daily, so the caller resolves
  * them to resource references before anything is stored. That resolution is the
  * line between a table that stays small and one that grows with the DHCP lease
@@ -218,7 +218,7 @@ export interface FlowClassifierInput {
   /**
    * The peer's zone. Comes from `next-hop-az-id` when the format carries it,
    * otherwise from resolving the peer address against the account's network
-   * interfaces — see `network-flows.ts`.
+   * interfaces: see `network-flows.ts`.
    */
   peerZone?: string | undefined;
   /** True when the peer address resolved to something in this account. */
@@ -232,13 +232,13 @@ export interface FlowClassifierInput {
  * interchangeable:
  *
  * 1. **NAT first.** A NAT gateway charges for processing regardless of where
- *    the bytes were going, and the onward hop is billed separately — so a flow
+ *    the bytes were going, and the onward hop is billed separately, so a flow
  *    captured at a NAT interface is a NAT charge, and letting a later test
  *    reclassify it as internet egress would price the same bytes at the wrong
  *    rate and lose the single most actionable line on a network bill.
  * 2. **`traffic-path` next**, because it is AWS's own statement of where egress
  *    went and outranks anything inferred. Note `2` and `8` are both "through an
- *    internet gateway" — `2` is the older, broader value that also covers
+ *    internet gateway": `2` is the older, broader value that also covers
  *    gateway VPC endpoints, so it is only internet egress when no AWS service
  *    was named on the peer.
  * 3. **A named AWS service** means a first-party endpoint in-region, which is
@@ -261,7 +261,7 @@ export function classifyScope(input: FlowClassifierInput): FlowScope {
       return "cross_region";
     case "4":
       // Intra-region VPC peering is billed at the cross-AZ rate in each
-      // direction, which is the same money as `cross_zone` — reporting it under
+      // direction, which is the same money as `cross_zone`: reporting it under
       // its own name would need a rate entry that is a duplicate by definition.
       return "cross_zone";
     case "3":
@@ -283,7 +283,7 @@ export function classifyScope(input: FlowClassifierInput): FlowScope {
   }
   if (!input.peerIsLocal && input.direction === "ingress" && !path) {
     // Nothing local on the far side, no egress path recorded, arriving: it came
-    // from outside. Free on AWS, but counted — an ingress spike is how a lot of
+    // from outside. Free on AWS, but counted: an ingress spike is how a lot of
     // egress bills start being explained.
     return "internet_ingress";
   }
@@ -297,13 +297,13 @@ export function classifyScope(input: FlowClassifierInput): FlowScope {
  * `next-hop-az-id`: telling them apart needs the peer's zone, which for older
  * formats comes from resolving an address, and the totals query deliberately
  * has no addresses in it. Those bytes are reported under `unknown` instead of
- * being split by a guess — so the residual for zone-crossing traffic is
+ * being split by a guess, so the residual for zone-crossing traffic is
  * honestly labelled unclassified rather than dishonestly labelled cross-zone.
  *
  * `internet_ingress` is gated on the same field, for the same reason. AWS does
  * not populate `traffic-path` for ingress at all, so on an inbound record the
  * peer's zone is the *only* signal separating a local peer from the internet.
- * Without it, "no next hop" is standing in for "the peer is not local" — which
+ * Without it, "no next hop" is standing in for "the peer is not local", which
  * is exactly the guess this function exists to refuse. Egress keeps its `true`
  * because `traffic-path` does carry a verdict there.
  *

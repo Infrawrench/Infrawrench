@@ -12,7 +12,7 @@ export const CollectionResourceType = rt({
     f("models", "Model List", { required: false }),
   ],
   outputs: [o("slug", "Collection Slug"), o("collectionUrl", "Collection URL")],
-  // Comma-joined `owner/name` references — one edge per member model.
+  // Comma-joined `owner/name` references: one edge per member model.
   dependsOn: [{ fieldKey: "models", targetTypeId: "model", label: "contains" }],
   supportsDelete: false,
   pinnable: false,

@@ -84,7 +84,7 @@ describe("credential routing", () => {
     await expect(
       client({ apiKey: "sk-proj-test" }).listResources("organization-user", ACCOUNT),
     ).rejects.toThrow(/Admin API key/);
-    // The request is never sent — the guard fires first.
+    // The request is never sent: the guard fires first.
     expect(calls).toHaveLength(0);
   });
 });

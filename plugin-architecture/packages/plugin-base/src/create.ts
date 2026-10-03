@@ -91,20 +91,20 @@ export type CreateFieldKind =
   | "hostname" // subdomain input with a fixed ".<domain>" suffix; submits the full hostname
   | "password" // single-line input rendered with masking (type="password")
   | "number" // numeric input
-  | "datetime" // date/time picker — emits a string per `datetimeMode`
+  | "datetime" // date/time picker: emits a string per `datetimeMode`
   | "select" // simple dropdown with static options
   | "size-picker" // visual size selector with RAM/CPU bars
   | "region-picker" // searchable list of region/zone options
   | "disk-slider" // boot-disk GB slider
   | "image-picker" // OS image + account image picker
   | "disk-picker" // existing disk picker
-  | "ssh-key-picker" // SSH public key — host resolves from ~/.ssh and app registry
+  | "ssh-key-picker" // SSH public key: host resolves from ~/.ssh and app registry
   | "resource-picker" // associate with an existing resource (e.g. VPC network)
-  | "policy-picker" // multi-select IAM policies/roles — value is JSON array of IDs
-  | "key-value-list" // list of rows with a text key + one-of-N value toggle — value is JSON array
-  | "string-list" // repeatable single-value rows (emails, tags, IDs…) — value is a comma-separated string
+  | "policy-picker" // multi-select IAM policies/roles: value is JSON array of IDs
+  | "key-value-list" // list of rows with a text key + one-of-N value toggle: value is JSON array
+  | "string-list" // repeatable single-value rows (emails, tags, IDs…): value is a comma-separated string
   | "code" // syntax-highlighted code editor (rendered in a split side-pane)
-  | "json-schema"; // structured JSON Schema builder — value is a JSON Schema object string
+  | "json-schema"; // structured JSON Schema builder: value is a JSON Schema object string
 
 /**
  * Output format for a `datetime` field. Controls what the picker submits as
@@ -172,7 +172,7 @@ export interface CreateFieldConfig {
    */
   transient?: boolean;
   /**
-   * `resource-picker` — when true, the picker emits a *live output reference*
+   * `resource-picker`, when true, the picker emits a *live output reference*
    * encoding the picked resource's identity (plugin/type/id/account/output)
    * rather than the flattened literal value. The host persists this as an
    * output-ref association so the field tracks the source's value over time.
@@ -180,17 +180,17 @@ export interface CreateFieldConfig {
    * source, not just the account the resource is being created in.
    */
   referenceMode?: boolean;
-  /** `text` — render as a multi-line textarea instead of an input (e.g. JSON blobs). */
+  /** `text`: render as a multi-line textarea instead of an input (e.g. JSON blobs). */
   multiline?: boolean;
   /**
-   * `hostname` — the fixed domain suffix shown after the subdomain input (e.g.
+   * `hostname`: the fixed domain suffix shown after the subdomain input (e.g.
    * "example.com"). The user types the subdomain part; the submitted value is
    * the full hostname (`sub.suffix`, or just `suffix` for the apex). Set by the
    * plugin from the parent zone/domain.
    */
   hostnameSuffix?: string;
   /**
-   * `hostname` — when true, also show a trailing path input after the domain
+   * `hostname`, when true, also show a trailing path input after the domain
    * suffix and submit `<hostname><path>` (e.g. a Worker route pattern
    * `sub.example.com/api/*`). Defaults the path to `/*`.
    */
@@ -201,13 +201,13 @@ export interface CreateFieldConfig {
   minValue?: number;
   maxValue?: number;
   stepValue?: number;
-  /** `datetime` — output format for the picked value. Defaults to "datetime". */
+  /** `datetime`: output format for the picked value. Defaults to "datetime". */
   datetimeMode?: DatetimeMode;
   /** `size-picker` data */
   sizes?: SizeOption[];
   /** `region-picker` data */
   regions?: RegionOption[];
-  /** `disk-slider` — all values in GB */
+  /** `disk-slider`: all values in GB */
   minGb?: number;
   maxGb?: number;
   defaultGb?: number;
@@ -216,10 +216,10 @@ export interface CreateFieldConfig {
   images?: ImageOption[];
   /** `disk-picker` data */
   disks?: DiskOption[];
-  /** `resource-picker` — resources to pick from (filtered by association sources from the resource type definition) */
+  /** `resource-picker`: resources to pick from (filtered by association sources from the resource type definition) */
   associationSources?: AssociationSource[];
   /**
-   * `resource-picker` — when set, the picker reads the current form value of
+   * `resource-picker`, when set, the picker reads the current form value of
    * this field and passes it to the host as a regional scope hint. Used to
    * avoid the picker fanning out across every region for regional resources
    * (e.g. AWS VPCs/security groups) when the user has already picked a region
@@ -227,17 +227,17 @@ export interface CreateFieldConfig {
    */
   scopeFromFieldKey?: string;
   /**
-   * `region-picker` — when set, the picker reads the current form value of
+   * `region-picker`, when set, the picker reads the current form value of
    * this field and hides any region whose `availableFor` list doesn't include
    * that value. Lets a sibling field (e.g. managed-DB `engine`) reactively
    * narrow the region list so users can't pick combinations the provider
    * would reject (e.g. Redis in a region where DO doesn't host Redis).
    */
   filterByFieldKey?: string;
-  /** `policy-picker` — policies/roles the user can attach. Value is JSON array of `id`s. */
+  /** `policy-picker`: policies/roles the user can attach. Value is JSON array of `id`s. */
   policies?: PolicyOption[];
   /**
-   * `key-value-list` — configures the row shape of the entry list. Each
+   * `key-value-list`: configures the row shape of the entry list. Each
    * submitted entry becomes an object `{ [entryKeyName]: <key text>,
    * [entryValueName]: <picked option id> }`. The overall field value is a
    * JSON-serialized array of these objects.
@@ -253,7 +253,7 @@ export interface CreateFieldConfig {
   /** Option id pre-selected on newly-added rows. */
   entryValueDefault?: string;
   /**
-   * `code` — Monaco language id for syntax highlighting (e.g. "javascript",
+   * `code`: Monaco language id for syntax highlighting (e.g. "javascript",
    * "python", "go", "java", "yaml", "json"). Defaults to "plaintext".
    */
   codeLanguage?: string;
@@ -276,7 +276,7 @@ export interface CreateResourceConfig {
  * A button the host renders alongside a create-form field. Clicking it calls
  * the plugin's `executeFieldAction`, which can mint a fresh resource (e.g. an
  * IAM role) and return its identifier as the field's new value. Designed to
- * be domain-agnostic — the plugin owns what each action means.
+ * be domain-agnostic: the plugin owns what each action means.
  */
 export interface FieldAction {
   /** Plugin-defined identifier passed back to `executeFieldAction`. */
@@ -292,7 +292,7 @@ export interface FieldAction {
    * The panel's values are passed to the plugin as `actionFields`, kept
    * separate from the main create-form values to avoid key collisions.
    *
-   * Use for "create a thing on the side and select it" flows — e.g. minting
+   * Use for "create a thing on the side and select it" flows, e.g. minting
    * a new security group with a chosen name and port set, then attaching
    * the new SG to the EC2 instance being created in the outer form.
    */

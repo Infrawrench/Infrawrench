@@ -55,7 +55,7 @@ export const GenAiAgentResourceType = rt({
   dependsOn: [
     { fieldKey: "projectId", targetTypeId: "project", label: "in project" },
     { fieldKey: "modelRouterUuid", targetTypeId: "gen-ai-model-router", label: "routes through" },
-    // Comma-joined KB uuids — one edge per attached knowledge base.
+    // Comma-joined KB uuids: one edge per attached knowledge base.
     {
       fieldKey: "knowledgeBaseUuids",
       targetTypeId: "gen-ai-knowledge-base",

@@ -29,7 +29,7 @@ export async function gcpFetch(
  * to raw text truncated so it doesn't dominate the UI. Activation URLs in the
  * message are preserved so the UI's link parser can turn them into buttons.
  *
- * A disabled-API 403 is rewritten by {@link describeDisabledApi} — that case is
+ * A disabled-API 403 is rewritten by {@link describeDisabledApi}: that case is
  * common enough on a fresh project, and specific enough about what to do, to be
  * worth saying plainly rather than relaying Google's paragraph. Pass `project`
  * where the caller knows the account's project id; without it the message falls
@@ -67,7 +67,7 @@ export async function formatGcpError(
  * Parse a JSON-encoded form-args blob (as passed by host actions) into a
  * `Record<string, string>`. Values are coerced to strings; nullish values
  * become empty strings. Returns `{}` when the input isn't a string or fails
- * to parse — matches the lenient behaviour callers rely on.
+ * to parse: matches the lenient behaviour callers rely on.
  */
 export function parseFormArg(raw: string | number | undefined): Record<string, string> {
   if (typeof raw !== "string") return {};

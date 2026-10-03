@@ -58,7 +58,7 @@ describe("auth and base URL", () => {
 
     const call = calls[0]!;
     expect(call.url.startsWith("https://api.cohere.com/")).toBe(true);
-    // Not api.cohere.ai — that host only survives on stale pages.
+    // Not api.cohere.ai: that host only survives on stale pages.
     expect(call.url).not.toContain("api.cohere.ai");
     expect(headerOf(call.init, "Authorization")).toBe("Bearer test-key");
     expect(headerOf(call.init, "X-Client-Name")).toBe("infrawrench");
@@ -202,8 +202,8 @@ describe("getResource enrichment", () => {
       ACCOUNT,
     );
     const stashed = JSON.parse(resource.resolvedOutputs["__speechModels__"]!);
-    // Discovered by name prefix — there is no `transcribe` value in the
-    // CompatibleEndpoint enum to filter on — and the deprecated one is dropped.
+    // Discovered by name prefix (there is no `transcribe` value in the
+    // CompatibleEndpoint enum to filter on) and the deprecated one is dropped.
     expect(stashed.map((m: { id: string }) => m.id)).toEqual(["cohere-transcribe-03-2026"]);
   });
 
@@ -355,7 +355,7 @@ describe("transcribeAudio", () => {
 
     expect(result.text).toBe("hello world");
     expect(result.language).toBe("fr");
-    // Cohere returns only `{ text }` — no timings to report.
+    // Cohere returns only `{ text }`: no timings to report.
     expect(result.words).toBeUndefined();
     expect(result.durationSeconds).toBeUndefined();
   });

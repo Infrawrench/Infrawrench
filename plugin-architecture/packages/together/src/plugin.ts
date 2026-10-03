@@ -11,7 +11,7 @@ import { BatchResourceType } from "./resources/batch.js";
 import { EvaluationResourceType } from "./resources/evaluation.js";
 
 // Mark taken verbatim from Together AI's own favicon, served at
-// https://api.together.ai/favicon.svg — three overlapping lobes in the brand
+// https://api.together.ai/favicon.svg: three overlapping lobes in the brand
 // magenta (#EF2CC1), lilac (#CAAEF5) and orange (#FC4C02). The source artwork
 // is 484.98×452.5; it is scaled ÷7.14 and centred on the 100×100 plugin canvas
 // over a near-black container so the three colours stay legible on both themes.

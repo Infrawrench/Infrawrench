@@ -3,7 +3,7 @@
  *
  * Wraps the official `cloudflare` SDK and caches the resolved account ID.
  * The `fetch` escape hatch remains because the SDK does not expose the R2
- * object plane — see `r2-client.ts`. New code should prefer the SDK
+ * object plane: see `r2-client.ts`. New code should prefer the SDK
  * namespaces exposed via `api.cf`.
  */
 import Cloudflare from "cloudflare";
@@ -18,7 +18,7 @@ import type { Zone } from "cloudflare/resources/zones/zones";
  * doesn't have permission for, the SDK throws either:
  *   - An HTTP 403 `PermissionDeniedError` / 401 `AuthenticationError`, or
  *   - A 200/4xx body with `success: false` and an `errors[].code === 10000`
- *     "Authentication error" — Cloudflare's catch-all auth-failure code.
+ *     "Authentication error": Cloudflare's catch-all auth-failure code.
  *
  * Returns true for any of these shapes. Falls back to duck-typing on the
  * error fields rather than `instanceof` because the SDK is bundled into a
@@ -34,15 +34,15 @@ function isCloudflareAuthError(err: unknown): boolean {
     message?: unknown;
   };
 
-  // Collect every numeric Cloudflare error code we can find — from the
+  // Collect every numeric Cloudflare error code we can find: from the
   // structured `.errors` array and from any JSON body embedded in the message
   // string (the raw-fetch / SDK-stringified path).
   const codes = collectCloudflareErrorCodes(e);
-  // 10000 — generic "Authentication error"; 9109 — "Unauthorized to access
+  // 10000: generic "Authentication error"; 9109; "Unauthorized to access
   // requested resource" (returned when the token lacks a per-resource scope).
   if (codes.some((c) => c === 10000 || c === 9109)) return true;
   // A specific non-auth code (e.g. 9999 "Access is not enabled") means the
-  // token is fine — the failure is something else. Don't claim a missing
+  // token is fine: the failure is something else. Don't claim a missing
   // permission, even on a 403.
   if (codes.length > 0) return false;
 
@@ -74,7 +74,7 @@ function collectCloudflareErrorCodes(e: { errors?: unknown; message?: unknown })
       try {
         pushFrom((JSON.parse(e.message.slice(brace)) as { errors?: unknown }).errors);
       } catch {
-        /* not JSON — ignore */
+        /* not JSON: ignore */
       }
     }
   }
@@ -126,7 +126,7 @@ function formatErrorsArray(errors: unknown): string | null {
 }
 
 /**
- * Strip Cloudflare's machine-readable message prefix — a dotted lowercase token
+ * Strip Cloudflare's machine-readable message prefix: a dotted lowercase token
  * ending in a colon, e.g. `access.api.error.not_enabled: Access is not enabled.`
  * → `Access is not enabled.`. Requires at least three dotted segments so we
  * don't clip ordinary sentences or URLs that happen to contain a colon.
@@ -174,7 +174,7 @@ export function formatCloudflareError(err: unknown): string {
       const fromBody = formatErrorsArray(parsed.errors);
       if (fromBody) return fromBody;
     } catch {
-      /* not JSON — fall through */
+      /* not JSON: fall through */
     }
   }
   return raw || "Cloudflare request failed";
@@ -254,7 +254,7 @@ export async function collectPerZone<T>(
         authFailures++;
         continue;
       }
-      // Non-auth per-zone errors are non-fatal — feature may not be enabled
+      // Non-auth per-zone errors are non-fatal: feature may not be enabled
       // on that zone, or the user lacks permission for some zones but not
       // others. Continue collecting from remaining zones.
     }
@@ -305,7 +305,7 @@ export class CloudflareApi {
   /**
    * Raw fetch wrapper. Retained only for the R2 object plane (uploads,
    * deletes, list-objects), which the SDK does not expose. Do not add new
-   * call sites — use `this.cf` instead.
+   * call sites: use `this.cf` instead.
    */
   async fetch<T>(path: string, options?: RequestInit): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
@@ -370,7 +370,7 @@ export class CloudflareApi {
 
   /**
    * Resolve the Cloudflare account ID from the first zone. Deduped across
-   * concurrent callers via a cached promise — without it the fan-out of
+   * concurrent callers via a cached promise: without it the fan-out of
    * account-scoped listers each fires its own /zones?per_page=1 request.
    */
   async getAccountId(): Promise<string> {

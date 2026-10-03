@@ -1,12 +1,12 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * `GET/POST /v1/fine_tuning/jobs`, `POST /v1/fine_tuning/jobs/{id}/{cancel,pause,resume}`
- * — verified 2026-07-29 against openapi.yaml v2.3.0 (`listPaginatedFineTuningJobs`,
+ * `GET/POST /v1/fine_tuning/jobs`, `POST /v1/fine_tuning/jobs/{id}/{cancel,pause,resume}`:
+ * verified 2026-07-29 against openapi.yaml v2.3.0 (`listPaginatedFineTuningJobs`,
  * `createFineTuningJob`, `cancelFineTuningJob`, `pauseFineTuningJob`,
  * `resumeFineTuningJob`).
  *
- * Jobs have no delete endpoint — a finished job is a permanent record. The
+ * Jobs have no delete endpoint: a finished job is a permanent record. The
  * model it produced is deletable from the Model detail page.
  */
 export const FineTuningJobResourceType = rt({

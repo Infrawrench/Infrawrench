@@ -6,8 +6,8 @@ import { buildProjectField, type DoCreateArgs, type DoCreateContext } from "./sh
 
 /**
  * Estimate the per-node monthly price (USD) of a DigitalOcean managed-database
- * node from its size slug. DO doesn't expose DB pricing via /v2 — the only
- * source of truth is www.digitalocean.com/pricing/managed-databases — so this
+ * node from its size slug. DO doesn't expose DB pricing via /v2 (the only
+ * source of truth is www.digitalocean.com/pricing/managed-databases) so this
  * is a slug-pattern + memory heuristic verified against DO's published rates
  * for the well-defined tiers:
  *
@@ -21,7 +21,7 @@ import { buildProjectField, type DoCreateArgs, type DoCreateContext } from "./sh
  * doesn't match a tier we have verified rates for. Engines with their own
  * namespacing (do-kafka-…, mongodb-…, opensearch-…, valkey-…) all price
  * differently from the Standard tier, so rather than fake a number we
- * just omit the chip — "$0/mo" on a c-96-intel-sized SKU is more
+ * just omit the chip: "$0/mo" on a c-96-intel-sized SKU is more
  * misleading than no chip at all.
  */
 export function estimateDoDatabaseMonthlyPrice(slug: string, memoryGb: number): number {
@@ -29,7 +29,7 @@ export function estimateDoDatabaseMonthlyPrice(slug: string, memoryGb: number): 
   if (/^db-r-/i.test(slug)) return memoryGb * 30.45;
   if (/^db-b-/i.test(slug)) return memoryGb * 8;
   if (/^db-s-/i.test(slug)) return memoryGb * 15.2;
-  // Anything else (engine-namespaced slugs, future tiers, etc.) — bail.
+  // Anything else (engine-namespaced slugs, future tiers, etc.): bail.
   return 0;
 }
 
@@ -44,7 +44,7 @@ export async function databaseGetCreateConfig(
 ): Promise<CreateResourceConfig | null> {
   if (typeId === "managed-database") {
     // Database node sizes come from /v2/databases/options, NOT /v2/sizes
-    // (which lists droplet sizes — none of those carry the `db-` prefix,
+    // (which lists droplet sizes: none of those carry the `db-` prefix,
     // so the picker was always empty). The options endpoint groups sizes
     // by engine and layout (num_nodes); we take the union across every
     // engine so a single picker covers all engines the user can pick
@@ -80,7 +80,7 @@ export async function databaseGetCreateConfig(
     //
     // DO discontinued Managed Redis on 2025-06-30 and fully replaced it with
     // Valkey (a drop-in Redis-compatible engine). The legacy `redis` engine
-    // can no longer be provisioned — POST /databases with engine=redis rejects
+    // can no longer be provisioned: POST /databases with engine=redis rejects
     // every region with `region '<slug>' is not valid` because the retired
     // engine has no valid region set. So the picker creates `valkey` clusters
     // (the engine value DO now accepts). The options endpoint surfaces the
@@ -119,7 +119,7 @@ export async function databaseGetCreateConfig(
     for (const [engine, slugs] of Object.entries(FALLBACK_ENGINE_REGIONS)) {
       const labels = engineAliases[engine] ?? [engine];
       // Only fill from the fallback when the API gave us nothing for any of
-      // this engine's labels — preserves the live list when DO does return
+      // this engine's labels: preserves the live list when DO does return
       // accurate per-engine regions.
       const haveLive = labels.some((label) =>
         [...engineRegions.values()].some((set) => set.has(label)),
@@ -136,7 +136,7 @@ export async function databaseGetCreateConfig(
     const dbCapableSlugs = engineRegions.size > 0 ? new Set(engineRegions.keys()) : null;
     const regions = regionsData.regions
       .filter((r) => r.available)
-      // DBaaS isn't offered in DO's legacy datacenters — exclude them
+      // DBaaS isn't offered in DO's legacy datacenters: exclude them
       // regardless of whether the per-engine map came from the API or the
       // hardcoded fallback above.
       .filter((r) => !NON_DBAAS_REGIONS.has(r.slug))
@@ -339,7 +339,7 @@ export async function databaseCreateResource(args: DoCreateArgs): Promise<Resour
 
   if (typeId === "db-user") {
     // The parent cluster id arrives via the standard {accountId}:{typeId}:{externalId}
-    // composite — for managed-database that's the cluster's UUID. The form
+    // composite, for managed-database that's the cluster's UUID. The form
     // doesn't expose a cluster picker because db-user is always created from
     // a cluster's detail page.
     if (!parentResourceId) {
@@ -378,7 +378,7 @@ export async function databaseCreateResource(args: DoCreateArgs): Promise<Resour
     const password = String(user.password ?? "");
     // The whole point of routing user creation through Infrawrench is to
     // capture the password DO surfaces exactly once. Refuse to persist the
-    // resource if it didn't come back — better a clear error here than a
+    // resource if it didn't come back: better a clear error here than a
     // silently-useless user record.
     if (!password) {
       throw new Error(

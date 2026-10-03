@@ -6,7 +6,7 @@ import type { GcpDetailContext } from "./detail-context.js";
 
 /** Apply the Pub/Sub topic renderer to `base`. */
 export function renderPubsubTopic(resource: ResourceInstance, base: DetailViewSchema): void {
-  // Pub/Sub topics have no lifecycle state in the GCP API — if the resource
+  // Pub/Sub topics have no lifecycle state in the GCP API, if the resource
   // exists, it's active. Give them a healthy dot so the UI doesn't fall
   // through to "unknown" grey.
   base.subtitle = "Pub/Sub Topic";

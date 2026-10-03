@@ -3,7 +3,7 @@ import type { CloudflareApi } from "./shared.js";
 import { asRecord, withAuthErrorHint } from "./shared.js";
 
 /**
- * Cloudflare AI Search — formerly AutoRAG — managed retrieval-augmented
+ * Cloudflare AI Search (formerly AutoRAG) managed retrieval-augmented
  * generation pipelines (`/accounts/{id}/autorag/rags`, surfaced in the SDK as
  * `aiSearch.instances`). Each instance ties a data source (an R2 bucket or web
  * crawler) to an embedding model + index and exposes search / chat endpoints.
@@ -11,7 +11,7 @@ import { asRecord, withAuthErrorHint } from "./shared.js";
  * Creation is a multi-step pipeline (pick a source, embedding model, chunking,
  * then trigger the first index sync) that Cloudflare models as a dashboard
  * wizard, so the plugin lists and deletes instances rather than offering a
- * create form — the source data has to exist and be indexed first.
+ * create form: the source data has to exist and be indexed first.
  */
 function mapInstance(inst: Record<string, unknown>, accountId: string): ResourceInstance {
   const id = String(inst["id"] ?? "");

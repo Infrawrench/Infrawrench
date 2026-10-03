@@ -2,13 +2,13 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
  * `GET/POST /v1/organization/projects`, `POST /v1/organization/projects/{id}`,
- * `POST /v1/organization/projects/{id}/archive` — verified 2026-07-29 against
+ * `POST /v1/organization/projects/{id}/archive`: verified 2026-07-29 against
  * openapi.yaml v2.3.0 (`list-projects`, `create-project`, `modify-project`,
  * `archive-project`).
  *
  * Admin plane: every one of these is declared `security: AdminApiKeyAuth`, so a
  * project key (`sk-`/`sk-proj-`) gets a flat 403. Projects cannot be deleted,
- * only archived — hence `supportsDelete: false` plus an Archive header action.
+ * only archived, hence `supportsDelete: false` plus an Archive header action.
  */
 export const ProjectResourceType = rt({
   name: "Project",

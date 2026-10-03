@@ -9,7 +9,7 @@ import type { Duplex } from "node:stream";
 import { RemoteKeyAgent, buildRemoteKeyAgent, type RemoteKeyBackend } from "../remote-key-agent.js";
 import { signSshData, type SshSignAlgorithm } from "../ssh-signing.js";
 
-// Like the in-process agent suite, this deliberately does NOT mock ssh2 — the
+// Like the in-process agent suite, this deliberately does NOT mock ssh2: the
 // backend signs with a real key via `signSshData` (exactly what the cloud
 // endpoint does), and the agent-protocol framing is driven byte for byte.
 
@@ -101,7 +101,7 @@ function parsePub(pub: string): ParsedKey {
   return Array.isArray(k) ? k[0]! : k;
 }
 
-/** A backend that signs locally with a real key — what the cloud endpoint does. */
+/** A backend that signs locally with a real key: what the cloud endpoint does. */
 function localBackend(fixture: { priv: string; pub: string }): RemoteKeyBackend & {
   signCalls: Array<{ data: Buffer; algorithm: SshSignAlgorithm }>;
 } {

@@ -72,7 +72,7 @@ const manifest: PluginManifest = {
      * Rows are dated to the **first** of their month (`client.ts` explains
      * why), and the host only asks for `[today − restatementDays, today]`, cut
      * into calendar-month chunks. A 3-day window contains the 1st on three days
-     * of the month and no others — so for the rest of the month the in-progress
+     * of the month and no others, so for the rest of the month the in-progress
      * total, which Mistral restates continuously, would simply never be
      * re-collected.
      *
@@ -80,7 +80,7 @@ const manifest: PluginManifest = {
      * the in-progress month and the one before it, whatever today's date: the
      * longest two consecutive months are 62 days, so counting back 62 from any
      * day of month M reaches at or before the 1st of M−1. That buys the two
-     * things a monthly provider needs — the running month re-fetched entire,
+     * things a monthly provider needs: the running month re-fetched entire,
      * and a closed month re-fetched for a further month while late usage and
      * credits settle against it.
      *

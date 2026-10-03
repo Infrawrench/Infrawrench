@@ -68,8 +68,8 @@ const SUBTITLE_SEPARATOR = " · ";
 /**
  * Join the parts of a detail subtitle, dropping the ones that are not there.
  *
- * Almost every plugin builds its subtitle as "type name, then where it lives"
- * — and writes it as a template literal with a `?? ""` on the tail. That reads
+ * Almost every plugin builds its subtitle as "type name, then where it lives",
+ * and writes it as a template literal with a `?? ""` on the tail. That reads
  * fine until a resource type does not carry the field: a DigitalOcean project
  * has no region, so `${typeName} · ${fields.region ?? ""}` renders as
  * "Project ·", a separator pointing at nothing. The same shape appears for a
@@ -78,7 +78,7 @@ const SUBTITLE_SEPARATOR = " · ";
  *
  * Empty and whitespace-only parts are dropped, as are `null` and `undefined`,
  * which is what lets a caller pass `fields["region"]` straight in. `0` and
- * `false` are kept — they are values a field can legitimately hold, and a
+ * `false` are kept: they are values a field can legitimately hold, and a
  * subtitle that silently omits "0 replicas" is a different kind of wrong.
  *
  * Returns `""` when nothing survives; `DetailViewSchema.subtitle` is optional
@@ -101,7 +101,7 @@ export function joinSubtitle(
  * `fetchMetricSeries` (`web/src/api/routes/resource-detail.ts`, the desktop
  * loaders, the poller): the type's own `supportsMetrics`, **or** a peer
  * integration that exposes its metrics to the parent. The second half is easy
- * to forget — a managed-Kubernetes type usually has no series of its own and
+ * to forget: a managed-Kubernetes type usually has no series of its own and
  * gets all of them from the Kubernetes peer, so it leaves `supportsMetrics`
  * unset and would read as "no metrics" to anything that only checks the flag.
  */
@@ -122,7 +122,7 @@ export function resourceTypeHasMetrics(typeDef: ResourceTypeDefinition | undefin
  * declaration. Those are two separate statements of the same fact, and every
  * time they disagreed the result was the same silent bug: the fetch fires, the
  * series come back, and there is no tab to put them in. Deriving one from the
- * other here is what keeps them from drifting — a plugin calls this once at
+ * other here is what keeps them from drifting: a plugin calls this once at
  * the end of `renderDetail` and the tab follows the declaration forever after.
  *
  * A renderer that already set `metricsCapability` itself wins: some views want
@@ -130,7 +130,7 @@ export function resourceTypeHasMetrics(typeDef: ResourceTypeDefinition | undefin
  * it should not have it overwritten.
  *
  * `defaultTimeRangeMs` should be the window the plugin's own
- * `fetchMetricSeries` defaults to when the host asks without a range — it is
+ * `fetchMetricSeries` defaults to when the host asks without a range: it is
  * what the chart's time-range label is derived from, so a wrong value is a
  * chart that lies about what it is showing. Omit it when the series are an
  * instantaneous snapshot rather than a window. It is also ignored for a

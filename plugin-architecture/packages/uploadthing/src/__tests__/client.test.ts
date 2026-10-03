@@ -111,7 +111,7 @@ describe("decodeApiKey", () => {
 describe("host services", () => {
   it("routes through the host HTTP service even without a custom CA", async () => {
     // Coupling `http` to `caCert` means an account with a bastion attached but
-    // no custom CA silently bypasses bastion routing — the common case, and
+    // no custom CA silently bypasses bastion routing: the common case, and
     // this plugin is in the egress allowlist precisely so it routes.
     const request = vi.fn(async () => ({ status: 200, body: JSON.stringify(APP_INFO) }));
     const c = new UploadThingClient({ apiKey: "sk_live_test" }, {
@@ -579,7 +579,7 @@ describe("storage browser", () => {
     installTreeFetch();
     const objects = await client().listStorageObjects(APP_ID, "git-cliff-2.12.0/");
     expect(objects.filter((o) => o.isDirectory).map((o) => o.name)).toEqual(["completions", "man"]);
-    // Leaf names only — the browser already shows the path in its breadcrumb.
+    // Leaf names only: the browser already shows the path in its breadcrumb.
     expect(objects.filter((o) => !o.isDirectory).map((o) => o.name)).toEqual(["CHANGELOG.md"]);
   });
 
@@ -587,7 +587,7 @@ describe("storage browser", () => {
     installTreeFetch();
     const objects = await client().listStorageObjects(APP_ID, "git-cliff-2.12.0/completions/");
     expect(objects.map((o) => o.name)).toEqual(["git-cliff.bash", "git-cliff.fish"]);
-    // Real UploadThing keys — delete and download address files by key.
+    // Real UploadThing keys: delete and download address files by key.
     expect(objects.map((o) => o.key)).toEqual(["k2", "k3"]);
   });
 

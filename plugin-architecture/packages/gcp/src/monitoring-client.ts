@@ -80,7 +80,7 @@ export async function fetchDashboardStats(
       ];
     }
     default: {
-      // Generic fallback — show key fields from the resource
+      // Generic fallback: show key fields from the resource
       const stats: DashboardStat[] = [];
       const statusVal = f["status"] ?? f["state"] ?? f["phase"];
       if (statusVal != null) {
@@ -213,7 +213,7 @@ export async function fetchMetricSeries(
     }
     case "cloud-run-service":
     case "cloud-function": {
-      // Cloud Function gen2 is a Cloud Run service under the hood — same
+      // Cloud Function gen2 is a Cloud Run service under the hood: same
       // metric types, same `service_name` resource label.
       const serviceName = String(resource.fields["name"] ?? "");
       if (!serviceName) break;
@@ -287,7 +287,7 @@ export async function fetchMetricSeries(
       // HTTPS/HTTP(2) external load balancers emit metrics on the
       // `https_lb_rule` monitored resource, keyed by `backend_target_name`
       // (the backend service name). For TCP/SSL/UDP LBs the metrics live
-      // under different resource types — we surface the HTTPS family here
+      // under different resource types: we surface the HTTPS family here
       // since that covers the common case.
       const name = String(resource.fields["name"] ?? "");
       if (!name) break;
@@ -327,7 +327,7 @@ export async function fetchMetricSeries(
     case "cloud-nat": {
       // NAT metrics live on the nat_gateway monitored resource type, keyed
       // by gateway_name (the NAT's name). Allocation level is the headline
-      // metric — the rest contextualise traffic and drops.
+      // metric: the rest contextualise traffic and drops.
       const natName = String(resource.fields["name"] ?? "");
       if (!natName) break;
       const series = await Promise.all([
@@ -581,7 +581,7 @@ export async function fetchMetricSeries(
 /**
  * Fetch recent log entries for resources that declare a `logs` capability.
  * Currently supports Cloud Tasks queues, Cloud Run services, Cloud Functions,
- * and Cloud Armor policies — queries Cloud Logging with a filter scoped to
+ * and Cloud Armor policies: queries Cloud Logging with a filter scoped to
  * the relevant resource type. Logs are returned newest-last (so append-style
  * follow rendering puts new lines at the bottom).
  */
@@ -608,7 +608,7 @@ export async function getLogs(
   // Cloud Function gen2 logs are written by the underlying Cloud Run service
   // under resource.type="cloud_run_revision" with the same service name.
   // Cloud Armor logs land on the load balancer that the policy is attached
-  // to — request logs whose enforcedSecurityPolicy.name matches.
+  // to: request logs whose enforcedSecurityPolicy.name matches.
   const filter =
     typeId === "cloud-run-service" || typeId === "cloud-function"
       ? [

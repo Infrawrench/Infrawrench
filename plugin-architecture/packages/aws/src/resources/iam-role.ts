@@ -16,7 +16,7 @@ export const IAMRoleResourceType = rt({
   outputs: [o("roleArn", "Role ARN")],
   // No `lastUsedKey`: ListRoles does not return RoleLastUsed, and reading it
   // would mean a GetRole per role. The review therefore reports every role's
-  // activity as unknown rather than guessing — which is the point of the
+  // activity as unknown rather than guessing, which is the point of the
   // contract. Age still comes from `createDate`.
   principalRole: { role: "role", createdKey: "createDate" },
   iconKey: "role",

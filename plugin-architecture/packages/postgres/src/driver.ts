@@ -22,7 +22,7 @@ function sanitizePgUrl(cs: string, hasExplicitSsl: boolean): string {
     // `sslmode` from the URI. pg-connection-string would otherwise infer
     // a partial `ssl: { rejectUnauthorized: false }` from `sslmode=require`
     // that, depending on pg version, can mask the explicit ssl option we
-    // hand in via the Pool config — leaving the connection running with
+    // hand in via the Pool config: leaving the connection running with
     // the system trust store and producing the "self signed certificate
     // in certificate chain" error even with a CA in hand.
     if (hasExplicitSsl) u.searchParams.delete("sslmode");
@@ -58,7 +58,7 @@ async function runWithTimeout<T>(
 ): Promise<T> {
   const caCert = options?.caCert?.trim();
   // When a vendor CA is provided (e.g. DO's managed-DB CA), trust *only*
-  // that CA and keep chain verification on — TLS is encrypted AND the
+  // that CA and keep chain verification on: TLS is encrypted AND the
   // server identity is verified against the expected CA. Without one,
   // pg uses the system trust store via the connection-string `sslmode`.
   const ssl = caCert ? { ca: caCert, rejectUnauthorized: true } : undefined;
@@ -86,7 +86,7 @@ async function runWithTimeout<T>(
     throw err;
   } finally {
     if (timer) clearTimeout(timer);
-    // Bound cleanup too — pool.end() can stall when the underlying socket
+    // Bound cleanup too: pool.end() can stall when the underlying socket
     // is in a half-broken state. 2s is plenty for the local TCP teardown.
     await Promise.race([
       pool.end().catch(() => {}),

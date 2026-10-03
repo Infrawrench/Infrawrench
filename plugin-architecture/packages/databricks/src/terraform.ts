@@ -6,7 +6,7 @@ import type {
 import { fieldNumber, fieldString, tf } from "@infrawrench/plugin-base";
 
 /**
- * Terraform mapping for Databricks — provider `databricks/databricks`.
+ * Terraform mapping for Databricks: provider `databricks/databricks`.
  * Attribute names verified against the provider docs
  * (registry.terraform.io/providers/databricks/databricks):
  *   - databricks_cluster: `spark_version`, `node_type_id` required; `cluster_name`, workers optional.

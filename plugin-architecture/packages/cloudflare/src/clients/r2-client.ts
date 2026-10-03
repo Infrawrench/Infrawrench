@@ -12,7 +12,7 @@ import type { BucketCreateParams } from "cloudflare/resources/r2/buckets/buckets
 /**
  * The complete set of location hints the R2 API accepts
  * (`BucketCreateParams.locationHint`). Anything else is rejected by Cloudflare,
- * so an unrecognised hint is dropped rather than forwarded — omitting the hint
+ * so an unrecognised hint is dropped rather than forwarded: omitting the hint
  * means "let R2 choose", which is the create form's "Automatic" option.
  */
 const R2_LOCATION_HINTS = [
@@ -97,7 +97,7 @@ export async function deleteR2Bucket(api: CloudflareApi, externalId: string): Pr
   await api.cf.r2.buckets.delete(externalId, { account_id });
 }
 
-// --- R2 object plane (intentionally left on raw fetch — SDK has no coverage) ---
+// --- R2 object plane (intentionally left on raw fetch: SDK has no coverage) ---
 
 export async function listR2StorageObjects(
   api: CloudflareApi,

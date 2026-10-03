@@ -17,7 +17,7 @@ import { safeParseJson } from "./detail-renderers/shared.js";
 /** The slice of `DigitalOceanClient` the console needs. */
 export interface DoNoSqlContext {
   fetch<T>(path: string, options?: RequestInit): Promise<T>;
-  /** Host secret store — used to persist minted playground keys. */
+  /** Host secret store: used to persist minted playground keys. */
   services: HostServices | undefined;
   actionCtx: ActionContext;
   /** Per-client session cache of agent uuid → endpoint access key. */
@@ -27,7 +27,7 @@ export interface DoNoSqlContext {
 /**
  * Parameterised droplet & volume commands. Reuses the host's
  * `prompt-nosql-command` modal as a generic prompt mechanism (the modal name
- * is a historical artefact — it carries any plugin-defined form). The form
+ * is a historical artefact: it carries any plugin-defined form). The form
  * values arrive JSON-encoded in `args[0]`.
  */
 export async function executeDoNoSqlCommand(
@@ -447,7 +447,7 @@ export async function executeDoNoSqlCommand(
 /**
  * The host secret field the minted Playground key is persisted under, keyed on
  * the agent resource id. Org-scoped on the cloud host, so every team member's
- * Playground reuses one minted key instead of each session minting its own —
+ * Playground reuses one minted key instead of each session minting its own:
  * `DoNoSqlContext.playgroundKeyCache` is only the in-memory fallback for hosts
  * that don't expose a secret write path.
  */
@@ -457,12 +457,12 @@ const PLAYGROUND_KEY_FIELD = "__playgroundEndpointKey";
  * Resolve an endpoint access key for the Playground, in priority order:
  *   1. in-memory session cache (cheapest),
  *   2. the host's persisted secret store (shared across sessions; org-wide
- *      on the cloud host — the secret stays server-side and is never sent
+ *      on the cloud host: the secret stays server-side and is never sent
  *      to other users' browsers),
  *   3. mint a fresh `infrawrench-playground` key, persist it, and cache it.
  *
  * The persisted-then-reused design is what stops us minting "a ton of
- * tokens" — one key per agent is created once and shared.
+ * tokens": one key per agent is created once and shared.
  */
 async function getOrMintPlaygroundKey(
   ctx: DoNoSqlContext,
@@ -500,13 +500,13 @@ async function getOrMintPlaygroundKey(
     );
   }
   ctx.playgroundKeyCache.set(agentUuid, secret);
-  // Persist for reuse (best-effort — if the host has no write path or it
+  // Persist for reuse (best-effort, if the host has no write path or it
   // fails, we still chat this session via the in-memory cache).
   if (ctx.services?.secrets?.setPlaintext) {
     try {
       await ctx.services.secrets.setPlaintext(agentResourceId, field, secret);
     } catch {
-      /* non-fatal — session cache covers this run */
+      /* non-fatal: session cache covers this run */
     }
   }
   return secret;
@@ -515,7 +515,7 @@ async function getOrMintPlaygroundKey(
 /**
  * Stream tokens from a deployed agent's OpenAI-compatible chat completions
  * endpoint. DO's agents.do-ai.run gateway implements SSE (`stream: true`)
- * exactly like OpenAI — `data: {json}\n\n` lines, terminating with
+ * exactly like OpenAI: `data: {json}\n\n` lines, terminating with
  * `data: [DONE]`. We parse it incrementally and yield `delta` events as
  * each `choices[0].delta.content` chunk arrives, then a single `done` with
  * the assembled message.
@@ -570,7 +570,7 @@ export async function* streamDoChatMessage(
   const body = JSON.stringify({
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
     stream: true,
-    // Asking the gateway to return usage in the final chunk — DO mirrors
+    // Asking the gateway to return usage in the final chunk: DO mirrors
     // OpenAI's `stream_options.include_usage` opt-in here. Some gateways
     // ignore it, in which case we just skip the usage payload.
     stream_options: { include_usage: true },

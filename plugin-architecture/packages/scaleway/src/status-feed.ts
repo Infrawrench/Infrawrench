@@ -1,6 +1,6 @@
 /**
  * Scaleway public status feed (Atlassian Statuspage,
- * https://status.scaleway.com — verified 2026-08).
+ * https://status.scaleway.com: verified 2026-08).
  *
  * AZ components are lowercase zone slugs (fr-par-1/2/3, nl-ams-1/2,
  * pl-waw-1/2/3). Scaleway resources store either a zone ("fr-par-1", e.g.
@@ -30,7 +30,7 @@ const DEDIBOX_DC = /^(?:DC|AMS)\d+$/;
 
 function mapComponent(name: string): StatusComponentMapping | null {
   if (ZONE_COMPONENT.test(name)) {
-    // Emit both the zone and its parent region — resources carry either.
+    // Emit both the zone and its parent region: resources carry either.
     return { regions: [name, name.replace(/-\d$/, "")] };
   }
   if (DEDIBOX_DC.test(name)) return null;

@@ -55,7 +55,7 @@ const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
  *
  * ⚠️ Deliberately excludes `audio/webm` and `audio/mp4`. Those are exactly
  * what `MediaRecorder` produces (WebM/Opus on Chrome, Edge and Firefox; MP4 on
- * Safari) and Cohere rejects both — so the file picker is steered at the six
+ * Safari) and Cohere rejects both, so the file picker is steered at the six
  * real formats, and the panel's help text tells the user not to bother
  * recording in the browser.
  */
@@ -94,7 +94,7 @@ const ACCEPTED_EXTENSIONS = ["flac", "mp3", "mpeg", "mpga", "ogg", "wav"];
 /**
  * The fourteen languages Cohere's transcription model documents, as ISO-639-1
  * codes. `language` is a **required** form field on the endpoint, so there is
- * no auto-detect entry — the panel always sends one of these.
+ * no auto-detect entry: the panel always sends one of these.
  * https://docs.cohere.com/v2/docs/transcribe
  */
 const LANGUAGES: SpeechPanelOption[] = [
@@ -132,7 +132,7 @@ const RECORDING_DISABLED_REASON =
  * Read-mostly by necessity: the platform exposes **no admin API, no usage or
  * billing API, and no key-management API**. `POST /v1/check-api-key` is the
  * only key-related endpoint in the product, and `GET /v1/datasets/usage`
- * (dataset storage bytes) is the only aggregate figure available — token spend
+ * (dataset storage bytes) is the only aggregate figure available: token spend
  * lives in the dashboard.
  */
 export class CohereClient implements PluginClient {
@@ -168,7 +168,7 @@ export class CohereClient implements PluginClient {
   // ---------------------------------------------------------------------------
 
   /**
-   * `POST /v1/check-api-key` — https://docs.cohere.com/reference/check-api-key
+   * `POST /v1/check-api-key`: https://docs.cohere.com/reference/check-api-key
    *
    * The only key-related endpoint Cohere has: no list, no create, no rotate.
    * It takes an empty body and answers from the Authorization header alone.
@@ -258,7 +258,7 @@ export class CohereClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/models` — https://docs.cohere.com/reference/list-models
+   * `GET /v1/models`: https://docs.cohere.com/reference/list-models
    *
    * Cursor pagination: `page_size` (default 20, max 1000) / `page_token` →
    * `next_page_token`. ⚠️ The token is an **empty string** rather than absent
@@ -317,7 +317,7 @@ export class CohereClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/datasets` — https://docs.cohere.com/reference/list-datasets
+   * `GET /v1/datasets`: https://docs.cohere.com/reference/list-datasets
    *
    * ⚠️ Pagination differs from models: `limit` / `offset`, no cursor. This
    * endpoint's query params are camelCase (`datasetType`, `validationStatus`)
@@ -337,7 +337,7 @@ export class CohereClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/datasets/usage` — https://docs.cohere.com/reference/get-dataset-usage
+   * `GET /v1/datasets/usage`: https://docs.cohere.com/reference/get-dataset-usage
    *
    * The only aggregate usage figure the API exposes: dataset storage bytes
    * against a 10 GB organization cap. It is not token usage and not spend.
@@ -356,7 +356,7 @@ export class CohereClient implements PluginClient {
   private mapDataset(accountId: string, dataset: CohereDataset, now: string): ResourceInstance {
     const id = dataset.id ?? "";
     const parts = dataset.dataset_parts ?? [];
-    // ⚠️ Byte sizes and row counts are per-part, not top-level — and the row
+    // ⚠️ Byte sizes and row counts are per-part, not top-level, and the row
     // field is `num_rows`, not `row_count`.
     const sizeBytes = parts.reduce((sum, p) => sum + (p.size_bytes ?? 0), 0);
     const numRows = parts.reduce((sum, p) => sum + (p.num_rows ?? 0), 0);
@@ -389,7 +389,7 @@ export class CohereClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/finetuning/finetuned-models` —
+   * `GET /v1/finetuning/finetuned-models`:
    * https://docs.cohere.com/reference/listfinetunedmodels
    *
    * Cursor pagination again: `page_size` (0 → 50) / `page_token`.
@@ -397,7 +397,7 @@ export class CohereClient implements PluginClient {
    * ⚠️ Cohere files the entire fine-tuning group under "Deprecated", and
    * retired fine-tuning for command, command-light, command-r, classify and
    * rerank on 2025-09-15. The endpoints still answer, so existing fine-tunes
-   * remain listable and deletable — but this plugin does not offer creation.
+   * remain listable and deletable, but this plugin does not offer creation.
    */
   private async fetchFinetunedModels(): Promise<CohereFinetunedModel[]> {
     const models: CohereFinetunedModel[] = [];
@@ -495,9 +495,9 @@ export class CohereClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/embed-jobs` — https://docs.cohere.com/reference/list-embed-jobs
+   * `GET /v1/embed-jobs`: https://docs.cohere.com/reference/list-embed-jobs
    *
-   * ⚠️ This endpoint documents no query parameters whatsoever — there is no
+   * ⚠️ This endpoint documents no query parameters whatsoever; there is no
    * pagination to drive, and the response is the full list.
    */
   private async fetchEmbedJobs(): Promise<CohereEmbedJob[]> {
@@ -537,7 +537,7 @@ export class CohereClient implements PluginClient {
   }
 
   /**
-   * `GET /v2/batches` — https://docs.cohere.com/reference/list-batches
+   * `GET /v2/batches`: https://docs.cohere.com/reference/list-batches
    *
    * One of the few management-shaped surfaces that really is on `/v2/`.
    * Cursor pagination: `page_size` (default 50, max 1000) / `page_token`.
@@ -644,9 +644,9 @@ export class CohereClient implements PluginClient {
   // ---------------------------------------------------------------------------
 
   /**
-   * Datasets: `DELETE /v1/datasets/{id}` —
+   * Datasets: `DELETE /v1/datasets/{id}`;
    * https://docs.cohere.com/reference/delete-dataset
-   * Fine-tuned models: `DELETE /v1/finetuning/finetuned-models/{id}` —
+   * Fine-tuned models: `DELETE /v1/finetuning/finetuned-models/{id}`;
    * https://docs.cohere.com/reference/deletefinetunedmodel (irreversible).
    *
    * Base models belong to Cohere and jobs are cancelled rather than removed,
@@ -668,9 +668,9 @@ export class CohereClient implements PluginClient {
   }
 
   /**
-   * Embed jobs: `POST /v1/embed-jobs/{id}/cancel` —
+   * Embed jobs: `POST /v1/embed-jobs/{id}/cancel`;
    * https://docs.cohere.com/reference/cancel-embed-job
-   * Batches: `POST /v2/batches/{id}:cancel` —
+   * Batches: `POST /v2/batches/{id}:cancel`;
    * https://docs.cohere.com/reference/cancel-batch (note the colon verb, and
    * that this one lives on `/v2/`).
    */
@@ -872,7 +872,7 @@ export class CohereClient implements PluginClient {
         },
       ],
       speechPanel: {
-        // Cohere ships transcription only — there is no text-to-speech
+        // Cohere ships transcription only: there is no text-to-speech
         // endpoint anywhere in the product, so no "tts" mode here.
         modes: ["stt"],
         subtitle: "Transcribe an audio clip with Cohere's speech-to-text model",
@@ -884,8 +884,8 @@ export class CohereClient implements PluginClient {
         acceptedAudioTypes: ACCEPTED_AUDIO_TYPES,
         maxAudioBytes: MAX_AUDIO_BYTES,
         transcribeLabel: "Transcribe",
-        // Nothing a browser or phone records is a container Cohere accepts —
-        // WebM on Chromium and Firefox, MP4 on Safari, M4A on mobile — so the
+        // Nothing a browser or phone records is a container Cohere accepts
+        // (WebM on Chromium and Firefox, MP4 on Safari, M4A on mobile) so the
         // recorder could only ever hand `transcribeAudio` a clip it rejects.
         // Uploading one of the six real formats still works.
         disableRecording: true,
@@ -1375,7 +1375,7 @@ export class CohereClient implements PluginClient {
   }
 
   // ---------------------------------------------------------------------------
-  // Speech tab — transcription only
+  // Speech tab: transcription only
   // ---------------------------------------------------------------------------
 
   /**
@@ -1391,8 +1391,8 @@ export class CohereClient implements PluginClient {
   /**
    * Non-deprecated speech models from `GET /v1/models`.
    *
-   * ⚠️ The `CompatibleEndpoint` enum has no `transcribe` or `audio` member —
-   * it is exactly chat, embed, classify, summarize, rerank, rate, generate —
+   * ⚠️ The `CompatibleEndpoint` enum has no `transcribe` or `audio` member
+   * (it is exactly chat, embed, classify, summarize, rerank, rate, generate)
    * so the speech model cannot be found by filtering `endpoints[]` the way a
    * chat or embed model can. Matching on the `cohere-transcribe` name prefix is
    * the only discovery route, and it degrades to the documented default if
@@ -1412,7 +1412,7 @@ export class CohereClient implements PluginClient {
   }
 
   /**
-   * `POST /v2/audio/transcriptions` —
+   * `POST /v2/audio/transcriptions`:
    * https://docs.cohere.com/reference/create-audio-transcription
    *
    * Multipart, so the body is hand-encoded rather than passed as a `FormData`
@@ -1447,8 +1447,8 @@ export class CohereClient implements PluginClient {
       );
     }
 
-    // `language` is a required form field on this endpoint — there is no
-    // auto-detect mode — so fall back to English rather than omitting it.
+    // `language` is a required form field on this endpoint (there is no
+    // auto-detect mode) so fall back to English rather than omitting it.
     const language = payload.language || "en";
     const model = payload.modelId || TRANSCRIBE_MODEL;
 
@@ -1478,8 +1478,8 @@ export class CohereClient implements PluginClient {
       text: response.text ?? "",
       summary: `${model} · ${language} · ${formatBytes(audio.byteLength)} of ${extension.toUpperCase()}`,
       language,
-      // Cohere's documented response is exactly `{ text }` — no duration, no
-      // confidence, no word or segment timings — so those stay unset rather
+      // Cohere's documented response is exactly `{ text }` (no duration, no
+      // confidence, no word or segment timings) so those stay unset rather
       // than being invented from the transcript.
     };
   }

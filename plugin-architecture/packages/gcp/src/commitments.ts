@@ -5,14 +5,14 @@
  * `pageToken`-paginated).
  *
  * The one thing to know about this API: **it returns no money at all.** A GCP
- * commitment is denominated in resource units — so many vCPUs, so many GB of
- * memory, so many GB of local SSD — and the list response carries neither a
+ * commitment is denominated in resource units (so many vCPUs, so many GB of
+ * memory, so many GB of local SSD) and the list response carries neither a
  * price nor a currency. Records here therefore populate `unitCommitments`
  * only and omit every money field. That absence is load-bearing downstream:
  * a unit-denominated commitment's utilization cannot be derived from cost
  * rows, and the host reports it as unknown rather than 0%.
  *
- * `plan` is TWELVE_MONTH or THIRTY_SIX_MONTH — that is the provider's own
+ * `plan` is TWELVE_MONTH or THIRTY_SIX_MONTH: that is the provider's own
  * statement of the term, which is where `termDays` comes from (never from
  * the date difference).
  */
@@ -58,7 +58,7 @@ interface AggregatedListResponse {
 /**
  * NOT_YET_ACTIVE is a purchase whose term hasn't started; ACTIVE is applying
  * discounts; EXPIRED, CANCELLED, and anything Google adds later are treated
- * as expired — understating holdings, never overstating them.
+ * as expired: understating holdings, never overstating them.
  */
 export function normalizeGcpCommitmentStatus(raw: string): CommitmentState {
   switch (raw) {
@@ -92,7 +92,7 @@ function regionName(url: string | undefined): string | undefined {
 
 /**
  * Unit label the reader can compare against GCP's console. Memory amounts are
- * reported in MB by the API but sold in GB — keep the API's own unit and say
+ * reported in MB by the API but sold in GB: keep the API's own unit and say
  * so, rather than converting and creating a number the console doesn't show.
  */
 function unitLabel(resource: GcpCommitmentResource): string {

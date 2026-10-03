@@ -6,7 +6,7 @@ import { asRecord } from "./shared.js";
  * Narrow the rows of a D1 query page.
  *
  * The SDK types a page as `QueryResult` with `results?: Array<unknown>`
- * (cloudflare/resources/d1/database/database.d.ts:168) — deliberately, since
+ * (cloudflare/resources/d1/database/database.d.ts:168): deliberately, since
  * the row shape depends on the SQL that produced it. Every row Cloudflare
  * returns from `/query` is a JSON object, so narrow each one here and skip
  * anything that isn't rather than asserting a shape onto the whole array.

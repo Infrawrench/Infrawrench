@@ -165,7 +165,7 @@ export function getAwsClients(creds: AwsCredentials): AwsClients {
     lambda: () => new LambdaClient(baseConfig),
     mq: () => new MqClient(baseConfig),
     // NeptuneClient's built-in endpoint template (neptune.<region>) is
-    // NXDOMAIN — requests only work against rds.<region>, which hosts the
+    // NXDOMAIN: requests only work against rds.<region>, which hosts the
     // shared RDS/Neptune control plane. client-transport.ts overrides the
     // resolved host accordingly; this client is kept for signing/config only.
     neptune: () => new NeptuneClient(baseConfig),

@@ -23,7 +23,7 @@ const TLS_MODES = ["off", "flexible", "full", "strict"] as const;
 type TLSMode = (typeof TLS_MODES)[number];
 const tlsMode = (value: string | undefined): TLSMode | null => {
   const isTLSMode = (v: string): v is TLSMode => (TLS_MODES as readonly string[]).includes(v);
-  // Unlike proxy_protocol there is no safe default here — guessing could turn
+  // Unlike proxy_protocol there is no safe default here: guessing could turn
   // a `strict` app into a `flexible` one. An unrecognized value is dropped so
   // Spectrum keeps whatever the application already has.
   return value !== undefined && isTLSMode(value) ? value : null;

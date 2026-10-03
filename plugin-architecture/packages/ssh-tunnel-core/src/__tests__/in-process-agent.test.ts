@@ -8,7 +8,7 @@ import type { Duplex } from "node:stream";
 
 import { InProcessAgent, buildInProcessAgent, type SignOutcome } from "../in-process-agent.js";
 
-// NOTE: this suite deliberately does NOT mock ssh2 — it exercises the real
+// NOTE: this suite deliberately does NOT mock ssh2; it exercises the real
 // OpenSSH agent-protocol framing against real parsed keys generated with
 // `ssh-keygen` at runtime. The sibling host-verifier suite mocks ssh2 instead;
 // vitest isolates modules per file so the two do not collide.
@@ -413,7 +413,7 @@ describe("findKey via string public key (toPublicSSH string branch)", () => {
     const agent = new InProcessAgent([k]);
     const cb = vi.fn();
     // Deliberately passes the OpenSSH string form where the signature says
-    // ParsedKey — findKey's string branch is exactly what is under test.
+    // ParsedKey: findKey's string branch is exactly what is under test.
     agent.sign(pubString as unknown as ParsedKey, Buffer.from("payload"), cb);
     expect(cb).toHaveBeenCalledTimes(1);
     expect(cb.mock.calls[0]![0]).toBeNull();

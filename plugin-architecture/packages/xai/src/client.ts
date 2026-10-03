@@ -28,7 +28,7 @@ const MANAGEMENT_BASE = "https://management-api.x.ai";
 const TTS_MAX_CHARACTERS = 15_000;
 /**
  * POST /v1/stt accepts up to 500 MB upstream, but a Speech-tab clip crosses the
- * host boundary base64-encoded inside ordinary JSON — cap it at the 25 MB the
+ * host boundary base64-encoded inside ordinary JSON: cap it at the 25 MB the
  * panel defaults to rather than letting a half-gigabyte upload through.
  */
 const STT_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
@@ -44,7 +44,7 @@ const AUDIT_TRUNCATED_ID = "__truncated__";
 
 /**
  * Every price the models endpoints report is an integer of USD cents per 100
- * million units — whatever the unit is. `grok-4.3` lists
+ * million units: whatever the unit is. `grok-4.3` lists
  * `prompt_text_token_price: 12500` against its published $1.25 / 1M tokens, and
  * `grok-imagine-image` lists `image_price: 200000000` against its published
  * $0.02 an image, so the same 1e8 scale covers tokens, images and search
@@ -57,7 +57,7 @@ const PRICE_PER_UNIT = 1e10;
 
 /**
  * BCP-47 codes POST /v1/tts documents for its required `language` field.
- * `auto` is TTS-only — for STT the plugin simply omits `language`.
+ * `auto` is TTS-only, for STT the plugin simply omits `language`.
  */
 const TTS_LANGUAGES: SpeechPanelOption[] = [
   { id: "auto", label: "Auto-detect" },
@@ -259,9 +259,9 @@ interface MultipartPart {
  * xAI plugin client.
  *
  * Two hosts, two credentials:
- *   - https://api.x.ai            with the inference API key — models, files,
+ *   - https://api.x.ai            with the inference API key: models, files,
  *     batches, voices, TTS and STT.
- *   - https://management-api.x.ai with the *separate* management key — team API
+ *   - https://management-api.x.ai with the *separate* management key: team API
  *     keys, the audit log, and billing/usage.
  *
  * The management key is optional. Everything that needs it degrades to an empty
@@ -521,7 +521,7 @@ export class XaiClient implements PluginClient {
     };
   }
 
-  /** GET /v1/files — `limit` maxes out at 100; page with `pagination_token`. */
+  /** GET /v1/files: `limit` maxes out at 100; page with `pagination_token`. */
   private async listFiles(accountId: string): Promise<ResourceInstance[]> {
     const now = new Date().toISOString();
     const out: ResourceInstance[] = [];
@@ -561,7 +561,7 @@ export class XaiClient implements PluginClient {
       token = data.pagination_token ?? undefined;
       // `pagination_token` is the only end-of-list signal. A short page is not
       // one: the server may return fewer than `limit` rows and still hand back a
-      // token, and stopping there silently drops every file behind it — they
+      // token, and stopping there silently drops every file behind it; they
       // vanish from the listing and getResource/delete then 404 on them.
       // A repeated cursor means the server is not advancing. Without this the
       // loop re-fetches the same page until the iteration cap and emits
@@ -706,7 +706,7 @@ export class XaiClient implements PluginClient {
     }
   }
 
-  /** GET /v1/custom-voices — `limit` 1–1000, page with `pagination_token`. */
+  /** GET /v1/custom-voices: `limit` 1–1000, page with `pagination_token`. */
   private async fetchCustomVoices(): Promise<XaiCustomVoice[]> {
     const out: XaiCustomVoice[] = [];
     let token: string | undefined;
@@ -821,7 +821,7 @@ export class XaiClient implements PluginClient {
     }
 
     // A token left over means the cap stopped the walk. The log is newest-first,
-    // so what is missing is the oldest history — say so in the list instead of
+    // so what is missing is the oldest history: say so in the list instead of
     // ending it as if that were all there ever was.
     if (token) out.push(this.auditTruncationMarker(accountId, now, out.length));
     return dedupeBy(out, (r) => r.id);
@@ -987,7 +987,7 @@ export class XaiClient implements PluginClient {
   // ----------------------------------------------------------- usage/costs
 
   /**
-   * POST /v1/billing/teams/{team_id}/usage — a real analytics query, so the
+   * POST /v1/billing/teams/{team_id}/usage: a real analytics query, so the
    * plugin asks for a daily `usd` sum grouped by line-item description and
    * turns each series into per-day CostRows.
    *
@@ -1225,7 +1225,7 @@ export class XaiClient implements PluginClient {
     }
 
     if (typeId === "custom-voice") {
-      // PATCH /v1/custom-voices/{voice_id} — built-in voices have no metadata.
+      // PATCH /v1/custom-voices/{voice_id}: built-in voices have no metadata.
       const body: Record<string, unknown> = {};
       for (const key of ["name", "description", "gender", "accent", "age", "language", "tone"]) {
         if (fields[key] !== undefined) body[key] = fields[key];
@@ -1264,7 +1264,7 @@ export class XaiClient implements PluginClient {
   }
 
   /**
-   * POST /auth/api-keys/{apiKeyId}/rotate — mints a new secret and starts the
+   * POST /auth/api-keys/{apiKeyId}/rotate: mints a new secret and starts the
    * clock on the old one (24 h by default). Wired to the API key's Rotate
    * action.
    */
@@ -1289,7 +1289,7 @@ export class XaiClient implements PluginClient {
 
   /**
    * POST /v1/tts. Unlike OpenAI and Groq this returns **JSON with base64 audio**
-   * (`audio`, `content_type`, `duration`) rather than raw bytes — so it can go
+   * (`audio`, `content_type`, `duration`) rather than raw bytes, so it can go
    * straight through `jsonRestFetch` and keeps bastion routing.
    *
    * Docs: https://docs.x.ai/developers/rest-api-reference/inference/voice
@@ -1311,7 +1311,7 @@ export class XaiClient implements PluginClient {
         text,
         voice_id: voiceId,
         language,
-        // Ask for mp3 explicitly — a browser <audio> element has to play it.
+        // Ask for mp3 explicitly: a browser <audio> element has to play it.
         output_format: { codec: "mp3", sample_rate: 24000, bit_rate: 128000 },
       }),
     });
@@ -1339,7 +1339,7 @@ export class XaiClient implements PluginClient {
   /**
    * POST /v1/stt, multipart. `file` must be the last field in the form, per the
    * docs. The clip's MIME type is forwarded exactly as the browser recorded it
-   * (`audio/webm;codecs=opus` on Chromium, `audio/mp4` on Safari) — xAI
+   * (`audio/webm;codecs=opus` on Chromium, `audio/mp4` on Safari): xAI
    * auto-detects container formats from the header, so no `audio_format` hint
    * is sent and nothing is transcoded.
    *
@@ -1629,7 +1629,7 @@ export class XaiClient implements PluginClient {
         ".mkv",
       ],
       // xAI's /v1/stt and /v1/tts take no model parameter, so the shared picker
-      // carries the language instead — required by TTS, optional for STT.
+      // carries the language instead: required by TTS, optional for STT.
       models: TTS_LANGUAGES,
       defaultModel: "en",
       modelLabel: "Language",

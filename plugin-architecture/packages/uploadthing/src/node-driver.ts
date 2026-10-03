@@ -1,5 +1,5 @@
 /**
- * UploadThing Node.js-side driver — runs in the Electron main process and in
+ * UploadThing Node.js-side driver: runs in the Electron main process and in
  * the web server. Owns all UploadThing-specific download logic so the host
  * stays provider-agnostic.
  *
@@ -30,7 +30,7 @@ const API_BASE = "https://api.uploadthing.com";
 /** Bound outbound UploadThing fetches so a hung host cannot wedge the process. */
 const FETCH_TIMEOUT_MS = 60_000;
 
-/** `POST /v6/requestFileAccess` — presigned GET URL for a single file key. */
+/** `POST /v6/requestFileAccess`: presigned GET URL for a single file key. */
 async function requestFileUrl(
   key: string,
   apiKey: string,

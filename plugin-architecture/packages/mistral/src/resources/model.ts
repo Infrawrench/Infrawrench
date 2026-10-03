@@ -1,10 +1,10 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A model available to the workspace — base models and the workspace's own
+ * A model available to the workspace: base models and the workspace's own
  * fine-tuned checkpoints share this listing.
  *
- * `GET https://api.mistral.ai/v1/models` — note there are **no pagination
+ * `GET https://api.mistral.ai/v1/models`: note there are **no pagination
  * parameters** on this endpoint; the full catalogue comes back in one call.
  * https://docs.mistral.ai/api/endpoint/models
  */

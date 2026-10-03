@@ -19,7 +19,7 @@ const isActionType = (value: string): value is ActionParam["type"] =>
   (ACTION_TYPES as readonly string[]).includes(value);
 
 /**
- * Cloudflare only supports matching an email routing rule on its recipient —
+ * Cloudflare only supports matching an email routing rule on its recipient:
  * `MatcherParam["field"]` is the single literal `"to"`. There is no sender-side
  * matcher, so reject anything else with a message the user can act on rather
  * than letting the API return an opaque 400.

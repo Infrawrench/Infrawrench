@@ -1,5 +1,5 @@
 /**
- * `@infrawrench/appstream-core` — the client half of the remote-application
+ * `@infrawrench/appstream-core`: the client half of the remote-application
  * protocol.
  *
  * The other end is the Rust workspace in `linux-appserver/`. This package is

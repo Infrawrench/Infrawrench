@@ -1,11 +1,11 @@
 /**
- * Posture checks — declarative "this resource is probably exposed" rules.
+ * Posture checks: declarative "this resource is probably exposed" rules.
  *
  * The security sibling of `orphanRule` (potential savings) and `expiryFields`
  * (the expiry radar): plugins declare, per resource type, conditions over
- * fields their listers already sync — a bucket whose public-access block is
+ * fields their listers already sync; a bucket whose public-access block is
  * off, a security group open to 0.0.0.0/0, an unencrypted disk, an access key
- * older than its rotation budget — and hosts evaluate the rules over stored
+ * older than its rotation budget, and hosts evaluate the rules over stored
  * resources. No plugin client, no credentials, no extra provider API calls,
  * ever. Only declare rules over fields the type's lister actually populates;
  * a condition on a field that never lands in `fields` simply never matches.
@@ -30,23 +30,23 @@ export type PostureCategory =
  * Field-value predicates (`empty` / `equals` / `notEquals` / `truthy` /
  * `falsy`) follow `OrphanCondition` semantics exactly:
  *
- * - `empty` — field is absent or `""`. `0` is NOT empty.
- * - `equals` / `notEquals` — case-insensitive string comparison against
+ * - `empty`: field is absent or `""`. `0` is NOT empty.
+ * - `equals` / `notEquals`: case-insensitive string comparison against
  *   `value` (numbers/booleans are stringified). An absent field never matches
- *   either — a resource synced before the field existed must not alarm.
- * - `truthy` — the field holds a true-like value: boolean `true`, a non-zero
+ *   either: a resource synced before the field existed must not alarm.
+ * - `truthy`: the field holds a true-like value: boolean `true`, a non-zero
  *   number, or (case-insensitively) `"true"`, `"1"`, `"yes"`, `"enabled"`.
  *   Absent never matches.
- * - `falsy` — the field holds a false-like value: boolean `false`, the number
+ * - `falsy`: the field holds a false-like value: boolean `false`, the number
  *   `0`, or (case-insensitively) `"false"`, `"0"`, `"no"`, `"disabled"`.
- *   Absent and `""` never match — use `empty` when absence itself is the
+ *   Absent and `""` never match: use `empty` when absence itself is the
  *   finding.
  *
  * The age predicate:
  *
- * - `olderThanDays` — the field holds an instant (ISO 8601 with or without a
+ * - `olderThanDays`: the field holds an instant (ISO 8601 with or without a
  *   time, RFC 2822, or a unix epoch in seconds or milliseconds, as a number
- *   or numeric string — the formats provider listers actually store) that is
+ *   or numeric string; the formats provider listers actually store) that is
  *   more than `days` days before the scan instant. An absent or unparseable
  *   value fails the condition, never alarms.
  */
@@ -71,7 +71,7 @@ export type PostureCondition =
  */
 export interface PostureCheckRule {
   /**
-   * Stable rule id, unique within the plugin — e.g. `"s3-public-access"`.
+   * Stable rule id, unique within the plugin, e.g. `"s3-public-access"`.
    * Surfaces key findings on it, so renaming one orphans user context.
    */
   id: string;
@@ -84,7 +84,7 @@ export interface PostureCheckRule {
   /**
    * Human-readable explanation shown next to the flagged resource, e.g.
    * "The bucket's public access block is disabled, so ACLs and policies can
-   * make objects world-readable". Written by the plugin — the one place that
+   * make objects world-readable". Written by the plugin: the one place that
    * knows what the fields mean.
    */
   reason: string;
@@ -96,7 +96,7 @@ const TRUE_WORDS = new Set(["true", "1", "yes", "enabled"]);
 const FALSE_WORDS = new Set(["false", "0", "no", "disabled"]);
 
 /**
- * Parse a stored field value as a point in time, epoch milliseconds — the
+ * Parse a stored field value as a point in time, epoch milliseconds: the
  * same tolerance as the expiry radar's `parseExpiryInstant`. Returns null for
  * anything unparseable; small numbers (< 1e8, i.e. before ~1973 as seconds)
  * are rejected rather than guessed at, so a port or a count never reads as a
@@ -156,7 +156,7 @@ export function evaluatePostureCondition(
 /**
  * Evaluate one {@link PostureCheckRule} against a resource instance's stored
  * fields. Returns the reason string when the resource is flagged, or `null`
- * when it isn't — the exact contract of `evaluateOrphanRule`.
+ * when it isn't: the exact contract of `evaluateOrphanRule`.
  */
 export function evaluatePostureRule(
   rule: PostureCheckRule | undefined,

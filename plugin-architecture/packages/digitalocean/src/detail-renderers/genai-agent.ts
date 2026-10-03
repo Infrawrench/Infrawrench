@@ -1,5 +1,5 @@
 /**
- * Detail view for DigitalOcean Gradient AI agents — the chat playground tab,
+ * Detail view for DigitalOcean Gradient AI agents: the chat playground tab,
  * the embed-script generator, and the knowledge-base / function-route summary.
  */
 import type { ActionNode, DetailViewSchema, ResourceInstance } from "@infrawrench/plugin-base";
@@ -8,7 +8,7 @@ import { parseJsonArray } from "./shared.js";
 /**
  * Build DigitalOcean's embeddable chatbot `<script>` snippet for a public
  * agent. Mirrors what the DO control panel offers under "Embed". Only valid
- * for public agents with a chatbot identifier — the widget script is served
+ * for public agents with a chatbot identifier: the widget script is served
  * from the agent's own deployment host.
  */
 function buildAgentEmbedScript(
@@ -58,7 +58,7 @@ export function applyGenAiAgentDetail(detail: DetailViewSchema, resource: Resour
   const outputs = resource.resolvedOutputs ?? {};
 
   // Wire the Playground chat tab. Disabled while the deployment is still
-  // provisioning — the agents.do-ai.run hostname only resolves once status
+  // provisioning: the agents.do-ai.run hostname only resolves once status
   // flips to running.
   const status = String(fields["status"] ?? "").toUpperCase();
   const deploymentReady = status === "STATUS_RUNNING" || status === "RUNNING";
@@ -122,14 +122,14 @@ export function applyGenAiAgentDetail(detail: DetailViewSchema, resource: Resour
       label: n.label ? `${n.label} (${n.region ?? "?"})` : String(n.namespace),
     }));
 
-  // Knowledge bases not already attached — used as the picker options
+  // Knowledge bases not already attached: used as the picker options
   // for the "Attach knowledge base" prompt.
   const attachedKbUuids = new Set(attachedKbs.map((k) => String(k.uuid ?? "")));
   const unattachedKbs = allKbs.filter((k) => !attachedKbUuids.has(String(k.uuid ?? "")));
   const attachedChildUuids = new Set(childAgents.map((c) => String(c.uuid ?? "")));
   const unattachedAgents = allAgents.filter((a) => !attachedChildUuids.has(String(a.uuid ?? "")));
 
-  // Header — Refresh, visibility toggle, attach buttons. Visibility flips
+  // Header: Refresh, visibility toggle, attach buttons. Visibility flips
   // between Public and Private; the label tracks the *current* state so
   // the button always shows the action that will happen.
   detail.headerActions = [
@@ -275,7 +275,7 @@ export function applyGenAiAgentDetail(detail: DetailViewSchema, resource: Resour
     },
   ];
 
-  // Endpoint section — copyable deployment URL + the OpenAI-compatible
+  // Endpoint section: copyable deployment URL + the OpenAI-compatible
   // base URL. Both are `copyable` so the host renders a copy button.
   const deploymentUrl = String(outputs["deploymentUrl"] ?? fields["deploymentUrl"] ?? "");
   if (deploymentUrl) {
@@ -300,7 +300,7 @@ export function applyGenAiAgentDetail(detail: DetailViewSchema, resource: Resour
     });
   }
 
-  // Embed section — DigitalOcean's public chatbot <script> snippet. Only
+  // Embed section: DigitalOcean's public chatbot <script> snippet. Only
   // valid once the agent's endpoint is public (private agents need an
   // access key the public widget can't supply) and a chatbot identifier
   // exists. Rendered as a copyable mono block.
@@ -329,7 +329,7 @@ export function applyGenAiAgentDetail(detail: DetailViewSchema, resource: Resour
       ],
     });
   } else if (chatbotId && deploymentUrl) {
-    // Has a chatbot but the endpoint is private — tell the user how to
+    // Has a chatbot but the endpoint is private: tell the user how to
     // enable the embed rather than silently hiding it.
     detail.sections.push({
       kind: "section",
@@ -345,7 +345,7 @@ export function applyGenAiAgentDetail(detail: DetailViewSchema, resource: Resour
     });
   }
 
-  // Knowledge bases section — one row per attached KB with an inline
+  // Knowledge bases section: one row per attached KB with an inline
   // Detach button. The detach button reuses prompt-nosql-command so we
   // can confirm before the DELETE.
   if (attachedKbs.length > 0) {

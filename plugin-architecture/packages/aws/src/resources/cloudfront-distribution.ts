@@ -23,14 +23,14 @@ export const CloudFrontDistributionResourceType = rt({
   ],
   outputs: [o("distributionArn", "Distribution ARN")],
   // An origin domain is a load balancer's DNS name or an S3 bucket's REST
-  // endpoint — the bucket name is extracted from the latter by the lister.
+  // endpoint: the bucket name is extracted from the latter by the lister.
   dependsOn: [
     { fieldKey: "originDomains", targetTypeId: "alb", targetKey: "dnsName", label: "origin" },
     { fieldKey: "originBucketNames", targetTypeId: "s3-bucket", label: "origin" },
   ],
   iconKey: "cdn",
   // CloudFront mints the subdomain (`d111111abcdef8.cloudfront.net`), so the
-  // only way to claim one is the stored `domainName` — a name match would be
+  // only way to claim one is the stored `domainName`: a name match would be
   // meaningless here.
   dnsServiceHosts: [
     {

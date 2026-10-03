@@ -24,7 +24,7 @@
 import { CostSetupError, type CostFetchRange, type CostRow } from "@infrawrench/plugin-base";
 
 export interface GcpCostContext {
-  /** Project the query job runs in — needs `bigquery.jobUser`. */
+  /** Project the query job runs in: needs `bigquery.jobUser`. */
   project: string;
   token: () => Promise<string>;
   /** Billing export table in `project.dataset.table` form; empty when unconfigured. */
@@ -36,7 +36,7 @@ const BILLING_EXPORT_SETUP_URL =
 
 /**
  * Console page where the export is turned on. It is billing-account-scoped
- * and the plugin only knows the project, so pass `project` — the console
+ * and the plugin only knows the project, so pass `project`: the console
  * resolves it to that project's linked billing account and otherwise falls
  * back to its billing-account chooser.
  */

@@ -86,7 +86,7 @@ describe("listing", () => {
 
   it("stops following cursors at the page cap and warns about truncation", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    // Every page returns a continuation cursor — the client must stop at the
+    // Every page returns a continuation cursor: the client must stop at the
     // documented MAX_LIST_PAGES bound rather than looping forever.
     installFetch(() => jsonResponse(list([{ id: "user_x", email: "x@acme.com" }], "cur")));
     const users = await client().listResources("user", ACCOUNT);
@@ -126,7 +126,7 @@ describe("listing", () => {
             ]),
           );
         }
-        // The second org's key has no access — a per-org failure must not
+        // The second org's key has no access: a per-org failure must not
         // empty the whole listing.
         return jsonResponse({ message: "forbidden" }, 403);
       }

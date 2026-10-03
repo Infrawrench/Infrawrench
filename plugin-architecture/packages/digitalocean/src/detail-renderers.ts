@@ -3,7 +3,7 @@
  * under `./detail-renderers/`. All functions are pure over the resource
  * instance; `renderDetail` in DigitalOceanClient dispatches into them.
  *
- * This module is the stable import path — it re-exports the whole renderer
+ * This module is the stable import path: it re-exports the whole renderer
  * surface so callers never have to know which domain file a renderer lives in.
  */
 export { applyDropletDetail } from "./detail-renderers/droplet.js";

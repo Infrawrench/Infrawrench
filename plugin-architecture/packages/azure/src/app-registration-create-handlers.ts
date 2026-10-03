@@ -5,7 +5,7 @@ import type { AzureCreateContext } from "./create-handlers-shared.js";
  * Create an Entra ID app registration + matching service principal. Three Graph calls:
  * 1. POST /applications → creates the app, returns object `id` and `appId` (different GUIDs).
  * 2. POST /servicePrincipals with `{appId}` → creates the SP, returns `id` (SP object id).
- * 3. (optional) PUT roleAssignment on ARM if a role is requested — not wired in this version;
+ * 3. (optional) PUT roleAssignment on ARM if a role is requested, not wired in this version;
  *    users assign roles via the Azure portal or future policy-picker support.
  */
 export async function createAppRegistration(
@@ -25,7 +25,7 @@ export async function createAppRegistration(
   const objectId = app.id ?? "";
   const appId = app.appId ?? "";
   if (!objectId || !appId) throw new Error("Graph returned an empty application");
-  // Create the SP — without this, the app can't be used as a principal for role assignments.
+  // Create the SP: without this, the app can't be used as a principal for role assignments.
   let spId = "";
   try {
     const sp = (await ctx.graphClient.api("/servicePrincipals").post({ appId })) as {

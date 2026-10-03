@@ -5,7 +5,7 @@
  * the instance (see `FAMILY_SSH_USERNAME` in ami-lookup.ts). For instances
  * synced from outside Infrawrench (where only an AMI ID is known), we fall
  * back to substring-matching the AMI name/description against the known
- * vendor conventions — far more durable than a hardcoded map of stale AMI
+ * vendor conventions: far more durable than a hardcoded map of stale AMI
  * IDs that rotate every couple of months.
  *
  * Returns an empty string when nothing matches; callers should fall through
@@ -24,25 +24,25 @@
  *   - AlmaLinux:     "AlmaLinux OS 9.…"
  *   - Fedora:        "Fedora-Cloud-…"
  *   - CentOS Stream: "CentOS Stream …"
- *   - Bottlerocket:  "bottlerocket-…"   (no SSH by design — intentionally unset)
- *   - Windows:       "Windows_Server-…" (no SSH by default — intentionally unset)
+ *   - Bottlerocket:  "bottlerocket-…"   (no SSH by design; intentionally unset)
+ *   - Windows:       "Windows_Server-…" (no SSH by default; intentionally unset)
  */
 const NAME_USERNAME_PATTERNS: Array<{ match: RegExp; username: string }> = [
   // Amazon Linux 2 / Amazon Linux 2023 / EKS-optimized AMIs all use ec2-user.
   { match: /^(amzn2|al2023|amazon-eks-node)/i, username: "ec2-user" },
-  // Ubuntu — both Canonical's "ubuntu/…" and the AWS Marketplace "ubuntu-…-server-…"
+  // Ubuntu: both Canonical's "ubuntu/…" and the AWS Marketplace "ubuntu-…-server-…"
   { match: /\bubuntu\b/i, username: "ubuntu" },
-  // Debian — also recognise "debian/…" name namespaces.
+  // Debian: also recognise "debian/…" name namespaces.
   { match: /^debian[-_/]/i, username: "admin" },
-  // RHEL — Red Hat publishes as "RHEL-9.5.0_HVM-…"
+  // RHEL: Red Hat publishes as "RHEL-9.5.0_HVM-…"
   { match: /^RHEL[-_]/i, username: "ec2-user" },
-  // SUSE Linux Enterprise Server — "suse-sles-15-sp6-…"
+  // SUSE Linux Enterprise Server: "suse-sles-15-sp6-…"
   { match: /^suse-sles/i, username: "ec2-user" },
-  // Rocky Linux — "Rocky-9-EC2-…"
+  // Rocky Linux: "Rocky-9-EC2-…"
   { match: /^Rocky[-_]/i, username: "rocky" },
-  // AlmaLinux OS — "AlmaLinux OS 9.x …"
+  // AlmaLinux OS: "AlmaLinux OS 9.x …"
   { match: /^AlmaLinux\b/i, username: "ec2-user" },
-  // Fedora Cloud — "Fedora-Cloud-Base-…"
+  // Fedora Cloud: "Fedora-Cloud-Base-…"
   { match: /^Fedora-Cloud/i, username: "fedora" },
   // CentOS Stream
   { match: /^CentOS\s+Stream/i, username: "centos" },
@@ -63,7 +63,7 @@ export function ec2SshUsernameFromImageName(name: string): string {
 
 /**
  * Best-effort fallback for callers that only have an AMI ID. We don't keep a
- * hardcoded map — AMI IDs rotate too often to maintain by hand. Returns "".
+ * hardcoded map: AMI IDs rotate too often to maintain by hand. Returns "".
  * Callers with access to DescribeImages metadata should prefer
  * `ec2SshUsernameFromImageName`.
  */

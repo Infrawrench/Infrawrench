@@ -456,7 +456,7 @@ describe("transcribeAudio", () => {
       expect(headers["Content-Type"]).toBe("application/json");
       const body = JSON.parse(String(init?.body));
       expect(body.model).toBe("openai/whisper-large-v3");
-      // The clip already arrives base64 — it must go out untouched.
+      // The clip already arrives base64: it must go out untouched.
       expect(body.input_audio).toEqual({ data: audioBase64, format: "webm" });
       expect(body.language).toBe("en");
       expect(body.response_format).toBe("verbose_json");

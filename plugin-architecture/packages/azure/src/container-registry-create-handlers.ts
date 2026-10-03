@@ -69,7 +69,7 @@ export async function createContainerRegistry(
   const sku = fields["sku"] ?? "Basic";
   // Default the admin user to enabled: without it the registry's docker
   // credential outputs (username/password/dockerConfigJson) are unresolvable
-  // and nothing can `docker login` — a registry that creates fine but can't be
+  // and nothing can `docker login`; a registry that creates fine but can't be
   // pushed to. An explicit "false" still opts out.
   const adminEnabled = (fields["adminEnabled"] ?? "true") !== "false";
 

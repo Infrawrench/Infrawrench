@@ -1,10 +1,10 @@
 /**
  * Vercel public status feed (Atlassian Statuspage,
- * https://www.vercel-status.com — verified 2026-08).
+ * https://www.vercel-status.com: verified 2026-08).
  *
  * Edge-region components are named "ARN1 - Stockholm, Sweden" (IATA-style
- * code + city). Vercel resources are global — there is no region field to
- * correlate against — so edge components map to a display-only
+ * code + city). Vercel resources are global (there is no region field to
+ * correlate against) so edge components map to a display-only
  * "Edge (CODE)" service. Core platform components (Builds, CDN, Serverless
  * Functions, …) escalate to provider-wide; Dashboard and
  * integration/marketplace components are ignored.
@@ -25,7 +25,7 @@ export const statusFeed: StatusFeedDeclaration = {
 /** "ARN1 - Stockholm, Sweden" → ARN1 */
 const EDGE_REGION = /^([A-Z]{3}\d+) - /;
 
-/** Core service components — an incident here affects all Vercel resources. */
+/** Core service components: an incident here affects all Vercel resources. */
 const CORE_COMPONENTS = new Set([
   "Builds",
   "CDN",

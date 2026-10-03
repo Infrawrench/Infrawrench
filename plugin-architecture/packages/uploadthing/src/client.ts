@@ -38,7 +38,7 @@ import {
  *  - Every call is a POST, including the ones that only read. `listFiles`,
  *    `getUsageInfo` and `getAppInfo` all take a POST with a JSON body.
  *
- * Auth is the `x-uploadthing-api-key` header — not a bearer token.
+ * Auth is the `x-uploadthing-api-key` header, not a bearer token.
  */
 
 const API_BASE = "https://api.uploadthing.com";
@@ -48,7 +48,7 @@ const API_BASE = "https://api.uploadthing.com";
  *
  * Listing is **not** capped: the loop pages until UploadThing says there is
  * nothing more. That makes a poll cycle's cost proportional to the app's file
- * count — a six-figure app is six figures of rows every cycle — which is the
+ * count (a six-figure app is six figures of rows every cycle) which is the
  * accepted trade for a listing that is actually complete. `fetchFiles` is
  * memoised per client instance so the several call sites in one request share
  * a single walk rather than repeating it.
@@ -98,7 +98,7 @@ interface UtFileList {
   files: UtFile[];
 }
 
-/** `GET /v6/pollUpload/:fileKey` — the only per-file read, and the only source of MIME type. */
+/** `GET /v6/pollUpload/:fileKey`: the only per-file read, and the only source of MIME type. */
 interface UtPollUpload {
   status: string;
   fileData?: {
@@ -134,14 +134,14 @@ interface UtFileAccess {
  * v7 replaced the separate `UPLOADTHING_SECRET` / `UPLOADTHING_APP_ID` pair
  * with a single `UPLOADTHING_TOKEN`, which is base64-encoded JSON of
  * `{ apiKey, appId, regions[], ingestHost? }`. That token is what the
- * dashboard's copy button hands out, so pasting it is the likely path — but
+ * dashboard's copy button hands out, so pasting it is the likely path, but
  * the REST API wants the bare `sk_live_…` key in the header, and plenty of
  * apps still have a v6 key lying around. Taking both means the user never has
  * to know which one they are holding.
  *
  * The app id in the token is ignored on purpose: `getAppInfo` has to be called
  * anyway for the ACL policy and is authoritative, so trusting a pasted string
- * would only add a way for the two to disagree. The region is the opposite —
+ * would only add a way for the two to disagree. The region is the opposite:
  * it exists nowhere in the REST API, so a token is the only place it can come
  * from, and it stays blank for a raw key.
  */
@@ -162,7 +162,7 @@ export function decodeApiKey(raw: string): { apiKey: string; region?: string } {
       return { apiKey, ...(region ? { region } : {}) };
     }
   } catch {
-    // Not a token. Fall through and send whatever was pasted — an invalid key
+    // Not a token. Fall through and send whatever was pasted: an invalid key
     // produces a 401 from UploadThing, which is a far clearer error than
     // anything this function could invent.
   }
@@ -212,7 +212,7 @@ function isoFromEpochMs(ms: number): string {
   return new Date(ms).toISOString();
 }
 
-/** Percent of quota consumed, clamped and rounded — `null` when there is no quota to divide by. */
+/** Percent of quota consumed, clamped and rounded: `null` when there is no quota to divide by. */
 function quotaPercent(used: number, limit: number): number | null {
   if (!Number.isFinite(limit) || limit <= 0) return null;
   return Math.min(100, Math.round((used / limit) * 100));
@@ -236,7 +236,7 @@ const MAX_DOWNLOAD_REDIRECTS = 5;
  * behalf rather than the user's.
  *
  * `createResource` is the one place in this plugin that dereferences a
- * user-supplied address, and on the cloud it runs inside the API server — so
+ * user-supplied address, and on the cloud it runs inside the API server, so
  * without this, anyone holding `resources:write` could aim it at the metadata
  * service or a service reachable only from inside the cluster and read the
  * response back out as an uploaded file. Scheme and host are both checked:
@@ -244,7 +244,7 @@ const MAX_DOWNLOAD_REDIRECTS = 5;
  * address is never a legitimate place to fetch a user's upload from.
  *
  * This is deliberately a denylist of address *shapes* rather than a resolver
- * check — it cannot stop a hostname that resolves to a private address
+ * check: it cannot stop a hostname that resolves to a private address
  * (DNS rebinding). Closing that needs egress policy, not string parsing; what
  * this does stop is the direct, obvious form.
  */
@@ -296,7 +296,7 @@ function assertFetchableUrl(raw: string): void {
  * Fetch a user-supplied URL for upload, re-checking every redirect hop.
  *
  * Deliberately uses bare `fetch`, not `services.http`. The source is an
- * arbitrary public URL the user typed — not an UploadThing host — so it is
+ * arbitrary public URL the user typed (not an UploadThing host) so it is
  * never on the bastion egress allowlist. Routing it through a bastion-bound
  * `services.http` would reject every real import with "destination not
  * allowlisted". SSRF is handled here instead: scheme + host denylist, and
@@ -354,7 +354,7 @@ function fileNameFromUrl(raw: string): string {
     const segment = parsed.pathname.split("/").filter(Boolean).pop();
     if (segment) return decodeURIComponent(segment);
   } catch {
-    // Not parseable as a URL — createResource validates that separately.
+    // Not parseable as a URL: createResource validates that separately.
   }
   return "upload";
 }
@@ -372,12 +372,12 @@ export class UploadThingClient implements PluginClient {
   /**
    * Per-client cache of `getAppInfo`. Every file listed needs the app id (to
    * build its URL) and the ACL policy (to decide whether the ACL actions are
-   * offered), and clients are constructed per request — without this a page of
+   * offered), and clients are constructed per request: without this a page of
    * 500 files would ask for the same three fields 500 times.
    */
   private appInfoPromise: Promise<UtAppInfo> | undefined;
 
-  /** Memoised full file listing — see {@link fetchFiles}. */
+  /** Memoised full file listing: see {@link fetchFiles}. */
   private filesPromise: Promise<UtFile[]> | undefined;
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
@@ -401,7 +401,7 @@ export class UploadThingClient implements PluginClient {
       init: { method: "POST", body: JSON.stringify(body ?? {}) },
       // Independently spread. Coupling `http` to `caCert` (as the helper this
       // was cribbed from does) means an account with a bastion attached but no
-      // custom CA — the normal case — silently falls through to bare `fetch`
+      // custom CA (the normal case) silently falls through to bare `fetch`
       // and skips bastion routing entirely, despite `uploadthing` being in the
       // egress allowlist.
       ...(this.services?.http ? { http: this.services.http } : {}),
@@ -417,7 +417,7 @@ export class UploadThingClient implements PluginClient {
       headers: { "x-uploadthing-api-key": this.apiKey },
       // Independently spread. Coupling `http` to `caCert` (as the helper this
       // was cribbed from does) means an account with a bastion attached but no
-      // custom CA — the normal case — silently falls through to bare `fetch`
+      // custom CA (the normal case) silently falls through to bare `fetch`
       // and skips bastion routing entirely, despite `uploadthing` being in the
       // egress allowlist.
       ...(this.services?.http ? { http: this.services.http } : {}),
@@ -487,7 +487,7 @@ export class UploadThingClient implements PluginClient {
    * comes from the server, and a server that kept asserting it while returning
    * nothing would otherwise spin forever.
    *
-   * Memoised for the life of this client — one request may list resources,
+   * Memoised for the life of this client: one request may list resources,
    * open the file browser, and resolve a folder delete, and there is no reason
    * for those to each walk the whole app. Clients are constructed per request,
    * so the memo cannot outlive the data by long; mutations clear it explicitly.
@@ -571,7 +571,7 @@ export class UploadThingClient implements PluginClient {
       if (!found) throw new Error(`UploadThing plugin: file "${key}" not found`);
       const resource = this.mapFile(found, info, accountId);
 
-      // `pollUpload` is the only read that returns the MIME type — `listFiles`
+      // `pollUpload` is the only read that returns the MIME type: `listFiles`
       // never does. It is best-effort: it is really an upload-progress endpoint
       // and is not guaranteed to still know about an older file.
       try {
@@ -581,7 +581,7 @@ export class UploadThingClient implements PluginClient {
         const type = poll.fileData?.fileType;
         if (type) resource.fields["contentType"] = type;
       } catch {
-        // No MIME type available — the rest of the resource is unaffected.
+        // No MIME type available: the rest of the resource is unaffected.
       }
       return resource;
     }
@@ -694,7 +694,7 @@ export class UploadThingClient implements PluginClient {
     }
     // On the cloud this runs inside the API server, so an unbounded read is
     // the pod's heap. Check the advertised length first, then count bytes as
-    // they arrive — `content-length` is the server's claim, not a guarantee.
+    // they arrive: `content-length` is the server's claim, not a guarantee.
     const declared = Number(download.headers.get("content-length") ?? "");
     if (Number.isFinite(declared) && declared > MAX_URL_UPLOAD_BYTES) {
       throw new Error(
@@ -743,7 +743,7 @@ export class UploadThingClient implements PluginClient {
   /**
    * The v7 two-step upload: ask for a presigned target, then PUT the bytes to
    * it as multipart form data. `POST /v7/prepareUpload` only requires the name
-   * and size — `slug` names a file route and is optional, which is what makes
+   * and size: `slug` names a file route and is optional, which is what makes
    * uploading from outside an app's own router possible at all.
    *
    * Returns the file key UploadThing assigned.
@@ -765,7 +765,7 @@ export class UploadThingClient implements PluginClient {
     // UploadThing's docs use multipart FormData for this PUT
     // (https://docs.uploadthing.com/uploading-files). FormData can't go through
     // `services.http` (the host bridge only accepts string | Uint8Array), so we
-    // encode the same shape as bytes and prefer the host path — that's what
+    // encode the same shape as bytes and prefer the host path: that's what
     // picks up bastion egress for ingest hosts on the allowlist.
     const bytes = new Uint8Array(await blob.arrayBuffer());
     const multipart = buildMultipartBody([
@@ -872,14 +872,14 @@ export class UploadThingClient implements PluginClient {
   /**
    * List one level of the browser's tree.
    *
-   * UploadThing's namespace is genuinely flat — no folders, no delimiters, no
+   * UploadThing's namespace is genuinely flat: no folders, no delimiters, no
    * server-side prefix filter. But names carry the path a folder upload came
    * from (`git-cliff-2.12.0/completions/git-cliff.bash`), so the tree is
    * derivable: split on "/" and fold everything sharing a first segment into a
    * synthesized directory. Without this the browser is one screen of long
    * identical-looking rows, which is what a real archive upload produces.
    *
-   * `prefix` is navigation, not search — the browser filters its search box
+   * `prefix` is navigation, not search: the browser filters its search box
    * client-side and only calls this to open a directory.
    *
    * Two invariants the rest of this class leans on:
@@ -941,13 +941,13 @@ export class UploadThingClient implements PluginClient {
     file: File,
     onProgress?: (pct: number) => void,
   ): Promise<void> {
-    // The browser passes a target path — for a folder upload that is the
+    // The browser passes a target path, for a folder upload that is the
     // picked folder's relative path (`photos/sub/a.png`), for a plain file
     // just the name.
     //
     // Keep the whole thing as the file *name*. UploadThing creates no folder
     // either way (it has none) and assigns its own opaque key, so the slash is
-    // just a character in a string here — but keeping it is what stops two
+    // just a character in a string here, but keeping it is what stops two
     // files called `a.png` in different subfolders from arriving as two
     // identical-looking rows. `pathMode: "absolute"` browsers prefix a slash;
     // strip it so names don't start with one.
@@ -962,7 +962,7 @@ export class UploadThingClient implements PluginClient {
    *
    * The host's delete signature carries no "is this a directory" flag, so the
    * trailing slash `listStorageObjects` puts on directory keys is what tells
-   * them apart — a real UploadThing file key never ends in one. Without this
+   * them apart: a real UploadThing file key never ends in one. Without this
    * branch, deleting a folder would post its path as a file key and come back
    * `deletedCount: 0`: a silent no-op on a destructive action.
    */
@@ -998,7 +998,7 @@ export class UploadThingClient implements PluginClient {
    * `requestFileAccess`, which mints a presigned URL for **one** file. So the
    * API key itself is what crosses to the driver, and the driver does a
    * per-file grant there. That is also what makes downloading a *private*
-   * file work — the public `ufs.sh` URL 403s unless the ACL is public-read.
+   * file work: the public `ufs.sh` URL 403s unless the ACL is public-read.
    *
    * No new exposure: on web the token never leaves the server, and on desktop
    * the renderer already holds these credentials to construct this client.
@@ -1164,7 +1164,7 @@ export class UploadThingClient implements PluginClient {
       },
       sections,
       // The Files tab (the storage browser below) is the file listing, and it
-      // carries upload, download and delete on the same rows — and browses the
+      // carries upload, download and delete on the same rows, and browses the
       // name paths as folders, which a flat table cannot. Repeating the rows on
       // Overview only added a second listing to disagree with it.
       hiddenChildTypeIds: ["ut-file"],

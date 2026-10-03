@@ -89,14 +89,14 @@ import { type DoEnrichContext, enrichDoDetail } from "./enrich-detail.js";
 
 /**
  * DO's managed-database `connection.uri` doesn't always carry the credentials
- * inline — MongoDB clusters in particular hand back `mongodb+srv://host/...`
+ * inline: MongoDB clusters in particular hand back `mongodb+srv://host/...`
  * with the `user`/`password` exposed only as sibling fields, and feeding that
  * password-less URI to the mongo driver fails with `Password cannot be
  * empty`. Splice the userinfo back in when we have the parts but the URI
  * lacks them. URIs that already include credentials are returned untouched.
  *
  * Done with string manipulation rather than the `URL` class because
- * `mongodb+srv://` is a non-special scheme — the WHATWG URL parser doesn't
+ * `mongodb+srv://` is a non-special scheme: the WHATWG URL parser doesn't
  * round-trip the username/password setters on non-special URLs, so a
  * `new URL(...); u.username = ...; u.toString()` no-ops here.
  */
@@ -146,7 +146,7 @@ function uriHasPassword(uri: string): boolean {
 /**
  * DigitalOcean plugin client.
  * Created per account (per API token) by the host.
- * All API calls are made server-side — the token never reaches the browser.
+ * All API calls are made server-side: the token never reaches the browser.
  */
 export class DigitalOceanClient implements PluginClient {
   private readonly token: string;
@@ -205,8 +205,8 @@ export class DigitalOceanClient implements PluginClient {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // DO's generic `{"id":"forbidden","message":"failed to create agent"}`
-      // tells the user nothing actionable. Translate the common cause —
-      // missing GenAI scopes on the personal access token — into a
+      // tells the user nothing actionable. Translate the common cause
+      // (missing GenAI scopes on the personal access token) into a
       // pointer at the fix. Same root cause for the other gen-ai and
       // dedicated-inference endpoints, so cover both.
       if (
@@ -234,7 +234,7 @@ export class DigitalOceanClient implements PluginClient {
   /**
    * Build (or return the cached) map of DO resource URN → owning project id.
    * Needed because DO returns project membership via `/projects/{id}/resources`
-   * (URNs only), not on the resource itself — and the host filters children by
+   * (URNs only), not on the resource itself, and the host filters children by
    * `parentResourceId === project.id`, so without this lookup every droplet /
    * volume / db / etc. would be invisible inside its project's detail page.
    *
@@ -265,7 +265,7 @@ export class DigitalOceanClient implements PluginClient {
         }),
       );
     } catch {
-      /* projects API failed entirely — leave the map empty */
+      /* projects API failed entirely: leave the map empty */
     }
     this.projectUrnMap = { map, expiresAt: now + 5000 };
     return map;
@@ -306,7 +306,7 @@ export class DigitalOceanClient implements PluginClient {
     resourceId: string,
     accountId: string,
   ): Promise<ResourceInstance> {
-    // Prefer the single-resource endpoint where DO exposes one — it avoids a
+    // Prefer the single-resource endpoint where DO exposes one: it avoids a
     // race against /v2/droplets right after a POST create returns (the list
     // endpoint can take a few seconds to reflect a brand-new droplet, which
     // surfaced as "resource not found" on the post-create navigation).
@@ -321,7 +321,7 @@ export class DigitalOceanClient implements PluginClient {
       } catch (error) {
         // Only fall through to the list-and-find path when the single endpoint
         // reports the droplet missing (the list cache can still carry it
-        // briefly). Transient failures — 429 rate limits especially — must
+        // briefly). Transient failures (429 rate limits especially) must
         // propagate: the list call costs far more against the same limit.
         const message = error instanceof Error ? error.message : String(error);
         if (!/\bAPI error 404\b/.test(message)) throw error;
@@ -329,7 +329,7 @@ export class DigitalOceanClient implements PluginClient {
     }
     // Spaces buckets aren't exposed via the REST API, and a freshly-created
     // bucket can be missing from `listSpacesBuckets` for tens of seconds
-    // while regional S3 endpoints converge on the new key/bucket — which
+    // while regional S3 endpoints converge on the new key/bucket, which
     // surfaced as a post-create 404 on the bucket detail page. HEAD the
     // bucket directly via the S3 virtual-hosted endpoint instead; iterate
     // the known Spaces regions and accept the first 200. This is cheap (no
@@ -379,7 +379,7 @@ export class DigitalOceanClient implements PluginClient {
           }
         }
       }
-      // Fall through — listResources may have a different cached state.
+      // Fall through: listResources may have a different cached state.
     }
     const all = await this.listResources(typeId, accountId);
     const found = all.find((r) => r.id === resourceId);
@@ -391,7 +391,7 @@ export class DigitalOceanClient implements PluginClient {
    * Hourly price of each node size in a DOKS cluster.
    *
    * DigitalOcean bills Droplet-based worker nodes at the published size price,
-   * and `/v2/sizes` carries `price_hourly` for exactly those slugs — so this
+   * and `/v2/sizes` carries `price_hourly` for exactly those slugs, so this
    * is what the account is actually charged for these nodes, not a modelled
    * estimate. Only the sizes this cluster's node pools use are emitted, so the
    * peer never matches a price to a node that isn't ours.
@@ -438,7 +438,7 @@ export class DigitalOceanClient implements PluginClient {
     // resolveOutput receives the full `{accountId}:{typeId}:{externalId}`
     // resource id from the host. DO's REST endpoints take the bare external
     // id (the cluster/database UUID), so peel the prefix off before
-    // interpolating — passing the full id produced
+    // interpolating: passing the full id produced
     // `/kubernetes/clusters/{accountId}:doks-cluster:{uuid}/kubeconfig`,
     // which 404s as "cluster not found".
     const externalId = resourceId.split(":").slice(2).join(":");
@@ -503,7 +503,7 @@ export class DigitalOceanClient implements PluginClient {
             const password = minted?.password || conn["password"] || "";
             if (user && password) {
               // DO signs broker certs with its own CA, so pass it along (base64
-              // in `ssl_ca`) for the driver to verify against — otherwise the
+              // in `ssl_ca`) for the driver to verify against, otherwise the
               // TLS handshake fails with "self signed certificate in chain".
               const ca = await this.resolveCaCertificate(externalId).catch(() => "");
               const params = new URLSearchParams({ sasl: "scram-sha-256", ssl: "true" });
@@ -527,7 +527,7 @@ export class DigitalOceanClient implements PluginClient {
           }
           let uri = ensureUriCredentials(conn["uri"] ?? "", conn["user"], conn["password"]);
           // Postgres/MySQL hand the password back inline on the cluster (or on
-          // the default user via /users) — for those we capture it directly.
+          // the default user via /users), for those we capture it directly.
           // Mongo/Redis/OpenSearch/Kafka never expose the default user's
           // password this way, so we DON'T poke /users for them (it just
           // produces noise + confusing scope errors); they rely entirely on a
@@ -604,7 +604,7 @@ export class DigitalOceanClient implements PluginClient {
     }
 
     if (typeId === "container-registry") {
-      // externalId is the registry name — the endpoint/serverUrl outputs are
+      // externalId is the registry name: the endpoint/serverUrl outputs are
       // pure string builds, no API call needed.
       if (outputKey === "endpoint") return `registry.digitalocean.com/${externalId}`;
       if (outputKey === "serverUrl") return "registry.digitalocean.com";
@@ -614,7 +614,7 @@ export class DigitalOceanClient implements PluginClient {
         outputKey === "password"
       ) {
         // GET /v2/registry/docker-credentials returns a .dockerconfigjson
-        // document verbatim — `{ auths: { "registry.digitalocean.com":
+        // document verbatim: `{ auths: { "registry.digitalocean.com":
         // { auth: base64("user:pass") } } }`, no DO envelope around it.
         // `read_write=true` asks for push+pull credentials (the default is
         // read-only).
@@ -626,7 +626,7 @@ export class DigitalOceanClient implements PluginClient {
         if (!auth) {
           throw new Error("DigitalOcean returned no docker credentials for the registry.");
         }
-        // base64 → "user:pass". Split on the FIRST colon — DO uses the API
+        // base64 → "user:pass". Split on the FIRST colon: DO uses the API
         // token for both halves today, but only the username is guaranteed
         // colon-free.
         const decoded = atob(auth);
@@ -639,7 +639,7 @@ export class DigitalOceanClient implements PluginClient {
     }
 
     if (typeId === "vpc" && outputKey === "vpcId") {
-      // The VPC uuid is the externalId — no API call needed.
+      // The VPC uuid is the externalId: no API call needed.
       return externalId;
     }
 
@@ -648,7 +648,7 @@ export class DigitalOceanClient implements PluginClient {
     }
 
     if (typeId === "db-user" && outputKey === "password") {
-      // We never look the password up from DO — it's only available the
+      // We never look the password up from DO: it's only available the
       // instant the user was created. The plaintext lives in our local
       // secret store, keyed by the resource id.
       const value = await this.services?.secrets?.getPlaintext(resourceId, "password");
@@ -749,7 +749,7 @@ export class DigitalOceanClient implements PluginClient {
 
   /**
    * Quota readings. Three requests: the account's limits, then one
-   * `per_page=1` count each for droplets and reserved IPs — DigitalOcean
+   * `per_page=1` count each for droplets and reserved IPs; DigitalOcean
    * reports the ceilings and nothing else, so usage is counted from the
    * pagination envelope. See `quotas.ts` for the two field names that are not
    * what they look like.
@@ -765,7 +765,7 @@ export class DigitalOceanClient implements PluginClient {
   /**
    * Monthly estimate with line items. The size picker only carries the
    * per-node price, so the types that scale horizontally have to multiply it
-   * by their node count here — that multiplication is the whole reason the
+   * by their node count here: that multiplication is the whole reason the
    * form's headline figure can't just read the picker.
    *
    * Droplet is deliberately absent: its picker already shows the size's own
@@ -933,7 +933,7 @@ export class DigitalOceanClient implements PluginClient {
         break;
       }
       case "container-registry": {
-        // DELETE /v2/registry takes no id — it deletes THE account's
+        // DELETE /v2/registry takes no id: it deletes THE account's
         // registry, whatever it's called. Guard against a stale resource id
         // pointing at a registry that has since been replaced: verify the
         // current registry is the one being asked about before firing.
@@ -973,7 +973,7 @@ export class DigitalOceanClient implements PluginClient {
         await this.fetch<unknown>(`/volumes/${externalId}`, { method: "DELETE" });
         break;
       case "reserved-ip":
-        // The address itself is the id. DELETE releases it back to the pool —
+        // The address itself is the id. DELETE releases it back to the pool:
         // irreversible, you don't get the same address again. DO returns 422
         // while the IP is still assigned to a Droplet; that message surfaces
         // to the user verbatim, which reads better than pre-unassigning
@@ -981,18 +981,18 @@ export class DigitalOceanClient implements PluginClient {
         await this.fetch<unknown>(`/reserved_ips/${externalId}`, { method: "DELETE" });
         break;
       case "snapshot":
-        // /v2/snapshots/{id} covers both droplet and volume snapshots — DO
+        // /v2/snapshots/{id} covers both droplet and volume snapshots: DO
         // uses the same endpoint family regardless of source type.
         await this.fetch<unknown>(`/snapshots/${externalId}`, { method: "DELETE" });
         break;
       case "image":
         // Only user-owned images (snapshots/backups/custom uploads) are
-        // deletable — DO returns 403 for distribution images, surfaced as a
+        // deletable: DO returns 403 for distribution images, surfaced as a
         // host-level error.
         await this.fetch<unknown>(`/images/${externalId}`, { method: "DELETE" });
         break;
       case "nfs-share": {
-        // externalId format: "{region}/{shareId}" — the API endpoint takes
+        // externalId format: "{region}/{shareId}"; the API endpoint takes
         // a `region` query param alongside the bare share id.
         const parts = externalId.split("/");
         const region = parts[0]!;
@@ -1031,7 +1031,7 @@ export class DigitalOceanClient implements PluginClient {
         await this.fetch<unknown>(`/gen-ai/models/api_keys/${externalId}`, { method: "DELETE" });
         break;
       case "agent-api-key": {
-        // Composite externalId `{agentUuid}/{keyUuid}` — both halves are
+        // Composite externalId `{agentUuid}/{keyUuid}`: both halves are
         // required because DO scopes the endpoint to the parent agent.
         const parts = externalId.split("/");
         const agentUuid = parts[0]!;
@@ -1055,7 +1055,7 @@ export class DigitalOceanClient implements PluginClient {
     const externalId = resourceId.split(":").pop() ?? "";
 
     if (typeId === "gen-ai-agent") {
-      // DO's PUT /v2/gen-ai/agents/{uuid} accepts only the fields supplied —
+      // DO's PUT /v2/gen-ai/agents/{uuid} accepts only the fields supplied:
       // map the editable resource fields to the API's snake_case keys. A
       // `model_uuid`/`model_router_uuid` change is the swap-router flow: if
       // both are touched in the same edit, the explicit user intent is to
@@ -1074,7 +1074,7 @@ export class DigitalOceanClient implements PluginClient {
         if (fields[src] !== undefined) body[dst] = fields[src];
       }
       // temperature / max_tokens / k are typed `string` in the host diff but
-      // the API wants numbers — coerce, dropping empty strings.
+      // the API wants numbers: coerce, dropping empty strings.
       for (const key of ["temperature", "max_tokens", "k"] as const) {
         if (body[key] !== undefined) {
           const n = Number(body[key]);
@@ -1083,7 +1083,7 @@ export class DigitalOceanClient implements PluginClient {
         }
       }
       // Swap between a model and a router. `model_uuid` and
-      // `model_router_uuid` are mutually exclusive in DO's API — picking a
+      // `model_router_uuid` are mutually exclusive in DO's API: picking a
       // router moves model_uuid to "" and vice versa. If only one side
       // changed, send only that side; if both, prefer router when set.
       const routerTouched = fields["modelRouterUuid"] !== undefined;
@@ -1093,7 +1093,7 @@ export class DigitalOceanClient implements PluginClient {
       } else if (modelTouched && fields["modelUuid"]) {
         body["model_uuid"] = fields["modelUuid"];
       } else if (routerTouched && !fields["modelRouterUuid"] && fields["modelUuid"]) {
-        // Router was cleared but a model UUID is still present — switch back
+        // Router was cleared but a model UUID is still present: switch back
         // to the single-model path explicitly.
         body["model_uuid"] = fields["modelUuid"];
       }
@@ -1148,7 +1148,7 @@ export class DigitalOceanClient implements PluginClient {
 
     if (typeId === "gen-ai-knowledge-base") {
       // PUT /v2/gen-ai/knowledge_bases/{uuid} accepts only name, tags,
-      // project_id, and database_id — region + embedding model are immutable
+      // project_id, and database_id: region + embedding model are immutable
       // (they're locked `editable: false` on the resource type). `tags` is a
       // comma-separated string in the host diff; split it into the API's array.
       const body: Record<string, unknown> = { uuid: externalId };
@@ -1254,7 +1254,7 @@ export class DigitalOceanClient implements PluginClient {
 
     if (typeId === "droplet") {
       // Rename and/or resize. Resize is DO's `resize` droplet action with
-      // `disk: false` — CPU/RAM only, reversible, and DO powers the Droplet
+      // `disk: false`: CPU/RAM only, reversible, and DO powers the Droplet
       // off for it automatically. DO rejects targets whose included disk is
       // smaller than the Droplet's current disk; that error surfaces as-is.
       //
@@ -1289,7 +1289,7 @@ export class DigitalOceanClient implements PluginClient {
       if (failures.length > 0) {
         throw new Error(`DigitalOcean droplet update: ${failures.join("; ")}`);
       }
-      // Both actions are asynchronous on DO's side — an immediate re-read can
+      // Both actions are asynchronous on DO's side: an immediate re-read can
       // still report the old name/size while the action runs. Overlay the
       // accepted values so the returned resource reflects the requested end
       // state (the sleep/wake "don't fight the sync" stance); the next sync
@@ -1310,7 +1310,7 @@ export class DigitalOceanClient implements PluginClient {
     if (typeId !== "project") {
       throw new Error(`DigitalOcean plugin: updateResource not supported for type "${typeId}"`);
     }
-    // DO's PATCH /v2/projects/{id} accepts only the fields supplied — name,
+    // DO's PATCH /v2/projects/{id} accepts only the fields supplied: name,
     // description, purpose, environment. Send through whatever the caller
     // changed; the host has already diffed against the prior values.
     const body: Record<string, string> = {};
@@ -1430,7 +1430,7 @@ export class DigitalOceanClient implements PluginClient {
         .filter(Boolean);
       if (allowedVpcs.includes(dropletVpc)) return;
       const shareExternalId = share.externalId ?? sourceResourceId.split(":").slice(2).join(":");
-      // externalId is `{region}/{id}` — peel off the region prefix to
+      // externalId is `{region}/{id}`: peel off the region prefix to
       // get the bare share id for the actions URL.
       const shareId = shareExternalId.includes("/")
         ? shareExternalId.split("/")[1]!
@@ -1576,12 +1576,12 @@ export class DigitalOceanClient implements PluginClient {
       }
       if (actionId === "regenerate-key") {
         // Not exposed as a header action on the agent itself, but on the
-        // child key — kept here for symmetry once the row-action lands.
+        // child key: kept here for symmetry once the row-action lands.
         return;
       }
     }
     if (typeId === "agent-api-key" && actionId === "regenerate") {
-      // Composite resourceId — parse {agentUuid}/{keyUuid} from the
+      // Composite resourceId: parse {agentUuid}/{keyUuid} from the
       // externalId, then PUT .../regenerate. DO returns a fresh secret_key
       // on this call (one-shot, same as create).
       const externalId = resourceId.split(":").slice(2).join(":");
@@ -1614,7 +1614,7 @@ export class DigitalOceanClient implements PluginClient {
 
   /**
    * Parameterised droplet & volume commands plus the Gradient AI agent
-   * playground — see `./nosql-console.ts`.
+   * playground: see `./nosql-console.ts`.
    */
   async executeNoSqlCommand(
     typeId: string,
@@ -1628,7 +1628,7 @@ export class DigitalOceanClient implements PluginClient {
 
   /**
    * Stream tokens from a deployed Gradient AI agent's OpenAI-compatible chat
-   * completions endpoint — see `./nosql-console.ts`. The body of the iterable
+   * completions endpoint: see `./nosql-console.ts`. The body of the iterable
    * is an async generator so plugins (and the host's IPC bridge) can
    * `for await (const event of stream) { … }`.
    */
@@ -1745,7 +1745,7 @@ export class DigitalOceanClient implements PluginClient {
 
   /**
    * Logs tab for managed-databases. DO doesn't expose process logs over the
-   * API — only the cluster event stream (creates, scale events, maintenance,
+   * API, only the cluster event stream (creates, scale events, maintenance,
    * power cycles). We surface that as the closest available signal.
    */
   async getLogs(
@@ -1806,7 +1806,7 @@ export class DigitalOceanClient implements PluginClient {
 
   /**
    * Pre-fetch the catalog data the detail page's action prompts need to render
-   * pickers instead of raw text inputs — see `./enrich-detail.ts`.
+   * pickers instead of raw text inputs: see `./enrich-detail.ts`.
    */
   async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
     return enrichDoDetail(this.enrichCtx, resource);
@@ -1909,7 +1909,7 @@ export class DigitalOceanClient implements PluginClient {
     if (!region) {
       // Cold cache: a list against any region returns 301 with the home region
       // in the `x-amz-bucket-region` header. The signing region doesn't have to
-      // match the bucket region for this probe — S3 surfaces the redirect for
+      // match the bucket region for this probe: S3 surfaces the redirect for
       // any signed GET on the bucket root.
       const probeRegion = SPACES_REGIONS[0] ?? "nyc3";
       const probeHost = `${bucket}.${probeRegion}.digitaloceanspaces.com`;

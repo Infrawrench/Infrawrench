@@ -27,7 +27,7 @@ export const IngressResourceType = rt({
       label: "in namespace",
     },
     // An Ingress can only name Services in its own namespace, and a Service
-    // name is only unique within one — both sides store `namespace/name`.
+    // name is only unique within one: both sides store `namespace/name`.
     {
       fieldKey: "services",
       targetTypeId: "k8s-service",

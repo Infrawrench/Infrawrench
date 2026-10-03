@@ -205,7 +205,7 @@ describe("pricing-estimates", () => {
       const est = estimateAzureCost("azure-vm", { size: "S", bootDiskSizeGb: "64" }, rates);
       expect(est?.monthlyAmount).toBeCloseTo(0.1 * HOURS_PER_MONTH + 64 * 0.1, 1);
       expect(est?.currency).toBe("USD");
-      // Compute first — line items are ordered largest-first.
+      // Compute first: line items are ordered largest-first.
       expect(est?.lineItems.map((l) => l.label)).toEqual(["Virtual machine (S)", "OS disk"]);
       expect(est?.lineItems[1]).toMatchObject({ quantity: 64, unit: "GB" });
       // The total is the sum of what is itemized, never an independent figure.
@@ -291,7 +291,7 @@ describe("pricing-estimates", () => {
       expect(estimateAzureCost("azure-sql-database", { sku: "Basic" }, rates)?.monthlyAmount).toBe(
         5,
       );
-      // A $0 rate is "free", not "unknown" — and the two must not be conflated
+      // A $0 rate is "free", not "unknown", and the two must not be conflated
       // into the same answer. The consumption plan has no standing charge, so
       // it has no line item and therefore no estimate to quote.
       expect(estimateAzureCost("azure-function-app", { sku: "Y1" }, rates)).toBeNull();

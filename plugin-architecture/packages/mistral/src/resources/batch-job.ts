@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 /**
  * An asynchronous batch inference job.
  *
- * `GET https://api.mistral.ai/v1/batch/jobs` — paginated with
+ * `GET https://api.mistral.ai/v1/batch/jobs`: paginated with
  * `page`/`page_size`; cancel is `POST /v1/batch/jobs/{job_id}/cancel`.
  * https://docs.mistral.ai/api/endpoint/batch
  */
@@ -28,7 +28,7 @@ export const MistralBatchJobResourceType = rt({
     f("completedAt", "Completed", { required: false }),
   ],
   outputs: [o("jobId", "Job ID"), o("outputFile", "Output File ID")],
-  // `model` is a `/v1/models` id; the file fields are `/v1/files` ids —
+  // `model` is a `/v1/models` id; the file fields are `/v1/files` ids:
   // `inputFiles` is a comma-joined list, one edge per entry.
   dependsOn: [
     { fieldKey: "model", targetTypeId: "mistral-model", label: "runs" },

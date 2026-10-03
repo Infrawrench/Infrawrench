@@ -29,7 +29,7 @@ import {
 const API_BASE = "https://api.together.ai/v1";
 /**
  * The v2 DMI operations carry a per-operation server override in Together's
- * OpenAPI document — `api.together.ai/v2`, NOT the global inference host
+ * OpenAPI document: `api.together.ai/v2`, NOT the global inference host
  * `api-inference.together.ai/v2`. Getting this wrong 404s.
  */
 const API_BASE_V2 = "https://api.together.ai/v2";
@@ -141,7 +141,7 @@ const DEFAULT_TTS_VOICE = "af_heart";
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
-// Wire shapes — mirrored from https://docs.together.ai/openapi.yaml (2.0.0)
+// Wire shapes: mirrored from https://docs.together.ai/openapi.yaml (2.0.0)
 // ---------------------------------------------------------------------------
 
 interface WhoAmI {
@@ -259,7 +259,7 @@ interface BatchJob {
 }
 
 interface EvaluationJob {
-  /** There is no `id` on this object — `workflow_id` is the identifier. */
+  /** There is no `id` on this object: `workflow_id` is the identifier. */
   workflow_id?: string;
   type?: string;
   owner_id?: string;
@@ -480,7 +480,7 @@ function extensionForMime(mimeType: string): string {
 /**
  * Together AI plugin client. One instance per account (per API key).
  *
- * Together publishes **no usage or cost API and no key-management API** — the
+ * Together publishes **no usage or cost API and no key-management API**: the
  * only account endpoint is `GET /v1/whoami`, which returns identity. This
  * plugin therefore implements no `fetchCostData` and says so in the UI rather
  * than rendering an empty spend chart.
@@ -560,7 +560,7 @@ export class TogetherClient implements PluginClient {
         return (data.data ?? []).map((hardware) => this.mapHardware(hardware, accountId));
       }
       case "batch": {
-        // Bare array, not a `{ data }` envelope — the one v1 list that differs.
+        // Bare array, not a `{ data }` envelope: the one v1 list that differs.
         const batches = await this.fetch<BatchJob[]>("/batches");
         return (Array.isArray(batches) ? batches : []).map((batch) =>
           this.mapBatch(batch, accountId),
@@ -911,7 +911,7 @@ export class TogetherClient implements PluginClient {
     const externalId = externalIdOf(resourceId);
     switch (typeId) {
       case "endpoint": {
-        // The by-id response is richer than the list item — it adds
+        // The by-id response is richer than the list item: it adds
         // display_name, hardware and autoscaling.
         const endpoint = await this.fetch<DedicatedEndpoint>(
           `/endpoints/${encodeURIComponent(externalId)}`,
@@ -937,7 +937,7 @@ export class TogetherClient implements PluginClient {
         return this.mapEvaluation(evaluation, accountId);
       }
       case "model": {
-        // There is no `GET /v1/models/{id}` — pick the entry out of the list.
+        // There is no `GET /v1/models/{id}`: pick the entry out of the list.
         const models = await this.fetchModels();
         const raw = models.find((model) => model.id === externalId);
         if (!raw) throw new Error(`Together plugin: model ${externalId} not found`);
@@ -1250,7 +1250,7 @@ export class TogetherClient implements PluginClient {
   }
 
   /**
-   * A v2 DMI endpoint cannot be deleted while it still has deployments —
+   * A v2 DMI endpoint cannot be deleted while it still has deployments:
    * Together's own docs say "delete its deployments first". The user asked to
    * delete the endpoint, so we do the cascade for them rather than surfacing a
    * 409 they'd have to decode.
@@ -1473,7 +1473,7 @@ export class TogetherClient implements PluginClient {
   }
 
   /**
-   * `POST /v1/audio/speech` — JSON in, **raw audio bytes out** (the streaming
+   * `POST /v1/audio/speech`: JSON in, **raw audio bytes out** (the streaming
    * variant is SSE with base64 frames; we use the non-streaming path).
    * mp3 is requested explicitly so a browser `<audio>` element can play it.
    * https://docs.together.ai/reference/audio-speech
@@ -1516,7 +1516,7 @@ export class TogetherClient implements PluginClient {
         response_format: "mp3",
       }),
     });
-    // Branch on status BEFORE touching the body — errors come back as JSON
+    // Branch on status BEFORE touching the body: errors come back as JSON
     // where the success path is binary.
     if (!response.ok) {
       throw new Error(
@@ -1542,7 +1542,7 @@ export class TogetherClient implements PluginClient {
   }
 
   /**
-   * `POST /v1/audio/transcriptions` — `multipart/form-data`. We request
+   * `POST /v1/audio/transcriptions`: `multipart/form-data`. We request
    * `verbose_json` with word granularity and `diarize=true` so the transcript
    * comes back with per-word timings *and* speaker labels.
    * https://docs.together.ai/reference/audio-transcriptions
@@ -1561,7 +1561,7 @@ export class TogetherClient implements PluginClient {
       throw new Error(`Together plugin: transcribeAudio not supported for type "${typeId}"`);
     }
 
-    // `payload.mimeType` is whatever MediaRecorder produced —
+    // `payload.mimeType` is whatever MediaRecorder produced:
     // `audio/webm;codecs=opus` on Chromium, `audio/mp4` on Safari. Forward it
     // verbatim; Whisper accepts both and we must not transcode.
     const bytes = base64ToBytes(payload.audioBase64);
@@ -1581,7 +1581,7 @@ export class TogetherClient implements PluginClient {
     const started = Date.now();
     const response = await fetch(`${API_BASE}/audio/transcriptions`, {
       method: "POST",
-      // No Content-Type — `fetch` sets it along with the multipart boundary.
+      // No Content-Type: `fetch` sets it along with the multipart boundary.
       headers: { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json" },
       body: form,
     });

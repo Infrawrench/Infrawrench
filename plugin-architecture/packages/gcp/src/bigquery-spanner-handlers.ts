@@ -199,7 +199,7 @@ async function spannerRunSql(
 
     return { rows, columns, durationMs: Date.now() - start };
   } finally {
-    // 3. Delete session (fire-and-forget — don't block on cleanup)
+    // 3. Delete session (fire-and-forget: don't block on cleanup)
     fetch(`https://spanner.googleapis.com/v1/${sessionName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },

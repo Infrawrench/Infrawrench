@@ -380,7 +380,7 @@ describe("getResource enrichment", () => {
 });
 
 describe("synthesizeSpeech", () => {
-  // 4 bytes of "PCM" — the actual samples don't matter, the framing does.
+  // 4 bytes of "PCM": the actual samples don't matter, the framing does.
   const pcm = Uint8Array.from([0x11, 0x22, 0x33, 0x44]);
   const pcmBase64 = Buffer.from(pcm).toString("base64");
 
@@ -549,7 +549,7 @@ describe("transcribeAudio", () => {
       inline_data: { mime_type: string; data: string };
     };
     expect(inline.inline_data.mime_type).toBe("audio/wav");
-    // Base64 must survive untouched — no transcoding, no re-encoding.
+    // Base64 must survive untouched: no transcoding, no re-encoding.
     expect(inline.inline_data.data).toBe(audioBase64);
 
     expect(result.text).toBe("hello world");

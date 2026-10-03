@@ -17,7 +17,7 @@ export const AccessPolicyResourceType = rt({
   ],
   outputs: [],
   // The Access application's external id is the bare app id, which is exactly
-  // what the lister now stores — no template needed.
+  // what the lister now stores: no template needed.
   dependsOn: [
     { fieldKey: "applicationId", targetTypeId: "access-application", label: "policy for" },
   ],

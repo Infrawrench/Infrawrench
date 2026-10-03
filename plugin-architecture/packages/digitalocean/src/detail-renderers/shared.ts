@@ -1,5 +1,5 @@
 /**
- * Parsing helpers shared by the per-domain detail renderers. Leaf module —
+ * Parsing helpers shared by the per-domain detail renderers. Leaf module:
  * imports nothing from the plugin so every renderer can depend on it.
  */
 
@@ -15,7 +15,7 @@ export function safeParseJson(value: string): unknown {
   }
 }
 
-/** Same, but always yields an array — used for the picker catalogs. */
+/** Same, but always yields an array: used for the picker catalogs. */
 export function parseJsonArray<T>(value: unknown): T[] {
   if (typeof value !== "string" || !value) return [];
   try {

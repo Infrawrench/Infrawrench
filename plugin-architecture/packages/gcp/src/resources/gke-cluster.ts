@@ -41,7 +41,7 @@ export const GkeClusterResourceType = rt({
     }),
   ],
   // `serviceAccount` is a node service account email, matching that type's
-  // external id — unless the node pool left it as the literal "default", which
+  // external id, unless the node pool left it as the literal "default", which
   // names no synced resource and so produces no edge. `subnetwork` is scoped by
   // the cluster's region to line up with a subnet's external id.
   dependsOn: [
@@ -75,7 +75,7 @@ export const GkeClusterResourceType = rt({
       credentialMappings: [
         { outputKey: "kubeconfig", credentialKey: "kubeconfig" },
         // What this cluster's nodes cost per hour. The kubernetes plugin has
-        // no way to know — the money is on THIS account — so it arrives the
+        // no way to know (the money is on THIS account) so it arrives the
         // same way the kubeconfig does. Resolves to "" when we have no price,
         // which the peer reads as "show capacity without money".
         { outputKey: "nodeHourlyRates", credentialKey: "nodeHourlyRates" },

@@ -33,7 +33,7 @@ export const ServiceResourceType = rt({
   ],
   iconKey: "database",
   // Sleep/wake schedules: PATCH …/services/{id}/state with command start /
-  // stop. "idle" counts as running — it is auto-idled compute that wakes on
+  // stop. "idle" counts as running: it is auto-idled compute that wakes on
   // demand, and ClickHouse Cloud accepts a stop from it.
   lifecycle: {
     startActionId: "start",

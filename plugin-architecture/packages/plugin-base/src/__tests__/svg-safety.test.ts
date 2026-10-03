@@ -6,7 +6,7 @@ import { pluginManifestSchema } from "../validation/index.js";
 /**
  * The shapes real plugin logos take. Every construct here appears in at least
  * one of the 49 bundled manifests, so a rule that rejects any of these would be
- * a rule that breaks the product — which is the other half of what this file
+ * a rule that breaks the product, which is the other half of what this file
  * is for.
  */
 const REAL_LOGO_SHAPES: ReadonlyArray<readonly [string, string]> = [
@@ -234,7 +234,7 @@ describe("findUnsafeSvgConstructs", () => {
 
 /**
  * The predicate is only worth anything if the manifest schema actually applies
- * it — both loaders drop a plugin whose manifest fails to parse, and that drop
+ * it: both loaders drop a plugin whose manifest fails to parse, and that drop
  * is the enforcement.
  */
 describe("pluginManifestSchema logoSvg refinement", () => {

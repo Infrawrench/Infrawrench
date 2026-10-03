@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A file uploaded to GroqCloud — batch input/output JSONL, or a LoRA adapter
+ * A file uploaded to GroqCloud: batch input/output JSONL, or a LoRA adapter
  * archive destined for a fine-tuning registration.
  *
  * `GET https://api.groq.com/openai/v1/files`

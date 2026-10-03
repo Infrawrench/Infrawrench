@@ -2,13 +2,13 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
  * `GET /v1/organization/projects/{project_id}/api_keys` and
- * `DELETE …/api_keys/{api_key_id}` — verified 2026-07-29 against openapi.yaml
+ * `DELETE …/api_keys/{api_key_id}`: verified 2026-07-29 against openapi.yaml
  * v2.3.0 (`list-project-api-keys`, `delete-project-api-key`).
  *
  * There is deliberately no create path: the API exposes no way to mint a
  * user-owned project key. The only key the API will create is a service
  * account's, which is offered as a credential format on the Project itself.
- * Deleting a key that belongs to a service account is rejected with a 400 —
+ * Deleting a key that belongs to a service account is rejected with a 400:
  * remove the service account instead.
  */
 export const ProjectApiKeyResourceType = rt({
@@ -55,7 +55,7 @@ export const ProjectApiKeyResourceType = rt({
     },
   ],
   // `lastUsedAt` is a genuine last-request timestamp, and the rotation budget
-  // above is what the access review reads for "past its rotation age" — it
+  // above is what the access review reads for "past its rotation age": it
   // does not keep a budget of its own.
   principalRole: {
     role: "key",

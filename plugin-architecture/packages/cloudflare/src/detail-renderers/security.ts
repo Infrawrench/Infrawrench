@@ -371,7 +371,7 @@ export function renderTurnstileWidgetDetail(
 ): DetailViewSchema {
   const fields = resource.fields;
   // The sitekey is public (it ships in the page markup) and is also the
-  // resource's external id — see turnstile-client.ts.
+  // resource's external id: see turnstile-client.ts.
   const siteKey = resource.externalId ?? "";
 
   // Implicit-rendering embed: drop the script in <head> (or before </body>) and
@@ -386,7 +386,7 @@ export function renderTurnstileWidgetDetail(
     `</form>`,
   ].join("\n");
 
-  // Server-side validation. The secret is never shown here — read it from the
+  // Server-side validation. The secret is never shown here: read it from the
   // widget's Secret Key output / the TURNSTILE_SECRET_KEY credentials export.
   const verifySnippet = [
     `// Verify the token from the form's "cf-turnstile-response" field.`,

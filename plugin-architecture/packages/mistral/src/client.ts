@@ -25,7 +25,7 @@ import {
 const BASE = "https://api.mistral.ai/v1";
 
 /**
- * Admin plane — a *different* base and a *different* header. Mistral's own
+ * Admin plane: a *different* base and a *different* header. Mistral's own
  * docs are inconsistent about whether it wants `x-api-key` (the Admin API
  * overview) or a bearer token (the endpoint reference), so we send both and
  * let the server pick.
@@ -48,9 +48,9 @@ const MAX_TTS_CHARACTERS = 4000;
 
 /**
  * Used only when the live `GET /v1/models` catalogue hasn't been stashed on
- * the resource yet. Mistral's docs disagree on the TTS slug — the speech
+ * the resource yet. Mistral's docs disagree on the TTS slug: the speech
  * endpoint's own example posts `voxtral-mini-tts-2603` while the model
- * overview table lists `voxtral-tts-2603` — so the live list always wins and
+ * overview table lists `voxtral-tts-2603`, so the live list always wins and
  * these are a last resort.
  */
 const FALLBACK_STT_MODEL = "voxtral-mini-latest";
@@ -230,7 +230,7 @@ function isSttModel(id: string): boolean {
  * degrades to an empty listing when the admin key is absent rather than
  * failing the sync.
  *
- * Pagination is deliberately not factored into one helper — Mistral genuinely
+ * Pagination is deliberately not factored into one helper: Mistral genuinely
  * uses three schemes (`limit`/`offset` for admin keys and voices' request
  * side, `page`/`page_size` for files, batches and fine-tuning, and nothing at
  * all for `/models`).
@@ -270,7 +270,7 @@ export class MistralClient implements PluginClient {
     });
   }
 
-  /** Admin-plane JSON call — different base, different header, Enterprise-only. */
+  /** Admin-plane JSON call: different base, different header, Enterprise-only. */
   private async adminFetch<T>(path: string, options?: RequestInit): Promise<T> {
     if (!this.hasAdmin) {
       throw new Error(
@@ -314,7 +314,7 @@ export class MistralClient implements PluginClient {
   }
 
   /**
-   * https://docs.mistral.ai/api/endpoint/models — `GET /v1/models`.
+   * https://docs.mistral.ai/api/endpoint/models: `GET /v1/models`.
    * No pagination parameters exist on this endpoint; the whole catalogue
    * comes back in one response.
    */
@@ -358,7 +358,7 @@ export class MistralClient implements PluginClient {
   }
 
   /**
-   * https://docs.mistral.ai/api/endpoint/audio/voices — `GET /v1/audio/voices`.
+   * https://docs.mistral.ai/api/endpoint/audio/voices: `GET /v1/audio/voices`.
    * Request side takes `limit`/`offset`; the envelope reports
    * `page`/`page_size`/`total`/`total_pages`.
    */
@@ -413,7 +413,7 @@ export class MistralClient implements PluginClient {
     };
   }
 
-  /** https://docs.mistral.ai/api/endpoint/files — `GET /v1/files` (`page`/`page_size`). */
+  /** https://docs.mistral.ai/api/endpoint/files: `GET /v1/files` (`page`/`page_size`). */
   private async listFiles(accountId: string): Promise<ResourceInstance[]> {
     const pageSize = 100;
     const out: MistralFile[] = [];
@@ -512,7 +512,7 @@ export class MistralClient implements PluginClient {
     };
   }
 
-  /** https://docs.mistral.ai/api/endpoint/batch — `GET /v1/batch/jobs` (`page`/`page_size`). */
+  /** https://docs.mistral.ai/api/endpoint/batch: `GET /v1/batch/jobs` (`page`/`page_size`). */
   private async listBatchJobs(accountId: string): Promise<ResourceInstance[]> {
     const pageSize = 100;
     const out: MistralBatchJob[] = [];
@@ -561,7 +561,7 @@ export class MistralClient implements PluginClient {
   }
 
   /**
-   * https://docs.mistral.ai/api/endpoint/beta/admin/api-keys —
+   * https://docs.mistral.ai/api/endpoint/beta/admin/api-keys:
    * `GET /v1/admin/api-keys` (`limit`/`offset`).
    *
    * Enterprise-only. Without an admin key this returns nothing rather than
@@ -626,7 +626,7 @@ export class MistralClient implements PluginClient {
       // `renderDetail` is synchronous, but the Speech tab's pickers need the
       // live voice catalogue and the live audio-model list. Fetch them here
       // and stash them as JSON under `__`-prefixed keys, then parse them back
-      // in the renderer — the same trick the Cloudflare queue plugin uses for
+      // in the renderer: the same trick the Cloudflare queue plugin uses for
       // `__consumers__`.
       const [voices, models] = await Promise.all([
         this.fetchAllVoices().catch(() => [] as MistralVoice[]),
@@ -688,7 +688,7 @@ export class MistralClient implements PluginClient {
     }
     const voiceId = resourceId.slice(`${accountId}:${typeId}:`.length);
 
-    // https://docs.mistral.ai/api/endpoint/audio/voices — PATCH /v1/audio/voices/{voice_id}
+    // https://docs.mistral.ai/api/endpoint/audio/voices: PATCH /v1/audio/voices/{voice_id}
     const body: Record<string, unknown> = {};
     if (fields["name"] !== undefined) body["name"] = fields["name"];
     if (fields["gender"] !== undefined) body["gender"] = fields["gender"];
@@ -711,24 +711,24 @@ export class MistralClient implements PluginClient {
     if (!externalId) throw new Error(`Mistral plugin: cannot parse resource id "${resourceId}"`);
 
     switch (typeId) {
-      // https://docs.mistral.ai/api/endpoint/files — DELETE /v1/files/{file_id}
+      // https://docs.mistral.ai/api/endpoint/files: DELETE /v1/files/{file_id}
       case "mistral-file":
         await this.fetch<unknown>(`/files/${encodeURIComponent(externalId)}`, { method: "DELETE" });
         return;
-      // https://docs.mistral.ai/api/endpoint/batch — DELETE /v1/batch/jobs/{job_id}
+      // https://docs.mistral.ai/api/endpoint/batch: DELETE /v1/batch/jobs/{job_id}
       case "mistral-batch-job":
         await this.fetch<unknown>(`/batch/jobs/${encodeURIComponent(externalId)}`, {
           method: "DELETE",
         });
         return;
-      // https://docs.mistral.ai/api/endpoint/audio/voices — DELETE /v1/audio/voices/{voice_id}
+      // https://docs.mistral.ai/api/endpoint/audio/voices: DELETE /v1/audio/voices/{voice_id}
       // Only workspace clones can be removed; presets belong to Mistral.
       case "mistral-voice":
         await this.fetch<unknown>(`/audio/voices/${encodeURIComponent(externalId)}`, {
           method: "DELETE",
         });
         return;
-      // Admin plane — DELETE /v1/admin/api-keys/{key_id}
+      // Admin plane: DELETE /v1/admin/api-keys/{key_id}
       case "mistral-api-key":
         await this.adminFetch<unknown>(`/api-keys/${encodeURIComponent(externalId)}`, {
           method: "DELETE",
@@ -739,7 +739,7 @@ export class MistralClient implements PluginClient {
     }
   }
 
-  /** https://docs.mistral.ai/api/endpoint/batch — `POST /v1/batch/jobs/{job_id}/cancel` */
+  /** https://docs.mistral.ai/api/endpoint/batch: `POST /v1/batch/jobs/{job_id}/cancel` */
   async invokeAction(
     typeId: string,
     resourceId: string,
@@ -759,7 +759,7 @@ export class MistralClient implements PluginClient {
   // ------------------------------------------------------------------ costs
 
   /**
-   * https://docs.mistral.ai/api/endpoint/beta/admin/billing —
+   * https://docs.mistral.ai/api/endpoint/beta/admin/billing:
    * `GET /v1/admin/usage?month=&year=`.
    *
    * Monthly granularity with a per-service breakdown (chat, completion, ocr,
@@ -772,7 +772,7 @@ export class MistralClient implements PluginClient {
    *
    * The endpoint returns the *running* total of a month, so an in-progress
    * month is re-fetched on every collection. Dating those re-fetches to
-   * anything that moves — the month end clamped into the requested range, say —
+   * anything that moves (the month end clamped into the requested range, say)
    * files month-to-date-through-the-15th on the 15th, month-to-date-through-the
    * -16th on the 16th, and so on: each collection lands on a **new** key
    * instead of replacing the previous one, and summing the month yields the sum
@@ -786,7 +786,7 @@ export class MistralClient implements PluginClient {
    * period-native plugins use (Scaleway's billing period, PlanetScale's
    * `billing_period_start`, Cloudflare's charge-period start). Skipping months
    * whose first day falls outside the chunk keeps re-fetches exactly-once
-   * across the host's month-aligned chunks — and it is why the manifest asks
+   * across the host's month-aligned chunks, and it is why the manifest asks
    * for a restatement window wide enough to always contain the 1st (see
    * `plugin.ts`).
    */
@@ -818,11 +818,11 @@ export class MistralClient implements PluginClient {
 
   /**
    * Text-to-speech.
-   * https://docs.mistral.ai/studio-api/audio/text_to_speech/speech —
+   * https://docs.mistral.ai/studio-api/audio/text_to_speech/speech:
    * `POST /v1/audio/speech`
    *
    * The non-streaming response is **JSON with base64 audio in `audio_data`**,
-   * not raw bytes — so unlike most providers this call can go through
+   * not raw bytes, so unlike most providers this call can go through
    * `jsonRestFetch` and keep bastion routing. `response_format: "mp3"` is
    * requested explicitly so the browser's `<audio>` element can play it.
    */
@@ -840,7 +840,7 @@ export class MistralClient implements PluginClient {
       );
     }
 
-    // When the Speech tab is opened from a voice, that voice *is* the subject —
+    // When the Speech tab is opened from a voice, that voice *is* the subject:
     // fall back to it when no explicit selection came through.
     const voiceId = payload.voiceId || resourceId.split(":").slice(2).join(":");
     if (!voiceId) throw new Error("Mistral plugin: no voice selected");
@@ -878,7 +878,7 @@ export class MistralClient implements PluginClient {
 
   /**
    * Speech-to-text.
-   * https://docs.mistral.ai/api/endpoint/audio/transcriptions —
+   * https://docs.mistral.ai/api/endpoint/audio/transcriptions:
    * `POST /v1/audio/transcriptions`
    *
    * Multipart, so this uses global `fetch` with a real `FormData`:
@@ -1454,8 +1454,8 @@ function costOf(value: unknown): number | undefined {
  * The billing months whose **first day** falls inside the chunk, as the
  * `/admin/usage` query parameters plus the date their row is filed under.
  *
- * A month whose 1st is outside the range is not reported by this chunk at all —
- * some other chunk owns it — so a month is never fetched twice for one
+ * A month whose 1st is outside the range is not reported by this chunk at all
+ * (some other chunk owns it) so a month is never fetched twice for one
  * collection and never lands on two different days.
  */
 function monthStartsInRange(range: CostFetchRange): Array<{

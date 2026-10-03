@@ -10,8 +10,8 @@ import type { PhaseParam, RulesetCreateParams } from "cloudflare/resources/rules
  *
  * Taking the element type of `RulesetCreateParams["rules"]` rather than
  * re-declaring it means every `buildBody` below is checked against the real
- * per-action parameter shapes — the redirect status code, the edge-TTL mode,
- * the rate-limit characteristics — instead of being asserted into place.
+ * per-action parameter shapes (the redirect status code, the edge-TTL mode,
+ * the rate-limit characteristics) instead of being asserted into place.
  */
 type CloudflareRuleBody = NonNullable<RulesetCreateParams["rules"]>[number];
 
@@ -58,7 +58,7 @@ function mapRule(
 ): ResourceInstance {
   const id = String(rule["id"] ?? "");
   const externalIdSuffix = `${zoneId}/${rulesetId}/${id}`;
-  // Every phase gets `zoneName` on top of its own fields — the zone is only
+  // Every phase gets `zoneName` on top of its own fields: the zone is only
   // otherwise encoded in the external id, which the dependency graph can't read.
   const fields = { ...spec.mapFields(rule), zoneName };
   return {
@@ -134,7 +134,7 @@ export async function createPhaseRule(
     const existing = await findPhaseRuleset(api, zoneId, spec.phase);
     if (existing) rulesetId = String(existing["id"] ?? "");
   } catch {
-    // Ignore — fall back to creating the entrypoint ruleset below.
+    // Ignore: fall back to creating the entrypoint ruleset below.
   }
 
   const ruleBody = spec.buildBody(fields);
@@ -207,7 +207,7 @@ const ruleEnabled = (fields: Record<string, string>): boolean => fields["enabled
  * `create-configs.ts`. `action` is the discriminant of the SDK's rule union
  * (cloudflare/resources/rulesets/rules.d.ts:8537), so a plain `string` can't
  * be handed to it. Unrecognized values fall back to `block`, the picker's
- * default — a rate limit that blocks is the conservative choice, and every
+ * default: a rate limit that blocks is the conservative choice, and every
  * alternative here is strictly weaker.
  */
 const RATE_LIMIT_ACTIONS = [
@@ -239,7 +239,7 @@ const redirectStatusCode = (value: string | undefined): RedirectStatusCode => {
   return isRedirectStatusCode(parsed) ? parsed : 301;
 };
 
-/** Rate limiting rules — `http_ratelimit` phase. */
+/** Rate limiting rules: `http_ratelimit` phase. */
 export const RATE_LIMIT_SPEC: RulePhaseSpec = {
   resourceTypeId: "rate-limit-rule",
   phase: "http_ratelimit",
@@ -280,7 +280,7 @@ export const RATE_LIMIT_SPEC: RulePhaseSpec = {
     String(fields["description"] || `${fields["requestsPerPeriod"]}/${fields["period"]}s`),
 };
 
-/** Redirect rules — `http_request_dynamic_redirect` phase. */
+/** Redirect rules: `http_request_dynamic_redirect` phase. */
 export const REDIRECT_SPEC: RulePhaseSpec = {
   resourceTypeId: "redirect-rule",
   phase: "http_request_dynamic_redirect",
@@ -317,7 +317,7 @@ export const REDIRECT_SPEC: RulePhaseSpec = {
   displayName: (_rule, fields) => String(fields["description"] || fields["target"] || "Redirect"),
 };
 
-/** Cache rules — `http_request_cache_settings` phase. */
+/** Cache rules: `http_request_cache_settings` phase. */
 export const CACHE_SPEC: RulePhaseSpec = {
   resourceTypeId: "cache-rule",
   phase: "http_request_cache_settings",

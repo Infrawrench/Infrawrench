@@ -4,7 +4,7 @@ import { asRecord, type CloudflareApi } from "./clients/shared.js";
 /**
  * Resolve the analytics window for a metric fetch.
  *
- * Every GraphQL dataset below is queried the same way — an ISO `from`/`to`
+ * Every GraphQL dataset below is queried the same way: an ISO `from`/`to`
  * pair defaulting to the last 24 hours, and a bucket-granularity choice. Each
  * dataset offers an hourly bucket plus a finer one (1m, 15m); windows of six
  * hours or more take the hourly bucket so the query stays inside Cloudflare's
@@ -213,7 +213,7 @@ export async function fetchMetricSeries(
  * Worker metrics via GraphQL `workersInvocationsAdaptive`. Worker scripts
  * are account-scoped (not zone-scoped) so this resolves the CF account ID
  * via the shared client before issuing the query. Resource id encoding:
- * `${infrawrenchAccountId}:worker:${scriptName}` — we take the last segment.
+ * `${infrawrenchAccountId}:worker:${scriptName}`: we take the last segment.
  */
 async function fetchWorkerMetricSeries(
   api: CloudflareApi,
@@ -240,7 +240,7 @@ async function fetchWorkerMetricSeries(
   const orderBy = "datetime_ASC";
 
   // workersInvocationsAdaptive sum-able fields are requests / subrequests /
-  // errors only — duration is exposed via the `quantiles` block (cpuTimeP50/
+  // errors only: duration is exposed via the `quantiles` block (cpuTimeP50/
   // cpuTimeP99, durationP50/durationP99). See:
   // https://developers.cloudflare.com/analytics/graphql-api/tutorials/querying-workers-metrics/
   const query = `query W($account: String!, $script: String!, $from: Time!, $to: Time!) {
@@ -494,7 +494,7 @@ async function fetchDurableObjectMetricSeries(
   const { from, to } = analyticsWindow(timeRange);
 
   // Pull from three DO datasets in one query: invocations (requests +
-  // response bytes), periodic (CPU time), and storage (stored bytes — the
+  // response bytes), periodic (CPU time), and storage (stored bytes; the
   // actual on-disk size, the headline number the dashboard shows). Field
   // names below are the ones Cloudflare documents explicitly; other fields
   // (errors, wallTime, websocket counts) exist but need schema introspection
@@ -793,9 +793,9 @@ async function fetchSpectrumMetricSeries(
 
 /**
  * D1 database metrics via GraphQL `d1AnalyticsAdaptiveGroups`. Account-scoped,
- * filter by `databaseId`. Note that D1 analytics is daily-bucketed only — the
+ * filter by `databaseId`. Note that D1 analytics is daily-bucketed only: the
  * `date` dimension is the finest granularity, so even short windows roll up
- * to per-day points. Resource id: `${accountId}:d1-database:${uuid}` — the
+ * to per-day points. Resource id: `${accountId}:d1-database:${uuid}`; the
  * trailing segment is the CF databaseId.
  */
 async function fetchD1MetricSeries(
@@ -1481,7 +1481,7 @@ async function fetchAiGatewayMetricSeries(
 /**
  * Load balancer metrics via GraphQL `loadBalancingRequestsAdaptiveGroups`.
  * Zone-scoped, filtered by `lbName`. The resource id encodes
- * `${zoneId}/${lbUuid}` — but the analytics dataset filters by name, not
+ * `${zoneId}/${lbUuid}`, but the analytics dataset filters by name, not
  * UUID, so we resolve the name via the SDK first.
  * Resource id: `${accountId}:load-balancer:${zoneId}/${lbUuid}`.
  */

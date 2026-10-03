@@ -2,7 +2,7 @@ import type { MetricSeries, ResourceInstance } from "@infrawrench/plugin-base";
 import type { MetricsContext } from "./cw-helpers.js";
 
 /**
- * Networking & edge metrics — ALB / target groups, CloudFront, API Gateway,
+ * Networking & edge metrics: ALB / target groups, CloudFront, API Gateway,
  * NAT Gateway, Route 53 health checks.
  */
 
@@ -13,7 +13,7 @@ export async function albMetrics(
   // Verified against
   // https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-cloudwatch-metrics.html
   // ALB dimension wants the trailing portion of the ARN (e.g.
-  // `app/my-lb/abc123`). ELB 4xx/5xx are different from Target 4xx/5xx —
+  // `app/my-lb/abc123`). ELB 4xx/5xx are different from Target 4xx/5xx:
   // ELB-originated codes mean the load balancer never reached a target
   // (no targets, malformed request, etc.), so worth surfacing separately.
   const arn = String(resource.resolvedOutputs?.["loadBalancerArn"] ?? "");
@@ -76,7 +76,7 @@ export async function targetGroupMetrics(
 ): Promise<MetricSeries[]> {
   // Verified against
   // https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-cloudwatch-metrics.html
-  // ALB target metrics REQUIRE both LoadBalancer and TargetGroup dims —
+  // ALB target metrics REQUIRE both LoadBalancer and TargetGroup dims:
   // querying with just TargetGroup returns nothing. Both dims use the
   // trailing portion of the ARN (`app/...` and `targetgroup/...`).
   const f = resource.fields;
@@ -125,7 +125,7 @@ export async function cloudFrontDistributionMetrics(
   // CloudFront metrics only publish in us-east-1 and require
   // Region=Global. CacheHitRate / OriginLatency / 4xx-error / 5xx-error
   // / 4xxErrorRate / 5xxErrorRate require "additional metrics" to be
-  // toggled on per distribution — they silently emit nothing otherwise,
+  // toggled on per distribution: they silently emit nothing otherwise,
   // so listing them costs nothing.
   const distId = String(resource.externalId ?? "");
   if (!distId) return [];

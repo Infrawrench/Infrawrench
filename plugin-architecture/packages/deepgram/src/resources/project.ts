@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A Deepgram project — the top-level billing/ownership container. Every key,
+ * A Deepgram project: the top-level billing/ownership container. Every key,
  * member, invite, balance and usage record hangs off a project.
  *
  * Docs: https://developers.deepgram.com/reference/management-api/projects/list

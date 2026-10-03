@@ -4,7 +4,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * A Speechmatics workspace project.
  *
  * Verified against the Management API reference
- * (https://docs.speechmatics.com/api-ref/management/get-all-projects) — the
+ * (https://docs.speechmatics.com/api-ref/management/get-all-projects): the
  * embedded OpenAPI operation declares `GET /projects` on server
  * `https://mp.api.speechmatics.com/v1`, returning an array of
  * `{project_id, name, description, is_default, is_active, created_at, deleted_at}`.

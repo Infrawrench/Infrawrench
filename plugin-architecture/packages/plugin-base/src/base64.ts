@@ -4,7 +4,7 @@
  * **Do not reach for `Buffer` in plugin client code.** Clients run in three
  * places: the web server (Node), the poller (Node), and the Electron
  * *renderer*. The renderer is created with `nodeIntegration: false` and
- * `contextIsolation: true`, so it has no Node globals at all — a bare
+ * `contextIsolation: true`, so it has no Node globals at all: a bare
  * `Buffer.from(...)` there throws `Buffer is not defined` and takes the whole
  * operation with it. Only `./node-driver` exports are guaranteed a Node
  * runtime. (The AWS plugin has carried a `typeof Buffer !== "undefined"` guard
@@ -13,14 +13,14 @@
  *
  * `atob`/`btoa` are used rather than a `Buffer` fast path because they are
  * global in Node 16+ *and* in every browser context, so one implementation
- * covers all three hosts — and this package deliberately carries no
+ * covers all three hosts, and this package deliberately carries no
  * `@types/node`, which is itself the reminder that Node is not a given here.
  */
 
 /**
  * Decode a base64 string (no `data:` prefix) into raw bytes.
  *
- * The returned view owns a plain `ArrayBuffer` — spelled out in the type so the
+ * The returned view owns a plain `ArrayBuffer`: spelled out in the type so the
  * bytes can go straight into a `Blob`/`BodyInit`, which the DOM lib narrows to
  * `ArrayBufferView<ArrayBuffer>` and will not accept an `ArrayBufferLike` for.
  */

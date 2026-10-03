@@ -1,12 +1,12 @@
 /**
- * Node.js-side driver interfaces — implemented by plugin packages and run
+ * Node.js-side driver interfaces: implemented by plugin packages and run
  * inside the Electron main process (or any Node.js host).
  *
  * These are the "server-side" counterparts to the browser-side PluginClient.
  * Plugins that need native Node.js capabilities (native DB clients, Docker SDK,
  * storage downloads, etc.) export one of these from their `./node-driver` path.
  *
- * The host (Electron main) registers them and dispatches generic IPC calls —
+ * The host (Electron main) registers them and dispatches generic IPC calls:
  * it never contains plugin-specific logic.
  */
 
@@ -20,7 +20,7 @@ export interface SqlNodeDriverOptions {
   caCert?: string;
 }
 
-/** SQL database driver — runs queries against a live connection string. */
+/** SQL database driver: runs queries against a live connection string. */
 export interface SqlNodeDriver {
   readonly id: string;
   query(
@@ -49,7 +49,7 @@ export interface DockerNodeDriver {
 }
 
 /**
- * Kubernetes driver — wraps the official @kubernetes/client-node SDK in the
+ * Kubernetes driver: wraps the official @kubernetes/client-node SDK in the
  * host process. Unlike the browser-fallback K8sFetcher (which parses
  * kubeconfig YAML by hand), this driver understands `exec` credential
  * plugins (gke-gcloud-auth-plugin, aws-iam-authenticator), `auth-provider`,
@@ -61,7 +61,7 @@ export interface K8sNodeDriver {
 }
 
 /**
- * Object-storage driver — lets plugins own the download logic for their
+ * Object-storage driver: lets plugins own the download logic for their
  * storage provider so the host never hard-codes provider-specific URLs or auth.
  */
 export interface StorageDownloadOptions {
@@ -74,7 +74,7 @@ export interface StorageDownloadOptions {
 }
 
 export interface StorageNodeDriver {
-  /** Must match the plugin manifest `id` — used by the host to dispatch. */
+  /** Must match the plugin manifest `id`: used by the host to dispatch. */
   readonly pluginId: string;
   /**
    * Download a single object to `destPath`.

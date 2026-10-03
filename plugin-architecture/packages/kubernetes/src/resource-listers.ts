@@ -30,7 +30,7 @@ export interface ListerContext {
  *
  * `includeSystemNamespaces` exists for exactly one caller: cost allocation.
  * The listings deliberately hide the control-plane namespaces because a user
- * browsing their workloads does not want to wade through `kube-system` — but
+ * browsing their workloads does not want to wade through `kube-system`, but
  * kube-system's pods are on the same nodes, hold real capacity, and cost real
  * money. Inheriting the skip-set into cost allocation would make that spend
  * silently vanish and would make every other namespace's share look larger
@@ -64,7 +64,7 @@ export const SYSTEM_NAMESPACES = new Set([
 ]);
 
 /**
- * `namespace/name` — the identity a namespaced object actually has.
+ * `namespace/name`: the identity a namespaced object actually has.
  *
  * Cross-object references inside a namespaced spec (a pod's ConfigMap volume,
  * an Ingress backend) name only the bare object, because Kubernetes resolves
@@ -79,7 +79,7 @@ function qualify(namespace: string | undefined, name: string): string {
 /**
  * The ConfigMaps and Secrets a pod spec names, namespace-qualified and joined
  * for the graph (which splits comma-separated values into one edge each).
- * Everything here is already on the object the list call returned — volumes
+ * Everything here is already on the object the list call returned: volumes
  * (including projected sources), `envFrom` / `env.valueFrom` on every
  * container, and image-pull secrets.
  */
@@ -120,7 +120,7 @@ function podReferences(
  * The four resource fields every pod-bearing object carries, so the peer pane,
  * the detail view and the cost model all read the same numbers from the same
  * place. Stored as display strings (`250m`, `512Mi`) because that is what
- * `fields` is — the machine-readable values are re-derived by the cost model
+ * `fields` is: the machine-readable values are re-derived by the cost model
  * from the raw API objects, not from these.
  */
 function resourceFields(spec: K8sPodSpec): Record<string, string> {
@@ -195,7 +195,7 @@ export async function listNodes(
   return data.items.map((n) => {
     const ready = (n.status?.conditions ?? []).find((c) => c.type === "Ready");
     const labels = n.metadata.labels ?? {};
-    // Capacity is the whole machine — what the cloud bill is for. Allocatable
+    // Capacity is the whole machine: what the cloud bill is for. Allocatable
     // is capacity minus kube-reserved, system-reserved and eviction headroom,
     // i.e. what the scheduler will actually hand out. Cost allocation needs
     // both: the invoice is against capacity, but idle is measured against
@@ -381,7 +381,7 @@ export async function listServices(
     .map((s) => {
       const ports = (s.spec.ports ?? []).map((p) => `${p.port}/${p.protocol}`).join(", ");
       const hasSelector = !!s.spec.selector && Object.keys(s.spec.selector).length > 0;
-      // A LoadBalancer's provisioned address — what a deploy actually waits
+      // A LoadBalancer's provisioned address: what a deploy actually waits
       // for. Mapped the way the ingress lister maps its address.
       const externalIP = (s.status?.loadBalancer?.ingress ?? [])
         .map((lb) => lb.ip ?? lb.hostname ?? "")
@@ -497,7 +497,7 @@ export async function listJobs(ctx: ListerContext, accountId: string): Promise<R
       else if (failed > 0) status = "Failed";
       else if (active > 0) status = "Running";
       else status = "Pending";
-      // A scheduled Job carries its CronJob in `ownerReferences` — the one
+      // A scheduled Job carries its CronJob in `ownerReferences`: the one
       // pointer that survives into the listing (the name alone is generated,
       // e.g. "backup-28401120").
       const cronJob =

@@ -2,7 +2,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
  * A Cartesia API key. Listing keys needs the *admin* key (`sk_car_admin_…`),
- * not the ordinary `sk_car_…` synthesis key — without one this type simply
+ * not the ordinary `sk_car_…` synthesis key: without one this type simply
  * lists empty rather than failing the account.
  * Source: GET https://api.cartesia.ai/api-keys
  * https://docs.cartesia.ai/api-reference/api-keys/list

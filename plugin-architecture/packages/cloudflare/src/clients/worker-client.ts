@@ -104,7 +104,7 @@ export async function deleteWorker(api: CloudflareApi, externalId: string): Prom
  * logpush, tags, tail consumers), plus the workers.dev subdomain state and cron
  * triggers (each a separate endpoint), and returns labeled `SettingDescriptor`s
  * so the host renders a settings form (settingsEditor capability) instead of a
- * raw JSON editor. The subdomain/cron lookups are best-effort — a missing scope
+ * raw JSON editor. The subdomain/cron lookups are best-effort: a missing scope
  * shouldn't blank the whole form.
  */
 export async function getWorkerManifest(api: CloudflareApi, externalId: string): Promise<string> {
@@ -162,7 +162,7 @@ export async function getWorkerManifest(api: CloudflareApi, externalId: string):
 
 /**
  * Apply changed Worker settings rows. The form sends back a JSON array of
- * changed `{ id, value }` pairs; we route each to its endpoint — script settings
+ * changed `{ id, value }` pairs; we route each to its endpoint: script settings
  * (logpush/observability/tags), the workers.dev subdomain toggle, and cron
  * triggers. Read-only deployment fields never produce changes here.
  */

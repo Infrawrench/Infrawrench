@@ -53,7 +53,7 @@ export const DOKSClusterResourceType = rt({
       credentialMappings: [
         { outputKey: "kubeconfig", credentialKey: "kubeconfig" },
         // What this cluster's nodes cost per hour. The kubernetes plugin has
-        // no way to know — the money is on THIS account — so it arrives the
+        // no way to know (the money is on THIS account) so it arrives the
         // same way the kubeconfig does. Resolves to "" when we have no price,
         // which the peer reads as "show capacity without money".
         { outputKey: "nodeHourlyRates", credentialKey: "nodeHourlyRates" },

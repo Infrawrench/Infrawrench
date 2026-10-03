@@ -764,7 +764,7 @@ describe("createResource", () => {
     expect(arg.pools![0]!.size).toBe(4);
     expect(arg.pools![0]!.zone).toBe("fr-par-1");
     expect(arg.pools![0]!.autohealing).toBe(true);
-    // Nodes need a public IP (or a NAT gateway) to pull images — the default
+    // Nodes need a public IP (or a NAT gateway) to pull images: the default
     // pool must not come up isolated.
     expect(arg.pools![0]!.publicIpDisabled).toBe(false);
   });

@@ -7,12 +7,12 @@
  * arrives as ~700 characters of JSON wrapped around one actionable sentence,
  * and it reaches the user through surfaces with no room for it.
  *
- * The body carries what we need structurally — `details[]` holds an ErrorInfo
+ * The body carries what we need structurally: `details[]` holds an ErrorInfo
  * with `reason: "SERVICE_DISABLED"` and `metadata.service` (the API's host
  * name), and `error.message` opens with the API's display name. We rebuild the
  * sentence from those rather than forwarding Google's, whose "Enable it by
  * visiting …" link points at the legacy console.developers.google.com host and
- * whose trailing propagation caveat is noise — callers retry on their own
+ * whose trailing propagation caveat is noise: callers retry on their own
  * schedule regardless.
  */
 
@@ -43,7 +43,7 @@ function apiDisplayName(message: string, service: string): string {
  * Rewrite a "this API is switched off" 403 into one actionable sentence, or
  * return null when the body is anything else.
  *
- * `project` is the account's configured project id when the caller knows it —
+ * `project` is the account's configured project id when the caller knows it:
  * preferred over the project *number* Google echoes back in `metadata.consumer`,
  * since the id is what the user recognizes. The console accepts either.
  */

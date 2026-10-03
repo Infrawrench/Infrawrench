@@ -70,7 +70,7 @@ function fakeCluster(opts: { metrics?: "ok" | "404" | "503" } = {}) {
         status: { phase: "Running" },
       },
       {
-        // Terminal — must not be charged.
+        // Terminal: must not be charged.
         metadata: {
           name: "backup-done",
           namespace: "app",
@@ -227,7 +227,7 @@ describe("computeClusterCost", () => {
     const result = await computeClusterCost(fakeCluster({ metrics: "404" }), RATES);
     expect(result.allocation.basis).toBe("requests");
     expect(result.utilization.status.available).toBe(false);
-    // Still fully costed — only the efficiency figures are missing.
+    // Still fully costed, only the efficiency figures are missing.
     expect(result.allocation.hourlyTotalCost).toBeCloseTo(0.0357, 10);
     expect(result.allocation.efficiency).toEqual({ cpu: null, memory: null });
   });
@@ -464,7 +464,7 @@ describe("buildCostMetricSeries", () => {
     );
     const series = buildCostMetricSeries("k8s-cluster", {}, "cluster", index);
     expect(series.map((s) => s.label)).not.toContain("Cluster cost");
-    // Efficiency survives — it needs no price.
+    // Efficiency survives: it needs no price.
     expect(series.map((s) => s.label)).toContain("CPU efficiency");
   });
 });

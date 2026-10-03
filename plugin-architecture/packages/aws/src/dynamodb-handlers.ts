@@ -51,7 +51,7 @@ function decodeKey(encoded: string, schema: TableSchema): Record<string, Attribu
   }
   const idx = encoded.indexOf(KEY_SEP);
   if (idx === -1) {
-    // No separator — treat whole thing as partition key and assume sort key is empty string.
+    // No separator: treat whole thing as partition key and assume sort key is empty string.
     return { [schema.partitionKey]: { S: encoded }, [schema.sortKey]: { S: "" } };
   }
   return {
@@ -201,7 +201,7 @@ export async function executeDynamoDbCommand(
       if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
         throw new Error("Document must be a JSON object");
       }
-      // Strip any `_name` field — it's synthetic, not stored on the item.
+      // Strip any `_name` field: it's synthetic, not stored on the item.
       const obj = parsed as Record<string, unknown>;
       delete obj["_name"];
       const Item: Record<string, AttributeValue> = {};
@@ -223,7 +223,7 @@ export async function executeDynamoDbCommand(
       return { ok: true };
     }
     case "deleteCollection": {
-      // We refuse — a DynamoDB "collection" is the table itself; deletion goes
+      // We refuse: a DynamoDB "collection" is the table itself; deletion goes
       // through the standard resource-delete flow on the detail page.
       throw new Error(
         "Cannot drop a DynamoDB collection from the document browser — use the resource Delete action to drop the whole table.",

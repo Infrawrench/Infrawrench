@@ -5,7 +5,7 @@ import type { K8sFetch } from "./shared.js";
 /**
  * Create a new resource of the given type via the K8s API. Each branch
  * shapes its own request body and returns a ResourceInstance reflecting the
- * created object — server-side status fields (clusterIP, readyReplicas,
+ * created object: server-side status fields (clusterIP, readyReplicas,
  * etc.) start out empty and get filled in on the next list.
  */
 export async function createResource(

@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * The developer account behind the access token — `GET /account`.
+ * The developer account behind the access token: `GET /account`.
  *
  * The USD balances (`free_balance`, `purchased_balance`, `total_balance`) are
  * the live numbers. `balance_seconds` is deprecated and always returns 0, so

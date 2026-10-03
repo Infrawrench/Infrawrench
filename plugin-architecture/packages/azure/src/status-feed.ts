@@ -1,11 +1,11 @@
 /**
  * Azure public status feed (RSS,
- * https://azure.status.microsoft/en-us/status/feed/ — verified 2026-08).
+ * https://azure.status.microsoft/en-us/status/feed/: verified 2026-08).
  *
  * The channel is empty (zero items) when Azure is healthy; items exist only
  * during active incidents, so every item maps to an active provider-wide
  * incident. Affected regions appear only in free prose within the item
- * description — there is no structured region field — so no region mapping
+ * description (there is no structured region field) so no region mapping
  * is attempted.
  */
 import type { StatusFeedDeclaration, StatusIncident } from "@infrawrench/plugin-base";

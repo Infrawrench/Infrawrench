@@ -9,7 +9,7 @@
  *
  * Two things about that shape drive everything below.
  *
- * 1. **It reports hours, not money.** Speechmatics has no billing API — the
+ * 1. **It reports hours, not money.** Speechmatics has no billing API: the
  *    only number available is metered audio duration, so the amounts here are
  *    `duration_hrs × published list rate` (see {@link RATE_CARD}). The manifest
  *    declares `estimated: true` for exactly this reason.
@@ -21,7 +21,7 @@
  *    rather than a single call. See {@link fetchSpeechmaticsCostData}.
  *
  * Usage for the current UTC day is excluded from the endpoint's results, so
- * days at or after "today" are never requested — the manifest's
+ * days at or after "today" are never requested: the manifest's
  * `restatementDays` window re-fetches them once they close.
  */
 
@@ -38,7 +38,7 @@ import {
 
 /**
  * Published Pro-plan list rates in USD per hour of audio, keyed by
- * `{mode}|{operating_point}` — the two fields the usage endpoint breaks
+ * `{mode}|{operating_point}`: the two fields the usage endpoint breaks
  * consumption down by.
  *
  * Verified against https://www.speechmatics.com/pricing (August 2026; the page
@@ -54,7 +54,7 @@ import {
  * Melia 1 is batch-only (https://docs.speechmatics.com/speech-to-text/models),
  * which is why there is no real-time entry for it.
  *
- * KNOWN OVER-STATEMENT. Speechmatics applies a volume discount automatically —
+ * KNOWN OVER-STATEMENT. Speechmatics applies a volume discount automatically:
  * "Volume discounts are automatically applied on any billable usage above 500
  * hours for each type of Speech-To-Text in a given month", currently 20% off
  * the hours above that threshold, with further discounts negotiated from 24,000
@@ -91,7 +91,7 @@ const RATE_CARD: Record<string, { service: string; usdPerHour: number }> = {
  * triggers it, so the only safe design is one that is slow by construction and
  * knowable: requests are issued strictly sequentially with this gap, giving a
  * hard ceiling of ~4 requests/second regardless of how fast the API answers.
- * Concurrency was considered and rejected — with N requests in flight a
+ * Concurrency was considered and rejected: with N requests in flight a
  * `Retry-After` from one of them says nothing useful about the others, so the
  * backoff below would be advisory at best, and an undocumented limit is the
  * worst case in which to guess at a safe width.
@@ -111,7 +111,7 @@ const MAX_BACKOFF_MS = 30_000;
 /* Wire shapes                                                                 */
 /* -------------------------------------------------------------------------- */
 
-/** `UsageDetails` — the schema names the key `operating_point`, the documented
+/** `UsageDetails`: the schema names the key `operating_point`, the documented
  * examples show `model` (the field's older name). Both are read. */
 interface UsageDetails {
   mode?: string;
@@ -146,7 +146,7 @@ interface UsageResponse {
  * throws a formatted message and discards the response) cannot surface.
  */
 export interface SpeechmaticsCostContext {
-  /** Regional endpoint id — `eu1`, `us1` or `au1`. */
+  /** Regional endpoint id: `eu1`, `us1` or `au1`. */
   region: string;
   /** The *transcription* API key. The management token cannot read `/usage`. */
   apiKey: string;
@@ -244,7 +244,7 @@ async function requestUsage(ctx: SpeechmaticsCostContext, day: string): Promise<
   return { status: res.status, headers: collected, body: await res.text() };
 }
 
-/** Case-insensitive header lookup — neither transport promises a casing. */
+/** Case-insensitive header lookup: neither transport promises a casing. */
 function header(headers: Record<string, string>, name: string): string | undefined {
   const wanted = name.toLowerCase();
   for (const [key, value] of Object.entries(headers ?? {})) {
@@ -295,7 +295,7 @@ async function fetchUsageDay(
 
     // The one 403 worth explaining. Temporary keys minted with a `client_ref`
     // are scoped to that client's jobs and are explicitly denied the usage
-    // endpoint — "temporary keys generated with a `client_ref` can't access
+    // endpoint: "temporary keys generated with a `client_ref` can't access
     // the Usage Batch API endpoint and will receive a HTTP 403 - Forbidden"
     // (https://docs.speechmatics.com/introduction/authentication). No amount of
     // retrying fixes it, and the generic "403 Forbidden" body says nothing
@@ -359,7 +359,7 @@ export async function fetchSpeechmaticsCostData(
 
   const sleep = ctx.sleep ?? defaultSleep;
 
-  // Keyed on the full dimension tuple the rows carry — (date, service) — so
+  // Keyed on the full dimension tuple the rows carry: (date, service), so
   // re-fetching a day during the restatement window reproduces byte-identical
   // keys and the host's ReplacingMergeTree dedupes rather than double-counts.
   // Language and job count are deliberately not part of the key: `service` is
@@ -375,13 +375,13 @@ export async function fetchSpeechmaticsCostData(
     const usage = await fetchUsageDay(ctx, day, sleep);
 
     // `details` only. `summary` aggregates away `operating_point`, which is
-    // the field that decides the rate — a summary row cannot be priced.
+    // the field that decides the rate: a summary row cannot be priced.
     for (const entry of usage.details ?? []) {
       const hours = Number(entry.duration_hrs ?? 0);
       if (!Number.isFinite(hours) || hours <= 0) continue;
 
       const rate = RATE_CARD[`${normalizeMode(entry.mode)}|${normalizeOperatingPoint(entry)}`];
-      // Consumption with no entry on the public rate card — alignment jobs
+      // Consumption with no entry on the public rate card: alignment jobs
       // (an Enterprise feature that is priced per contract), or a model
       // released after these constants were written. Priced at a guessed rate
       // it would be a fabricated number; the honest failure is to omit it and

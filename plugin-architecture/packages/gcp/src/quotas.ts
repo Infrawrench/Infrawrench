@@ -1,5 +1,5 @@
 /**
- * GCP quota readings — Compute Engine's own region and project resources.
+ * GCP quota readings: Compute Engine's own region and project resources.
  *
  * GCP is the easy one, and it is worth saying why: `compute.regions.list` and
  * `compute.projects.get` each return a `quotas[]` array in which every entry
@@ -9,7 +9,7 @@
  *
  * **Wire shape verified against the live discovery document, August 2026**
  * (https://www.googleapis.com/discovery/v1/apis/compute/v1/rest): the `Quota`
- * schema has exactly four output-only fields — `metric` (string, from a ~160
+ * schema has exactly four output-only fields; `metric` (string, from a ~160
  * value enum), `limit` (double), `usage` (double) and `owner` (string, usually
  * omitted on these two payloads). `Region.quotas` is "quotas assigned to this
  * region"; `Project.quotas` is "quotas assigned to this project", which is
@@ -17,7 +17,7 @@
  *
  * Deliberately **not** the Cloud Quotas API (`cloudquotas.googleapis.com`).
  * It is newer and covers more services, but `QuotaInfo` carries limits and
- * increase-eligibility and **no current usage** — so it cannot answer the only
+ * increase-eligibility and **no current usage**, so it cannot answer the only
  * question this feature asks. It would be an addition, never a replacement.
  */
 
@@ -62,7 +62,7 @@ export interface GcpQuotaContext {
 /**
  * Human labels for the metrics worth naming. `CPUS` is not a self-explanatory
  * string in a list beside `IN_USE_ADDRESSES`, and the provider does not send a
- * display name on this API — the newer Cloud Quotas API does, but it does not
+ * display name on this API: the newer Cloud Quotas API does, but it does not
  * send usage, which is the trade this module already declined.
  *
  * An unmapped metric is **not dropped**: it is titled from its own name, so a
@@ -99,7 +99,7 @@ const METRIC_LABELS: Record<string, string> = {
  * `DISKS_TOTAL_GB` → "Persistent disk total"; `NVIDIA_T4_GPUS` → "NVIDIA T4
  * GPUS".
  *
- * The unmapped fallback only swaps underscores for spaces — it deliberately
+ * The unmapped fallback only swaps underscores for spaces: it deliberately
  * does not try to title-case. Every case-guessing rule mangles something:
  * lowercasing long words turns `NVIDIA` into `Nvidia`, and any acronym
  * allow-list is a table that goes stale exactly as fast as `METRIC_LABELS`
@@ -133,7 +133,7 @@ const INCREASE_URL = "https://console.cloud.google.com/iam-admin/quotas";
  * - **`usage: 0` is not a finding.** A project with 40 regions enabled reports
  *   a full quota array for every one of them, almost all at zero; a radar
  *   listing two thousand quotas at 0% buries the four that matter. Nothing
- *   actionable is lost — a quota nobody is using cannot be the thing that
+ *   actionable is lost: a quota nobody is using cannot be the thing that
  *   breaks the next deploy.
  */
 export function toQuotaReading(quota: GcpQuota, scope: { region?: string }): QuotaUsage | null {
@@ -156,7 +156,7 @@ export function toQuotaReading(quota: GcpQuota, scope: { region?: string }): Quo
     ...(unit ? { unit } : {}),
     // Every Compute Engine quota can be raised through a quota-increase
     // request, which is one of the few places a blanket `true` is honest
-    // rather than a guess — the console offers the button on all of them.
+    // rather than a guess: the console offers the button on all of them.
     adjustable: true,
     docsUrl: INCREASE_URL,
   };
@@ -173,7 +173,7 @@ const MAX_REGION_PAGES = 10;
  * response carries each region's full `quotas[]` array, so a single paginated
  * call covers the whole project.
  *
- * A failure propagates — the host replaces its stored readings with what this
+ * A failure propagates: the host replaces its stored readings with what this
  * returns, so a partial list would read as quotas having disappeared.
  */
 export async function fetchGcpQuotas(ctx: GcpQuotaContext): Promise<QuotaUsage[]> {

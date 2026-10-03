@@ -1,8 +1,8 @@
 /**
  * Netlify public status feed (Atlassian Statuspage,
- * https://www.netlifystatus.com — verified 2026-08).
+ * https://www.netlifystatus.com: verified 2026-08).
  *
- * Components on this page are services and upstreams only — there are no
+ * Components on this page are services and upstreams only: there are no
  * region components ("High-Performance Edge Network", "Build Pipeline",
  * "GitHub API Requests", "NS1 API", …). Netlify-owned core components
  * escalate to provider-wide since Netlify resources are global; upstream
@@ -22,7 +22,7 @@ export const statusFeed: StatusFeedDeclaration = {
   statusPageUrl: "https://www.netlifystatus.com",
 };
 
-/** Netlify-owned core platform components — an incident here hits everything. */
+/** Netlify-owned core platform components: an incident here hits everything. */
 const CORE_COMPONENTS = new Set([
   "High-Performance Edge Network",
   "Build Pipeline",

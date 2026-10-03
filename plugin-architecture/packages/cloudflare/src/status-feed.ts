@@ -1,11 +1,11 @@
 /**
  * Cloudflare public status feed (Atlassian Statuspage,
- * https://www.cloudflarestatus.com — verified 2026-08).
+ * https://www.cloudflarestatus.com: verified 2026-08).
  *
  * Components are mostly edge PoPs named "Amsterdam, Netherlands - (AMS)"
  * (471 of them, grouped by continent) plus product/service components
- * ("Workers", "R2", "Access", "API", …). Cloudflare resources are global —
- * they carry no region field — so PoP components map to display-only
+ * ("Workers", "R2", "Access", "API", …). Cloudflare resources are global
+ * (they carry no region field) so PoP components map to display-only
  * services, product components map to resource types, and control-plane
  * components escalate to provider-wide.
  */
@@ -55,7 +55,7 @@ const PRODUCT_TYPES: Record<string, string[]> = {
 function mapComponent(name: string): StatusComponentMapping | null {
   const pop = name.match(POP_COMPONENT);
   if (pop?.[1]) {
-    // Edge PoP reroutes are routine and affect no stored resource — keep the
+    // Edge PoP reroutes are routine and affect no stored resource: keep the
     // incident visible but scoped to a display-only service.
     return { services: [`Edge (${pop[1]})`] };
   }

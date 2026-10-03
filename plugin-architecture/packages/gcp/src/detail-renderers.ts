@@ -92,7 +92,7 @@ export function gcpRenderDetail(
   }
 
   if (resource.resourceTypeId === "memorystore-redis") {
-    // Memorystore is private-VPC only — we can't actively verify reachability
+    // Memorystore is private-VPC only: we can't actively verify reachability
     // from outside the network, so surface it as informational rather than
     // healthy-green even when the provider reports READY.
     base.status = {
@@ -126,7 +126,7 @@ export function gcpRenderDetail(
       format: format ? format.toLowerCase() : "generic",
       supportsTags: format === "DOCKER",
     };
-    // Artifact Registry repos have no lifecycle "state" field — if the resource
+    // Artifact Registry repos have no lifecycle "state" field, if the resource
     // exists in our DB, the repo is active.
     base.status = { kind: "status-dot", status: "healthy", label: "Active" };
   }
@@ -168,7 +168,7 @@ export function gcpRenderDetail(
     renderCloudDnsRecordSet(resource, base);
   }
 
-  // Pub/Sub topics and subscriptions have no lifecycle state in the GCP API —
+  // Pub/Sub topics and subscriptions have no lifecycle state in the GCP API,
   // if the resource exists, it's active. Give them a healthy dot so the UI
   // doesn't fall through to "unknown" grey.
   if (resource.resourceTypeId === "pubsub-topic") {

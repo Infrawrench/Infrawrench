@@ -36,7 +36,7 @@ export const ApiKeyResourceType = rt({
     { fieldKey: "expirationDate", from: "expiry", kind: "api-token", label: "Key expires" },
   ],
   // `scopes` is a joined list, so the whole-value match only flags a key whose
-  // sole scope is admin or owner — deliberately narrow, for the reason the
+  // sole scope is admin or owner: deliberately narrow, for the reason the
   // WorkOS role declaration gives. No last-used: Deepgram reports none.
   principalRole: {
     role: "key",

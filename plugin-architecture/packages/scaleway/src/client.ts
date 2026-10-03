@@ -48,7 +48,7 @@ import { Blockv1 } from "@scaleway/sdk-block";
  *
  * Control-plane calls go through the official per-API Scaleway SDKs
  * (@scaleway/sdk-instance, -k8s, -rdb, -block). Object Storage is
- * S3-compatible and uses a hand-rolled SigV4 path below — the SDK does
+ * S3-compatible and uses a hand-rolled SigV4 path below: the SDK does
  * not cover Object Storage.
  */
 export class ScalewayClient implements PluginClient {
@@ -873,7 +873,7 @@ export class ScalewayClient implements PluginClient {
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
-    // No-op when the Cockpit query token is absent — this is the common case
+    // No-op when the Cockpit query token is absent: this is the common case
     // and must remain side-effect-free so existing tests continue to pass.
     if (!this.cockpitQueryToken) return [];
 
@@ -939,7 +939,7 @@ export class ScalewayClient implements PluginClient {
 
       // Kapsule pushes control-plane metrics to the Scaleway Cockpit data
       // source natively (data-plane metrics need a user-installed Helm chart
-      // and land in a custom data source — not covered here). Series names
+      // and land in a custom data source, not covered here). Series names
       // and labels verified against Scaleway's preconfigured alert rules:
       // metrics are `kubernetes_cluster_k8s_shoot_*` gauges keyed by
       // `resource_name` (the cluster NAME, not its UUID), so resolve the
@@ -1169,7 +1169,7 @@ export class ScalewayClient implements PluginClient {
         });
         return data.servers.map((s) => this.mapInstance(s, zone, accountId));
       } catch {
-        // Zone may not be available — skip silently
+        // Zone may not be available: skip silently
         return [];
       }
     });
@@ -1351,7 +1351,7 @@ export class ScalewayClient implements PluginClient {
 
     // Authorize the SSH key (agent flow routes it via `sshPublicKey`).
     // createServer has no SSH-key parameter; the supported mechanism is the
-    // `cloud-init` user-data key, which cloud-init consumes on first boot —
+    // `cloud-init` user-data key, which cloud-init consumes on first boot,
     // so it must be set before the poweron below. Failing silently would
     // produce an instance the caller can never SSH into, so surface it.
     const sshPublicKey = fields["sshPublicKey"]?.trim();
@@ -1377,7 +1377,7 @@ export class ScalewayClient implements PluginClient {
     try {
       await api.serverAction({ zone, serverId: server.id, action: "poweron" });
     } catch {
-      // Non-fatal — instance was created even if boot fails
+      // Non-fatal: instance was created even if boot fails
     }
 
     const publicIp = server.publicIp?.address ?? "";
@@ -1582,7 +1582,7 @@ export class ScalewayClient implements PluginClient {
       Number.isFinite(requestedNodeCount) && requestedNodeCount > 0 ? requestedNodeCount : 3;
 
     const poolNameBase = (fields["name"] ?? "cluster").trim() || "cluster";
-    // Working default mirroring rdb's "DB-DEV-S" and OVH's "b3-8" — DEV1-M is
+    // Working default mirroring rdb's "DB-DEV-S" and OVH's "b3-8": DEV1-M is
     // the cheapest widely-available type and the create-config fallback size.
     const nodeType = fields["nodeType"] ?? "DEV1-M";
     // The cluster's first pool inherits the cluster region's first zone.
@@ -1739,7 +1739,7 @@ export class ScalewayClient implements PluginClient {
           });
         }
       } catch {
-        // Region may not have Object Storage or credentials may lack access — skip
+        // Region may not have Object Storage or credentials may lack access: skip
       }
     }
     return results;
@@ -1770,7 +1770,7 @@ export class ScalewayClient implements PluginClient {
             break;
           }
         } catch {
-          // Network or signing failure — try the next region.
+          // Network or signing failure: try the next region.
         }
       }
       if (!region) {
@@ -1815,7 +1815,7 @@ export class ScalewayClient implements PluginClient {
     if (typeId !== "object-storage-bucket") {
       throw new Error(`Scaleway plugin: getManifest not supported for type "${typeId}"`);
     }
-    // externalId is `{region}/{bucketName}` — peel the bucket name off.
+    // externalId is `{region}/{bucketName}`: peel the bucket name off.
     const externalId = parts.slice(2).join(":");
     const bucket = externalId.includes("/") ? externalId.split("/").slice(1).join("/") : externalId;
     const cfg = await this.getObjectStorageConfig(bucket);

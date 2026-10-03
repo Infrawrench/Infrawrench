@@ -19,7 +19,7 @@ export interface ResourceInstance {
   /** Non-secret field values */
   fields: Record<string, string | number | boolean>;
   /**
-   * Resolved output values — populated by the host on demand.
+   * Resolved output values: populated by the host on demand.
    * Only populated for outputs that have been explicitly requested.
    */
   resolvedOutputs: Record<string, string>;
@@ -58,7 +58,7 @@ export interface ResourceCreateResult {
    * When set, the host merges these keys into the account's stored
    * credentials and persists the encrypted row before returning the new
    * resource to the user. Used by providers that auto-mint sidecar
-   * credentials during creation — e.g. the DigitalOcean plugin mints an
+   * credentials during creation, e.g. the DigitalOcean plugin mints an
    * account-wide Spaces S3 key on first bucket-create so the user doesn't
    * have to paste one manually. Existing keys are preserved; only the
    * keys present in this map are overwritten.

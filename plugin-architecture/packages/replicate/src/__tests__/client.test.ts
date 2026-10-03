@@ -238,7 +238,7 @@ describe("models", () => {
       "meta/llama-3",
       "stability-ai/sdxl",
     ]);
-    // `"hidden"` is a placeholder, not a real version — it must not leak out.
+    // `"hidden"` is a placeholder, not a real version: it must not leak out.
     const llama = models.find((m) => m.externalId === "meta/llama-3");
     expect(llama?.resolvedOutputs["latestVersion"]).toBe("");
     const trained = models.find((m) => m.externalId === "acme/trained");

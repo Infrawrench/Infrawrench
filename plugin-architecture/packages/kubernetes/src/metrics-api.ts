@@ -9,11 +9,11 @@
  *
  * Two distinct absence modes, and they return different things:
  *
- *  - **404** — the APIService was never registered, so the request falls
+ *  - **404**: the APIService was never registered, so the request falls
  *    through to the apiserver's default handler and comes back as a normal
  *    JSON `Status` with `"reason": "NotFound"`. metrics-server is not
  *    installed.
- *  - **503** — the APIService *is* registered but kube-aggregator cannot reach
+ *  - **503**: the APIService *is* registered but kube-aggregator cannot reach
  *    the backing service (crash-looping pod, wrong node IP, blocked
  *    control-plane-to-node path). The body here is **plain text**
  *    (`service unavailable`), not a JSON `Status`, because the aggregator
@@ -23,7 +23,7 @@
  * `window` in CPU units (emitted with the `n` suffix, e.g. `487558164n` ≈
  * 0.4876 cores) and `usage.memory` is the memory *working set* in bytes
  * (emitted with `Ki`). Both are ordinary quantity strings, so they go through
- * the same parser as requests — which is why that parser has to accept `n`
+ * the same parser as requests, which is why that parser has to accept `n`
  * and `u` even though the published grammar omits them.
  */
 
@@ -70,7 +70,7 @@ const NO_UTILIZATION: ClusterUtilization = {
   pods: new Map(),
 };
 
-/** `namespace/name` — the key pod utilization is looked up by. */
+/** `namespace/name`: the key pod utilization is looked up by. */
 export function podUtilizationKey(namespace: string, name: string): string {
   return `${namespace}/${name}`;
 }
@@ -123,7 +123,7 @@ export async function fetchClusterUtilization(k8sFetch: K8sFetch): Promise<Clust
     for (const item of podResult.value?.items ?? []) {
       if (!item?.metadata?.name) continue;
       // PodMetrics reports per-container usage; a pod's usage is their sum.
-      // There is no init-container subtlety here — completed init containers
+      // There is no init-container subtlety here: completed init containers
       // simply do not appear.
       let cpuCores = 0;
       let memoryBytes = 0;

@@ -7,7 +7,7 @@ function recordFields(r: RecordResponse, zoneId: string): ResourceInstance {
   const type = r.type ?? "";
   const name = r.name ?? "";
   // `content` and `proxied` are only present on certain record types in the
-  // discriminated union (A/AAAA/CNAME etc.) — read them through a permissive
+  // discriminated union (A/AAAA/CNAME etc.): read them through a permissive
   // view so we can extract them uniformly without a giant per-type switch.
   const rec = asRecord(r);
   const content = String(rec["content"] ?? "");

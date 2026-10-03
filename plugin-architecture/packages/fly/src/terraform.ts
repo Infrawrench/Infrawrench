@@ -6,7 +6,7 @@ import type {
 import { fieldBool, fieldNumber, fieldString, tf } from "@infrawrench/plugin-base";
 
 /**
- * Terraform mapping for Fly.io — community provider `stategraph/fly`.
+ * Terraform mapping for Fly.io: community provider `stategraph/fly`.
  * Attribute names verified against the provider docs
  * (registry.terraform.io/providers/stategraph/fly):
  *   - fly_app: `name` required; `org_slug` optional.
@@ -14,7 +14,7 @@ import { fieldBool, fieldNumber, fieldString, tf } from "@infrawrench/plugin-bas
  *   - fly_volume: `app`, `name`, `region`, `size_gb` required.
  *   - fly_certificate: `app`, `hostname` required.
  * Import IDs: app by name; machine/volume `appName/id`; certificate `appName/hostname`.
- * IP allocations are skipped — the provider imports `fly_ip_address` by Fly ip id,
+ * IP allocations are skipped: the provider imports `fly_ip_address` by Fly ip id,
  * which Infrawrench does not store (only the address string).
  * The API token is `var.fly_api_token`; org slug is `var.fly_org_slug`.
  */

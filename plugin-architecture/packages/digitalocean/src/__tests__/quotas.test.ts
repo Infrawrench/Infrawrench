@@ -3,14 +3,14 @@ import { QuotaAccessError } from "@infrawrench/plugin-base";
 import { countDoObjects, fetchDoQuotas } from "../quotas.js";
 
 /**
- * Recorded from DigitalOcean's published OpenAPI document — every value here
+ * Recorded from DigitalOcean's published OpenAPI document: every value here
  * is a per-field `example` in `specification/resources/account/models/account.yml`,
  * so the fixture cannot drift from the documented shape without the doc
  * changing first.
  *
  * The two absences are the point of the fixture: there is no `volume_limit`
  * and no `reserved_ip_limit`. Both are things a reasonable implementation
- * would read, and both would come back `undefined` — a quota silently missing
+ * would read, and both would come back `undefined`: a quota silently missing
  * rather than an error anybody notices.
  */
 const ACCOUNT_FIXTURE = {
@@ -74,7 +74,7 @@ describe("fetchDoQuotas", () => {
 
   // The id must survive DigitalOcean renaming the product again. It keys on
   // the API field name (`floating_ip_limit`) while the label uses the current
-  // product name — a key derived from the label would start a fresh, empty
+  // product name: a key derived from the label would start a fresh, empty
   // trend the next time marketing changes its mind.
   it("keys reserved IPs on the API field name, not the product name", async () => {
     const { ctx } = ctxWith({

@@ -12,7 +12,7 @@ describe("gcpPreflight declaration", () => {
     const resources = gcpPreflight.capabilities.find((c) => c.id === "resources")!;
     expect(resources.essential).toBe(true);
     expect(resources.requiredPermissions.map((p) => p.id)).toContain("compute.instances.list");
-    // There is no bigquery.datasets.list — listing datasets needs .get.
+    // There is no bigquery.datasets.list: listing datasets needs .get.
     expect(resources.requiredPermissions.map((p) => p.id)).toContain("bigquery.datasets.get");
     expect(gcpPreflight.templateFormat).toEqual({
       label: "GCP custom role (YAML)",
@@ -45,7 +45,7 @@ describe("buildGcpPolicyTemplate", () => {
       .map((l) => l.slice(2));
     expect(new Set(perms).size).toBe(perms.length);
     expect([...perms].sort()).toEqual(perms);
-    // No wildcards — GCP custom roles reject them.
+    // No wildcards: GCP custom roles reject them.
     expect(perms.some((p) => p.includes("*"))).toBe(false);
   });
 
@@ -62,7 +62,7 @@ describe("buildGcpPolicyTemplate", () => {
       .filter((l) => l.startsWith("- "))
       .map((l) => l.slice(2));
     // One exact list permission per resource type in client.ts listResources
-    // (verified against each API's reference docs — no wildcards).
+    // (verified against each API's reference docs: no wildcards).
     for (const required of [
       "aiplatform.endpoints.list",
       "alloydb.clusters.list",
@@ -82,7 +82,7 @@ describe("buildGcpPolicyTemplate", () => {
       expect(perms).toContain(required);
     }
     // The instance-group lister reads aggregated instanceGroupManagers, not
-    // instanceGroups — the permission must match the API actually called.
+    // instanceGroups: the permission must match the API actually called.
     expect(perms).toContain("compute.instanceGroupManagers.list");
     expect(perms).not.toContain("compute.instanceGroups.list");
   });

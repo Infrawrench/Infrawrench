@@ -36,7 +36,7 @@ export const InstanceResourceType = rt({
   outputs: [o("ipv4", "Public IPv4"), o("ipv6", "Public IPv6"), o("ipv4Private", "Private IPv4")],
   // `ipAddresses[].networkId` (`cloud.instance.IpAddress` in
   // https://eu.api.ovh.com/1.0/cloud.json) holds the project-level `pn-…` id,
-  // which is this plugin's `private-network.externalId` — so the default
+  // which is this plugin's `private-network.externalId`, so the default
   // `targetKey` is the match, not `openstackIds`. Verified against OVH's own
   // control panel, which pairs the two by that id in both places it does so:
   // `instances.service.js` filters `/network/private` entries whose `id`

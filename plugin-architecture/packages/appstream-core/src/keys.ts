@@ -1,15 +1,15 @@
 /**
  * Turning a browser's key events into what a US-keymapped host will accept.
  *
- * The host's keymap is `us` and cannot be the user's own — the browser will not
+ * The host's keymap is `us` and cannot be the user's own: the browser will not
  * say what layout is in use, and there is no protocol for asking. Forwarding
  * physical key positions is therefore right only for a user who is already on
  * US QWERTY: on any other layout the host resolves the position through the
  * wrong table, and a UK user gets `@` where they typed `"`.
  *
  * So the character is the thing to preserve, not the position. `KeyboardEvent`
- * hands us both — `code` is the key that moved, `key` is what the user's own
- * layout made of it — and this translates the second into whichever US key
+ * hands us both (`code` is the key that moved, `key` is what the user's own
+ * layout made of it) and this translates the second into whichever US key
  * produces it, synthesising Shift where the two layouts disagree about it. What
  * no US key can produce at all (`£`, `é`, `¬`) goes as a keysym, which the host
  * binds to a spare keycode.
@@ -27,7 +27,7 @@ const SHIFT_LEFT = 42;
  * What a US layout produces from each printable key, unshifted and shifted.
  *
  * Only the keys whose character depends on the layout: letters, digits and
- * punctuation. Everything else — Enter, the arrows, the function keys — means
+ * punctuation. Everything else (Enter, the arrows, the function keys) means
  * the same thing everywhere and travels by position.
  */
 const US_LAYOUT: Readonly<Record<string, readonly [string, string]>> = {
@@ -94,8 +94,8 @@ const US_BY_CHARACTER: Readonly<Record<string, { code: string; shift: boolean }>
 /**
  * The X11 keysym for a character.
  *
- * Latin-1 is the identity — a historical accident this protocol inherits from
- * X — and everything else is the codepoint with the Unicode flag on top.
+ * Latin-1 is the identity (a historical accident this protocol inherits from
+ * X) and everything else is the codepoint with the Unicode flag on top.
  */
 export function keysymFromCharacter(character: string): number | undefined {
   const codepoint = character.codePointAt(0);
@@ -132,8 +132,8 @@ export class KeyTranslator {
   press(event: KeyLike, timeMs: number): InputEvent[] {
     // A key that is already down is the browser's auto-repeat (or a keyup we
     // never saw, which is indistinguishable). The host does no repeating of
-    // its own — a hold-timer over a laggy link reads a slow release frame as
-    // a hold and types characters nobody pressed — so each repeat travels as
+    // its own (a hold-timer over a laggy link reads a slow release frame as
+    // a hold and types characters nobody pressed) so each repeat travels as
     // a fresh release-and-press of whatever the key went out as. Re-entering
     // rather than replaying keeps the character honest: the user may have
     // pressed or released Shift mid-hold.
@@ -149,7 +149,7 @@ export class KeyTranslator {
     const position = evdevFromCode(event.code);
     const character = printable(event.key) ? event.key : undefined;
 
-    // Not a character at all — Enter, an arrow, a modifier. Position is the
+    // Not a character at all: Enter, an arrow, a modifier. Position is the
     // right answer and every layout agrees on it.
     if (!character) {
       if (position === undefined) return [];
@@ -159,7 +159,7 @@ export class KeyTranslator {
 
     const target = US_BY_CHARACTER[character];
     if (!target) {
-      // No US key produces this. £, é, ¬ — the host binds a spare keycode to
+      // No US key produces this. £, é, ¬: the host binds a spare keycode to
       // the keysym and presses that. Nothing is recorded as held: the host
       // taps it rather than holding it.
       const keysym = keysymFromCharacter(character);
@@ -174,7 +174,7 @@ export class KeyTranslator {
     if (keycode === undefined) return [];
 
     // Caps Lock is already reflected in `event.key`, and the host's own Caps
-    // Lock will apply again on top — so for letters the two cancel and the
+    // Lock will apply again on top, so for letters the two cancel and the
     // shift we need is the opposite of the one the character implies.
     const caps = event.getModifierState?.("CapsLock") ?? false;
     const needsShift = caps && isLetter(character) ? !target.shift : target.shift;
@@ -212,8 +212,8 @@ export class KeyTranslator {
   /**
    * Let go of everything.
    *
-   * A key held when the window loses focus never gets its release — that goes
-   * to whatever has focus now — and the application is left believing the key
+   * A key held when the window loses focus never gets its release (that goes
+   * to whatever has focus now) and the application is left believing the key
    * is down, which for a modifier turns every later click into a chord.
    */
   releaseAll(timeMs: number): InputEvent[] {

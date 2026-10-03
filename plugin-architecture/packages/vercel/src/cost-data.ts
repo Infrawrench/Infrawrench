@@ -3,7 +3,7 @@
  *
  * `GET /v1/billing/charges` streams FOCUS v1.3 rows as newline-delimited
  * JSON (JSONL) at 1-day granularity, max 1-year range per request. `from` is
- * inclusive and `to` is EXCLUSIVE (ISO 8601 UTC) — the host's range is
+ * inclusive and `to` is EXCLUSIVE (ISO 8601 UTC): the host's range is
  * inclusive on both ends, so `to` is bumped by one day. Rows are aggregated
  * per (day, ServiceName, RegionId, project) so re-fetching a day reproduces
  * the same dimension keys for the host's dedupe.
@@ -15,7 +15,7 @@
 
 import type { CostFetchRange, CostRow, HttpHostServices } from "@infrawrench/plugin-base";
 
-/** FOCUS v1.3 charge row — only the fields this module consumes. */
+/** FOCUS v1.3 charge row, only the fields this module consumes. */
 interface FocusChargeRow {
   BilledCost?: number;
   BillingCurrency?: string;
@@ -32,7 +32,7 @@ interface FocusChargeRow {
 export interface VercelCostFetchOptions {
   accessToken: string;
   teamId: string | null;
-  /** Optional trust anchor — same semantics as the client's jsonRestFetch path. */
+  /** Optional trust anchor: same semantics as the client's jsonRestFetch path. */
   caCert: string;
   http: HttpHostServices | undefined;
 }
@@ -42,7 +42,7 @@ export interface VercelCostFetchOptions {
  * JSON-parses the whole body, so this mirrors its dual path: route through
  * the host's HTTP service when a custom CA is configured (bastion routing +
  * trust anchor), plain `fetch` otherwise. `Accept-Encoding: identity` keeps
- * the body uncompressed — the host HTTP service doesn't gunzip for us.
+ * the body uncompressed: the host HTTP service doesn't gunzip for us.
  */
 async function fetchJsonlBody(url: string, opts: VercelCostFetchOptions): Promise<string> {
   const headers: Record<string, string> = {
@@ -79,7 +79,7 @@ export async function fetchVercelCostData(
   opts: VercelCostFetchOptions,
   range: CostFetchRange,
 ): Promise<CostRow[]> {
-  // `to` is exclusive; the host's range is inclusive — bump by one day.
+  // `to` is exclusive; the host's range is inclusive: bump by one day.
   const toExclusive = new Date(`${range.toDate}T00:00:00.000Z`);
   toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
 
@@ -95,7 +95,7 @@ export async function fetchVercelCostData(
   );
 
   // Aggregate BilledCost per (day, service, region, project). All charge
-  // categories are kept — Credits arrive as negative amounts and Tax /
+  // categories are kept: Credits arrive as negative amounts and Tax /
   // Adjustment / Purchase are real money, so the daily net matches the
   // invoice. Currency is tracked per bucket (the API only emits USD today).
   const buckets = new Map<

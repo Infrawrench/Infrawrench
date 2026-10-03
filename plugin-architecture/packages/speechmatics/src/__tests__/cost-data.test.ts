@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CostSetupError } from "@infrawrench/plugin-base";
 import { fetchSpeechmaticsCostData, type SpeechmaticsCostContext } from "../cost-data.js";
 
-/** Fixed "now" — every test asserts against closed UTC days relative to this. */
+/** Fixed "now": every test asserts against closed UTC days relative to this. */
 const NOW = new Date("2026-07-10T09:30:00.000Z");
 
 interface Call {

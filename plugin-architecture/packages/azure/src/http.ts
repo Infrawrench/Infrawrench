@@ -1,9 +1,9 @@
 /**
  * The one place Azure HTTP leaves this plugin.
  *
- * Every Azure endpoint the plugin talks to — ARM, the AAD token endpoint, Blob
+ * Every Azure endpoint the plugin talks to: ARM, the AAD token endpoint, Blob
  * Storage, the ACR token dance and registry API, the Service Bus / Event Hubs
- * data plane, and the public Retail Prices API — goes through
+ * data plane, and the public Retail Prices API; goes through
  * {@link azureRequest}. When the host supplies an `HttpHostServices`, the
  * request is proxied through the host process; otherwise it falls straight
  * through to the global `fetch`.
@@ -14,12 +14,12 @@
  * - **Bastion routing.** The server host binds an account's HTTP service to
  *   that account's bastion dispatcher (`server-core/src/host-services.ts`), so
  *   a request made through it egresses from the customer's network. A direct
- *   `fetch` from the poller egresses from ours — which for a subscription
+ *   `fetch` from the poller egresses from ours, which for a subscription
  *   whose ARM access is IP-allowlisted simply fails, and for an account bound
  *   to a bastion silently leaks egress that was supposed to be contained.
  * - **Custom CA trust.** The renderer cannot install a trust anchor; only the
  *   Node host can. Azure's own endpoints chain to public roots, so the plugin
- *   declares no `caCert` credential today and passes none — but a corporate
+ *   declares no `caCert` credential today and passes none, but a corporate
  *   TLS-intercepting proxy in front of `management.azure.com` is the case that
  *   would need one, and routing through the host is the prerequisite for ever
  *   adding it.
@@ -42,7 +42,7 @@ export interface AzureRequestInit {
    * `HttpHostServices.request` takes `string | Uint8Array`, which is every
    * body shape this plugin sends: JSON strings, form-urlencoded strings, the
    * raw bytes of an uploaded blob. Streams and `FormData` are deliberately not
-   * supported — nothing in an Azure control plane needs them, and they cannot
+   * supported: nothing in an Azure control plane needs them, and they cannot
    * cross the host boundary.
    */
   body?: string | Uint8Array;
@@ -80,7 +80,7 @@ function headerGetter(headers: Record<string, string>): (name: string) => string
  * Issue one Azure request, preferring the host's HTTP service.
  *
  * Passing `http: undefined` reproduces the previous direct-`fetch` behaviour
- * exactly, down to `res.json()` being the thing that parses the body — which
+ * exactly, down to `res.json()` being the thing that parses the body, which
  * is what keeps the existing per-module tests (which mock `globalThis.fetch`
  * with hand-built `Response` doubles) meaningful.
  */

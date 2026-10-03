@@ -143,7 +143,7 @@ describe("AzureClient routing", () => {
       "https://login.microsoftonline.com/t1/oauth2/v2.0/token",
       "https://management.azure.com/subscriptions/sub1/resourcegroups?api-version=2022-09-01",
     ]);
-    // The secret leaves through the host too — an account bound to a bastion
+    // The secret leaves through the host too: an account bound to a bastion
     // expects all of its egress to leave from its own network.
     expect(String(calls[0]!.body)).toContain("client_secret=s1");
     expect(calls[1]!.headers["Authorization"]).toBe("Bearer arm-tok");

@@ -72,7 +72,7 @@ describe("allocateClusterCost", () => {
   });
 
   it("charges the GREATER of request and usage", () => {
-    // Under-requesting does not make a pod free — it is still on the machine.
+    // Under-requesting does not make a pod free: it is still on the machine.
     const result = allocateClusterCost({
       nodes: [node()],
       pods: [
@@ -208,7 +208,7 @@ describe("allocateClusterCost", () => {
       expect(orphan.hourlyCost).toBeNull();
       expect(orphan.dailyCost).toBeNull();
       expect(orphan.requests.cpuCores).toBe(1);
-      // The surviving node is untouched — no phantom allocation against it.
+      // The surviving node is untouched: no phantom allocation against it.
       expect(result.nodes[0]!.podCount).toBe(0);
     });
 
@@ -265,7 +265,7 @@ describe("allocateClusterCost", () => {
   });
 
   it("never distributes more than a node's own price", () => {
-    // Three pods each claiming half the node — 150% overcommit.
+    // Three pods each claiming half the node: 150% overcommit.
     const result = allocateClusterCost({
       nodes: [node()],
       pods: [
@@ -292,7 +292,7 @@ describe("allocateClusterCost", () => {
       expect(result.pricedNodeCount).toBe(0);
       expect(result.fullyPriced).toBe(false);
       expect(result.unpricedNodes).toEqual(["node-1"]);
-      // Capacity is still known — that's the point.
+      // Capacity is still known: that's the point.
       expect(result.pods[0]!.cpuShare).toBeCloseTo(0.25, 10);
     });
 

@@ -99,7 +99,7 @@ export function renderFirestoreDatabase(resource: ResourceInstance, base: Detail
   } as FirestoreIamInfo);
   const indexesError = String(resource.resolvedOutputs["firestoreIndexesError"] ?? "");
 
-  // Inline document browser — MongoDB peer for Enterprise+MongoDB-compat
+  // Inline document browser: MongoDB peer for Enterprise+MongoDB-compat
   // (host resolves a user-linked MongoDB account), otherwise native
   // Firestore REST.
   base.noSqlBrowser = {
@@ -115,12 +115,12 @@ export function renderFirestoreDatabase(resource: ResourceInstance, base: Detail
 
   // Render indexes and backup schedules as clickable pills in the
   // detail view's `children` grid. Each pill's `onClickAction` is a
-  // `prompt-nosql-command` that deletes that specific resource — the
+  // `prompt-nosql-command` that deletes that specific resource: the
   // full name is pre-filled so the user only confirms the label.
   const indexPills: DashboardCardSchema[] = indexes.map((idx) => ({
     pluginId: "gcp",
     resourceTypeId: "firestore-index",
-    // Not a real registered resource type — `onClickAction` replaces
+    // Not a real registered resource type: `onClickAction` replaces
     // the default navigate-to-resource behavior, so the id just needs
     // to be unique per pill.
     resourceId: idx.fullName,
@@ -339,7 +339,7 @@ export function renderFirestoreDatabase(resource: ResourceInstance, base: Detail
               : "provisioning",
       label: op.error ? "Error" : op.state || "Running",
     },
-    // Operations have no detail page to navigate to — render as
+    // Operations have no detail page to navigate to: render as
     // read-only status chips.
     nonInteractive: true,
   }));

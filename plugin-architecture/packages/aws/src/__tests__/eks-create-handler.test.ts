@@ -61,7 +61,7 @@ describe("createEksCluster node-role preflight", () => {
     const ec2Query = vi.fn(async () => getRoleResponse("ec2.amazonaws.com"));
     const ctx = makeCtx({ ec2Query });
     // Preflight passes; with no subnets available the next failure is the
-    // subnet check — proving the role was accepted.
+    // subnet check: proving the role was accepted.
     await expect(createEksCluster(ctx, "acct", fields)).rejects.toThrow(/at least two subnets/);
   });
 

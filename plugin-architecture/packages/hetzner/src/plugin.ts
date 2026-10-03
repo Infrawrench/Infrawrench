@@ -40,14 +40,14 @@ const manifest: PluginManifest = {
   /**
    * Estimated spend, not billed spend.
    *
-   * Hetzner Cloud publishes no invoice or spend endpoint — the only money in
-   * the API is the `/pricing` rate card — so these amounts are this project's
+   * Hetzner Cloud publishes no invoice or spend endpoint (the only money in
+   * the API is the `/pricing` rate card) so these amounts are this project's
    * current inventory priced at list, net of VAT, in the project's own
    * currency. They will not reconcile against a Hetzner invoice line for line.
    *
    * `maxHistoryDays: 1` is deliberate and is the important part of this
    * declaration. A past day rebuilt from today's inventory omits everything
-   * created and destroyed since — silently, and always downward — and the
+   * created and destroyed since (silently, and always downward) and the
    * traffic counters that would correct it hold the current billing period
    * only, with no history at all. Rather than backfill a year of confidently
    * wrong numbers, the collector prices the day it runs and the series builds

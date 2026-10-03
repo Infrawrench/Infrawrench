@@ -206,7 +206,7 @@ describe("resolveOutput ecr-repository docker credentials", () => {
     expect(JSON.parse(out)).toEqual({
       auths: { "123456789012.dkr.ecr.us-east-1.amazonaws.com": { auth: token } },
     });
-    // Compact document — no pretty-printing whitespace.
+    // Compact document: no pretty-printing whitespace.
     expect(out).not.toContain("\n");
   });
 

@@ -68,7 +68,7 @@ const manifest: PluginManifest = {
   ],
   // /me/bill invoices (+ per-line details) for finalized spend and
   // /me/consumption/usage/current for the unbilled in-progress period.
-  // Account-level dimensions only — bill lines identify the billed service,
+  // Account-level dimensions only: bill lines identify the billed service,
   // not regions/resources. The consumer key needs the access rules
   // `GET /me/bill*` and `GET /me/consumption*` on top of the usual
   // `/cloud/project/*` rules.

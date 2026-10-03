@@ -61,7 +61,7 @@ export async function deleteResource(
 
   if (typeId === "cloudsql-instance") {
     // resourceId format is `<accountId>:cloudsql-instance:<name>` and the
-    // instance name is all we need for the DELETE — skip the listResources
+    // instance name is all we need for the DELETE: skip the listResources
     // round-trip that `ctx.getResource` does. Adds an AbortController-backed
     // timeout so the DELETE doesn't hang the UI indefinitely if Cloud SQL's
     // API stalls. The API returns immediately with an Operation; the actual
@@ -395,7 +395,7 @@ export async function deleteResource(
     const natName = String(resource.fields["name"] ?? "");
     if (!region || !routerName || !natName)
       throw new Error("Cannot determine region, router, or NAT name for deletion");
-    // Cloud NAT is a sub-resource of the router — fetch the router, remove this NAT, then patch
+    // Cloud NAT is a sub-resource of the router: fetch the router, remove this NAT, then patch
     const routerUrl = `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${region}/routers/${routerName}`;
     const routerRes = await fetch(routerUrl, {
       method: "GET",
@@ -573,7 +573,7 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     // externalId is `<region>/<triggerId>` for resources produced by the
     // current lister/create handler. Pre-regional rows just stored
-    // `<triggerId>` — fall back to the global endpoint for those.
+    // `<triggerId>`: fall back to the global endpoint for those.
     const externalId = String(resource.externalId ?? "");
     if (!externalId) throw new Error("Cannot determine Cloud Build trigger ID for deletion");
     const slashIdx = externalId.indexOf("/");
@@ -618,7 +618,7 @@ export async function deleteResource(
   if (typeId === "vertex-ai-endpoint") {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
-    // fullName is like projects/p/locations/region/endpoints/id — extract region for regional endpoint
+    // fullName is like projects/p/locations/region/endpoints/id: extract region for regional endpoint
     const region = String(
       resource.fields["region"] ?? fullName.split("/locations/")[1]?.split("/")[0] ?? "",
     );
@@ -691,7 +691,7 @@ export async function deleteResource(
   }
 
   if (typeId === "kms-key") {
-    // Cloud KMS doesn't delete keys — it only destroys their versions.
+    // Cloud KMS doesn't delete keys: it only destroys their versions.
     // Schedule destruction of every version that isn't already destroyed.
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const keyName = resource.externalId ?? "";

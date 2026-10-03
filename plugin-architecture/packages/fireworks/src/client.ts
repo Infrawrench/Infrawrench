@@ -28,7 +28,7 @@ const MAX_PAGES = 20;
 const MAX_USAGE_WINDOW_DAYS = 31;
 
 // ---------------------------------------------------------------------------
-// Wire shapes — mirrored from https://docs.fireworks.ai/merged.openapi.yaml
+// Wire shapes: mirrored from https://docs.fireworks.ai/merged.openapi.yaml
 // ---------------------------------------------------------------------------
 
 /** Every control-plane list answers `{<plural>: [], nextPageToken, totalSize}`. */
@@ -86,7 +86,7 @@ interface Model {
   kind?: string;
   githubUrl?: string;
   huggingFaceUrl?: string;
-  /** int64 — arrives as a JSON string. */
+  /** int64: arrives as a JSON string. */
   baseModelDetails?: { parameterCount?: string; modelType?: string } | null;
   peftDetails?: { baseModel?: string; r?: number } | null;
   public?: boolean;
@@ -104,7 +104,7 @@ interface Dataset {
   createTime?: string;
   state?: string;
   status?: GatewayStatus | null;
-  /** int64 — arrives as a JSON string. */
+  /** int64: arrives as a JSON string. */
   exampleCount?: string | number;
   estimatedTokenCount?: string | number;
   averageTurnCount?: number;
@@ -149,13 +149,13 @@ interface BatchInferenceJob {
   inputDatasetId?: string;
   outputDatasetId?: string;
   jobProgress?: JobProgress | null;
-  /** There is no `completionTime` on this object — the end stamp lives here. */
+  /** There is no `completionTime` on this object: the end stamp lives here. */
   lifecycle?: { validatedTime?: string; runStartTime?: string; endTime?: string } | null;
 }
 
 interface Money {
   currencyCode?: string;
-  /** int64 — arrives as a JSON string. */
+  /** int64: arrives as a JSON string. */
   units?: string;
   nanos?: number;
 }
@@ -208,7 +208,7 @@ interface Secret {
 
 interface Quota {
   name?: string;
-  /** int64 — arrives as a JSON string. */
+  /** int64: arrives as a JSON string. */
   value?: string | number;
   maxValue?: string | number;
   usage?: number;
@@ -252,7 +252,7 @@ interface ServerlessUsage {
 interface DedicatedUsage {
   deploymentId?: string;
   acceleratorType?: string;
-  /** int64 — arrives as a JSON string. */
+  /** int64: arrives as a JSON string. */
   acceleratorSeconds?: string | number;
   startTime?: string;
   endTime?: string;
@@ -656,7 +656,7 @@ export class FireworksClient implements PluginClient {
     const displayName = dataset.displayName || id;
     const createdAt = dataset.createTime ?? nowIso();
     // `userUploaded` / `transformed` / `splitted` / `evaluationResult` are
-    // mutually-exclusive marker objects, not booleans — flatten to one label.
+    // mutually-exclusive marker objects, not booleans: flatten to one label.
     const source = dataset.userUploaded
       ? "User uploaded"
       : dataset.transformed
@@ -937,8 +937,8 @@ export class FireworksClient implements PluginClient {
           accountId,
         );
       default: {
-        // API keys have no published get-by-id route over HTTP — the generated
-        // spec path for it is malformed — so we re-read the list instead.
+        // API keys have no published get-by-id route over HTTP (the generated
+        // spec path for it is malformed) so we re-read the list instead.
         const all = await this.listResources(typeId, accountId);
         const found = all.find((resource) => resource.id === resourceId);
         if (!found) {
@@ -1072,7 +1072,7 @@ export class FireworksClient implements PluginClient {
       if (!Number.isFinite(replicaCount) || replicaCount < 0) {
         throw new Error("Fireworks plugin: replicaCount must be a non-negative integer");
       }
-      // Note the `:scale` suffix — this is a custom method, so it does NOT
+      // Note the `:scale` suffix: this is a custom method, so it does NOT
       // merge with the patch body below and must be sent on its own.
       await this.request<unknown>(this.accountPath(`/deployments/${id}:scale`), {
         method: "PATCH",
@@ -1190,7 +1190,7 @@ export class FireworksClient implements PluginClient {
    * ⚠️ Do **not** use `billingUsage.costNanoUsd` for this: it is nano-USD but
    * the spec states it is "0 when absent (not free)" and only one upstream
    * currently stamps an authoritative cost, so it reads as near-zero spend.
-   * `usageCosts:query` returns google.type.Money — real dollars.
+   * `usageCosts:query` returns google.type.Money: real dollars.
    * https://docs.fireworks.ai/api-reference/query-usage-costs
    */
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
@@ -1229,7 +1229,7 @@ export class FireworksClient implements PluginClient {
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           if (!attempted && scope === "ACCOUNT" && /40[13]/.test(message)) {
-            // Not an account admin — fall back to this principal's own spend
+            // Not an account admin: fall back to this principal's own spend
             // rather than reporting nothing.
             scope = "SELF";
             attempted = true;
@@ -1267,7 +1267,7 @@ export class FireworksClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/accounts/{aid}/billingUsage` — daily buckets, split into
+   * `GET /v1/accounts/{aid}/billingUsage`: daily buckets, split into
    * `serverlessCosts` / `dedicatedCosts` / `trainingCosts`. Used here for
    * consumption series (tokens, accelerator-seconds), not for money.
    * https://docs.fireworks.ai/api-reference/get-billing-usage
@@ -1597,7 +1597,7 @@ export class FireworksClient implements PluginClient {
           },
           {
             kind: "text",
-            // Worth spelling out — this is not ordinary PATCH semantics.
+            // Worth spelling out: this is not ordinary PATCH semantics.
             content:
               "Scaling goes through a dedicated RPC (`PATCH …/deployments/{id}:scale`), separate from editing the min/max window. Editing this resource sends whichever of the two the changed fields imply.",
             variant: "muted",
@@ -1889,7 +1889,7 @@ export class FireworksClient implements PluginClient {
                 ...(fields["runStartTime"]
                   ? [{ key: "Started", value: String(fields["runStartTime"]) }]
                   : []),
-                // There is no `completionTime` on this object — `lifecycle.endTime` is it.
+                // There is no `completionTime` on this object: `lifecycle.endTime` is it.
                 ...(fields["endTime"] ? [{ key: "Ended", value: String(fields["endTime"]) }] : []),
                 ...(fields["expireTime"]
                   ? [{ key: "Deadline", value: String(fields["expireTime"]) }]

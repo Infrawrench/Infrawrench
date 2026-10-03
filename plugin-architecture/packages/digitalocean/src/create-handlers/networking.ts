@@ -154,7 +154,7 @@ export async function networkingGetCreateConfig(
   if (typeId === "reserved-ip") {
     // `POST /v2/reserved_ips` takes *either* `droplet_id` (assign on
     // creation, region inferred from the Droplet) *or* `region` (+ optional
-    // `project_id`) — the two are mutually exclusive in DO's schema. The form
+    // `project_id`): the two are mutually exclusive in DO's schema. The form
     // makes that a mode toggle so the user never has to know which key the
     // API wants, and both branches are pickers rather than free-text ids.
     const [regionsData, dropletsData, projectField] = await Promise.all([
@@ -267,7 +267,7 @@ export async function networkingCreateResource(
 
   if (typeId === "dns-record") {
     // When created from a domain's detail page, the domain field is hidden
-    // in the form — recover it from parentResourceId (domain externalId is
+    // in the form: recover it from parentResourceId (domain externalId is
     // the domain name itself).
     const domainName = fields["domainName"] || parentExternalId;
     if (!domainName)

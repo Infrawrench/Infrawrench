@@ -20,7 +20,7 @@ export const NeonBranchResourceType = rt({
   dependsOn: [{ fieldKey: "projectId", targetTypeId: "neon-project", label: "in project" }],
   // Neon's `history_retention_seconds` (the PITR window that is the real
   // automated protection here) is not synced by any lister, so there is no
-  // retention field to declare — only the presence of a snapshot is judged.
+  // retention field to declare, only the presence of a snapshot is judged.
   backupPolicy: { protectedBy: ["neon-snapshot"] },
   parentTypeId: "neon-project",
   supportsCreate: true,

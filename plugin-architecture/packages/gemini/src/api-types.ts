@@ -2,7 +2,7 @@
  * Wire types for the Gemini API on **AI Studio**
  * (`https://generativelanguage.googleapis.com/v1beta`).
  *
- * This is not Vertex AI. Auth is the `x-goog-api-key` header — the legacy
+ * This is not Vertex AI. Auth is the `x-goog-api-key` header: the legacy
  * `?key=` query parameter still works, but the header keeps the key out of
  * URLs and request logs.
  *
@@ -22,7 +22,7 @@
  */
 
 // -----------------------------------------------------------------------------
-// Models — https://ai.google.dev/api/models
+// Models: https://ai.google.dev/api/models
 // -----------------------------------------------------------------------------
 
 /** The complete `Model` schema. There are no other fields. */
@@ -50,10 +50,10 @@ export interface ListModelsResponse {
 }
 
 // -----------------------------------------------------------------------------
-// Tuned models — verified via the v1beta discovery document
+// Tuned models: verified via the v1beta discovery document
 // -----------------------------------------------------------------------------
 
-/** `STATE_UNSPECIFIED | CREATING | ACTIVE | FAILED` — only four, no DELETING. */
+/** `STATE_UNSPECIFIED | CREATING | ACTIVE | FAILED`, only four, no DELETING. */
 type TunedModelState = "STATE_UNSPECIFIED" | "CREATING" | "ACTIVE" | "FAILED";
 
 export interface TunedModel {
@@ -89,7 +89,7 @@ export interface ListTunedModelsResponse {
 }
 
 // -----------------------------------------------------------------------------
-// Files — https://ai.google.dev/api/files
+// Files: https://ai.google.dev/api/files
 // -----------------------------------------------------------------------------
 
 type FileState = "STATE_UNSPECIFIED" | "PROCESSING" | "ACTIVE" | "FAILED";
@@ -121,7 +121,7 @@ export interface ListFilesResponse {
 }
 
 // -----------------------------------------------------------------------------
-// Cached contents — https://ai.google.dev/api/caching
+// Cached contents: https://ai.google.dev/api/caching
 // -----------------------------------------------------------------------------
 
 export interface CachedContent {
@@ -143,12 +143,12 @@ export interface ListCachedContentsResponse {
 }
 
 // -----------------------------------------------------------------------------
-// Batches — https://ai.google.dev/api/batch-mode
+// Batches: https://ai.google.dev/api/batch-mode
 // -----------------------------------------------------------------------------
 
 /**
  * ⚠️ Batches is an **Operations** API. `GET /v1beta/batches` returns
- * `ListOperationsResponse` whose key is `operations[]` — not `batches[]` — and
+ * `ListOperationsResponse` whose key is `operations[]` (not `batches[]`) and
  * each entry is a long-running `Operation` whose `metadata` holds the actual
  * `GenerateContentBatch`.
  */
@@ -198,7 +198,7 @@ interface GenerateContentBatch {
 }
 
 // -----------------------------------------------------------------------------
-// File Search — https://ai.google.dev/api/file-search
+// File Search: https://ai.google.dev/api/file-search
 // -----------------------------------------------------------------------------
 
 export interface FileSearchStore {
@@ -248,11 +248,11 @@ export interface ListFileSearchDocumentsResponse {
 }
 
 // -----------------------------------------------------------------------------
-// Interactions (TTS) — https://ai.google.dev/api/interactions-api
+// Interactions (TTS): https://ai.google.dev/api/interactions-api
 // -----------------------------------------------------------------------------
 
 /**
- * ⚠️ The Interactions API is **not** in the v1beta discovery document — it is
+ * ⚠️ The Interactions API is **not** in the v1beta discovery document: it is
  * a separately hand-documented surface, though the route is live. Everything
  * below comes from ai.google.dev prose and the official code samples.
  *
@@ -271,7 +271,7 @@ export interface InteractionRequest {
 /**
  * The base64 audio arrives at `interaction.output_audio.data`.
  *
- * `mime_type` is an enum that includes `audio/l16` — raw 16-bit linear PCM —
+ * `mime_type` is an enum that includes `audio/l16` (raw 16-bit linear PCM)
  * alongside real containers like `audio/wav` and `audio/mp3`. Gemini's TTS
  * models emit **headerless PCM at 24 000 Hz, mono, 16-bit**, which no browser
  * `<audio>` element can play, so the client reads `mime_type`, `sample_rate`
@@ -305,7 +305,7 @@ export interface InteractionResponse {
 }
 
 // -----------------------------------------------------------------------------
-// generateContent (STT) — https://ai.google.dev/api/generate-content
+// generateContent (STT): https://ai.google.dev/api/generate-content
 // -----------------------------------------------------------------------------
 
 export interface GenerateContentRequest {

@@ -281,7 +281,7 @@ describe("resourceTypeDefinitionSchema", () => {
         rightsizing: {
           sizeFieldKey: "size",
           cpuMetric: { seriesLabel: "CPU" },
-          sizeFamilyPattern: "([a-z", // unbalanced group — invalid regex
+          sizeFamilyPattern: "([a-z", // unbalanced group: invalid regex
         },
       }).success,
     ).toBe(false);
@@ -301,7 +301,7 @@ describe("resourceTypeDefinitionSchema", () => {
   });
 
   it("rejects a rightsizing sizeFamilyPattern whose only parens are a lookahead", () => {
-    // `(?=…)` contains "(" but captures nothing — a source scan for "("
+    // `(?=…)` contains "(" but captures nothing: a source scan for "("
     // would wrongly accept it and the family guard would never constrain.
     expect(
       resourceTypeDefinitionSchema.safeParse({

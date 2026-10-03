@@ -12,8 +12,8 @@ import { FileSearchDocumentResourceType } from "./resources/file-search-document
 /**
  * The Gemini "sparkle" mark, taken verbatim from Google's own CDN asset at
  * `https://www.gstatic.com/lamda/images/gemini_sparkle_v002_d4735304ff6292a690345.svg`
- * (28×28). The path data and the radial-gradient stops — `#9168C0` purple,
- * `#5684D1` indigo, `#1BA1E3` cyan-blue — are the real brand asset, not a
+ * (28×28). The path data and the radial-gradient stops (`#9168C0` purple,
+ * `#5684D1` indigo, `#1BA1E3` cyan-blue) are the real brand asset, not a
  * redraw. The source viewBox is preserved via an inner `<svg>` so the geometry
  * and gradient transform stay intact on the 100×100 plugin canvas.
  */

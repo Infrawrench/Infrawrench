@@ -3,16 +3,16 @@
  *
  * Two pieces:
  *
- *   - {@link resolveSshChain} — walk an account's `connectThroughAccountId`
+ *   - {@link resolveSshChain}: walk an account's `connectThroughAccountId`
  *     pointer recursively to build an ordered list of hops, outermost-first.
  *     Detects cycles, enforces a depth cap. Pure logic, no I/O of its own;
  *     the caller injects an account loader.
  *
- *   - {@link forwardOutHop} — promise wrapper around ssh2's `forwardOut` for
+ *   - {@link forwardOutHop}: promise wrapper around ssh2's `forwardOut` for
  *     opening a tunnelled TCP stream to the next hop. The caller is responsible
  *     for creating the next ssh2.Client and calling `connect({ sock, … })` with
  *     whatever per-hop options it needs (host-key verification, agent forwarding,
- *     etc.) — keeping the chain helper unopinionated about those concerns.
+ *     etc.): keeping the chain helper unopinionated about those concerns.
  */
 
 export interface SshHop {
@@ -29,7 +29,7 @@ export interface SshAccountConfig extends SshHop {
 
 export type SshAccountLoader = (accountId: string) => Promise<SshAccountConfig>;
 
-/** Hard cap on chain depth — guards against misconfiguration. */
+/** Hard cap on chain depth: guards against misconfiguration. */
 export const MAX_SSH_HOPS = 8;
 
 /**
@@ -68,7 +68,7 @@ export async function resolveSshChain(
 }
 
 /**
- * Minimal ssh2.Client surface we depend on — declared structurally so this
+ * Minimal ssh2.Client surface we depend on: declared structurally so this
  * module does not take a direct dep on `@types/node` or `ssh2`. The returned
  * `stream` value is a Node duplex; callers (web ssh-proxy, electron ssh-shell)
  * pass it straight to ssh2's `connect({ sock })`.

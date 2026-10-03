@@ -6,8 +6,8 @@
  * returns the (running) consumption of one monthly billing period, broken
  * down by product/SKU and resource, priced as a Money value (units + nanos).
  * Spend is period-native: every row is dated to the first day of its billing
- * period, and a chunk only reports the periods whose first day it contains —
- * chunks with no period start inside them return nothing — so month-aligned
+ * period, and a chunk only reports the periods whose first day it contains
+ * (chunks with no period start inside them return nothing) so month-aligned
  * chunks and restatement re-fetches stay exactly-once. The in-progress month
  * restates continuously; the host's trailing re-collection window absorbs it.
  *
@@ -33,7 +33,7 @@ interface ScwMoney {
 
 interface ScwConsumption {
   value?: ScwMoney;
-  /** e.g. "VPC Public Gateway S" — the billed product. */
+  /** e.g. "VPC Public Gateway S": the billed product. */
   product_name?: string;
   /** Invoice category, e.g. "Compute", "Network". */
   category_name?: string;

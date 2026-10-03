@@ -1,6 +1,6 @@
 import type { Api, ProjectListItem } from "@neondatabase/api-client";
 
-/** A project/branch pair — the scope every beta service is keyed by. */
+/** A project/branch pair: the scope every beta service is keyed by. */
 export interface BranchRef {
   projectId: string;
   branchId: string;
@@ -37,8 +37,8 @@ function readProp(value: unknown, key: string): unknown {
  *
  * `@neondatabase/api-client@2.7.3` mistypes several of the beta-service
  * responses (see `functions.ts` and `snapshots.ts`), so those callers have to
- * look past the generated types. Validating the payload at runtime — rather
- * than asserting the documented shape and hoping — means SDK or API drift
+ * look past the generated types. Validating the payload at runtime (rather
+ * than asserting the documented shape and hoping) means SDK or API drift
  * degrades to a short listing instead of a `TypeError` inside a mapper.
  */
 export function validatedArray<T>(
@@ -85,7 +85,7 @@ export async function enumerateBranches(
   return refs;
 }
 
-/** `{accountId}:{typeId}:{externalId}` — the plugin-wide resource id convention. */
+/** `{accountId}:{typeId}:{externalId}`: the plugin-wide resource id convention. */
 export function resourceId(accountId: string, typeId: string, externalId: string): string {
   return `${accountId}:${typeId}:${externalId}`;
 }

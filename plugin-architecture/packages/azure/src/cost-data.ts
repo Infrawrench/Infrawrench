@@ -10,7 +10,7 @@
  * `$skiptoken`).
  *
  * The service principal needs the "Cost Management Reader" role on the
- * subscription — the plain "Reader" role used for ARM resource listing is
+ * subscription: the plain "Reader" role used for ARM resource listing is
  * NOT sufficient for cost queries. Azure serves ~13 months of history and
  * rate-limits this API aggressively; a 429 surfaces as a thrown error from
  * the HTTP helper and the host backs off.
@@ -21,9 +21,9 @@
  * for `QueryDataset.grouping`:
  *
  *   "Array of group by expression to use in the query. Query can have up to
- *    2 group by clauses."
- *   — Microsoft.CostManagement TypeSpec, `@maxItems(2)` on QueryDataset.grouping
- *     (https://github.com/Azure/azure-rest-api-specs — specification/cost-management/
+ *    2 group by clauses.":
+ *   Microsoft.CostManagement TypeSpec, `@maxItems(2)` on QueryDataset.grouping
+ *     (https://github.com/Azure/azure-rest-api-specs: specification/cost-management/
  *      resource-manager/Microsoft.CostManagement/CostManagement/models.tsp)
  *
  * Two slots, and this plugin already declares two cost dimensions (service and
@@ -31,14 +31,14 @@
  * BenefitId)` out of one query, so charge type and commitment attribution
  * cannot simply be bolted onto the existing grouping. Instead:
  *
- * - {@link USAGE_GROUPING} over `ActualCost` — `[ServiceName,
+ * - {@link USAGE_GROUPING} over `ActualCost`: `[ServiceName,
  *   ResourceLocation]` filtered to `ChargeType In ("Usage")`. This is the
  *   consumption backbone and produces rows shaped exactly like the ones this
  *   collector produced before charge types existed.
- * - {@link USAGE_GROUPING} over `AmortizedCost` — the same cells on the other
+ * - {@link USAGE_GROUPING} over `AmortizedCost`: the same cells on the other
  *   dataset. See "The amortized pass" below; this is what makes commitment
  *   coverage measurable at all.
- * - {@link ATTRIBUTION_GROUPING} — `[ChargeType, BenefitId]`, unfiltered.
+ * - {@link ATTRIBUTION_GROUPING}: `[ChargeType, BenefitId]`, unfiltered.
  *   Everything that is not consumption, attributed to the commitment that
  *   caused it. Spending the second slot on `BenefitId` rather than
  *   `ServiceName` costs nothing real, because Azure does not report a service
@@ -47,14 +47,14 @@
  *   Marketplace usage may be shown as unassigned, or **No resource location**"
  *   (https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/group-filter).
  * - {@link ATTRIBUTION_GROUPING} over `AmortizedCost`, filtered to
- *   {@link UNUSED_COMMITMENT_FILTER} — the committed hours nothing consumed.
+ *   {@link UNUSED_COMMITMENT_FILTER}: the committed hours nothing consumed.
  *   See "Unused commitment hours" below.
  *
  * The attribution query is deliberately *unfiltered* rather than filtered to a
  * hard-coded list of non-usage charge types: `QueryOperatorType` only has `In`
  * (no `NotIn`), so a filtered complement would silently drop money under any
  * charge type Azure adds later. Unfiltered, the `Usage` rows are discarded
- * here and anything unrecognised lands in `"other"` — see
+ * here and anything unrecognised lands in `"other"`: see
  * {@link mapAzureChargeType}. (The unused-commitment query *is* filtered, and
  * safely so: it asks for two named charge types rather than for a complement,
  * so a charge type Azure adds later is still caught by the unfiltered pass.)
@@ -63,7 +63,7 @@
  * processing units, "one QPU is deducted for one month of data queried", with
  * per-*tenant* quotas of 12 QPU/10s, 60 QPU/min and 600 QPU/hour
  * (https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/manage-automation).
- * A daily incremental collection goes from 1 request to 4 — 3 on a subscription
+ * A daily incremental collection goes from 1 request to 4: 3 on a subscription
  * that refuses the amortized dataset, which skips both amortized passes; a
  * 395-day backfill from 13 to 52. Both are well inside the hourly quota for a
  * single account; a tenant with dozens of subscriptions backfilling at once was
@@ -74,13 +74,13 @@
  *
  * `type` also accepts `AmortizedCost`, the dataset where a reservation
  * purchase is spread across the term it buys. It is not a second opinion on
- * the same numbers — for a committed estate it is the **only** dataset that
+ * the same numbers, for a committed estate it is the **only** dataset that
  * prices covered consumption at all.
  *
  * In `ActualCost`, usage a reservation covers has an `EffectivePrice` of zero:
  * the money left the account when the reservation was bought. So on cash
  * figures a fully-reserved fleet costs nothing and the reservation looks like
- * a pure expense — and commitment coverage, which is covered spend over total
+ * a pure expense, and commitment coverage, which is covered spend over total
  * spend, is 0 ÷ something for every org that has ever bought anything. A ratio
  * that is structurally zero is worse than no ratio, because 0% looks like an
  * answer.
@@ -95,12 +95,12 @@
  *
  * so the cell is emitted as a `usage` row worth `cash` on both bases plus a
  * `commitment_covered_usage` row worth `0` cash and `covered` amortized. The
- * identity holds only while both figures are non-negative — a negative `Usage`
+ * identity holds only while both figures are non-negative: a negative `Usage`
  * correction that has reached one dataset and not the other would otherwise
- * "decompose" into coverage that was never bought — so a cell holding one is
+ * "decompose" into coverage that was never bought, so a cell holding one is
  * emitted whole instead. Those
- * covered rows carry no `commitmentId` — which reservation covered the hour is
- * not in this response — and they do not need one: the host's coverage
+ * covered rows carry no `commitmentId` (which reservation covered the hour is
+ * not in this response) and they do not need one: the host's coverage
  * numerator reads the charge type. That is also why this works on any
  * agreement, while `BenefitId` (the attribution pass's second grouping) exists
  * only on EA and MCA.
@@ -113,8 +113,8 @@
  * purchases" at all
  * (https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/understand-cost-mgt-data).
  * When it is refused, every cell falls back to one undifferentiated `usage` row
- * with no `amortizedAmount` — absent, meaning "no opinion", so the host uses
- * the cash figure — and nothing else about collection changes.
+ * with no `amortizedAmount` (absent, meaning "no opinion", so the host uses
+ * the cash figure) and nothing else about collection changes.
  *
  * One consequence worth stating plainly:
  *
@@ -125,8 +125,8 @@
  *   day, and stating it (rather than omitting it, which means "no opinion" and
  *   falls back to cash) is what keeps the amortized view from showing the
  *   purchase at full price *and* every amortized slice of it. This is only
- *   representable because the host stores "reported" separately from the value
- *   — see the `amortized_reported` column in
+ *   representable because the host stores "reported" separately from the value:
+ *   see the `amortized_reported` column in
  *   `server-core/src/clickhouse/migrate.ts`.
  *
  * ─── Unused commitment hours ──────────────────────────────────────────────
@@ -134,9 +134,9 @@
  * The consumption passes above filter to `ChargeType In ("Usage")`, so they see
  * only the value a commitment *delivered*. What a commitment wasted arrives as
  * `UnusedReservation` / `UnusedSavingsPlan`, charge types that exist **only in
- * the amortized dataset** — Cost Analysis lists them among the amortized-only
+ * the amortized dataset**: Cost Analysis lists them among the amortized-only
  * values
- * (https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/group-filter) —
+ * (https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/group-filter),
  * and are therefore invisible to the `ActualCost` attribution pass as well.
  * Without them an amortized grand total is short by exactly the money a
  * reservation wasted, which is the single number a commitments feature exists
@@ -152,16 +152,16 @@
  *   would be a straight double count: the same committed money would appear
  *   once as delivered and once as wasted.
  * - **They are `commitment_fee`, not covered usage**, per the mapping table in
- *   {@link mapAzureChargeType} — obligation the provider billed and nothing
+ *   {@link mapAzureChargeType}: obligation the provider billed and nothing
  *   claimed. The host counts only `usage` and `commitment_covered_usage` toward
  *   coverage and toward a commitment's delivered total
  *   (`CONSUMPTION_SQL` in `server-core/src/clickhouse/commitment-readers.ts`),
- *   so an unused row raises neither ratio — which is the point: unused hours
+ *   so an unused row raises neither ratio, which is the point: unused hours
  *   are obligation *not* delivered, and utilization must fall when they appear,
  *   never rise.
  *
- * An unused row shares its whole host key — `(day, "", "", currency,
- * commitment_fee, benefitId)` — with the `Purchase` row of the same commitment
+ * An unused row shares its whole host key: `(day, "", "", currency,
+ * commitment_fee, benefitId)`; with the `Purchase` row of the same commitment
  * on a day that carries both. They are therefore merged rather than pushed
  * separately: cash from the purchase, amortized from the unused hours. Two rows
  * would be two versions of one ReplacingMergeTree row and `FINAL` would keep
@@ -171,15 +171,15 @@
  *
  * `cost_daily` is a ReplacingMergeTree whose sort key cannot carry charge type
  * or commitment id, so `server-core/src/clickhouse/cost-writers.ts` folds them
- * into `tags_hash` — but only when they are non-default, precisely so that a
+ * into `tags_hash`, but only when they are non-default, precisely so that a
  * plain usage row keeps hashing the way it always did.
  *
  * The consequence: a `(day, service, region)` cell that used to be one row
  * (usage + purchases + tax, summed by the unfiltered query) becomes a usage row
  * at the *same* hash plus attribution rows at *new* hashes. Cells that contain
  * any on-demand consumption re-state correctly and the day's total is
- * preserved. A cell that contained *only* non-consumption money — or, now,
- * only commitment-covered consumption — does not: nothing is written at its old
+ * preserved. A cell that contained *only* non-consumption money (or, now,
+ * only commitment-covered consumption) does not: nothing is written at its old
  * key any more, and a ReplacingMergeTree never deletes what is not rewritten.
  *
  * **This is the host's problem and the host solves it**, in
@@ -196,8 +196,8 @@
  * chunk, and a transient flap that ages past `restatementDays` would never be
  * repaired. Flagged, the host skips tombstoning for that pass.
  *
- * The third query this file once considered — re-running the old unfiltered
- * grouping purely to enumerate cells needing a tombstone — is not what the
+ * The third query this file once considered (re-running the old unfiltered
+ * grouping purely to enumerate cells needing a tombstone) is not what the
  * third query above is. That one could not have worked anyway: the attribution
  * pass groups `[ChargeType, BenefitId]` and so cannot name the service a stale
  * row is filed under, which is exactly the kind of key-space knowledge a plugin
@@ -223,10 +223,10 @@ const USAGE_GROUPING = [
 
 /**
  * Everything else, attributed to the commitment that caused it. `BenefitId` is
- * the column that spans both commitment kinds — the FOCUS conversion rules key
+ * the column that spans both commitment kinds: the FOCUS conversion rules key
  * off its resource-provider segment, `/microsoft.capacity/` for reservations
  * and `/microsoft.billingbenefits/` for savings plans
- * (https://learn.microsoft.com/en-us/cloud-computing/finops/focus/convert) —
+ * (https://learn.microsoft.com/en-us/cloud-computing/finops/focus/convert),
  * which is also why it is an ARM resource id and therefore joinable against
  * the reservation ids `commitments.ts` reports. `ReservationId` is the wrong
  * choice here: it is a bare identifier scoped to a reservation order, matches
@@ -260,7 +260,7 @@ interface QueryGrouping {
  * Azure's `ChargeType` → our {@link CostChargeType}.
  *
  * No single Microsoft page enumerates the column's values; the complete set is
- * the one the FOCUS conversion rules explicitly handle —
+ * the one the FOCUS conversion rules explicitly handle:
  * `Usage`, `Purchase`, `Refund`, `UnusedReservation`, `UnusedSavingsPlan`,
  * `Credit`, `Tax`, and otherwise `RoundingAdjustment`
  * (https://learn.microsoft.com/en-us/cloud-computing/finops/focus/convert,
@@ -268,25 +268,25 @@ interface QueryGrouping {
  *
  *   Azure                  had a BenefitId?   ours               why
  *   ─────────────────────  ────────────────   ─────────────────  ──────────────────────────────
- *   Usage                  —                  usage              consumption; the default
+ *   Usage                  -                  usage              consumption; the default
  *   Purchase               yes                commitment_fee     a reservation or savings plan
  *   Purchase               no                 other              Marketplace / support / other
- *                                                                Azure purchase — real money, but
+ *                                                                Azure purchase; real money, but
  *                                                                not a commitment and not usage
- *   Refund                 —                  refund             MCA only; EA and PAYG never emit it
- *   UnusedReservation      —                  commitment_fee     committed money no usage claimed
- *   UnusedSavingsPlan      —                  commitment_fee     same, for a savings plan
- *   Credit                 —                  credit
- *   Tax                    —                  tax
- *   RoundingAdjustment     —                  adjustment         billing-profile / enrollment scope
- *   anything else          —                  other              never usage: a near-miss here
+ *   Refund                 -                  refund             MCA only; EA and PAYG never emit it
+ *   UnusedReservation      -                  commitment_fee     committed money no usage claimed
+ *   UnusedSavingsPlan      -                  commitment_fee     same, for a savings plan
+ *   Credit                 -                  credit
+ *   Tax                    -                  tax
+ *   RoundingAdjustment     -                  adjustment         billing-profile / enrollment scope
+ *   anything else          -                  other              never usage: a near-miss here
  *                                                                overstates consumption
  *
  * Two entries deserve their reasoning spelled out.
  *
  * **`Purchase` is not synonymous with a commitment.** It covers Marketplace
  * offerings and support plans as well as reservations and savings plans, and
- * nothing else in the response distinguishes them — `PricingModel` is no help,
+ * nothing else in the response distinguishes them: `PricingModel` is no help,
  * because "Purchases show as OnDemand"
  * (https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/group-filter).
  * The presence of a `BenefitId` is the distinguishing evidence, so a purchase
@@ -295,9 +295,9 @@ interface QueryGrouping {
  * purchases genuinely are support plans and some are Marketplace software, and
  * this data cannot tell which.
  *
- * **`UnusedReservation` / `UnusedSavingsPlan` cannot appear in `ActualCost`**
- * — they exist only in the amortized dataset
- * (https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/group-filter) —
+ * **`UnusedReservation` / `UnusedSavingsPlan` cannot appear in `ActualCost`**:
+ * they exist only in the amortized dataset
+ * (https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/group-filter),
  * so they reach this function only from the amortized unused-commitment pass,
  * never from the unfiltered `ActualCost` attribution pass. Mapping them to
  * `usage` (which is what FOCUS does) would be actively wrong for us: the host
@@ -343,7 +343,7 @@ function normalizeRegion(raw: string): string {
 
 /**
  * Azure spells "this row has no benefit" several ways depending on scope and
- * dataset — an absent column, an empty string, or one of the placeholder
+ * dataset: an absent column, an empty string, or one of the placeholder
  * labels Cost Analysis renders. All of them mean "not attributable", and an
  * attribution to the literal string "No benefit" would be worse than none.
  */
@@ -391,13 +391,13 @@ async function runQuery(
     const data: QueryResponse = await ctx.post<QueryResponse>(url, body);
     const props = data.properties;
     // 204 No Content (no spend in the window) comes back as {} from the
-    // HTTP helper — nothing to parse.
+    // HTTP helper: nothing to parse.
     if (!props) break;
 
     const columns = props.columns ?? [];
     const rows = props.rows ?? [];
     // Column order is not guaranteed, so indices are resolved from the
-    // metadata — once per page rather than once per row.
+    // metadata: once per page rather than once per row.
     if (rows.length > 0) onPage(rows, indices(columns));
 
     url = props.nextLink || undefined;
@@ -445,14 +445,14 @@ function cell(row: Array<string | number>, index: number): string {
 /**
  * The pre-attribution query: one unfiltered pass grouped by service and
  * region, every charge type summed together. Used as a fallback when the
- * two-pass shape is rejected — `BenefitId` is documented as an EA/MCA column
+ * two-pass shape is rejected: `BenefitId` is documented as an EA/MCA column
  * (https://learn.microsoft.com/en-us/azure/cost-management-billing/automate/understand-usage-details-fields),
  * so a pay-as-you-go subscription can legitimately refuse to group by it, and
  * losing charge types is enormously better than losing the spend data.
  *
  * The fallback is self-limiting: an error that is *not* about the query shape
- * — a 403 from a missing Cost Management Reader role, a 429, a gateway
- * timeout — fails this pass too and propagates, so nothing is swallowed.
+ * (a 403 from a missing Cost Management Reader role, a 429, a gateway
+ * timeout) fails this pass too and propagates, so nothing is swallowed.
  */
 async function fetchLegacy(ctx: AzureHttpContext, range: CostFetchRange): Promise<CostRow[]> {
   const rows: CostRow[] = [];
@@ -475,7 +475,7 @@ async function fetchLegacy(ctx: AzureHttpContext, range: CostFetchRange): Promis
   return rows;
 }
 
-/** Consumption only — the filter both consumption passes share. */
+/** Consumption only: the filter both consumption passes share. */
 const CONSUMPTION_FILTER = {
   dimensions: { name: "ChargeType", operator: "In", values: ["Usage"] },
 };
@@ -488,7 +488,7 @@ const CONSUMPTION_FILTER = {
  * Naming the two charge types is safe where naming a complement would not be
  * (see the header): a charge type Azure adds later is still collected whole by
  * the unfiltered attribution pass, and would only be missing from *this*
- * pass's specialism — unused commitment value — which is a gap that shows up
+ * pass's specialism (unused commitment value) which is a gap that shows up
  * as a smaller number rather than as vanished money.
  */
 const UNUSED_COMMITMENT_FILTER = {
@@ -525,15 +525,15 @@ interface AttributionCell {
   /**
    * Amortized-only money for the same key: `UnusedReservation` /
    * `UnusedSavingsPlan`. Kept apart from {@link AttributionCell.amount} because
-   * the two are different bases — summing them would put amortized money into a
-   * cash total — and because a `commitment_fee` cell can legitimately hold both
+   * the two are different bases (summing them would put amortized money into a
+   * cash total) and because a `commitment_fee` cell can legitimately hold both
    * (a purchase in cash, its wasted hours in amortized) on the same day.
    */
   unusedAmortized: number;
 }
 
 /**
- * The key pass 2 accumulates on — deliberately the same tuple the host's
+ * The key pass 2 accumulates on: deliberately the same tuple the host's
  * ReplacingMergeTree treats as one row.
  *
  * **Both of this file's normalizers are many-to-one**, so distinct provider
@@ -546,7 +546,7 @@ interface AttributionCell {
  *
  * Pushed straight into `rows[]` they would reach the host as two rows identical
  * in every column it keys on, its ReplacingMergeTree would treat them as two
- * versions of one row, and `FINAL` would keep whichever paged in last —
+ * versions of one row, and `FINAL` would keep whichever paged in last:
  * silently dropping the other's money. Summing here is the discipline AWS's
  * `Buckets` applies for exactly the same reason (`aws/src/cost-data.ts`).
  */
@@ -590,15 +590,15 @@ function accumulateConsumption(into: Map<string, ConsumptionCell>) {
 async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Promise<CostRow[]> {
   const rows: CostRow[] = [];
 
-  // Pass 1 — cash consumption, with service and region.
+  // Pass 1: cash consumption, with service and region.
   const cash = new Map<string, ConsumptionCell>();
   await runQuery(ctx, range, USAGE_GROUPING, CONSUMPTION_FILTER, accumulateConsumption(cash));
 
-  // Pass 1b — the same cells on the amortized dataset. Optional: Cost Analysis
+  // Pass 1b: the same cells on the amortized dataset. Optional: Cost Analysis
   // "doesn't support viewing amortized reservation costs for a pay-as-you-go
   // subscription", and MOSA accounts have no commitment purchases at all, so a
   // refusal here is a normal state and not a failure. Losing it costs the
-  // covered/on-demand split and nothing else — the cash figures stand alone.
+  // covered/on-demand split and nothing else: the cash figures stand alone.
   let amortized: Map<string, ConsumptionCell> | null = new Map();
   try {
     await runQuery(
@@ -622,7 +622,7 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
     const cashAmount = cashCell?.amount ?? 0;
 
     if (!amortizedCell) {
-      // No amortized opinion about this cell — either the pass was refused, or
+      // No amortized opinion about this cell: either the pass was refused, or
       // it simply returned nothing here. Emit one undifferentiated consumption
       // row with **no** `amortizedAmount`: absent means "no opinion" and the
       // host falls back to the cash figure, whereas an explicit 0 would erase
@@ -638,7 +638,7 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
     // datasets, and commitment-covered consumption is priced at *zero* cash
     // (the money left when the commitment was bought) and at its amortized
     // rate on the other. So the gap between the two totals for one cell is
-    // exactly what commitments delivered into it — no third grouping slot
+    // exactly what commitments delivered into it: no third grouping slot
     // needed, which is what makes this affordable inside Azure's two-group
     // limit.
     //
@@ -648,7 +648,7 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
     // −5 that has landed in `ActualCost` but not yet in `AmortizedCost` reads
     // as `cash = −5, amortized = 0`, whose "gap" is a fabricated 5 of covered
     // spend. The totals would still be conserved (the usage row goes to −5),
-    // but the coverage numerator would be poisoned and — worse — the cell
+    // but the coverage numerator would be poisoned and (worse) the cell
     // would be marked commitment-*eligible* on that evidence, dragging the
     // narrow ratio down for every sibling account sharing the cell. A
     // correction is not a commitment; fall through to the single-row branch
@@ -672,7 +672,7 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
         service,
         region,
         currency,
-        // Zero cash and a real amortized amount — the shape the host's coverage
+        // Zero cash and a real amortized amount: the shape the host's coverage
         // numerator reads. No `commitmentId`: which reservation covered the
         // hour is not in this response, and coverage does not need it.
         amount: 0,
@@ -680,7 +680,7 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
         chargeType: "commitment_covered_usage",
       });
     } else if (cashAmount !== 0 || amortizedAmount !== 0) {
-      // Nothing covered here — no gap, a gap the wrong way, or a cell holding
+      // Nothing covered here: no gap, a gap the wrong way, or a cell holding
       // a correction on either dataset. Emit one row carrying both figures as
       // reported rather than inventing coverage or a negative covered amount.
       rows.push({
@@ -695,7 +695,7 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
     }
   }
 
-  // Pass 2 — everything that is not consumption, attributed to its benefit.
+  // Pass 2: everything that is not consumption, attributed to its benefit.
   // Unfiltered so an unrecognised charge type still lands (as `other`) rather
   // than being silently dropped; the `Usage` rows it also returns are pass 1's
   // money at a coarser grain and are discarded here.
@@ -733,7 +733,7 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
     }
   });
 
-  // Pass 2b — committed hours nothing consumed. Amortized-only by nature, so
+  // Pass 2b: committed hours nothing consumed. Amortized-only by nature, so
   // it is skipped entirely when the subscription refused that dataset above
   // (no point spending a QPU learning the same refusal twice), and its own
   // failure is survivable for the same reason pass 1b's is: the rest of the
@@ -741,7 +741,7 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
   //
   // These land in the *same* map as pass 2 because they share a host key with
   // the purchase rows above, and they contribute to `unusedAmortized` rather
-  // than to `amount` because they are not cash — see the header.
+  // than to `amount` because they are not cash: see the header.
   let unusedFound = false;
   if (amortized) {
     try {
@@ -785,7 +785,7 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
   }
 
   // A purchase's amortized value is only claimable as zero when the amortized
-  // dataset actually produced the rows that value was redistributed into —
+  // dataset actually produced the rows that value was redistributed into:
   // covered consumption, unused hours, or both. An empty amortized result is
   // not evidence of redistribution.
   const amortizationLanded = (amortized?.size ?? 0) > 0 || unusedFound;
@@ -812,7 +812,7 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
       // falls back to cash) is what keeps the amortized view from showing the
       // purchase at full price alongside every slice of it.
       //
-      // Only claimable when the amortized dataset actually landed — without it
+      // Only claimable when the amortized dataset actually landed: without it
       // there are no rows holding the redistributed value, and zeroing the
       // purchase would delete it from amortized views entirely.
       //
@@ -835,14 +835,14 @@ async function fetchAttributed(ctx: AzureHttpContext, range: CostFetchRange): Pr
  * The fallback is flagged `degraded`, and that flag is load-bearing rather than
  * informational. It fires for two populations that look identical from here: a
  * subscription that can *never* group by `BenefitId` (pay-as-you-go, where the
- * column does not exist), and one that merely had a bad minute — a 429, a
+ * column does not exist), and one that merely had a bad minute; a 429, a
  * gateway timeout, a transient 500. For the second, the pass writes a strictly
  * *coarser* key space than the collection before it: one undifferentiated
  * `usage` row per cell and no attribution rows at all.
  *
  * The host reconciles by zeroing stored keys a collection did not rewrite, so
  * without the flag that one bad minute would tombstone every attribution row
- * for the days in the chunk — and, because a backfilled account only re-fetches
+ * for the days in the chunk, and, because a backfilled account only re-fetches
  * `restatementDays` (3), a flap that ages past that window would never be
  * repaired. Flagged, the host skips tombstoning for the pass and the existing
  * rows survive untouched, which is exactly what happened before reconciliation

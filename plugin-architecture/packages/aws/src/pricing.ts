@@ -1,6 +1,6 @@
 /**
  * Live AWS on-demand pricing via the Price List Query API
- * (`pricing:GetProducts`) — the per-region rate source behind both the size
+ * (`pricing:GetProducts`): the per-region rate source behind both the size
  * picker's prices and `cost-estimate.ts`, following the shape of
  * `azure/src/pricing.ts` / `gcp/src/pricing.ts` (fetch + parse + cache;
  * plugin owns the provider specifics, host reads generic monthly prices).
@@ -9,7 +9,7 @@
  * regardless of the account's home region; the *resource's* region goes into
  * the `regionCode` filter. One GetProducts call per priced thing keeps each
  * response tiny and lets results cache per (service, region, dimensions) for
- * 6 hours — which is what makes it safe for the create form to re-estimate on
+ * 6 hours, which is what makes it safe for the create form to re-estimate on
  * every keystroke.
  *
  * Docs: https://docs.aws.amazon.com/aws-cost-management/latest/APIReference/API_pricing_GetProducts.html
@@ -42,7 +42,7 @@ interface GetProductsResponse {
 /** Cache key (service + region + dimensions) → rate in its own unit, with expiry. */
 const priceCache = new Map<string, { expiresAt: number; usd: number | null }>();
 
-/** Test hook — clears the module-level cache. */
+/** Test hook: clears the module-level cache. */
 export function clearEc2PriceCache(): void {
   priceCache.clear();
 }
@@ -50,7 +50,7 @@ export function clearEc2PriceCache(): void {
 /**
  * Extract the cheapest positive on-demand USD rate whose unit matches
  * `unitPattern` from a GetProducts response. A dimension with no unit at all
- * is accepted — some SKUs omit it — but a unit that is present and does not
+ * is accepted (some SKUs omit it) but a unit that is present and does not
  * match is skipped, which is what keeps an hourly query from picking up a
  * per-request or per-GB dimension off the same SKU.
  */
@@ -116,7 +116,7 @@ type PriceFilter = ReturnType<typeof termMatch>;
 
 /**
  * Filters that pin one clean price per instance type: Linux, shared tenancy,
- * no pre-installed software, standard capacity — the row the EC2 console's
+ * no pre-installed software, standard capacity; the row the EC2 console's
  * on-demand price is quoting.
  */
 function filtersFor(regionCode: string, instanceType: string): PriceFilter[] {
@@ -155,7 +155,7 @@ async function fetchRateUsd(
     });
     usd = parseOnDemandUsd(response.PriceList ?? [], unitPattern);
   } catch {
-    // Missing pricing permission or a transient failure — quote nothing
+    // Missing pricing permission or a transient failure: quote nothing
     // rather than something wrong; don't cache so a retry can succeed.
     return null;
   }
@@ -212,7 +212,7 @@ export async function fetchEc2MonthlyPrice(
  * Per-GB-month USD price for an EBS volume type (`gp3`, `io2`, `st1`, …) in
  * one region. `volumeApiName` is the filter field that carries exactly the
  * identifiers the create form's volume-type select offers, so no mapping
- * table is needed between the two — which is precisely what went stale in the
+ * table is needed between the two, which is precisely what went stale in the
  * static table this replaced.
  */
 export async function fetchEbsGbMonthPrice(

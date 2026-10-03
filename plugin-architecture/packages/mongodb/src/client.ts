@@ -81,7 +81,7 @@ export class MongoDBClient implements PluginClient {
   }
 
   getCreateConfig(_typeId: string): Promise<CreateResourceConfig> {
-    // Mongo has no "create database" call — a database springs into existence
+    // Mongo has no "create database" call: a database springs into existence
     // when its first collection is created. So we ask for both and create the
     // collection.
     return Promise.resolve({
@@ -167,7 +167,7 @@ export class MongoDBClient implements PluginClient {
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
       // `mongodb-database` declares `supportsMetrics`, so the host fetches the
       // `dbStats` series for this view; without the capability it had nowhere
-      // to put them. No default window — `dbStats` is a reading taken now, not
+      // to put them. No default window: `dbStats` is a reading taken now, not
       // a range.
       metricsCapability: {},
     };

@@ -4,18 +4,18 @@
  * Cloudflare tokens don't expose their permission groups through the verify
  * endpoint, so the probe is a handful of cheap read calls, one per
  * capability:
- *   - `GET /user/tokens/verify` — token validity/expiry (verified 2026:
+ *   - `GET /user/tokens/verify`: token validity/expiry (verified 2026:
  *     Bearer auth, `result.status` in {active, disabled, expired}; rejects
  *     account-owned tokens with code 1000, which we treat as "can't verify
  *     here" rather than invalid).
- *   - `GET /zones?per_page=1` + `GET /accounts?per_page=1` — resources.
- *   - GraphQL `viewer.budget` — Analytics Read.
- *   - `GET /accounts/{id}/billable-usage/info` — Billing Read (the same
+ *   - `GET /zones?per_page=1` + `GET /accounts?per_page=1`: resources.
+ *   - GraphQL `viewer.budget`: Analytics Read.
+ *   - `GET /accounts/{id}/billable-usage/info`: Billing Read (the same
  *     endpoint cost collection reads coverage from).
  *
  * The "policy template" is Cloudflare's documented token-template deep link:
  * dash.cloudflare.com/profile/api-tokens with a URL-encoded
- * `permissionGroupKeys` JSON array of `{ key, type }` — plus the
+ * `permissionGroupKeys` JSON array of `{ key, type }`, plus the
  * human-readable permission-group list for anyone building the token by hand.
  */
 import type {
@@ -71,7 +71,7 @@ export const cloudflarePreflight: PreflightDeclaration = {
 /**
  * Token-creator `permissionGroupKeys` entries per capability. The
  * `resources` set mirrors the manifest's create-token deep link (edit
- * scopes — the plugin can create and delete resources).
+ * scopes: the plugin can create and delete resources).
  */
 const TEMPLATE_SCOPES: Record<string, Array<{ key: string; type: string; name: string }>> = {
   resources: [
@@ -169,7 +169,7 @@ async function cfGet<T>(
   try {
     body = (await res.json()) as CfEnvelope<T>;
   } catch {
-    // non-JSON body — status alone decides
+    // non-JSON body: status alone decides
   }
   return { status: res.status, body };
 }
@@ -200,7 +200,7 @@ export async function runCloudflarePreflight(token: string): Promise<PreflightRe
   let identity: string | undefined;
 
   // 1. Token validity. Account-owned tokens are rejected here (code 1000)
-  //    without being invalid — skip ahead and let the probes decide.
+  //    without being invalid: skip ahead and let the probes decide.
   try {
     const verify = await cfGet<{ id?: string; status?: string; expires_on?: string }>(
       token,
@@ -230,7 +230,7 @@ export async function runCloudflarePreflight(token: string): Promise<PreflightRe
 
   // 2. Resources: zone list + account list. Same three-way handling as the
   //    costs probe: ok only on explicit success, missing only on authorization
-  //    failures, unknown (with detail) for everything else — a 500 or a
+  //    failures, unknown (with detail) for everything else; a 500 or a
   //    malformed body is not evidence the permission is granted.
   try {
     const missing: PreflightPermission[] = [];
@@ -288,7 +288,7 @@ export async function runCloudflarePreflight(token: string): Promise<PreflightRe
     try {
       body = (await res.json()) as GraphqlProbeBody;
     } catch {
-      // non-JSON body — handled below
+      // non-JSON body: handled below
     }
     if (res.status === 401 || res.status === 403) {
       checks.push({
@@ -299,7 +299,7 @@ export async function runCloudflarePreflight(token: string): Promise<PreflightRe
       });
     } else if (res.ok && body?.data?.viewer != null && (body.errors ?? []).length === 0) {
       // GraphQL can 200 with a non-null viewer AND populated errors (partial
-      // response) — only a clean response proves the analytics scope works.
+      // response), only a clean response proves the analytics scope works.
       checks.push({ capabilityId: "metrics", status: "ok" });
     } else {
       const msg = (body?.errors ?? [])

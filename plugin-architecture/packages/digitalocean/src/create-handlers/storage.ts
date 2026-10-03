@@ -107,7 +107,7 @@ export async function storageGetCreateConfig(
 
   if (typeId === "nfs-share") {
     // NFS shares are pinned to a VPC. List both regions (only some are
-    // NFS-eligible — DO returns 422 from create otherwise, surfaced as the
+    // NFS-eligible: DO returns 422 from create otherwise, surfaced as the
     // host error) and the account's VPCs so the user can pick.
     const [regionsData, vpcsData, projectField] = await Promise.all([
       ctx.fetch<{
@@ -200,7 +200,7 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
     assignToProjectIfNeeded,
   } = args;
   if (typeId === "spaces-bucket") {
-    // Spaces buckets are created via the S3-compatible API — DO's REST API
+    // Spaces buckets are created via the S3-compatible API: DO's REST API
     // (/v2/spaces/...) only exposes access-key CRUD, no bucket operations
     // (verified in digitalocean/openapi/spaces/). The S3 PUT needs a pair
     // of Spaces keys distinct from the API token; modelled as
@@ -221,7 +221,7 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
     if (!accessKeyId || !secretAccessKey) {
       const name = `infrawrench-spaces-${Date.now().toString(36)}`;
       // POST /spaces/keys with NO grants (or grants: []) mints a "No Grant
-      // Key" — DO's spec for an unauthorized key with zero permissions,
+      // Key"; DO's spec for an unauthorized key with zero permissions,
       // which is what was producing the AccessDenied response on the
       // bucket PUT. The correct shape for an account-wide full-access
       // key (the equivalent of the legacy console-generated "Spaces
@@ -267,7 +267,7 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
     const endpoint = `https://${host}`;
 
     // Wait for a freshly-minted key to propagate. ListAllMyBuckets is the
-    // cheapest authenticated probe — it doesn't require any pre-existing
+    // cheapest authenticated probe: it doesn't require any pre-existing
     // bucket and returns 200 with an empty body on a brand-new account.
     if (keyJustMinted) {
       const regionalEndpoint = `https://${region}.digitaloceanspaces.com/`;
@@ -295,7 +295,7 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
       }
     }
 
-    // Retry the bucket PUT on transient 403 — propagation can finish a
+    // Retry the bucket PUT on transient 403: propagation can finish a
     // beat after the probe succeeds, especially if the user's account
     // has never used Spaces before.
     const tryPut = async (

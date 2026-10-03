@@ -28,7 +28,7 @@ export const CloudWatchAlarmResourceType = rt({
     f("cacheClusterId", "Cache Cluster ID", { required: false }),
   ],
   outputs: [o("alarmArn", "Alarm ARN")],
-  // One field per dimension name that identifies something we list — each holds
+  // One field per dimension name that identifies something we list: each holds
   // the dimension value verbatim, which is that resource type's external id.
   dependsOn: [
     { fieldKey: "instanceId", targetTypeId: "ec2-instance", label: "watches" },

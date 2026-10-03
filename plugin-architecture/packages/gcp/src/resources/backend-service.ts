@@ -33,7 +33,7 @@ export const BackendServiceResourceType = rt({
   outputs: [o("selfLink", "Self Link")],
   // Health checks are keyed by bare name; instance groups by `zone/name`, so
   // match those on their `name` field instead. Network endpoint groups land in
-  // `backendGroups` too and simply match nothing — they aren't synced.
+  // `backendGroups` too and simply match nothing: they aren't synced.
   dependsOn: [
     { fieldKey: "healthCheckNames", targetTypeId: "health-check", label: "checked by" },
     {

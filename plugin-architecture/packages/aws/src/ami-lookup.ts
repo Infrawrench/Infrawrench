@@ -7,14 +7,14 @@ type Arch = "x86_64" | "arm64";
  * Derive CPU architecture from an EC2 instance type.
  *
  * Graviton (arm64) types end with `g` (optionally followed by capability
- * letters like `d`/`n`/`e`) before the size suffix — e.g. `t4g.small`,
+ * letters like `d`/`n`/`e`) before the size suffix, e.g. `t4g.small`,
  * `m6gd.large`, `c7gn.xlarge`. The legacy `a1.*` family is also arm64.
  * Everything else (t3, m6i, m7a, c6i, r5, …) is x86_64.
  */
 export function instanceTypeArch(instanceType: string): Arch {
   const family = instanceType.split(".")[0] ?? "";
   if (family === "a1") return "arm64";
-  // Match families like t4g, m6g, m6gd, c7gn, r7g — i.e. ending in 'g'
+  // Match families like t4g, m6g, m6gd, c7gn, r7g, i.e. ending in 'g'
   // followed by zero or more capability letters.
   if (/^[a-z]+\d+g[a-z]*$/.test(family)) return "arm64";
   return "x86_64";
@@ -61,7 +61,7 @@ export function isImageFamily(value: string): value is ImageFamily {
 /**
  * Build the SSM Public Parameter path that resolves to the latest AMI for
  * the given family + arch. Returns null when SSM coverage is unreliable
- * for the family (RHEL, SUSE) — the caller should fall back to
+ * for the family (RHEL, SUSE): the caller should fall back to
  * DescribeImages.
  */
 function ssmPathFor(family: ImageFamily, arch: Arch): string | null {
@@ -91,7 +91,7 @@ function ssmPathFor(family: ImageFamily, arch: Arch): string | null {
       return `/aws/service/debian/release/bookworm/latest/${debianArch}`;
     }
     case "debian-13": {
-      // Debian changed the SSM path convention starting with 13 (trixie) —
+      // Debian changed the SSM path convention starting with 13 (trixie):
       // the documented path on the wiki uses the version number, not the
       // codename. Verified at https://wiki.debian.org/Cloud/AmazonEC2Image/Trixie
       const debianArch = arch === "x86_64" ? "amd64" : "arm64";

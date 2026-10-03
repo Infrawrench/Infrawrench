@@ -1,5 +1,5 @@
 /**
- * Azure Container Registry — artifact listing.
+ * Azure Container Registry: artifact listing.
  *
  * Goes through the three-step OAuth dance (AAD → ACR refresh → ACR access)
  * documented at https://learn.microsoft.com/en-us/azure/container-registry/container-registry-authentication
@@ -142,7 +142,7 @@ export async function listAcrArtifacts(
     }),
   );
 
-  // The Docker Registry catalog uses `last=<name>` for pagination —
+  // The Docker Registry catalog uses `last=<name>` for pagination:
   // the next page token is the last repo in the current page when it's full.
   const result: { items: ArtifactEntry[]; nextPageToken?: string } = { items };
   const lastRepo = repos[repos.length - 1];

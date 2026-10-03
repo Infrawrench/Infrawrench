@@ -244,7 +244,7 @@ describe("listResources", () => {
                 label_selector: { selector: "env=prod" },
                 applied_to_resources: [
                   { type: "server", server: { id: 2 } },
-                  // Duplicate of the direct entry — must not repeat.
+                  // Duplicate of the direct entry: must not repeat.
                   { type: "server", server: { id: 1 } },
                 ],
               },

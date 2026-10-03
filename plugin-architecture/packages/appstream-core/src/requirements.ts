@@ -1,12 +1,12 @@
 /**
- * What a host needs installed before it can run applications — the contract,
+ * What a host needs installed before it can run applications: the contract,
  * not the checking.
  *
  * The checking is `@infrawrench/appstream-host`, which runs a shell script over
  * SSH and produces these. The types live here instead because the launcher UI
  * renders them, and `@infrawrench/ui` cannot depend on that package: it is
  * Node-typed (Buffers, ssh2 channels) and the UI package has no Node types at
- * all. This module is the same bargain the rest of `appstream-core` makes —
+ * all. This module is the same bargain the rest of `appstream-core` makes:
  * transport-free, DOM-free, shared by both ends.
  *
  * Unlike everything else in this package, none of this crosses the `iw-proto`
@@ -46,7 +46,7 @@ export interface RequirementStatus extends RequirementSpec {
 }
 
 export interface HostPreflight {
-  /** `uname -m`, unnormalised — the probe reports what the host said. */
+  /** `uname -m`, unnormalised: the probe reports what the host said. */
   arch: string;
   /** `ID` from os-release, e.g. `debian`, or `unknown`. */
   osId: string;
@@ -58,8 +58,8 @@ export interface HostPreflight {
   /**
    * A writable, exec-capable directory was found to stage the app server in.
    *
-   * No package fixes this — it means every candidate is missing, full, or
-   * mounted `noexec` — so it is reported separately from the requirements.
+   * No package fixes this (it means every candidate is missing, full, or
+   * mounted `noexec`) so it is reported separately from the requirements.
    */
   staging: boolean;
   /** Desktop entries found. Zero is not an error; it means nothing to launch. */
@@ -92,7 +92,7 @@ export interface InstallPlan {
 export interface InstallOutcome {
   /** Every line the package manager printed, in order. */
   log: string[];
-  /** Packages that would not install — a name this distribution does not have. */
+  /** Packages that would not install: a name this distribution does not have. */
   failed: string[];
   /** The host as it is now. The only trustworthy statement about the result. */
   preflight: HostPreflight;
@@ -102,7 +102,7 @@ export interface InstallOutcome {
  * What a check answers with: the host as it is, and what would fix it.
  *
  * The plan travels with the preflight because the UI shows the commands
- * *before* offering the button — a second round trip to find out what would
+ * *before* offering the button: a second round trip to find out what would
  * run would mean rendering the offer before knowing what it was.
  */
 export interface HostRequirementsCheck {

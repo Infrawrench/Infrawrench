@@ -279,7 +279,7 @@ export async function listPipelines(
         target: String((p["spec"] as Record<string, unknown> | undefined)?.["target"] ?? ""),
         // Unity Catalog pipelines publish to `spec.schema`; the older hive-style
         // spec uses `spec.target`. Both come out of the same spec object, and
-        // only one is ever set — `attach` to a schema writes `schema` and drops
+        // only one is ever set: `attach` to a schema writes `schema` and drops
         // `target`, so without this the schema link disappears after attaching.
         schema: String((p["spec"] as Record<string, unknown> | undefined)?.["schema"] ?? ""),
         catalog: String((p["spec"] as Record<string, unknown> | undefined)?.["catalog"] ?? ""),

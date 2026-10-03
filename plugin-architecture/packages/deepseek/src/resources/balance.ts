@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * The account's prepaid credit balance, one row per currency. Read-only —
+ * The account's prepaid credit balance, one row per currency. Read-only:
  * DeepSeek tops up through its own console and exposes no billing mutation,
  * no invoice list, and no usage time series.
  *

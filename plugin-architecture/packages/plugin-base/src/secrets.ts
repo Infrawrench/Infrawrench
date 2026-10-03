@@ -1,4 +1,4 @@
-/** The user typed or pasted the value directly — stored AES-256-GCM encrypted */
+/** The user typed or pasted the value directly: stored AES-256-GCM encrypted */
 export interface LiteralSecretResolution {
   kind: "literal";
   encryptedValue: string;
@@ -17,7 +17,7 @@ export interface OutputRefSecretResolution {
   sourceResourceId: string;
   sourceAccountId: string;
   outputKey: string;
-  /** Stale-while-revalidate cache — encrypted, same scheme as literal */
+  /** Stale-while-revalidate cache: encrypted, same scheme as literal */
   cachedEncryptedValue?: string;
   cachedIv?: string;
   /** ISO timestamp of last successful resolution */

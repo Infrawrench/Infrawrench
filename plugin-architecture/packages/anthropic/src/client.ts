@@ -238,14 +238,14 @@ function addDays(isoDate: string, days: number): string {
 }
 
 /**
- * Anthropic plugin client — one per account (one inference key, optionally one
+ * Anthropic plugin client: one per account (one inference key, optionally one
  * Admin key).
  *
  * Two credentials, two disjoint halves of the API:
  *   - `apiKey` (sk-ant-api…) covers `/v1/models`, `/v1/messages/batches` and
  *     `/v1/files`.
  *   - `adminApiKey` (sk-ant-admin…) covers everything under
- *     `/v1/organizations/*` — note the **plural**, unlike OpenAI's singular
+ *     `/v1/organizations/*`: note the **plural**, unlike OpenAI's singular
  *     `/v1/organization/*`.
  *
  * The Admin key is optional. Without it the four admin resource types list
@@ -352,7 +352,7 @@ export class AnthropicClient implements PluginClient {
   }
 
   /**
-   * GET /v1/models — verified 2026-07-28 against
+   * GET /v1/models: verified 2026-07-28 against
    * https://platform.claude.com/docs/en/api/models-list
    */
   private fetchModels(): Promise<AnthropicModel[]> {
@@ -360,7 +360,7 @@ export class AnthropicClient implements PluginClient {
   }
 
   /**
-   * GET /v1/messages/batches — verified 2026-07-28 against
+   * GET /v1/messages/batches: verified 2026-07-28 against
    * https://platform.claude.com/docs/en/api/listing-message-batches
    */
   private fetchBatches(): Promise<AnthropicMessageBatch[]> {
@@ -368,7 +368,7 @@ export class AnthropicClient implements PluginClient {
   }
 
   /**
-   * GET /v1/files — verified 2026-07-28 against
+   * GET /v1/files: verified 2026-07-28 against
    * https://platform.claude.com/docs/en/api/files-list
    * Still gated behind the `files-api-2025-04-14` beta header.
    */
@@ -377,7 +377,7 @@ export class AnthropicClient implements PluginClient {
   }
 
   /**
-   * GET /v1/organizations/workspaces — verified 2026-07-28 against
+   * GET /v1/organizations/workspaces: verified 2026-07-28 against
    * https://platform.claude.com/docs/en/api/admin-api/workspaces/list-workspaces
    *
    * Archived workspaces are requested explicitly so the user can still see the
@@ -393,7 +393,7 @@ export class AnthropicClient implements PluginClient {
   }
 
   /**
-   * GET /v1/organizations/users — verified 2026-07-28 against
+   * GET /v1/organizations/users: verified 2026-07-28 against
    * https://platform.claude.com/docs/en/api/admin-api/users/list-users
    */
   private async fetchUsers(): Promise<AnthropicUser[]> {
@@ -402,7 +402,7 @@ export class AnthropicClient implements PluginClient {
   }
 
   /**
-   * GET /v1/organizations/invites — verified 2026-07-28 against
+   * GET /v1/organizations/invites: verified 2026-07-28 against
    * https://platform.claude.com/docs/en/api/admin-api/invites/list-invites
    */
   private async fetchInvites(): Promise<AnthropicInvite[]> {
@@ -411,7 +411,7 @@ export class AnthropicClient implements PluginClient {
   }
 
   /**
-   * GET /v1/organizations/api_keys — verified 2026-07-28 against
+   * GET /v1/organizations/api_keys: verified 2026-07-28 against
    * https://platform.claude.com/docs/en/api/admin-api/apikeys/list-api-keys
    */
   private async fetchApiKeys(): Promise<AnthropicApiKey[]> {
@@ -516,7 +516,7 @@ export class AnthropicClient implements PluginClient {
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
     if (typeId === "workspace") {
-      // POST /v1/organizations/workspaces — verified 2026-07-28 against
+      // POST /v1/organizations/workspaces: verified 2026-07-28 against
       // https://platform.claude.com/docs/en/manage-claude/workspaces
       const name = fields["name"]?.trim();
       if (!name) throw new Error("Workspace name is required");
@@ -528,7 +528,7 @@ export class AnthropicClient implements PluginClient {
       return this.mapWorkspace(accountId, created);
     }
     if (typeId === "invite") {
-      // POST /v1/organizations/invites — verified 2026-07-28 against
+      // POST /v1/organizations/invites: verified 2026-07-28 against
       // https://platform.claude.com/docs/en/api/admin-api/invites/create-invite
       const email = fields["email"]?.trim();
       const role = fields["role"] ?? "user";
@@ -552,7 +552,7 @@ export class AnthropicClient implements PluginClient {
     const externalId = externalIdOf(resourceId);
 
     if (typeId === "workspace") {
-      // POST /v1/organizations/workspaces/{id} — verified 2026-07-28 against
+      // POST /v1/organizations/workspaces/{id}: verified 2026-07-28 against
       // https://platform.claude.com/docs/en/api/admin-api/workspaces/update-workspace
       const body: Record<string, unknown> = {};
       if (fields["name"] !== undefined) body["name"] = fields["name"];
@@ -565,7 +565,7 @@ export class AnthropicClient implements PluginClient {
     }
 
     if (typeId === "organization-user") {
-      // POST /v1/organizations/users/{id} — verified 2026-07-28 against
+      // POST /v1/organizations/users/{id}: verified 2026-07-28 against
       // https://platform.claude.com/docs/en/api/admin-api/users/update-user
       const role = fields["role"];
       if (!role) throw new Error("Anthropic plugin: role is the only editable field on a member");
@@ -578,7 +578,7 @@ export class AnthropicClient implements PluginClient {
     }
 
     if (typeId === "api-key") {
-      // POST /v1/organizations/api_keys/{id} — verified 2026-07-28 against
+      // POST /v1/organizations/api_keys/{id}: verified 2026-07-28 against
       // https://platform.claude.com/docs/en/api/admin-api/apikeys/update-api-key
       //
       // This is also how a key is *revoked*: there is no DELETE endpoint, so
@@ -610,7 +610,7 @@ export class AnthropicClient implements PluginClient {
 
     switch (typeId) {
       case "message-batch":
-        // DELETE /v1/messages/batches/{id} — only allowed once processing has
+        // DELETE /v1/messages/batches/{id}, only allowed once processing has
         // ended; cancel an in-progress batch first.
         // https://platform.claude.com/docs/en/api/deleting-message-batches
         await this.fetch<unknown>(`/v1/messages/batches/${encodeURIComponent(externalId)}`, {
@@ -665,7 +665,7 @@ export class AnthropicClient implements PluginClient {
     const externalId = externalIdOf(resourceId);
 
     if (typeId === "message-batch" && actionId === "cancel-batch") {
-      // POST /v1/messages/batches/{id}/cancel — verified 2026-07-28 against
+      // POST /v1/messages/batches/{id}/cancel: verified 2026-07-28 against
       // https://platform.claude.com/docs/en/api/canceling-message-batches
       await this.fetch<unknown>(`/v1/messages/batches/${encodeURIComponent(externalId)}/cancel`, {
         method: "POST",
@@ -674,7 +674,7 @@ export class AnthropicClient implements PluginClient {
     }
 
     if (typeId === "workspace" && actionId === "archive-workspace") {
-      // POST /v1/organizations/workspaces/{id}/archive — verified 2026-07-28
+      // POST /v1/organizations/workspaces/{id}/archive: verified 2026-07-28
       // against https://platform.claude.com/docs/en/api/admin-api/workspaces/archive-workspace
       //
       // "Archiving a workspace immediately revokes all API keys in that
@@ -703,7 +703,7 @@ export class AnthropicClient implements PluginClient {
   // ---- Metrics and cost ----------------------------------------------------
 
   /**
-   * GET /v1/organizations/usage_report/messages — verified 2026-07-28 against
+   * GET /v1/organizations/usage_report/messages: verified 2026-07-28 against
    * https://platform.claude.com/docs/en/api/admin-api/usage-cost/get-messages-usage-report
    *
    * Scoped per resource: a model row filters on `models[]`, a workspace row on
@@ -791,11 +791,11 @@ export class AnthropicClient implements PluginClient {
   }
 
   /**
-   * GET /v1/organizations/cost_report — verified 2026-07-28 against
+   * GET /v1/organizations/cost_report: verified 2026-07-28 against
    * https://platform.claude.com/docs/en/api/admin-api/usage-cost/get-cost-report
    *
    * Two things the docs are easy to misread:
-   *   1. `bucket_width` accepts **only** `1d` here — there is no hourly cost.
+   *   1. `bucket_width` accepts **only** `1d` here: there is no hourly cost.
    *   2. `amount` is a decimal string in the currency's *lowest units*, i.e.
    *      **cents**: `"123.45"` in USD means $1.2345, not $123.45. We divide by
    *      100 on the way into `CostRow.amount`.
@@ -813,7 +813,7 @@ export class AnthropicClient implements PluginClient {
 
     // `ending_at` is exclusive (buckets that *end before* this timestamp).
     // Anthropic rejects a future `ending_at` with 400 "Invalid date range:
-    // ending date must be after starting date" — their own cookbook always
+    // ending date must be after starting date": their own cookbook always
     // ends at start-of-today UTC so only completed days are requested. Cap
     // here so a host window that includes "today" (monthChunks does) still
     // works; a today-only chunk becomes an empty range and we skip the call.

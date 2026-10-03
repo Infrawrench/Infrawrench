@@ -6,7 +6,7 @@ import type {
 import { fieldBool, fieldNumber, fieldString, tf } from "@infrawrench/plugin-base";
 
 /**
- * Terraform mapping for Google Cloud — provider `hashicorp/google`.
+ * Terraform mapping for Google Cloud: provider `hashicorp/google`.
  *
  * The listers do not retain GCE boot disks/images or Cloud Run revision
  * containers, so those resource types cannot produce valid Terraform. Firewall

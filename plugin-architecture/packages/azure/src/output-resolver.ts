@@ -1,7 +1,7 @@
 /**
  * Resolves output keys (connection strings, kubeconfigs, primary keys) by
  * making the per-service "list secrets" ARM call that returns the actual
- * credential material — Azure doesn't surface these on the resource itself.
+ * credential material: Azure doesn't surface these on the resource itself.
  */
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ARM, type AzureHttpContext } from "./shared.js";
@@ -114,7 +114,7 @@ export async function resolveAzureOutput(
     const username = creds.username ?? "";
     const password = creds.passwords?.[0]?.value ?? "";
     // listCredentials returns no usable material when adminUserEnabled is
-    // false — surface the fix rather than handing back empty credentials.
+    // false: surface the fix rather than handing back empty credentials.
     if (!username || !password) throw adminDisabledError();
     if (outputKey === "username") return username;
     if (outputKey === "password") return password;

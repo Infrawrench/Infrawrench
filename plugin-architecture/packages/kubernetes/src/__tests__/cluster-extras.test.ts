@@ -204,7 +204,7 @@ describe("load balancers", () => {
       loadBalancers: [loadBalancer({ hourlyRate: 0, loadBalancerClass: "metallb.io/metallb" })],
     });
 
-    // Zero is a known price, not a missing one — the difference is that this
+    // Zero is a known price, not a missing one: the difference is that this
     // must not be reported as "counted without cost".
     expect(result.loadBalancers.hourlyCost).toBe(0);
     expect(result.loadBalancers.anyUnpriced).toBe(false);

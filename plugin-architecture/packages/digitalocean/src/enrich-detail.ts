@@ -1,5 +1,5 @@
 /**
- * Detail enrichment for DigitalOcean resources — the async pass that runs
+ * Detail enrichment for DigitalOcean resources: the async pass that runs
  * before `renderDetail` and stuffs picker catalogs (sizes, distribution
  * images, backups, snapshots) and per-product summaries into
  * `resource.resolvedOutputs`, so the renderers themselves stay synchronous.
@@ -20,7 +20,7 @@ export interface DoEnrichContext {
   listSpacesBuckets(accountId: string): Promise<ResourceInstance[]>;
 }
 
-/** "May 21, 2026" — what people actually read off a backup card. */
+/** "May 21, 2026": what people actually read off a backup card. */
 function formatBackupDate(isoTimestamp: string): string {
   if (!isoTimestamp) return "unknown date";
   const d = new Date(isoTimestamp);
@@ -43,7 +43,7 @@ function formatBackupLabel(name: string, isoTimestamp: string): string {
 /**
  * Pre-fetch catalog data the detail page's action prompts need to render
  * pickers instead of raw text inputs (sizes for resize, distribution
- * images + private images for rebuild). Caches both for 30 minutes — the
+ * images + private images for rebuild). Caches both for 30 minutes: the
  * size catalog rarely changes and distribution images only churn on new
  * OS releases. Embedded into resolvedOutputs as JSON so the sync
  * renderDetail can read them without going async.
@@ -84,7 +84,7 @@ export async function enrichDoDetail(
   // through the host's plugin loop on every detail page render. The
   // images endpoint (`/v2/images?private=true`) is the same call and
   // gives us the freshest view, so we fetch it inline alongside the
-  // catalog refreshes (uncached — private inventory does change).
+  // catalog refreshes (uncached: private inventory does change).
   //
   // Per-droplet backups/snapshots: fetched here so the Restore from
   // Backup picker can show "Daily backup • Mar 21 (5 GB)" instead of
@@ -195,7 +195,7 @@ export async function enrichDoDetail(
   // labels in the renderer when this fetch failed.
   type RestoreOption = { id: string; label: string; category: "Backups" | "Snapshots" };
   const restoreOptions: RestoreOption[] = [];
-  // Newest first — DO returns oldest-first by default and "most recent"
+  // Newest first: DO returns oldest-first by default and "most recent"
   // is what people scan for when restoring.
   const sortedBackups = [...(backupsRes?.backups ?? [])].sort((a, b) =>
     String(b.created_at).localeCompare(String(a.created_at)),
@@ -236,7 +236,7 @@ export async function enrichDoDetail(
  * DigitalOcean rejects a cross-region assignment; sorted by name so the list
  * reads the same way the sidebar does.
  *
- * Failures degrade to an empty list — the renderer then shows the blocked
+ * Failures degrade to an empty list: the renderer then shows the blocked
  * "no Droplets in this region" prompt instead of crashing the detail page.
  */
 async function enrichReservedIp(
@@ -269,7 +269,7 @@ async function enrichReservedIp(
 /**
  * Fan out a `GET /v2/gen-ai/agents/{uuid}` to pull attached KBs, function
  * routes, child agents, and other agents (for the "attach child" picker)
- * for the detail view. Failures degrade gracefully — the detail still
+ * for the detail view. Failures degrade gracefully: the detail still
  * renders without these sections rather than blanking the page.
  */
 async function enrichGenAiAgent(
@@ -367,7 +367,7 @@ async function enrichGenAiAgent(
  * Fetch the router's task presets (valid task slugs + their router-eligible
  * default models) and a model uuid→name map so the policy add/edit form can
  * offer real pickers. Stashed as `__taskPresets__` / `__routerModelOptions__`
- * for the synchronous renderDetail. Best-effort — degrades to empty.
+ * for the synchronous renderDetail. Best-effort: degrades to empty.
  */
 async function enrichGenAiModelRouter(
   ctx: DoEnrichContext,
@@ -444,7 +444,7 @@ async function enrichGenAiKnowledgeBase(
         jobs?: Array<Record<string, unknown>>;
       }>(`/gen-ai/knowledge_bases/${kbUuid}/indexing_jobs`)
       .catch(() => ({ jobs: [] })),
-    // Best-effort — returns [] when the account has no Spaces keys configured.
+    // Best-effort: returns [] when the account has no Spaces keys configured.
     ctx.listSpacesBuckets(resource.accountId).catch(() => [] as ResourceInstance[]),
   ]);
 

@@ -230,7 +230,7 @@ export class CloudflareClient implements PluginClient {
       try {
         consumers = await queueApi.listConsumers(this.api, externalId);
       } catch {
-        // Treat as empty — consumer-list failures shouldn't block the page.
+        // Treat as empty: consumer-list failures shouldn't block the page.
       }
       queue.resolvedOutputs = {
         ...queue.resolvedOutputs,
@@ -318,7 +318,7 @@ export class CloudflareClient implements PluginClient {
   /**
    * Detail-view enrichment. For Durable Object namespaces we page in the live
    * instance list (the only public per-instance surface Cloudflare exposes) and
-   * stash it on resolvedOutputs for the renderer. Failures degrade gracefully —
+   * stash it on resolvedOutputs for the renderer. Failures degrade gracefully:
    * we return the un-enriched resource so the page still renders namespace
    * details and metrics.
    */
@@ -332,13 +332,13 @@ export class CloudflareClient implements PluginClient {
       try {
         enriched["__cfAccountId__"] = await this.api.getAccountId();
       } catch {
-        /* no account id — renderer omits the endpoint URL */
+        /* no account id: renderer omits the endpoint URL */
       }
       try {
         const models = await workersAiApi.listTextGenerationModelNames(this.api);
         if (models.length > 0) enriched["__models__"] = JSON.stringify(models);
       } catch {
-        /* no catalog — renderer falls back to a default model */
+        /* no catalog: renderer falls back to a default model */
       }
       return { ...resource, resolvedOutputs: enriched };
     }
@@ -1223,7 +1223,7 @@ export class CloudflareClient implements PluginClient {
     //  - ai-gateway: model comes from the playground's picker, and we add the
     //    `cf-aig-gateway-id` header so Cloudflare routes the call through this
     //    gateway (filling its logs/analytics). This is Cloudflare's documented
-    //    way to send Workers AI through a gateway — NOT a gateway.ai.cloudflare
+    //    way to send Workers AI through a gateway: NOT a gateway.ai.cloudflare
     //    .com URL, which needs separate per-gateway auth.
     const endpoint = `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/v1/chat/completions`;
     const headers: Record<string, string> = {
@@ -1276,7 +1276,7 @@ export class CloudflareClient implements PluginClient {
     if (!res.ok || !res.body) {
       const errText = await res.text().catch(() => "");
       // A 401/403 (or Cloudflare's catch-all auth code 10000 / per-resource
-      // 9109) on the Workers AI endpoint means the token can't run models —
+      // 9109) on the Workers AI endpoint means the token can't run models:
       // almost always a missing Workers AI scope rather than a bad request.
       const isAuth =
         res.status === 401 ||

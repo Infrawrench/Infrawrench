@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A Cartesia pronunciation dictionary — a named set of text → pronunciation
+ * A Cartesia pronunciation dictionary: a named set of text → pronunciation
  * substitutions applied at synthesis time.
  * Source: GET https://api.cartesia.ai/pronunciation-dicts/
  * https://docs.cartesia.ai/api-reference/pronunciation-dicts/list

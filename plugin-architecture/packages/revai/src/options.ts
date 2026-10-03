@@ -47,7 +47,7 @@ export function baseUrlForRegion(region: string): string {
  * https://docs.rev.ai/api/asynchronous/reference/jobs/submittranscriptionjob.md
  *
  * These four are the whole set. "Reverb", "Reverb Turbo" and "Whisper" are
- * marketing names for the engines behind them, NOT valid API values — sending
+ * marketing names for the engines behind them, NOT valid API values: sending
  * one is a rejected job, so they are deliberately absent from this picker.
  */
 export const REVAI_TRANSCRIBER_OPTIONS: SpeechPanelOption[] = [
@@ -74,7 +74,7 @@ export const REVAI_TRANSCRIBER_OPTIONS: SpeechPanelOption[] = [
 ];
 
 /**
- * What the Speech tab may offer — the automatic tiers only.
+ * What the Speech tab may offer: the automatic tiers only.
  *
  * `human` is a real API value and stays in `REVAI_TRANSCRIBER_OPTIONS` for job
  * submission elsewhere, but it must never appear in this panel: a human job
@@ -94,7 +94,7 @@ export const REVAI_DEFAULT_LANGUAGE = "en";
 /**
  * `language` enum, verified 2026-07-28 against the same reference page. Note
  * `cmn` (Mandarin), the hyphenated `en-gb` / `en-us`, and the `en/es`
- * code-switching pseudo-tag — all real values, none of them guessable.
+ * code-switching pseudo-tag: all real values, none of them guessable.
  */
 const REVAI_LANGUAGE_CODES: ReadonlyArray<[string, string]> = [
   ["en", "English"],

@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A GroqCloud batch job — an uploaded JSONL of requests processed
+ * A GroqCloud batch job: an uploaded JSONL of requests processed
  * asynchronously within the completion window.
  *
  * `GET https://api.groq.com/openai/v1/batches`

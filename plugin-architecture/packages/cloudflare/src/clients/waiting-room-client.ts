@@ -9,7 +9,7 @@ import type {
 /**
  * Queueing methods the API accepts (`WaitingRoomEditParams.queueing_method`).
  * The resource field is free text, so an unrecognised value is dropped from the
- * write instead of being forwarded — Cloudflare keeps the room's current method.
+ * write instead of being forwarded: Cloudflare keeps the room's current method.
  */
 const QUEUEING_METHODS = [
   "fifo",

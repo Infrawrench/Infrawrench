@@ -20,7 +20,7 @@ export async function genaiGetCreateConfig(
     // available agent-usecase models so the user can pick one rather than
     // pasting a UUID. The regions list comes from the GenAI regions endpoint
     // (separate from /v2/regions, which only covers the classic IaaS
-    // footprint — GenAI is only deployed in a subset).
+    // footprint: GenAI is only deployed in a subset).
     const [models, routers, regions, workspaces, projectField] = await Promise.all([
       ctx
         .fetch<{
@@ -72,7 +72,7 @@ export async function genaiGetCreateConfig(
       });
     // Toggle between a single foundation model and an Inference Router.
     // DO's API accepts `model_uuid` XOR `model_router_uuid` (mutually
-    // exclusive — sending both is a 400), so we gate the two pickers
+    // exclusive: sending both is a 400), so we gate the two pickers
     // with showWhen and require at most one at create time.
     const hasRouters = routerOptions.length > 0;
     return {
@@ -276,7 +276,7 @@ export async function genaiGetCreateConfig(
   }
 
   if (typeId === "gen-ai-model-router") {
-    // No region picker — DO deploys routers to all regions and rejects any
+    // No region picker: DO deploys routers to all regions and rejects any
     // explicit `regions`. Fallback/policy models must come from DO's router
     // presets (arbitrary serverless model UUIDs are rejected as "not found"),
     // so we offer a preset picker and pass its config through on create.
@@ -343,8 +343,8 @@ export async function genaiGetCreateConfig(
     // Two things about this list:
     //   - GPU count and price go in `description`, not the label. The picker
     //     gives the label a single line, and a combined
-    //     "gpu-h100x1-80gb (1× GPU, $3219/mo)" is long enough that the price —
-    //     the reason for showing it at all — is the part that gets cut off.
+    //     "gpu-h100x1-80gb (1× GPU, $3219/mo)" is long enough that the price
+    //     (the reason for showing it at all) is the part that gets cut off.
     //   - The catalog is keyed by region and the same slug appears under
     //     several of them, so dedupe; otherwise the picker lists a GPU size
     //     once per region that offers it, with colliding option ids.
@@ -465,7 +465,7 @@ export async function genaiCreateResource(args: DoCreateArgs): Promise<ResourceI
   const { ctx, typeId, accountId, fields, parentResourceId, parentExternalId } = args;
   if (typeId === "gen-ai-agent") {
     // `model_uuid` and `model_router_uuid` are mutually exclusive in DO's
-    // API — the form's `modelSource` toggle decides which one we send.
+    // API: the form's `modelSource` toggle decides which one we send.
     const useRouter = fields["modelSource"] === "router";
     const modelSourceFields: Record<string, unknown> = useRouter
       ? fields["modelRouterUuid"]
@@ -483,7 +483,7 @@ export async function genaiCreateResource(args: DoCreateArgs): Promise<ResourceI
     }
 
     // DO's GenAI plane scopes agents to a workspace. New accounts have no
-    // workspaces — the DO console auto-creates one transparently. Match
+    // workspaces: the DO console auto-creates one transparently. Match
     // that UX: if the user didn't pick (or there are none), look one up,
     // and create a "default" workspace if there are still none. The
     // workspace picker's inline-create FieldAction covers the case where
@@ -616,7 +616,7 @@ export async function genaiCreateResource(args: DoCreateArgs): Promise<ResourceI
 
   if (typeId === "gen-ai-model-router") {
     // `regions` is deprecated (omit). Models come from a chosen preset's
-    // config — its fallback_models/policies use identifiers DO accepts;
+    // config: its fallback_models/policies use identifiers DO accepts;
     // passing raw serverless model UUIDs gets rejected as "model not found".
     const body: Record<string, unknown> = {
       name: fields["name"],
@@ -692,7 +692,7 @@ export async function genaiCreateResource(args: DoCreateArgs): Promise<ResourceI
         ? { access_tokens: { hugging_face_token: fields["huggingFaceToken"] } }
         : {}),
     };
-    // POST returns 202 Accepted with the provisioning record — same shape
+    // POST returns 202 Accepted with the provisioning record: same shape
     // as GET /dedicated-inferences/{id} but with status `provisioning`.
     const data = await ctx.fetch<{ dedicated_inference: Record<string, unknown> }>(
       "/dedicated-inferences",

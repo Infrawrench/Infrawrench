@@ -102,7 +102,7 @@ export const pubsubCreateResourceHandlers: Record<
     const tok = await ctx.token();
     const name = fields["name"] ?? "";
     // When created from a topic's detail page, the topic field is hidden in
-    // the form — recover the full topic path from parentResourceId.
+    // the form: recover the full topic path from parentResourceId.
     // Resource IDs are `{accountId}:pubsub-topic:projects/{p}/topics/{name}`.
     const parentTopicPath = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
     const topic = fields["topic"] || parentTopicPath;

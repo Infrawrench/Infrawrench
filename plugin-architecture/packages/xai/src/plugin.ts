@@ -10,7 +10,7 @@ import { AuditEventResourceType } from "./resources/audit-event.js";
 
 // Official xAI wordmark glyph, taken from the @lobehub/icons-static-svg brand
 // set (icons/xai.svg), which mirrors xAI's own mark. Black background, white
-// glyph — xAI's brand colours.
+// glyph: xAI's brand colours.
 const manifest: PluginManifest = {
   id: "xai",
   version: "0.1.0",

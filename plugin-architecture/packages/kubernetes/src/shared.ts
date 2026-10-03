@@ -254,12 +254,12 @@ function describeFetchError(err: unknown): string {
  * text variant is used for the /log endpoint which returns plain text.
  *
  * Dispatch order:
- *   1. `services.k8s` — the @kubernetes/client-node driver in the host
+ *   1. `services.k8s`: the @kubernetes/client-node driver in the host
  *      process. This is the only path that handles exec credential
  *      plugins, auth-provider, OIDC, etc., so prefer it when present.
- *   2. `services.http` — host-proxied fetch with CA pinning. Works for
+ *   2. `services.http`: host-proxied fetch with CA pinning. Works for
  *      simple bearer-token kubeconfigs in any Node host.
- *   3. global `fetch` — browser / renderer fallback for trusted certs.
+ *   3. global `fetch`: browser / renderer fallback for trusted certs.
  */
 export class K8sFetcher {
   constructor(
@@ -329,7 +329,7 @@ export class K8sFetcher {
     return res.json() as Promise<T>;
   }
 
-  /** Plain-text variant of fetch — the /log endpoint returns text, not JSON. */
+  /** Plain-text variant of fetch: the /log endpoint returns text, not JSON. */
   async fetchText(path: string): Promise<string> {
     if (this.services?.k8s) {
       const result = await this.services.k8s.command("request", {

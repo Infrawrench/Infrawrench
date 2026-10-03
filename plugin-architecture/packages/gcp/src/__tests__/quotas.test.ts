@@ -18,7 +18,7 @@ const REGION_FIXTURE = {
     { metric: "CPUS", limit: 72.0, usage: 8.0 },
     { metric: "DISKS_TOTAL_GB", limit: 5120.0, usage: 650.0 },
     { metric: "IN_USE_ADDRESSES", limit: 8.0, usage: 2.0 },
-    // Enabled but untouched — the overwhelming majority of every region's array.
+    // Enabled but untouched: the overwhelming majority of every region's array.
     { metric: "SSD_TOTAL_GB", limit: 500.0, usage: 0.0 },
     // GCP's "unlimited".
     { metric: "PREEMPTIBLE_CPUS", limit: -1.0, usage: 12.0 },
@@ -56,7 +56,7 @@ describe("quotaMetricLabel", () => {
 
   // Dropping the unmapped would make the radar silently narrower with every
   // GCP release; the ~160-value enum grows and the table does not. The
-  // fallback deliberately does not case-fold — `NVIDIA` must not become
+  // fallback deliberately does not case-fold: `NVIDIA` must not become
   // `Nvidia`, and the raw metric is what `gcloud` prints, so it stays
   // searchable.
   it("titles an unmapped metric from its own name rather than dropping it", () => {

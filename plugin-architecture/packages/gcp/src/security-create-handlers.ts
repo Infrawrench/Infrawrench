@@ -283,7 +283,7 @@ export const securityCreateResourceHandlers: Record<
     const tok = await ctx.token();
     const name = fields["name"] ?? "";
     // When created from a key ring's detail page, keyRing and keyRingLocation
-    // fields are hidden — recover them from the parent key ring's externalId
+    // fields are hidden; recover them from the parent key ring's externalId
     // (format: `projects/{p}/locations/{location}/keyRings/{name}`).
     const parentExternalId = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
     const parentMatch = parentExternalId.match(

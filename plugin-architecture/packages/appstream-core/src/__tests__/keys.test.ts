@@ -103,7 +103,7 @@ describe("synthesised Shift", () => {
 
   it("puts Shift back immediately rather than on release", () => {
     // The character is decided when the key goes down, and the user may let go
-    // of Shift while still holding the key — so the restore cannot wait.
+    // of Shift while still holding the key, so the restore cannot wait.
     const keys = new KeyTranslator();
     const pressed = keys.press(down("KeyQ", "A"), 0);
     expect(shape(pressed).at(-1)).toBe(`-${SHIFT}`);
@@ -114,7 +114,7 @@ describe("synthesised Shift", () => {
 describe("Caps Lock", () => {
   it("does not shift a letter the host will already capitalise", () => {
     // `key` is already uppercase because of Caps Lock, and the host's own Caps
-    // Lock applies again — synthesising Shift on top would give a lowercase
+    // Lock applies again: synthesising Shift on top would give a lowercase
     // letter.
     const keys = new KeyTranslator();
     expect(shape(keys.press(down("KeyA", "A", false, true), 0))).toEqual([`+${KEY_A}`]);
@@ -146,8 +146,8 @@ describe("keys that are not characters", () => {
 
 describe("holding and losing focus", () => {
   it("re-taps a repeat of a key already down", () => {
-    // The host does no repeating of its own — over a laggy link a hold-timer
-    // fabricates characters — so the browser's auto-repeat must arrive as
+    // The host does no repeating of its own (over a laggy link a hold-timer
+    // fabricates characters) so the browser's auto-repeat must arrive as
     // discrete taps.
     const keys = new KeyTranslator();
     keys.press(down("KeyA", "a"), 0);

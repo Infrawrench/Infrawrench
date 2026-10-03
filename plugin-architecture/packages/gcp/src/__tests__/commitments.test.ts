@@ -41,7 +41,7 @@ describe("mapGcpCommitment", () => {
       // The API reports memory in MB; the unit says so instead of converting.
       { unit: "MEMORY_MB", amount: 131072 },
     ]);
-    // The aggregated list returns no money of any kind — every money field
+    // The aggregated list returns no money of any kind: every money field
     // must be absent, not zero. "Free" and "not reported" are different facts.
     expect(record.currency).toBeUndefined();
     expect(record.upfrontAmount).toBeUndefined();

@@ -110,15 +110,15 @@ const manifest: PluginManifest = {
   // ce:GetCostAndUsage IAM action and no other.
   //
   // chargeTypes: RECORD_TYPE tells on-demand usage from covered usage, tax,
-  // credits, refunds, support and commitment purchases — see cost-data.ts for
+  // credits, refunds, support and commitment purchases; see cost-data.ts for
   // the mapping table.
   // amortization: AmortizedCost rides on the same requests as UnblendedCost,
   // and is the only metric that prices RI-covered usage at all (its unblended
   // rate is zero).
   //
   // Deliberately NOT declared: CostRow.commitmentId. SAVINGS_PLAN_ARN and
-  // RESERVATION_ID are filter-only dimensions — GetCostAndUsage cannot group
-  // by either — so rows cannot be joined to a specific reservation or plan.
+  // RESERVATION_ID are filter-only dimensions (GetCostAndUsage cannot group
+  // by either) so rows cannot be joined to a specific reservation or plan.
   // Coverage does not depend on that join; it reads the
   // `commitment_covered_usage` charge type instead. Only per-commitment
   // utilization is left unanswered, which is better than answered wrongly.
@@ -131,12 +131,12 @@ const manifest: PluginManifest = {
   },
   // EC2 + RDS Reserved Instances and Savings Plans. Needs
   // ec2:DescribeReservedInstances, rds:DescribeReservedDBInstances and
-  // savingsplans:DescribeSavingsPlans — surfaced in the plugin docs.
+  // savingsplans:DescribeSavingsPlans: surfaced in the plugin docs.
   commitments: { kinds: ["reservation", "savings_plan"] },
   // Service Quotas for the ceiling, CloudWatch `AWS/Usage` (and two describe
   // calls) for the usage. Needs servicequotas:ListServiceQuotas,
   // servicequotas:GetAWSDefaultServiceQuota, cloudwatch:GetMetricStatistics,
-  // ec2:DescribeAddresses and ec2:DescribeVpcs — surfaced in the plugin docs.
+  // ec2:DescribeAddresses and ec2:DescribeVpcs: surfaced in the plugin docs.
   //
   // `partial` because AWS publishes thousands of quotas and this reports the
   // handful that actually stop deploys: standard and GPU on-demand vCPUs,
@@ -149,7 +149,7 @@ const manifest: PluginManifest = {
     requiresElevatedCredential: true,
   },
   // Priced VPC Flow Log attribution. Needs ec2:DescribeFlowLogs,
-  // ec2:DescribeNetworkInterfaces, logs:StartQuery and logs:GetQueryResults —
+  // ec2:DescribeNetworkInterfaces, logs:StartQuery and logs:GetQueryResults:
   // surfaced in the plugin docs.
   //
   // Off until the org enables it, because `queriesBillable` is true: Logs

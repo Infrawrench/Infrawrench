@@ -86,7 +86,7 @@ const SPEECH_HELP_TEXT =
  * things the API allows, and says plainly in the UI that spend and quota are
  * dashboard-only.
  *
- * Every call here is JSON in and JSON out — including both halves of the Speech
+ * Every call here is JSON in and JSON out, including both halves of the Speech
  * tab, since Interactions returns base64 audio inside a JSON envelope rather
  * than raw bytes. That means everything can go through `jsonRestFetch` and keep
  * bastion egress routing and the custom CA; no binary or multipart side-channel
@@ -96,7 +96,7 @@ const SPEECH_HELP_TEXT =
  * Instruction for the transcription call, optionally pinned to a language.
  *
  * An empty/absent language means "auto", which is the picker's first entry and
- * the sensible default — the model infers it from the audio.
+ * the sensible default: the model infers it from the audio.
  */
 function transcriptionPrompt(language: string | undefined): string {
   const base =
@@ -225,7 +225,7 @@ export class GeminiClient implements PluginClient {
   }
 
   /**
-   * `GET /v1beta/models` — https://ai.google.dev/api/models
+   * `GET /v1beta/models`: https://ai.google.dev/api/models
    * `pageSize` defaults to 50 and the endpoint returns at most 1000 per page.
    */
   private async fetchModels(): Promise<GeminiModel[]> {
@@ -271,7 +271,7 @@ export class GeminiClient implements PluginClient {
   }
 
   /**
-   * `GET /v1beta/tunedModels` — verified against the v1beta discovery document.
+   * `GET /v1beta/tunedModels`: verified against the v1beta discovery document.
    * ⚠️ `pageSize` defaults to **10** here, not 50.
    */
   private async fetchTunedModels(): Promise<TunedModel[]> {
@@ -325,7 +325,7 @@ export class GeminiClient implements PluginClient {
   }
 
   /**
-   * `GET /v1beta/files` — https://ai.google.dev/api/files
+   * `GET /v1beta/files`: https://ai.google.dev/api/files
    * ⚠️ `pageSize` defaults to 10 and caps at **100** here.
    */
   private async fetchFiles(): Promise<GeminiFile[]> {
@@ -371,7 +371,7 @@ export class GeminiClient implements PluginClient {
   }
 
   /**
-   * `GET /v1beta/cachedContents` — https://ai.google.dev/api/caching
+   * `GET /v1beta/cachedContents`: https://ai.google.dev/api/caching
    * `pageSize` is coerced down to 1000.
    */
   private async fetchCachedContents(): Promise<CachedContent[]> {
@@ -418,7 +418,7 @@ export class GeminiClient implements PluginClient {
   }
 
   /**
-   * `GET /v1beta/batches` — https://ai.google.dev/api/batch-mode
+   * `GET /v1beta/batches`: https://ai.google.dev/api/batch-mode
    *
    * ⚠️ This is an Operations API: the response key is **`operations[]`**, not
    * `batches[]`, and the batch payload lives in each operation's `metadata`.
@@ -469,7 +469,7 @@ export class GeminiClient implements PluginClient {
   }
 
   /**
-   * `GET /v1beta/fileSearchStores` — https://ai.google.dev/api/file-search
+   * `GET /v1beta/fileSearchStores`: https://ai.google.dev/api/file-search
    * ⚠️ `pageSize` defaults to 10 and caps at **20** for stores and documents.
    */
   private async fetchFileSearchStores(): Promise<FileSearchStore[]> {
@@ -665,7 +665,7 @@ export class GeminiClient implements PluginClient {
     throw new Error(`Gemini plugin: no create config for type "${typeId}"`);
   }
 
-  /** `POST /v1beta/fileSearchStores` — https://ai.google.dev/api/file-search */
+  /** `POST /v1beta/fileSearchStores`: https://ai.google.dev/api/file-search */
   async createResource(
     typeId: string,
     accountId: string,
@@ -685,7 +685,7 @@ export class GeminiClient implements PluginClient {
   }
 
   /**
-   * Only a context cache's expiry is updatable —
+   * Only a context cache's expiry is updatable:
    * `PATCH /v1beta/cachedContents/{id}?updateMask=ttl`.
    * https://ai.google.dev/api/caching
    */
@@ -758,7 +758,7 @@ export class GeminiClient implements PluginClient {
     }
   }
 
-  /** `POST /v1beta/batches/{id}:cancel` — https://ai.google.dev/api/batch-mode */
+  /** `POST /v1beta/batches/{id}:cancel`: https://ai.google.dev/api/batch-mode */
   async invokeAction(
     typeId: string,
     resourceId: string,
@@ -1490,17 +1490,17 @@ export class GeminiClient implements PluginClient {
   }
 
   /**
-   * `POST /v1beta/interactions` —
+   * `POST /v1beta/interactions`:
    * https://ai.google.dev/gemini-api/docs/interactions/speech-generation
    *
    * ⚠️ Gemini TTS is documented through **Interactions**, not `generateContent`.
    * The body is `{ model, input, response_format: { type: "audio" },
-   * generation_config: { speech_config: [{ voice }] } }` — note `speech_config`
+   * generation_config: { speech_config: [{ voice }] } }`: note `speech_config`
    * is an array of speaker configs, not a single object.
    *
    * ⚠️ The reply carries base64 audio at `interaction.output_audio.data`, and
    * for the TTS models that is **raw headerless PCM at 24 000 Hz, mono,
-   * 16-bit** — no container. A browser `<audio>` element cannot play that, so
+   * 16-bit**: no container. A browser `<audio>` element cannot play that, so
    * the bytes are wrapped in a WAV header here and returned as `audio/wav`.
    * The response also reports `mime_type`, `sample_rate` and `channels`, which
    * are read at runtime: if Google ever starts returning a real container the
@@ -1544,7 +1544,7 @@ export class GeminiClient implements PluginClient {
     const usage = response.interaction?.usage;
 
     // `audio/l16` is raw 16-bit linear PCM. Treat an unknown or missing type as
-    // PCM too — that is what the TTS models actually emit, and it is what every
+    // PCM too: that is what the TTS models actually emit, and it is what every
     // official sample assumes.
     const isContainer = CONTAINER_MIME_TYPES.has(reportedMime);
 
@@ -1584,12 +1584,12 @@ export class GeminiClient implements PluginClient {
   }
 
   /**
-   * `POST /v1beta/models/{model}:generateContent` —
+   * `POST /v1beta/models/{model}:generateContent`:
    * https://ai.google.dev/gemini-api/docs/audio
    *
    * Audio rides inline as base64 in an `inline_data` part alongside the
    * instruction text. Google documents WAV, MP3, AIFF, AAC, OGG and FLAC as
-   * accepted; `audio/webm` and `audio/mp4` — what browsers actually record —
+   * accepted; `audio/webm` and `audio/mp4` (what browsers actually record)
    * are not on that list, though Firebase AI Logic (the same endpoint behind a
    * client SDK) does list both. Rather than guess, the clip's real MIME type is
    * forwarded unchanged and an undocumented-format rejection is turned into an
@@ -1632,7 +1632,7 @@ export class GeminiClient implements PluginClient {
                     // (TranscribeAudioPayload carries it; SynthesizeSpeechPayload
                     // does not). Gemini has no language parameter on
                     // generateContent, so the only way to honour the choice is
-                    // to name it in the instruction — otherwise the control is
+                    // to name it in the instruction, otherwise the control is
                     // inert and the request goes out identical either way.
                     text: transcriptionPrompt(payload.language),
                   },
@@ -1667,8 +1667,8 @@ export class GeminiClient implements PluginClient {
     return {
       text,
       summary: summaryParts.join(" · "),
-      // Gemini's audio understanding returns prose, not a timed transcript —
-      // no word timings, no confidence, no detected-language field — so those
+      // Gemini's audio understanding returns prose, not a timed transcript
+      // (no word timings, no confidence, no detected-language field) so those
       // stay unset rather than being invented.
       ...(response.responseId ? { requestId: response.responseId } : {}),
     };
@@ -1713,7 +1713,7 @@ function ttsModelFor(modelId: string | undefined): string {
   return DEFAULT_TTS_MODEL;
 }
 
-/** Conversely, a TTS model cannot transcribe — fall back to a multimodal one. */
+/** Conversely, a TTS model cannot transcribe: fall back to a multimodal one. */
 function sttModelFor(modelId: string | undefined): string {
   if (modelId && !modelId.includes("-tts")) return modelId;
   return DEFAULT_STT_MODEL;

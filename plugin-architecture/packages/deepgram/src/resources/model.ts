@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * One model the project is entitled to — either a speech-to-text model
+ * One model the project is entitled to: either a speech-to-text model
  * (`nova-3`, …) or a text-to-speech voice (`aura-2-thalia-en`, …). Deepgram
  * returns both families from a single endpoint under `stt` / `tts` arrays.
  *

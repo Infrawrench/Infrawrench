@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A WorkOS organization — the tenant container that owns memberships,
+ * A WorkOS organization: the tenant container that owns memberships,
  * invitations, SSO connections and Directory Sync directories.
  * Docs: https://workos.com/docs/reference/organization
  */

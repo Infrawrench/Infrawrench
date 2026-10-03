@@ -583,7 +583,7 @@ export async function networkingCreateResource(
   }
   if (typeId === "target-group") {
     // Target groups tie to a VPC. When created from an ALB's detail page, the
-    // vpcId field is hidden — look up the parent ALB to read its vpcId since
+    // vpcId field is hidden: look up the parent ALB to read its vpcId since
     // the ALB's externalId is just its name, not the VPC.
     let vpcId = fields["vpcId"] ?? "";
     let region = fields["region"] ?? ctx.creds.region;

@@ -13,7 +13,7 @@ import { SPACES_REGIONS } from "./constants.js";
 
 /** The slice of `DigitalOceanClient` the listers need. */
 export interface DoListerContext {
-  /** Raw PAT — the inference endpoints live off `api.digitalocean.com/v2`. */
+  /** Raw PAT: the inference endpoints live off `api.digitalocean.com/v2`. */
   token: string;
   credentials: Record<string, string>;
   fetch<T>(path: string, options?: RequestInit): Promise<T>;
@@ -85,8 +85,8 @@ export async function listDoResources(
 
 /**
  * Like `fetch`, but tolerates the "feature not enabled for this account"
- * shape DO returns for early-access products (GenAI / Dedicated Inference)
- * — 401/403/404 collapses to an empty list so the sidebar group doesn't
+ * shape DO returns for early-access products (GenAI / Dedicated Inference):
+ * 401/403/404 collapses to an empty list so the sidebar group doesn't
  * become an error spinner for everyone who hasn't opted into the product.
  */
 async function fetchOrEmpty<T>(ctx: DoListerContext, path: string, fallback: T): Promise<T> {
@@ -112,7 +112,7 @@ async function listGenAiAgents(
     const knowledgeBases = Array.isArray(a["knowledge_bases"])
       ? (a["knowledge_bases"] as Array<Record<string, unknown>>)
       : [];
-    // Each attached KB carries its own uuid (schema `apiKnowledgeBase`) — the
+    // Each attached KB carries its own uuid (schema `apiKnowledgeBase`): the
     // same uuid a `gen-ai-knowledge-base` resource uses as its externalId.
     const knowledgeBaseUuids = knowledgeBases
       .map((kb) => String(kb?.["uuid"] ?? ""))
@@ -318,7 +318,7 @@ async function listDedicatedInferences(
 /**
  * The Batch Inference API lives on a separate host (inference.do-ai.run)
  * and uses the same bearer token as the management plane. The endpoint
- * paginates with `after` cursors instead of page/per_page — we only fetch
+ * paginates with `after` cursors instead of page/per_page: we only fetch
  * the first page (newest 100) for the sidebar; the detail page can drill
  * in for older jobs.
  */
@@ -399,7 +399,7 @@ async function listModelApiKeys(
 /**
  * Agent-scoped API keys (the per-agent bearer tokens used by client SDKs
  * to call an agent's deployment endpoint). DO exposes them only per agent,
- * not as a flat list — so we fan out across every agent and concat. One
+ * not as a flat list, so we fan out across every agent and concat. One
  * failed lookup doesn't blank the rest. Composite externalId
  * `{agentUuid}/{keyUuid}` mirrors `nfs-share`'s `{region}/{shareId}` shape.
  */
@@ -435,7 +435,7 @@ async function listAgentApiKeys(
             agentUuid,
           },
           resolvedOutputs: {},
-          // Secret isn't returned by the list endpoint — only on create
+          // Secret isn't returned by the list endpoint, only on create
           // and regenerate. Existing keys have no recoverable secret.
           secretStates: [],
           externalId: `${agentUuid}/${keyUuid}`,
@@ -472,7 +472,7 @@ async function listProjects(ctx: DoListerContext, accountId: string): Promise<Re
 }
 
 async function listDroplets(ctx: DoListerContext, accountId: string): Promise<ResourceInstance[]> {
-  // DO's /droplets default page size is 20 — without per_page, a freshly-
+  // DO's /droplets default page size is 20: without per_page, a freshly-
   // created droplet on page 2 looks like it doesn't exist.
   const [data, projectMap] = await Promise.all([
     ctx.fetch<{ droplets?: Array<Record<string, unknown>> | null }>("/droplets?per_page=200"),
@@ -549,7 +549,7 @@ export function mapDroplet(
       backupPolicyPlan: backupPolicy?.plan ?? "",
       backupPolicyHour: backupPolicy?.hour != null ? String(backupPolicy.hour) : "",
       backupPolicyWeekday: backupPolicy?.weekday ?? "",
-      // VPC the droplet lives in — used by the NFS-share→droplet drop
+      // VPC the droplet lives in: used by the NFS-share→droplet drop
       // target to derive the share-level `attach` action's `vpc_id`.
       vpcUuid: String(d["vpc_uuid"] ?? ""),
     },
@@ -765,7 +765,7 @@ async function listManagedDatabases(
 
 /**
  * Fan out across every cluster to enumerate its users. DO has no "list users
- * across all my clusters" endpoint — only per-cluster — so we re-use the
+ * across all my clusters" endpoint (only per-cluster) so we re-use the
  * already-fetched cluster list and parallelise the per-cluster calls. Failed
  * lookups are skipped silently so one mid-provision cluster (which 409s on
  * /users until it's online) doesn't blow up the whole sidebar.
@@ -798,7 +798,7 @@ async function listDatabaseUsers(
           databaseId: clusterId,
         },
         resolvedOutputs: {},
-        // The list endpoint never returns the password — only the per-user
+        // The list endpoint never returns the password, only the per-user
         // `POST /users` response does. We can't reconstruct it after the
         // fact, so existing users (incl. doadmin) are persisted without one.
         secretStates: [],
@@ -822,7 +822,7 @@ export async function listSpacesBuckets(
 
   const projectMap = await ctx.getProjectUrnMap();
 
-  // Per-region fan-out is tolerant of individual region failures —
+  // Per-region fan-out is tolerant of individual region failures:
   // freshly-minted Spaces keys can take longer to propagate to some
   // regions than others, and we'd previously blow up the whole list
   // call (and the post-create detail page) on a single 403. We log
@@ -895,7 +895,7 @@ export async function listSpacesBuckets(
       },
       resolvedOutputs: {
         endpoint: `https://${name}.${region}.digitaloceanspaces.com`,
-        // `name|region` — consumed by the KB "Add Spaces source" resource
+        // `name|region`: consumed by the KB "Add Spaces source" resource
         // picker so the handler gets both halves without a region lookup.
         bucketRef: `${name}|${region}`,
       },
@@ -911,7 +911,7 @@ export async function listSpacesBuckets(
 
 /**
  * DO allows at most one container registry per account, and GET /v2/registry
- * returns it or 404s when none exists — so a 404 maps to an empty list while
+ * returns it or 404s when none exists, so a 404 maps to an empty list while
  * every other error propagates (unlike `fetchOrEmpty`, which would also hide
  * scope/rate-limit failures). The subscription tier isn't on the registry
  * payload; it lives on GET /v2/registry/subscription, fetched best-effort so
@@ -1080,14 +1080,14 @@ async function listVolumes(ctx: DoListerContext, accountId: string): Promise<Res
  * `region` object, the full `droplet` object (or `null`), `locked` and
  * `project_id` (verified against digitalocean/openapi, schema `reserved_ip`).
  *
- * The address doubles as the identifier — every other reserved-IP endpoint is
- * `/v2/reserved_ips/{ip}` — so `externalId` is the dotted-quad.
+ * The address doubles as the identifier (every other reserved-IP endpoint is
+ * `/v2/reserved_ips/{ip}`) so `externalId` is the dotted-quad.
  *
  * Unlike volumes/droplets this doesn't need the project-URN map: the payload
  * carries `project_id` directly (it needs the token's `project:read` scope;
  * without it the field is absent and the address simply lists un-parented).
  *
- * `dropletId` is always written — `""` when unassigned — because the orphan
+ * `dropletId` is always written (`""` when unassigned) because the orphan
  * rule compares it with `equals: ""`.
  */
 async function listReservedIps(
@@ -1136,7 +1136,7 @@ async function listReservedIps(
  *
  * `externalId` is the bare uuid, which is exactly what a Droplet's `vpc_uuid`,
  * an NFS share's `vpc_ids` and a Dedicated Inference endpoint's `vpc_uuid`
- * hold — so those fields resolve to this resource without a translation step.
+ * hold, so those fields resolve to this resource without a translation step.
  *
  * Member counts are deliberately absent: DO exposes them only via a separate
  * `/v2/vpcs/{id}/members` request per VPC, which listing must not spend.

@@ -1,7 +1,7 @@
 /**
  * OpenSSH ed25519 key generation and formatting helpers, shared by the web
  * server (SSH-key routes, agent-VM keys) and the desktop main process
- * (agent-VM keys). Pure `node:crypto` — no ssh2 dependency.
+ * (agent-VM keys). Pure `node:crypto`: no ssh2 dependency.
  */
 import * as crypto from "node:crypto";
 import { promisify } from "node:util";

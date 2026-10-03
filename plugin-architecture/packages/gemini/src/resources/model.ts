@@ -8,7 +8,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * `pageSize` defaults to 50 and the endpoint returns at most 1000 per page.
  * `GET /v1beta/models/{id}` returns a single model.
  *
- * The `Model` schema is exactly the thirteen fields below — including the
+ * The `Model` schema is exactly the thirteen fields below, including the
  * `thinking` boolean, which marks models that emit reasoning tokens.
  *
  * This type also carries the Speech tab: Gemini's TTS and audio-understanding

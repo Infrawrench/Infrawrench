@@ -1,11 +1,11 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * `GET/POST /v1/organization/invites`, `DELETE /v1/organization/invites/{id}` —
+ * `GET/POST /v1/organization/invites`, `DELETE /v1/organization/invites/{id}`:
  * verified 2026-07-29 against openapi.yaml v2.3.0 (`list-invites`,
  * `inviteUser`, `delete-invite`). Admin key only.
  *
- * An accepted invite cannot be deleted — the API rejects it.
+ * An accepted invite cannot be deleted: the API rejects it.
  */
 export const InviteResourceType = rt({
   name: "Invite",

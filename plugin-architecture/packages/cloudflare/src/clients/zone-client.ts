@@ -118,14 +118,14 @@ export async function getZoneManifest(api: CloudflareApi, externalId: string): P
   // error 9109), so surface the friendly scope hint instead of a raw 403 body.
   //
   // The host renders a settings *form* (settingsEditor capability), so we return
-  // `{ settings: SettingDescriptor[] }` — labeled controls rather than raw JSON.
+  // `{ settings: SettingDescriptor[] }`: labeled controls rather than raw JSON.
   const raw = await withAuthErrorHint(
     () => api.cf.get<unknown, unknown>(`/zones/${externalId}/settings`),
     "zone settings",
     "Zone · Zone Settings:Read",
   );
   // The raw helper may hand back the full envelope ({ result: [...] }) or the
-  // unwrapped array depending on SDK version — accept both.
+  // unwrapped array depending on SDK version; accept both.
   const list = Array.isArray(raw)
     ? (raw as unknown[])
     : Array.isArray((raw as { result?: unknown })?.result)

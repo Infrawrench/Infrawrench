@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 /**
  * A registered LoRA adapter on GroqCloud.
  *
- * Groq does *not* train adapters — you bring your own and register it here,
+ * Groq does *not* train adapters: you bring your own and register it here,
  * which is why this lives at `https://api.groq.com/v1/fine_tunings` rather
  * than under the OpenAI-compatible `/openai/v1` prefix.
  */

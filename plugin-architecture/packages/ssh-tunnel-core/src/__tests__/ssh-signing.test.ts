@@ -106,7 +106,7 @@ describe("signSshData", () => {
   it("produces a DER ECDSA signature the public key verifies", () => {
     const data = Buffer.from("blob");
     const sig = signSshData(fixtures.ec256.priv, data, "ecdsa-sha2-nistp256");
-    expect(sig[0]).toBe(0x30); // DER SEQUENCE — conversion is the agent's job
+    expect(sig[0]).toBe(0x30); // DER SEQUENCE: conversion is the agent's job
     expect(parsePub(fixtures.ec256.pub).verify(data, sig)).toBe(true);
   });
 

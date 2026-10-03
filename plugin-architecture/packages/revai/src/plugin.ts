@@ -7,7 +7,7 @@ import { VocabularyResourceType } from "./resources/vocabulary.js";
 import { REVAI_REGION_FIELDS } from "./options.js";
 
 // Mark extracted from Rev AI's own logotype SVG, the one their site loads as
-// 69710fc5182cc91d6778a91f_rev-ai-logo.svg — the icon is the leading glyph of
+// 69710fc5182cc91d6778a91f_rev-ai-logo.svg: the icon is the leading glyph of
 // that 120×28 artwork (its own bbox is x 0–22.35, y 5–28), lifted out and
 // centred on the 100×100 plugin card. The container colour is sampled from
 // their apple-touch-icon (webclip_rev.ai.png), a near-black indigo.

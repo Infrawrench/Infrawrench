@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A pending invitation to join a Deepgram project. Identified by email address —
+ * A pending invitation to join a Deepgram project. Identified by email address:
  * Deepgram has no invite id.
  *
  * Docs: https://developers.deepgram.com/reference/management-api/invitations/list

@@ -28,16 +28,16 @@ function tableDisplayName(schemaName: string, tableName: string): string {
 /**
  * Postgres plugin client.
  * The connectionString is already resolved (decrypted) by the host's SecretResolver
- * before createClient() is called — the plugin receives the plaintext URI.
+ * before createClient() is called: the plugin receives the plaintext URI.
  * When the host injects sql services, the plugin uses them to run introspection and
- * stats queries — keeping all SQL strings inside the plugin, not the host.
+ * stats queries: keeping all SQL strings inside the plugin, not the host.
  */
 export class PostgresClient implements PluginClient {
   private readonly connectionString: string;
   private readonly services: HostServices | undefined;
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
-    // Tolerate a missing/empty connectionString — peer-plugin flows resolve
+    // Tolerate a missing/empty connectionString: peer-plugin flows resolve
     // credentials lazily, and the parent may not yet have an endpoint
     // (e.g. AlloyDB cluster without a primary instance). Methods that
     // actually need the connection surface a friendly error themselves.

@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A File Search store — Gemini's managed RAG index. Documents are uploaded,
+ * A File Search store: Gemini's managed RAG index. Documents are uploaded,
  * chunked and embedded by the service; queries go through the `file_search`
  * tool on a generateContent request.
  *
@@ -14,7 +14,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * store that still holds documents, otherwise it returns FAILED_PRECONDITION.
  *
  * This supersedes the older `corpora` / semantic-retrieval surface, which is
- * still listed as a v1beta resource but has no documented methods — so this
+ * still listed as a v1beta resource but has no documented methods, so this
  * plugin deliberately does not model `corpora`.
  */
 export const FileSearchStoreResourceType = rt({

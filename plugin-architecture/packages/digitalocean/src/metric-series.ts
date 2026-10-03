@@ -1,6 +1,6 @@
 /**
- * DigitalOcean metric series — droplet CPU/memory/disk/bandwidth, managed
- * database load, DOKS node metrics and Spaces usage — read from DO's
+ * DigitalOcean metric series (droplet CPU/memory/disk/bandwidth, managed
+ * database load, DOKS node metrics and Spaces usage) read from DO's
  * `/v2/monitoring/metrics/*` Prometheus-shaped endpoints.
  */
 import type { MetricSeries, ResourceInstance } from "@infrawrench/plugin-base";
@@ -55,11 +55,11 @@ export async function fetchDoMetricSeries(
     const resource = await ctx.getResource(resourceTypeId, resourceId, accountId);
     const dropletId = resource.externalId ?? resourceId.split(":").pop();
     if (!dropletId) return [];
-    // Every droplet metric DO exposes — see
+    // Every droplet metric DO exposes: see
     // https://docs.digitalocean.com/reference/api/digitalocean/#tag/Monitoring
     // Bandwidth and filesystem metrics need extra query parameters; the rest
     // share the host_id+start+end shape. Memory/disk/filesystem/load metrics
-    // require the DO Metrics Agent to be installed on the droplet — DO will
+    // require the DO Metrics Agent to be installed on the droplet: DO will
     // 404 those endpoints for droplets without the agent, which
     // `fetchPromMetric` swallows.
     const droplet: Array<{ name: string; label: string; unit: string; extraQs?: string }> = [
@@ -100,7 +100,7 @@ export async function fetchDoMetricSeries(
         extraQs: "&interface=private&direction=outbound",
       },
     ];
-    // Fan out in parallel — 16 metrics serially racks up real wall time.
+    // Fan out in parallel: 16 metrics serially racks up real wall time.
     const series = await Promise.all(
       droplet.map((m) =>
         fetchPromMetric(
@@ -251,7 +251,7 @@ export async function fetchDoMetricSeries(
       const usage = resp.usage ?? {};
       const buckets = Array.isArray(usage.usage) ? usage.usage : [];
 
-      // Convert a bucket array to a MetricSeries — DO returns one row per
+      // Convert a bucket array to a MetricSeries: DO returns one row per
       // sampling window with `start`/`end` ISO timestamps plus the token
       // counts. Use the window start as the chart x-coordinate.
       const bucketSeries = (
@@ -301,7 +301,7 @@ export async function fetchDoMetricSeries(
       }
       return series;
     } catch {
-      // /usage 404s for agents that have never received a request — that's
+      // /usage 404s for agents that have never received a request: that's
       // a legitimate empty state, not an error. The host renders an
       // empty-metrics message rather than failing the tab.
       return [];

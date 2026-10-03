@@ -14,7 +14,7 @@ describe("normalizeAzureProvisioningState", () => {
     expect(normalizeAzureProvisioningState("Expired")).toBe("expired");
     expect(normalizeAzureProvisioningState("Cancelled")).toBe("expired");
     expect(normalizeAzureProvisioningState("BillingFailed")).toBe("expired");
-    // Split/Merged records were replaced by successors — counting both
+    // Split/Merged records were replaced by successors: counting both
     // parent and children would double the holding.
     expect(normalizeAzureProvisioningState("Split")).toBe("expired");
     expect(normalizeAzureProvisioningState("Merged")).toBe("expired");

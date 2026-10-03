@@ -1,7 +1,7 @@
 /**
  * The Gemini TTS path returns **raw, headerless PCM**: signed 16-bit
  * little-endian samples at 24 000 Hz, mono. There is no container, so a
- * browser `<audio>` element cannot play the bytes as-is — `audio/L16` is not
+ * browser `<audio>` element cannot play the bytes as-is: `audio/L16` is not
  * a type any mainstream browser decodes.
  *
  * The fix is to prepend a 44-byte canonical RIFF/WAVE header describing the
@@ -36,7 +36,7 @@ import { base64ToBytes, bytesToBase64 } from "@infrawrench/plugin-base";
 /** Byte length of a canonical PCM WAV header. */
 export const WAV_HEADER_BYTES = 44;
 
-/** What Gemini's TTS models emit — 24 kHz, mono, signed 16-bit LE PCM. */
+/** What Gemini's TTS models emit: 24 kHz, mono, signed 16-bit LE PCM. */
 export const GEMINI_PCM_SAMPLE_RATE = 24000;
 export const GEMINI_PCM_CHANNELS = 1;
 export const GEMINI_PCM_BITS_PER_SAMPLE = 16;

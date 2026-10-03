@@ -1,17 +1,17 @@
 /**
  * Cost and efficiency as time series.
  *
- * The cluster has no historical store of its own — the allocation is a
+ * The cluster has no historical store of its own: the allocation is a
  * snapshot of what is running right now. So a "series" here is that snapshot
  * projected flat across the requested window: two points, same value, start
  * and end. That is honest (the run-rate really is constant as far as we know)
  * and it renders as a readable line rather than a single floating dot.
  *
  * The historical version of these numbers is the cost rows this plugin writes
- * every day via `fetchCostData` — those accumulate into real history and are
+ * every day via `fetchCostData`: those accumulate into real history and are
  * what the org-level cost views chart. This series exists so the numbers also
- * appear on the resource's own Metrics tab, and — via the peer integration's
- * `exposeMetricsToParent` flag — on the *cloud cluster's* Metrics tab, next to
+ * appear on the resource's own Metrics tab, and (via the peer integration's
+ * `exposeMetricsToParent` flag) on the *cloud cluster's* Metrics tab, next to
  * the provider's own node CPU and memory series. That is the payoff of routing
  * this through the peer rather than bolting it onto each cloud plugin.
  */
@@ -75,7 +75,7 @@ function clusterSeries(
     // Idle is charted as its own line for the same reason it is its own table
     // row: it is the difference between what the cluster costs and what the
     // workloads asked for, and that gap is the finding. The control plane and
-    // the unattached volumes are lines for the same reason — each is money the
+    // the unattached volumes are lines for the same reason: each is money the
     // cluster spends that no workload can be pointed at.
     ...flatSeries("Idle capacity", cluster.dailyIdleCost, money, range),
     ...flatSeries("System reserved", cluster.dailySystemReservedCost, money, range),
@@ -92,7 +92,7 @@ function clusterSeries(
 
 /**
  * Build the series for one resource. Returns `[]` for kinds that have no cost
- * dimension, and for every kind when there is no cost data at all — an empty
+ * dimension, and for every kind when there is no cost data at all: an empty
  * Metrics tab is better than one full of zeroes.
  */
 export function buildCostMetricSeries(

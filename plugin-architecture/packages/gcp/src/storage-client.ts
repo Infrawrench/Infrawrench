@@ -37,7 +37,7 @@ export async function deleteStorageObject(
   const tok = await ctx.token();
 
   if (key.endsWith("/")) {
-    // Folder — list all objects with this prefix (flat, no delimiter) and delete each
+    // Folder: list all objects with this prefix (flat, no delimiter) and delete each
     const allKeys: string[] = [];
     let pageToken: string | undefined;
     do {
@@ -151,7 +151,7 @@ export async function listArtifacts(
   if (typeId !== "artifact-registry-repo") {
     throw new Error(`listArtifacts not supported for type ${typeId}`);
   }
-  // Parse resourceId ("accountId:typeId:projects/.../repositories/...") directly —
+  // Parse resourceId ("accountId:typeId:projects/.../repositories/...") directly:
   // we can't go through getResource() because the repository lister uses the
   // `locations/-` wildcard which Artifact Registry rejects.
   const marker = `${accountId}:${typeId}:`;

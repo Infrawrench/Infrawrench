@@ -65,7 +65,7 @@ export const DropletResourceType = rt({
     runningWhen: { fieldKey: "status", value: "active" },
   },
   // Sleep/wake schedules: the existing droplet power actions. Stop is the
-  // hard power_off rather than the ACPI shutdown — a scheduled sleep must not
+  // hard power_off rather than the ACPI shutdown: a scheduled sleep must not
   // depend on the guest OS honouring the event. (DO bills stopped droplets;
   // the savings quote is an upper bound for this provider.)
   lifecycle: {
@@ -93,7 +93,7 @@ export const DropletResourceType = rt({
   supportsUpdate: true,
   // Right-sizing: /v2/sizes is the real catalog (capacity + USD prices +
   // per-region availability). CPU is always reported; the memory series only
-  // exists on Droplets running the DO Metrics Agent — without it,
+  // exists on Droplets running the DO Metrics Agent: without it,
   // recommendations fall back to the host's unmeasured-memory floor.
   rightsizing: {
     sizeFieldKey: "size",
@@ -102,14 +102,14 @@ export const DropletResourceType = rt({
     cpuMetric: { seriesLabel: "CPU Utilization" },
     memoryMetric: { seriesLabel: "Memory Available", interpretation: "available-bytes" },
     // Slug prefix before the first dash is the family (s-, c-, c2-, m3-,
-    // so1_5-, …) — staying inside it keeps the resize like-for-like.
+    // so1_5-, …): staying inside it keeps the resize like-for-like.
     sizeFamilyPattern: "^([a-z0-9_]+)-",
     resizeNote:
       "DigitalOcean powers the Droplet off for the resize and boots it again afterwards. CPU/RAM only — the disk is unchanged, so the change can be reverted.",
   },
   // Same field, same guarantee, as the posture check below: the lister always
-  // writes `nextBackupStart` — the next window's ISO instant when backups are
-  // on, `""` when off — so `when: "present"` is a real three-state read, not a
+  // writes `nextBackupStart` (the next window's ISO instant when backups are
+  // on, `""` when off) so `when: "present"` is a real three-state read, not a
   // guess. Droplet snapshots carry the droplet id in `snapshot.resourceId`.
   backupPolicy: {
     protectedBy: ["snapshot"],

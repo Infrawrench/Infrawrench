@@ -5,8 +5,8 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  *
  * Deliberately covers both halves of xAI's voice surface so the user gets one
  * "Voices" list instead of having to know which endpoint a voice came from:
- *   - built-in voices  — GET /v1/tts/voices
- *   - cloned voices    — GET /v1/custom-voices  (POST/PATCH/DELETE too)
+ *   - built-in voices  - GET /v1/tts/voices
+ *   - cloned voices    - GET /v1/custom-voices  (POST/PATCH/DELETE too)
  *
  * `builtIn` distinguishes them; only cloned voices can be edited or deleted.
  *

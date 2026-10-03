@@ -1,5 +1,5 @@
 /**
- * DigitalOcean quota readings — the account's own limits, counted against the
+ * DigitalOcean quota readings: the account's own limits, counted against the
  * pagination envelope.
  *
  * `GET /v2/account` reports the ceilings; nothing reports the usage, so it is
@@ -104,7 +104,7 @@ export async function fetchDoQuotas(ctx: DoQuotaContext): Promise<QuotaUsage[]> 
         used,
         unit: "droplets",
         // DigitalOcean raises these on request through a support ticket, and
-        // says so on the page linked below — so `true` is the provider's own
+        // says so on the page linked below, so `true` is the provider's own
         // position rather than an assumption.
         adjustable: true,
         docsUrl: DOCS_URL,
@@ -122,7 +122,7 @@ export async function fetchDoQuotas(ctx: DoQuotaContext): Promise<QuotaUsage[]> 
         // field.
         id: "account/floating_ip_limit",
         service: "account",
-        // The *label*, unlike the key, uses the current product name — this is
+        // The *label*, unlike the key, uses the current product name: this is
         // the string the user goes looking for in the console.
         name: "Reserved IPs",
         limit: account.floating_ip_limit,

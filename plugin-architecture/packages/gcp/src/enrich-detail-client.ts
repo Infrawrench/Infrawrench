@@ -49,7 +49,7 @@ import {
 import type { GcpClientContext } from "./shared.js";
 
 /**
- * Resource detail enrichment — augments a `ResourceInstance` with the
+ * Resource detail enrichment: augments a `ResourceInstance` with the
  * service-specific sub-data the detail view needs (Cloud Run revisions,
  * Cloud Tasks tasks, Firestore indexes/rules, etc.). Branches by
  * `resourceTypeId`; resources that need no extra data fall through.

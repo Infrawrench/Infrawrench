@@ -17,7 +17,7 @@ export async function listGcpProjects(
     // A 403 means the Resource Manager API is disabled or the key lacks
     // resourcemanager.projects.get. The key always belongs to exactly one
     // project, so fall back to a single row synthesized from the credential's
-    // own project id — the picker still works.
+    // own project id: the picker still works.
     if ((err as { status?: number }).status !== 403) throw err;
     items = [{ projectId: p, name: p, projectNumber: "", lifecycleState: "ACTIVE" }];
   }

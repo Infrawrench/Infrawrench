@@ -3,7 +3,7 @@
  * package: `InProcessAgent` (private key in memory) and `RemoteKeyAgent`
  * (private key behind a signing callback, e.g. an HTTPS endpoint).
  *
- * The framing is hand-rolled — ssh2's AgentProtocol server mode replies with
+ * The framing is hand-rolled: ssh2's AgentProtocol server mode replies with
  * FAILURE for unknown opcodes but doesn't advance past their body, so a
  * `session-bind@openssh.com` request from modern OpenSSH (sent before
  * REQUEST_IDENTITIES on forwarded agent connections) corrupts the stream
@@ -60,7 +60,7 @@ export function resolveSignParams(keyType: string, flags: number): SignParams {
 
 /**
  * Frame a stream of agent messages into `handler(type, body)` calls and push
- * each reply back, preserving request order even when a handler is async —
+ * each reply back, preserving request order even when a handler is async:
  * a remote signer answers over the network while the next request may already
  * have arrived.
  */

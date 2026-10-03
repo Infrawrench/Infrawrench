@@ -138,7 +138,7 @@ export async function makeStorageFolder(
 
 export async function getBucketPolicy(creds: AwsCredentials, bucket: string): Promise<string> {
   // S3 returns 404 + NoSuchBucketPolicy when no policy is set, and `fetchSigned`
-  // throws on non-2xx with the body inlined in the message — catch that and
+  // throws on non-2xx with the body inlined in the message: catch that and
   // surface an empty editor instead of an error banner.
   const host = `${bucket}.s3.${creds.region}.amazonaws.com`;
   try {
@@ -165,7 +165,7 @@ export async function putBucketPolicy(
   const host = `${bucket}.s3.${creds.region}.amazonaws.com`;
   const trimmed = policy.trim();
   if (!trimmed) {
-    // `fetchSigned` already throws with the body inlined on non-2xx — except
+    // `fetchSigned` already throws with the body inlined on non-2xx: except
     // a 404 here just means "no policy to delete", which we treat as success.
     try {
       await fetchSigned({

@@ -1,5 +1,5 @@
 /**
- * Neon public status feed (status.io — https://neonstatus.com, verified
+ * Neon public status feed (status.io: https://neonstatus.com, verified
  * 2026-08). The machine endpoint is status.io's REST API for the page:
  * https://api.status.io/1.0/status/6878fc85709daa75be6c7e3c
  *
@@ -17,7 +17,7 @@
  *
  * Region mapping: child container names are literally "AWS us-east-1" /
  * "Azure eastus2", and Neon's own region ids (what resources carry in their
- * `region` field) are "aws-us-east-1" / "azure-eastus2" — lowercase and
+ * `region` field) are "aws-us-east-1" / "azure-eastus2"; lowercase and
  * hyphenate.
  */
 import type { StatusFeedDeclaration, StatusIncident } from "@infrawrench/plugin-base";
@@ -73,7 +73,7 @@ function impactFromStatusCode(code: number): StatusIncident["impact"] {
   return "maintenance";
 }
 
-/** Fixed epoch — never wall-clock so re-polls of the same payload stay deterministic. */
+/** Fixed epoch, never wall-clock so re-polls of the same payload stay deterministic. */
 const EPOCH_ISO = new Date(0).toISOString();
 
 /**
@@ -149,7 +149,7 @@ export function parseStatusFeed(body: string): StatusIncident[] {
 
   // Synthesized incidents from degraded containers, deduped against the
   // explicit list by region *and* container name. A provider-wide explicit
-  // incident already covers every container — skip all synthesis then.
+  // incident already covers every container: skip all synthesis then.
   const hasProviderWide = out.some((i) => i.providerWide);
   const coveredRegions = new Set(out.flatMap((i) => i.regions));
   const coveredNames = new Set(out.flatMap((i) => i.services.map((s) => s.toLowerCase())));

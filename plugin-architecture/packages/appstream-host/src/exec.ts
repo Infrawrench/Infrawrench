@@ -3,7 +3,7 @@
  * shares.
  *
  * Split out of `index.ts` so the preflight can use them without importing the
- * session code — the preflight runs *before* anything has been staged, and has
+ * session code: the preflight runs *before* anything has been staged, and has
  * to work on a host where staging would fail.
  */
 
@@ -26,7 +26,7 @@ export interface ExecChannel {
     on(event: "data", handler: (chunk: Buffer) => void): unknown;
     /**
      * Streams emit `error` whether or not anyone is listening, and an
-     * unhandled one is not an exception this code can catch — it takes the
+     * unhandled one is not an exception this code can catch: it takes the
      * process down. stderr gets its own because it is a separate stream.
      */
     once(event: "error", handler: (err: Error) => void): unknown;
@@ -134,14 +134,14 @@ export function execStreaming(
  *
  * `/dev/shm` and `/run/user/<uid>` are tmpfs on every mainstream distribution,
  * so the bytes never reach a disk. `/tmp` is the fallback for hosts that have
- * neither — often a disk, which is why it is last, and why the file is unlinked
+ * neither: often a disk, which is why it is last, and why the file is unlinked
  * before the process starts either way.
  */
 const STAGING_DIRS = ["/dev/shm", `/run/user/$(id -u)`, "$XDG_RUNTIME_DIR", "/tmp"] as const;
 
 /**
  * Shell that picks the first staging directory that exists, is writable, and
- * permits execution — a hardened host may mount `/tmp` or `/dev/shm` `noexec`,
+ * permits execution: a hardened host may mount `/tmp` or `/dev/shm` `noexec`,
  * and finding that out by failing to exec is a much worse error message.
  */
 export function pickStagingDirScript(): string {

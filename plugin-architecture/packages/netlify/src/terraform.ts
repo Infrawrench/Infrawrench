@@ -6,14 +6,14 @@ import type {
 import { fieldBool, fieldNumber, fieldString, tf } from "@infrawrench/plugin-base";
 
 /**
- * Terraform mapping for Netlify — provider `netlify/netlify`.
+ * Terraform mapping for Netlify: provider `netlify/netlify`.
  * Attribute names verified against the provider docs
  * (registry.terraform.io/providers/netlify/netlify):
  *   - netlify_dns_zone: `name` required; `team_slug` optional when default team set.
  *   - netlify_dns_record: `zone_id`, `type`, `hostname`, `value` required.
  *   - netlify_environment_variable: `key` required; `site_id`, `values`/`secret_values`.
- * netlify_site is a data source only (no managed site resource) — skipped.
- * Deploys, forms, and build hooks are ephemeral/UI-managed — skipped.
+ * netlify_site is a data source only (no managed site resource): skipped.
+ * Deploys, forms, and build hooks are ephemeral/UI-managed: skipped.
  * The API token is `var.netlify_api_token`.
  */
 export const netlifyTerraformExport: TerraformExportCapability = {

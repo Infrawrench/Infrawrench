@@ -37,7 +37,7 @@ export const RDSClusterResourceType = rt({
       description: "Database connection URI (constructed from endpoint + port)",
     }),
   ],
-  // Cluster members are ordinary DB instances — DescribeDBInstances lists them
+  // Cluster members are ordinary DB instances: DescribeDBInstances lists them
   // under their own identifier, which is what `DBClusterMembers` names.
   dependsOn: [
     { fieldKey: "dbClusterMemberIds", targetTypeId: "rds-instance", label: "has member" },

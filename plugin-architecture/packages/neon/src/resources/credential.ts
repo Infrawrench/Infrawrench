@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 /**
  * Scoped credentials are the auth substrate for Neon's branch-scoped services
  * (Object Storage, Functions, AI Gateway). The API returns the token and S3
- * secret exactly once, at creation — there is no endpoint to read them back,
+ * secret exactly once, at creation: there is no endpoint to read them back,
  * so both outputs resolve only from the create response.
  */
 export const NeonCredentialResourceType = rt({

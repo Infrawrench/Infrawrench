@@ -10,7 +10,7 @@ import type { DecisionParam } from "cloudflare/resources/zero-trust/access/appli
 
 /**
  * The SDK's app-scoped `PolicyCreateParams` / `PolicyUpdateParams` only declare
- * the shared knobs (precedence, session duration, approval groups…) — the
+ * the shared knobs (precedence, session duration, approval groups…): the
  * `name`, `decision` and rule arrays that the endpoint actually requires are
  * missing from the generated request types even though they come back on
  * `PolicyCreateResponse` and are required on the reusable-policy equivalent in
@@ -107,7 +107,7 @@ export async function listAllAccessPolicies(
 }
 
 /**
- * Turn a comma-separated list of emails/domains into Access include rules —
+ * Turn a comma-separated list of emails/domains into Access include rules:
  * one rule per entry. A `@example.com` entry becomes an `email_domain` rule
  * (everyone at that domain); a bare `user@example.com` becomes an exact
  * `email` rule. Blank entries are dropped so trailing commas are harmless.

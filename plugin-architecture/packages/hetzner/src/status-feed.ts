@@ -1,12 +1,12 @@
 /**
- * Hetzner public status feed (Atom, https://status.hetzner.com/en.atom —
+ * Hetzner public status feed (Atom, https://status.hetzner.com/en.atom:
  * verified 2026-08).
  *
  * The Atom feed mixes current and past incidents with no machine-readable
  * lifecycle state, so an entry counts as an active incident only when it was
  * published within the last 7 days and its title/description do not read as
  * resolved (English or German). Location codes (fsn1, nbg1, hel1, ash, hil,
- * sin — exactly the lowercase `location` slugs Hetzner resources carry)
+ * sin: exactly the lowercase `location` slugs Hetzner resources carry)
  * appear only in free text, so title+description are scanned for them; an
  * entry naming no location is treated as provider-wide.
  */
@@ -30,15 +30,15 @@ const RESOLVED_WORDS = /resolved|completed|abgeschlossen|beendet/i;
 /**
  * Unambiguous Hetzner location slugs (fsn1, nbg1, hel1) match freely.
  * Ambiguous three-letter codes (ash, hil, sin):
- *   - with location-like context ("Location: Ash", "DC ash") — case-insensitive
+ *   - with location-like context ("Location: Ash", "DC ash"); case-insensitive
  *   - standalone uppercase only ("ASH", "HIL", "SIN") so ordinary English
  *     words like "ash" / "hil" / "sin" don't force a region match
  */
 const UNAMBIGUOUS_LOCATION = /\b(fsn1|nbg1|hel1)\b/gi;
-/** Contextual ambiguous codes — case-insensitive labels/prefixes. */
+/** Contextual ambiguous codes: case-insensitive labels/prefixes. */
 const AMBIGUOUS_CONTEXTUAL =
   /(?:\b(?:dc|location|standort|datacenter|data\s*center)\b[\s:#-]*)\b(ash|hil|sin)\b|\((ash|hil|sin)\)/gi;
-/** Standalone ambiguous codes — uppercase only. */
+/** Standalone ambiguous codes: uppercase only. */
 const AMBIGUOUS_STANDALONE = /\b(ASH|HIL|SIN)\b/g;
 
 /** Exported for unit tests. */

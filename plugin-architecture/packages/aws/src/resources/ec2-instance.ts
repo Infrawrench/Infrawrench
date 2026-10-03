@@ -57,7 +57,7 @@ export const EC2InstanceResourceType = rt({
   dependsOn: [
     { fieldKey: "vpcId", targetTypeId: "vpc", label: "in VPC" },
     { fieldKey: "subnetId", targetTypeId: "subnet", label: "in subnet" },
-    // Comma-separated list — one edge per group.
+    // Comma-separated list: one edge per group.
     { fieldKey: "securityGroupIds", targetTypeId: "security-group", label: "guarded by" },
   ],
   supportsMetrics: true,
@@ -96,13 +96,13 @@ export const EC2InstanceResourceType = rt({
   supportsUpdate: true,
   // Right-sizing: the create form's curated size list carries capacity;
   // prices hydrate per region through getCreateSizePricing (Price List Query
-  // API — needs pricing:GetProducts). CloudWatch has no agentless memory
+  // API; needs pricing:GetProducts). CloudWatch has no agentless memory
   // metric for EC2, so the host's unmeasured-memory floor applies.
   rightsizing: {
     sizeFieldKey: "instanceType",
     regionFieldKey: "region",
     cpuMetric: { seriesLabel: "CPUUtilization" },
-    // Family before the dot — t4g (arm) vs t3 (Intel) vs t3a (AMD) stay
+    // Family before the dot: t4g (arm) vs t3 (Intel) vs t3a (AMD) stay
     // apart, which ModifyInstanceAttribute can't cross without new drivers.
     sizeFamilyPattern: "^([a-z0-9-]+)\\.",
     resizeNote:

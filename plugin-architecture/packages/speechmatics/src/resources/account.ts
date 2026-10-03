@@ -5,7 +5,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  *
  * Nothing else here is guaranteed to exist. Jobs are purged 7 days after they
  * run (https://docs.speechmatics.com/speech-to-text/batch/limits), and projects
- * and API keys only appear when the optional management token is set — so on a
+ * and API keys only appear when the optional management token is set, so on a
  * new or week-idle account the sidebar would otherwise be empty and the Speech
  * tab unreachable. `listResources` always returns exactly one of these.
  *
@@ -38,7 +38,7 @@ export const AccountResourceType = rt({
   supportsDelete: false,
   // `/usage` is account-wide and the detail view has offered a Metrics tab
   // since it was written, but the host only calls `fetchMetricSeries` for
-  // types that declare this — so the bucketed hours/jobs series never reached
+  // types that declare this, so the bucketed hours/jobs series never reached
   // it.
   supportsMetrics: true,
   iconKey: "account",

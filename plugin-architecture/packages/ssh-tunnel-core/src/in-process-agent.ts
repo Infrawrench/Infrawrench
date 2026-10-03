@@ -5,7 +5,7 @@
  *
  * Shared between `@infrawrench/desktop` (Electron main) and `@infrawrench/web`
  * (Hono server-side proxy). The forwarded surface area equals the single key
- * the user logged in with — nothing else is exposed to the remote host.
+ * the user logged in with: nothing else is exposed to the remote host.
  *
  * The web side wires an optional `onSign` callback to push an audit log row
  * on every sign-request; the desktop side does not need that hook and passes
@@ -59,7 +59,7 @@ export interface SignOutcome {
 export interface InProcessAgentOptions {
   /**
    * Called once per SIGN_REQUEST after the response (or failure) has been
-   * computed. Fire-and-forget — exceptions inside the callback are swallowed
+   * computed. Fire-and-forget: exceptions inside the callback are swallowed
    * so a misbehaving audit sink can't break SSH.
    */
   onSign?: (outcome: SignOutcome) => void;
@@ -111,7 +111,7 @@ export class InProcessAgent extends BaseAgent<ParsedKey> {
       const resp = this.handleSign(body);
       return resp ?? failureFrame();
     }
-    // Unknown opcode (e.g. SSH_AGENTC_EXTENSION for session-bind) — fail
+    // Unknown opcode (e.g. SSH_AGENTC_EXTENSION for session-bind): fail
     // explicitly but still consume the body (caller already skipped it).
     return failureFrame();
   }
@@ -213,7 +213,7 @@ function signRaw(
   let result: unknown;
   try {
     // ssh2's ParsedKey.sign is typed as returning Buffer but actually
-    // returns `Buffer | Error` — guard explicitly.
+    // returns `Buffer | Error`: guard explicitly.
     result = key.sign(data, hash);
   } catch (e) {
     return e instanceof Error ? e : new Error(String(e));

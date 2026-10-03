@@ -192,7 +192,7 @@ export async function fetchCloudNatRouterStatus(
 }
 
 /**
- * Start or stop a GCE VM instance — the detail-page power actions and the
+ * Start or stop a GCE VM instance: the detail-page power actions and the
  * sleep/wake schedule lifecycle pair. `stop` moves the VM to TERMINATED
  * (compute billing stops; disks and static IPs keep billing), `start` boots
  * a TERMINATED VM again.
@@ -219,7 +219,7 @@ export async function setGceInstancePower(
 }
 
 /**
- * Change a stopped instance's machine type — the right-sizing apply path.
+ * Change a stopped instance's machine type: the right-sizing apply path.
  * GCE only accepts `setMachineType` while the instance is TERMINATED; a
  * running instance gets the API's own 400, surfaced as-is.
  */
@@ -249,7 +249,7 @@ export async function setGceInstanceMachineType(
 }
 
 /**
- * Run the "restart/replace" action on an instance group — used by the
+ * Run the "restart/replace" action on an instance group: used by the
  * sidebar action button to roll over every VM.
  */
 export async function restartReplaceInstanceGroup(
@@ -287,7 +287,7 @@ export async function restartReplaceInstanceGroup(
 
 /**
  * Apply a GCP firewall rule to a GCE instance. GCP firewalls use
- * `targetTags` to select VMs — there's no direct attach. We fetch the
+ * `targetTags` to select VMs: there's no direct attach. We fetch the
  * firewall's target tags, add them to the instance's tag list, and call
  * the instance's `setTags` API. If the firewall has no targetTags (applies
  * to all VMs in the network), nothing to do.
@@ -521,7 +521,7 @@ export async function attachResource(
     const target = nats[idx]!;
     const existing = (target["subnetworks"] as Array<Record<string, unknown>> | undefined) ?? [];
     if (existing.some((s) => String(s["name"]) === subnetSelfLink)) {
-      // Already attached — nothing to do.
+      // Already attached: nothing to do.
       return;
     }
     target["sourceSubnetworkIpRangesToNat"] = "LIST_OF_SUBNETWORKS";

@@ -13,7 +13,7 @@ import {
  * `@neondatabase/api-client@2.7.3` mistypes the function listing as the
  * single-function `{ function }` response. The published OpenAPI spec documents
  * it as `NeonFunctionsListResponse & CursorPaginationResponse`, so we have to
- * look past the generated type — but we validate at runtime rather than assert,
+ * look past the generated type, but we validate at runtime rather than assert,
  * so a drifting SDK or API drops the offending entry instead of throwing a
  * `TypeError` inside `buildFunctionResource`. Revisit when the codegen is fixed.
  */

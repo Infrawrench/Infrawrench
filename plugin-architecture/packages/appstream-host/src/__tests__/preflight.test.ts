@@ -53,8 +53,8 @@ describe("probeHost", () => {
     await probeHost(ssh);
 
     // One exec, and nothing in it changes the host: the probe runs before the
-    // user has agreed to anything. The manager names do appear — `command -v`
-    // is how the probe finds which one there is — so this looks for the verbs.
+    // user has agreed to anything. The manager names do appear (`command -v`
+    // is how the probe finds which one there is) so this looks for the verbs.
     expect(ssh.commands).toHaveLength(1);
     const script = innerScript(ssh.commands[0]!);
     expect(script).not.toMatch(/install|add --no-cache|-Sy /);

@@ -6,7 +6,7 @@
  * Two Azure-specific facts shape the mapping:
  *
  * - **The list response contains no purchase price.** Money lives on the
- *   reservation *order*'s billing records, not here — so every money field is
+ *   reservation *order*'s billing records, not here, so every money field is
  *   omitted. A substituted zero would render as "free reservation" in a
  *   finance review; "not reported" is the truthful answer.
  * - **Azure is the only provider that reports its own utilization** on the
@@ -81,13 +81,13 @@ interface AzureReservationListResponse {
  * returns resource ids spelled `/providers/microsoft.capacity/…`, while the
  * `BenefitId` column in cost data is documented only via a *case-insensitive*
  * provider-segment test (`if BenefitId contains '/microsoft.capacity/'
- * (case-insensitive)` — https://learn.microsoft.com/en-us/cloud-computing/finops/focus/convert),
+ * (case-insensitive)`; https://learn.microsoft.com/en-us/cloud-computing/finops/focus/convert),
  * which is Microsoft telling us the casing is not stable. ARM resource ids are
  * case-insensitive by construction, so lower-casing loses nothing and is the
  * only way the join is reliable.
  *
  * Changing the id this function returns changes the upsert identity of stored
- * commitment records — which is safe here only because the host's collection
+ * commitment records, which is safe here only because the host's collection
  * is a full snapshot that sweeps records it did not see
  * (`server-core/src/commitments/collect.ts`), so a re-cased record replaces
  * rather than duplicates its predecessor on the next pass.
@@ -100,8 +100,8 @@ export function normalizeAzureCommitmentId(id: string): string {
  * Azure's provisioning-state zoo, folded to three answers. Succeeded is the
  * only state in which the discount is being applied. The Creating /
  * PendingBilling / ConfirmedBilling family is a purchase in flight. Split and
- * Merged mean this record was retired in favour of successor reservations —
- * counting both parent and children would double the holding — and every
+ * Merged mean this record was retired in favour of successor reservations
+ * (counting both parent and children would double the holding) and every
  * failure/cancellation/unknown state is expired, understating rather than
  * overstating what the org owns.
  */
@@ -154,7 +154,7 @@ function utilization(
 
 export function mapAzureReservation(reservation: AzureReservation): CommitmentRecord | null {
   // Canonicalised so cost rows stamped from the BenefitId column join against
-  // it — see normalizeAzureCommitmentId.
+  // it: see normalizeAzureCommitmentId.
   const id = normalizeAzureCommitmentId(reservation.id ?? "");
   if (!id) return null;
   const props = reservation.properties ?? {};

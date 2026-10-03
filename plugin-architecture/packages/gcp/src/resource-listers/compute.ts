@@ -44,7 +44,7 @@ export async function listGceInstances(
         "natIP"
       ] as string) ?? "";
     const internalIp = (nets?.[0]?.["networkIP"] as string) ?? "";
-    // Wiring already present in the aggregated payload — no extra request. A VM
+    // Wiring already present in the aggregated payload: no extra request. A VM
     // can have several NICs, so these are comma-joined and the graph splits them.
     const networkName = joinRefs((nets ?? []).map((n) => lastSegment(n["network"])));
     const subnetwork = joinRefs((nets ?? []).map((n) => subnetRef(n["subnetwork"])));
@@ -60,7 +60,7 @@ export async function listGceInstances(
       Array<Record<string, string>> | undefined;
     const sshKeysEntry = metadataItems?.find((m) => m["key"] === "ssh-keys");
     if (sshKeysEntry?.["value"]) {
-      // Format: "username:ssh-rsa AAAA..." — extract the username before the colon
+      // Format: "username:ssh-rsa AAAA..."; extract the username before the colon
       const firstLine = sshKeysEntry["value"].split("\n")[0] ?? "";
       const colonIdx = firstLine.indexOf(":");
       if (colonIdx > 0) sshUsername = firstLine.substring(0, colonIdx);
@@ -106,7 +106,7 @@ export async function listGceDisks(
     const name = String(disk["name"]);
     const zone_ = String(disk["zone"]).split("/").pop() ?? "";
     const type = String(disk["type"]).split("/").pop() ?? "";
-    // `users` is the list of instance self-links this disk is attached to —
+    // `users` is the list of instance self-links this disk is attached to:
     // already present in the aggregated payload, no extra API call.
     const users = Array.isArray(disk["users"]) ? (disk["users"] as string[]) : [];
     const attachedTo = users.map((u) => u.split("/").pop() ?? "").join(",");
@@ -153,7 +153,7 @@ export async function listGkeClusters(
     const subnetName = String(c["subnetwork"] ?? "");
     const subnetwork = subnetName ? `${regionOfLocation(location)}/${subnetName}` : "";
     // "default" (the Compute Engine default service account) rather than an
-    // email when the node pool didn't name one — it simply won't match.
+    // email when the node pool didn't name one: it simply won't match.
     const serviceAccount = String(nodeConfig["serviceAccount"] ?? "");
     return {
       id: ctx.id(accountId, "gke-cluster", `${p}/${location}/${name}`),

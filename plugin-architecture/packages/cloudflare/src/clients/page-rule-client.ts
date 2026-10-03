@@ -102,7 +102,7 @@ export async function createPageRule(
   ];
   // `actions`, by contrast, is a 34-member discriminated union keyed on a
   // string-literal `id` (PageRuleCreateParams.actions, page-rules.d.ts:504),
-  // where each variant carries its own `value` type — an object for
+  // where each variant carries its own `value` type: an object for
   // `forwarding_url`, a number for `browser_cache_ttl`, per-action string
   // unions elsewhere, and no `value` at all for `always_use_https`. The create
   // form hands us an opaque `id` + `value` string pair, so satisfying the union

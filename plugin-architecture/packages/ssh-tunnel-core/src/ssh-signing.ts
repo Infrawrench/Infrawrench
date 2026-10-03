@@ -5,7 +5,7 @@
  * A client that cannot hold the private key (the desktop app using an
  * org-managed cloud key) names one of these algorithms and sends the exact
  * bytes SSH wants signed; the server holding the key answers with the raw
- * signature `ParsedKey.sign` produces — Ed25519/RSA bytes as-is, ECDSA in
+ * signature `ParsedKey.sign` produces: Ed25519/RSA bytes as-is, ECDSA in
  * DER. Raw is the right wire form because both consumers already normalise
  * it: ssh2's `authPK` runs agent signatures through `convertSignature`, and
  * the agent-protocol path (`RemoteKeyAgent`) converts DER ECDSA to the SSH
@@ -50,7 +50,7 @@ export function keyTypeForAlgorithm(algorithm: SshSignAlgorithm): string {
 
 /**
  * The signature algorithm to request for a key, given the hash ssh2 asks for
- * during publickey auth (`options.hash` in `BaseAgent.sign` — set only for
+ * during publickey auth (`options.hash` in `BaseAgent.sign`: set only for
  * RSA, where the negotiated `rsa-sha2-*` algorithm decides it).
  */
 export function signatureAlgorithmFor(
@@ -75,7 +75,7 @@ export function signatureAlgorithmFor(
 /**
  * Sign `data` with a PEM private key, producing the raw signature for
  * `algorithm`. Throws on an unparseable key, a key/algorithm mismatch, or a
- * signing failure — the caller turns those into HTTP 400s.
+ * signing failure: the caller turns those into HTTP 400s.
  *
  * The hash is passed explicitly only for the RSA variants; Ed25519 and ECDSA
  * ignore a caller-supplied hash in favour of the one their key implies, which
@@ -106,7 +106,7 @@ export function signSshData(
   let result: unknown;
   try {
     // ssh2's ParsedKey.sign is typed as returning Buffer but actually
-    // returns `Buffer | Error` — guard explicitly.
+    // returns `Buffer | Error`: guard explicitly.
     result = key.sign(data, hash);
   } catch (e) {
     throw e instanceof Error ? e : new Error(String(e));

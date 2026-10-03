@@ -1,13 +1,13 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A bulk embedding job — embeds an input dataset and writes the vectors to an
+ * A bulk embedding job: embeds an input dataset and writes the vectors to an
  * output dataset.
  *
  * Verified: https://docs.cohere.com/reference/list-embed-jobs
  * `GET /v1/embed-jobs` → `{ embed_jobs: [...] }`.
  *
- * ⚠️ This endpoint documents **no query parameters at all** — no pagination.
+ * ⚠️ This endpoint documents **no query parameters at all**: no pagination.
  * Jobs are cancelled (`POST /v1/embed-jobs/{id}/cancel`), never deleted.
  */
 export const EmbedJobResourceType = rt({

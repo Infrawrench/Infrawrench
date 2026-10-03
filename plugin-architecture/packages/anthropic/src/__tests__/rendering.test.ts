@@ -60,7 +60,7 @@ describe("renderDetail", () => {
     expect(list.items).toHaveLength(8);
     expect(list.items[0]!.key).toBe("Image input (vision)");
     expect(list.items[0]!.value).toBe("Yes");
-    // Citations is false in the fixture — the matrix must not fake it.
+    // Citations is false in the fixture: the matrix must not fake it.
     expect(list.items.find((item) => item.key === "Citations")!.value).toBe("No");
   });
 

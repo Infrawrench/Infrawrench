@@ -11,7 +11,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * ⚠️ Cohere files the whole fine-tuning group under "Deprecated" and retired
  * fine-tuning for command, command-light, command-r, classify and rerank on
  * 2025-09-15. The endpoints still answer, so existing fine-tunes remain
- * listable and deletable — hence no `supportsCreate` here.
+ * listable and deletable, hence no `supportsCreate` here.
  */
 export const FinetunedModelResourceType = rt({
   name: "Fine-tuned Model",

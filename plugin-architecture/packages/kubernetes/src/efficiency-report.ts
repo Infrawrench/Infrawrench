@@ -1,20 +1,20 @@
 /**
  * The cluster efficiency report.
  *
- * Efficiency used to be a percentage on a pill and a stat on a card — enough to
+ * Efficiency used to be a percentage on a pill and a stat on a card: enough to
  * notice a problem, not enough to do anything about it. This turns it into a
  * report: every namespace and every workload, what it asked for, what it
  * actually uses, and **what the gap costs**, worst first.
  *
  * WHY THIS IS NOT A SAVED COST REPORT. The obvious home was the `cost_reports`
- * object, and it does not fit — not by a little. That object is a *saved
+ * object, and it does not fit, not by a little. That object is a *saved
  * ClickHouse query*: its `config` column is validated against a closed
  * `costGraphConfigSchema`, running one calls `costQueryForConfig(...)` →
  * `runCostQuery(...)` against the stored daily cost rows, the run result is
  * typed as a bucketed money series, and the renderer is a single chart card.
  * There is no data-source indirection to hook and no report-kind discriminator
- * to extend. More decisively, the numbers this report is *about* — requested,
- * used, wasted — are computed live from `/api/v1/pods` and `metrics.k8s.io` and
+ * to extend. More decisively, the numbers this report is *about*: requested,
+ * used, wasted; are computed live from `/api/v1/pods` and `metrics.k8s.io` and
  * are never written to the cost store at all; only the money is. Forcing them
  * in would mean a new column on the cost rows, a widened config union, and a
  * second renderer, i.e. building the parallel report type anyway while making
@@ -28,7 +28,7 @@
  * WHAT IT REFUSES TO DO. It does not name a recommended request value. See
  * `rightsizingNote` below.
  *
- * Pure: an allocation in, rows and strings out. No fetching, no clock — the
+ * Pure: an allocation in, rows and strings out. No fetching, no clock: the
  * caller passes the timestamp.
  */
 
@@ -54,7 +54,7 @@ import { formatCores, formatMemory, type ResourcePair } from "./quantity.js";
  *  - **No catalog.** A pod request is a continuous two-dimensional quantity set
  *    per container, not a choice from a menu. There is no "next size down".
  *  - **No `updateResource` path.** Resizing a workload is a patch to
- *    `spec.template.spec.containers[].resources`, per container — the manifest
+ *    `spec.template.spec.containers[].resources`, per container: the manifest
  *    editor's job, not the resource-update form's.
  *  - **No p95.** `metrics.k8s.io` reports usage over a window of seconds. A
  *    recommendation drawn from one instantaneous sample is precisely the kind
@@ -76,7 +76,7 @@ export const RIGHTSIZING_NOTE =
   "as a recommendation. Use the numbers here to pick the workloads worth looking at, then " +
   "size them against a peak you trust.";
 
-/** One row of the report — a namespace or a workload, they share a shape. */
+/** One row of the report: a namespace or a workload, they share a shape. */
 export interface EfficiencyRow {
   /** `namespace` for a namespace row, `namespace/Kind/name` for a workload. */
   key: string;
@@ -87,7 +87,7 @@ export interface EfficiencyRow {
   workloadKind: string;
   podCount: number;
   requests: ResourcePair;
-  /** `null` when nothing measured this row — never zero. */
+  /** `null` when nothing measured this row, never zero. */
   usage: ResourcePair | null;
   /** `null` for the same reason. */
   wasted: ResourcePair | null;
@@ -101,7 +101,7 @@ export interface EfficiencyRow {
 }
 
 export interface EfficiencyReport {
-  /** ISO timestamp, supplied by the caller — this module owns no clock. */
+  /** ISO timestamp, supplied by the caller: this module owns no clock. */
   generatedAt: string;
   currency: string;
   /** `requests` when metrics-server was absent and nothing could be measured. */
@@ -118,9 +118,9 @@ export interface EfficiencyReport {
     efficiency: Efficiency;
     dailyCost: number | null;
     wastedDailyCost: number | null;
-    /** Unallocated node capacity — a different waste from over-requesting. */
+    /** Unallocated node capacity: a different waste from over-requesting. */
     dailyIdleCost: number | null;
-    /** Bound-but-unmounted storage — a third kind again. */
+    /** Bound-but-unmounted storage: a third kind again. */
     dailyUnattachedStorageCost: number | null;
   };
   namespaces: EfficiencyRow[];
@@ -157,7 +157,7 @@ function rowFrom(
  *
  *  1. Rows with a priced waste figure, descending by that figure. This is the
  *     list someone acts on.
- *  2. Rows measured but unpriced (no node rate) — ranked by wasted CPU cores,
+ *  2. Rows measured but unpriced (no node rate): ranked by wasted CPU cores,
  *     the biggest thing we can honestly compare them by.
  *  3. Rows with no usage data at all, alphabetically. They are not "efficient"
  *     and they are not "wasteful"; they are unmeasured, and burying them at the
@@ -179,7 +179,7 @@ function byWasteDescending(a: EfficiencyRow, b: EfficiencyRow): number {
  * Build the report from an allocation.
  *
  * `namespaceFilter` scopes it to one namespace, which is what the namespace
- * detail view renders — the same report, the same ordering, fewer rows.
+ * detail view renders: the same report, the same ordering, fewer rows.
  */
 export function buildEfficiencyReport(
   cluster: ClusterAllocation,
@@ -274,7 +274,7 @@ function ratioOrNull(used: number | undefined, requested: number): number | null
   return used / requested;
 }
 
-/** `18%` — or `unknown`, which is a different thing from `0%`. */
+/** `18%`, or `unknown`, which is a different thing from `0%`. */
 export function formatEfficiencyCell(row: EfficiencyRow, dimension: "cpu" | "memory"): string {
   if (row.unknown) return "unknown";
   const value = row.efficiency[dimension];
@@ -299,7 +299,7 @@ export function formatDaily(amount: number | null, currency: string): string {
  *
  * This is the "share" half of the feature. A table on a screen cannot be pasted
  * into a Jira ticket or a Slack thread, and screenshots of numbers go stale
- * without saying so — a fixed-width block carries the figures, the caveats and
+ * without saying so: a fixed-width block carries the figures, the caveats and
  * the timestamp together, which is what makes it safe to forward.
  */
 export function formatEfficiencyReportText(report: EfficiencyReport, title: string): string {

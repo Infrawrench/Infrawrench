@@ -1,11 +1,11 @@
 /**
- * Azure OAuth2 client credentials flow — fetches an access token from Azure AD
+ * Azure OAuth2 client credentials flow: fetches an access token from Azure AD
  * using a service principal (client_id + client_secret + tenant_id).
  *
  * The token exchange goes through the host's HTTP service whenever one is
  * supplied, exactly like the API calls the token is minted for. That is not
  * symmetry for its own sake: an account bound to a bastion expects *all* of
- * its egress — including the one request that carries the client secret — to
+ * its egress (including the one request that carries the client secret) to
  * leave from its own network, and a tenant whose Entra sign-in is restricted
  * by IP would reject a token request egressing from ours while every
  * subsequent ARM call succeeded, which is a confusing failure to debug.
@@ -67,7 +67,7 @@ export function fetchStorageAccessToken(
 }
 
 /**
- * AAD access token scoped to Microsoft Graph — used for app registration, service principal,
+ * AAD access token scoped to Microsoft Graph: used for app registration, service principal,
  * and group/user management via https://graph.microsoft.com/v1.0.
  */
 export function fetchGraphAccessToken(
@@ -78,7 +78,7 @@ export function fetchGraphAccessToken(
 }
 
 /**
- * AAD access token scoped to Azure Container Registry — used as the input to
+ * AAD access token scoped to Azure Container Registry: used as the input to
  * the ACR refresh-token exchange on {loginServer}/oauth2/exchange.
  */
 export function fetchAcrAccessToken(

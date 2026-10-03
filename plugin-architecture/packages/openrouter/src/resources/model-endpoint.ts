@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * One provider's serving endpoint for a model — the piece of data that is
+ * One provider's serving endpoint for a model: the piece of data that is
  * genuinely unique to OpenRouter. Carries per-provider pricing, uptime over
  * three windows, latency percentiles and throughput.
  *

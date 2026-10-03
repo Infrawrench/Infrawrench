@@ -48,7 +48,7 @@ export function buildKafkaConfig(connectionString: string): KafkaConfig {
         throw new Error(`Unsupported SASL mechanism: ${mechanism}`);
       }
     } else if (username || password) {
-      // Credentials present without an explicit mechanism — default to PLAIN.
+      // Credentials present without an explicit mechanism: default to PLAIN.
       sasl = { mechanism: "plain", username, password };
     }
 
@@ -65,7 +65,7 @@ export function buildKafkaConfig(connectionString: string): KafkaConfig {
         caPem = atob(sslCa);
         ssl = true;
       } catch {
-        /* ignore a malformed CA param — fall back to system trust store */
+        /* ignore a malformed CA param: fall back to system trust store */
       }
     }
   } catch {
@@ -176,7 +176,7 @@ function dropAdmin(connectionString: string): void {
 /**
  * True when an error means the pooled socket is dead (the broker closed an
  * idle connection, or the network dropped). Reusing such an entry surfaces as
- * `KafkaJSConnectionClosedError: Closed connection` on the *next* operation —
+ * `KafkaJSConnectionClosedError: Closed connection` on the *next* operation,
  * which looked like "create topic is broken" even though listing had just
  * worked on the same pooled client. We retry these once on a fresh connection.
  */
@@ -226,7 +226,7 @@ export const driver = {
 /**
  * One-shot produce. Args: [topic, value, key, headersJson, partition].
  *
- * We spin up a producer per call rather than pooling it — produce-from-the-
+ * We spin up a producer per call rather than pooling it: produce-from-the-
  * UI is rare, and the connect cost (~connection + metadata fetch) is fine
  * for a one-off send.
  */
@@ -250,7 +250,7 @@ async function runProduceCommand(
       headers = JSON.parse(headersJson) as Record<string, string>;
     } catch {
       // Treat malformed headers JSON as "no headers" rather than failing the
-      // whole call — keeps the UI responsive to a typo in the side input.
+      // whole call: keeps the UI responsive to a typo in the side input.
     }
   }
 

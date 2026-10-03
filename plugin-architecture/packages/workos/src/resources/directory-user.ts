@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A user synced from a Directory Sync directory. Read-only — the identity
+ * A user synced from a Directory Sync directory. Read-only: the identity
  * provider owns these; WorkOS mirrors them.
  * Docs: https://workos.com/docs/reference/directory-sync/directory-user
  */

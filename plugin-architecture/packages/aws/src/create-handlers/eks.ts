@@ -60,7 +60,7 @@ async function discoverDefaultSubnets(rctx: AwsCreateContext): Promise<SubnetInf
 
 /**
  * EKS rejects control-plane subnets in AZs it doesn't support (e.g. us-east-1e).
- * The 400 response includes a `validZones` array — pull it out so we can retry
+ * The 400 response includes a `validZones` array: pull it out so we can retry
  * with only the supported AZs. The error body is truncated to 400 chars by
  * `fetchSigned`, which can cut JSON.parse off mid-string, so we regex-match
  * the array contents directly rather than trying to parse JSON.
@@ -113,14 +113,14 @@ async function eksFetch<T>(
 /**
  * Preflight the node role's trust policy. EKS worker nodes launch as EC2
  * instances, so CreateNodegroup requires a role assumable by
- * `ec2.amazonaws.com` — but that call only happens in the background task
+ * `ec2.amazonaws.com`, but that call only happens in the background task
  * ~10 minutes after this handler returns (once the control plane is ACTIVE).
  * A wrong role would otherwise fail silently there, leaving an ACTIVE
  * cluster with zero nodes and every workload Pending forever. Checking here
  * turns that into an immediate create-time error.
  *
  * Best-effort: skipped when `iam:GetRole` is denied or the trust document
- * can't be decoded — we only fail when the role is provably not EC2-trusted.
+ * can't be decoded; we only fail when the role is provably not EC2-trusted.
  */
 async function assertNodeRoleTrustsEc2(rctx: AwsCreateContext, nodeRoleArn: string): Promise<void> {
   const roleName = nodeRoleArn.split("/").pop() ?? "";
@@ -179,7 +179,7 @@ export async function createEksCluster(
     );
   }
 
-  // Pick one subnet per AZ — EKS rejects multiple subnets in the same AZ for
+  // Pick one subnet per AZ: EKS rejects multiple subnets in the same AZ for
   // the control plane and we'll trim further if specific AZs are unsupported.
   let chosenSubnets = Array.from(
     allSubnets
@@ -205,7 +205,7 @@ export async function createEksCluster(
     await eksFetch(rctx, "POST", "/clusters", buildClusterBody(chosenSubnets));
   } catch (e) {
     // EKS rejects subnets in unsupported AZs (e.g. us-east-1e). The 400 body
-    // lists supported zones — retry with only those.
+    // lists supported zones: retry with only those.
     const validZones = parseValidZones(e);
     if (!validZones) throw e;
     const filtered = chosenSubnets.filter((s) => validZones.includes(s.availabilityZone));
@@ -224,7 +224,7 @@ export async function createEksCluster(
   // can only be created once the cluster is ACTIVE. Doing this synchronously
   // would block the HTTP request for ~15 min, which any reverse proxy will
   // time out. Return the cluster in CREATING state now and finish the node
-  // group provisioning in the background — subsequent listings (via the
+  // group provisioning in the background: subsequent listings (via the
   // poller) will pick up the active cluster + node group once they exist.
   provisionEksNodeGroupInBackground(rctx, {
     name,

@@ -3,7 +3,7 @@ import type { AwsCredentials } from "../auth.js";
 import { callGetMetricStatistics, type MetricsContext } from "./cw-helpers.js";
 
 /**
- * Storage / backup metric handlers — S3, EFS, AWS Backup.
+ * Storage / backup metric handlers: S3, EFS, AWS Backup.
  *
  * S3 metrics use a wider window than the shared `MetricsContext.fetchCw`
  * because BucketSizeBytes / NumberOfObjects only emit once per day.
@@ -27,7 +27,7 @@ export async function s3BucketMetrics(
     { Name: "BucketName", Value: bucketName },
     { Name: "StorageType", Value: "AllStorageTypes" },
   ];
-  // S3 daily metrics need a wider window — back-fill 3 days minimum.
+  // S3 daily metrics need a wider window: back-fill 3 days minimum.
   const widerStart = Math.min(ctx.start, ctx.end - 3 * 86_400_000);
   const widerPeriod = 86_400;
   const fetchSize = async (

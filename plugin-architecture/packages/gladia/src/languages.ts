@@ -134,7 +134,7 @@ export const GLADIA_LANGUAGE_OPTIONS: SpeechPanelOption[] = [
 
 /**
  * Transcription models, verified 2026-07-28 against the request schema of
- * https://docs.gladia.io/api-reference/v2/pre-recorded/init — the served
+ * https://docs.gladia.io/api-reference/v2/pre-recorded/init: the served
  * OpenAPI document has historically omitted `model` even though the endpoint
  * accepts it, so this list tracks the API reference rather than the spec file.
  */

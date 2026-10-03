@@ -204,7 +204,7 @@ export class KafkaClient implements PluginClient {
 
   async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
     // Let listTopics throw: an empty cluster returns `[]`, so a thrown error
-    // means the connection/auth actually failed — surface it as a pane error
+    // means the connection/auth actually failed; surface it as a pane error
     // instead of a misleading "connected, nothing to show". Consumer-group
     // listing is secondary (separate ACLs on some clusters), so keep it soft.
     const topics = await this.listTopics(context.accountId);
@@ -227,12 +227,12 @@ export class KafkaClient implements PluginClient {
           pluginId: "kafka",
           items: toPeer(topics),
           // Surface a "+ Create" button (incl. when empty) so a fresh cluster
-          // isn't a dead-end — topics are created via the Admin API.
+          // isn't a dead-end: topics are created via the Admin API.
           supportsCreate: true,
         },
         {
-          // Consumer groups aren't created directly — they materialise when a
-          // consumer subscribes — so no create button here.
+          // Consumer groups aren't created directly (they materialise when a
+          // consumer subscribes) so no create button here.
           title: `Consumer Groups (${groups.length})`,
           resourceTypeId: "kafka-consumer-group",
           pluginId: "kafka",
@@ -459,7 +459,7 @@ export class KafkaClient implements PluginClient {
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
       // `kafka-cluster` declares `supportsMetrics`, so the host fetches broker
       // / topic / consumer-group counts for this view; without the capability
-      // it had nowhere to put them. No default window — `fetchMetricSeries`
+      // it had nowhere to put them. No default window: `fetchMetricSeries`
       // reads the Admin API right now and returns a single point per series.
       metricsCapability: {},
     };

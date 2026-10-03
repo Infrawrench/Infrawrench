@@ -9,26 +9,26 @@
  *
  * Four things a cluster costs, and where each one goes:
  *
- *  - **Node compute** — split into a CPU and a memory pool, charged to pods by
+ *  - **Node compute**: split into a CPU and a memory pool, charged to pods by
  *    `max(request, usage)` against node capacity. The remainder becomes the
  *    `idle` and `systemReserved` buckets.
- *  - **Persistent volumes** — a PVC is namespaced and is mounted by pods, so
+ *  - **Persistent volumes**: a PVC is namespaced and is mounted by pods, so
  *    it is attributable: to the one workload that mounts it, or to its
  *    namespace when several do. A *bound* claim nothing mounts is real money
  *    nobody is using, and gets its own bucket rather than a tenant's bill.
- *  - **Load balancers** — a `Service` of type `LoadBalancer` provisions one
+ *  - **Load balancers**: a `Service` of type `LoadBalancer` provisions one
  *    real cloud load balancer. Its selector resolves it to a workload where it
  *    is unambiguous, and to its namespace otherwise.
- *  - **The control plane** — a flat per-cluster fee with no per-workload
+ *  - **The control plane**: a flat per-cluster fee with no per-workload
  *    component at all. It is not divisible, so it is never divided: it sits
  *    beside `idle` and `systemReserved` as its own line.
  *
  * Egress is deliberately absent. The Kubernetes API exposes no per-workload
- * byte counters — `metrics.k8s.io` carries a `ResourceList` of CPU and memory
- * and nothing else — so any per-namespace network figure would be an invented
+ * byte counters (`metrics.k8s.io` carries a `ResourceList` of CPU and memory
+ * and nothing else) so any per-namespace network figure would be an invented
  * apportionment. It belongs to flow-log-based attribution, not here.
  *
- * The module is a pure function over plain data — no fetching, no clock, no
+ * The module is a pure function over plain data: no fetching, no clock, no
  * Kubernetes types. Everything it needs has already been parsed into cores and
  * bytes by `quantity.ts`. That is what makes it testable without a cluster.
  */
@@ -42,7 +42,7 @@ import type { ResourcePair } from "./quantity.js";
  * *component* pricing prices vCPU-hours and GiB-hours separately, and a
  * general-purpose instance's price is (vCPUs x vCPU-rate) + (GiB x GiB-rate).
  * Taking the published component rates for the mainstream general-purpose
- * families — which run at roughly 4 GiB of RAM per vCPU — the CPU term is
+ * families (which run at roughly 4 GiB of RAM per vCPU) the CPU term is
  * consistently a little under two thirds of the machine price:
  *
  *   - GCP N2 (us-central1, on-demand): $0.031611/vCPU-hr and $0.004237/GiB-hr.
@@ -74,14 +74,14 @@ export const HOURS_PER_DAY = 24;
  * 730 is not a rounding of 24 x 30. It is 365.25 x 24 / 12 = 730.5 truncated,
  * and it is the convention every major provider's own pricing calculator uses
  * to turn a monthly rate into an hourly one. Using 720 (24 x 30) instead would
- * overstate every disk by 1.4% — small, consistent, and therefore invisible.
+ * overstate every disk by 1.4%: small, consistent, and therefore invisible.
  */
 export const HOURS_PER_MONTH = 730;
 
 /** A node, already parsed into base units. */
 export interface CostModelNode {
   name: string;
-  /** Total machine size — what you pay for. */
+  /** Total machine size: what you pay for. */
   capacity: ResourcePair;
   /**
    * What the scheduler may hand to pods. Always <= capacity; the difference is
@@ -93,7 +93,7 @@ export interface CostModelNode {
   region?: string;
   /**
    * Cost of this whole node for one hour, in the model's currency. Undefined
-   * means "we have no rate for this node" — its pods are reported without
+   * means "we have no rate for this node": its pods are reported without
    * money rather than with a fabricated number.
    */
   hourlyRate?: number | undefined;
@@ -107,7 +107,7 @@ export interface CostModelPod {
   namespace: string;
   /** Node the scheduler placed it on. Empty while Pending. */
   nodeName: string;
-  /** Owning workload's name — falls back to the pod's own name for bare pods. */
+  /** Owning workload's name: falls back to the pod's own name for bare pods. */
   workload: string;
   /** Deployment | StatefulSet | DaemonSet | Job | CronJob | Pod. */
   workloadKind: string;
@@ -140,7 +140,7 @@ export interface CostModelVolume {
   /** Size in GiB. See {@link capacityBasis} for which size this is. */
   gib: number;
   /**
-   * `provisioned` when it came from `status.capacity` — what the provisioner
+   * `provisioned` when it came from `status.capacity`: what the provisioner
    * actually made, and therefore what is billed. `requested` when the claim has
    * not bound yet and only `spec.resources.requests` exists.
    */
@@ -157,7 +157,7 @@ export interface CostModelLoadBalancer {
   namespace: string;
   /**
    * The provisioned address from `status.loadBalancer.ingress`. Empty means the
-   * cloud controller has not finished (or cannot) provision it — in which case
+   * cloud controller has not finished (or cannot) provision it: in which case
    * there is very likely nothing being billed yet, so it is counted but not
    * charged.
    */
@@ -229,7 +229,7 @@ export interface PodAllocation {
   /**
    * True when the pod names no node, or names a node that is not in the input
    * (drained, deleted, or listed between two API calls). Such a pod is still
-   * reported — with its requests — but carries no cost, because there is no
+   * reported (with its requests) but carries no cost, because there is no
    * machine to take the money from.
    */
   unplaced: boolean;
@@ -244,7 +244,7 @@ export interface PodAllocation {
  * balancer is an ingress consolidation.
  */
 interface CostBreakdown {
-  /** Share of node price — the pods' allocation. */
+  /** Share of node price: the pods' allocation. */
   computeHourlyCost: number | null;
   computeDailyCost: number | null;
   /** Attributed PersistentVolumeClaims. */
@@ -277,7 +277,7 @@ export interface WorkloadAllocation extends CostBreakdown {
   wasted: ResourcePair | null;
   wastedHourlyCost: number | null;
   wastedDailyCost: number | null;
-  /** True when not one of its pods reported usage — "unknown", never "0%". */
+  /** True when not one of its pods reported usage: "unknown", never "0%". */
   usageUnknown: boolean;
 }
 
@@ -307,7 +307,7 @@ interface VolumeAllocation {
   /** The single workload that mounts it, when exactly one does. */
   workload: string | null;
   workloadKind: string | null;
-  /** Mounted by more than one workload — charged to the namespace instead. */
+  /** Mounted by more than one workload: charged to the namespace instead. */
   shared: boolean;
   /**
    * Bound to a PersistentVolume, so provisioned and billing, but mounted by no
@@ -322,7 +322,7 @@ interface VolumeAllocation {
   unattached: boolean;
   /**
    * Never bound (`Pending`, or `Lost`). Reported as a finding with its
-   * requested size, and **never priced** — a claim with no PersistentVolume
+   * requested size, and **never priced**: a claim with no PersistentVolume
    * behind it has, as far as anyone can tell from the cluster, provisioned
    * nothing to bill for.
    */
@@ -370,7 +370,7 @@ interface StorageTotals {
 interface LoadBalancerTotals {
   loadBalancers: LoadBalancerAllocation[];
   count: number;
-  /** Provisioned (has an address) — the ones that can be billing. */
+  /** Provisioned (has an address): the ones that can be billing. */
   provisionedCount: number;
   hourlyCost: number | null;
   dailyCost: number | null;
@@ -408,7 +408,7 @@ export interface ClusterAllocation {
    * every figure is a request.
    */
   basis: AllocationBasis;
-  /** True when every node had a rate — i.e. the money is complete. */
+  /** True when every node had a rate, i.e. the money is complete. */
   fullyPriced: boolean;
   pricedNodeCount: number;
   nodeCount: number;
@@ -418,7 +418,7 @@ export interface ClusterAllocation {
    * Sum of the node rates: what the machines cost, and nothing else.
    *
    * This, not {@link hourlyTotalCost}, is the denominator for "how much of the
-   * cluster is idle" — idle is unused *node capacity*, and dividing it by a
+   * cluster is idle": idle is unused *node capacity*, and dividing it by a
    * total that also contains disks and load balancers would silently shrink the
    * percentage every time someone attached a volume.
    */
@@ -443,7 +443,7 @@ export interface ClusterAllocation {
    */
   hourlyControlPlaneCost: number | null;
   dailyControlPlaneCost: number | null;
-  /** Cluster-wide compute waste — held but demonstrably unused. */
+  /** Cluster-wide compute waste: held but demonstrably unused. */
   wasted: ResourcePair | null;
   wastedHourlyCost: number | null;
   wastedDailyCost: number | null;
@@ -476,7 +476,7 @@ function efficiencyOf(usage: ResourcePair | null, requests: ResourcePair): Effic
   };
 }
 
-/** Sum of a nullable-cost list — `null` only when nothing was priced at all. */
+/** Sum of a nullable-cost list: `null` only when nothing was priced at all. */
 function sumCosts(values: Array<number | null>): number | null {
   let total = 0;
   let sawNumber = false;
@@ -497,7 +497,7 @@ function sumCosts(values: Array<number | null>): number | null {
  *     {@link DEFAULT_CPU_COST_SHARE}.
  *  2. Each pod is charged for `max(request, usage)` on each dimension. A pod
  *     that under-requests still consumes the machine, and a pod that requests
- *     and idles still denies that capacity to everyone else — charging the
+ *     and idles still denies that capacity to everyone else: charging the
  *     greater of the two is the only rule that is fair in both directions.
  *  3. A pod's share of a pool is its charged amount over the node's *capacity*
  *     (not allocatable), because capacity is what the invoice is for.
@@ -579,7 +579,7 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
         cpuPool == null || memPool == null ? null : cpuPool * cpuShare + memPool * memoryShare;
 
       // Waste: what the pod is charged for, minus what it actually uses. Only
-      // computable with live usage — with no metrics-server this stays null,
+      // computable with live usage: with no metrics-server this stays null,
       // and a null waste is what makes the report say "unknown" instead of
       // asserting that a pod nobody measured is perfectly efficient.
       const usage = entry.pod.usage ?? null;
@@ -725,7 +725,7 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
 
   // The cluster's whole bill: machines, plus the three things that are billed
   // alongside them. Storage counts both the attributed and the unattached
-  // buckets — unattached money is still money the cluster is spending.
+  // buckets: unattached money is still money the cluster is spending.
   const hourlyTotalCost = sumCosts([
     hourlyNodeCost,
     hourlyControlPlaneCost,
@@ -783,12 +783,12 @@ export function allocateClusterCost(input: CostModelInput): ClusterAllocation {
  *
  * Three outcomes, and the classification is the point:
  *
- *  - **Attributed** — exactly one workload mounts it (charged to that
+ *  - **Attributed**: exactly one workload mounts it (charged to that
  *    workload), or several do (charged to the namespace, because splitting a
  *    shared ReadWriteMany disk N ways would be an invented apportionment).
- *  - **Unattached** — bound, therefore provisioned and billing, but no running
+ *  - **Unattached**: bound, therefore provisioned and billing, but no running
  *    pod mounts it. Its own bucket.
- *  - **Unbound** — `Pending` or `Lost`. Never priced.
+ *  - **Unbound**: `Pending` or `Lost`. Never priced.
  */
 function allocateStorage(volumes: CostModelVolume[]): StorageTotals {
   const allocations: VolumeAllocation[] = [];
@@ -862,7 +862,7 @@ function allocateStorage(volumes: CostModelVolume[]): StorageTotals {
  * Price every `LoadBalancer` Service.
  *
  * A Service with no address in `status.loadBalancer.ingress` has not been
- * provisioned — the cloud controller is still working, or cannot. It is
+ * provisioned: the cloud controller is still working, or cannot. It is
  * counted (so a stuck one is visible) but not charged, on the same principle
  * as an unbound PVC: nothing exists yet to be billed for.
  */
@@ -1034,7 +1034,7 @@ function finishRollUp(entry: RollUp): CostBreakdown & {
     wastedDailyCost: scaleToDay(wastedHourlyCost),
     // A workload with pods but no usage on any of them is unmeasured. One with
     // no pods at all (a scaled-to-zero StatefulSet still holding disks) is not
-    // "unknown efficiency" — it has nothing to be efficient about.
+    // "unknown efficiency": it has nothing to be efficient about.
     usageUnknown: entry.podCount > 0 && entry.usage == null,
   };
 }
@@ -1044,7 +1044,7 @@ function finishRollUp(entry: RollUp): CostBreakdown & {
  * resolved to exactly one workload.
  *
  * A volume or load balancer that resolved to several workloads (or none) is
- * deliberately absent here and present in the namespace roll-up instead — the
+ * deliberately absent here and present in the namespace roll-up instead: the
  * namespace is the tightest scope it can be attributed to honestly.
  *
  * A workload can appear with `podCount: 0`: a StatefulSet scaled to zero still
@@ -1093,7 +1093,7 @@ function rollUpWorkloads(
 
 /**
  * Roll pods up to namespaces, then fold in every attributable volume and load
- * balancer — including the shared ones the workload roll-up had to skip.
+ * balancer, including the shared ones the workload roll-up had to skip.
  *
  * Unattached and unbound volumes are excluded on purpose: they are the cluster
  * equivalent of idle capacity, and adding them to their namespace would
@@ -1136,7 +1136,7 @@ function byDailyCostThenName(a: WorkloadAllocation, b: WorkloadAllocation): numb
 
 /**
  * A workload is "badly over-requested" when it reserves capacity it
- * demonstrably does not use. Only ever true when we have live utilization —
+ * demonstrably does not use. Only ever true when we have live utilization:
  * requests alone say nothing about waste.
  */
 export function isOverRequested(efficiency: Efficiency, threshold = 0.2): boolean {
@@ -1145,7 +1145,7 @@ export function isOverRequested(efficiency: Efficiency, threshold = 0.2): boolea
   return Math.max(...worst) < threshold;
 }
 
-/** `$1.80` / `$0.004` — short enough for a pill subtitle. */
+/** `$1.80` / `$0.004`: short enough for a pill subtitle. */
 export function formatMoney(amount: number, currency = "USD"): string {
   const symbol = currency === "USD" ? "$" : currency === "EUR" ? "€" : "";
   const suffix = symbol ? "" : ` ${currency}`;
@@ -1160,7 +1160,7 @@ export function formatDailyCost(daily: number | null, currency = "USD"): string 
   return `~${formatMoney(daily, currency)}/day`;
 }
 
-/** `18% CPU` — the tighter of the two efficiency figures is the useful one. */
+/** `18% CPU`: the tighter of the two efficiency figures is the useful one. */
 export function formatEfficiency(efficiency: Efficiency): string {
   const parts: string[] = [];
   if (efficiency.cpu != null) parts.push(`${Math.round(efficiency.cpu * 100)}% CPU`);

@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A pronunciation dictionary — a set of phoneme/alias rules applied at
+ * A pronunciation dictionary: a set of phoneme/alias rules applied at
  * synthesis time. Listed from `GET /v1/pronunciation-dictionaries`.
  * https://elevenlabs.io/docs/api-reference/pronunciation-dictionaries/list
  */

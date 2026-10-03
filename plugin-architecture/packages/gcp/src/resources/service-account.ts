@@ -23,7 +23,7 @@ export const ServiceAccountResourceType = rt({
   // authentication and no role bindings, so this declares the role and nothing
   // else: the review lists the account, joins its recorded owner, and says
   // "unknown" about everything it cannot see. Key age would need
-  // serviceAccounts.keys.list per account — an extra call this contract
+  // serviceAccounts.keys.list per account: an extra call this contract
   // forbids.
   principalRole: { role: "service-account" },
   supportsCreate: true,

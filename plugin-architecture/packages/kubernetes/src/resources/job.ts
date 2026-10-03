@@ -26,7 +26,7 @@ export const JobResourceType = rt({
       label: "in namespace",
     },
     // The owner reference carries only the bare CronJob name, which repeats
-    // across namespaces — compose the namespace back on before matching.
+    // across namespaces: compose the namespace back on before matching.
     {
       fieldKey: "cronJob",
       targetTypeId: "k8s-cronjob",

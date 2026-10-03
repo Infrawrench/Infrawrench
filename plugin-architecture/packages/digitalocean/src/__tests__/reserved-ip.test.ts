@@ -46,7 +46,7 @@ const idleIp = {
 
 afterEach(() => vi.restoreAllMocks());
 
-// The rule is the whole point of the type existing — DO gives away assigned
+// The rule is the whole point of the type existing: DO gives away assigned
 // reserved IPs and bills $5/mo for idle ones.
 describe("reserved-ip orphan rule", () => {
   const rule = ReservedIpResourceType.orphanRule;
@@ -106,7 +106,7 @@ describe("listResources('reserved-ip')", () => {
       },
     });
     expect(resources[0]!.resolvedOutputs["ip"]).toBe("45.55.96.47");
-    // Always written, "" when unassigned — the orphan rule depends on it.
+    // Always written, "" when unassigned: the orphan rule depends on it.
     expect(resources[1]!.fields["dropletId"]).toBe("");
     expect(resources[1]!.fields["dropletName"]).toBe("");
   });

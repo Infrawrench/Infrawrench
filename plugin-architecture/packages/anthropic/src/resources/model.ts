@@ -3,9 +3,9 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 /**
  * One Claude model the account is entitled to call.
  *
- * `GET /v1/models` returns a rich `capabilities` object per model — batch
+ * `GET /v1/models` returns a rich `capabilities` object per model: batch
  * eligibility, citations, code execution, structured outputs, vision, PDF
- * input, extended thinking and context-management strategies — alongside the
+ * input, extended thinking and context-management strategies; alongside the
  * model's real context window (`max_input_tokens`) and output cap
  * (`max_tokens`). We flatten each of those into a field so the list view can
  * be filtered on them.

@@ -2,7 +2,7 @@
  * Driving a remote application with no screen attached.
  *
  * The viewer half of the protocol assumes a human: a canvas paints frames, a
- * keyboard produces events. This is the other consumer — an agent (the MCP
+ * keyboard produces events. This is the other consumer: an agent (the MCP
  * server, a test harness) that launches an app, keeps an RGBA canvas per
  * window exactly as the browser viewer would, and synthesises the input a
  * human would have produced. Screenshots are that canvas encoded as PNG;
@@ -281,7 +281,7 @@ export class HeadlessAppClient {
 
   /**
    * Wait until a window has painted and gone quiet, then encode its canvas.
-   * `quietMs` is how long the window must stop repainting first — enough for
+   * `quietMs` is how long the window must stop repainting first: enough for
    * the reaction to a click to finish drawing, small enough not to stall on
    * an app that animates forever.
    */
@@ -324,7 +324,7 @@ export class HeadlessAppClient {
   }
 
   /**
-   * Click at `(x, y)` in the window's pixel space — the same coordinates a
+   * Click at `(x, y)` in the window's pixel space: the same coordinates a
    * screenshot's pixels and the accessibility tree's bounds are in.
    */
   click(
@@ -355,7 +355,7 @@ export class HeadlessAppClient {
   }
 
   /**
-   * Scroll by wheel notches at a position. Positive `notches` scrolls down —
+   * Scroll by wheel notches at a position. Positive `notches` scrolls down:
    * the same sign convention as a browser wheel event.
    */
   scroll(
@@ -383,7 +383,7 @@ export class HeadlessAppClient {
 
   /**
    * Type text into the focused widget, character by character, through the
-   * same US-keymap translation the viewer uses — so anything a browser user
+   * same US-keymap translation the viewer uses, so anything a browser user
    * could type, including characters no US key produces, arrives intact.
    */
   typeText(windowId: number, text: string): void {
@@ -471,7 +471,7 @@ function keyLikeForToken(token: string, hasModifiers: boolean): KeyLike {
   const named = NAMED_KEYS[token.toLowerCase()];
   if (named) return { code: named, key: named, shiftKey: false };
   if ([...token].length === 1) {
-    // In a chord, the letter itself is what matters — `ctrl+L` and `ctrl+l`
+    // In a chord, the letter itself is what matters: `ctrl+L` and `ctrl+l`
     // both mean the plain key with Ctrl held, not Ctrl+Shift+l.
     const key = hasModifiers ? token.toLowerCase() : token;
     return { code: "", key, shiftKey: false };
@@ -503,7 +503,7 @@ export async function startHeadlessAppSession(
   options: SessionOptions & HeadlessOptions & { handshakeTimeoutMs?: number },
 ): Promise<HeadlessAppClient> {
   // A server that dies during startup says why on stderr and then closes the
-  // channel, and the close is all the handshake can see — leaving the caller
+  // channel, and the close is all the handshake can see: leaving the caller
   // with "closed before greeting" while the actual reason (a socket name
   // already bound, a missing library, no writable staging dir) goes only to
   // whatever log `onStderr` feeds. That log is not where the person who made

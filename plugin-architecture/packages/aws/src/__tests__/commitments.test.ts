@@ -46,14 +46,14 @@ describe("mapEc2ReservedInstance", () => {
       },
       "us-east-1",
     )!;
-    // fixedPrice/usagePrice are PER INSTANCE — the record covers all three.
+    // fixedPrice/usagePrice are PER INSTANCE: the record covers all three.
     expect(record.upfrontAmount).toBeCloseTo(2400);
     expect(record.recurringAmount).toBeCloseTo(0.15);
     expect(record.recurringPeriod).toBe("hour");
     expect(record.termDays).toBe(365);
     expect(record.paymentOption).toBe("partial_upfront");
     expect(record.kind).toBe("reservation");
-    // No ARN in the EC2 response — the bare id IS the billing join key.
+    // No ARN in the EC2 response: the bare id IS the billing join key.
     expect(record.id).toBe("ri-123");
     expect(record.region).toBe("us-east-1");
     expect(record.scope).toBeUndefined();
@@ -133,7 +133,7 @@ describe("mapSavingsPlan", () => {
   it("maps the hourly commitment and never a region onto a Compute plan", () => {
     const record = mapSavingsPlan({ ...base, savingsPlanType: "Compute", region: "us-east-1" })!;
     expect(record.hourlyCommitmentAmount).toBeCloseTo(12.5);
-    // A Compute plan applies across regions — absent region is that state.
+    // A Compute plan applies across regions: absent region is that state.
     expect(record.region).toBeUndefined();
     expect(record.kind).toBe("savings_plan");
     expect(record.id).toBe("arn:aws:savingsplans::123:savingsplan/sp-1");

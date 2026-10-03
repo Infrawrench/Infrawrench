@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 /**
  * A pre-recorded transcription job.
  *
- * Listed from `GET /v2/pre-recorded` — the envelope is `{first, current,
+ * Listed from `GET /v2/pre-recorded`: the envelope is `{first, current,
  * next, items}` with **no total**, so paging walks `next` until it goes null.
  * Deleting is `DELETE /v2/pre-recorded/{id}` (202 Accepted).
  */

@@ -7,7 +7,7 @@ import { asRecord, collectPerZone, resolveZoneName } from "./shared.js";
  *
  * `action` is the discriminant of the SDK's rule union (`RuleCreateParams`,
  * cloudflare/resources/rulesets/rules.d.ts:8537), so it has to be one of the
- * SDK's literals — a plain `string` cannot be handed to the SDK. This list is
+ * SDK's literals: a plain `string` cannot be handed to the SDK. This list is
  * the subset the WAF-custom-rules picker in `create-configs.ts` offers, minus
  * anything the rules engine doesn't model.
  */
@@ -126,7 +126,7 @@ export async function createFirewallRule(
     const existing = await findCustomRuleset(api, zoneId);
     if (existing) rulesetId = String(existing["id"] ?? "");
   } catch {
-    // Ignore — we'll create via the phase entrypoint below.
+    // Ignore: we'll create via the phase entrypoint below.
   }
 
   const ruleBody = {

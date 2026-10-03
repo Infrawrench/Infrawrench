@@ -277,7 +277,7 @@ describe("AWSClient.listArtifacts", () => {
       fields: { region: "us-east-1" },
     });
     listEC2Instances.mockResolvedValue([]);
-    // getResource lists ecr-repository — our extended-listers proxy returns [],
+    // getResource lists ecr-repository: our extended-listers proxy returns [],
     // so stub the ecr lister path by routing through the generic listers proxy.
     const c = new AWSClient(credMap);
     // getResource would fail to find; instead test the data mapping directly by

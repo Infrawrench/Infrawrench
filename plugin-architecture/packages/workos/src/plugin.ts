@@ -13,14 +13,14 @@ import { RoleResourceType } from "./resources/role.js";
 import { WebhookEndpointResourceType } from "./resources/webhook-endpoint.js";
 
 /**
- * WorkOS's official icon mark — the double-chevron "W" from the svg-logos
+ * WorkOS's official icon mark: the double-chevron "W" from the svg-logos
  * collection (https://github.com/gilbarbara/logos/blob/main/logos/workos-icon.svg),
  * which carries the brand's own path data at its native
  * `viewBox="0 0 256 222"`. Re-based here onto the 100×100 rounded rect the
  * host expects: scale 0.25 makes the mark 64×55.5, centered at (18, 22.25).
  *
- * `#6363F1` is WorkOS's primary brand purple — the fill baked into their own
- * distributed asset, not an approximation — set on the white card the brand
+ * `#6363F1` is WorkOS's primary brand purple (the fill baked into their own
+ * distributed asset, not an approximation) set on the white card the brand
  * uses for its light lockup (workos.com).
  */
 const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">

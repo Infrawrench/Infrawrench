@@ -2,7 +2,7 @@ import type { MetricSeries, ResourceInstance } from "@infrawrench/plugin-base";
 import type { MetricsContext } from "./cw-helpers.js";
 
 /**
- * Messaging / streaming metric handlers — SQS, SNS, Kinesis, MSK, MQ,
+ * Messaging / streaming metric handlers: SQS, SNS, Kinesis, MSK, MQ,
  * Step Functions, EventBridge.
  */
 
@@ -14,7 +14,7 @@ export async function sqsQueueMetrics(
   // https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-available-cloudwatch-metrics.html
   // SQS dimension is the queue NAME (last segment of the queue URL), not ARN.
   // For DLQs `ApproximateNumberOfMessagesVisible` is the canonical "backlog"
-  // signal — `NumberOfMessagesSent` doesn't count auto-redriven messages.
+  // signal: `NumberOfMessagesSent` doesn't count auto-redriven messages.
   const f = resource.fields;
   const queueUrl = String(f.queueUrl ?? "");
   const queueName = String(f.queueName ?? queueUrl.split("/").pop() ?? "");
@@ -92,7 +92,7 @@ export async function kinesisStreamMetrics(
   // Verified against
   // https://docs.aws.amazon.com/streams/latest/dev/monitoring-with-cloudwatch.html
   // IteratorAgeMilliseconds is the docs-recommended #1 metric to watch
-  // for stream consumer health — alert above 50% of retention period.
+  // for stream consumer health: alert above 50% of retention period.
   const f = resource.fields;
   const streamName = String(f.streamName ?? resource.externalId ?? "");
   if (!streamName) return [];

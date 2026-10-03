@@ -7,7 +7,7 @@
  * pure.
  *
  * Five reads: nodes, pods and metrics for compute, plus PVCs and Services for
- * the storage and load-balancer money. The last two are optional — a
+ * the storage and load-balancer money. The last two are optional: a
  * kubeconfig allowed to list pods but not PVCs still produces the whole compute
  * allocation, with storage reported as unavailable rather than as zero.
  *
@@ -57,7 +57,7 @@ export interface ClusterCostResult {
   allocation: ClusterAllocation;
   utilization: ClusterUtilization;
   rateSource: RateSource;
-  /** True when we had no rate for any node at all — show capacity, not money. */
+  /** True when we had no rate for any node at all: show capacity, not money. */
   unpriced: boolean;
   /**
    * True when the PVC or Service list could not be read (RBAC, usually).
@@ -129,7 +129,7 @@ export async function computeClusterCost(
   const pods: CostModelPod[] = [];
   const attributable: AttributablePod[] = [];
   for (const pod of podList.items ?? []) {
-    // Terminal pods hold no capacity — a Succeeded Job pod is not costing
+    // Terminal pods hold no capacity: a Succeeded Job pod is not costing
     // anything, and charging for it would double-count against whatever
     // replaced it.
     const phase = pod.status?.phase;
@@ -194,7 +194,7 @@ export async function computeClusterCost(
  *
  * Which number is "the size" matters. A bound claim reports what the
  * provisioner actually made in `status.capacity.storage`, and that can exceed
- * `spec.resources.requests.storage` — providers round up to their own minimum
+ * `spec.resources.requests.storage`: providers round up to their own minimum
  * or granularity, and the bill follows the provisioned size, not the ask. So
  * status wins where it exists and the request is only the fallback for a claim
  * that has not bound.
@@ -233,7 +233,7 @@ function buildVolumes(
  *
  * Every type is listed and only `LoadBalancer` is kept: a ClusterIP costs
  * nothing, and a NodePort costs nothing beyond the nodes already accounted for.
- * `spec.loadBalancerClass` is carried through rather than acted on — a
+ * `spec.loadBalancerClass` is carried through rather than acted on: a
  * non-default class may be an in-cluster implementation that is free (MetalLB)
  * or a cloud controller that is not (the AWS Load Balancer Controller), and
  * only the operator knows which. The per-Service rate override is how you say.

@@ -120,7 +120,7 @@ export class OpenSearchClient implements PluginClient {
       const rootResp = await osRequest<ClusterRoot>(this.config, this.services?.http, "/");
       root = rootResp.body;
     } catch {
-      /* listing should not throw — surface as unknown */
+      /* listing should not throw: surface as unknown */
     }
     try {
       const healthResp = await osRequest<ClusterHealth>(
@@ -451,7 +451,7 @@ export class OpenSearchClient implements PluginClient {
   }
 
   // Embedded as a tab inside a managed-DB cluster (e.g. DigitalOcean OpenSearch).
-  // OpenSearch exposes a single cluster — surface it as one pill that navigates
+  // OpenSearch exposes a single cluster: surface it as one pill that navigates
   // into the cluster detail (indices, nodes, snapshots).
   async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
     const clusters = await this.listResources("opensearch-cluster", context.accountId);
@@ -793,7 +793,7 @@ export class OpenSearchClient implements PluginClient {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Render helpers (module-scoped — no React)
+// Render helpers (module-scoped: no React)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function buildNodesTable(nodes: NodeInfo[]): TableNode {

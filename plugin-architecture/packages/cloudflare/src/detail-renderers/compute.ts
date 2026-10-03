@@ -64,7 +64,7 @@ export function renderWorkersAiModelDetail(resource: ResourceInstance): DetailVi
   return {
     title: name,
     subtitle: "Workers AI Model",
-    // Models have no lifecycle state — they're always available to call.
+    // Models have no lifecycle state: they're always available to call.
     status: { kind: "status-dot", status: "healthy", label: "Available" },
     sections: [
       {
@@ -83,7 +83,7 @@ export function renderWorkersAiModelDetail(resource: ResourceInstance): DetailVi
       },
     ],
     // Host auto-renders a "Playground" tab whenever chatPanel is set. No
-    // disabledReason — Workers AI models are always callable.
+    // disabledReason: Workers AI models are always callable.
     chatPanel: {
       tabLabel: "Playground",
       subtitle: `Chat with ${name}`,
@@ -130,8 +130,8 @@ export function renderWorkerRouteDetail(resource: ResourceInstance): DetailViewS
  * Durable Object namespace detail. Renders the namespace metadata, a browser of
  * the live instances (paged in by `enrichDetail` and stashed in resolvedOutputs
  * as `__instances__`), and the Metrics tab. Cloudflare exposes no public API to
- * read or write an instance's storage from outside a Worker — only the instance
- * list — so this is a read-only browser, not a storage editor.
+ * read or write an instance's storage from outside a Worker (only the instance
+ * list) so this is a read-only browser, not a storage editor.
  */
 export function renderDurableObjectNamespaceDetail(resource: ResourceInstance): DetailViewSchema {
   const fields = resource.fields;
@@ -238,7 +238,7 @@ const FALLBACK_MODELS = [
   "@cf/qwen/qwen2.5-coder-32b-instruct",
 ];
 
-/** Sensible default model for the gateway playground — a small, fast, always-on
+/** Sensible default model for the gateway playground: a small, fast, always-on
  * Workers AI instruct model when present, otherwise the first catalog entry. */
 function pickDefaultModel(models: string[]): string {
   if (models.length === 0) return FALLBACK_MODELS[0]!;
@@ -336,7 +336,7 @@ export function renderAiGatewayDetail(
   ];
 
   // An authenticated gateway rejects requests that don't carry a
-  // `cf-aig-authorization` gateway token — which we don't hold — so the
+  // `cf-aig-authorization` gateway token (which we don't hold) so the
   // playground can't reach it. Disable the input with a clear reason rather
   // than surfacing a raw 401.
   const authenticated = fields["authentication"] === true;

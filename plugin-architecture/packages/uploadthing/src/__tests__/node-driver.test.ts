@@ -93,7 +93,7 @@ describe("downloadFile", () => {
     expect(calls[0]?.url).toBe("https://api.uploadthing.com/v6/requestFileAccess");
     expect(calls[0]?.init?.method).toBe("POST");
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ fileKey: KEY });
-    // The presigned URL is what gets fetched — not the composed public one,
+    // The presigned URL is what gets fetched, not the composed public one,
     // which 403s for any file whose ACL is private.
     expect(calls[1]?.url).toBe(`https://${APP_ID}.ufs.sh/f/${KEY}?sig=1`);
   });
@@ -190,7 +190,7 @@ describe("downloadFile", () => {
       throw new Error("socket hang up");
     });
 
-    // A truncated file left on disk is worse than a failed download — it looks
+    // A truncated file left on disk is worse than a failed download: it looks
     // like the real thing.
     await expect(
       nodeDriver.downloadFile(APP_ID, KEY, API_KEY, "/tmp/out/logo.png"),

@@ -2,7 +2,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
  * One entry from the team audit log. Requires the optional management key
- * credential — without it this list is empty.
+ * credential: without it this list is empty.
  *
  * Docs: https://docs.x.ai/developers/rest-api-reference/management/audit
  * (GET /audit/teams/{teamId}/events)

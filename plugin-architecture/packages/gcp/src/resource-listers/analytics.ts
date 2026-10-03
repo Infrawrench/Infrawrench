@@ -36,7 +36,7 @@ export async function listBigQueryDatasets(
     `https://bigquery.googleapis.com/bigquery/v2/projects/${p}/datasets`,
     "datasets",
   );
-  // Hydrate each dataset with its full metadata — the list endpoint only
+  // Hydrate each dataset with its full metadata: the list endpoint only
   // returns {id, datasetReference, location, friendlyName, labels}, but
   // the detail view wants defaultRoundingMode / isCaseInsensitive / etc.
   return Promise.all(
@@ -217,7 +217,7 @@ export async function listBigQueryTables(
     } catch {
       continue;
     }
-    // Hydrate each table with GET — list endpoint omits storage + schema.
+    // Hydrate each table with GET: list endpoint omits storage + schema.
     const hydrated = await Promise.all(
       tables.map((t) => hydrateBqTable(ctx, accountId, p, datasetId, t)),
     );

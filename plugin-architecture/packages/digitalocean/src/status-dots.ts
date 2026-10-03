@@ -7,7 +7,7 @@ import type { ResourceInstance, StatusDotNode } from "@infrawrench/plugin-base";
 
 /**
  * Map a DigitalOcean Droplet's `status` value to a host status-dot. `active`
- * marks the droplet "healthy" — the host gates SSH/SFTP affordances on that.
+ * marks the droplet "healthy": the host gates SSH/SFTP affordances on that.
  * See https://docs.digitalocean.com/reference/api/api-reference/#operation/droplets_list
  */
 function dropletStatusDot(status: string): StatusDotNode {
@@ -55,7 +55,7 @@ function doksStatusDot(state: string): StatusDotNode {
 /**
  * Volumes don't have a documented status field on the response (verified in
  * digitalocean/openapi/volumes/models/volume_base.yml). The closest signal
- * for "in use vs free" is the `droplet_ids` array — non-empty = attached.
+ * for "in use vs free" is the `droplet_ids` array: non-empty = attached.
  * Both attached and detached are operational ("healthy") for the purpose
  * of the host's status gating; the label just disambiguates.
  */
@@ -69,7 +69,7 @@ function volumeStatusDot(attached: boolean): StatusDotNode {
  * Reserved IPs have no status field either (schema `reserved_ip`: ip, region,
  * droplet, locked, project_id). `locked` means DO has an action still running;
  * an unassigned address is operational but costs money, so it gets the
- * "degraded" dot to make it visible in a long sidebar list — which is the same
+ * "degraded" dot to make it visible in a long sidebar list, which is the same
  * thing the orphan finder flags on the Costs page.
  */
 function reservedIpStatusDot(fields: Record<string, string | number | boolean>): StatusDotNode {

@@ -61,7 +61,7 @@ describe("listResources", () => {
     expect(headers["Authorization"]).toBe("Bearer sk-test");
 
     expect(models.map((m) => m.displayName)).toEqual(["deepseek-v4-flash", "deepseek-v4-pro"]);
-    // Concurrency caps are documented, not returned — filled in from the docs.
+    // Concurrency caps are documented, not returned: filled in from the docs.
     expect(models[0]!.fields["concurrencyLimit"]).toBe(2500);
     expect(models[1]!.fields["concurrencyLimit"]).toBe(500);
   });

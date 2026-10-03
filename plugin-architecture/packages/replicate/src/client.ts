@@ -15,7 +15,7 @@ import { joinSubtitle, jsonRestFetch, externalIdOf, formatBytes } from "@infrawr
 const API_BASE = "https://api.replicate.com/v1";
 
 /**
- * Replicate's list endpoints have no page-size control at all — they return a
+ * Replicate's list endpoints have no page-size control at all: they return a
  * fixed 100 records per page and hand back a full opaque URL in `next`. These
  * caps bound how far we walk that chain per sync.
  * https://replicate.com/docs/reference/http#predictions.list
@@ -24,13 +24,13 @@ const MAX_PAGES_HOT = 3;
 const MAX_PAGES_COLD = 10;
 
 // ---------------------------------------------------------------------------
-// Wire shapes — mirrored from https://api.replicate.com/openapi.json (1.0.0-a1)
+// Wire shapes: mirrored from https://api.replicate.com/openapi.json (1.0.0-a1)
 // ---------------------------------------------------------------------------
 
 /**
  * Every list endpoint answers `{next, previous, results}` where the cursors are
  * fully-qualified URLs carrying an opaque `cursor` query param. They must be
- * followed verbatim — there is no documented way to build one by hand.
+ * followed verbatim: there is no documented way to build one by hand.
  * https://replicate.com/docs/reference/http
  */
 interface Page<T> {
@@ -64,7 +64,7 @@ interface ReplicatePrediction {
   created_at?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
-  /** Open bag — only `total_time` is declared in the schema. */
+  /** Open bag, only `total_time` is declared in the schema. */
   metrics?: Record<string, number> | null;
   urls?: { web?: string; get?: string; cancel?: string; stream?: string } | null;
 }
@@ -180,7 +180,7 @@ function titleCase(value: string): string {
  * `canceled` means "stopped while running (or past its deadline)"; `aborted`
  * means "terminated before it ever started running". They are distinct
  * outcomes and the UI keeps them distinct.
- * https://api.replicate.com/openapi.json — `schemas_prediction_response.status`
+ * https://api.replicate.com/openapi.json: `schemas_prediction_response.status`
  */
 function mapRunStatus(status: string | undefined): { status: ResourceStatus; label: string } {
   switch (status) {
@@ -233,8 +233,8 @@ function previewInput(input: Record<string, unknown> | null | undefined): string
 /**
  * Replicate plugin client. One instance per account (per API token).
  *
- * Replicate has **no billing, usage or spend API** — `GET /v1/account` returns
- * identity only — so this plugin deliberately implements no `fetchCostData`
+ * Replicate has **no billing, usage or spend API**: `GET /v1/account` returns
+ * identity only, so this plugin deliberately implements no `fetchCostData`
  * and says so in the UI rather than rendering an empty cost chart.
  * https://replicate.com/docs/reference/http#account.get
  */
@@ -275,7 +275,7 @@ export class ReplicateClient implements PluginClient {
   }
 
   /**
-   * Walk a paginated collection. `next` is an absolute, opaque URL — it is
+   * Walk a paginated collection. `next` is an absolute, opaque URL: it is
    * passed straight back to `fetch` rather than decomposed, because the cursor
    * inside it is base64 of a provider-private ordering key.
    */
@@ -290,7 +290,7 @@ export class ReplicateClient implements PluginClient {
     return items;
   }
 
-  /** `GET /v1/account` — identity only. No billing fields exist on it. */
+  /** `GET /v1/account`: identity only. No billing fields exist on it. */
   private async fetchAccount(): Promise<ReplicateAccount> {
     if (this.accountCache) return this.accountCache;
     const account = await this.fetch<ReplicateAccount>("/account");
@@ -331,7 +331,7 @@ export class ReplicateClient implements PluginClient {
         return collections.map((collection) => this.mapCollection(collection, accountId));
       }
       case "hardware": {
-        // https://replicate.com/docs/reference/http#hardware.list — a bare
+        // https://replicate.com/docs/reference/http#hardware.list: a bare
         // array, not a paginated envelope.
         const hardware = await this.fetch<ReplicateHardware[]>("/hardware");
         return (Array.isArray(hardware) ? hardware : []).map((entry) =>
@@ -350,7 +350,7 @@ export class ReplicateClient implements PluginClient {
   }
 
   /**
-   * Replicate has no "list my models" endpoint — `GET /v1/models` enumerates
+   * Replicate has no "list my models" endpoint: `GET /v1/models` enumerates
    * the entire public catalogue, which is neither useful nor cheap. Instead we
    * derive the models this account actually touches: everything it owns that
    * shows up as a deployment target, a training destination, or a recent
@@ -386,7 +386,7 @@ export class ReplicateClient implements PluginClient {
     }
     for (const training of trainings) {
       remember(training.model, training.version);
-      // The trained weights land in a *different* model — the destination.
+      // The trained weights land in a *different* model: the destination.
       const destination =
         typeof training.input?.["destination"] === "string"
           ? (training.input["destination"] as string)
@@ -398,7 +398,7 @@ export class ReplicateClient implements PluginClient {
     const username = account.username ?? "";
     return [...refs.entries()]
       .sort(([a], [b]) => {
-        // Models this account owns sort first — they're the ones the user manages.
+        // Models this account owns sort first: they're the ones the user manages.
         const aOwned = username && a.startsWith(`${username}/`) ? 0 : 1;
         const bOwned = username && b.startsWith(`${username}/`) ? 0 : 1;
         return aOwned - bOwned || a.localeCompare(b);
@@ -817,7 +817,7 @@ export class ReplicateClient implements PluginClient {
   }
 
   /**
-   * `POST /v1/deployments` — all six of name/model/version/hardware/
+   * `POST /v1/deployments`: all six of name/model/version/hardware/
    * min_instances/max_instances are required by the API. When the user leaves
    * the version blank we resolve the model's `latest_version.id` for them
    * rather than making them paste a 64-character hash.
@@ -862,7 +862,7 @@ export class ReplicateClient implements PluginClient {
   }
 
   /**
-   * `PATCH /v1/deployments/{owner}/{name}` is the scale affordance — it takes
+   * `PATCH /v1/deployments/{owner}/{name}` is the scale affordance: it takes
    * any subset of hardware/version/min_instances/max_instances and bumps the
    * release number. https://replicate.com/docs/reference/http#deployments.update
    */
@@ -1554,7 +1554,7 @@ export class ReplicateClient implements PluginClient {
       },
       {
         kind: "text",
-        // Different window from prediction outputs — worth saying so.
+        // Different window from prediction outputs: worth saying so.
         content:
           "Uploaded input files expire on their own schedule, separate from the one-hour window on prediction output files. Trust the Expires timestamp above rather than a fixed rule of thumb.",
         variant: "muted",

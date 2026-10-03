@@ -117,7 +117,7 @@ export async function getKVValue(
   key: string,
 ): Promise<string> {
   const cfAccountId = await api.getAccountId();
-  // Use raw fetch — the SDK's values.get() returns a streaming Response that
+  // Use raw fetch: the SDK's values.get() returns a streaming Response that
   // we'd just immediately consume as text, so direct fetch is simpler.
   const res = await fetch(
     `${api.baseUrl}/accounts/${cfAccountId}/storage/kv/namespaces/${encodeURIComponent(

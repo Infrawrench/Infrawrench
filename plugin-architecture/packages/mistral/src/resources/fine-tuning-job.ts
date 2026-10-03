@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 /**
  * A fine-tuning job.
  *
- * `GET https://api.mistral.ai/v1/fine_tuning/jobs` — paginated with
+ * `GET https://api.mistral.ai/v1/fine_tuning/jobs`: paginated with
  * `page`/`page_size`.
  * https://docs.mistral.ai/api/endpoint/jobs
  */

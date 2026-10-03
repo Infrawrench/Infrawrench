@@ -263,7 +263,7 @@ describe("transcribeAudio", () => {
         return jsonResponse({ id: "job-bad" }, 201);
       }
       if (url.endsWith("/v2/pre-recorded/job-bad")) {
-        // Note the 200 — Gladia does not use a non-2xx code for a failed job.
+        // Note the 200: Gladia does not use a non-2xx code for a failed job.
         return jsonResponse({ id: "job-bad", status: "error", error_code: 503, result: null }, 200);
       }
       throw new Error(`unrouted: ${url}`);

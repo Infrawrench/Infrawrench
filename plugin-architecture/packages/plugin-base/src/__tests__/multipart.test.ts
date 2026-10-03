@@ -45,7 +45,7 @@ describe("buildMultipartBody", () => {
       'Content-Disposition: form-data; name="file"; filename="clip.wav"\r\nContent-Type: audio/wav\r\n\r\n',
     );
 
-    // The payload must survive byte-for-byte — including bytes that look like
+    // The payload must survive byte-for-byte, including bytes that look like
     // CRLF or boundary dashes.
     const marker = "audio/wav\r\n\r\n";
     const start = text.indexOf(marker) + marker.length;

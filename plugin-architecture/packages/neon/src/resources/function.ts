@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * Functions have no JSON create endpoint — a function comes into existence via a
+ * Functions have no JSON create endpoint: a function comes into existence via a
  * multipart zip deployment, which is driven from the `neon.ts` config and CLI.
  * The plugin therefore lists, renames, and deletes them, but does not create them.
  */

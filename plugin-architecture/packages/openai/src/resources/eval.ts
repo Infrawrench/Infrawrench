@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * `GET /v1/evals`, `POST/DELETE /v1/evals/{id}` — verified 2026-07-29 against
+ * `GET /v1/evals`, `POST/DELETE /v1/evals/{id}`: verified 2026-07-29 against
  * openapi.yaml v2.3.0 (`listEvals`, `updateEval`, `deleteEval`).
  *
  * Create is deliberately omitted: `POST /v1/evals` requires a

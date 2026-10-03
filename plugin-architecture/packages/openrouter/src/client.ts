@@ -188,9 +188,9 @@ interface OrSttResponse {
  *
  * Two credentials, because OpenRouter genuinely needs two:
  *   - the **management key** (formerly "provisioning key") is the only thing
- *     `/credits`, `/activity` and `/keys*` accept — a plain key 403s;
+ *     `/credits`, `/activity` and `/keys*` accept: a plain key 403s;
  *   - a normal **inference key** is the only thing `/audio/speech` and
- *     `/audio/transcriptions` accept — management keys are rejected by the
+ *     `/audio/transcriptions` accept; management keys are rejected by the
  *     completion endpoints.
  *
  * The inference key is optional; without it every list still works and the
@@ -260,7 +260,7 @@ export class OpenRouterClient implements PluginClient {
 
   /**
    * GET /models. `output_modalities=all` is needed to see image, speech,
-   * transcription and embedding models — the endpoint defaults to text only.
+   * transcription and embedding models: the endpoint defaults to text only.
    */
   private async listModels(accountId: string): Promise<ResourceInstance[]> {
     const models = await this.fetchAllModels();
@@ -331,7 +331,7 @@ export class OpenRouterClient implements PluginClient {
 
   /**
    * GET /models/{author}/{slug}/endpoints, fanned out over the most popular
-   * models only — see {@link ENDPOINT_FANOUT_MODELS}.
+   * models only: see {@link ENDPOINT_FANOUT_MODELS}.
    */
   private async listModelEndpoints(accountId: string): Promise<ResourceInstance[]> {
     const qs = new URLSearchParams({
@@ -446,7 +446,7 @@ export class OpenRouterClient implements PluginClient {
     }));
   }
 
-  /** GET /keys — offset-paginated, management key required. */
+  /** GET /keys: offset-paginated, management key required. */
   private async listApiKeys(accountId: string): Promise<ResourceInstance[]> {
     const now = new Date().toISOString();
     const out: ResourceInstance[] = [];
@@ -581,7 +581,7 @@ export class OpenRouterClient implements PluginClient {
    * `GET /credits` → `{ total_credits, total_usage }`, both lifetime totals in
    * USD; what remains is the difference.
    *
-   * Needs a provisioning key — an inference key 403s here, which the manifest
+   * Needs a provisioning key: an inference key 403s here, which the manifest
    * declares so the host can call it a permission gap rather than a failure.
    * `total_credits` is everything ever added, so it *is* an honest `granted`:
    * "spent 38 of 50" is exactly what those two numbers mean.
@@ -689,7 +689,7 @@ export class OpenRouterClient implements PluginClient {
   // ----------------------------------------------------------- usage/costs
 
   /**
-   * GET /activity — daily rows for the last 30 completed UTC days, broken down
+   * GET /activity: daily rows for the last 30 completed UTC days, broken down
    * by model + provider. Management key required; a plain key 403s.
    */
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
@@ -816,7 +816,7 @@ export class OpenRouterClient implements PluginClient {
     };
   }
 
-  /** POST /keys — the plaintext `key` is only ever returned here. */
+  /** POST /keys: the plaintext `key` is only ever returned here. */
   async createResource(
     typeId: string,
     accountId: string,
@@ -883,7 +883,7 @@ export class OpenRouterClient implements PluginClient {
 
   /**
    * The live audio catalogue. OpenRouter reports dedicated audio models with
-   * `output_modalities` of `speech` (TTS) and `transcription` (STT) — *not*
+   * `output_modalities` of `speech` (TTS) and `transcription` (STT), *not*
    * `audio`, which only covers omni chat models.
    */
   private async speechCatalogue(): Promise<{ tts: OrModel[]; stt: OrModel[] }> {
@@ -905,7 +905,7 @@ export class OpenRouterClient implements PluginClient {
    * POST /audio/speech. Returns **raw binary**, so this deliberately bypasses
    * `jsonRestFetch` (which JSON-parses every response) and the host HTTP
    * service (whose response body is a UTF-8 string and would mangle the bytes).
-   * That means this one request is not routed through a bastion — the trade is
+   * That means this one request is not routed through a bastion: the trade is
    * documented rather than silent.
    *
    * Spec: https://openrouter.ai/openapi.json  → `SpeechRequest`
@@ -932,7 +932,7 @@ export class OpenRouterClient implements PluginClient {
         model,
         input: payload.text,
         voice,
-        // The spec's enum is mp3|pcm — ask for mp3, which <audio> can play.
+        // The spec's enum is mp3|pcm: ask for mp3, which <audio> can play.
         response_format: "mp3",
       }),
     });
@@ -956,7 +956,7 @@ export class OpenRouterClient implements PluginClient {
 
   /**
    * POST /audio/transcriptions. The endpoint takes either multipart or a JSON
-   * body with base64 `input_audio` — the JSON form is used because the clip
+   * body with base64 `input_audio`: the JSON form is used because the clip
    * already arrives base64 from the browser, so nothing has to be re-encoded.
    *
    * `verbose_json` is only supported by OpenAI-compatible providers, so a
@@ -982,7 +982,7 @@ export class OpenRouterClient implements PluginClient {
     const base: Record<string, unknown> = {
       model,
       input_audio: {
-        // Straight through — the browser's MediaRecorder output is not transcoded.
+        // Straight through: the browser's MediaRecorder output is not transcoded.
         data: payload.audioBase64,
         format: audioFormatForMime(payload.mimeType),
       },

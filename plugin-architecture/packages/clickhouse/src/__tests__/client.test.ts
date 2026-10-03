@@ -223,7 +223,7 @@ describe("listResources ch-database", () => {
     // svc1 + svc3 are running/idle → 2 db results; svc2 skipped
     expect(res).toHaveLength(2);
     // Database listing runs through ctx.chQuery, which targets the single
-    // configured credential host — one SDK client per queried service.
+    // configured credential host: one SDK client per queried service.
     const urls = sdkState.createArgs.map((a) => (a as { url: string }).url);
     expect(urls).toHaveLength(2);
     expect(urls.every((u) => u === "https://h.clickhouse.cloud:8443")).toBe(true);

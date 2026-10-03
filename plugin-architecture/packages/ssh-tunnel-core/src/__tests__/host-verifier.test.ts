@@ -43,7 +43,7 @@ describe("openTunnel host-key verifier", () => {
 
   it("installs a fail-closed hostVerifier when no configureConnect is provided", () => {
     void openTunnel(baseConfig, undefined).catch(() => {
-      /* ignored — we never resolve in the mock */
+      /* ignored: we never resolve in the mock */
     });
 
     expect(connectMock).toHaveBeenCalledTimes(1);
@@ -81,7 +81,7 @@ describe("openTunnel host-key verifier", () => {
     });
 
     const promise = openTunnel(baseConfig, undefined);
-    // Simulate ssh2 emitting an error after connect() — what happens when our
+    // Simulate ssh2 emitting an error after connect(): what happens when our
     // fail-closed verifier rejects the key.
     queueMicrotask(() => {
       createdClient?.emit("error", new Error("Host key verification failed"));

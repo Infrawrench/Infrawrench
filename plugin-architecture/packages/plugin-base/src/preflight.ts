@@ -5,27 +5,27 @@
  * "your credential can't do X, here's the fix" signal) to every capability a
  * plugin offers. A plugin that opts in:
  *
- *   1. Declares `manifest.preflight` — the list of capabilities the plugin
+ *   1. Declares `manifest.preflight`: the list of capabilities the plugin
  *      supports, each with the provider permission strings it needs. The
  *      host renders these generically; it never knows what an IAM action or
  *      a Cloudflare permission group is.
- *   2. Implements `PluginClient.verifyCredentials()` — probes the provider
+ *   2. Implements `PluginClient.verifyCredentials()`: probes the provider
  *      with the account's credentials and reports per-capability status:
  *      ok / missing (with which permissions) / unknown.
- *   3. Optionally implements `Plugin.policyTemplate(capabilityIds)` — builds
+ *   3. Optionally implements `Plugin.policyTemplate(capabilityIds)`: builds
  *      the paste-ready least-privilege credential document (AWS IAM policy
  *      JSON, GCP custom role YAML, Cloudflare token scope template, ...)
  *      scoped to just the capabilities the user selected. Lives on the
  *      Plugin, not the client: generating a template needs no credentials.
  *
- * Plugins that don't declare `preflight` simply don't get the checklist —
+ * Plugins that don't declare `preflight` simply don't get the checklist:
  * the host UI degrades to the current behaviour.
  */
 
 /** One provider-native permission with a human explanation. */
 export interface PreflightPermission {
   /**
-   * The provider's own permission string — exactly what the user would type
+   * The provider's own permission string; exactly what the user would type
    * into their console: an IAM action (`ce:GetCostAndUsage`), a GCP IAM
    * permission (`compute.instances.list`), a Cloudflare token permission
    * group (`Account Analytics Read`), etc.
@@ -41,7 +41,7 @@ export interface PreflightCapability {
    * Stable capability id, unique within the plugin. Use the conventional ids
    * where they fit so the host can group consistently across plugins:
    * `resources`, `costs`, `metrics`, `logs`, `storage`. Plugin-specific
-   * capabilities are fine — the host renders whatever is declared.
+   * capabilities are fine: the host renders whatever is declared.
    */
   id: string;
   /** Human label rendered as the checklist row, e.g. "Resource inventory". */
@@ -67,7 +67,7 @@ export interface PreflightDeclaration {
   /**
    * Label of the document `Plugin.policyTemplate` produces, e.g.
    * "AWS IAM policy (JSON)". Present iff the plugin implements
-   * `policyTemplate` — the manifest is data, so the host needs the flag
+   * `policyTemplate`: the manifest is data, so the host needs the flag
    * here to know whether to offer the generator.
    */
   templateFormat?: {
@@ -86,7 +86,7 @@ export type PreflightCapabilityCheck =
       /**
        * The subset of the capability's `requiredPermissions` the probe found
        * absent. May be empty when the provider reports "denied" without
-       * saying which permission — the host then lists all required ones.
+       * saying which permission: the host then lists all required ones.
        */
       missingPermissions: PreflightPermission[];
       /** Optional provider-specific explanation (setup step, not just IAM). */
@@ -113,7 +113,7 @@ export interface PreflightResult {
 }
 
 /**
- * Registration-time check of the preflight contract — everything that is
+ * Registration-time check of the preflight contract: everything that is
  * checkable without instantiating a client. `PluginClient.verifyCredentials`
  * only exists once `createClient` runs with real credentials, so it cannot be
  * verified here; a missing probe is handled gracefully at probe time by
@@ -135,14 +135,14 @@ export function validatePreflightContract(plugin: {
 
 /** Paste-ready least-privilege credential document. */
 export interface PolicyTemplate {
-  /** e.g. "AWS IAM policy (JSON)" — same string as the manifest declares. */
+  /** e.g. "AWS IAM policy (JSON)": same string as the manifest declares. */
   formatLabel: string;
   /** Syntax for display/copy affordances. */
   language: "json" | "yaml" | "text";
   /** The document itself, ready to paste into the provider console. */
   document: string;
   /**
-   * Where to paste it — one or two plain sentences, e.g. "Attach as an
+   * Where to paste it: one or two plain sentences, e.g. "Attach as an
    * inline policy on the IAM user whose keys you entered."
    */
   instructions?: string;

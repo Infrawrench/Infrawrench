@@ -139,7 +139,7 @@ export async function listConsumers(
 /**
  * Publish a single message to a queue. The PublishPanel sends `body` as raw
  * text (the user typed it). We parse it as JSON when the user picked the
- * JSON format and fall back to text otherwise — that way the user can
+ * JSON format and fall back to text otherwise: that way the user can
  * publish whatever shape consumers expect.
  */
 export async function publishMessage(

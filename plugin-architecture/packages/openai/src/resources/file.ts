@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * `GET /v1/files`, `DELETE /v1/files/{file_id}` — verified 2026-07-29 against
+ * `GET /v1/files`, `DELETE /v1/files/{file_id}`: verified 2026-07-29 against
  * openapi.yaml v2.3.0 (`listFiles`, `deleteFile`).
  *
  * Upload is intentionally not wired: `POST /v1/files` is multipart with a real

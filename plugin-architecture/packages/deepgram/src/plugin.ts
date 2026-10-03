@@ -9,7 +9,7 @@ import { BalanceResourceType } from "./resources/balance.js";
 import { ModelResourceType } from "./resources/model.js";
 
 /**
- * Deepgram's own mark — the first subpath of the wordmark they serve in their
+ * Deepgram's own mark: the first subpath of the wordmark they serve in their
  * site header
  * (https://cdn.sanity.io/images/10fppwnn/production/3c446251d322f9635751c565c123db9859b48347-146x32.svg).
  * Deepgram publish no standalone icon asset, so the mark is extracted from
@@ -19,7 +19,7 @@ import { ModelResourceType } from "./resources/model.js";
  * Colours are their live design tokens, not an approximation:
  * `--deepgram-primary: #13ef95` on `--deepgram-background: #0b0b0c`
  * (deepgram.com stylesheet). `#13ef93` is the 300 step of the same ramp and is
- * the shade most references quote — the primary token is the correct one.
+ * the shade most references quote: the primary token is the correct one.
  */
 const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <rect width="100" height="100" rx="12" fill="#0B0B0C"/>
@@ -60,7 +60,7 @@ const manifest: PluginManifest = {
     requiresElevatedCredential: true,
   },
   costs: {
-    // `GET /v1/projects/{project_id}/billing/breakdown` — real billed USD at
+    // `GET /v1/projects/{project_id}/billing/breakdown`: real billed USD at
     // daily resolution, grouped by `line_item` and `tags`. A line item is a
     // billed product/model pair like "streaming::nova-3" and maps onto the
     // generic service dimension; the project id rides along as a tag, since

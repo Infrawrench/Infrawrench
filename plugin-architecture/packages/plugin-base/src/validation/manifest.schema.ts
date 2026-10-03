@@ -117,7 +117,7 @@ export const pluginManifestSchema = z.object({
   quotas: z
     .object({
       label: z.string().optional(),
-      // `.url()` alone is not a scheme guard — it is `new URL()` in a
+      // `.url()` alone is not a scheme guard: it is `new URL()` in a
       // try/catch, so `javascript:alert(1)` and `data:text/html,…` both pass
       // it. This value is rendered as a link the host opens, so the scheme is
       // pinned here as well as at the two runtime boundaries.

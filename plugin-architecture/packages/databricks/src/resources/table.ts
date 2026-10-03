@@ -21,7 +21,7 @@ export const TableResourceType = rt({
   ],
   outputs: [o("fullName", "Full Name"), o("storageLocation", "Storage Location")],
   // `schemaName` is the bare schema name while a schema's external id is
-  // `catalog.schema` — the template composes the qualified name, which stays
+  // `catalog.schema`: the template composes the qualified name, which stays
   // exact where a bare `default` would hit every catalog's.
   dependsOn: [
     { fieldKey: "catalogName", targetTypeId: "databricks-catalog", label: "in catalog" },

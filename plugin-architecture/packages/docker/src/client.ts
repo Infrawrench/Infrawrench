@@ -18,7 +18,7 @@ interface ContainerInfo {
   Ports: Array<{ IP?: string; PrivatePort: number; PublicPort?: number; Type: string }>;
   Labels: Record<string, string>;
   Created: number;
-  /** Keyed by network *name*, not id — see `formatNetworks`. */
+  /** Keyed by network *name*, not id: see `formatNetworks`. */
   NetworkSettings?: { Networks?: Record<string, { NetworkID?: string }> };
   Mounts?: Array<{ Type?: string; Name?: string }>;
 }
@@ -76,7 +76,7 @@ function formatNetworks(container: ContainerInfo): string {
 }
 
 /**
- * The named volumes a container mounts. Bind mounts are skipped — they are
+ * The named volumes a container mounts. Bind mounts are skipped: they are
  * host paths, not Docker-managed volumes, and name nothing the graph knows.
  * A volume's `Name` here is exactly a `docker-volume`'s external id.
  */

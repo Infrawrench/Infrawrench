@@ -179,7 +179,7 @@ export class GcpClient implements PluginClient {
     let tok = await this.token();
     let res = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } });
     if (res.status === 401) {
-      // Cached token may have been revoked early — invalidate and retry once.
+      // Cached token may have been revoked early: invalidate and retry once.
       invalidateAccessToken(this.key);
       tok = await this.token();
       res = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } });
@@ -540,7 +540,7 @@ export class GcpClient implements PluginClient {
         }
       }
       // For cloud-function, the underlying Cloud Run service path is in
-      // resolvedOutputs.cloudRunServiceName — synthesise a Run-shaped resource
+      // resolvedOutputs.cloudRunServiceName: synthesise a Run-shaped resource
       // for the helper which reads externalId.
       const runResource =
         typeId === "cloud-function"
@@ -684,7 +684,7 @@ export class GcpClient implements PluginClient {
    *
    * Machine specs come from `machineTypeSpecCache` (populated by
    * `getCreateConfig`) so a field change re-estimates without a network round
-   * trip — which is what lets the cost badge track a storage slider as it
+   * trip, which is what lets the cost badge track a storage slider as it
    * moves rather than lagging a request behind it.
    */
   async estimateCost(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null> {
@@ -831,7 +831,7 @@ export class GcpClient implements PluginClient {
     }
 
     if (typeId === "cloud-dns-record-set") {
-      // Cloud DNS record sets are immutable — "update" is a change transaction
+      // Cloud DNS record sets are immutable: "update" is a change transaction
       // that deletes the existing rrset and adds the replacement. externalId
       // format: "{zoneName}/{type}:{name}".
       const externalId = resourceId.split(":").slice(2).join(":");
@@ -935,7 +935,7 @@ export class GcpClient implements PluginClient {
       const databaseVersion = String(resource.fields["databaseVersion"] ?? "");
       const name = resource.externalId ?? String(resource.fields["name"] ?? "");
       if (!name) throw new Error("Cannot determine Cloud SQL instance name");
-      // Default admin user per engine — matches `engineInfoFromVersion` in
+      // Default admin user per engine: matches `engineInfoFromVersion` in
       // cloudsql-engine.ts. The Cloud SQL Admin API rejects updates that omit
       // both name and host, so we always pass them.
       const username = databaseVersion.startsWith("MYSQL_")
@@ -997,7 +997,7 @@ export class GcpClient implements PluginClient {
 
   /**
    * Quota readings. Two requests for the whole project: `projects.get` for the
-   * global quotas and one paginated `regions.list` for every region's — the
+   * global quotas and one paginated `regions.list` for every region's; the
    * list response carries each region's full `quotas[]`, so there is no
    * per-region fan-out to bound. See `quotas.ts`.
    */
@@ -1037,7 +1037,7 @@ export class GcpClient implements PluginClient {
   }
 
   /**
-   * Curated Gemini chat models surfaced as resources. No live API call — see
+   * Curated Gemini chat models surfaced as resources. No live API call: see
    * `VERTEX_GEMINI_MODELS` for why the catalog is static. Each model gets a
    * stable healthy status so the sidebar doesn't churn.
    */

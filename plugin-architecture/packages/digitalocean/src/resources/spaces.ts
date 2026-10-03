@@ -28,7 +28,7 @@ export const SpacesResourceType = rt({
     {
       id: "spaces-endpoint",
       label: "Spaces bucket endpoint",
-      // Bucket names are letters/numbers/dashes only — periods are not
+      // Bucket names are letters/numbers/dashes only: periods are not
       // allowed, so a dotted label cannot be a Spaces endpoint.
       hostPattern: String.raw`([a-z0-9][a-z0-9-]*)\.[a-z0-9]+\.(?:cdn\.)?digitaloceanspaces\.com`,
       reason:

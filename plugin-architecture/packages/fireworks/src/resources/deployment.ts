@@ -36,7 +36,7 @@ export const DeploymentResourceType = rt({
   // `baseModel` is a full resource name (`accounts/{acct}/models/{id}`), so it
   // matches the model's `modelName` output rather than its short external id.
   // Deployments of Fireworks' own catalogue models (`accounts/fireworks/…`)
-  // simply find no target, which is correct — those aren't account resources.
+  // simply find no target, which is correct: those aren't account resources.
   dependsOn: [
     { fieldKey: "baseModel", targetTypeId: "model", targetKey: "modelName", label: "serves" },
   ],

@@ -1,7 +1,7 @@
 /**
  * Generic helper for minting a fresh IAM role from inside a create form. The
  * caller declares only the trust-policy principal (e.g. "lambda.amazonaws.com")
- * and the managed-policy ARNs to attach — everything else (a unique name,
+ * and the managed-policy ARNs to attach: everything else (a unique name,
  * waiting for IAM eventual-consistency, error handling) lives here so every
  * resource type that needs an execution / service role can share it.
  */
@@ -50,7 +50,7 @@ function generateRoleName(namePrefix: string): string {
 }
 
 /**
- * IAM is eventually consistent — a freshly-created role often returns
+ * IAM is eventually consistent: a freshly-created role often returns
  * `iam:PassRole` denial errors for several seconds when used by another
  * service. Sleep briefly so the caller can immediately use the new role in
  * a downstream create call.

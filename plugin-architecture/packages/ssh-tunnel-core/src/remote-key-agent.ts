@@ -4,7 +4,7 @@
  * The desktop app uses this for org-managed cloud SSH keys: the private half
  * never leaves Infrawrench Cloud, so the agent answers ssh2's publickey auth
  * (and, when forwarded, the OpenSSH agent protocol) by sending each
- * to-be-signed blob to a backend — an HTTPS signing endpoint — and relaying
+ * to-be-signed blob to a backend (an HTTPS signing endpoint) and relaying
  * the signature. The SSH connection itself stays wherever the caller opened
  * it; only signatures cross the network.
  *
@@ -49,7 +49,7 @@ export interface RemoteKeyBackend {
   fetchPublicKey(): Promise<string>;
   /**
    * Sign `data`, producing the raw signature for `algorithm` (the bytes
-   * `ParsedKey.sign` returns — ECDSA still DER; the agent converts where the
+   * `ParsedKey.sign` returns: ECDSA still DER; the agent converts where the
    * agent protocol requires the SSH form). Rejections surface as auth
    * failures, so their messages should already be user-readable.
    */
@@ -140,7 +140,7 @@ export class RemoteKeyAgent extends BaseAgent<ParsedKey> {
     if (type === SSH_AGENTC_SIGN_REQUEST) {
       return (await this.handleSign(body)) ?? failureFrame();
     }
-    // Unknown opcode (e.g. SSH_AGENTC_EXTENSION for session-bind) — fail
+    // Unknown opcode (e.g. SSH_AGENTC_EXTENSION for session-bind): fail
     // explicitly but still consume the body (caller already skipped it).
     return failureFrame();
   }

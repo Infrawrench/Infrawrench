@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * `GET/POST /v1/vector_stores`, `POST/DELETE /v1/vector_stores/{id}` — verified
+ * `GET/POST /v1/vector_stores`, `POST/DELETE /v1/vector_stores/{id}`: verified
  * 2026-07-29 against openapi.yaml v2.3.0 (`listVectorStores`,
  * `createVectorStore`, `modifyVectorStore`, `deleteVectorStore`).
  */

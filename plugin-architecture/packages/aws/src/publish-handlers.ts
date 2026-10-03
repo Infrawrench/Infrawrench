@@ -74,7 +74,7 @@ export async function publishSns(
   const subject = extra(payload, "subject");
   const attributes = extraRecord(payload, "attributes");
 
-  // SNS uses the query/EC2 protocol — flatten params into form-style keys.
+  // SNS uses the query/EC2 protocol: flatten params into form-style keys.
   const params: Record<string, string> = {
     TopicArn: topicArn,
     Message: payload.body,

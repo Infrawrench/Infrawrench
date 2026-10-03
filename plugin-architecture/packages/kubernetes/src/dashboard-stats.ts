@@ -35,7 +35,7 @@ function costStat(daily: number | null, currency: string): DashboardStat[] {
 
 /**
  * Compute the dashboard summary cards for a resource. Each kind has its own
- * shape — e.g. Deployments show replica ratios, Pods show phase, Services
+ * shape, e.g. Deployments show replica ratios, Pods show phase, Services
  * show their type/IP.
  *
  * `costs` is optional and always additive: a cluster with no rate, or no
@@ -64,7 +64,7 @@ export async function fetchDashboardStats(
         clusterStats.push(...costStat(costs.cluster.dailyTotalCost, currency));
         // Idle gets its own stat, not a share of everyone else's. A cluster
         // where most of the money is idle is oversized, and that is the
-        // finding — burying it inside per-namespace numbers hides it.
+        // finding: burying it inside per-namespace numbers hides it.
         //
         // The denominator is node cost, NOT the cluster total. Idle is unused
         // *node capacity*; dividing it by a total that also contains disks, a
@@ -91,7 +91,7 @@ export async function fetchDashboardStats(
             variant: "status-degraded",
           });
         }
-        // Storage and load balancers are stated as counts even when unpriced —
+        // Storage and load balancers are stated as counts even when unpriced:
         // "48 volumes" is useful on its own, and its absence used to read as
         // "this cluster has no disks".
         const { storage, loadBalancers } = costs.cluster;

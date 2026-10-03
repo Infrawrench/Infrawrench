@@ -11,9 +11,9 @@ import {
 } from "./client-transport.js";
 
 interface DeleteContext {
-  /** Home/default creds — used only for global services. */
+  /** Home/default creds: used only for global services. */
   creds: AwsCredentials;
-  /** Build creds scoped to a specific region — use this for regional services. */
+  /** Build creds scoped to a specific region: use this for regional services. */
   credsFor(region: string): AwsCredentials;
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
 }
@@ -56,7 +56,7 @@ export async function deleteResource(
       break;
     case "lambda-function":
       await jsonGetCall(creds, "lambda", `/2015-03-31/functions/${encodeURIComponent(externalId)}`);
-      // Lambda uses DELETE method — need a separate helper
+      // Lambda uses DELETE method: need a separate helper
       {
         const host = hostForService(creds, "lambda");
         const url = `https://${host}/2015-03-31/functions/${encodeURIComponent(externalId)}`;
@@ -103,7 +103,7 @@ export async function deleteResource(
       await jsonCall(creds, "ssm", "AmazonSSM.DeleteParameter", { Name: externalId });
       break;
     case "cloudwatch-alarm":
-      // CloudWatch speaks awsQuery, not JSON-RPC — same protocol pitfall as
+      // CloudWatch speaks awsQuery, not JSON-RPC: same protocol pitfall as
       // GetMetricStatistics / DescribeAlarms.
       await queryPostCall(creds, "monitoring", "DeleteAlarms", "2010-08-01", {
         "AlarmNames.member.1": externalId,

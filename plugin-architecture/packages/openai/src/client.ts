@@ -56,7 +56,7 @@ const API_BASE = "https://api.openai.com/v1";
  * The wall between the two key types is absolute: `/v1/organization/*` is
  * declared `AdminApiKeyAuth` in OpenAI's own API description and answers a
  * project key with 403, while an admin key is refused everywhere on the data
- * plane. Neither degrades — so rather than surfacing a bare 403 from six
+ * plane. Neither degrades, so rather than surfacing a bare 403 from six
  * different call sites, every admin request funnels through one guard that
  * names the missing credential.
  */
@@ -303,8 +303,8 @@ function dayStartUnix(isoDate: string): number {
 }
 
 /**
- * The OpenAI SDKs serialise repeated query arrays as `k=a&k=b` — the default
- * `array_format` on `openai-python`'s Querystring — not `k[]=a`. Bracket
+ * The OpenAI SDKs serialise repeated query arrays as `k=a&k=b` (the default
+ * `array_format` on `openai-python`'s Querystring) not `k[]=a`. Bracket
  * notation is only used for multipart form bodies.
  */
 function appendAll(params: URLSearchParams, key: string, values: string[]): void {
@@ -394,12 +394,12 @@ export class OpenAIClient implements PluginClient {
     });
   }
 
-  /** Data plane — project key. */
+  /** Data plane: project key. */
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
     return this.request<T>(path, this.apiKey, options);
   }
 
-  /** Admin plane — admin key, with the missing-credential guard. */
+  /** Admin plane: admin key, with the missing-credential guard. */
   private async adminFetch<T>(path: string, options?: RequestInit): Promise<T> {
     if (!this.hasAdminKey) throw new Error(ADMIN_KEY_REQUIRED);
     return this.request<T>(path, this.adminApiKey, options);
@@ -435,7 +435,7 @@ export class OpenAIClient implements PluginClient {
   }
 
   /**
-   * Usage and cost endpoints don't use the `after` cursor at all — they page
+   * Usage and cost endpoints don't use the `after` cursor at all: they page
    * with an opaque `page` token echoed back as `next_page`.
    */
   private async listUsageBuckets(
@@ -490,7 +490,7 @@ export class OpenAIClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/models` — verified 2026-07-29 against openapi.yaml v2.3.0
+   * `GET /v1/models`: verified 2026-07-29 against openapi.yaml v2.3.0
    * (`listModels`). Unpaginated; the whole catalogue arrives in one flat list.
    */
   private async listModels(accountId: string): Promise<ResourceInstance[]> {
@@ -525,7 +525,7 @@ export class OpenAIClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/fine_tuning/jobs` — verified 2026-07-29 against openapi.yaml
+   * `GET /v1/fine_tuning/jobs`: verified 2026-07-29 against openapi.yaml
    * v2.3.0 (`listPaginatedFineTuningJobs`). The response carries `has_more` but
    * no `last_id`, so the cursor comes off the final element.
    */
@@ -566,7 +566,7 @@ export class OpenAIClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/batches` — verified 2026-07-29 against openapi.yaml v2.3.0
+   * `GET /v1/batches`: verified 2026-07-29 against openapi.yaml v2.3.0
    * (`listBatches`). `limit` caps at 100.
    */
   private async listBatches(accountId: string): Promise<ResourceInstance[]> {
@@ -607,7 +607,7 @@ export class OpenAIClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/files` — verified 2026-07-29 against openapi.yaml v2.3.0
+   * `GET /v1/files`: verified 2026-07-29 against openapi.yaml v2.3.0
    * (`listFiles`). `limit` accepts up to 10,000; 1,000 per page keeps
    * individual responses small without needing many round-trips.
    */
@@ -640,7 +640,7 @@ export class OpenAIClient implements PluginClient {
     };
   }
 
-  /** `GET /v1/vector_stores` — verified 2026-07-29 (`listVectorStores`). */
+  /** `GET /v1/vector_stores`: verified 2026-07-29 (`listVectorStores`). */
   private async listVectorStores(accountId: string): Promise<ResourceInstance[]> {
     const stores = await this.listAll<VectorStore>("/vector_stores", { order: "desc" });
     const now = new Date().toISOString();
@@ -675,7 +675,7 @@ export class OpenAIClient implements PluginClient {
     };
   }
 
-  /** `GET /v1/containers` — verified 2026-07-29 (`ListContainers`). */
+  /** `GET /v1/containers`: verified 2026-07-29 (`ListContainers`). */
   private async listContainers(accountId: string): Promise<ResourceInstance[]> {
     const containers = await this.listAll<Container>("/containers", { order: "desc" });
     const now = new Date().toISOString();
@@ -711,7 +711,7 @@ export class OpenAIClient implements PluginClient {
     };
   }
 
-  /** `GET /v1/evals` — verified 2026-07-29 (`listEvals`). */
+  /** `GET /v1/evals`: verified 2026-07-29 (`listEvals`). */
   private async listEvals(accountId: string): Promise<ResourceInstance[]> {
     const evals = await this.listAll<EvalObject>("/evals", { order: "desc" });
     const now = new Date().toISOString();
@@ -741,7 +741,7 @@ export class OpenAIClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/organization/projects` — verified 2026-07-29 (`list-projects`).
+   * `GET /v1/organization/projects`: verified 2026-07-29 (`list-projects`).
    * Archived projects are hidden unless `include_archived=true`; keeping them
    * visible matters because their historical usage still shows up in costs.
    */
@@ -782,7 +782,7 @@ export class OpenAIClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/organization/projects/{project_id}/api_keys` — verified
+   * `GET /v1/organization/projects/{project_id}/api_keys`: verified
    * 2026-07-29 (`list-project-api-keys`). Keys are only addressable per
    * project, so this fans out over the non-archived projects.
    */
@@ -845,7 +845,7 @@ export class OpenAIClient implements PluginClient {
     };
   }
 
-  /** `GET /v1/organization/users` — verified 2026-07-29 (`list-users`). */
+  /** `GET /v1/organization/users`: verified 2026-07-29 (`list-users`). */
   private async listOrganizationUsers(accountId: string): Promise<ResourceInstance[]> {
     const users = await this.listAll<OrganizationUser>("/organization/users", {}, { admin: true });
     const now = new Date().toISOString();
@@ -881,7 +881,7 @@ export class OpenAIClient implements PluginClient {
     };
   }
 
-  /** `GET /v1/organization/invites` — verified 2026-07-29 (`list-invites`). */
+  /** `GET /v1/organization/invites`: verified 2026-07-29 (`list-invites`). */
   private async listInvites(accountId: string): Promise<ResourceInstance[]> {
     const invites = await this.listAll<Invite>("/organization/invites", {}, { admin: true });
     const now = new Date().toISOString();
@@ -988,7 +988,7 @@ export class OpenAIClient implements PluginClient {
   ): Promise<string> {
     const externalId = externalIdOf(resourceId);
 
-    // Ids are already encoded in the resource id — no round-trip needed.
+    // Ids are already encoded in the resource id: no round-trip needed.
     if (outputKey === "modelId" && typeId === "model") return externalId;
     if (outputKey === "jobId" && typeId === "fine-tuning-job") return externalId;
     if (outputKey === "batchId" && typeId === "batch") return externalId;
@@ -1803,7 +1803,7 @@ export class OpenAIClient implements PluginClient {
 
     switch (typeId) {
       case "fine-tuning-job": {
-        // POST /v1/fine_tuning/jobs — verified 2026-07-29 (`createFineTuningJob`).
+        // POST /v1/fine_tuning/jobs: verified 2026-07-29 (`createFineTuningJob`).
         const seed = num(fields["seed"]);
         const body: Record<string, unknown> = {
           model: fields["model"],
@@ -1820,7 +1820,7 @@ export class OpenAIClient implements PluginClient {
       }
 
       case "batch": {
-        // POST /v1/batches — verified 2026-07-29 (`createBatch`).
+        // POST /v1/batches: verified 2026-07-29 (`createBatch`).
         const batch = await this.fetch<Batch>("/batches", {
           method: "POST",
           body: JSON.stringify({
@@ -1833,7 +1833,7 @@ export class OpenAIClient implements PluginClient {
       }
 
       case "vector-store": {
-        // POST /v1/vector_stores — verified 2026-07-29 (`createVectorStore`).
+        // POST /v1/vector_stores: verified 2026-07-29 (`createVectorStore`).
         const days = num(fields["expires_after_days"]);
         const store = await this.fetch<VectorStore>("/vector_stores", {
           method: "POST",
@@ -1849,7 +1849,7 @@ export class OpenAIClient implements PluginClient {
       }
 
       case "container": {
-        // POST /v1/containers — verified 2026-07-29 (`CreateContainer`).
+        // POST /v1/containers: verified 2026-07-29 (`CreateContainer`).
         const minutes = num(fields["expires_after_minutes"]);
         const container = await this.fetch<Container>("/containers", {
           method: "POST",
@@ -1865,7 +1865,7 @@ export class OpenAIClient implements PluginClient {
       }
 
       case "project": {
-        // POST /v1/organization/projects — verified 2026-07-29 (`create-project`).
+        // POST /v1/organization/projects: verified 2026-07-29 (`create-project`).
         const project = await this.adminFetch<Project>("/organization/projects", {
           method: "POST",
           body: JSON.stringify({ name: fields["name"] }),
@@ -1874,7 +1874,7 @@ export class OpenAIClient implements PluginClient {
       }
 
       case "invite": {
-        // POST /v1/organization/invites — verified 2026-07-29 (`inviteUser`).
+        // POST /v1/organization/invites: verified 2026-07-29 (`inviteUser`).
         const projectId = fields["project_id"];
         const invite = await this.adminFetch<Invite>("/organization/invites", {
           method: "POST",
@@ -1906,7 +1906,7 @@ export class OpenAIClient implements PluginClient {
 
     switch (typeId) {
       case "vector-store": {
-        // POST /v1/vector_stores/{id} — verified 2026-07-29 (`modifyVectorStore`).
+        // POST /v1/vector_stores/{id}: verified 2026-07-29 (`modifyVectorStore`).
         const store = await this.fetch<VectorStore>(`/vector_stores/${id}`, {
           method: "POST",
           body: JSON.stringify({ name: fields["name"] }),
@@ -1914,7 +1914,7 @@ export class OpenAIClient implements PluginClient {
         return this.mapVectorStore(accountId, store, now);
       }
       case "eval": {
-        // POST /v1/evals/{id} — verified 2026-07-29 (`updateEval`).
+        // POST /v1/evals/{id}: verified 2026-07-29 (`updateEval`).
         const item = await this.fetch<EvalObject>(`/evals/${id}`, {
           method: "POST",
           body: JSON.stringify({ name: fields["name"] }),
@@ -1922,7 +1922,7 @@ export class OpenAIClient implements PluginClient {
         return this.mapEval(accountId, item, now);
       }
       case "project": {
-        // POST /v1/organization/projects/{id} — verified 2026-07-29 (`modify-project`).
+        // POST /v1/organization/projects/{id}: verified 2026-07-29 (`modify-project`).
         const project = await this.adminFetch<Project>(`/organization/projects/${id}`, {
           method: "POST",
           body: JSON.stringify({ name: fields["name"] }),
@@ -1930,7 +1930,7 @@ export class OpenAIClient implements PluginClient {
         return this.mapProject(accountId, project, now);
       }
       case "organization-user": {
-        // POST /v1/organization/users/{id} — verified 2026-07-29 (`modify-user`).
+        // POST /v1/organization/users/{id}: verified 2026-07-29 (`modify-user`).
         const user = await this.adminFetch<OrganizationUser>(`/organization/users/${id}`, {
           method: "POST",
           body: JSON.stringify({ role: fields["role"] }),
@@ -1948,32 +1948,32 @@ export class OpenAIClient implements PluginClient {
 
     switch (typeId) {
       case "file":
-        // DELETE /v1/files/{file_id} — verified 2026-07-29 (`deleteFile`).
+        // DELETE /v1/files/{file_id}: verified 2026-07-29 (`deleteFile`).
         await this.fetch(`/files/${id}`, { method: "DELETE" });
         return;
       case "vector-store":
-        // DELETE /v1/vector_stores/{id} — verified 2026-07-29 (`deleteVectorStore`).
+        // DELETE /v1/vector_stores/{id}: verified 2026-07-29 (`deleteVectorStore`).
         await this.fetch(`/vector_stores/${id}`, { method: "DELETE" });
         return;
       case "container":
-        // DELETE /v1/containers/{id} — verified 2026-07-29 (`DeleteContainer`).
+        // DELETE /v1/containers/{id}: verified 2026-07-29 (`DeleteContainer`).
         await this.fetch(`/containers/${id}`, { method: "DELETE" });
         return;
       case "eval":
-        // DELETE /v1/evals/{id} — verified 2026-07-29 (`deleteEval`).
+        // DELETE /v1/evals/{id}: verified 2026-07-29 (`deleteEval`).
         await this.fetch(`/evals/${id}`, { method: "DELETE" });
         return;
       case "invite":
-        // DELETE /v1/organization/invites/{id} — verified 2026-07-29 (`delete-invite`).
+        // DELETE /v1/organization/invites/{id}: verified 2026-07-29 (`delete-invite`).
         // Rejected once the invite has been accepted.
         await this.adminFetch(`/organization/invites/${id}`, { method: "DELETE" });
         return;
       case "organization-user":
-        // DELETE /v1/organization/users/{id} — verified 2026-07-29 (`delete-user`).
+        // DELETE /v1/organization/users/{id}: verified 2026-07-29 (`delete-user`).
         await this.adminFetch(`/organization/users/${id}`, { method: "DELETE" });
         return;
       case "project-api-key": {
-        // DELETE /v1/organization/projects/{p}/api_keys/{k} — verified 2026-07-29
+        // DELETE /v1/organization/projects/{p}/api_keys/{k}: verified 2026-07-29
         // (`delete-project-api-key`). 400s when the key belongs to a service
         // account; the service account has to be removed instead.
         const { projectId, keyId } = splitApiKeyId(externalId);
@@ -2002,7 +2002,7 @@ export class OpenAIClient implements PluginClient {
     const id = encodeURIComponent(externalId);
 
     if (typeId === "fine-tuning-job") {
-      // POST /v1/fine_tuning/jobs/{id}/{cancel,pause,resume} — verified 2026-07-29.
+      // POST /v1/fine_tuning/jobs/{id}/{cancel,pause,resume}: verified 2026-07-29.
       const verb =
         actionId === "cancel-fine-tuning-job"
           ? "cancel"
@@ -2018,13 +2018,13 @@ export class OpenAIClient implements PluginClient {
     }
 
     if (typeId === "batch" && actionId === "cancel-batch") {
-      // POST /v1/batches/{id}/cancel — verified 2026-07-29 (`cancelBatch`).
+      // POST /v1/batches/{id}/cancel: verified 2026-07-29 (`cancelBatch`).
       await this.fetch(`/batches/${id}/cancel`, { method: "POST" });
       return;
     }
 
     if (typeId === "model" && actionId === "delete-fine-tuned-model") {
-      // DELETE /v1/models/{model} — verified 2026-07-29 (`deleteModel`). The API
+      // DELETE /v1/models/{model}: verified 2026-07-29 (`deleteModel`). The API
       // only accepts fine-tuned model ids, so refuse locally rather than letting
       // a base model produce a confusing 4xx.
       if (!externalId.startsWith("ft:")) {
@@ -2037,7 +2037,7 @@ export class OpenAIClient implements PluginClient {
     }
 
     if (typeId === "project" && actionId === "archive-project") {
-      // POST /v1/organization/projects/{id}/archive — verified 2026-07-29.
+      // POST /v1/organization/projects/{id}/archive: verified 2026-07-29.
       await this.adminFetch(`/organization/projects/${id}/archive`, { method: "POST" });
       return;
     }
@@ -2046,7 +2046,7 @@ export class OpenAIClient implements PluginClient {
   }
 
   /**
-   * POST /v1/organization/projects/{id}/service_accounts — verified 2026-07-29
+   * POST /v1/organization/projects/{id}/service_accounts: verified 2026-07-29
    * (`create-project-service-account`). This is the only route in the whole API
    * that hands back a usable secret key, and it does so exactly once.
    */
@@ -2092,7 +2092,7 @@ export class OpenAIClient implements PluginClient {
   // ---- Metrics and costs ---------------------------------------------------
 
   /**
-   * `GET /v1/organization/usage/completions` and `GET /v1/organization/costs` —
+   * `GET /v1/organization/usage/completions` and `GET /v1/organization/costs`:
    * verified 2026-07-29 (`usage-completions`, `usage-costs`). `start_time` is
    * required and in Unix **seconds**; `end_time` is exclusive. Both live behind
    * the admin key.
@@ -2113,7 +2113,7 @@ export class OpenAIClient implements PluginClient {
     const externalId = externalIdOf(resourceId);
 
     if (resourceTypeId === "model") {
-      // `1h` buckets cap at 168, `1d` at 31 — pick whichever fits the window.
+      // `1h` buckets cap at 168, `1d` at 31: pick whichever fits the window.
       const hourly = spanDays <= 7;
       const params = new URLSearchParams({
         start_time: String(startTime),
@@ -2253,7 +2253,7 @@ export class OpenAIClient implements PluginClient {
       response_format: "mp3",
     };
     // `instructions` and `stream_format` are both documented as unsupported on
-    // tts-1 / tts-1-hd — sending either is a 400, not a silent no-op.
+    // tts-1 / tts-1-hd: sending either is a 400, not a silent no-op.
     if (!LEGACY_TTS_MODELS.has(model)) {
       body["instructions"] = "Speak clearly and naturally at a normal conversational pace.";
     }
@@ -2288,8 +2288,8 @@ export class OpenAIClient implements PluginClient {
     const requested = payload.modelId || externalIdOf(resourceId);
     const model = isSttModel(requested) ? requested : DEFAULT_STT_MODEL;
 
-    // Response format is not a free choice. `verbose_json` — the only shape
-    // that carries word and segment timings — is accepted by whisper-1 alone;
+    // Response format is not a free choice. `verbose_json` (the only shape
+    // that carries word and segment timings) is accepted by whisper-1 alone;
     // the gpt-4o transcribe family is json-only. The diarize model has its own
     // `diarized_json`, which is where speaker labels come from. Asking for a
     // format the model doesn't support is a 400, so the request is built to
@@ -2351,13 +2351,13 @@ export class OpenAIClient implements PluginClient {
   }
 
   /**
-   * POST /v1/audio/speech — verified 2026-07-29 against openapi.yaml v2.3.0
+   * POST /v1/audio/speech; verified 2026-07-29 against openapi.yaml v2.3.0
    * (`createSpeech`): JSON goes in, raw `application/octet-stream` audio comes
    * back.
    *
    * Deliberately not routed through `jsonRestFetch`. That helper JSON-parses
    * every response, and the host HTTP service it delegates to returns bodies as
-   * UTF-8 strings — either of which would shred an mp3. This one call therefore
+   * UTF-8 strings: either of which would shred an mp3. This one call therefore
    * uses the global `fetch` and bypasses bastion egress routing and the custom
    * CA credential; every JSON control-plane call still goes through the host.
    */
@@ -2388,14 +2388,14 @@ export class OpenAIClient implements PluginClient {
   }
 
   /**
-   * POST /v1/audio/transcriptions — verified 2026-07-29 (`createTranscription`).
+   * POST /v1/audio/transcriptions: verified 2026-07-29 (`createTranscription`).
    * multipart/form-data, which `jsonRestFetch` cannot express: its host-HTTP
    * path stringifies a FormData instead of encoding it. So this call also uses
    * the global `fetch` and bypasses bastion routing.
    *
    * The clip's content type is whatever MediaRecorder or the file picker
    * produced (`audio/webm;codecs=opus` on Chromium, `audio/mp4` on Safari) and
-   * is forwarded verbatim — nothing is transcoded. Only the filename extension
+   * is forwarded verbatim: nothing is transcoded. Only the filename extension
    * is normalised, because the endpoint reads the format from it too.
    */
   private async sttTranscribe(

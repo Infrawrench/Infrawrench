@@ -7,7 +7,7 @@ import type {
 } from "cloudflare/resources/vectorize/indexes/indexes";
 
 /**
- * Cloudflare Vectorize indexes (`/accounts/{id}/vectorize/v2/indexes`) — the
+ * Cloudflare Vectorize indexes (`/accounts/{id}/vectorize/v2/indexes`): the
  * vector databases backing Workers AI / RAG. The index `name` doubles as the
  * external id (it's what Worker bindings and the query API reference).
  */

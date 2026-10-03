@@ -8,7 +8,7 @@ import type {
 } from "cloudflare/resources/alerting/policies";
 
 /**
- * Cloudflare Notification policies (`/accounts/{id}/alerting/v3/policies`) — the
+ * Cloudflare Notification policies (`/accounts/{id}/alerting/v3/policies`): the
  * account-level alerting rules that fan an `alert_type` out to delivery
  * mechanisms (email / webhook / PagerDuty). We model the common email-delivery
  * case in the create form; richer mechanisms are preserved on edit.
@@ -84,7 +84,7 @@ function emailMechanisms(emailCsv: string): MechanismParam {
  * Every `alert_type` the alerting API accepts (`PolicyCreateParams.alert_type`).
  * The create form only offers a curated subset, but a policy can be created
  * from a manifest or the HTTP API, so the whole set is listed here rather than
- * just the form's options — otherwise a legitimate alert type would be silently
+ * just the form's options, otherwise a legitimate alert type would be silently
  * rewritten to the fallback below.
  */
 const ALERT_TYPES = [

@@ -15,7 +15,7 @@ import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { z } from "zod";
 import { azureRequest } from "./http.js";
 
-// Most fields tolerate empty string defaults — Azure returns rows for
+// Most fields tolerate empty string defaults: Azure returns rows for
 // many resource types where SKU/family fields are omitted. Validation only
 // blocks responses that drop fields entirely from the JSON shape.
 const retailPriceItemSchema = z.object({
@@ -234,7 +234,7 @@ function parseSqlDbRates(items: RetailPriceItem[]): Record<string, number> {
 function matchSqlSku(item: RetailPriceItem): string | null {
   const sku = item.skuName;
   const product = item.productName;
-  // DTU Basic/Standard/Premium — productName carries the tier, skuName the DTU level.
+  // DTU Basic/Standard/Premium: productName carries the tier, skuName the DTU level.
   if (/SQL Database Single Basic/i.test(product) && /^Basic$/i.test(sku)) return "Basic";
   if (/SQL Database Single Standard/i.test(product)) {
     const m = sku.match(/^(S\d+)/i);
@@ -281,7 +281,7 @@ function parseContainerInstanceRates(
 /**
  * Fetch all relevant Retail Prices for a region in parallel and parse them
  * into a single rate table. Individual service failures do not fail the
- * whole call — they leave that family's map empty, and the estimator will
+ * whole call: they leave that family's map empty, and the estimator will
  * return null for those types.
  */
 export async function fetchAzurePricingRates(

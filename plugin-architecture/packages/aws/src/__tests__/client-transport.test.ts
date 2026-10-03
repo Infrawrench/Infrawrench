@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-/** The real request type `fetchSigned` receives — the mock records these. */
+/** The real request type `fetchSigned` receives: the mock records these. */
 type FetchSignedArg = Parameters<(typeof import("../signed-request.js"))["fetchSigned"]>[0];
 
 const fetchSigned = vi.fn<(req: FetchSignedArg) => Promise<unknown>>();

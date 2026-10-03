@@ -6,7 +6,7 @@ import { plugin } from "../plugin.js";
 /**
  * Routing tests for the `createResource` dispatch: every type-id that
  * advertises `supportsCreate: true` must route to the right per-service
- * executor. We assert routing behaviorally — each executor PUTs to a
+ * executor. We assert routing behaviorally: each executor PUTs to a
  * provider-specific ARM URL, so the recorded URL identifies the executor
  * (and, for the parameterized executors, verifies the provider path +
  * api-version the dispatch passes in).

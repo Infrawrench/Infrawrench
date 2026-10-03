@@ -19,7 +19,7 @@ export const VolumeResourceType = rt({
     }),
   ],
   outputs: [],
-  // Comma-joined droplet ids — one edge per Droplet the volume is attached to.
+  // Comma-joined droplet ids: one edge per Droplet the volume is attached to.
   dependsOn: [{ fieldKey: "dropletIds", targetTypeId: "droplet", label: "attached to" }],
   parentTypeId: "project",
   showInSidebar: true,

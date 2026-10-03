@@ -12,7 +12,7 @@
  *     which is the same SigV4 implementation the SDK uses internally.
  *   - Parses XML responses with `fast-xml-parser` (no DOMParser).
  *
- * Lister/handler call sites keep their previous signatures — they pass in
+ * Lister/handler call sites keep their previous signatures: they pass in
  * a service id ("rds", "elasticloadbalancing", "monitoring", …) and an
  * action/target, and we resolve the right SDK client + endpoint.
  *
@@ -69,12 +69,12 @@ const SERVICE_BINDINGS: Record<string, ServiceBinding> = {
   logs: { clientKey: "cloudWatchLogs", signingName: "logs" },
   monitoring: { clientKey: "cloudWatch", signingName: "monitoring" },
   mq: { clientKey: "mq", signingName: "mq" },
-  // Neptune requests must go to rds.<region> — the neptune.<region> host the
+  // Neptune requests must go to rds.<region>: the neptune.<region> host the
   // SDK would use does not exist in DNS (resolveEndpoint below forces the RDS
   // host). Neptune shares the RDS control plane and API surface, and SigV4
   // signs with the rds service name.
   neptune: { clientKey: "neptune", signingName: "rds" },
-  // Same story for DocumentDB — served from the RDS endpoint, RDS-compatible API.
+  // Same story for DocumentDB: served from the RDS endpoint, RDS-compatible API.
   docdb: { clientKey: "docDb", signingName: "rds" },
   rds: { clientKey: "rds", signingName: "rds" },
   redshift: { clientKey: "redshift", signingName: "redshift" },
@@ -108,7 +108,7 @@ async function resolveEndpoint(creds: AwsCredentials, service: string): Promise<
   }
   // Neptune and DocumentDB share the RDS control plane. The SDK clients ship
   // an endpoint template (neptune.<region>.<dns>, docdb.<region>.<dns>) that
-  // simply does not exist in DNS — every request fails with
+  // simply does not exist in DNS: every request fails with
   // ERR_NAME_NOT_RESOLVED. Force the RDS host here so the rest of the
   // pipeline (signed with `rds` as the service name) reaches a real endpoint.
   if (service === "neptune" || service === "docdb") {
@@ -161,7 +161,7 @@ function legacyHost(service: string, region: string): string {
   return `${service}.${region}.amazonaws.com`;
 }
 
-/** EC2 Query API — XML over GET with `?Action=…&Version=…`. */
+/** EC2 Query API: XML over GET with `?Action=…&Version=…`. */
 export async function ec2Call<T>(
   creds: AwsCredentials,
   action: string,

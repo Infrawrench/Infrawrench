@@ -21,7 +21,7 @@ const manifest: PluginManifest = {
   description:
     "Models, fine-tuning, batches, files, vector stores, containers and evals, plus organization projects, members and spend. Includes a Speech tab for text-to-speech and transcription.",
   // The official OpenAI mark, taken from the brand's published SVG (the
-  // simple-icons distribution of it) rather than redrawn — path data verbatim,
+  // simple-icons distribution of it) rather than redrawn: path data verbatim,
   // re-framed from its 24×24 viewBox into the 100×100 card tile.
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#000000"/>

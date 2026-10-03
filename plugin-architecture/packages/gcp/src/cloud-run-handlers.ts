@@ -54,7 +54,7 @@ interface CloudRunDomainDnsRecord {
   name: string;
   /** Record type (A, AAAA, CNAME). */
   type: string;
-  /** RDATA — IP address or canonical name to point at. */
+  /** RDATA: IP address or canonical name to point at. */
   rrdata: string;
 }
 
@@ -257,7 +257,7 @@ export async function fetchCloudRunIamBindings(
   const parts = parseServiceFullName(fullName);
   if (!parts) return { ...empty, error: "Cannot parse service name" };
   // Cloud Run v2 getIamPolicy is GET with a query parameter, not POST with
-  // a body. (Cloud Resource Manager's getIamPolicy is POST — easy to
+  // a body. (Cloud Resource Manager's getIamPolicy is POST: easy to
   // confuse.)
   const res = await gcpFetch(
     ctx,
@@ -283,7 +283,7 @@ export async function fetchCloudRunIamBindings(
 /**
  * List Cloud Run custom domain mappings whose `spec.routeName` matches this
  * service. Domain mappings live in the v1 (Knative-style) API and are queried
- * against a region-prefixed host — the global `run.googleapis.com` host
+ * against a region-prefixed host: the global `run.googleapis.com` host
  * returns empty for managed Cloud Run.
  */
 export async function listCloudRunDomainMappings(
@@ -708,8 +708,8 @@ async function editCloudRunNetworking(
     newVpcAccess = Object.keys(vpcAccess).length > 0 ? vpcAccess : null;
   }
 
-  // Cloud Run v2 has a quirk: ANY services.patch — even on a top-level
-  // field like ingress — runs revision validation against the live state.
+  // Cloud Run v2 has a quirk: ANY services.patch (even on a top-level
+  // field like ingress) runs revision validation against the live state.
   // When the latest revision was created by a different deployer (e.g. gen2
   // functions, console, gcloud), that validation hits ALREADY_EXISTS on
   // the inherited revision name. Workaround mirroring what gcloud does:

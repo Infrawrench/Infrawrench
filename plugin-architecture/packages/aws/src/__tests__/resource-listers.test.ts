@@ -573,7 +573,7 @@ describe("listECRRepositories / listSecretsManagerSecrets / listCloudFrontDistri
     expect(out[0]!.fields.rotationEnabled).toBe(true);
   });
 
-  // CloudFront's `ListDistributions` is REST-XML — it has no JSON
+  // CloudFront's `ListDistributions` is REST-XML: it has no JSON
   // representation at all. Feeding the lister a hand-written JSON object used
   // to hide the fact that it called `jsonGet` (i.e. `res.json()`) and threw on
   // every real poll, so this drives the actual XML the API returns through the
@@ -638,7 +638,7 @@ describe("listECRRepositories / listSecretsManagerSecrets / listCloudFrontDistri
     const ctx = makeCtx({ xmlGet: () => parseXml(LIST_DISTRIBUTIONS_XML) });
     const out = await listCloudFrontDistributions(ctx, "acct");
 
-    // The lister must use the XML transport — `jsonGet` would throw in prod.
+    // The lister must use the XML transport: `jsonGet` would throw in prod.
     expect(ctx.xmlGet).toHaveBeenCalledWith("cloudfront", "/2020-05-31/distribution");
     expect(ctx.jsonGet).not.toHaveBeenCalled();
 
@@ -668,7 +668,7 @@ describe("listECRRepositories / listSecretsManagerSecrets / listCloudFrontDistri
     );
 
     const second = out[1]!;
-    // No comment — display name falls back to the distribution id.
+    // No comment: display name falls back to the distribution id.
     expect(second.displayName).toBe("E2BBBBBBBBBBBB");
     expect(second.fields.enabled).toBe(false);
     expect(second.fields.status).toBe("InProgress");

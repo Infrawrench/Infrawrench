@@ -39,7 +39,7 @@ export const OpenSearchDomainResourceType = rt({
   peerIntegrations: [
     {
       // Forwards the domain endpoint to the OpenSearch plugin. Auth is set
-      // by the user in the OpenSearch tab credentials — typically AWS
+      // by the user in the OpenSearch tab credentials: typically AWS
       // SigV4 (service "es") for IAM-only domains, or basic auth when
       // fine-grained access control is enabled with an internal user
       // database. The OpenSearch plugin's `authMode` credential picks
@@ -60,7 +60,7 @@ export const OpenSearchDomainResourceType = rt({
       ],
     },
   ],
-  // `vpcId` is only stored for VPC-attached domains — public domains leave it
+  // `vpcId` is only stored for VPC-attached domains: public domains leave it
   // unset, which is what `empty` matches.
   postureChecks: [
     {

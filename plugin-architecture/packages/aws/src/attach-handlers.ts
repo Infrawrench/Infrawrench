@@ -7,9 +7,9 @@ import { fetchSigned } from "./signed-request.js";
 const CLOUDFRONT_ALIAS_HOSTED_ZONE_ID = "Z2FDTNDATAQYW2";
 
 interface AttachContext {
-  /** Home/default creds — used only for global services. */
+  /** Home/default creds: used only for global services. */
   creds: AwsCredentials;
-  /** Build creds scoped to a specific region — use this for regional services. */
+  /** Build creds scoped to a specific region: use this for regional services. */
   credsFor(region: string): AwsCredentials;
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
 }

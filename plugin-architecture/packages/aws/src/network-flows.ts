@@ -6,7 +6,7 @@
  * records out of CloudWatch and grouping them here would move the whole volume
  * across the internet every day to compute a few hundred numbers. So the
  * `GROUP BY` runs inside CloudWatch Logs Insights and only the grouped result
- * comes back — two queries per log group per day, a few hundred rows total.
+ * comes back: two queries per log group per day, a few hundred rows total.
  *
  * **This costs the customer money.** Logs Insights bills per GB of log data
  * scanned, against the account whose credentials we hold. That is why
@@ -14,7 +14,7 @@
  * on, and why the pass collects at most a few days per run.
  *
  * **What it can and cannot tell you.** Only flow logs delivering to CloudWatch
- * Logs are readable — S3 and Firehose destinations would need Athena (a new
+ * Logs are readable: S3 and Firehose destinations would need Athena (a new
  * dependency, a results bucket we would have to write to, and a partition
  * layout we do not control), so they are reported as sources we can see but not
  * query rather than silently skipped. And the record format decides everything:
@@ -64,7 +64,7 @@ import {
  *
  * Checked against https://aws.amazon.com/ec2/pricing/on-demand/ and
  * https://aws.amazon.com/vpc/pricing/ on the `asOf` date below. Every one of
- * these is a *list* rate with no free tier and no volume tier applied — see
+ * these is a *list* rate with no free tier and no volume tier applied: see
  * `server-core/src/network-flow/pricing.ts` for why modelling either would be
  * worse than not modelling them.
  */
@@ -95,7 +95,7 @@ const AWS_NETWORK_FLOW_RATES: NetworkFlowCapabilityDeclaration["rates"] = {
     // Data out over a Site-to-Site VPN is billed at internet egress rates; the
     // hourly connection charge is a resource cost and is not a flow.
     private_interconnect: 0.09,
-    // Deliberately unpriced. See `classifyScope` — this is the bucket for
+    // Deliberately unpriced. See `classifyScope`: this is the bucket for
     // traffic whose boundary the record did not determine, and putting a rate
     // on it would turn "we do not know" into money.
     unknown: 0,
@@ -165,7 +165,7 @@ function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
  * reading the log group and goes on billing the customer for every gigabyte it
  * reads, for up to fifteen minutes. This is the only thing that actually turns
  * the meter off, so it runs both when the host withdraws authorization and when
- * a query overruns our own timeout — the second case has always been leaving a
+ * a query overruns our own timeout: the second case has always been leaving a
  * scan running for nothing.
  *
  * Failure is ignored on purpose. The common one is the query having finished a
@@ -176,11 +176,11 @@ async function stopQuery(creds: AwsCredentials, queryId: string): Promise<void> 
   try {
     await getAwsClients(creds).cloudWatchLogs.send(new StopQueryCommand({ queryId }));
   } catch {
-    // Already finished, already stopped, or unreachable — nothing to do.
+    // Already finished, already stopped, or unreachable: nothing to do.
   }
 }
 
-/** Only CloudWatch Logs destinations are readable — see the module header. */
+/** Only CloudWatch Logs destinations are readable: see the module header. */
 const READABLE_DESTINATION = "cloud-watch-logs";
 
 function rowValue(row: ResultField[], field: string): string | undefined {
@@ -275,8 +275,8 @@ function toLocalEndpoint(eni: NetworkInterface, region: string): LocalEndpoint {
  * An address that resolved to nothing in this account.
  *
  * Returns a *class token*, never the address. An address is unbounded
- * cardinality and churns — the same workload behind a new lease is a new row
- * every day — so the stored endpoint is the class and the honest label is that
+ * cardinality and churns (the same workload behind a new lease is a new row
+ * every day) so the stored endpoint is the class and the honest label is that
  * we could not identify it.
  */
 function unresolvedEndpoint(scope: FlowScope, service: string | undefined): NetworkFlowEndpoint {
@@ -303,8 +303,8 @@ function toEndpoint(local: LocalEndpoint): NetworkFlowEndpoint {
  * Run a Logs Insights query over one UTC day and wait for it.
  *
  * `signal` is the host's authorization to spend the customer's money. It is
- * checked before the query is started — a scan begun without it is money spent
- * on a claim we no longer hold — and again on every poll, where withdrawing it
+ * checked before the query is started (a scan begun without it is money spent
+ * on a claim we no longer hold) and again on every poll, where withdrawing it
  * stops the query at the provider rather than merely walking away from it.
  */
 async function runInsightsQuery(
@@ -435,7 +435,7 @@ interface PairRow {
   packets: number;
 }
 
-/** `flow-direction` on a grouped row. Both queries carry it — it is required. */
+/** `flow-direction` on a grouped row. Both queries carry it: it is required. */
 function directionOf(row: ResultField[]): "egress" | "ingress" {
   return rowValue(row, insightsAlias("flow-direction")) === "ingress" ? "ingress" : "egress";
 }
@@ -443,8 +443,8 @@ function directionOf(row: ResultField[]): "egress" | "ingress" {
 /**
  * The bucket a grouped row's bytes land in **in the totals query**.
  *
- * Both queries group by the same non-address fields — the pair query just adds
- * `srcaddr`/`dstaddr` on top — so this runs unchanged over a row from either
+ * Both queries group by the same non-address fields (the pair query just adds
+ * `srcaddr`/`dstaddr` on top) so this runs unchanged over a row from either
  * one, and that is the entire point. The totals query exists so the truncated
  * tail can be an exact subtraction rather than an estimate, and that property
  * only survives while both queries agree about which bucket a given row's bytes
@@ -452,7 +452,7 @@ function directionOf(row: ResultField[]): "egress" | "ingress" {
  * a format omits a field: with no `next-hop-az-id` and no `traffic-path`, an
  * ingress row from an address-resolved peer is `cross_zone` to the pair query
  * and `internet_ingress` to this one, and the bytes then sit in two buckets at
- * once. So there is one classifier, called twice — once with the totals query's
+ * once. So there is one classifier, called twice: once with the totals query's
  * strictly poorer view of the row (no addresses, so no resolved peer and none of
  * the ENI fallbacks), and once with everything.
  */
@@ -480,7 +480,7 @@ function totalsScopeOf(row: ResultField[], fields: string[]): FlowScope {
 /**
  * Turn one grouped Insights row into a classified pair.
  *
- * The local side is whichever end the direction says it is — that is the entire
+ * The local side is whichever end the direction says it is: that is the entire
  * purpose of requiring `flow-direction`. Without it, `srcaddr` on an ingress
  * record is the *peer*, and treating it as the local side attributes every
  * inbound byte to whoever sent it.
@@ -592,8 +592,8 @@ function foldTotals(
     if (!from) continue;
     // Never move more than the bucket actually holds. A provider whose totals
     // come in under its own pairs leaves the destination short of what was
-    // kept, which the host reports as a negative residual — the right place for
-    // it — rather than being papered over with bytes invented here.
+    // kept, which the host reports as a negative residual (the right place for
+    // it) rather than being papered over with bytes invented here.
     const moved = Math.min(pair.bytes, from.bytes);
     if (moved <= 0) continue;
     from.bytes -= moved;
@@ -612,7 +612,7 @@ function foldTotals(
  *
  * **`signal` is what keeps this affordable when the host loses its claim.** A
  * day here is one or two Logs Insights scans per usable flow log, serially, and
- * an account can have a hundred of them — so the day is not a unit anyone can
+ * an account can have a hundred of them, so the day is not a unit anyone can
  * schedule around, and the entitlement to run it has to be revocable while it
  * runs. When it is withdrawn, the query in flight is stopped *at the provider*,
  * no further one is started, and the day comes back as a throw rather than as a

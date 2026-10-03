@@ -2,8 +2,8 @@
  * Per-type cost estimation built on top of the rate cache in `pricing.ts`.
  *
  * Inputs are field values from the create-resource UI; outputs are a
- * {@link CostEstimate} — a monthly total plus the line items that make it up
- * — or `null` when we have no rates for the chosen config (e.g. an unknown
+ * {@link CostEstimate}: a monthly total plus the line items that make it up,
+ * or `null` when we have no rates for the chosen config (e.g. an unknown
  * SKU). Nothing here approximates: an unpriced component is dropped and the
  * estimate says it is partial.
  *
@@ -60,7 +60,7 @@ function redisRateKey(fields: Record<string, string>): string {
   if (/^[CP]\d+$/i.test(raw)) return raw.toUpperCase();
   const sku = pick(fields, "sku") || "Basic";
   const family = sku.toLowerCase() === "premium" ? "P" : "C";
-  // Form default is capacity "0" (C0 / P0) — not C1.
+  // Form default is capacity "0" (C0 / P0), not C1.
   const n = raw === "" ? 0 : Number(raw);
   if (!Number.isFinite(n) || n < 0) return `${family}0`;
   return `${family}${Math.floor(n)}`;

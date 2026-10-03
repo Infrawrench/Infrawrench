@@ -68,8 +68,8 @@ export interface OpenTunnelOptions {
    * ConnectConfig assembled from the SshTunnelConfig and may return a modified
    * config (e.g. swap privateKey for `agent: "pageant"`).
    *
-   * The default ConnectConfig fails closed — its `hostVerifier` rejects every
-   * key with a clear error — so callers MUST provide a verifier here. The
+   * The default ConnectConfig fails closed (its `hostVerifier` rejects every
+   * key with a clear error) so callers MUST provide a verifier here. The
    * web service supplies one backed by an in-memory pin map; the desktop
    * supplies one backed by the local sql.js `ssh_host_keys` table.
    */

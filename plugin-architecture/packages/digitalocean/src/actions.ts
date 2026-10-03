@@ -8,8 +8,8 @@ import { decodePromptArgs, externalIdOf } from "@infrawrench/plugin-base";
  *  - POST /v2/reserved_ips/{ip}/actions
  *
  * Parameterless actions go through `invokeDropletAction` / `invokeVolumeAction`
- * / `invokeReservedIpAction`
- * — the host calls them from a `plugin-action` host action with a confirmation
+ * / `invokeReservedIpAction`:
+ * the host calls them from a `plugin-action` host action with a confirmation
  * dialog. Parameterised actions (snapshot name, resize size, rebuild image…)
  * arrive via `executeNoSqlCommand`, dispatched from `prompt-nosql-command` actions
  * whose modal collects the user's input first.
@@ -25,14 +25,14 @@ export interface ActionContext {
 
 /**
  * Wait for a DigitalOcean action to leave the "in-progress" state. POSTing to
- * `/v2/{resource}/{id}/actions` returns a queued action — GET `/v2/droplets`
+ * `/v2/{resource}/{id}/actions` returns a queued action: GET `/v2/droplets`
  * (or `/v2/volumes`) right after may still report stale data, which is what
  * causes "I renamed it but the UI didn't update until I refreshed". For
  * actions whose effect is observable on the next list call (rename, resize,
  * rebuild, restore, change_backup_policy), block until the action reports
  * "completed" so the host's post-action refresh sees the new state.
  *
- * Bounded — caps at ~12s for actions whose API call already returned 201.
+ * Bounded: caps at ~12s for actions whose API call already returned 201.
  * Snapshots and disk resizes can take minutes; for those we still resolve
  * after the cap so the UI unblocks, and the periodic 30s background refresh
  * eventually catches up.
@@ -57,7 +57,7 @@ async function awaitAction(
       if (status === "errored") throw new Error("DigitalOcean reported the action as errored");
     } catch (err) {
       // Only re-throw the explicit errored case above. Network blips during
-      // polling shouldn't fail the whole user action — fall through to next
+      // polling shouldn't fail the whole user action: fall through to next
       // attempt and let the periodic background refresh catch up later.
       if (err instanceof Error && err.message.includes("errored")) throw err;
     }
@@ -68,7 +68,7 @@ async function awaitAction(
  * Poll GET /v2/droplets/{id} until a derived predicate is satisfied (e.g.
  * `next_backup_window` is non-null after enable_backups). DO's action-poll
  * endpoint can report "completed" before the droplet object itself reflects
- * the change — the action-level wait isn't enough on its own for state-flip
+ * the change: the action-level wait isn't enough on its own for state-flip
  * actions like enable_backups / disable_backups / enable_ipv6, where the
  * button label depends on a field that updates separately from the action.
  *
@@ -90,7 +90,7 @@ async function awaitDropletState(
       const data = await ctx.fetch<{ droplet: Record<string, unknown> }>(`/droplets/${dropletId}`);
       if (predicate(data.droplet)) return;
     } catch {
-      // Tolerate transient errors — drop through to the next tick.
+      // Tolerate transient errors: drop through to the next tick.
     }
   }
 }
@@ -140,7 +140,7 @@ export async function invokeDropletAction(
   });
   // Lifecycle actions that flip droplet `status` (power_on/off/cycle, shutdown,
   // reboot) need to settle before the post-action listResources reflects the
-  // new state — otherwise the status dot stays stale. Backup/IPv6 toggles and
+  // new state, otherwise the status dot stays stale. Backup/IPv6 toggles and
   // password reset also benefit. Capped polling; long-runners fall through
   // to the periodic refresh.
   await awaitAction(ctx, resp);
@@ -149,7 +149,7 @@ export async function invokeDropletAction(
   // before the droplet object itself reflects the change, leaving the
   // Enable/Disable button stuck on its previous label. Wait for the
   // specific field that drives the button conditional in the renderer to
-  // catch up. Falls through silently on timeout — the periodic refresh
+  // catch up. Falls through silently on timeout: the periodic refresh
   // covers the worst case.
   if (actionId === "enable_backups") {
     await awaitDropletState(ctx, id, (d) => {
@@ -201,7 +201,7 @@ export async function executeDropletCommand(
     case "snapshot-named": {
       const name = (values["name"] ?? "").trim();
       if (!name) throw new Error("Snapshot name is required");
-      // Snapshots can take minutes — fire and forget. The next periodic
+      // Snapshots can take minutes: fire and forget. The next periodic
       // refresh (or the user's manual refresh) will pick up the new
       // snapshot id once DO has finished imaging the disk.
       await ctx.fetch(`/droplets/${id}/actions`, {
@@ -220,7 +220,7 @@ export async function executeDropletCommand(
       });
       // CPU/RAM-only resize finishes within seconds; disk resizes can be
       // multi-minute. We block only briefly so the modal doesn't hang on
-      // long disk grows — the background refresh covers the slow case.
+      // long disk grows: the background refresh covers the slow case.
       await awaitAction(ctx, resp, { maxAttempts: disk ? 6 : 12 });
       return null;
     }
@@ -232,7 +232,7 @@ export async function executeDropletCommand(
         method: "POST",
         body: JSON.stringify({ type: "rebuild", image: imagePayload }),
       });
-      // Rebuilds run multi-minute. Don't block — let background refresh handle it.
+      // Rebuilds run multi-minute. Don't block: let background refresh handle it.
       void resp;
       return null;
     }
@@ -299,7 +299,7 @@ export async function invokeVolumeAction(
 /**
  * Parameterless reserved-IP action: unassign the address from whichever
  * Droplet currently holds it. `POST /v2/reserved_ips/{ip}/actions` with
- * `{ type: "unassign" }` — no other body fields (per
+ * `{ type: "unassign" }`: no other body fields (per
  * `reserved_ip_action_unassign` in digitalocean/openapi).
  *
  * The address itself survives; only the Droplet binding goes away. That is

@@ -10,7 +10,7 @@ import { DeploymentResourceType } from "./resources/deployment.js";
 import { HardwareResourceType } from "./resources/hardware.js";
 import { FileResourceType } from "./resources/file.js";
 
-// Mark taken verbatim from the "Replicate glyph" SVG inlined on replicate.com —
+// Mark taken verbatim from the "Replicate glyph" SVG inlined on replicate.com:
 // three stepped corner polygons on a 1000×1000 canvas, drawn with
 // `fill="currentColor"` in their own nav. Scaled ÷16.7 and centred on the
 // 100×100 plugin canvas. The container uses Replicate's `branding-red`

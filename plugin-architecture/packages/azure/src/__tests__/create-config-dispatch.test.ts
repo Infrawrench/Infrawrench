@@ -4,7 +4,7 @@ import type { AzureCreateContext } from "../create-handlers-shared.js";
 
 function makeCtx(): AzureCreateContext {
   return {
-    // Items carry both `name` and a full ARM `id` — some handlers (function-app,
+    // Items carry both `name` and a full ARM `id`: some handlers (function-app,
     // sql-database) extract the resource group from `id` via a regex .match().
     get: vi.fn(async () => ({
       value: [

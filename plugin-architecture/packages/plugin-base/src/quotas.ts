@@ -10,15 +10,15 @@
  *   The two answer different questions and reading one as the other is how a
  *   "we're only at 60% of budget" report sits next to a failed deploy.
  * - A quota is **not a metric**. A metric is a number the provider samples
- *   continuously and we store as a series; a quota is a *pair* — a used figure
- *   and a limit — where the interesting value is the ratio, the limit moves
+ *   continuously and we store as a series; a quota is a *pair*: a used figure
+ *   and a limit, where the interesting value is the ratio, the limit moves
  *   when a support ticket is approved, and the reading comes from a management
  *   API on a cadence measured in hours. Storing it as a metric would lose the
  *   limit, which is the half that makes the number mean anything.
  *
  * The shape is a snapshot, not a series: plugins report what the provider says
  * right now, and the host builds the trend by reading repeatedly. That is the
- * `credits` stance, for the same reason — the provider will not tell you what
+ * `credits` stance, for the same reason: the provider will not tell you what
  * your vCPU usage was last Tuesday, so the only honest history is the one we
  * recorded ourselves.
  *
@@ -27,7 +27,7 @@
  * an account with an approved increase would then be reported as exhausted
  * while it has headroom, which is a false alarm about the one thing this
  * feature exists to be trusted about. When a provider publishes limits only in
- * prose and not in an API, the honest answer is to report nothing — see
+ * prose and not in an API, the honest answer is to report nothing: see
  * {@link QuotaCapabilityDeclaration} on why absence must never render as zero.
  */
 
@@ -36,7 +36,7 @@
  *
  * `used` and `limit` are in the same unit and both come from the provider.
  * Utilisation is `used / limit` and is computed by the host, once, so every
- * surface agrees — a plugin that pre-divides would be reporting a number the
+ * surface agrees: a plugin that pre-divides would be reporting a number the
  * host cannot re-derive when the limit later moves.
  */
 export interface QuotaUsage {
@@ -48,7 +48,7 @@ export interface QuotaUsage {
    * derived from the provider's own quota code and scope (`ec2/L-1216C47A`,
    * `compute/CPUS/europe-west1`) survives a limit increase, whereas one built
    * from the label or the value starts a fresh, empty trend the moment
-   * anything changes — which is exactly when the trend is worth having.
+   * anything changes, which is exactly when the trend is worth having.
    */
   id: string;
   /**
@@ -59,7 +59,7 @@ export interface QuotaUsage {
   /** Human label, the provider's own wording ("Running On-Demand Standard instances"). */
   name: string;
   /**
-   * Provider region this quota applies in. Omitted — never `"global"` — for a
+   * Provider region this quota applies in. Omitted (never `"global"`) for a
    * quota that genuinely has no region, because the surface renders an absent
    * region as "account-wide" and a literal `"global"` as a region called
    * global that no provider has.
@@ -95,15 +95,15 @@ export interface QuotaUsage {
  * Declared by a plugin whose client implements `fetchQuotas`.
  *
  * Its presence is what makes the host schedule a quota pass for the plugin's
- * accounts. Its absence means the surface shows **nothing** for those accounts
- * — never zero, never "0% used". An org whose provider exposes no quota API
+ * accounts. Its absence means the surface shows **nothing** for those accounts,
+ * never zero, never "0% used". An org whose provider exposes no quota API
  * and an org genuinely nowhere near its limits are not the same org, and a
  * screen that renders them identically is worse than one that admits it does
  * not know.
  *
  * The static half lives on the manifest (rather than being inferred from the
  * method's presence) so the host can answer "which of my providers can tell me
- * this?" without loading credentials — the same discovery reason `costs` and
+ * this?" without loading credentials: the same discovery reason `costs` and
  * `credits` are declared.
  */
 export interface QuotaCapabilityDeclaration {
@@ -141,7 +141,7 @@ export interface QuotaCapabilityDeclaration {
 
 /**
  * Thrown by `fetchQuotas` when the quotas cannot be read until the user does
- * something — usually attaching a policy or enabling an API.
+ * something: usually attaching a policy or enabling an API.
  *
  * Distinct from a transient failure for the reason {@link CreditAccessError}
  * and `NetworkFlowSetupError` are: "your credential cannot see this" and "the
@@ -198,7 +198,7 @@ export function normalizeQuotaUsage(readings: QuotaUsage[]): QuotaUsage[] {
 /**
  * Utilisation as a fraction of the limit. Defined in one place because the
  * poller's alert threshold, the digest line and the utilisation bar must all
- * agree — three implementations of `used / limit` is three chances to round
+ * agree: three implementations of `used / limit` is three chances to round
  * 79.6% to 80% in only two of them.
  *
  * Never clamped at 1: see {@link normalizeQuotaUsage}.

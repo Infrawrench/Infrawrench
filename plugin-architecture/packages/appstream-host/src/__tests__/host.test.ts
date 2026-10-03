@@ -172,7 +172,7 @@ describe("startAppServer", () => {
 
   it("listens for the channel's errors so an unhandled one cannot end the process", async () => {
     // A stream emits `error` whether or not anyone is listening, and an
-    // unhandled one is not catchable — it ends the process. On a server holding
+    // unhandled one is not catchable: it ends the process. On a server holding
     // other people's sessions that is everybody's outage.
     const ssh = readyHost();
     await startAppServer(ssh, { ...source, sessionId: "s" });
@@ -260,7 +260,7 @@ describe("listApps", () => {
     ]);
 
   it("stages, runs and deletes in a single exec", async () => {
-    // No session, no stdin of its own — so it does not need the two channels
+    // No session, no stdin of its own, so it does not need the two channels
     // the server does.
     const apps = [{ id: "firefox.desktop", name: "Firefox" }];
     const ssh = listingHost(JSON.stringify(apps));

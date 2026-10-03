@@ -20,7 +20,7 @@ export async function listCloudSqlInstances(
     const privateIp = String(ips.find((a) => a["type"] === "PRIVATE")?.["ipAddress"] ?? "");
     const databaseVersion = String(db["databaseVersion"] ?? "");
     const engine = engineInfoFromVersion(databaseVersion);
-    // `/projects/<p>/global/networks/<name>` — the VPC serving the private IP.
+    // `/projects/<p>/global/networks/<name>`: the VPC serving the private IP.
     const ipConfiguration = (db["settings"] as Record<string, unknown> | undefined)?.[
       "ipConfiguration"
     ] as Record<string, unknown> | undefined;
@@ -400,7 +400,7 @@ export async function listAlloyDbInstances(
         cpuCount,
         ipAddress,
         availabilityType: String(inst["availabilityType"] ?? ""),
-        // The cluster this instance was enumerated under — already in hand from
+        // The cluster this instance was enumerated under: already in hand from
         // the cluster listing, so the link costs nothing extra.
         cluster: lastSegment(parentFullName),
       },

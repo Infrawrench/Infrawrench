@@ -1,5 +1,5 @@
 /**
- * Principals — the identities that live *inside the customer's clouds*.
+ * Principals: the identities that live *inside the customer's clouds*.
  *
  * This is the declarative half of the cross-cloud access review: IAM users and
  * roles, GCP service accounts, Azure app registrations and managed identities,
@@ -10,17 +10,17 @@
  *
  * Three adjacent things are deliberately *not* this:
  *
- * - **Infrawrench's own team roles and permissions** (`permissions/catalog`) —
+ * - **Infrawrench's own team roles and permissions** (`permissions/catalog`):
  *   who can use Infrawrench.
- * - **The credentials Infrawrench itself holds** (credential hygiene) — the
+ * - **The credentials Infrawrench itself holds** (credential hygiene): the
  *   org's API keys, SSH keys and members' unused permissions.
- * - **Posture checks** — per-resource exposure rules over any resource type.
+ * - **Posture checks**: per-resource exposure rules over any resource type.
  *
  * Same contract as `orphanRule`, `expiryFields`, `dnsRole`, `lifecycle` and
  * `postureChecks`: evaluated over already-synced `fields`, **never an extra
  * provider API call, ever**. Only declare a key the type's lister genuinely
  * populates. A type whose lister would need a second API call to know when a
- * principal was last used must simply not declare `lastUsedKey` — the review
+ * principal was last used must simply not declare `lastUsedKey`: the review
  * then reports that principal's last use as *unknown*, which it renders as
  * such and never as "stale". Missing data must not accuse anybody.
  */
@@ -29,12 +29,12 @@
  * What kind of identity this type is. Drives grouping and labels on the access
  * review; it is not a permission model.
  *
- * - `"user"` — a human sign-in identity (an IAM user, a directory user).
- * - `"group"` — a collection of users that grants through membership.
- * - `"role"` — an assumable/assignable set of permissions.
- * - `"service-account"` — a non-human workload identity.
- * - `"key"` — a long-lived credential (API key, database password, token).
- * - `"binding"` — the link that grants a principal a role somewhere.
+ * - `"user"`: a human sign-in identity (an IAM user, a directory user).
+ * - `"group"`: a collection of users that grants through membership.
+ * - `"role"`: an assumable/assignable set of permissions.
+ * - `"service-account"`: a non-human workload identity.
+ * - `"key"`: a long-lived credential (API key, database password, token).
+ * - `"binding"`: the link that grants a principal a role somewhere.
  */
 export type PrincipalRole = "user" | "group" | "role" | "service-account" | "key" | "binding";
 
@@ -44,7 +44,7 @@ export type PrincipalRole = "user" | "group" | "role" | "service-account" | "key
  *
  * Every key defaults to the name most providers in this repo already use, so a
  * type whose lister stores `lastUsedAt`/`createdAt` needs only `{ role: "key" }`.
- * A defaulted key that the type does not declare is not an error — it just
+ * A defaulted key that the type does not declare is not an error: it just
  * means the review has no evidence for that question, which is a first-class
  * answer here.
  */
@@ -52,7 +52,7 @@ export interface PrincipalRoleDeclaration {
   /** What kind of identity instances of this type are. */
   role: PrincipalRole;
   /**
-   * Field holding the last time this principal was actually used — a console
+   * Field holding the last time this principal was actually used: a console
    * sign-in, a key's last request. Default `"lastUsedAt"`.
    *
    * **Only declare it when the lister already syncs it.** An absent or
@@ -68,7 +68,7 @@ export interface PrincipalRoleDeclaration {
   createdKey?: string;
   /**
    * Field whose value says the principal holds administrative or wildcard
-   * permissions — an attached policy name, a role slug, a permission list.
+   * permissions: an attached policy name, a role slug, a permission list.
    * Without `adminValues` the field is read as a boolean (the `dnsRole`
    * `privateKey` convention: truthiness is the test).
    */
@@ -79,7 +79,7 @@ export interface PrincipalRoleDeclaration {
    */
   adminValues?: string[];
   /**
-   * Field naming the principal this one hangs off — the user an access key
+   * Field naming the principal this one hangs off: the user an access key
    * belongs to, the identity a binding grants to. Display only: the review
    * shows it beside the row so a reviewer can tell whose key this is without
    * opening it.
@@ -87,7 +87,7 @@ export interface PrincipalRoleDeclaration {
   parentKey?: string;
   /**
    * Field that is truthy when the principal has multi-factor authentication
-   * enrolled. Only meaningful on `role: "user"` — a key or a binding cannot
+   * enrolled. Only meaningful on `role: "user"`: a key or a binding cannot
    * carry MFA, so declaring it elsewhere fails the manifest as dead config.
    *
    * A principal on a type that declares no `mfaKey` is never reported as
@@ -96,7 +96,7 @@ export interface PrincipalRoleDeclaration {
   mfaKey?: string;
   /**
    * `actionId` of an existing `"plugin-action"` this type's `invokeAction`
-   * accepts that **revokes** the principal — deactivate the membership,
+   * accepts that **revokes** the principal: deactivate the membership,
    * deactivate the key. The review's Revoke button dispatches it through the
    * ordinary invoke-action path; there is deliberately no bespoke provider
    * call anywhere in this feature.
@@ -114,7 +114,7 @@ export const DEFAULT_PRINCIPAL_LAST_USED_KEY = "lastUsedAt";
 export const DEFAULT_PRINCIPAL_CREATED_KEY = "createdAt";
 
 /**
- * The declaration with its defaults applied — the one place the default key
+ * The declaration with its defaults applied: the one place the default key
  * names live, so the host, the registry test and any future surface can never
  * disagree about which field a bare `{ role: "key" }` reads.
  */

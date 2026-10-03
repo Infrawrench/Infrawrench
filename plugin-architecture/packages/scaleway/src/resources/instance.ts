@@ -56,7 +56,7 @@ export const InstanceResourceType = rt({
       zone: "fr-par-1",
       commercialType: "DEV1-M",
       // Image label understood by createServer (and used as the image-picker
-      // fallback id) — display names like "Ubuntu 24.04 Noble Numbat" are not
+      // fallback id): display names like "Ubuntu 24.04 Noble Numbat" are not
       // valid image ids/labels for the API.
       image: "ubuntu_noble",
     },

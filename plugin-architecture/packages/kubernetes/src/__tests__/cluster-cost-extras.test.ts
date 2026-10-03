@@ -1,6 +1,6 @@
 /**
  * `computeClusterCost` against a fake cluster that also serves PVCs and
- * Services — the wiring from live API objects through attribution to money.
+ * Services: the wiring from live API objects through attribution to money.
  */
 
 import { describe, it, expect } from "vitest";
@@ -86,7 +86,7 @@ const CLAIMS = {
       status: { phase: "Bound", capacity: { storage: "50Gi" } },
     },
     {
-      // Never bound — no volume exists to charge for.
+      // Never bound: no volume exists to charge for.
       metadata: { name: "waiting", namespace: "app", uid: "c3", creationTimestamp: "x" },
       spec: { resources: { requests: { storage: "20Gi" } } },
       status: { phase: "Pending" },
@@ -107,7 +107,7 @@ const SERVICES = {
       spec: { type: "ClusterIP", selector: { app: "web" }, clusterIP: "10.0.0.5" },
     },
     {
-      // Provisioning has not completed — counted, not charged.
+      // Provisioning has not completed: counted, not charged.
       metadata: { name: "pending-lb", namespace: "app", uid: "s3", creationTimestamp: "x" },
       spec: { type: "LoadBalancer", selector: { app: "nothing" } },
       status: { loadBalancer: {} },
@@ -237,7 +237,7 @@ describe("computeClusterCost with storage and load balancers", () => {
 
     expect(result.extrasUnavailable).toBe(true);
     expect(result.allocation.storage.count).toBe(0);
-    // Compute is untouched — one forbidden list must not cost the whole pane.
+    // Compute is untouched: one forbidden list must not cost the whole pane.
     expect(result.allocation.pricedNodeCount).toBe(1);
     expect(result.allocation.workloads.find((w) => w.workload === "web")).toBeDefined();
     // And the load balancers still came through.

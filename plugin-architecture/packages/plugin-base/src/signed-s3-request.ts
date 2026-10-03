@@ -4,7 +4,7 @@
  * Multiple plugin clients (AWS, DigitalOcean Spaces, Scaleway Object Storage,
  * …) talk to S3-compatible APIs that require AWS Signature Version 4. Each
  * one was hand-rolling the SigV4 dance against WebCrypto. Three copies of a
- * security primitive is a smell — this helper consolidates the signing onto
+ * security primitive is a smell: this helper consolidates the signing onto
  * `@smithy/signature-v4` + `@aws-crypto/sha256-js`, the same primitives the
  * AWS SDK v3 uses.
  *
@@ -42,7 +42,7 @@ export interface SignedS3FetchOptions {
 /**
  * Sign an S3-compatible request with AWS SigV4 and `fetch` it.
  *
- * Returns the raw `Response`; non-2xx responses are not thrown — callers
+ * Returns the raw `Response`; non-2xx responses are not thrown: callers
  * inspect `res.ok` and `res.text()` themselves so they can format
  * vendor-flavoured error messages.
  */

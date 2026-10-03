@@ -2,12 +2,12 @@
  * Prepaid-credit contract.
  *
  * Distinct from the cost contract next door, and deliberately so. `costs` is
- * "what did this account spend" — a time series, backfilled, dimensioned.
+ * "what did this account spend": a time series, backfilled, dimensioned.
  * `credits` is "how much is left in the pot", a single number the provider
  * either exposes or does not. Most providers bill in arrears and have no pot;
  * the ones that do (prepaid AI inference, trial grants, committed-spend
  * balances) are exactly the ones where running out is an *outage*, not an
- * invoice — the API stops answering.
+ * invoice: the API stops answering.
  *
  * That is the whole reason this exists as its own capability: a balance
  * without a burn rate is a number nobody acts on, and the host can compute the
@@ -19,7 +19,7 @@
 export interface CreditsCapabilityDeclaration {
   /**
    * What the provider calls it, for the UI: "Credits", "Prepaid balance",
-   * "Account balance". Defaults to "Credits" when absent — using the
+   * "Account balance". Defaults to "Credits" when absent: using the
    * provider's own word matters because the user is going to go and look for
    * it in the provider's console.
    */
@@ -43,7 +43,7 @@ export interface CreditsCapabilityDeclaration {
 export interface CreditBalance {
   /**
    * Stable identity for this pot within the account, so successive collections
-   * line up into a series. A currency code, a grant id — whatever the provider
+   * line up into a series. A currency code, a grant id: whatever the provider
    * makes stable. Plugins returning a single balance can use `"default"`.
    */
   key: string;
@@ -69,7 +69,7 @@ export interface CreditBalance {
 
 /**
  * Thrown by `fetchCreditBalance` when the balance cannot be read until the
- * user does something — usually swapping in a credential with billing scope.
+ * user does something: usually swapping in a credential with billing scope.
  * The host surfaces `message` and the link verbatim rather than reporting a
  * generic failure, because "your key can't see this" and "the provider is
  * down" want completely different reactions.

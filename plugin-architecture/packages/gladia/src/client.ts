@@ -44,7 +44,7 @@ const MAX_POLL_WAIT_MS = 120_000;
  * Largest clip the Speech panel will accept, in bytes.
  *
  * This is deliberately far below the provider's own ceiling. The panel ships
- * audio base64-encoded inside a JSON body, and base64 inflates by 4/3 — with
+ * audio base64-encoded inside a JSON body, and base64 inflates by 4/3: with
  * the web ingress at `proxy-body-size: 36m` the real raw-audio ceiling is
  * ~27 MB, and a clip large enough to matter also blows up `FileReader`
  * (`RangeError: Invalid string length`) before it ever reaches the network.
@@ -185,7 +185,7 @@ function statusDot(status: string): "healthy" | "degraded" | "error" | "provisio
 /**
  * Gladia plugin client.
  *
- * Auth is `x-gladia-key: <key>` — Gladia does not use Bearer. Every endpoint
+ * Auth is `x-gladia-key: <key>`: Gladia does not use Bearer. Every endpoint
  * used here is verified against https://docs.gladia.io/api-reference (see the
  * per-method comments).
  */
@@ -223,7 +223,7 @@ export class GladiaClient implements PluginClient {
   }
 
   /**
-   * Issue a request whose response body we do not want parsed as JSON — the
+   * Issue a request whose response body we do not want parsed as JSON: the
    * only such call here is `DELETE /v2/pre-recorded/{id}`, which answers 202
    * with no body. `jsonRestFetch` would try to `JSON.parse("")` and throw.
    */
@@ -290,7 +290,7 @@ export class GladiaClient implements PluginClient {
       if (outputKey === "resultUrl") return `${BASE_URL}/v2/pre-recorded/${id}`;
       if (outputKey === "fullTranscript") {
         const job = await this.fetchJob(id);
-        // `result` is null unless status === "done" — optional-chain it.
+        // `result` is null unless status === "done": optional-chain it.
         return str(job.result?.transcription?.full_transcript);
       }
     }
@@ -375,7 +375,7 @@ export class GladiaClient implements PluginClient {
     if (typeId !== "transcription") {
       throw new Error(`Gladia plugin: cannot delete type "${typeId}"`);
     }
-    // DELETE /v2/pre-recorded/{id} — verified 2026-07-28 against
+    // DELETE /v2/pre-recorded/{id}: verified 2026-07-28 against
     // https://docs.gladia.io/api-reference/v2/pre-recorded/delete
     // 202 Accepted on success; 403 when the job is not in a deletable state.
     await this.requestVoid(
@@ -423,7 +423,7 @@ export class GladiaClient implements PluginClient {
     };
 
     // `language_config` is an object, and the docs explicitly warn against
-    // enabling `code_switching` alongside an empty `languages` list — so for
+    // enabling `code_switching` alongside an empty `languages` list, so for
     // auto-detect we omit the whole key rather than sending an empty one.
     if (payload.language && payload.language !== GLADIA_AUTO_LANGUAGE) {
       body["language_config"] = { languages: [payload.language], code_switching: false };
@@ -485,14 +485,14 @@ export class GladiaClient implements PluginClient {
   }
 
   /**
-   * POST /v2/upload — verified 2026-07-28 against
+   * POST /v2/upload: verified 2026-07-28 against
    * https://docs.gladia.io/api-reference/v2/upload/audio-file
    *
    * multipart/form-data with a single part named `audio`. The body is encoded
    * by hand (see ./multipart.ts) rather than handed to `FormData`, so the call
    * still goes through the host HTTP service and keeps bastion routing + CA.
    * The clip's Content-Type is whatever MediaRecorder or the file picker
-   * produced — forwarded verbatim, never transcoded.
+   * produced: forwarded verbatim, never transcoded.
    */
   private async uploadAudio(
     bytes: Uint8Array,
@@ -521,7 +521,7 @@ export class GladiaClient implements PluginClient {
   }
 
   /**
-   * POST /v2/pre-recorded — verified 2026-07-28 against
+   * POST /v2/pre-recorded: verified 2026-07-28 against
    * https://docs.gladia.io/api-reference/v2/pre-recorded/init
    * Returns 201 `{id, result_url}`.
    */
@@ -536,7 +536,7 @@ export class GladiaClient implements PluginClient {
    * Poll `GET /v2/pre-recorded/{id}` until the job leaves `queued`/`processing`.
    *
    * A *failed* job comes back as HTTP 200 with `status: "error"`, so the body
-   * is what decides success — never the status code.
+   * is what decides success, never the status code.
    */
   private async pollJob(jobId: string): Promise<GladiaJob> {
     const deadline = Date.now() + MAX_POLL_WAIT_MS;
@@ -567,7 +567,7 @@ export class GladiaClient implements PluginClient {
   }
 
   /**
-   * GET /v2/pre-recorded/{id} — verified 2026-07-28 against
+   * GET /v2/pre-recorded/{id}: verified 2026-07-28 against
    * https://docs.gladia.io/api-reference/v2/pre-recorded/get
    */
   private async fetchJob(jobId: string): Promise<GladiaJob> {
@@ -575,7 +575,7 @@ export class GladiaClient implements PluginClient {
   }
 
   /**
-   * GET /v2/pre-recorded — verified 2026-07-28 against
+   * GET /v2/pre-recorded: verified 2026-07-28 against
    * https://docs.gladia.io/api-reference/v2/pre-recorded/list
    *
    * The envelope is `{first, current, next, items}` with **no total**, so

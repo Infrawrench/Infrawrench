@@ -18,7 +18,7 @@ import type { ZstdDecompress } from "./pixels.js";
 export const AUDIO_HEADER_LEN = 12;
 
 /**
- * The stream (re)started — first chunk after silence or a mixer restart. The
+ * The stream (re)started: first chunk after silence or a mixer restart. The
  * player drops whatever it had scheduled and starts fresh rather than
  * treating the discontinuity as an underrun.
  */
@@ -65,7 +65,7 @@ export function decodeAudioChunk(payload: Uint8Array): AudioChunk {
 
 /**
  * A chunk's samples as an `Int16Array`, decompressing if needed. The `zstd`
- * decompressor is injected exactly as it is for pixels — the browser brings
+ * decompressor is injected exactly as it is for pixels: the browser brings
  * fzstd, a Node test brings `node:zlib`.
  */
 export function audioChunkPcm(chunk: AudioChunk, zstd?: ZstdDecompress): Int16Array {

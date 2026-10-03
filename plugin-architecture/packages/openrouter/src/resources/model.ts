@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 /**
  * A model in the OpenRouter catalogue.
  *
- * Docs: https://openrouter.ai/openapi.json  (GET /models — `limit` max 1000,
+ * Docs: https://openrouter.ai/openapi.json  (GET /models; `limit` max 1000,
  * `offset` for pagination; modality filters via `output_modalities`).
  * Prices arrive as decimal strings in USD *per token*; the plugin normalises
  * them to per-million-token numbers so the list is comparable at a glance.
@@ -51,7 +51,7 @@ export const ModelResourceType = rt({
     o("canonicalSlug", "Canonical Slug"),
   ],
   // The detail view has offered a Metrics tab since it was written, but the
-  // host only calls `fetchMetricSeries` for types that declare this — so the
+  // host only calls `fetchMetricSeries` for types that declare this, so the
   // per-model spend and request series from `/activity` never reached it.
   supportsMetrics: true,
   iconKey: "cpu",

@@ -12,7 +12,7 @@ export async function listLogSinks(
   const items = data.sinks ?? [];
   return items.map((sink) => {
     const name = String(sink["name"]);
-    // `destination` is a service-qualified URI — the target's own id is the tail
+    // `destination` is a service-qualified URI: the target's own id is the tail
     // of it, and matching is exact, so parse each supported form into the shape
     // the destination resource is actually keyed by. Log buckets
     // (`logging.googleapis.com/…`) are deliberately unparsed: Infrawrench does

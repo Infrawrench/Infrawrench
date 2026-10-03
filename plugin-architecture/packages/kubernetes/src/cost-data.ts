@@ -12,21 +12,21 @@
  *
  *  - There is no namespace dimension, so namespace / workload / workload_kind
  *    ride along as **tags**. The declaration lists `tag` for exactly this.
- *  - `service` is a small stable set — `kubernetes-workload`, `kubernetes-idle`,
+ *  - `service` is a small stable set: `kubernetes-workload`, `kubernetes-idle`,
  *    `kubernetes-system-reserved`, `kubernetes-control-plane`,
  *    `kubernetes-storage`, `kubernetes-storage-idle` and
- *    `kubernetes-load-balancer` — rather than one value per namespace, so the
+ *    `kubernetes-load-balancer`, rather than one value per namespace, so the
  *    service breakdown stays a legible partition of the cluster's bill. The
  *    labels **partition**: every unit of money appears under exactly one, which
  *    is why a workload's row carries its compute share only and its disks and
  *    load balancers get rows of their own.
- *  - `resourceId` is the object's identity — `namespace/Kind/name` for a
- *    workload, a claim or a Service — which the cost model already guarantees
+ *  - `resourceId` is the object's identity (`namespace/Kind/name` for a
+ *    workload, a claim or a Service) which the cost model already guarantees
  *    is stable across runs.
  *
  * Re-running a day must reproduce identical dimension keys or the host's
  * ReplacingMergeTree dedupe inserts duplicates instead of replacing. Every key
- * component here is derived from cluster state and a fixed label set — no
+ * component here is derived from cluster state and a fixed label set: no
  * timestamps, no iteration order, no `Map` insertion order leaking into a key.
  * The aggregation map is keyed the same way `vercel/src/cost-data.ts` keys
  * its own.
@@ -37,11 +37,11 @@ import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import type { ClusterAllocation } from "./cost-model.js";
 import { SYSTEM_NAMESPACES } from "./resource-listers.js";
 
-/** Stable service labels. Changing one of these re-keys history — don't. */
+/** Stable service labels. Changing one of these re-keys history: don't. */
 export const SERVICE_WORKLOAD = "kubernetes-workload";
 export const SERVICE_IDLE = "kubernetes-idle";
 const SERVICE_SYSTEM_RESERVED = "kubernetes-system-reserved";
-/** Attributed PersistentVolumeClaims — a workload's or a namespace's disks. */
+/** Attributed PersistentVolumeClaims: a workload's or a namespace's disks. */
 export const SERVICE_STORAGE = "kubernetes-storage";
 /** Bound volumes nothing mounts. Idle capacity in disk form, own bucket. */
 export const SERVICE_STORAGE_IDLE = "kubernetes-storage-idle";
@@ -55,7 +55,7 @@ export const SERVICE_CONTROL_PLANE = "kubernetes-control-plane";
  *
  * A cluster has no history: `/api/v1/pods` says what is running *now*, not
  * what ran last Tuesday. So a collection pass can only honestly date its rows
- * to the most recent day in the requested range — today, in the normal case.
+ * to the most recent day in the requested range: today, in the normal case.
  * The manifest asks for a 1-day window precisely so the host never requests
  * history this plugin cannot produce; each daily run appends one more day and
  * the series builds up over time.
@@ -85,7 +85,7 @@ function tagsFor(
 /**
  * Turn one cluster allocation into cost rows for a single day.
  *
- * Returns `[]` when nothing could be priced — writing zero-amount rows would
+ * Returns `[]` when nothing could be priced: writing zero-amount rows would
  * assert "this cluster costs nothing", which is a different and false claim
  * from "we don't know what this cluster costs".
  */
@@ -129,14 +129,14 @@ export function allocationToCostRows(
   }
 
   // Storage, one row per claim. Attributed to the workload that mounts it where
-  // exactly one does, and otherwise to the namespace with an empty workload tag
-  // — a shared ReadWriteMany volume genuinely belongs to no single workload,
+  // exactly one does, and otherwise to the namespace with an empty workload tag:
+  // a shared ReadWriteMany volume genuinely belongs to no single workload,
   // and splitting it N ways would be an invented apportionment.
   for (const volume of allocation.storage.volumes) {
     if (volume.unbound) continue;
     const resourceId = `${volume.namespace}/PersistentVolumeClaim/${volume.name}`;
     if (volume.unattached) {
-      // Its own service, so it never inflates a tenant's namespace total — but
+      // Its own service, so it never inflates a tenant's namespace total, but
       // the namespace tag is kept, because whoever has to run `kubectl delete
       // pvc` needs to know where to run it.
       push(
@@ -200,7 +200,7 @@ export function allocationToCostRows(
     allocation.dailyControlPlaneCost,
   );
 
-  // Sorted so the emitted order is deterministic too — not required for
+  // Sorted so the emitted order is deterministic too, not required for
   // dedupe, but it makes a diff of two runs readable.
   return [...buckets.values()]
     .sort((a, b) => a.service.localeCompare(b.service) || a.resourceId.localeCompare(b.resourceId))

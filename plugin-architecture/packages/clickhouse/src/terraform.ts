@@ -15,12 +15,12 @@ function clickhouseCloudProvider(raw: string): string | null {
 }
 
 /**
- * Terraform mapping for ClickHouse Cloud — provider `ClickHouse/clickhouse`.
+ * Terraform mapping for ClickHouse Cloud: provider `ClickHouse/clickhouse`.
  * Attribute names verified against the provider docs
  * (registry.terraform.io/providers/ClickHouse/clickhouse):
  *   - clickhouse_service: `name`, `cloud_provider`, `region` required;
  *     idle_scaling, min/max_replica_memory_gb, num_replicas optional.
- * Only ch-service is mapped — databases inside a service are not separate TF resources.
+ * Only ch-service is mapped: databases inside a service are not separate TF resources.
  * Cloud API credentials map to organization_id + token_key/token_secret.
  */
 export const clickhouseTerraformExport: TerraformExportCapability = {

@@ -4,7 +4,7 @@
  * A plugin whose provider publishes a public status page declares a
  * `statusFeed` on its manifest and implements `Plugin.parseStatusFeed`.
  * The host owns scheduling (a low-frequency background pass), fetching
- * (through the egress proxy — the feed is public, so no credentials are
+ * (through the egress proxy; the feed is public, so no credentials are
  * involved), storage, and correlation against the resources an org holds;
  * the plugin owns everything provider-specific: which feed to poll, how to
  * parse its wire format, and how to map feed components onto the plugin's
@@ -13,14 +13,14 @@
  * The mapper contract that makes correlation work: `StatusIncident.regions`
  * must contain the same region identifiers the plugin writes into
  * `ResourceInstance.fields.region` (e.g. "nyc3" for DigitalOcean,
- * "us-central1" for GCP). The host matches purely on string equality — it
+ * "us-central1" for GCP). The host matches purely on string equality: it
  * knows nothing about any provider's region naming.
  */
 
 /** Declares that this plugin's provider publishes a public status feed. */
 export interface StatusFeedDeclaration {
   /**
-   * Public machine-readable status feed URL. Must require no credentials —
+   * Public machine-readable status feed URL. Must require no credentials:
    * the host polls it anonymously and infrequently, so there is no
    * rate-limit budget to declare.
    */
@@ -29,9 +29,9 @@ export interface StatusFeedDeclaration {
    * Wire format of the feed. Informational for the host (it fetches bytes
    * and hands them to `parseStatusFeed` either way) and documentation for
    * humans:
-   *   - "statuspage-v2" — Atlassian Statuspage `/api/v2/*.json`
-   *   - "custom-json"   — provider-specific JSON (GCP, AWS Health, …)
-   *   - "rss" / "atom"  — XML feeds, for providers that publish nothing else
+   *   - "statuspage-v2": Atlassian Statuspage `/api/v2/*.json`
+   *   - "custom-json"   - provider-specific JSON (GCP, AWS Health, …)
+   *   - "rss" / "atom"  - XML feeds, for providers that publish nothing else
    */
   format: "statuspage-v2" | "custom-json" | "rss" | "atom";
   /**
@@ -73,7 +73,7 @@ export interface StatusIncident {
   /** Plain-text body of the most recent provider update, HTML stripped. */
   lastUpdateText?: string;
   /**
-   * Plugin-native region ids affected — the exact strings this plugin
+   * Plugin-native region ids affected: the exact strings this plugin
    * writes into `ResourceInstance.fields.region`. Empty when the feed
    * doesn't scope the incident to regions (correlation then falls back to
    * `services` / `providerWide`).
@@ -89,7 +89,7 @@ export interface StatusIncident {
   resourceTypes?: string[];
   /**
    * True when the incident affects the provider as a whole (or the feed
-   * gives no usable scoping) — the host then treats every resource on this
+   * gives no usable scoping): the host then treats every resource on this
    * plugin as potentially affected.
    */
   providerWide?: boolean;
@@ -177,7 +177,7 @@ function normalizeStatuspageImpact(
 }
 
 /**
- * Strip HTML tags and collapse whitespace — feeds embed markup in updates,
+ * Strip HTML tags and collapse whitespace: feeds embed markup in updates,
  * sometimes entity-encoded (RSS descriptions), so angle-bracket entities are
  * decoded before tags are stripped and `&amp;` is decoded last.
  */
@@ -199,9 +199,9 @@ export function stripStatusHtml(html: string): string {
  * Parse an Atlassian Statuspage `/api/v2/incidents/unresolved.json` (or the
  * `incidents` half of `summary.json`) response body into normalized
  * incidents. This is the near-free path for the many providers whose status
- * page is Statuspage-backed — a plugin supplies only the component mapper.
+ * page is Statuspage-backed: a plugin supplies only the component mapper.
  *
- * Malformed bodies throw — the host logs the failure against the plugin's
+ * Malformed bodies throw: the host logs the failure against the plugin's
  * feed rather than silently no-opping.
  */
 export function parseStatuspageIncidents(
@@ -232,7 +232,7 @@ export function parseStatuspageIncidents(
       for (const t of mapping.resourceTypes ?? []) resourceTypes.add(t);
       if (mapping.providerWide) providerWide = true;
     }
-    // Every named component was deliberately ignored — the incident cannot
+    // Every named component was deliberately ignored: the incident cannot
     // affect infrastructure this plugin manages.
     if (!mappedAny) continue;
     const updates = raw.incident_updates ?? [];
@@ -276,7 +276,7 @@ function firstTag(xml: string, tag: string): string | undefined {
 }
 
 /**
- * Minimal hand-rolled RSS 2.0 / Atom item extractor — plugin-base takes no
+ * Minimal hand-rolled RSS 2.0 / Atom item extractor: plugin-base takes no
  * runtime dependencies, and status feeds are shallow enough that a
  * tag-scanner beats dragging in an XML parser. Returns items newest-first
  * in feed order; the plugin decides which items represent active incidents.

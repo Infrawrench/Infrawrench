@@ -14,7 +14,7 @@ import {
 export async function getManifest(resourceId: string, k8sFetch: K8sFetch): Promise<string> {
   const path = buildResourcePath(resourceId);
   const raw = await k8sFetch<Record<string, unknown>>(path);
-  // Strip managed fields — they're noisy and kubectl hides them by default
+  // Strip managed fields: they're noisy and kubectl hides them by default
   if (raw.metadata && typeof raw.metadata === "object") {
     delete (raw.metadata as Record<string, unknown>).managedFields;
   }

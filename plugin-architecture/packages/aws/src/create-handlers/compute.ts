@@ -17,7 +17,7 @@ import { createEksCluster } from "./eks.js";
  * but EC2 `RunInstances` expects `KeyName` to refer to a key pair already imported in
  * the target region. Import the material idempotently into a content-addressed name and
  * return that name. If a pair with the same hashed name already exists, AWS responds
- * with `InvalidKeyPair.Duplicate` — safe to ignore since the name is derived from the
+ * with `InvalidKeyPair.Duplicate`: safe to ignore since the name is derived from the
  * key material itself.
  */
 async function ensureEc2KeyPair(rctx: AwsCreateContext, publicKey: string): Promise<string> {
@@ -45,7 +45,7 @@ async function ensureEc2KeyPair(rctx: AwsCreateContext, publicKey: string): Prom
 /**
  * Find or create a shared "infrawrench-agent-ssh" security group with TCP/22
  * open, in the region's default VPC. Used when `openSshPort=true` is submitted
- * without an explicit security group — notably the Agents VM flow, which
+ * without an explicit security group: notably the Agents VM flow, which
  * submits only field defaults. Without this, the instance lands in the default
  * security group, where port 22 is typically closed and SSH setup can never
  * reach the VM.
@@ -733,8 +733,8 @@ export async function computeGetCreateConfig(
   }
   if (typeId === "lambda-function") {
     // Fetch IAM roles for the execution role selector. Service-linked roles
-    // (path `/aws-service-role/`) cannot be used as Lambda execution roles —
-    // PassRole rejects them — so exclude them from the list.
+    // (path `/aws-service-role/`) cannot be used as Lambda execution roles
+    // (PassRole rejects them) so exclude them from the list.
     const rolesRaw = await ctx
       .ec2Query<Record<string, unknown>>("iam", "ListRoles", "2010-05-08")
       .catch(() => ({}) as Record<string, unknown>);
@@ -743,7 +743,7 @@ export async function computeGetCreateConfig(
       (rolesResult?.["Roles"] as Record<string, unknown> | undefined)?.["member"],
     ) as Record<string, unknown>[];
     const assumableByLambda = (r: Record<string, unknown>): boolean => {
-      // Try the trust policy first — that's the authoritative signal. The
+      // Try the trust policy first: that's the authoritative signal. The
       // policy is URL-encoded JSON in `AssumeRolePolicyDocument`.
       const raw = r["AssumeRolePolicyDocument"];
       if (typeof raw === "string" && raw.length > 0) {

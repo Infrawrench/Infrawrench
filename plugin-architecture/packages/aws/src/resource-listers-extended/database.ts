@@ -188,7 +188,7 @@ export async function listNeptuneClusters(
   // transport layer (see client-transport.ts resolveEndpoint): the SDK's
   // neptune.<region> endpoint template does not resolve in DNS. Neptune
   // shares the DescribeDBClusters action (and control plane) with RDS, so
-  // the RDS host is the one that actually works — do not "fix" this back to
+  // the RDS host is the one that actually works: do not "fix" this back to
   // a neptune.* host.
   const data = await ctx.ec2Query<Record<string, unknown>>(
     "neptune",
@@ -368,7 +368,7 @@ export async function listEFSFileSystems(
  *
  * The RDS-family cluster APIs (`DescribeDBClusters`, and the DocumentDB /
  * Neptune variants of it) report a cluster's network placement as nothing but
- * the subnet group's *name* — unlike `DescribeDBInstances`, which inlines the
+ * the subnet group's *name*: unlike `DescribeDBInstances`, which inlines the
  * whole group. Listing the groups as their own resource turns that bare name
  * into a real edge, and gives clusters the `→ vpc` / `→ subnet` reach they
  * otherwise have no route to.

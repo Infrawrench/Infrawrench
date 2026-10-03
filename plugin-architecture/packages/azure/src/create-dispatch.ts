@@ -1,5 +1,5 @@
 /**
- * `createResource` dispatch — maps a plugin type-id to the matching
+ * `createResource` dispatch: maps a plugin type-id to the matching
  * `create*` executor from the per-service `<service>-create-handlers.ts`
  * modules. Sibling of `create-config-dispatch.ts` and mirrors its branch
  * order, so the two tables stay easy to diff: every type-id that

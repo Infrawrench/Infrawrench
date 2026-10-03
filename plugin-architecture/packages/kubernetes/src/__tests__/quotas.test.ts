@@ -3,7 +3,7 @@ import { fetchK8sQuotas, quotaReadingsFor, resourceLabel, unitForResource } from
 
 /**
  * A `ResourceQuotaList` in the shape `GET /api/v1/resourcequotas` returns.
- * `status.hard` and `status.used` are `resource.Quantity` strings — `8500m`
+ * `status.hard` and `status.used` are `resource.Quantity` strings: `8500m`
  * is 8.5 cores and `40Gi` is 42,949,672,960 bytes, which is the whole reason
  * `parseQuantity` sits between the API and the reading.
  */
@@ -85,7 +85,7 @@ describe("quotaReadingsFor", () => {
     expect(readings.every((r) => r.service === "team-a")).toBe(true);
   });
 
-  // The API server omits a `used` entry only when nothing consumes it — that
+  // The API server omits a `used` entry only when nothing consumes it: that
   // genuinely is zero, and dropping the row would hide a fresh namespace's
   // whole quota.
   it("reads a missing used entry as zero", () => {
@@ -107,7 +107,7 @@ describe("quotaReadingsFor", () => {
     expect(readings).toEqual([]);
   });
 
-  // A key in `used` but not `hard` is consumption under no ceiling — it has no
+  // A key in `used` but not `hard` is consumption under no ceiling: it has no
   // utilisation and belongs on a usage screen, not a radar.
   it("iterates hard, not used", () => {
     const readings = quotaReadingsFor({

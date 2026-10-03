@@ -2,12 +2,12 @@ import type { SecretResolution } from "./secrets.js";
 import type { CreateFieldConfig } from "./create.js";
 
 /**
- * Component schema — a sealed discriminated union of renderable primitives.
+ * Component schema: a sealed discriminated union of renderable primitives.
  *
  * Plugins return these plain data structures. The host app owns all React code
  * and interprets the schema. Plugins have zero UI framework dependencies.
  *
- * Actions are typed host operations — plugins cannot inject arbitrary handlers.
+ * Actions are typed host operations: plugins cannot inject arbitrary handlers.
  */
 
 export type HostAction =
@@ -17,7 +17,7 @@ export type HostAction =
        * Reissue an output upstream by delegating to whichever resource supplied
        * the current credential. Emitted by peer plugins when the resource is
        * peer-spawned (no local secretState) and the connection flowed in from
-       * a parent's outputs — e.g. a `pg-database` opened from a Neon database.
+       * a parent's outputs, e.g. a `pg-database` opened from a Neon database.
        * The host walks up to the parent and calls `parentClient.rerollOutput`,
        * mapping `outputKey` (on the child) through the integration's
        * `credentialMappings` to the parent output that originally produced it.
@@ -48,11 +48,11 @@ export type HostAction =
       confirmMessage?: string;
       successMessage?: string;
       /**
-       * Marks the action as destructive — it deletes data or capacity that
+       * Marks the action as destructive: it deletes data or capacity that
        * cannot be trivially recreated (delete an index, purge a cache, drop a
        * model). The host uses this generically: during an org change freeze
        * the server refuses destructive actions, and clients may render extra
-       * warnings. Restarts/reboots are disruptive but not destructive — leave
+       * warnings. Restarts/reboots are disruptive but not destructive: leave
        * this unset for them.
        */
       destructive?: boolean;
@@ -61,7 +61,7 @@ export type HostAction =
       /**
        * Invoke a plugin-defined NoSQL command after showing the user a form.
        * The form uses the same `CreateFieldConfig` shape as the standard
-       * create modal — supporting text, select, number, region-picker,
+       * create modal: supporting text, select, number, region-picker,
        * resource-picker, showWhen conditionals, and so on. On submit, the
        * host calls `client.executeNoSqlCommand(...)` with the form values
        * keyed by `field.key`.
@@ -79,7 +79,7 @@ export type HostAction =
        */
       descriptionVariant?: "info" | "error";
       /**
-       * When true, the prompt is informational only — the host hides the
+       * When true, the prompt is informational only: the host hides the
        * form fields and the submit button, leaving just the title,
        * description, and a single Close button. Use when the action can't
        * proceed (e.g. nothing available to pick). Pair with
@@ -109,7 +109,7 @@ export interface BadgeNode {
 
 /**
  * Health/lifecycle status for infrastructure resources.
- * "info" — static blue, used for resources we can't directly connect to and
+ * "info": static blue, used for resources we can't directly connect to and
  * therefore can't actively health-check (e.g. private-VPC managed services).
  */
 export type ResourceStatus = "healthy" | "degraded" | "error" | "unknown" | "provisioning" | "info";
@@ -205,7 +205,7 @@ export interface TableRow {
 }
 
 /**
- * A generic tabular display — ideal for schema/column listings, policy rules,
+ * A generic tabular display: ideal for schema/column listings, policy rules,
  * and other grid-shaped metadata. Platform-agnostic; plugins supply the columns
  * and rows, host owns the rendering.
  */
@@ -237,7 +237,7 @@ export interface DashboardStat {
 }
 
 /**
- * Dashboard card — always rendered as:
+ * Dashboard card: always rendered as:
  *   ┌──────────────┐
  *   │   [logo svg] │
  *   │  <name>      │
@@ -258,12 +258,12 @@ export interface DashboardCardSchema {
   /**
    * When set, clicking the pill triggers this action instead of navigating
    * to the linked resource. Useful for pseudo-resource pills (sub-objects
-   * that aren't full registered resource types — e.g. Firestore indexes or
+   * that aren't full registered resource types, e.g. Firestore indexes or
    * backup schedules) that still want a click-to-delete affordance.
    */
   onClickAction?: HostAction;
   /**
-   * When true, the pill is rendered as a static informational chip — no
+   * When true, the pill is rendered as a static informational chip: no
    * click handler, no navigation arrow. Use for read-only sub-objects
    * like completed operations that have no detail page to navigate to.
    */
@@ -274,7 +274,7 @@ export interface DashboardCardSchema {
 export interface SqlTableMeta {
   name: string;
   columns: Array<{ name: string; type: string }>;
-  /** Primary key column names — enables inline row editing in the SQL editor */
+  /** Primary key column names: enables inline row editing in the SQL editor */
   pkColumns?: string[];
 }
 
@@ -287,7 +287,7 @@ export interface SqlEditorCapability {
   /** Key in the host's credentials/resolved-outputs that holds the connection string */
   connectionStringOutputKey: string;
   defaultQuery?: string;
-  /** Pre-fetched table/column metadata — populated by the host before calling renderDetail() */
+  /** Pre-fetched table/column metadata: populated by the host before calling renderDetail() */
   tables?: SqlTableMeta[];
   /**
    * When true, the host renders an "Estimate" button next to "Run" in the SQL
@@ -331,7 +331,7 @@ export interface StorageBrowserCapability {
   bucketName: string;
 }
 
-/** One key in a KV namespace — returned by listKvKeys(). */
+/** One key in a KV namespace: returned by listKvKeys(). */
 export interface KvKeyEntry {
   /** Key name. */
   name: string;
@@ -355,7 +355,7 @@ export interface KvListResult {
  * putKvValue / deleteKvKey.
  *
  * Aimed at provider KV stores with a REST surface (Cloudflare Workers KV,
- * Vercel Edge Config, etc.). Values are treated as UTF-8 strings — binary
+ * Vercel Edge Config, etc.). Values are treated as UTF-8 strings: binary
  * payloads still come through, but the UI surfaces a "looks binary" warning
  * instead of pretending to be a hex editor.
  */
@@ -364,7 +364,7 @@ export interface KvBrowserCapability {
   namespaceLabel?: string;
   /** Default page size for listKvKeys. Plugins may clamp this server-side. */
   defaultPageSize?: number;
-  /** Short note shown above the key list — vendor-specific caveats, etc. */
+  /** Short note shown above the key list: vendor-specific caveats, etc. */
   helpText?: string;
 }
 
@@ -405,16 +405,16 @@ export interface ArtifactRegistryCapability {
  * applying manifests via getManifest() / applyManifest() on PluginClient.
  */
 export interface ManifestEditorCapability {
-  /** Language mode for the editor — typically "json" for K8s resources */
+  /** Language mode for the editor: typically "json" for K8s resources */
   language: "json" | "yaml";
-  /** K8s resource kind — shown in the tab label (e.g. "Deployment", "ConfigMap") */
+  /** K8s resource kind: shown in the tab label (e.g. "Deployment", "ConfigMap") */
   resourceKind?: string;
   /** If true, the manifest is read-only (no Apply button) */
   readOnly?: boolean;
 }
 
 /**
- * One row in a {@link SettingsEditorCapability} form — a single named setting
+ * One row in a {@link SettingsEditorCapability} form: a single named setting
  * rendered as a labeled control instead of raw JSON. The plugin owns the
  * control choice, label, and (for selects) the option list; the host renders
  * it generically and tracks edits.
@@ -428,11 +428,11 @@ export interface SettingDescriptor {
   description?: string;
   /**
    * Control to render:
-   *   - "toggle"   — on/off switch; value is "on"/"off"
-   *   - "select"   — dropdown over `options`
-   *   - "number"   — numeric input
-   *   - "text"     — single-line text / JSON blob
-   *   - "readonly" — value shown but not editable (provider-managed)
+   *   - "toggle"   - on/off switch; value is "on"/"off"
+   *   - "select"   - dropdown over `options`
+   *   - "number"   - numeric input
+   *   - "text"     - single-line text / JSON blob
+   *   - "readonly": value shown but not editable (provider-managed)
    */
   control: "toggle" | "select" | "number" | "text" | "readonly";
   /** `select` options. */
@@ -459,7 +459,7 @@ export interface SettingsEditorCapability {
 
 /**
  * When present on a DetailViewSchema, the host renders the interactive
- * "Bucket Policy" tab — statement builder + JSON toggle + templates + lint
+ * "Bucket Policy" tab: statement builder + JSON toggle + templates + lint
  * banner + plain-English summary. The plugin still loads/stores the raw JSON
  * via `getManifest()` / `applyManifest()` on PluginClient; this capability
  * just swaps the tab UI for the structured editor.
@@ -478,7 +478,7 @@ export interface BucketPolicyEditorCapability {
   bucketArn: string;
   /** Short bucket name (without ARN prefix). Drives plain-English summaries. */
   bucketName: string;
-  /** Vendor flavour — drives template availability and copy. */
+  /** Vendor flavour: drives template availability and copy. */
   vendor: "aws-s3" | "do-spaces" | "scaleway-os";
 }
 
@@ -509,7 +509,7 @@ export interface LogsCapability {
 /** Lifecycle state of a secret version (aligned with GCP Secret Manager). */
 export type SecretVersionState = "enabled" | "disabled" | "destroyed";
 
-/** One version of a secret — returned by listSecretVersions(). */
+/** One version of a secret: returned by listSecretVersions(). */
 export interface SecretVersion {
   /** Human-readable identifier (e.g. "1", "2", or a UUID). */
   id: string;
@@ -539,12 +539,12 @@ export interface SecretVersionsCapability {
   helpText?: string;
   /**
    * When false, hides the per-row "Reveal" button. Use for resources whose version
-   * material cannot be returned to the caller — e.g. GCP KMS symmetric keys, where
+   * material cannot be returned to the caller, e.g. GCP KMS symmetric keys, where
    * the plaintext never leaves Google.
    */
   supportsReveal?: boolean;
   /**
-   * When true, the "Add version" form skips the value textarea — the plugin
+   * When true, the "Add version" form skips the value textarea: the plugin
    * generates new material itself (e.g. GCP KMS key rotation creates a new
    * CryptoKeyVersion server-side).
    */
@@ -575,7 +575,7 @@ export interface ChildGroupSchema {
  * cell value from a child {@link ResourceInstance}.
  */
 export interface ChildTableColumn {
-  /** Stable column id — also used as the table header key. */
+  /** Stable column id: also used as the table header key. */
   key: string;
   /** Header label. */
   label: string;
@@ -584,17 +584,17 @@ export interface ChildTableColumn {
   source: { kind: "field"; fieldKey: string } | { kind: "external-id" } | { kind: "display-name" };
   /**
    * Optional formatter applied to the raw string:
-   *   - "mono"          — monospace text
-   *   - "type-badge"    — colored pill keyed by DNS record type (A/AAAA/CNAME/MX/TXT…)
-   *   - "proxy-status"  — orange-cloud / grey-cloud indicator for boolean values
-   *   - "ttl"           — formats numeric seconds via the same rules as `formatDnsTtl`
-   *   - "boolean-yesno" — renders truthy/falsy as "Yes"/"No"
+   *   - "mono"          - monospace text
+   *   - "type-badge"    - colored pill keyed by DNS record type (A/AAAA/CNAME/MX/TXT…)
+   *   - "proxy-status"  - orange-cloud / grey-cloud indicator for boolean values
+   *   - "ttl"           - formats numeric seconds via the same rules as `formatDnsTtl`
+   *   - "boolean-yesno": renders truthy/falsy as "Yes"/"No"
    * Defaults to plain text.
    */
   format?: "text" | "mono" | "type-badge" | "proxy-status" | "ttl" | "boolean-yesno";
   /**
    * When set, strip the value of this sibling field (plus a leading dot) from
-   * the end of the cell value — used to display the short record name ("www")
+   * the end of the cell value: used to display the short record name ("www")
    * instead of the FQDN ("www.example.com"). A value equal to the suffix
    * renders as "@" (the zone apex).
    */
@@ -602,7 +602,7 @@ export interface ChildTableColumn {
   /**
    * Display-label overrides keyed by raw cell value. When the value matches a
    * key, the mapped label is shown (as a muted, non-mono badge) instead of the
-   * raw value — e.g. mapping Cloudflare's Worker placeholders `100::` /
+   * raw value, e.g. mapping Cloudflare's Worker placeholders `100::` /
    * `192.0.2.1` to "Worker".
    */
   valueMap?: Record<string, string>;
@@ -614,7 +614,7 @@ export interface ChildTableColumn {
  * pulls the rows from the child resources it already loads (the same source
  * that feeds the pill groups) and suppresses the matching pill group. The
  * per-row "+ Create" button and row navigation reuse the host's existing
- * child-create / navigate handlers — no new host action is required.
+ * child-create / navigate handlers: no new host action is required.
  */
 export interface ChildTableSchema {
   /** Heading shown above the table. */
@@ -628,14 +628,14 @@ export interface ChildTableSchema {
   createLabel?: string;
   /**
    * Row click target:
-   *   - "navigate" (default) — open the child's detail page
-   *   - "edit" — open an inline edit form on the current page (requires the
+   *   - "navigate" (default) (open the child's detail page
+   *   - "edit") open an inline edit form on the current page (requires the
    *     child type to support update)
-   *   - "none" — rows aren't clickable
+   *   - "none": rows aren't clickable
    */
   onRowClick?: "navigate" | "edit" | "none";
   /**
-   * Rows whose `fieldKey` value is in `fieldValues` are treated as read-only —
+   * Rows whose `fieldKey` value is in `fieldValues` are treated as read-only,
    * not clickable for edit. Used for provider-managed records (e.g. a DNS
    * record whose content is a Worker placeholder).
    */
@@ -644,12 +644,12 @@ export interface ChildTableSchema {
 
 /**
  * A plugin-defined tab on the detail view. Tab bodies reuse the same
- * structure as the Overview tab — `SectionNode[]` + labeled pill groups.
+ * structure as the Overview tab: `SectionNode[]` + labeled pill groups.
  * Each tab can also declare its own header actions that show up in the
  * top bar when the tab is active.
  */
 export interface DetailViewTab {
-  /** Stable identifier — used as the active-tab key. */
+  /** Stable identifier: used as the active-tab key. */
   id: string;
   /** Label shown in the tab strip. */
   label: string;
@@ -669,15 +669,15 @@ export interface DetailViewTab {
   headerActions?: ActionNode[];
 }
 
-/** Full detail view — shown when user clicks a card or sidebar item */
+/** Full detail view: shown when user clicks a card or sidebar item */
 export interface DetailViewSchema {
   title: string;
   subtitle?: string;
   status?: StatusDotNode;
   sections: SectionNode[];
-  /** Child resources shown in a sub-grid — can be pinned independently */
+  /** Child resources shown in a sub-grid: can be pinned independently */
   children?: DashboardCardSchema[];
-  /** Labeled groups of pseudo-resource pills — each group has its own "+ Create" button. */
+  /** Labeled groups of pseudo-resource pills: each group has its own "+ Create" button. */
   childGroups?: ChildGroupSchema[];
   /**
    * Child resources rendered as dashboard-style tables instead of pills. Each
@@ -687,7 +687,7 @@ export interface DetailViewSchema {
   childTables?: ChildTableSchema[];
   /**
    * Child resource types that must not render as an auto-injected group or
-   * table anywhere on this detail view — not on Overview, not in a custom tab.
+   * table anywhere on this detail view, not on Overview, not in a custom tab.
    *
    * Use it when another surface on the same page already *is* the listing, so
    * the injected one would be a second copy of the same rows. The UploadThing
@@ -695,7 +695,7 @@ export interface DetailViewSchema {
    * upload/download/delete, and repeating them on Overview only added a table
    * that could disagree with it.
    *
-   * This suppresses the listing, not the type — children still sync, still
+   * This suppresses the listing, not the type: children still sync, still
    * have their own pages, and are still reachable from the sidebar. Hiding a
    * type whose only create button lived on that group does remove the button,
    * so make sure the surface you are deferring to can create too.
@@ -752,7 +752,7 @@ export interface DetailViewSchema {
 /**
  * A chat playground tab for resources that expose a conversational endpoint
  * (DigitalOcean Gradient AI agents, future AWS Bedrock agents, etc.). The
- * plugin owns the wire protocol — the host calls `streamChatMessage` with
+ * plugin owns the wire protocol: the host calls `streamChatMessage` with
  * the conversation history and renders deltas as they arrive.
  */
 export interface ChatPanelCapability {
@@ -782,7 +782,7 @@ export interface ChatPanelCapability {
 
 /**
  * A plugin-defined extra input rendered alongside the message body in the
- * publish panel — e.g. SNS Subject, Kinesis PartitionKey, SQS DelaySeconds,
+ * publish panel, e.g. SNS Subject, Kinesis PartitionKey, SQS DelaySeconds,
  * Service Bus queue picker.
  */
 export interface PublishPanelField {
@@ -800,12 +800,12 @@ export interface PublishPanelField {
   options?: Array<{ value: string; label: string }>;
   /** Short note rendered under the input. */
   helpText?: string;
-  /** Field is optional — empty values are passed through unchanged. */
+  /** Field is optional: empty values are passed through unchanged. */
   optional?: boolean;
 }
 
 /**
- * Publish-panel tab — a JSON/text body editor plus an optional set of
+ * Publish-panel tab: a JSON/text body editor plus an optional set of
  * plugin-defined extra inputs. The plugin handles the send via
  * `PluginClient.publishMessage`.
  */
@@ -830,7 +830,7 @@ export interface PublishPanelCapability {
 
 /**
  * Payload sent to `PluginClient.publishMessage`. `body` is the raw text the
- * user typed (JSON-serialised if `bodyFormat` was "json" — the plugin is
+ * user typed (JSON-serialised if `bodyFormat` was "json": the plugin is
  * responsible for parsing). `extras` carries values from `extraFields`,
  * keyed by the field's `key`. Key-value list fields arrive as a nested
  * `Record<string, string>`.
@@ -840,7 +840,7 @@ export interface PublishMessagePayload {
   extras: Record<string, string | Record<string, string>>;
 }
 
-/** Result of a successful publish — surfaced under the form. */
+/** Result of a successful publish: surfaced under the form. */
 export interface PublishMessageResult {
   /** Provider-assigned id (message id, sequence number, etc.). */
   id?: string;
@@ -849,7 +849,7 @@ export interface PublishMessageResult {
 }
 
 /**
- * One entry in a Speech-tab dropdown — a voice, a model, or a language. The
+ * One entry in a Speech-tab dropdown: a voice, a model, or a language. The
  * plugin fills these from whatever it already listed for the resource, so the
  * user picks from real ids rather than typing them.
  */
@@ -858,7 +858,7 @@ export interface SpeechPanelOption {
   id: string;
   /** Display text in the dropdown. */
   label: string;
-  /** Optional second line — accent, gender, price tier, etc. */
+  /** Optional second line: accent, gender, price tier, etc. */
   description?: string;
 }
 
@@ -873,7 +873,7 @@ export interface SpeechPanelOption {
  * than as a stream: a test clip is a sentence or two, and reusing the plain
  * request/response path keeps this working identically over Electron IPC and
  * the cloud HTTP API. `maxAudioBytes` is what stops that from becoming a
- * problem — the host refuses a larger upload client-side, before encoding.
+ * problem: the host refuses a larger upload client-side, before encoding.
  */
 export interface SpeechPanelCapability {
   /** Which halves of the panel to render. At least one entry. */
@@ -909,7 +909,7 @@ export interface SpeechPanelCapability {
   /** Label for the language picker. Defaults to "Language". */
   languageLabel?: string;
   /**
-   * Values for the file picker's `accept` attribute — MIME types and/or
+   * Values for the file picker's `accept` attribute: MIME types and/or
    * extensions. Defaults to a broad audio list when omitted.
    */
   acceptedAudioTypes?: string[];
@@ -924,8 +924,8 @@ export interface SpeechPanelCapability {
    * Hide the microphone button and leave only the file picker.
    *
    * For providers that reject the containers browsers and phones actually
-   * record in — `MediaRecorder` emits WebM/Opus on Chromium and Firefox and
-   * MP4/AAC on Safari, mobile records M4A — so every recording would fail at
+   * record in (`MediaRecorder` emits WebM/Opus on Chromium and Firefox and
+   * MP4/AAC on Safari, mobile records M4A) so every recording would fail at
    * upload. Unlike `disabledReason` this only removes the recorder; uploading
    * a supported clip still works.
    */
@@ -948,7 +948,7 @@ export interface SpeechPanelCapability {
 
 /** Payload sent to `PluginClient.synthesizeSpeech`. */
 export interface SynthesizeSpeechPayload {
-  /** Raw text the user typed. Never empty — the host validates first. */
+  /** Raw text the user typed. Never empty: the host validates first. */
   text: string;
   /** Selected `voices` entry, when the capability declared any. */
   voiceId?: string;
@@ -956,13 +956,13 @@ export interface SynthesizeSpeechPayload {
   modelId?: string;
 }
 
-/** Result of a successful synthesis — the host plays this back inline. */
+/** Result of a successful synthesis: the host plays this back inline. */
 export interface SynthesizeSpeechResult {
   /** Base64-encoded audio payload, no data: prefix. */
   audioBase64: string;
   /**
    * MIME type of `audioBase64`, e.g. "audio/mpeg". Must be something a browser
-   * `<audio>` element can play — prefer mp3 when the provider offers a choice.
+   * `<audio>` element can play: prefer mp3 when the provider offers a choice.
    */
   mimeType: string;
   /** Suggested download filename, extension included. */
@@ -989,7 +989,7 @@ export interface TranscriptWord {
 export interface TranscribeAudioPayload {
   /** Base64-encoded audio, no data: prefix. */
   audioBase64: string;
-  /** MIME type of the clip — recorded or from the picked file. */
+  /** MIME type of the clip: recorded or from the picked file. */
   mimeType: string;
   /** Original filename when the clip came from a file picker. */
   fileName?: string;
@@ -1050,15 +1050,15 @@ export type ChatStreamEvent =
  * executeNoSqlCommand() on PluginClient to handle the backend operations.
  *
  * Supports three drivers:
- *  - "firestore" — native Google Cloud Firestore REST API
- *  - "mongodb-peer" — the detail page hosts a MongoDB document browser. The
+ *  - "firestore" (native Google Cloud Firestore REST API
+ *  - "mongodb-peer") the detail page hosts a MongoDB document browser. The
  *    host resolves a linked MongoDB account from the user and uses its
  *    connection for reads; the plugin that owns the detail view does not
  *    implement commands itself.
- *  - "dynamodb" — Amazon DynamoDB. Like Firestore, the plugin implements
+ *  - "dynamodb": Amazon DynamoDB. Like Firestore, the plugin implements
  *    listCollections/find/getDocument/insertDocument/updateDocument/
  *    deleteDocument/countDocuments. Unlike Firestore, a DynamoDB resource is
- *    a single table — `listCollections` returns the one table name, and
+ *    a single table: `listCollections` returns the one table name, and
  *    documents are keyed by composite (partition + optional sort) primary
  *    keys encoded into the `_name` field of each returned document so the
  *    Firestore-style UI can address them.
@@ -1071,7 +1071,7 @@ interface NoSqlBrowserCapability {
   helpText?: string;
   /**
    * When true, the host's collection sidebar hides the "+ add collection" and
-   * "drop collection" affordances — used by drivers (DynamoDB) where the
+   * "drop collection" affordances: used by drivers (DynamoDB) where the
    * resource is a single fixed collection (the table).
    */
   singleCollection?: boolean;
@@ -1104,7 +1104,7 @@ export interface PeerPaneResource {
 
 export interface PeerPaneResourceGroup {
   title: string;
-  /** Resource type being listed — used by host to build DraggableResource */
+  /** Resource type being listed: used by host to build DraggableResource */
   resourceTypeId: string;
   pluginId: string;
   items: PeerPaneResource[];
@@ -1136,7 +1136,7 @@ export interface PeerPaneSchema {
 }
 
 /**
- * A call-to-action button rendered inside a peer pane's guidance state — e.g.
+ * A call-to-action button rendered inside a peer pane's guidance state, e.g.
  * "Make connection user" when a managed-DB peer can't connect because no
  * credentialed user has been minted. Clicking it opens the host's
  * prompt-nosql-command modal and dispatches `command` to the PARENT resource's

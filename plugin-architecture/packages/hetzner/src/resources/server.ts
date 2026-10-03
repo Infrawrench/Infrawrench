@@ -72,7 +72,7 @@ export const ServerResourceType = rt({
   ],
   iconKey: "server",
   // Sleep/wake schedules: server actions poweron / poweroff. Note Hetzner
-  // keeps billing a powered-off server (its resources stay reserved) — only
+  // keeps billing a powered-off server (its resources stay reserved), only
   // deleting it stops charges.
   lifecycle: {
     startActionId: "poweron",
@@ -106,7 +106,7 @@ export const ServerResourceType = rt({
   supportsMetrics: true,
   // Right-sizing: the create form's size-picker is the real /server_types
   // catalog (capacity + per-location EUR prices); "CPU Utilization" is the
-  // only utilisation series Hetzner's metrics API exposes — no memory metric
+  // only utilisation series Hetzner's metrics API exposes; no memory metric
   // exists, so recommendations are CPU-driven with the host's memory floor.
   rightsizing: {
     sizeFieldKey: "serverType",
@@ -123,7 +123,7 @@ export const ServerResourceType = rt({
   },
   // Backups land in the `image` type carrying this server's id in `boundTo`.
   // Hetzner's `backup_window` on the server payload is not synced, so there is
-  // no automated-backup field to declare — an unbacked server reads as
+  // no automated-backup field to declare: an unbacked server reads as
   // unprotected purely on the absence of a bound image, which is the honest
   // answer from what we have.
   backupPolicy: { protectedBy: ["image"] },

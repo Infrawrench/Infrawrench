@@ -1,7 +1,7 @@
 /**
  * Where a node's hourly price comes from.
  *
- * A Kubernetes cluster cannot know what it costs — the money is on the cloud
+ * A Kubernetes cluster cannot know what it costs: the money is on the cloud
  * account that owns the VMs. The rate therefore has to arrive from outside,
  * and this module is the single place that decides how much to trust it.
  *
@@ -13,7 +13,7 @@
  *     resource type maps its `nodeHourlyRates` output onto the kubernetes
  *     plugin's `nodeHourlyRates` credential, exactly the way it already maps
  *     `kubeconfig`. The parent plugin builds that payload from whatever it
- *     knows best — node-pool prices from the provider API, its own pricing
+ *     knows best: node-pool prices from the provider API, its own pricing
  *     module, a billing export.
  *  2. **A published on-demand rate** for the node's instance type, marked as
  *     such so the UI can hedge the number.
@@ -44,7 +44,7 @@ export interface NodeRateTable {
    * charge with no per-workload component whatsoever, which is exactly why it
    * gets its own bucket rather than a share of anyone's bill.
    *
-   * Absent for a self-managed cluster — and it must stay absent there, because
+   * Absent for a self-managed cluster, and it must stay absent there, because
    * a self-managed control plane runs on nodes that are already in
    * `/api/v1/nodes` and already priced as compute. Charging both would count
    * the same machines twice.
@@ -54,7 +54,7 @@ export interface NodeRateTable {
   loadBalancerHourly?: number | undefined;
   /**
    * `namespace/name` → hourly price for one specific Service. Wins over
-   * `loadBalancerHourly`, including when it is `0` — which is how you tell
+   * `loadBalancerHourly`, including when it is `0`, which is how you tell
    * Infrawrench that a given `LoadBalancer` Service is served by an in-cluster
    * implementation (MetalLB, kube-vip) that costs nothing on the cloud bill.
    */
@@ -120,7 +120,7 @@ const LOAD_BALANCER_PREFIX = "loadBalancer/";
  *      "byInstanceType":{"s-2vcpu-4gb":0.0357},
  *      "byNodeName":{"pool-abc-xyz":0.0357}}
  *
- * plus the non-compute prices, which are the same idea one level up — a flat
+ * plus the non-compute prices, which are the same idea one level up: a flat
  * control-plane fee, a per-load-balancer hourly price, and a per-GiB-month
  * price per storage class:
  *
@@ -137,7 +137,7 @@ const LOAD_BALANCER_PREFIX = "loadBalancer/";
  *     s-2vcpu-4gb=0.0357, m5.large=0.096
  *     controlPlane=0.10, loadBalancer=0.0149, storage/*=0.10
  *
- * Anything unparseable yields an empty table rather than an error — a
+ * Anything unparseable yields an empty table rather than an error; a
  * malformed rate hint must not stop the cluster from listing. Every new field
  * is optional in both forms: a parent cloud plugin that only knows node prices
  * keeps working unchanged, and the components it cannot price are reported as
@@ -244,7 +244,7 @@ export function loadBalancerRate(
 /**
  * The price per provisioned GiB-month for a storage class. An exact class wins
  * over the `*` default. An empty class name (a PVC that names none, so the
- * cluster's default class applied) can only match `*` — guessing which class
+ * cluster's default class applied) can only match `*`: guessing which class
  * the admission controller chose would be inventing.
  */
 export function storageRate(table: NodeRateTable, storageClass: string): number | undefined {

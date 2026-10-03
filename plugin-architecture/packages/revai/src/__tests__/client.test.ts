@@ -89,7 +89,7 @@ describe("listResources", () => {
   it("reads the bare JSON array /jobs returns and tolerates omitted null fields", async () => {
     installFetch((url) => {
       if (url === `${US}/jobs?limit=100`) {
-        // Rev AI omits null properties entirely — `name`, `duration_seconds`
+        // Rev AI omits null properties entirely: `name`, `duration_seconds`
         // and `completed_on` are simply absent on an in-progress job.
         return jsonResponse([
           { id: "job-1", status: "in_progress", type: "async", created_on: "2026-07-01T00:00:00Z" },
@@ -214,7 +214,7 @@ describe("transcribeAudio", () => {
 
     installFetch((url, init) => {
       if (url === `${US}/jobs` && init?.method === "POST") {
-        // 200, not 201 — and nulls are omitted from the response.
+        // 200, not 201, and nulls are omitted from the response.
         return jsonResponse({ id: "job-9", status: "in_progress", type: "async" }, 200);
       }
       if (url === `${US}/jobs/job-9`) {
@@ -240,7 +240,7 @@ describe("transcribeAudio", () => {
     });
 
     expect(polls).toBe(1);
-    // No space inserted between "World" and "." — punct carries the spacing.
+    // No space inserted between "World" and ".": punct carries the spacing.
     expect(result.text).toBe("Hello World.");
     expect(result.durationSeconds).toBe(3.1);
     expect(result.language).toBe("en");

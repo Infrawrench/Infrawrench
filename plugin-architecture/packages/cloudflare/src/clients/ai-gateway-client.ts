@@ -7,7 +7,7 @@ import type {
 } from "cloudflare/resources/ai-gateway/ai-gateway";
 
 /**
- * Cloudflare AI Gateway (`/accounts/{id}/ai-gateway/gateways`) — the proxy that
+ * Cloudflare AI Gateway (`/accounts/{id}/ai-gateway/gateways`): the proxy that
  * sits in front of model providers (Workers AI, OpenAI, Anthropic, …) and adds
  * caching, rate limiting, logging and analytics. The gateway `id` is the
  * external id: it's the slug you put in the gateway URL

@@ -21,7 +21,7 @@ export const cloudBuildCreateConfigHandlers: Record<
     // connections, or the API isn't enabled there).
     const connectedRepoOptions: Array<{ id: string; label: string }> = [];
     await Promise.all([
-      // 2nd-gen connected repositories — preferred path on new projects.
+      // 2nd-gen connected repositories: preferred path on new projects.
       ...CLOUD_BUILD_REGIONS.map(async (loc) => {
         try {
           const conns = await ctx.paginate<Record<string, unknown>>(
@@ -79,7 +79,7 @@ export const cloudBuildCreateConfigHandlers: Record<
           /* region has no Cloud Build connections / API disabled */
         }
       }),
-      // 1st-gen Cloud Source Repositories — surfaced with a `csr:` prefix
+      // 1st-gen Cloud Source Repositories: surfaced with a `csr:` prefix
       // so the create handler knows to use triggerTemplate (legacy path)
       // rather than sourceToBuild + gitFileSource. CSR is deprecated for
       // new projects but still works where it's enabled.
@@ -106,7 +106,7 @@ export const cloudBuildCreateConfigHandlers: Record<
     connectedRepoOptions.sort((a, b) => a.label.localeCompare(b.label));
 
     // If the project has no connected repos, the field stays a text input
-    // (so the user can paste a custom path) — the description tells them
+    // (so the user can paste a custom path): the description tells them
     // where to set up a connection in Console.
     const repoFieldBase: Omit<CreateFieldConfig, "showWhen"> =
       connectedRepoOptions.length > 0
@@ -129,7 +129,7 @@ export const cloudBuildCreateConfigHandlers: Record<
               "No 2nd-gen Cloud Build connections found in this project. Connect a repo at console.cloud.google.com/cloud-build/repositories/2nd-gen, or paste a full resource path.",
           };
     // CSR (1st-gen Cloud Source Repositories) doesn't support pull-request
-    // triggers — the Cloud Build API rejects the combo. Filter those entries
+    // triggers: the Cloud Build API rejects the combo. Filter those entries
     // out of the PR variant of the picker so users can't pick an incompatible
     // repo. Other event types keep the full list (incl. CSR).
     const nonCsrRepoOptions = connectedRepoOptions.filter((o) => !o.id.startsWith("csr:"));
@@ -266,7 +266,7 @@ export const cloudBuildCreateConfigHandlers: Record<
         // configType: only push-style events (push-branch / push-tag /
         // pull-request) support synthetic inline `build` blocks (yaml inline,
         // dockerfile, buildpacks). Manual / pubsub / webhook triggers must
-        // read their build config from a repo, so they don't see this field —
+        // read their build config from a repo, so they don't see this field:
         // the handler defaults to "yaml" + "repository" when configType is
         // unset on submit.
         {
@@ -301,7 +301,7 @@ export const cloudBuildCreateConfigHandlers: Record<
           ],
           showWhen: { fieldKey: "configType", fieldValue: "yaml" },
         },
-        // filename — push event variant: only when reading from repo.
+        // filename; push event variant: only when reading from repo.
         {
           key: "filename",
           label: "Config file location",
@@ -311,7 +311,7 @@ export const cloudBuildCreateConfigHandlers: Record<
           description: "Path within the repo (e.g. cloudbuild.yaml).",
           showWhen: { fieldKey: "configLocation", fieldValue: "repository" },
         },
-        // filename — non-push event variant: always shown for manual /
+        // filename; non-push event variant: always shown for manual /
         // pubsub / webhook (those triggers always read their build config
         // from the repo). Same key + default so form state stays consistent.
         {
@@ -461,7 +461,7 @@ export const cloudBuildCreateResourceHandlers: Record<
     const tok = await ctx.token();
 
     // Resolve `link:<connection>|<remoteUri>` options into a real repo path
-    // by linking the repo first (idempotent — Cloud Build returns the
+    // by linking the repo first (idempotent: Cloud Build returns the
     // existing record if it's already linked). Ignored for CSR shortcuts
     // and for repository fields that already point at a repo.
     let resolvedRepository = repository;
@@ -497,7 +497,7 @@ export const cloudBuildCreateResourceHandlers: Record<
       resolvedRepository = `${connectionPath}/repositories/${repoId}`;
     }
 
-    // Reject paths that point at a connection rather than a repository —
+    // Reject paths that point at a connection rather than a repository:
     // a common copy-paste mistake.
     if (
       resolvedRepository.startsWith("projects/") &&
@@ -555,7 +555,7 @@ export const cloudBuildCreateResourceHandlers: Record<
       }
     } else if (eventType === "pull-request") {
       if (!repository) throw new Error("Repository is required for pull-request triggers");
-      // CSR doesn't support PR triggers — the form filters csr: entries out
+      // CSR doesn't support PR triggers; the form filters csr: entries out
       // of the pull-request repository picker, so isCsrRepo is unreachable
       // here unless the user manually pasted a `csr:` value into a free-text
       // repo field. Still validate defensively.
@@ -577,7 +577,7 @@ export const cloudBuildCreateResourceHandlers: Record<
       body["webhookConfig"] = { state: "ENABLED" };
     }
     // Manual / Pub/Sub / Webhook triggers don't get their source from an
-    // event — Cloud Build requires an explicit sourceToBuild + gitFileSource
+    // event: Cloud Build requires an explicit sourceToBuild + gitFileSource
     // pointing at a connected repo. Inline builds aren't supported on
     // these trigger types (see cloud.google.com/build/docs/automate-builds-pubsub-events).
     if (eventType === "manual" || eventType === "pubsub" || eventType === "webhook") {
@@ -611,7 +611,7 @@ export const cloudBuildCreateResourceHandlers: Record<
       // Push events get their source (and so the filename's resolution
       // context) from the event itself. Manual / Pub/Sub / Webhook need an
       // explicit gitFileSource pointing at the same repo we set as
-      // sourceToBuild — but ONLY for 2nd-gen connected repos. CSR (1st-gen)
+      // sourceToBuild, but ONLY for 2nd-gen connected repos. CSR (1st-gen)
       // triggers resolve `filename` against the triggerTemplate repo.
       if (!isPushEvent && !isCsrRepo) {
         if (!repository) {
@@ -699,7 +699,7 @@ export const cloudBuildCreateResourceHandlers: Record<
         : `${serviceAccount}@${p}.iam.gserviceaccount.com`;
       body["serviceAccount"] = `projects/${p}/serviceAccounts/${sa}`;
       // When a user-specified service account is set AND we're sending an
-      // inline `build`, Cloud Build requires an explicit logging option —
+      // inline `build`, Cloud Build requires an explicit logging option,
       // otherwise it returns INVALID_ARGUMENT. Set CLOUD_LOGGING_ONLY by
       // default; users can override by editing the inline YAML themselves.
       const inlineBuild = body["build"] as Record<string, unknown> | undefined;

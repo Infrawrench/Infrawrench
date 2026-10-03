@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * `GET/POST /v1/containers`, `DELETE /v1/containers/{id}` — verified 2026-07-29
+ * `GET/POST /v1/containers`, `DELETE /v1/containers/{id}`: verified 2026-07-29
  * against openapi.yaml v2.3.0 (`ListContainers`, `CreateContainer`,
  * `DeleteContainer`). There is no update verb.
  */

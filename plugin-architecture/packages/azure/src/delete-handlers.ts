@@ -2,9 +2,9 @@
  * Generic delete dispatch.
  *
  * Most Azure resource types follow the same URL pattern, so a single
- * `provider / api-version` lookup table is enough. The two exceptions —
+ * `provider / api-version` lookup table is enough. The two exceptions:
  * resource groups (no provider segment) and SQL databases (three-part
- * externalId rg/server/database) — are handled explicitly.
+ * externalId rg/server/database): are handled explicitly.
  *
  * The provider/api-version pairs come from `AZURE_ARM_SPECS` in `shared.ts` so
  * an api-version bump lands on read and delete at once; the only delete-side

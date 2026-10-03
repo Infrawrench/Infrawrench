@@ -48,7 +48,7 @@ export const TunedModelResourceType = rt({
     o("state", "State"),
   ],
   // `baseModel` is a `models/{model}` name and `tunedModelSource.tunedModel` a
-  // `tunedModels/{id}` one — both matched against the target row's `name`.
+  // `tunedModels/{id}` one: both matched against the target row's `name`.
   dependsOn: [
     { fieldKey: "baseModel", targetTypeId: "model", targetKey: "name", label: "tuned from" },
     {

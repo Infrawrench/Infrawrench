@@ -111,7 +111,7 @@ export async function getAKSCreateConfig(ctx: AzureCreateContext): Promise<Creat
         required: false,
         defaultValue: "azure",
         // ARM's networkProfile.networkPlugin only accepts "azure", "kubenet",
-        // and "none" — Azure CNI *is* the "azure" value, there is no
+        // and "none": Azure CNI *is* the "azure" value, there is no
         // "azure-cni" enum member (it would be rejected at create).
         options: [
           { id: "kubenet", label: "kubenet" },

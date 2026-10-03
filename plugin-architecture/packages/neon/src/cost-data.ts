@@ -1,7 +1,7 @@
 /**
  * Actual-spend collection from Neon's consumption-history API.
  *
- * Neon's API reports usage units, not dollars — `GET /consumption_history/v2/
+ * Neon's API reports usage units, not dollars: `GET /consumption_history/v2/
  * projects` returns per-project daily metrics (CU-seconds, bytes-month of
  * storage, transfer bytes…). We convert those to money with Neon's published
  * usage-based rates (verified against neon.com/pricing and
@@ -13,7 +13,7 @@
  *   snapshot storage              $0.09/GB-month
  *   extra branches                $1.50/branch-month
  *   public network transfer       $0.10/GB (the 500 GB/project/month free
- *                                 allowance is NOT modeled — see below)
+ *                                 allowance is NOT modeled: see below)
  *   private network transfer      $0.01/GB
  *
  * Caveats: the compute rate is picked from the organization's plan (`launch`
@@ -98,7 +98,7 @@ async function resolveOrganizations(api: Api<unknown>): Promise<Organization[]> 
     const orgs = resp.data.organizations ?? [];
     if (orgs.length > 0) return orgs;
   } catch {
-    /* org-scoped key — derive from projects below */
+    /* org-scoped key: derive from projects below */
   }
 
   const orgIds = new Set<string>();
@@ -123,7 +123,7 @@ async function resolveOrganizations(api: Api<unknown>): Promise<Organization[]> 
 
 /**
  * Oldest day the daily-granularity consumption API will accept. Neon retains
- * 60 days measured from the current server time — not from day boundaries —
+ * 60 days measured from the current server time (not from day boundaries)
  * and a `from` outside that window fails the whole request with 406 rather
  * than returning a truncated result. A midnight-aligned start exactly 60
  * days back is therefore already out of range for most of the day, which is

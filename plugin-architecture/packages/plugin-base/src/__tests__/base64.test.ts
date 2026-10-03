@@ -13,7 +13,7 @@ describe("base64 helpers", () => {
   });
 
   it("encodes a known byte sequence", () => {
-    // FF D8 FF E0 00 10 — a JPEG SOI/APP0 header, whose base64 is "/9j/4AAQ".
+    // FF D8 FF E0 00 10: a JPEG SOI/APP0 header, whose base64 is "/9j/4AAQ".
     expect(bytesToBase64(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]))).toBe("/9j/4AAQ");
   });
 
@@ -23,7 +23,7 @@ describe("base64 helpers", () => {
   });
 
   it("handles multi-byte UTF-8", () => {
-    // "héllo" is 68 C3 A9 6C 6C 6F once encoded — six bytes, not five chars.
+    // "héllo" is 68 C3 A9 6C 6C 6F once encoded: six bytes, not five chars.
     expect(utf8ToBase64("héllo")).toBe("aMOpbGxv");
     const text = "héllo — 🎙 speech";
     expect(base64ToUtf8(utf8ToBase64(text))).toBe(text);

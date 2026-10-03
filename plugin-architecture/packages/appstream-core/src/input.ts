@@ -4,7 +4,7 @@
  *
  * Two conventions matter and neither is obvious. Keyboard events travel as
  * **evdev keycodes**, which are a property of the physical key and have
- * nothing to do with the character it produces — the host's keymap does that.
+ * nothing to do with the character it produces: the host's keymap does that.
  * And coordinates travel as Wayland's **24.8 fixed point**, so sub-pixel
  * motion and fractional scaling survive the trip.
  */
@@ -22,8 +22,8 @@ export const PointerButton = {
 } as const;
 
 /**
- * The DOM numbers mouse buttons in a different order from evdev — middle and
- * right are swapped — which is the kind of thing that ships as "paste does
+ * The DOM numbers mouse buttons in a different order from evdev (middle and
+ * right are swapped) which is the kind of thing that ships as "paste does
  * nothing on Linux".
  */
 export function pointerButtonFromDom(button: number): number | undefined {
@@ -374,7 +374,7 @@ export function evdevFromCode(code: string): number | undefined {
  *
  * Wayland's convention is ten units per notch. Browsers report wheels in three
  * different units depending on `deltaMode`, and a trackpad reports continuous
- * pixels — so everything is normalised to notches first, and a pixel-mode
+ * pixels, so everything is normalised to notches first, and a pixel-mode
  * delta is divided by the ~100px a notch conventionally scrolls.
  */
 export function axisFromWheel(event: { deltaX: number; deltaY: number; deltaMode?: number }): {

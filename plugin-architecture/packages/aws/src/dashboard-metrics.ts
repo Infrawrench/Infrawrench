@@ -117,7 +117,7 @@ export function fetchDashboardStats(
       ];
     }
     default: {
-      // Generic fallback — show key fields from the resource
+      // Generic fallback: show key fields from the resource
       const stats: DashboardStat[] = [];
       const statusVal = f.status ?? f.state ?? f.phase;
       if (statusVal != null) {

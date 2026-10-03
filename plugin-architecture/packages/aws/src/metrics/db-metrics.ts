@@ -2,7 +2,7 @@ import type { MetricSeries, ResourceInstance } from "@infrawrench/plugin-base";
 import type { MetricsContext } from "./cw-helpers.js";
 
 /**
- * Database-family metric handlers — RDS instances/clusters, DynamoDB,
+ * Database-family metric handlers: RDS instances/clusters, DynamoDB,
  * ElastiCache, Redshift, OpenSearch, DocumentDB, Neptune.
  */
 

@@ -38,7 +38,7 @@ function row(fields: Record<string, string>): ResultField[] {
 
 /**
  * Stand in for the two AWS services this reads. Insights queries are answered
- * by shape — the pair query is the one that sorts and limits — so the fixtures
+ * by shape (the pair query is the one that sorts and limits) so the fixtures
  * stay readable and neither query can be answered with the other's rows.
  */
 function mockAws(opts: {
@@ -109,7 +109,7 @@ beforeEach(() => {
  * bought for exactly one property: the host's residual is `total − kept pairs`,
  * so the truncated tail is an exact subtraction rather than an estimate. That
  * property holds only while the totals and the pairs agree about which bucket a
- * row's bytes were counted in — and the totals query, by design, has no
+ * row's bytes were counted in, and the totals query, by design, has no
  * addresses in it, so it is the classifier with less to go on.
  */
 describe("fetchAwsNetworkFlows — totals against pairs", () => {
@@ -134,8 +134,8 @@ describe("fetchAwsNetworkFlows — totals against pairs", () => {
     row({ flowDirection: "ingress", azId: "use1-az1", flowBytes: bytes });
 
   // Regression: the pair query resolved the peer to a local interface and
-  // called this cross-zone, while the totals query — which cannot see the
-  // address, and had no `next-hop-az-id` to fall back on — called the same
+  // called this cross-zone, while the totals query (which cannot see the
+  // address, and had no `next-hop-az-id` to fall back on) called the same
   // bytes internet ingress. The residual only ever netted against `unknown`, so
   // the bytes stayed in both buckets: once as the pair, once again as a
   // spurious unattributed internet-ingress row.
@@ -176,10 +176,10 @@ describe("fetchAwsNetworkFlows — totals against pairs", () => {
 
     const result = await fetchAwsNetworkFlows(creds, DAY);
 
-    // The itemized pair keeps its resolved scope — it had an address.
+    // The itemized pair keeps its resolved scope: it had an address.
     expect(totalOf(result.totals!, "cross_zone", "ingress")?.bytes).toBe(1000);
     // The remaining 2000 has no address and this format carries no
-    // `next-hop-az-id`, and AWS never populates `traffic-path` on ingress — so
+    // `next-hop-az-id`, and AWS never populates `traffic-path` on ingress, so
     // nothing distinguishes a local peer from the internet. Labelling it
     // internet ingress would be a guess dressed as a boundary crossing, and it
     // is the label a reader would act on. It stays unknown.
@@ -269,7 +269,7 @@ describe("fetchAwsNetworkFlows — totals against pairs", () => {
 
 /*
  * A day here is one or two Logs Insights scans per usable flow log, serially,
- * and an account can have a hundred flow logs — so the host cannot know up
+ * and an account can have a hundred flow logs, so the host cannot know up
  * front whether a day fits inside the claim it holds on the account. It hands
  * over `signal` instead, and withdraws it when it can no longer prove the claim
  * is still ours. What that has to buy is the customer's money: no further scan
@@ -326,7 +326,7 @@ describe("fetchAwsNetworkFlows — when the host withdraws authorization", () =>
 
   it("stops the running query at the provider and abandons the rest of the day", async () => {
     const withdraw = new AbortController();
-    // Withdrawn while the first query is in flight — the position a host in a
+    // Withdrawn while the first query is in flight: the position a host in a
     // database blackout reaches, and the one where the scan is already costing
     // money.
     const commands = mockTwoGroupsNeverFinishing(() =>
@@ -348,7 +348,7 @@ describe("fetchAwsNetworkFlows — when the host withdraws authorization", () =>
 
   // The per-log-group `catch` exists so one bad flow log does not fail a day.
   // A withdrawn authorization is not that: every remaining group would fail the
-  // same way at the cost of a round trip each, and — the part that matters —
+  // same way at the cost of a round trip each, and (the part that matters)
   // the day would come back looking whole, to be watermarked and never asked
   // for again.
   it("does not degrade the day and carry on to the next log group", async () => {

@@ -424,7 +424,7 @@ describe("transcribeAudio", () => {
 
     expect(result.text).toBe("Hello there.");
     expect(result.language).toBe("en");
-    // Mean of exp(logprob) over the two *word* tokens — (0.9 + 0.7) / 2. The
+    // Mean of exp(logprob) over the two *word* tokens: (0.9 + 0.7) / 2. The
     // spacing token's logprob is excluded along with the token itself, and
     // language_probability (0.98) plays no part.
     expect(result.confidence).toBeCloseTo(0.8);
@@ -472,7 +472,7 @@ describe("transcribeAudio", () => {
 
     expect(result.confidence).toBeCloseTo(0.1);
     expect(result.confidence).not.toBeCloseTo(0.99);
-    // The language score is still reported — labelled as one, in the summary.
+    // The language score is still reported: labelled as one, in the summary.
     expect(result.summary).toContain("en (99%)");
   });
 
@@ -491,7 +491,7 @@ describe("transcribeAudio", () => {
       mimeType: "audio/wav",
     });
 
-    // Absent, not zero and not invented — the panel omits the row entirely.
+    // Absent, not zero and not invented: the panel omits the row entirely.
     expect(result.confidence).toBeUndefined();
     expect("confidence" in result).toBe(false);
     expect(result.language).toBe("fr");

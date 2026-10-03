@@ -239,7 +239,7 @@ export async function getS3BucketPolicy(cfg: S3StorageConfig, bucket: string): P
   const res = await s3Fetch(cfg, "GET", bucket, "", { policy: "" });
   if (res.status === 404) return "";
   // Some S3-compatible vendors return a vendor XML error (NoSuchBucketPolicy)
-  // instead of a 404 — treat that as "no policy set" so the editor opens
+  // instead of a 404: treat that as "no policy set" so the editor opens
   // cleanly on an empty bucket.
   if (!res.ok) {
     const text = await res.text();

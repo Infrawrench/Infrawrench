@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * `GET/POST /v1/batches`, `POST /v1/batches/{id}/cancel` — verified 2026-07-29
+ * `GET/POST /v1/batches`, `POST /v1/batches/{id}/cancel`: verified 2026-07-29
  * against openapi.yaml v2.3.0 (`listBatches`, `createBatch`, `cancelBatch`).
  *
  * `completion_window` currently only accepts `24h`; the endpoint enum is the

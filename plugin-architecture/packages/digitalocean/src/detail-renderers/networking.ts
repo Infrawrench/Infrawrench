@@ -9,8 +9,8 @@ type DropletOption = { id: string; label: string };
  * Header actions for a reserved IP: assign it to a Droplet in the same region,
  * or unassign it from the one it currently holds.
  *
- * Assign is a prompt with a Droplet **picker** rather than a numeric id field
- * — `enrichDetail` pre-fetches `/v2/droplets` filtered to this address's
+ * Assign is a prompt with a Droplet **picker** rather than a numeric id field:
+ * `enrichDetail` pre-fetches `/v2/droplets` filtered to this address's
  * region, since DigitalOcean rejects a cross-region assign outright. When the
  * region has no other Droplet the prompt degrades to a blocked, explanatory
  * modal instead of an empty select.

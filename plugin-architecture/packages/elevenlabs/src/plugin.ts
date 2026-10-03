@@ -42,7 +42,7 @@ const manifest: PluginManifest = {
    * The fallback is the deprecated `GET /v1/usage/character-stats` with
    * `metric=fiat_units_spent`, used only when the successor is absent or
    * refuses the key. Its `breakdown_type` is **single-valued**, so on that path
-   * rows carry `service` and leave `region` unset — the two breakdowns are
+   * rows carry `service` and leave `region` unset: the two breakdowns are
    * independent decompositions of the same total and summing them would double
    * count. `region` is still declared here because the path we actually build
    * against supplies it.

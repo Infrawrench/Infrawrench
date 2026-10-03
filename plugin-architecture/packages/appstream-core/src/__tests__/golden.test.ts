@@ -4,7 +4,7 @@
  * `fixtures/` is written by the Rust encoder (`cargo test -p iw-codec --test
  * golden`), and this test decodes those exact bytes with this package and
  * reconstructs the canvas the Rust reference blit produced. When the two halves
- * of the protocol disagree — a field width, a rectangle op, a byte order — one
+ * of the protocol disagree (a field width, a rectangle op, a byte order) one
  * of these two tests fails, in the language whose expectations moved.
  */
 
@@ -76,7 +76,7 @@ describe("golden fixtures from the Rust encoder", () => {
   });
 
   it("compresses the same picture into an order of magnitude fewer bytes", () => {
-    // Not a benchmark — a check that the lossless tier is actually doing
+    // Not a benchmark: a check that the lossless tier is actually doing
     // something, since a zstd stream of incompressible noise would still
     // decode correctly and quietly cost ten times the bandwidth.
     expect(fixture("zstd-frames.bin").length * 5).toBeLessThan(fixture("raw-frames.bin").length);
@@ -102,7 +102,7 @@ describe("golden fixtures from the Rust encoder", () => {
   it("wraps rather than clamps when applying a delta", () => {
     // A Uint8ClampedArray clamps what it is assigned, and the encoder's
     // subtraction wraps. A channel near the top of the range would drift and
-    // stay drifted — invisible in a screenshot, permanent on screen.
+    // stay drifted: invisible in a screenshot, permanent on screen.
     const canvas = new Uint8ClampedArray([250, 250, 250, 255]);
     const payload = {
       codec: Codec.ZstdRects,
@@ -173,7 +173,7 @@ describe("golden fixtures from the Rust encoder", () => {
 /**
  * Width and height out of a JPEG's frame header.
  *
- * Walks the marker segments to the SOF rather than assuming a byte offset —
+ * Walks the marker segments to the SOF rather than assuming a byte offset:
  * the encoder is free to put its quantisation and Huffman tables in any order,
  * and a fixed offset would break on a change that is not a bug.
  */
@@ -184,7 +184,7 @@ function jpegSize(bytes: Uint8Array): { width: number; height: number } {
     if (bytes[at] !== 0xff) throw new Error(`not a marker at ${at}`);
     const marker = bytes[at + 1]!;
     const length = view.getUint16(at + 2, false);
-    // SOF0/1/2 — baseline and progressive frame headers.
+    // SOF0/1/2: baseline and progressive frame headers.
     if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) {
       return { height: view.getUint16(at + 5, false), width: view.getUint16(at + 7, false) };
     }
@@ -215,7 +215,7 @@ describe("painting only what changed", () => {
 
   it("bounds scattered rectangles with one box", () => {
     // `putImageData` takes one dirty rectangle, so scattered damage becomes
-    // the box around it — still far less than the whole window, which is what
+    // the box around it: still far less than the whole window, which is what
     // this replaces.
     expect(
       dirtyBounds(

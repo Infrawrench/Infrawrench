@@ -18,8 +18,8 @@ export interface WithSftpOptions {
    * ConnectConfig assembled from the SftpConfig and may return a modified
    * config (e.g. install a `hostVerifier` that consults a TOFU pin store).
    *
-   * The default ConnectConfig fails closed — its `hostVerifier` rejects every
-   * key with a clear error — so callers MUST provide a verifier here. The
+   * The default ConnectConfig fails closed (its `hostVerifier` rejects every
+   * key with a clear error) so callers MUST provide a verifier here. The
    * web service supplies one backed by an in-memory pin map; the desktop
    * supplies one backed by the local sql.js `ssh_host_keys` table.
    */
@@ -103,7 +103,7 @@ export function sftpList(
                 isDirectory: isDir,
               };
             });
-          // Dirs first, then files — both sorted alphabetically
+          // Dirs first, then files: both sorted alphabetically
           entries.sort((a, b) => {
             if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
             return a.name.localeCompare(b.name);

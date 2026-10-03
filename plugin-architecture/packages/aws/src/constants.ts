@@ -129,7 +129,7 @@ export const AWS_REGIONS: RegionOption[] = [
 // `instanceTypeArch` in ami-lookup.ts derives the correct AMI architecture
 // at create time based on the family.
 export const EC2_SIZES: SizeOption[] = [
-  // Burstable — t4g is Graviton2, t3a is AMD, t3 is Intel.
+  // Burstable: t4g is Graviton2, t3a is AMD, t3 is Intel.
   {
     id: "t4g.nano",
     label: "t4g.nano",
@@ -223,7 +223,7 @@ export const EC2_SIZES: SizeOption[] = [
     category: "T3 · Burstable (Intel)",
   },
 
-  // General purpose — m8g (Graviton4), m8i (Intel), m8a (AMD). m7* still
+  // General purpose: m8g (Graviton4), m8i (Intel), m8a (AMD). m7* still
   // common in some regions; m6 is one gen behind but still widely deployed.
   {
     id: "m8g.large",
@@ -359,7 +359,7 @@ export const EC2_SIZES: SizeOption[] = [
     category: "M7i · General purpose (Intel)",
   },
 
-  // Compute optimized — c8g (Graviton4), c8i (Intel), c8a (AMD).
+  // Compute optimized: c8g (Graviton4), c8i (Intel), c8a (AMD).
   {
     id: "c8g.large",
     label: "c8g.large",
@@ -480,7 +480,7 @@ export const EC2_SIZES: SizeOption[] = [
     category: "C7i · Compute-optimized (Intel)",
   },
 
-  // Memory optimized — r8g (Graviton4), r8i (Intel), r8a (AMD).
+  // Memory optimized: r8g (Graviton4), r8i (Intel), r8a (AMD).
   {
     id: "r8g.large",
     label: "r8g.large",
@@ -585,6 +585,6 @@ export const EC2_SIZES: SizeOption[] = [
  * The exact `sshAccess` string the EC2 lister stores when an attached security
  * group opens TCP/22 to 0.0.0.0/0 (or ::/0). The `ec2-ssh-world-open` posture
  * check matches this field with `equals`, so both sides must reference this
- * constant — copy drift would silently disarm the check.
+ * constant: copy drift would silently disarm the check.
  */
 export const EC2_SSH_WORLD_OPEN = "Port 22 open to the world (0.0.0.0/0).";

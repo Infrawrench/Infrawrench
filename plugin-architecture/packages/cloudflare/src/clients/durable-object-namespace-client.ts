@@ -55,7 +55,7 @@ interface DurableObjectInstance {
   hasStoredData: boolean;
 }
 
-/** Result of {@link listDurableObjectInstances} — instances plus a truncation flag. */
+/** Result of {@link listDurableObjectInstances}: instances plus a truncation flag. */
 interface DurableObjectInstanceList {
   instances: DurableObjectInstance[];
   /** True when there were more instances than {@link INSTANCE_FETCH_CAP}. */
@@ -73,7 +73,7 @@ const INSTANCE_FETCH_CAP = 500;
 /**
  * List the live Durable Object instances inside a namespace via
  * `/accounts/{id}/workers/durable_objects/namespaces/{id}/objects`. This is the
- * only public surface Cloudflare exposes for instances — it returns each
+ * only public surface Cloudflare exposes for instances: it returns each
  * object's id and whether it has stored data, but NOT its storage contents
  * (there is no public API to read/write a DO's storage from outside a Worker).
  */

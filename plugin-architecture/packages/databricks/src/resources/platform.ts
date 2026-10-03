@@ -198,7 +198,7 @@ export const RegisteredModelResourceType = rt({
     f("comment", "Comment", { required: false }),
   ],
   outputs: [o("fullName", "Full Name"), o("storageLocation", "Storage Location")],
-  // A schema's external id is `catalog.schema`. Both halves are optional here —
+  // A schema's external id is `catalog.schema`. Both halves are optional here:
   // a model outside Unity Catalog has neither, and the template correctly
   // yields nothing rather than a half-built key.
   dependsOn: [

@@ -1,5 +1,5 @@
 /**
- * Credential export — produces the downloadable secret bundle shown in the
+ * Credential export: produces the downloadable secret bundle shown in the
  * "Export credentials" UI.
  *
  * Storage account: lists both account keys and emits either an INI of both

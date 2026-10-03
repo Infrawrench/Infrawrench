@@ -169,8 +169,8 @@ export class AWSClient implements PluginClient {
 
   /**
    * Resource types that live outside any single region (S3 ListBuckets, IAM,
-   * Route 53, CloudFront, ACM-on-CloudFront, …). Listing these once is enough
-   * — fanning out across regions would just yield duplicates. Per-bucket S3
+   * Route 53, CloudFront, ACM-on-CloudFront, …). Listing these once is enough:
+   * fanning out across regions would just yield duplicates. Per-bucket S3
    * detail calls still pin to the bucket's home region, but discovery is
    * global.
    */
@@ -186,7 +186,7 @@ export class AWSClient implements PluginClient {
   /**
    * Maximum number of regions queried in parallel during a fan-out list. AWS
    * accounts have a single shared API rate limit, and the plugin's own rate
-   * limiter (capacity 120, refill 8/s in manifest) is the real ceiling — so
+   * limiter (capacity 120, refill 8/s in manifest) is the real ceiling, so
    * picking a moderate concurrency keeps a typed-out user-action snappy
    * without burning the bucket on a single refresh.
    */
@@ -377,7 +377,7 @@ export class AWSClient implements PluginClient {
     const lister = AWSClient.LISTERS[typeId];
     if (!lister) throw new Error(`AWS plugin: unknown resource type "${typeId}"`);
 
-    // Global resources have no concept of region — list them once.
+    // Global resources have no concept of region: list them once.
     if (AWSClient.GLOBAL_TYPES.has(typeId)) {
       return lister(this.ctxFor(this.creds.region), accountId);
     }
@@ -448,8 +448,8 @@ export class AWSClient implements PluginClient {
    * groups run. Handed to the Kubernetes peer so it can derive per-namespace
    * and per-workload cost.
    *
-   * These are published list prices, not billed amounts — Savings Plans,
-   * Reserved Instances and Spot all move the real number — so the payload is
+   * These are published list prices, not billed amounts (Savings Plans,
+   * Reserved Instances and Spot all move the real number) so the payload is
    * marked `list-price` and the UI hedges it accordingly. Never throws: the
    * host resolves every credentialMapping before building the peer client, so
    * a pricing-API hiccup must not take the whole Kubernetes tab down.
@@ -559,8 +559,8 @@ export class AWSClient implements PluginClient {
   }
 
   /**
-   * Quota readings. Every AWS quota takes two calls — Service Quotas for the
-   * ceiling and CloudWatch (or a describe) for the usage — so the transport is
+   * Quota readings. Every AWS quota takes two calls: Service Quotas for the
+   * ceiling and CloudWatch (or a describe) for the usage, so the transport is
    * injected into `quotas.ts` rather than assembled there; see that module's
    * header for why the fallback to the *default* quota is load-bearing.
    */
@@ -600,7 +600,7 @@ export class AWSClient implements PluginClient {
    * against the peak, so an average over the window would report an account
    * that briefly filled its quota as comfortably inside it.
    *
-   * Returns null when CloudWatch publishes no datapoint — that means the
+   * Returns null when CloudWatch publishes no datapoint: that means the
    * account has never run an instance of the class, which is a different fact
    * from "it is running zero right now" and is why the caller skips the quota
    * rather than storing a 0%.
@@ -1036,7 +1036,7 @@ export class AWSClient implements PluginClient {
   /**
    * Chat with a Bedrock foundation model via the (non-streaming) Converse API.
    * We make a single signed POST to `bedrock-runtime.<region>/model/<id>/
-   * converse` — Converse is signed under the `bedrock` service name, same as
+   * converse`: Converse is signed under the `bedrock` service name, same as
    * the control-plane list call. Bedrock's streaming variant uses the binary
    * `application/vnd.amazon.eventstream` framing, so we deliberately use the
    * plain-JSON non-streaming call and surface the whole reply as one delta.

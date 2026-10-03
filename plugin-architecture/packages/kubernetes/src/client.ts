@@ -75,8 +75,8 @@ export class KubernetesClient implements PluginClient {
   private readonly rates: NodeRateTable;
   private costCache: { at: number; promise: Promise<ClusterCostResult> } | null = null;
   /**
-   * The most recent successful cost index. `renderDetail` is synchronous — it
-   * cannot await an allocation — so it renders the cost table from whatever
+   * The most recent successful cost index. `renderDetail` is synchronous (it
+   * cannot await an allocation) so it renders the cost table from whatever
    * the last async pass (dashboard stats, peer pane, metrics) computed, and
    * omits the table entirely on a cold client. That is why the cost sections
    * are all conditional rather than showing "loading".
@@ -244,7 +244,7 @@ export class KubernetesClient implements PluginClient {
 
     // The parent cloud cluster asks with its own resource type id, which is
     // not one of ours (doks-cluster, gke-cluster, …). Treat anything we don't
-    // recognise as "the whole cluster" — that is what the parent is.
+    // recognise as "the whole cluster": that is what the parent is.
     const known = new Set([
       "k8s-cluster",
       "k8s-namespace",
@@ -272,7 +272,7 @@ export class KubernetesClient implements PluginClient {
 
   /**
    * Derived per-namespace / per-workload allocation, written as daily cost
-   * rows. Not billed amounts — see `cost-data.ts`.
+   * rows. Not billed amounts: see `cost-data.ts`.
    */
   async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
     const result = await this.clusterCost();
@@ -280,7 +280,7 @@ export class KubernetesClient implements PluginClient {
   }
 
   /**
-   * Quota readings from the cluster's own `ResourceQuota` objects — one
+   * Quota readings from the cluster's own `ResourceQuota` objects: one
    * unpaginated list across every namespace. See `quotas.ts` for why node
    * capacity and `LimitRange` are deliberately not in here.
    */

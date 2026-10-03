@@ -259,7 +259,7 @@ describe("fetchCostData", () => {
 
     const url = calls[0]!.url;
     expect(url).toContain("starting_at=2026-07-29T00%3A00%3A00Z");
-    // Exclusive end is capped at today 00:00 — completed days only.
+    // Exclusive end is capped at today 00:00: completed days only.
     expect(url).toContain("ending_at=2026-08-01T00%3A00%3A00Z");
     expect(spy).toHaveBeenCalledOnce();
     vi.useRealTimers();

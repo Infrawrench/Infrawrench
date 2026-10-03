@@ -19,16 +19,16 @@ export function relativeDnsRecordName(storedName: string, domain: string): strin
 }
 
 /**
- * Terraform mapping for DigitalOcean — provider `digitalocean/digitalocean`.
+ * Terraform mapping for DigitalOcean: provider `digitalocean/digitalocean`.
  * Attribute names verified against the provider docs
  * (registry.terraform.io/providers/digitalocean/digitalocean):
  *   - digitalocean_droplet: image / name / size required; region optional.
  *   - digitalocean_volume: region / name / size required.
- *   - digitalocean_domain: name required; ip_address optional (skipped —
+ *   - digitalocean_domain: name required; ip_address optional (skipped;
  *     it only seeds an initial A record at create time).
  *   - digitalocean_record: type / domain / name / value required; ttl,
  *     priority, port, weight, flags, tag per record type.
- * The API token is always emitted as `var.do_token` — never inlined.
+ * The API token is always emitted as `var.do_token`, never inlined.
  */
 export const digitaloceanTerraformExport: TerraformExportCapability = {
   provider: { name: "digitalocean", source: "digitalocean/digitalocean", version: "~> 2.0" },

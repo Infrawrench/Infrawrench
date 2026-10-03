@@ -243,7 +243,7 @@ export async function listStepFunctions(
           status: "ACTIVE",
           type: String(sm["type"] ?? "STANDARD"),
           creationDate: String(sm["creationDate"] ?? ""),
-          // ListStateMachines carries no role — only DescribeStateMachine does.
+          // ListStateMachines carries no role, only DescribeStateMachine does.
           roleArn: "",
         },
         resolvedOutputs: { stateMachineArn: arn },

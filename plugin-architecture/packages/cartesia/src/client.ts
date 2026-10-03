@@ -25,13 +25,13 @@ import { cartesiaCostSetupError, fetchCartesiaCostData } from "./cost-data.js";
 const BASE_URL = "https://api.cartesia.ai";
 
 /**
- * Cartesia pins its API to a date and rejects any request without it — this
+ * Cartesia pins its API to a date and rejects any request without it: this
  * header is mandatory on *every* call, including GETs.
  * https://docs.cartesia.ai/api-reference/tts/bytes
  */
 const CARTESIA_VERSION = "2026-03-01";
 
-/** Cartesia has no GET /models endpoint — the TTS model list is a fixed enum. */
+/** Cartesia has no GET /models endpoint: the TTS model list is a fixed enum. */
 const SONIC_MODELS: SpeechPanelOption[] = [
   {
     id: "sonic-3.5",
@@ -332,7 +332,7 @@ export class CartesiaClient implements PluginClient {
     const externalId = externalIdOf(resourceId);
 
     if (typeId === "voice") {
-      // GET /voices/{id} — verified 2026-07-28 against
+      // GET /voices/{id}: verified 2026-07-28 against
       // https://docs.cartesia.ai/api-reference/voices/get
       // `preview_file_url` stays null unless expand[] asks for it.
       const query = new URLSearchParams();
@@ -409,7 +409,7 @@ export class CartesiaClient implements PluginClient {
     }
 
     if (resourceTypeId === "api-key") {
-      // Cartesia reports consumption only — there is no plan ceiling on this
+      // Cartesia reports consumption only: there is no plan ceiling on this
       // endpoint, so this is a spend figure and deliberately not a gauge.
       const keyId = str(f["keyId"]);
       const [keyCredits, orgCredits] = await Promise.all([
@@ -466,14 +466,14 @@ export class CartesiaClient implements PluginClient {
     const externalId = externalIdOf(resourceId);
 
     if (typeId === "voice") {
-      // DELETE /voices/{id} — verified 2026-07-28 against
+      // DELETE /voices/{id}: verified 2026-07-28 against
       // https://docs.cartesia.ai/api-reference/voices/delete (204 No Content).
       await this.fetch(`/voices/${encodeURIComponent(externalId)}`, { method: "DELETE" });
       return;
     }
 
     if (typeId === "pronunciation-dict") {
-      // DELETE /pronunciation-dicts/{id} — verified 2026-07-28 against
+      // DELETE /pronunciation-dicts/{id}: verified 2026-07-28 against
       // https://docs.cartesia.ai/api-reference/pronunciation-dicts/delete
       // (no trailing slash here, unlike the list endpoint).
       await this.fetch(`/pronunciation-dicts/${encodeURIComponent(externalId)}`, {
@@ -508,7 +508,7 @@ export class CartesiaClient implements PluginClient {
       // The voice is part of the body, not the path, and always arrives as an
       // object rather than a bare id.
       voice: { mode: "id", id: voiceId },
-      // Required — Cartesia has no server-side default. For mp3 the object is
+      // Required: Cartesia has no server-side default. For mp3 the object is
       // container/sample_rate/bit_rate only; adding an `encoding` key here is
       // rejected with a 400.
       output_format: { container: "mp3", sample_rate: 44100, bit_rate: 128000 },
@@ -562,7 +562,7 @@ export class CartesiaClient implements PluginClient {
   }
 
   /**
-   * POST /tts/bytes — verified 2026-07-28 against
+   * POST /tts/bytes: verified 2026-07-28 against
    * https://docs.cartesia.ai/api-reference/tts/bytes
    *
    * Deliberately not routed through `jsonRestFetch`: that helper JSON-parses
@@ -597,13 +597,13 @@ export class CartesiaClient implements PluginClient {
   }
 
   /**
-   * POST /stt — verified 2026-07-28 against
+   * POST /stt: verified 2026-07-28 against
    * https://docs.cartesia.ai/api-reference/stt/transcribe
    *
    * multipart/form-data, so this also goes through the global `fetch`:
    * `jsonRestFetch`'s host-HTTP path stringifies FormData rather than
    * encoding it. The clip's Content-Type is whatever MediaRecorder or the
-   * file picker produced — forwarded verbatim, never transcoded.
+   * file picker produced: forwarded verbatim, never transcoded.
    */
   private async sttTranscribe(payload: TranscribeAudioPayload): Promise<CartesiaTranscript> {
     const bytes = base64ToBytes(payload.audioBase64);
@@ -619,7 +619,7 @@ export class CartesiaClient implements PluginClient {
     if (payload.language) form.append("language", payload.language);
     form.append("timestamp_granularities[]", "word");
 
-    // No Content-Type header — fetch has to set it so the multipart boundary
+    // No Content-Type header: fetch has to set it so the multipart boundary
     // matches the body it generated.
     const res = await fetch(`${BASE_URL}/stt`, {
       method: "POST",
@@ -636,7 +636,7 @@ export class CartesiaClient implements PluginClient {
   // ---- Listing -------------------------------------------------------------
 
   /**
-   * GET /voices — verified 2026-07-28 against
+   * GET /voices: verified 2026-07-28 against
    * https://docs.cartesia.ai/api-reference/voices/list
    *
    * `expand[]=preview_file_url` is required: without it every voice comes back
@@ -661,7 +661,7 @@ export class CartesiaClient implements PluginClient {
   }
 
   /**
-   * GET /pronunciation-dicts/ — verified 2026-07-28 against
+   * GET /pronunciation-dicts/: verified 2026-07-28 against
    * https://docs.cartesia.ai/api-reference/pronunciation-dicts/list
    * The trailing slash is part of the documented path.
    */
@@ -670,7 +670,7 @@ export class CartesiaClient implements PluginClient {
   }
 
   /**
-   * GET /api-keys — verified 2026-07-28 against
+   * GET /api-keys: verified 2026-07-28 against
    * https://docs.cartesia.ai/api-reference/api-keys/list
    * Admin-key only; without one we list nothing rather than break the account.
    */
@@ -680,7 +680,7 @@ export class CartesiaClient implements PluginClient {
   }
 
   /**
-   * GET /usage/credits — verified 2026-07-28 against
+   * GET /usage/credits: verified 2026-07-28 against
    * https://docs.cartesia.ai/api-reference/usage/credits
    *
    * Admin-key only, and consumption-only: there is no plan limit in the

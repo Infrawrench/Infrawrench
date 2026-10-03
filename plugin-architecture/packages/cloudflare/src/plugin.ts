@@ -113,7 +113,7 @@ const manifest: PluginManifest = {
     },
   ],
   rateLimit: { capacity: 80, refillPerSecond: 6 },
-  // Billable Usage API — GA for self-serve accounts (Enterprise still rolling
+  // Billable Usage API: GA for self-serve accounts (Enterprise still rolling
   // out); conservative history window while coverage expands. Charge periods
   // follow the billing cycle, hence periodNative.
   costs: { dimensions: ["service", "tag"], maxHistoryDays: 90, periodNative: true },

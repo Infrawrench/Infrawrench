@@ -35,7 +35,7 @@ export const UtAppResourceType = rt({
     }),
   ],
   // An API key is app-scoped and there is no "list apps" call, so an account
-  // can never hold two of these — the app *is* the account. Opening the
+  // can never hold two of these: the app *is* the account. Opening the
   // account lands here instead of on a section holding one pill.
   accountRoot: true,
   supportsStorageBrowser: true,

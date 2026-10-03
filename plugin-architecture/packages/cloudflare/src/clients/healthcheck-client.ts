@@ -7,7 +7,7 @@ import type {
 } from "cloudflare/resources/healthchecks/healthchecks";
 
 /**
- * Cloudflare standalone Health Checks (`/zones/{id}/healthchecks`) — active
+ * Cloudflare standalone Health Checks (`/zones/{id}/healthchecks`): active
  * origin monitors that probe an address on an interval and report
  * healthy/unhealthy, independent of load-balancer pools. Each check's
  * externalId is `<zoneId>/<checkId>` so writes can address it directly.

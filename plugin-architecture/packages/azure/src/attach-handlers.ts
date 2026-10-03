@@ -11,7 +11,7 @@
  * - `azure-managed-identity` → `azure-vm`: adds a user-assigned managed
  *   identity to the VM.
  *
- * Both paths read the live ARM representation first, then PATCH a delta — Azure
+ * Both paths read the live ARM representation first, then PATCH a delta: Azure
  * doesn't have a separate "attach" verb for these.
  */
 import type { ResourceInstance } from "@infrawrench/plugin-base";

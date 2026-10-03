@@ -4,7 +4,7 @@ import { formatGcpError } from "../utils.js";
 
 /**
  * Verbatim body returned by sqladmin.googleapis.com for a project that has
- * never enabled the API — the shape the rewrite keys off. Trimmed only of the
+ * never enabled the API: the shape the rewrite keys off. Trimmed only of the
  * fields we don't read.
  */
 const SERVICE_DISABLED_BODY = JSON.stringify({

@@ -104,7 +104,7 @@ export class FlyClient implements PluginClient {
   }
 
   /* ------------------------------------------------------------------ */
-  /*  PluginClient — core contract                                       */
+  /*  PluginClient: core contract                                       */
   /* ------------------------------------------------------------------ */
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -695,7 +695,7 @@ export class FlyClient implements PluginClient {
   }
 
   /* ------------------------------------------------------------------ */
-  /*  PluginClient — rendering                                           */
+  /*  PluginClient: rendering                                           */
   /* ------------------------------------------------------------------ */
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -877,7 +877,7 @@ export class FlyClient implements PluginClient {
   }
 
   /* ------------------------------------------------------------------ */
-  /*  Private — list helpers                                              */
+  /*  Private: list helpers                                              */
   /* ------------------------------------------------------------------ */
 
   private async listApps(accountId: string): Promise<ResourceInstance[]> {
@@ -960,7 +960,7 @@ export class FlyClient implements PluginClient {
   }
 
   /* ------------------------------------------------------------------ */
-  /*  Private — mappers                                                   */
+  /*  Private: mappers                                                   */
   /* ------------------------------------------------------------------ */
 
   private mapApp(app: FlyApp, accountId: string): ResourceInstance {

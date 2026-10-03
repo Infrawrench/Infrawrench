@@ -320,7 +320,7 @@ describe("fetchElevenLabsCostData — currency", () => {
     });
 
     const rows = await fetchElevenLabsCostData(ctx(), range);
-    // 1.25 is $1.25, not 1.25 cents — the amount passes through unscaled.
+    // 1.25 is $1.25, not 1.25 cents: the amount passes through unscaled.
     expect(rows[0]?.amount).toBe(1.25);
   });
 });

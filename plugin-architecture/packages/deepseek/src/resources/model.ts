@@ -1,8 +1,8 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * One model the API key can call. DeepSeek's list is deliberately tiny —
- * `deepseek-v4-flash` and `deepseek-v4-pro` — and the response carries no
+ * One model the API key can call. DeepSeek's list is deliberately tiny
+ * (`deepseek-v4-flash` and `deepseek-v4-pro`) and the response carries no
  * pricing, context window, or capability metadata, only the OpenAI-compatible
  * `{id, object, owned_by}` triple.
  *

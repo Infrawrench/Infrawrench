@@ -8,7 +8,7 @@ import type { SettingDescriptor } from "@infrawrench/plugin-base";
  *
  * Editable settings span three Cloudflare endpoints, so the descriptor ids stay
  * stable and each one is routed to the right endpoint on apply:
- *   - script settings  (`PATCH /workers/scripts/{name}/settings`) — logpush,
+ *   - script settings  (`PATCH /workers/scripts/{name}/settings`): logpush,
  *     observability, tags. NOTE: this endpoint only accepts those fields, so
  *     compatibility date/flags, usage model, Smart Placement and CPU limits are
  *     shown read-only (they're set at deploy time, not patchable here).

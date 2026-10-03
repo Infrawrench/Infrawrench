@@ -30,7 +30,7 @@ function page(p: Page) {
  * A context whose `post` answers each successive query from `responses`,
  * recording the bodies so the grouping/filter shape can be asserted.
  *
- * A query a test does not declare answers `{}` — what the HTTP helper hands
+ * A query a test does not declare answers `{}`: what the HTTP helper hands
  * back for Azure's 204 No Content, i.e. "no spend in this window". A test that
  * says nothing about a pass is therefore a test about a subscription that pass
  * finds nothing for, rather than a crash.
@@ -66,12 +66,12 @@ function filterOf(body: unknown): unknown {
   return (body as { dataset: { filter?: unknown } }).dataset.filter;
 }
 
-/** Which dataset a query asked for — `ActualCost` or `AmortizedCost`. */
+/** Which dataset a query asked for: `ActualCost` or `AmortizedCost`. */
 function typeOf(body: unknown): string {
   return (body as { type: string }).type;
 }
 
-/** An empty amortized consumption page — "the pass ran and found nothing". */
+/** An empty amortized consumption page: "the pass ran and found nothing". */
 const NO_AMORTIZED = () => page({ columns: USAGE_COLUMNS, rows: [] });
 
 const USAGE_COLUMNS = ["Cost", "UsageDate", "ServiceName", "ResourceLocation", "Currency"];
@@ -116,7 +116,7 @@ describe("fetchAzureCostData query shape", () => {
 
     expect(bodies).toHaveLength(4);
     for (const body of bodies) {
-      // "Query can have up to 2 group by clauses" — Microsoft.CostManagement.
+      // "Query can have up to 2 group by clauses": Microsoft.CostManagement.
       expect(groupingOf(body).length).toBeLessThanOrEqual(2);
     }
 
@@ -124,7 +124,7 @@ describe("fetchAzureCostData query shape", () => {
       dimensions: { name: "ChargeType", operator: "In", values: ["Usage"] },
     };
     // The two consumption passes are the same query against the two datasets.
-    // Their *difference* per cell is what a commitment delivered — which is the
+    // Their *difference* per cell is what a commitment delivered, which is the
     // only way Azure prices covered usage at anything but zero, and it needs no
     // third grouping slot.
     expect(groupingOf(bodies[0])).toEqual(["ServiceName", "ResourceLocation"]);
@@ -211,8 +211,8 @@ describe("fetchAzureCostData row mapping", () => {
   });
 
   it("splits a cell into on-demand and commitment-covered usage by the gap between datasets", async () => {
-    // ActualCost prices reservation-covered usage at zero — the money left when
-    // the reservation was bought — so cash coverage is structurally 0% and a
+    // ActualCost prices reservation-covered usage at zero (the money left when
+    // the reservation was bought) so cash coverage is structurally 0% and a
     // ratio built on it is an answer-shaped non-answer. AmortizedCost prices the
     // same hours at their real rate, and the difference is what the commitment
     // delivered into the cell.
@@ -250,7 +250,7 @@ describe("fetchAzureCostData row mapping", () => {
         chargeType: "commitment_covered_usage",
       },
     ]);
-    // No commitment id is claimed — BenefitId is not in this grouping, and is
+    // No commitment id is claimed: BenefitId is not in this grouping, and is
     // an EA/MCA-only column anyway. Coverage does not need it.
     expect(rows.every((r) => r.commitmentId === undefined)).toBe(true);
     // Cash and amortized totals are each conserved.
@@ -285,7 +285,7 @@ describe("fetchAzureCostData row mapping", () => {
   it("does not fabricate coverage out of a correction that has landed on one dataset only", async () => {
     // Azure restates by emitting negative `Usage` lines, and the two datasets
     // need not receive one in the same collection. A −5 that has reached
-    // ActualCost but not AmortizedCost reads as cash −5, amortized 0 — whose
+    // ActualCost but not AmortizedCost reads as cash −5, amortized 0: whose
     // "gap" is a fabricated 5 of commitment-covered spend. The totals would
     // still balance, but the coverage numerator would be wrong *and* the cell
     // would be marked commitment-eligible on that evidence, dragging the narrow
@@ -316,7 +316,7 @@ describe("fetchAzureCostData row mapping", () => {
 
   it("does not decompose a cell whose amortized figure is a correction", async () => {
     // The mirror image: amortized −5 against cash 0. The gap is negative, so
-    // the old code already fell through — but the guard has to hold for the
+    // the old code already fell through, but the guard has to hold for the
     // case where *both* are negative and the gap is positive, e.g. cash −10
     // against amortized −4, which "decomposes" to 6 of covered spend out of
     // two refunds.
@@ -344,7 +344,7 @@ describe("fetchAzureCostData row mapping", () => {
   });
 
   it("states a purchase's amortized value as zero only once amortization landed", async () => {
-    // The AmortizedCost dataset has no Purchase row at all — that money *is*
+    // The AmortizedCost dataset has no Purchase row at all: that money *is*
     // the covered-usage rows. Saying so explicitly is what stops the amortized
     // view showing the purchase at full price alongside every slice of it.
     const withAmortization = ctxFor([
@@ -494,7 +494,7 @@ describe("fetchAzureCostData row mapping", () => {
     ]);
     const { rows } = await fetchAzureCostData(ctx, RANGE);
     // All four spellings of "no benefit" normalize to the same empty id, and a
-    // benefit-less Purchase is `other` — so all four provider rows share one
+    // benefit-less Purchase is `other`, so all four provider rows share one
     // host key and must arrive as **one summed row**. Four separate rows would
     // be four versions of one ReplacingMergeTree row, and `FINAL` would keep
     // whichever landed last: 10 reported instead of 46.
@@ -606,7 +606,7 @@ describe("fetchAzureCostData unused commitment hours", () => {
     // `covered = amortized − cash` is computed from the two `ChargeType In
     // ("Usage")` queries, and an unused row is not a Usage row on either
     // dataset. Feeding one in would double-count the same committed money as
-    // delivered *and* as wasted — here, 86 of "coverage" instead of 6.
+    // delivered *and* as wasted: here, 86 of "coverage" instead of 6.
     const { ctx, bodies } = ctxFor([
       ...COVERED_CELL(),
       page({ columns: ATTRIBUTION_COLUMNS, rows: [] }),
@@ -626,7 +626,7 @@ describe("fetchAzureCostData unused commitment hours", () => {
 
   it("merges an unused row with the purchase it shares a host key with", async () => {
     // Same day, same benefit, both `commitment_fee`, and the attribution rows
-    // carry no service or region — so these two provider rows are one row as
+    // carry no service or region, so these two provider rows are one row as
     // far as `cost_daily`'s sort key is concerned. Pushed separately they would
     // be two versions of one ReplacingMergeTree row and `FINAL` would keep
     // whichever landed last, silently dropping the other basis.
@@ -657,8 +657,8 @@ describe("fetchAzureCostData unused commitment hours", () => {
   it("states a purchase's amortized zero on the strength of unused hours alone", async () => {
     // A commitment covering nothing produces no amortized *consumption* rows at
     // all, so the old "did the amortized pass return anything" test would read
-    // as "no amortized data" and leave the purchase at full cash on both bases
-    // — double-counting it against the unused hours that hold the same money.
+    // as "no amortized data" and leave the purchase at full cash on both bases:
+    // double-counting it against the unused hours that hold the same money.
     const { ctx } = ctxFor([
       page({ columns: USAGE_COLUMNS, rows: [] }),
       NO_AMORTIZED(),
@@ -695,7 +695,7 @@ describe("fetchAzureCostData unused commitment hours", () => {
   it("survives a refusal of the unused pass alone", async () => {
     // Same posture as the amortized consumption pass: the wasted-commitment
     // figure is lost, nothing else is, and the collection must not be flagged
-    // degraded — that flag suppresses the host's reconciliation.
+    // degraded; that flag suppresses the host's reconciliation.
     const { ctx } = ctxFor([
       ...COVERED_CELL(),
       page({ columns: ATTRIBUTION_COLUMNS, rows: [[7, 20260701, "Tax", "", "USD"]] }),
@@ -738,7 +738,7 @@ describe("fetchAzureCostData fallback", () => {
       },
     ]);
     // No chargeType: the fallback genuinely cannot tell, and the host records
-    // an absent charge type as `usage` — which keeps the tags_hash identical
+    // an absent charge type as `usage`, which keeps the tags_hash identical
     // to what this collector wrote before charge types existed.
     expect(rows[0]!.chargeType).toBeUndefined();
   });
@@ -748,7 +748,7 @@ describe("fetchAzureCostData fallback", () => {
     // BenefitId *and* for one that merely had a bad minute. Either way this
     // pass writes a strictly coarser key space than the collection before it,
     // and the host's superseded-row reconciliation would read that as "the
-    // attribution rows are gone" and zero every one of them for these days —
+    // attribution rows are gone" and zero every one of them for these days:
     // unrepairable, since a backfilled account only re-fetches restatementDays.
     const { ctx } = ctxFor([
       new Error("Azure API POST 400: Invalid dataset grouping: 'BenefitId'"),
@@ -759,7 +759,7 @@ describe("fetchAzureCostData fallback", () => {
   });
 
   it("does not flag a healthy attributed pass", async () => {
-    // Absent means "not degraded" — a normal pass must never suppress
+    // Absent means "not degraded": a normal pass must never suppress
     // reconciliation, which is the whole mechanism for retiring stale keys.
     const { ctx } = ctxFor([
       page({ columns: USAGE_COLUMNS, rows: [[9, 20260701, "Virtual Machines", "eastus", "USD"]] }),

@@ -8,7 +8,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * `{ batches: [...], next_page_token }`.
  *
  * ⚠️ This is one of the few management-shaped surfaces that really is on
- * `/v2/` — datasets, models, embed jobs and fine-tuning are all still `/v1/`.
+ * `/v2/`: datasets, models, embed jobs and fine-tuning are all still `/v1/`.
  * Batches are cancelled via the colon verb `POST /v2/batches/{id}:cancel`;
  * there is no delete.
  */
@@ -39,8 +39,8 @@ export const BatchResourceType = rt({
     }),
     o("status", "Status"),
   ],
-  // `model` is a `/v1/models` name — which is what the Model rows use as their
-  // external id — and both dataset fields are `/v1/datasets` ids.
+  // `model` is a `/v1/models` name (which is what the Model rows use as their
+  // external id) and both dataset fields are `/v1/datasets` ids.
   dependsOn: [
     { fieldKey: "model", targetTypeId: "model", label: "runs" },
     { fieldKey: "inputDatasetId", targetTypeId: "dataset", label: "reads" },

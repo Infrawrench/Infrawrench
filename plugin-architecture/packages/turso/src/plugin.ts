@@ -37,7 +37,7 @@ const manifest: PluginManifest = {
       placeholder: "my-org",
     },
   ],
-  // Issued monthly invoices only — an org-level lump sum with no line items
+  // Issued monthly invoices only: an org-level lump sum with no line items
   // and no period fields, dated to each invoice's due date.
   costs: { dimensions: [], maxHistoryDays: 365, periodNative: true },
 };

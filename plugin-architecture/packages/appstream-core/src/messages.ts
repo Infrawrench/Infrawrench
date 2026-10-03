@@ -14,7 +14,7 @@ export interface ClientCaps {
   webp: boolean;
   /** The wasm zstd decoder loaded; without it there is no lossless tier. */
   zstd: boolean;
-  /** `createImageBitmap` of a JPEG blob — the lossy tier for a window in motion. */
+  /** `createImageBitmap` of a JPEG blob: the lossy tier for a window in motion. */
   jpeg: boolean;
   /**
    * This client applies `RectOp.Delta`. False would make the host send whole
@@ -44,7 +44,7 @@ export interface ServerCaps {
   /**
    * The host answers `a11yTree` requests: it found a session bus with an
    * address for its AT-SPI registry to live on. Absent on older hosts, which
-   * would treat the request as a bad frame — never send without this.
+   * would treat the request as a bad frame, never send without this.
    */
   a11y?: boolean;
 }
@@ -177,7 +177,7 @@ export type ServerMessage =
       windowId: number;
       requestId: number;
       ok: boolean;
-      /** Why there is no tree — or a caveat (truncation) beside one. */
+      /** Why there is no tree, or a caveat (truncation) beside one. */
       message?: string;
       tree?: A11yNode;
     };
@@ -201,7 +201,7 @@ export function decodeClientMessage(payload: Uint8Array): ClientMessage {
  * Caps for a browser or Electron renderer, probed rather than assumed.
  *
  * `zstd` is passed in because the wasm decoder is loaded asynchronously and a
- * session may legitimately start before it is ready — in which case the host
+ * session may legitimately start before it is ready: in which case the host
  * sends raw rectangles instead, which are larger but always decodable.
  */
 export async function probeClientCaps(
@@ -211,7 +211,7 @@ export async function probeClientCaps(
     vp9: await canDecodeVp9(),
     webp: typeof capabilityGlobals().createImageBitmap === "function",
     zstd: options.zstd,
-    // Same capability as WebP, and for the same reason — the browser decodes
+    // Same capability as WebP, and for the same reason: the browser decodes
     // the blob for us. Kept a separate flag because a host may have one
     // encoder and not the other.
     jpeg: typeof capabilityGlobals().createImageBitmap === "function",

@@ -17,7 +17,7 @@ export const VercelDomainResourceType = rt({
     f("createdAt", "Created At", { required: false }),
   ],
   outputs: [o("domainName", "Domain Name"), o("nameservers", "Nameservers")],
-  // `GET /v5/domains` reports the owning team but no project link — a
+  // `GET /v5/domains` reports the owning team but no project link: a
   // domain↔project association lives on `/v9/projects/{id}/domains`, which the
   // lister doesn't fetch.
   dependsOn: [{ fieldKey: "teamId", targetTypeId: "vercel-team", label: "owned by" }],

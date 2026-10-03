@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * An ElevenLabs voice — premade, cloned, professional or generated.
+ * An ElevenLabs voice: premade, cloned, professional or generated.
  * Listed from `GET /v2/voices`.
  * https://elevenlabs.io/docs/api-reference/voices/search
  */

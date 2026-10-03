@@ -1,7 +1,7 @@
 /**
  * Azure plugin client facade.
  *
- * This class is intentionally thin — it owns the long-lived per-account state
+ * This class is intentionally thin: it owns the long-lived per-account state
  * (credentials, token caches, pricing rate cache) and the low-level
  * AAD-authenticated HTTP helpers, and delegates everything else to the
  * co-located per-service modules:
@@ -100,8 +100,8 @@ export class AzureClient implements PluginClient {
   private readonly resourceTypes: ResourceTypeDefinition[];
   /**
    * Host services, when the host provides them. Every Azure request this
-   * client makes — ARM, the AAD token endpoint, Blob Storage, ACR, the
-   * Service Bus / Event Hubs data plane, Retail Prices — goes through
+   * client makes (ARM, the AAD token endpoint, Blob Storage, ACR, the
+   * Service Bus / Event Hubs data plane, Retail Prices) goes through
    * `services.http` when it is present, which is what makes per-account
    * bastion routing and custom CA trust reach Azure. See `http.ts`. The one
    * exception is Microsoft Graph, which the vendor SDK transports itself.
@@ -153,7 +153,7 @@ export class AzureClient implements PluginClient {
     return t;
   }
 
-  /** Service Bus / Event Hubs data-plane token — separate audience from ARM. */
+  /** Service Bus / Event Hubs data-plane token: separate audience from ARM. */
   private async serviceBusToken(): Promise<string> {
     const now = Date.now();
     if (this.serviceBusTokenCache && this.serviceBusTokenCache.expiresAt > now + 60_000) {
@@ -164,7 +164,7 @@ export class AzureClient implements PluginClient {
     return t;
   }
 
-  /** Microsoft Graph access token — separate audience from ARM. */
+  /** Microsoft Graph access token: separate audience from ARM. */
   private async graphToken(): Promise<string> {
     const now = Date.now();
     if (this.graphTokenCache && this.graphTokenCache.expiresAt > now + 60_000) {
@@ -228,7 +228,7 @@ export class AzureClient implements PluginClient {
     });
     if (!res.ok) throw new Error(`Azure API ${method} ${res.status}: ${await res.text()}`);
     // ARM answers a good few writes with an empty body (204, or 200 with no
-    // content) — those are successes with nothing to parse.
+    // content): those are successes with nothing to parse.
     if (res.status === 204 || res.headers.get("content-length") === "0") return {} as T;
     return res.json<T>();
   }
@@ -252,14 +252,14 @@ export class AzureClient implements PluginClient {
       headers: { Authorization: `Bearer ${tok}` },
     });
     // 202 is ARM's "accepted, deleting asynchronously" and 204 its "already
-    // gone" — both are the outcome the caller asked for.
+    // gone": both are the outcome the caller asked for.
     if (!res.ok && res.status !== 204 && res.status !== 202) {
       throw new Error(`Azure API DELETE ${res.status}: ${await res.text()}`);
     }
   }
 
   /**
-   * Microsoft Graph SDK client — defers token acquisition to `graphToken()`,
+   * Microsoft Graph SDK client: defers token acquisition to `graphToken()`,
    * which already caches/refreshes via `fetchGraphAccessToken`. We mint a
    * fresh `Client` each access (the SDK is stateless aside from the auth
    * provider, so this matches the lifecycle of the previous helper).
@@ -389,8 +389,8 @@ export class AzureClient implements PluginClient {
    * Pay-as-you-go hourly price of an AKS cluster's node VM size, handed to the
    * Kubernetes peer so it can derive per-namespace and per-workload cost.
    *
-   * Retail list price, not a billed amount — reservations and Spot move the
-   * real number — so the payload is marked `list-price`. Never throws: the
+   * Retail list price, not a billed amount (reservations and Spot move the
+   * real number) so the payload is marked `list-price`. Never throws: the
    * host resolves every credentialMapping before building the peer client.
    *
    * Shape is the JSON that `kubernetes/src/node-rates.ts` parses.
@@ -595,7 +595,7 @@ export class AzureClient implements PluginClient {
   ): Promise<void> {
     if (typeId === "azure-vm" && (actionId === "start" || actionId === "deallocate")) {
       const resource = await this.getResource(typeId, resourceId, accountId);
-      // externalId is rg/name — the same two-part form deleteResource splits.
+      // externalId is rg/name: the same two-part form deleteResource splits.
       const [rg, name] = String(resource.externalId ?? "").split("/");
       if (!rg || !name) throw new Error("Cannot determine resource group/name for VM");
       await this.post(
@@ -608,7 +608,7 @@ export class AzureClient implements PluginClient {
   }
 
   /**
-   * Edit a VM: change its size (`vmSize`) — the right-sizing apply path.
+   * Edit a VM: change its size (`vmSize`); the right-sizing apply path.
    * ARM PATCH on `hardwareProfile.vmSize`; Azure accepts it on a running VM
    * but restarts it during the change, and rejects sizes unavailable on the
    * current hardware cluster (deallocate first to widen the choice). VM
@@ -626,7 +626,7 @@ export class AzureClient implements PluginClient {
     const vmSize = fields["vmSize"];
     if (!vmSize) throw new Error("Azure plugin: vmSize is the only editable VM field");
     const resource = await this.getResource(typeId, resourceId, accountId);
-    // externalId is rg/name — the same two-part form deleteResource splits.
+    // externalId is rg/name: the same two-part form deleteResource splits.
     const [rg, name] = String(resource.externalId ?? "").split("/");
     if (!rg || !name) throw new Error("Cannot determine resource group/name for VM");
     await this.patch(

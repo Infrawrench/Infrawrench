@@ -672,7 +672,7 @@ export class HetznerClient implements PluginClient {
    * Edit a server: rename (`name`) and/or change its type (`serverType`).
    *
    * The type change is Hetzner's `change_type` action with
-   * `upgrade_disk: false` — the disk keeps its current size, which is what
+   * `upgrade_disk: false`: the disk keeps its current size, which is what
    * keeps a later downgrade possible. Hetzner rejects the action with
    * `server_not_stopped` (422) unless the server is powered off, and refuses
    * targets whose included disk is smaller than the server's current disk or
@@ -723,7 +723,7 @@ export class HetznerClient implements PluginClient {
       throw new Error(`Hetzner server update: ${failures.join("; ")}`);
     }
 
-    // change_type is asynchronous on Hetzner's side — an immediate re-read
+    // change_type is asynchronous on Hetzner's side: an immediate re-read
     // can still report the old server type while the action runs. Overlay the
     // accepted values so the returned resource reflects the requested end
     // state; the next sync reads the converged truth (the disk keeps its size
@@ -1305,7 +1305,7 @@ export class HetznerClient implements PluginClient {
     return firewalls.map((fw) => {
       // `applied_to` entries are either `{type:"server", server:{id}}` or
       // `{type:"label_selector", label_selector:{selector},
-      // applied_to_resources:[{type:"server", server:{id}}]}` — collect the
+      // applied_to_resources:[{type:"server", server:{id}}]}`: collect the
       // concrete server ids from both shapes, and keep the selectors as text.
       const appliedTo = fw.applied_to ?? [];
       const appliedToServerIds = new Set<string>();
@@ -1522,7 +1522,7 @@ export class HetznerClient implements PluginClient {
    * Estimated spend, from inventory × the `/pricing` rate card.
    *
    * Hetzner Cloud has no billing endpoint, so there is nothing to read actual
-   * spend from — see the header of `cost-data.ts` for what that costs in
+   * spend from: see the header of `cost-data.ts` for what that costs in
    * accuracy and why this collector never backfills. The rate-card cache lives
    * on the client, which the host builds once per collection pass, so the
    * month chunks of one pass share a single `/pricing` request.
@@ -1575,13 +1575,13 @@ interface HetznerServer {
   public_net?: {
     ipv4?: { ip: string };
     ipv6?: { ip: string };
-    /** Firewalls applied to the public interface — `{ id, status }`. */
+    /** Firewalls applied to the public interface: `{ id, status }`. */
     firewalls?: Array<{ id?: number; status?: string }>;
   };
   /** One entry per attached Network; `network` is the Network id. */
   private_net?: Array<{ ip: string; network?: number }>;
   server_type?: { name: string; cores: number; memory: number; disk: number };
-  /** Actual root disk size in GB — stays put on change_type with upgrade_disk=false. */
+  /** Actual root disk size in GB: stays put on change_type with upgrade_disk=false. */
   primary_disk_size?: number;
   datacenter?: { name: string; location?: { name: string; city: string } };
   image?: { name: string; description: string };

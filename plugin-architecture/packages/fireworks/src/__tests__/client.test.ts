@@ -96,7 +96,7 @@ describe("control plane", () => {
     expect(calls[0]?.url).toBe(
       "https://api.fireworks.ai/v1/accounts/my-team/users/-/apiKeys?pageSize=200",
     );
-    // The identity is `keyId` — `gatewayApiKey` has no `name`.
+    // The identity is `keyId`: `gatewayApiKey` has no `name`.
     expect(items[0]?.externalId).toBe("k1");
   });
 });
@@ -115,7 +115,7 @@ describe("deployments", () => {
     const scale = calls.find((c) => c.url.endsWith(":scale"));
     expect(scale?.init?.method).toBe("PATCH");
     expect(JSON.parse(scale!.init!.body as string)).toEqual({ replicaCount: 4 });
-    // The replica window is a *different* call — it must not ride along on :scale.
+    // The replica window is a *different* call: it must not ride along on :scale.
     expect(
       calls.filter((c) => c.init?.method === "PATCH" && !c.url.endsWith(":scale")),
     ).toHaveLength(0);

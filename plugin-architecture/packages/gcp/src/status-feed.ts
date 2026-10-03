@@ -1,6 +1,6 @@
 /**
  * Google Cloud public status feed
- * (https://status.cloud.google.com/incidents.json — verified 2026-08).
+ * (https://status.cloud.google.com/incidents.json: verified 2026-08).
  *
  * Custom JSON: a bare array of incident objects. The useful fields (all
  * verified live): `id`, `begin`, `end` (absent/null while active),
@@ -55,7 +55,7 @@ export function parseStatusFeed(body: string): StatusIncident[] {
   for (const raw of parsed) {
     if (!raw || typeof raw.id !== "string" || raw.id.length === 0) continue;
     const resolved = Boolean(raw.end);
-    // The feed carries years of history; only active incidents matter — the
+    // The feed carries years of history; only active incidents matter: the
     // host closes cached rows that disappear from the feed.
     if (resolved) continue;
     const locations = (raw.currently_affected_locations ?? [])

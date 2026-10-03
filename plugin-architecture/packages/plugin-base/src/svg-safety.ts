@@ -1,7 +1,7 @@
 /**
  * Inertness rules for `PluginManifest.logoSvg`.
  *
- * Every host surface renders that string with `dangerouslySetInnerHTML` —
+ * Every host surface renders that string with `dangerouslySetInnerHTML`:
  * eighteen call sites across `@infrawrench/ui`, the web app and the desktop
  * app, all of them ultimately reading `plugin.manifest.logoSvg` off the loaded
  * registry. The manifest is therefore the trust boundary for that markup, and
@@ -10,8 +10,8 @@
  * {@link isInertSvg}, so a logo that could execute anything is rejected by the
  * loader and the plugin never reaches a renderer at all.
  *
- * There is no `script-src` CSP in front of those call sites — see
- * `web/src/api/security-headers.ts` for why that is separate work — so this
+ * There is no `script-src` CSP in front of those call sites (see
+ * `web/src/api/security-headers.ts` for why that is separate work) so this
  * check is the only line of defence they have. It is written accordingly.
  *
  * Why an element allowlist rather than a list of banned tags
@@ -22,7 +22,7 @@
  * `<desc><img src=x onerror=...>` runs inside an otherwise ordinary `<svg>`)
  * have each defeated one in the past. A brand logo needs a vocabulary of about
  * ten elements, so the safe list is short enough to write out, and anything
- * outside it — including every construct that has ever been an SVG XSS vector —
+ * outside it (including every construct that has ever been an SVG XSS vector)
  * is rejected by default. The failure mode is a build failure naming the
  * element, which is the right way to learn that a new logo wants `<circle>`.
  *
@@ -34,8 +34,8 @@
  *   - **Event handlers**: any attribute whose name starts with `on`.
  *   - **URLs**: `href` / `xlink:href` must be a same-document fragment, which
  *     is what stops `<use>` pulling in an external document as well as
- *     `javascript:` and `data:`. Any `url(...)` in any attribute — `clip-path`,
- *     `fill`, `filter`, `style` — must likewise target a fragment. Attributes
+ *     `javascript:` and `data:`. Any `url(...)` in any attribute (`clip-path`,
+ *     `fill`, `filter`, `style`) must likewise target a fragment. Attributes
  *     that only ever fetch (`src`, `srcset`, `poster`, `xlink:base`, …) are
  *     rejected outright, since no allowed element has a use for them.
  *   - **Scheme smuggling**: values are entity-decoded and stripped of control
@@ -68,7 +68,7 @@ const ALLOWED_ELEMENTS: ReadonlySet<string> = new Set([
   "symbol",
   "use",
   "switch",
-  // Accessible text (parsed as HTML by the browser — the allowlist is what
+  // Accessible text (parsed as HTML by the browser: the allowlist is what
   // keeps an <img onerror> out of them)
   "title",
   "desc",

@@ -10,8 +10,8 @@ import type {
 /**
  * Steering policies the API accepts (`SteeringPolicyParam`), minus the empty
  * string. `""` is a legal API value meaning "infer from the configured pools",
- * but the edit form uses a blank box to mean "leave unchanged", so a blank —
- * or an unrecognised — policy is dropped from the PATCH rather than sent.
+ * but the edit form uses a blank box to mean "leave unchanged", so a blank
+ * (or an unrecognised) policy is dropped from the PATCH rather than sent.
  */
 const STEERING_POLICIES = [
   "off",

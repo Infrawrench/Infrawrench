@@ -15,7 +15,7 @@
  * today return nothing.
  *
  * The API credential needs the access rules `GET /me/bill*` and
- * `GET /me/consumption*` — account-level routes that a Public-Cloud-only
+ * `GET /me/consumption*`: account-level routes that a Public-Cloud-only
  * consumer key will not have unless granted. Missing consumption access
  * degrades gracefully (invoiced history still collects).
  */
@@ -25,7 +25,7 @@ import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 /** Signature of the client's private signed OVH fetch helper. */
 export type OvhJsonFetcher = <T>(path: string) => Promise<T>;
 
-/** order.Price / me.consumption.Price — both carry currencyCode + value. */
+/** order.Price / me.consumption.Price: both carry currencyCode + value. */
 interface OvhPrice {
   currencyCode?: string;
   value?: number;
@@ -58,7 +58,7 @@ interface OvhConsumptionTransaction {
 }
 
 /**
- * Above this many line items, fall back to the single bill-total row —
+ * Above this many line items, fall back to the single bill-total row:
  * fetching details is one signed request per line, and a partial drain
  * would under-report the bill.
  */
@@ -125,7 +125,7 @@ export async function fetchOvhCostData(
     }
   }
 
-  // 2. The unbilled in-progress period — only when the chunk covers today,
+  // 2. The unbilled in-progress period: only when the chunk covers today,
   // because /me/consumption/usage/current always reports the present period
   // and attaching it to any other chunk would misdate it.
   const today = new Date().toISOString().slice(0, 10);
@@ -155,7 +155,7 @@ export async function fetchOvhCostData(
         }
       }
     } catch {
-      // Consumer key lacks GET /me/consumption* — invoiced history is still
+      // Consumer key lacks GET /me/consumption*: invoiced history is still
       // collected, the current period just lags until its bill lands.
     }
   }

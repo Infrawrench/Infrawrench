@@ -2,7 +2,7 @@
  * Create-flow dispatcher for the DigitalOcean plugin.
  *
  * The per-type form building and the POST bodies live in `./create-handlers/`,
- * one module per vendor domain — same shape the AWS plugin uses. Each module
+ * one module per vendor domain: same shape the AWS plugin uses. Each module
  * returns `null` for a `typeId` it does not own; the first non-null result
  * wins, and every module declining is the "unsupported type" case. The arms
  * are mutually exclusive, so the order below is presentational only.
@@ -80,13 +80,13 @@ export async function doCreateResource(
   parentResourceId?: string,
 ): Promise<ResourceCreateResult> {
   const warnings: ResourceWarning[] = [];
-  // Mutable cell — handlers that mint sidecar credentials (e.g. spaces-bucket
+  // Mutable cell: handlers that mint sidecar credentials (e.g. spaces-bucket
   // auto-creating an account-wide Spaces key) write into it, and the wrapper
   // forwards them up to the host as `credentialUpdates` on the result.
   const credentialUpdatesRef: { value?: Record<string, string> } = {};
 
   // When a child resource is created from its parent's detail page, the form
-  // omits the parent-identifying field — recover it by parsing the parent's
+  // omits the parent-identifying field: recover it by parsing the parent's
   // `{accountId}:{typeId}:{externalId}` id. DO project ids are UUIDs; DO
   // domain ids are the domain name itself. Falls back to `fields["projectId"]`
   // when the form was opened from the account base and the user picked a

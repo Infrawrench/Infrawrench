@@ -112,7 +112,7 @@ export async function addSecretVersion(
 ): Promise<SecretVersion> {
   const tok = await ctx.token();
   if (typeId === "kms-key") {
-    // KMS generates new material server-side — the `value` argument is ignored.
+    // KMS generates new material server-side: the `value` argument is ignored.
     const resource = await ctx.getResource("kms-key", resourceId, accountId);
     const keyName = resource.externalId ?? "";
     const res = await fetch(`https://cloudkms.googleapis.com/v1/${keyName}/cryptoKeyVersions`, {

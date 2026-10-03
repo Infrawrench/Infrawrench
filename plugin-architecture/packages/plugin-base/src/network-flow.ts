@@ -1,5 +1,5 @@
 /**
- * The network-flow contract: priced attribution of *pair* traffic — who talked
+ * The network-flow contract: priced attribution of *pair* traffic; who talked
  * to what, across which boundary, and what that boundary costs.
  *
  * This is deliberately **not** part of the cost contract, and the separation is
@@ -22,7 +22,7 @@
  * the invoice line: flow logs sample (GCP) or drop under capacity pressure
  * (AWS's `SKIPDATA`), free tiers and volume tiers are not modelled, and a
  * negotiated rate is invisible to us. {@link NetworkFlowCapabilityDeclaration}
- * has no `estimated` flag to turn off for exactly that reason — the host marks
+ * has no `estimated` flag to turn off for exactly that reason: the host marks
  * this data estimated unconditionally, the same way
  * `CostCapabilityDeclaration.estimated` marks a rate-card cost collector.
  */
@@ -32,8 +32,8 @@
  * by boundary, not by resource, so a flow's scope and its byte count are
  * together sufficient to price it.
  *
- * The values are provider-neutral on purpose — every hyperscaler charges for
- * the same handful of boundaries under different names — but a plugin that
+ * The values are provider-neutral on purpose (every hyperscaler charges for
+ * the same handful of boundaries under different names) but a plugin that
  * cannot *tell* which boundary a flow crossed must emit `unknown` rather than
  * guessing at the cheapest or the most expensive one.
  */
@@ -44,14 +44,14 @@ export type NetworkFlowScope =
   | "cross_zone"
   /** Endpoints in different regions of the same provider. */
   | "cross_region"
-  /** Left the provider's network outbound — the expensive one. */
+  /** Left the provider's network outbound: the expensive one. */
   | "internet_egress"
   /** Arrived from outside the provider's network. Free on every provider. */
   | "internet_ingress"
   /**
    * Traffic to a first-party service endpoint inside the same region (object
    * storage over a gateway endpoint, a managed database). Usually free, which
-   * is precisely why it must be distinguishable from `internet_egress` — the
+   * is precisely why it must be distinguishable from `internet_egress`: the
    * same bytes to the same service over the wrong path are not free at all.
    */
   | "provider_service"
@@ -97,7 +97,7 @@ export type NetworkFlowAttribution =
   | "resolved"
   /**
    * Real bytes whose endpoints could not be tied to a workload. Kept as its own
-   * bucket and shown as its own bucket — never apportioned across the resolved
+   * bucket and shown as its own bucket, never apportioned across the resolved
    * pairs, and never dropped, because the dropped version of this row is what
    * makes a total quietly stop adding up.
    */
@@ -116,7 +116,7 @@ export type NetworkFlowAttribution =
  * resource id the host already syncs (`i-0abc…`, `nat-0def…`) so the pair can
  * be clicked through to a resource page; fall back to a stable descriptive
  * token (`internet`, `s3.us-east-1`) when there is no resource. Never put a raw
- * IP address here for an endpoint that could not be resolved — addresses are
+ * IP address here for an endpoint that could not be resolved: addresses are
  * unbounded cardinality and a churning address is a different row every day for
  * the same workload. Use a class token and set `attribution: "unattributed"`.
  */
@@ -139,7 +139,7 @@ export interface NetworkFlowEndpoint {
 }
 
 /**
- * One aggregated pair for one UTC day. This is *already aggregated* — a plugin
+ * One aggregated pair for one UTC day. This is *already aggregated*: a plugin
  * must never return per-packet or per-connection records. See
  * {@link NetworkFlowCapabilityDeclaration.maxPairsPerDay}.
  */
@@ -166,7 +166,7 @@ export interface NetworkFlowRecord {
  *
  * A plugin that genuinely returned every pair should still emit totals; the
  * residual then computes to zero and no truncation row is written. A plugin
- * that cannot compute totals cheaply should omit them entirely — the host then
+ * that cannot compute totals cheaply should omit them entirely: the host then
  * writes no residual at all rather than inventing one, and the surface says the
  * figures are top-N only.
  */
@@ -189,7 +189,7 @@ export interface NetworkFlowTotal {
 export interface NetworkFlowSource {
   /** Provider id of the source (a flow log id, a sink name). */
   id: string;
-  /** What the flow log is attached to — a VPC id, a subnet id, a network. */
+  /** What the flow log is attached to: a VPC id, a subnet id, a network. */
   target: string;
   region?: string;
   /** Where the records land: `logs`, `object_storage`, `warehouse`, `stream`. */
@@ -199,7 +199,7 @@ export interface NetworkFlowSource {
   /**
    * Why not, in the user's terms, when `usable` is false. Must name the fix:
    * "flow log fl-0abc uses the default record format, which has no
-   * availability-zone or direction fields — recreate it with a custom format
+   * availability-zone or direction fields: recreate it with a custom format
    * including az-id, flow-direction and instance-id".
    */
   unusableReason?: string;
@@ -209,11 +209,11 @@ export interface NetworkFlowSource {
 
 /**
  * Published per-GB rates, declared by the plugin because the numbers are the
- * provider's and belong with the provider's code — while the arithmetic that
+ * provider's and belong with the provider's code, while the arithmetic that
  * applies them is generic and lives in the host, so it can be tested once.
  *
  * Rates are *list* rates in `currency`, per GB (10^9 bytes, which is how every
- * provider's data-transfer pricing page defines a GB — not GiB). A scope absent
+ * provider's data-transfer pricing page defines a GB, not GiB). A scope absent
  * from `perGb` is priced at zero, which is the correct answer for the free
  * boundaries and an honest one for boundaries the plugin declines to price.
  */
@@ -261,7 +261,7 @@ export interface NetworkFlowCapabilityDeclaration {
    */
   maxHistoryDays: number;
   /**
-   * True when querying the source bills the *user's* provider account — AWS
+   * True when querying the source bills the *user's* provider account: AWS
    * charges per GB scanned by a Logs Insights query, and a busy VPC's flow log
    * group is not small. The host makes collection opt-in and says so when this
    * is set; leaving it false on a source that does charge is how a monitoring
@@ -288,7 +288,7 @@ export interface NetworkFlowFetchRange {
    * the account, each one a query with its own timeout, so the host cannot
    * decide up front whether a day fits in the time it is entitled to run for.
    * What the host *does* know, continuously, is whether it still holds the
-   * cluster-wide claim on this account — and the moment it can no longer prove
+   * cluster-wide claim on this account, and the moment it can no longer prove
    * that it does, another replica may take the account over and start the same
    * scans. Two replicas scanning the same log group is a duplicate charge on
    * the customer's bill, so the authorization has to be revocable while the
@@ -304,7 +304,7 @@ export interface NetworkFlowFetchRange {
    * 3. **Throw.** Do not return a partial day: the host advances a watermark
    *    per day and never revisits one, so a short answer accepted as complete
    *    is a permanent undercount. The host recognizes its own abort and ends
-   *    the pass cleanly — no failure recorded, no backoff, the day left for
+   *    the pass cleanly: no failure recorded, no backoff, the day left for
    *    next time.
    *
    * A plugin that ignores this behaves exactly as it did before the signal
@@ -312,7 +312,7 @@ export interface NetworkFlowFetchRange {
    * what it cannot do is stop that plugin from spending. Honouring it is the
    * difference between a bounded overrun and an unbounded one.
    *
-   * Absent when nobody is competing for the account — a backfill, a test, a
+   * Absent when nobody is competing for the account: a backfill, a test, a
    * host that does not lease.
    */
   signal?: AbortSignal;
@@ -328,7 +328,7 @@ export interface NetworkFlowFetchRange {
 export interface NetworkFlowFetchResult {
   sources: NetworkFlowSource[];
   flows: NetworkFlowRecord[];
-  /** Omit entirely when totals cannot be computed — see {@link NetworkFlowTotal}. */
+  /** Omit entirely when totals cannot be computed: see {@link NetworkFlowTotal}. */
   totals?: NetworkFlowTotal[];
   /**
    * Bytes the provider billed the *user* for answering this query, when the
@@ -337,7 +337,7 @@ export interface NetworkFlowFetchResult {
    */
   queryBytesScanned?: number;
   /**
-   * True when the pass ran but against a narrower source set than usual — one
+   * True when the pass ran but against a narrower source set than usual: one
    * region refused, one flow log was mid-rotation. The host records the day as
    * collected either way (flow collection is forward-only and never restates),
    * but marks it degraded so the surface does not present a partial day as a
@@ -377,7 +377,7 @@ export function normalizeNetworkFlowResult(value: NetworkFlowRecord[] | NetworkF
 }
 
 /**
- * Thrown when the account is missing the setup this capability needs — no flow
+ * Thrown when the account is missing the setup this capability needs: no flow
  * logs configured, a destination we cannot read, a missing permission. Distinct
  * from a transient failure: the host stops retrying on a tight loop and shows
  * the reason with its fix, the way `CostSetupError` does for cost collection.

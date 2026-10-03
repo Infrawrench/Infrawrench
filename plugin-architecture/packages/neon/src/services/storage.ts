@@ -8,8 +8,8 @@ export interface BranchStorageInfo {
 }
 
 /**
- * The host's storage browser passes only a bucket name — it has no branch
- * context — but Neon bucket names are unique per branch, not per account. This
+ * The host's storage browser passes only a bucket name (it has no branch
+ * context) but Neon bucket names are unique per branch, not per account. This
  * cache maps a bucket name back to the branch it was listed from, and is
  * repopulated by listing buckets when cold.
  */
@@ -94,7 +94,7 @@ export async function listAllBuckets(
   for (const ref of branches) {
     const storage = await fetchBranchStorage(api, ref);
     // No storage on this branch means the org lacks the Private Beta entitlement
-    // or the branch is outside a supported region — not an error worth surfacing.
+    // or the branch is outside a supported region, not an error worth surfacing.
     if (!storage) continue;
     locator.rememberStorage(`${ref.projectId}/${ref.branchId}`, storage);
 

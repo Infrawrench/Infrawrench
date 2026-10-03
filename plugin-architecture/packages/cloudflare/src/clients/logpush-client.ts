@@ -169,7 +169,7 @@ export async function editLogpushJob(
 ): Promise<ResourceInstance> {
   const [zoneId, jobId] = externalId.split("/");
   if (!zoneId || !jobId) throw new Error("Invalid logpush job ID");
-  // Logpush update is a PATCH — only send the editable settings.
+  // Logpush update is a PATCH, only send the editable settings.
   const frequency = logpushFrequency(fields["frequency"]);
   const body: JobUpdateParams = {
     zone_id: zoneId,

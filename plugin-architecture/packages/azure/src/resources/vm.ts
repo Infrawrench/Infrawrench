@@ -115,7 +115,7 @@ export const VMResourceType = rt({
   supportsMetrics: true,
   // Right-sizing: the create form's static SKU list carries capacity; prices
   // hydrate per region through getCreateSizePricing (keyless Retail Prices
-  // API). Memory is "Available Memory Bytes" — an agentless platform metric.
+  // API). Memory is "Available Memory Bytes": an agentless platform metric.
   rightsizing: {
     sizeFieldKey: "vmSize",
     // The create form's size-picker key differs from the stored field.
@@ -125,7 +125,7 @@ export const VMResourceType = rt({
     // (metric.name.localizedValue), not the descriptor labels.
     cpuMetric: { seriesLabel: "Percentage CPU" },
     memoryMetric: { seriesLabel: "Available Memory Bytes", interpretation: "available-bytes" },
-    // Family letters + the suffix letters after the digits + version — keeps
+    // Family letters + the suffix letters after the digits + version; keeps
     // D ↔ Dp (arm) and s/ms/ps variants apart: Standard_D4s_v5 → (D, s, v5).
     sizeFamilyPattern: "^Standard_([A-Z]+)\\d+([a-z]*)(?:_(v\\d+))?$",
     resizeNote:

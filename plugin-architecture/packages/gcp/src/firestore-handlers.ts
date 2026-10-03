@@ -76,7 +76,7 @@ interface FirestoreIamBinding {
 
 export interface FirestoreIamInfo {
   bindings: FirestoreIamBinding[];
-  /** Policy etag — sent back on setIamPolicy for optimistic concurrency. */
+  /** Policy etag: sent back on setIamPolicy for optimistic concurrency. */
   etag: string;
   error: string;
 }
@@ -94,7 +94,7 @@ function googleApiErrorMessage(body: string): string {
 }
 
 /**
- * True for project-level IAM roles that gate Firestore access — Datastore
+ * True for project-level IAM roles that gate Firestore access: Datastore
  * roles (Firestore uses the legacy datastore.* role namespace), Firestore
  * roles, and Firebase Rules roles that govern security-rule deployment.
  */
@@ -174,7 +174,7 @@ export async function listFirestoreIndexes(
   try {
     addAll(await listFirestoreIndexesForGroup(ctx, base, "-", isEnterprise));
   } catch (e) {
-    // The wildcard failed outright — fall through to per-collection
+    // The wildcard failed outright: fall through to per-collection
     // iteration. Don't surface the error yet; the fallback may succeed.
     console.warn("[firestore] wildcard indexes fetch failed:", e);
   }
@@ -433,7 +433,7 @@ export async function fetchFirestoreRules(
     );
     if (!relRes.ok) {
       // 404 on the release just means no rules have ever been deployed
-      // to this database — not really an error, show the empty-state
+      // to this database, not really an error, show the empty-state
       // message instead.
       if (relRes.status === 404) return empty;
       return {
@@ -516,7 +516,7 @@ export async function listFirestoreBackups(
 
 /**
  * Re-fetch the database resource to pick up fields we don't normally
- * index in the lister — earliestVersionTime (PITR lower bound) and
+ * index in the lister: earliestVersionTime (PITR lower bound) and
  * versionRetentionPeriod (PITR window length).
  */
 export async function fetchFirestoreDatabaseExtras(
@@ -552,7 +552,7 @@ export async function fetchFirestoreDatabaseExtras(
 /**
  * Fetch 24-hour usage totals from Cloud Monitoring: read / write / delete
  * counts plus current storage bytes. One `timeSeries.list` call per
- * metric. Swallows errors — returns `available: false` when Monitoring
+ * metric. Swallows errors: returns `available: false` when Monitoring
  * refuses (missing permission, metric not yet reporting, etc.).
  */
 export async function fetchFirestoreUsageMetrics(
@@ -622,7 +622,7 @@ export async function fetchFirestoreUsageMetrics(
   };
 
   // Enterprise uses `*_ops_count`; Native uses `*_count`. Storage
-  // bytes is not published for Enterprise via Monitoring — leave it
+  // bytes is not published for Enterprise via Monitoring: leave it
   // at 0 for now rather than firing a request that will 400.
   const readMetric = isEnterprise
     ? "firestore.googleapis.com/document/read_ops_count"
@@ -673,7 +673,7 @@ export async function fetchFirestoreUsageMetrics(
 
 /**
  * Fetch the project-level IAM policy and narrow it to the bindings that
- * govern Firestore access — Datastore roles, Firestore roles, and
+ * govern Firestore access: Datastore roles, Firestore roles, and
  * Firebase Rules roles. Firestore does not expose per-database IAM; the
  * project policy is the source of truth.
  */
@@ -862,7 +862,7 @@ export async function executeFirestoreCommand(
  * Create a new ruleset containing the user-supplied source text, then
  * move the database's release pointer (`cloud.firestore` or
  * `cloud.firestore/{dbId}`) to point at it. Firebase Rules API
- * rulesets are immutable — deploying is always create-then-update-release.
+ * rulesets are immutable: deploying is always create-then-update-release.
  */
 async function firestoreDeployRules(
   ctx: FirestoreContext,
@@ -889,7 +889,7 @@ async function firestoreDeployRules(
   const releaseShort =
     dbId === "(default)" ? "cloud.firestore" : `cloud.firestore/${encodeURIComponent(dbId)}`;
   const releaseFull = `projects/${p}/releases/${releaseShort}`;
-  // Releases can only be PATCHed via updateMask when they already exist —
+  // Releases can only be PATCHed via updateMask when they already exist:
   // the first deployment has to go through POST /releases instead. Try
   // PATCH first and fall back to POST on 404.
   const patchRes = await fetch(`https://firebaserules.googleapis.com/v1/${releaseFull}`, {
@@ -1028,7 +1028,7 @@ async function firestoreSetTtl(
   return (await res.json()) as { name?: string };
 }
 
-/** Remove a TTL policy — same PATCH with an empty ttlConfig wipe. */
+/** Remove a TTL policy: same PATCH with an empty ttlConfig wipe. */
 async function firestoreUnsetTtl(
   ctx: FirestoreContext,
   fieldFullName: string,

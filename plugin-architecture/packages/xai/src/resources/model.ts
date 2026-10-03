@@ -31,7 +31,7 @@ export const ModelResourceType = rt({
     f("created", "Created", { required: false }),
     f("longContextThreshold", "Long-Context Threshold", { kind: "number", required: false }),
     f("maxPromptLength", "Max Prompt Length", { kind: "number", required: false }),
-    // Prices arrive as USD cents per 100 million units — see PRICE_PER_MILLION /
+    // Prices arrive as USD cents per 100 million units: see PRICE_PER_MILLION /
     // PRICE_PER_UNIT in client.ts, which is where the scaling happens. The token
     // rows and the per-image/per-search rows share that denomination; only the
     // unit they are quoted against differs.
@@ -59,7 +59,7 @@ export const ModelResourceType = rt({
     o("ownedBy", "Owned By"),
   ],
   // The detail view has offered a Metrics tab since it was written, but the
-  // host only calls `fetchMetricSeries` for types that declare this — so the
+  // host only calls `fetchMetricSeries` for types that declare this, so the
   // per-model token series from the management API's usage query never
   // reached it.
   supportsMetrics: true,

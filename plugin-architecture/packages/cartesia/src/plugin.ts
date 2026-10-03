@@ -6,7 +6,7 @@ import { PronunciationDictResourceType } from "./resources/pronunciation-dict.js
 import { ApiKeyResourceType } from "./resources/api-key.js";
 
 // Brand mark ("Archie") and palette taken from Cartesia's own brand page,
-// https://www.cartesia.ai/brand — the symbol is lifted verbatim from the
+// https://www.cartesia.ai/brand: the symbol is lifted verbatim from the
 // inline SVG there (native viewBox "0 0 90 83") and rescaled to 100×100.
 // Colours are the published "Verdant" (#309D4B) and "White" (#F4F4F1) pair.
 const manifest: PluginManifest = {
@@ -44,7 +44,7 @@ const manifest: PluginManifest = {
   /**
    * Spend comes from `GET /usage/credits?interval=day&group_by=capability`
    * (https://docs.cartesia.ai/api-reference/usage/credits), which returns clean
-   * daily buckets of credits per capability — hence `service` and no other
+   * daily buckets of credits per capability, hence `service` and no other
    * dimension. A year is the most the endpoint will span in one call, so that
    * is also the honest history bound; longer backfills chunk. Cartesia settles
    * a day's credits quickly, but a two-day restatement window costs one extra
@@ -52,12 +52,12 @@ const manifest: PluginManifest = {
    *
    * `estimated` because the response is *credits*, not money: Cartesia
    * publishes no per-credit or overage price, so the plugin converts at the
-   * best published bundle rate ($299 / 8 M credits, the Scale plan — see
+   * best published bundle rate ($299 / 8 M credits, the Scale plan; see
    * USD_PER_CREDIT in cost-data.ts and https://cartesia.ai/pricing). An account
    * on a cheaper plan or a negotiated contract will not reconcile to its
    * invoice, and the user should be told that before they trust the number.
    *
-   * Requires the *admin* key (`sk_car_admin_…`) — credit usage is one of the
+   * Requires the *admin* key (`sk_car_admin_…`): credit usage is one of the
    * routes Cartesia refuses a standard key on. Without one, `fetchCostData`
    * throws `CostSetupError` pointing at the console page that creates it.
    */

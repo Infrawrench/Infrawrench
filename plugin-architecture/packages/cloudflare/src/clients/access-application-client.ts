@@ -10,7 +10,7 @@ import type {
 /**
  * Application types Access understands (`ApplicationTypeParam`). The create
  * form only offers a subset, but a stored resource can carry any of them, so
- * validate against the full set and fall back to `self_hosted` — the form
+ * validate against the full set and fall back to `self_hosted`: the form
  * default and the only type that works with a bare domain.
  */
 const APPLICATION_TYPES = [

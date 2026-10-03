@@ -6,7 +6,7 @@ import { UtFileResourceType } from "./resources/ut-file.js";
 
 // Mark taken verbatim from the UploadThing docs site header (the inline
 // `viewBox="0 0 300 300"` logo on docs.uploadthing.com, brand red #e22400).
-// The source artwork is authored in a flipped coordinate space — hence the
+// The source artwork is authored in a flipped coordinate space, hence the
 // `translate(0,300) scale(0.1,-0.1)` wrapper, which is part of the original
 // and must be kept for the four lobes to land the right way up.
 const manifest: PluginManifest = {

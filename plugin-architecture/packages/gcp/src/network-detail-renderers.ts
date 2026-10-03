@@ -64,7 +64,7 @@ export function renderCloudRouter(resource: ResourceInstance, base: DetailViewSc
   const advertisedGroups = full.bgp?.advertisedGroups ?? [];
   const advertisedRanges = full.bgp?.advertisedIpRanges ?? [];
   // DEFAULT mode advertises all subnets. CUSTOM mode only advertises what's
-  // listed — explicit "ALL_SUBNETS" in advertisedGroups means yes too.
+  // listed: explicit "ALL_SUBNETS" in advertisedGroups means yes too.
   const advertisesAllSubnets =
     advertiseMode === "DEFAULT" || advertisedGroups.includes("ALL_SUBNETS");
 
@@ -400,7 +400,7 @@ export function renderBackendService(resource: ResourceInstance, base: DetailVie
   // The Metrics tab comes from the type's `supportsMetrics` declaration (see
   // `withMetricsCapability` in the client), not from a per-instance guess.
   // Only HTTPS-family LBs are wired into `fetchMetricSeries`, so a TCP/SSL/UDP
-  // backend service gets the tab with the host's "no data yet" state — the
+  // backend service gets the tab with the host's "no data yet" state: the
   // same treatment as any resource whose series have not arrived, and steadier
   // than a tab that appears and vanishes with the protocol field.
 

@@ -9,7 +9,7 @@
  * ```
  *
  * The header is parsed with a `DataView` and the blob is handed to wasm
- * whole — no allocation per rectangle on the hot path.
+ * whole: no allocation per rectangle on the hot path.
  */
 
 export const Codec = {
@@ -35,7 +35,7 @@ export const RectOp = {
   Solid: 1,
   /**
    * The blob holds a per-byte wrapping difference from what this canvas
-   * already shows — interframe compression. Mostly zeros, which is what makes
+   * already shows: interframe compression. Mostly zeros, which is what makes
    * it compress where the pixels themselves would not.
    */
   Delta: 2,
@@ -190,7 +190,7 @@ export function dirtyBounds(
 export type ZstdDecompress = (input: Uint8Array, expectedBytes: number) => Uint8Array;
 
 /**
- * Apply a payload to an RGBA canvas buffer — the one `ImageData` wants.
+ * Apply a payload to an RGBA canvas buffer: the one `ImageData` wants.
  *
  * Mirrors `PixelPayload::apply` in `iw-codec`, which is the reference
  * implementation, with one difference that is the whole reason this function
@@ -261,7 +261,7 @@ export function applyPayload(
         for (let col = 0; col < rect.w; col++) {
           // Masked before the store rather than after the add: a
           // Uint8ClampedArray clamps what it is given, so 250 + 10 would land
-          // on 255 instead of wrapping to 4 — and the encoder's subtraction
+          // on 255 instead of wrapping to 4, and the encoder's subtraction
           // wraps. Silent, permanent, and only on the pixels that happened to
           // straddle the top of the range.
           canvas[to] = (canvas[to]! + pixels[at + 2]!) & 0xff;
@@ -314,8 +314,8 @@ export function applyPayload(
  * 32-bit views over the canvas and the blob, when both are aligned to a word
  * boundary and the blob's read offset is too.
  *
- * `null` when any of that fails — a payload's pixels can start at any offset
- * inside the frame it arrived in — and the caller falls back to bytes. Writing
+ * `null` when any of that fails (a payload's pixels can start at any offset
+ * inside the frame it arrived in) and the caller falls back to bytes. Writing
  * through a `Uint32Array` also side-steps `Uint8ClampedArray`'s clamping, which
  * is what we want here: these are raw pixels, not arithmetic.
  */

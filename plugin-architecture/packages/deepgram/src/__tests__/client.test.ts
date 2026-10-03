@@ -51,7 +51,7 @@ function client() {
   return new DeepgramClient({ apiKey: "dg-test-key" });
 }
 
-// GET /v1/projects returns only project_id + name — there is no `company`.
+// GET /v1/projects returns only project_id + name: there is no `company`.
 const PROJECT_LIST = {
   projects: [{ project_id: PROJECT, name: "Prod" }],
 };
@@ -191,7 +191,7 @@ describe("listResources", () => {
 
     expect(members[0]!.displayName).toBe("Ada Lovelace");
     expect(members[0]!.id).toBe(`${ACCOUNT}:member:${PROJECT}/m-1`);
-    // Invites are addressed by email — Deepgram has no invite id.
+    // Invites are addressed by email: Deepgram has no invite id.
     expect(invites[0]!.id).toBe(`${ACCOUNT}:invite:${PROJECT}/new@acme.co`);
     expect(balances[0]!.fields["amount"]).toBe(42.5);
     expect(balances[0]!.displayName).toBe("42.50 usd");
@@ -698,7 +698,7 @@ describe("transcribeAudio", () => {
     expect(url.searchParams.get("utterances")).toBe("true");
 
     const headers = calls[0]!.init!.headers as Record<string, string>;
-    // MediaRecorder's own type is forwarded untouched — no multipart, no transcode.
+    // MediaRecorder's own type is forwarded untouched: no multipart, no transcode.
     expect(headers["Content-Type"]).toBe("audio/webm;codecs=opus");
     expect(headers["Authorization"]).toBe("Token dg-test-key");
     expect(Buffer.from(calls[0]!.init!.body as Uint8Array)).toEqual(clip);

@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A context cache — a pre-tokenised prompt prefix that later requests can
+ * A context cache: a pre-tokenised prompt prefix that later requests can
  * reference by name, billed at a reduced rate for the cached tokens.
  *
  * Verified: https://ai.google.dev/api/caching#method:-cachedcontents.list

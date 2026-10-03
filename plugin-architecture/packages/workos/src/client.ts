@@ -13,14 +13,14 @@ import { joinSubtitle, jsonRestFetch, externalIdOf } from "@infrawrench/plugin-b
 
 const BASE_URL = "https://api.workos.com";
 
-/** WorkOS list page size — the API caps `limit` at 100. */
+/** WorkOS list page size: the API caps `limit` at 100. */
 const PAGE_SIZE = 100;
 
 /** Hard cap on cursor-following so a huge environment can't hang a sync. */
 const MAX_LIST_PAGES = 20;
 
 // ---------------------------------------------------------------------------
-// WorkOS API shapes — verified against the official OpenAPI spec
+// WorkOS API shapes: verified against the official OpenAPI spec
 // (https://github.com/workos/openapi-spec, spec/open-api-spec.yaml).
 // ---------------------------------------------------------------------------
 
@@ -259,7 +259,7 @@ export class WorkosClient implements PluginClient {
   }
 
   /**
-   * Issue a request whose success response carries no JSON body — WorkOS
+   * Issue a request whose success response carries no JSON body: WorkOS
    * DELETEs answer 200/202/204 with an empty body, which `jsonRestFetch`'s
    * direct-fetch path would try to `JSON.parse`.
    */
@@ -279,7 +279,7 @@ export class WorkosClient implements PluginClient {
       return;
     }
 
-    // Only the host HTTP service can install a custom trust anchor — silently
+    // Only the host HTTP service can install a custom trust anchor: silently
     // falling back to global fetch would issue this DELETE under a different
     // trust store than every other call in this client.
     if (this.caCert) {
@@ -325,12 +325,12 @@ export class WorkosClient implements PluginClient {
   }
 
   private async fetchOrganizations(): Promise<WosOrganization[]> {
-    // GET /organizations — cursor-paginated list.
+    // GET /organizations: cursor-paginated list.
     return this.paginate<WosOrganization>("/organizations");
   }
 
   /**
-   * Run `load` once per organization, tolerating per-org failures — one org
+   * Run `load` once per organization, tolerating per-org failures: one org
    * the key can't read must not empty the whole listing.
    */
   private async listForEachOrganization<T>(
@@ -414,7 +414,7 @@ export class WorkosClient implements PluginClient {
         return groups.map((group) => this.mapDirectoryGroup(accountId, group));
       }
       case "role": {
-        // GET /authorization/roles — plain {data} list, no pagination.
+        // GET /authorization/roles: plain {data} list, no pagination.
         const body = await this.fetch<WosList<WosRole>>("/authorization/roles");
         return (body.data ?? []).map((role) => this.mapRole(accountId, role));
       }
@@ -501,7 +501,7 @@ export class WorkosClient implements PluginClient {
       case "webhook-endpoint": {
         // The spec documents PATCH/DELETE on /webhook_endpoints/{id} but no
         // GET, so re-list and pick the endpoint out. The list is cached per
-        // client instance — resolveOutput funnels through here, and resolving
+        // client instance: resolveOutput funnels through here, and resolving
         // several signingSecret references must not repeat the full sweep.
         this.webhookEndpointsCache ??=
           await this.paginate<WosWebhookEndpoint>("/webhook_endpoints");
@@ -564,7 +564,7 @@ export class WorkosClient implements PluginClient {
       resolvedOutputs: {
         organizationId: id,
         organizationName: str(org.name),
-        // renderDetail is synchronous — stash the per-domain states so the
+        // renderDetail is synchronous: stash the per-domain states so the
         // Domains table can show verification status without a round trip.
         __domains__: JSON.stringify(org.domains ?? []),
       },
@@ -1041,7 +1041,7 @@ export class WorkosClient implements PluginClient {
 
   /**
    * An organization picker, unless the create was launched from an
-   * organization's detail page — the parent already answers the question.
+   * organization's detail page: the parent already answers the question.
    */
   private async organizationPickerField(parentResourceId?: string): Promise<CreateFieldConfig[]> {
     if (parentResourceId) return [];
@@ -1062,8 +1062,8 @@ export class WorkosClient implements PluginClient {
   }
 
   /**
-   * A role picker fed from the live role list — org-scoped roles when the
-   * parent organization is known, environment roles otherwise — so the user
+   * A role picker fed from the live role list (org-scoped roles when the
+   * parent organization is known, environment roles otherwise) so the user
    * picks a name instead of typing a slug.
    */
   private async rolePickerField(parentResourceId?: string): Promise<CreateFieldConfig> {
@@ -1097,7 +1097,7 @@ export class WorkosClient implements PluginClient {
 
   /**
    * Read the organization external id out of a parent resource id, refusing
-   * parents of any other type — building organization-scoped URLs from a
+   * parents of any other type: building organization-scoped URLs from a
    * non-organization id would silently target the wrong tenant.
    */
   private organizationIdOfParent(parentResourceId: string): string {
@@ -1124,7 +1124,7 @@ export class WorkosClient implements PluginClient {
   ): Promise<ResourceInstance> {
     switch (typeId) {
       case "organization": {
-        // POST /organizations — domain_data entries need an explicit state;
+        // POST /organizations: domain_data entries need an explicit state;
         // "pending" defers verification to the dashboard.
         const domains = (fields["domains"] ?? "")
           .split(",")
@@ -1297,7 +1297,7 @@ export class WorkosClient implements PluginClient {
       case "organization-membership":
         return this.requestVoid(`/user_management/organization_memberships/${id}`, "DELETE");
       case "invitation":
-        // Invitations have no DELETE — revoking is the removal operation.
+        // Invitations have no DELETE: revoking is the removal operation.
         await this.fetch<WosInvitation>(`/user_management/invitations/${id}/revoke`, {
           method: "POST",
         });
@@ -1550,7 +1550,7 @@ export class WorkosClient implements PluginClient {
     const headerActions: DetailViewSchema["headerActions"] = [
       { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
     ];
-    // Directory-managed memberships belong to Directory Sync — manual
+    // Directory-managed memberships belong to Directory Sync: manual
     // deactivation would just be overwritten on the next sync.
     if (!directoryManaged && status === "active") {
       headerActions.push({

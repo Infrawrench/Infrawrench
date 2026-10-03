@@ -6,7 +6,7 @@
  * multi-context configs, in-cluster service-account tokens, etc.
  *
  * The browser-fallback `K8sFetcher` in `./shared.ts` only understands the
- * simple bearer-token / cert paths — anything fancier silently breaks.
+ * simple bearer-token / cert paths: anything fancier silently breaks.
  * When the host registers this driver, the plugin client prefers it via
  * `services.k8s.command(...)`; otherwise it falls back to the fetcher.
  *
@@ -206,7 +206,7 @@ export const driver = {
       }
 
       case "replaceManifest": {
-        // PUT-style replace — used by the manifest editor.
+        // PUT-style replace: used by the manifest editor.
         const manifest = params["manifest"];
         const resourcePath = str(params, "path");
         if (!manifest || !resourcePath) {
@@ -258,7 +258,7 @@ interface RawRequestInit {
  * `applyToHTTPSOptions` (rather than the SDK's typed API surface) for
  * arbitrary paths so the client's existing path-based call sites keep
  * working with one shim. The SDK populates the auth header, TLS agent,
- * and CA from whatever the kubeconfig declares — including exec
+ * and CA from whatever the kubeconfig declares, including exec
  * credential plugins, OIDC refresh, etc.
  */
 async function rawRequest(kc: KubeConfig, path: string, init: RawRequestInit): Promise<unknown> {
@@ -315,7 +315,7 @@ async function rawRequest(kc: KubeConfig, path: string, init: RawRequestInit): P
 
 function pluralForKind(kind: string): string {
   // Covers everything the plugin currently creates / applies. Unknown kinds
-  // fall through to a best-effort plural — server-side apply will surface a
+  // fall through to a best-effort plural: server-side apply will surface a
   // 404 anyway if it's wrong.
   switch (kind) {
     case "Pod":

@@ -107,7 +107,7 @@ export async function listBatchJobQueues(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  // AWS Batch is REST-JSON over /v1/* — JSON-RPC at `/` returns 404.
+  // AWS Batch is REST-JSON over /v1/*: JSON-RPC at `/` returns 404.
   const data = await ctx.restJson<{ jobQueues?: Record<string, unknown>[] }>(
     "batch",
     "/v1/describejobqueues",
@@ -237,7 +237,7 @@ export async function listBedrockModels(
           region: ctx.region,
           providerName: String(m["providerName"] ?? ""),
           streamingSupported: Boolean(m["responseStreamingSupported"]),
-          // Static "active" — foundation models are catalog entries with no
+          // Static "active": foundation models are catalog entries with no
           // lifecycle, so the host renders a healthy dot via the status map.
           status: "active",
         },

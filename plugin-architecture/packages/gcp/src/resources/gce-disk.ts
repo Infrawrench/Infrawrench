@@ -17,7 +17,7 @@ export const GceDiskResourceType = rt({
     }),
   ],
   outputs: [],
-  // Comma-separated instance names — one edge per attachment. Instances are
+  // Comma-separated instance names: one edge per attachment. Instances are
   // indexed by their bare `name` field; the externalId carries project/zone too.
   dependsOn: [
     {
@@ -30,7 +30,7 @@ export const GceDiskResourceType = rt({
   supportsCreate: true,
   // equals-"" (not when:"empty") on purpose: resources synced before the
   // lister populated attachedTo have the field absent, and `equals` never
-  // matches an absent field — so stale rows aren't falsely flagged until a
+  // matches an absent field, so stale rows aren't falsely flagged until a
   // fresh sync writes "" or a real instance list. status is lifecycle only
   // (READY whether or not attached), hence the extra READY guard.
   orphanRule: {

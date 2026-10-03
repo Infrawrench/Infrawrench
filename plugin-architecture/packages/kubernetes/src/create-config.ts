@@ -6,7 +6,7 @@ import type { K8sFetch } from "./shared.js";
 
 /**
  * Build the create-resource form schema for a given k8s resource type. The
- * forms are kubernetes-flavored — namespaced resources prompt for a namespace
+ * forms are kubernetes-flavored: namespaced resources prompt for a namespace
  * (skipped when creating under a Namespace parent), and image-bearing
  * workloads share common image/replica fields.
  */

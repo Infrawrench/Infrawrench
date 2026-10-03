@@ -21,7 +21,7 @@ export function applyManagedDatabaseDetail(
   const needsMintButton =
     online && ["mongodb", "redis", "valkey", "opensearch", "kafka"].includes(engine);
 
-  // Events log — DO doesn't expose process-level logs, but the cluster's
+  // Events log: DO doesn't expose process-level logs, but the cluster's
   // event stream covers backups, maintenance, scale events, etc. That's
   // useful as a "what's been happening to my cluster" feed. MongoDB
   // clusters reject the events endpoint (422 "operation is not supported

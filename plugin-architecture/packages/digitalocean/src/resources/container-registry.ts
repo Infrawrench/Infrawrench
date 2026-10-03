@@ -2,7 +2,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
  * The account's DigitalOcean Container Registry (DOCR). DO allows at most one
- * registry per account — GET /v2/registry returns it or 404s — so the lister
+ * registry per account (GET /v2/registry returns it or 404s) so the lister
  * yields zero or one instance, and delete verifies the account's current
  * registry name before firing the id-less DELETE /v2/registry. Not
  * project-scoped in DO (unlike droplets/DOKS/etc.), hence no parentTypeId.

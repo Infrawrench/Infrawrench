@@ -5,7 +5,7 @@
  * system tables (`system.billing.usage`, `system.billing.list_prices`) and is
  * queried through the SQL Statement Execution API, which needs a SQL warehouse
  * to run on. We pick one automatically (prefer RUNNING so we don't cold-start
- * compute; otherwise the first warehouse — auto-start briefly wakes it).
+ * compute; otherwise the first warehouse: auto-start briefly wakes it).
  *
  * Dollars are DBUs × the *list* price current for the SKU (`price_end_time IS
  * NULL`): negotiated discounts and reserved-capacity commitments are NOT

@@ -60,11 +60,11 @@ export const ManagedKubeResourceType = rt({
         "JSON map of node instance type to hourly price, handed to the Kubernetes peer so it can derive per-namespace and per-workload cost. Empty when no price is available.",
     }),
   ],
-  // `privateNetworkId` is the network's OpenStack id — `cloud.kube.Cluster` in
+  // `privateNetworkId` is the network's OpenStack id: `cloud.kube.Cluster` in
   // https://eu.api.ovh.com/1.0/cloud.json documents it as "OpenStack private
   // network ID that the cluster will use", and OVH's own control panel resolves
   // it via `regions[].openstackId` (pci-kubernetes `getPrivateNetworkName`). So
-  // it matches on `openstackIds`, not on the `pn-…` externalId — unlike an
+  // it matches on `openstackIds`, not on the `pn-…` externalId: unlike an
   // instance's `networkIds`, which does carry the `pn-…` form.
   dependsOn: [
     {
@@ -82,7 +82,7 @@ export const ManagedKubeResourceType = rt({
       credentialMappings: [
         { outputKey: "kubeconfig", credentialKey: "kubeconfig" },
         // What this cluster's nodes cost per hour. The kubernetes plugin has
-        // no way to know — the money is on THIS account — so it arrives the
+        // no way to know (the money is on THIS account) so it arrives the
         // same way the kubeconfig does. Resolves to "" when we have no price,
         // which the peer reads as "show capacity without money".
         { outputKey: "nodeHourlyRates", credentialKey: "nodeHourlyRates" },

@@ -59,7 +59,7 @@ describe("model detail", () => {
         "audio/wav",
       ]),
     );
-    // What MediaRecorder actually produces — both rejected by Cohere.
+    // What MediaRecorder actually produces: both rejected by Cohere.
     expect(accepted).not.toContain("audio/webm");
     expect(accepted).not.toContain("audio/mp4");
   });
@@ -79,7 +79,7 @@ describe("model detail", () => {
     expect(panel.disableRecording).toBe(true);
     expect(panel.recordingDisabledReason).toMatch(/FLAC, MP3, MPEG, MPGA, OGG and WAV/);
     expect(panel.recordingDisabledReason).toMatch(/WebM/i);
-    // Uploading is untouched — only the recorder half goes away.
+    // Uploading is untouched, only the recorder half goes away.
     expect(panel.disabledReason).toBeUndefined();
     expect(panel.acceptedAudioTypes!.length).toBeGreaterThan(0);
   });
@@ -87,7 +87,7 @@ describe("model detail", () => {
   it("defaults the language picker, because the API requires one", () => {
     const panel = client().renderDetail(resource("model", { name: "m" })).speechPanel!;
     expect(panel.defaultLanguage).toBe("en");
-    // No blank auto-detect entry — `language` is a required form field.
+    // No blank auto-detect entry: `language` is a required form field.
     expect(panel.languages!.some((l) => l.id === "")).toBe(false);
   });
 

@@ -1,13 +1,13 @@
 /**
- * Orphan & idle resource aggregation — the host-side half of the declarative
+ * Orphan & idle resource aggregation: the host-side half of the declarative
  * `orphanRule` capability.
  *
  * {@link evaluateOrphanRule} answers "is this one resource flagged". This
  * module answers "what is flagged across a whole workspace", which is the
  * shape every surface actually renders. It lives in plugin-base rather than in
- * a host package because each host runs it over a different store — the web
+ * a host package because each host runs it over a different store: the web
  * server over the organization's synced rows, the desktop app and the
- * `infrawrench` CLI over the local SQLite workspace — and all of them must
+ * `infrawrench` CLI over the local SQLite workspace, and all of them must
  * agree on what counts as orphaned.
  *
  * Everything here is pure: rows in, groups out. No plugin client, no
@@ -25,14 +25,14 @@ export interface OrphanCostAnnotation {
 }
 
 /**
- * Who owns a resource, in the compact form other features embed — a flagged
+ * Who owns a resource, in the compact form other features embed: a flagged
  * orphan row, an expiry item, an alert body.
  *
  * It lives here rather than in client-core (where the rest of the ownership
  * feature lives) for the same reason `OrphanCostAnnotation` does: this file
  * defines the shape hosts annotate, and client-core's plugin-base import is
  * type-only, so the dependency can only point this way. `client-core/ownership`
- * re-exports the name — there is one definition, not two.
+ * re-exports the name: there is one definition, not two.
  *
  * Note what an annotation means: it is only present when somebody can be
  * *named*. A resource with a recorded purpose but no owner annotates as null,
@@ -43,7 +43,7 @@ export interface ResourceOwnerAnnotation {
   userId: string | null;
   /** The name to print: the member's name, else the free-text owner. */
   displayName: string;
-  /** True when `displayName` is free text — i.e. nobody to route an alert to. */
+  /** True when `displayName` is free text, i.e. nobody to route an alert to. */
   isLabel: boolean;
   /** Link to the ticket that authorized the resource, when recorded. */
   ticketUrl: string | null;
@@ -65,7 +65,7 @@ export interface OrphanedResource {
   reason: string;
   /**
    * Trailing spend matched against the org's collected cost rows, or null
-   * when no per-resource cost rows exist for it (most providers) — and always
+   * when no per-resource cost rows exist for it (most providers), and always
    * null when `costBasis` is `"unavailable"`. The flag itself never depends on
    * cost data.
    */
@@ -75,7 +75,7 @@ export interface OrphanedResource {
    *
    * Layered on afterwards by hosts that store ownership, exactly like `cost`:
    * `collectOrphanGroups` is pure over plugin rules and always emits null here.
-   * A null owner is the finder's most actionable output — it is the set of
+   * A null owner is the finder's most actionable output: it is the set of
    * waste that has no one to send a list to.
    */
   owner: ResourceOwnerAnnotation | null;
@@ -95,15 +95,15 @@ export interface OrphanAccountGroup {
 /**
  * Whether the `cost` column means anything on this surface.
  *
- * - `"billing"` — the host tried to match each flagged resource against
+ * - `"billing"`: the host tried to match each flagged resource against
  *   collected per-resource billing rows. A null `cost` means nothing matched.
- * - `"unavailable"` — the host has no billing data at all (local mode, which
+ * - `"unavailable"`: the host has no billing data at all (local mode, which
  *   never talks to the cost warehouse), so every `cost` is null and the column
  *   carries no information. Surfaces drop it rather than print a row of
  *   dashes, and must never render it as zero.
  *
  * Absent is equivalent to `"billing"`: the cloud aggregate predates the field
- * and always attempts a match. The web API deliberately does not emit it —
+ * and always attempts a match. The web API deliberately does not emit it:
  * it is a local-mode signal, so the HTTP response shape is unchanged.
  */
 export type OrphanCostBasis = "billing" | "unavailable";
@@ -114,7 +114,7 @@ export interface OrphanListResponse {
   /** Total flagged resources across all groups. */
   totalCount: number;
   /**
-   * Flagged resources with no owner annotation — the "nobody to ask" count.
+   * Flagged resources with no owner annotation: the "nobody to ask" count.
    *
    * Always equal to `totalCount` on a host that stores no ownership (local
    * mode), which is honest: it has no ownership data, so it knows of no owner.
@@ -151,7 +151,7 @@ export interface OrphanScanAccount {
 
 /**
  * The part of a stored resource row the scan reads. Hosts map their own store
- * onto this — Postgres jsonb columns, SQLite TEXT bags, whatever — so the
+ * onto this (Postgres jsonb columns, SQLite TEXT bags, whatever) so the
  * classification never learns which database it is looking at.
  */
 export interface OrphanScanResource {
@@ -260,7 +260,7 @@ export function countOrphans(groups: readonly OrphanAccountGroup[]): number {
 /**
  * Flagged resources with no owner annotation, across every group.
  *
- * Call this *after* a host has annotated ownership — on unannotated groups it
+ * Call this *after* a host has annotated ownership: on unannotated groups it
  * correctly returns `countOrphans`, since nothing is known to be owned.
  */
 export function countUnownedOrphans(groups: readonly OrphanAccountGroup[]): number {
@@ -271,7 +271,7 @@ export function countUnownedOrphans(groups: readonly OrphanAccountGroup[]): numb
  * View an untyped stored bag as the field map `evaluateOrphanRule` reads.
  *
  * Anything that isn't a plain object (a null column, a bag that failed to
- * parse) reads as "no fields", which only `empty` conditions can match — the
+ * parse) reads as "no fields", which only `empty` conditions can match: the
  * same outcome as a resource synced before the rule's field existed. Values
  * are passed through untouched, including the occasional nested object, so
  * that a present-but-structured value still counts as present.

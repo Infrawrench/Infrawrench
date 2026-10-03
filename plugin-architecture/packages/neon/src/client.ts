@@ -82,7 +82,7 @@ const NEON_METRICS = { defaultTimeRangeMs: 24 * 3_600_000 };
 
 /**
  * Neon's credential scopes are fine-grained, but users pick a job to do rather
- * than a scope list — so the create form offers bundles and we expand them here.
+ * than a scope list, so the create form offers bundles and we expand them here.
  */
 const SCOPE_BUNDLES: Array<{ id: string; label: string; scopes: CredentialScope[] }> = [
   {
@@ -316,7 +316,7 @@ export class NeonClient implements PluginClient {
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
-    // Neon metrics are project-scoped — resolve the project ID
+    // Neon metrics are project-scoped: resolve the project ID
     let projectId: string;
     if (resourceTypeId === "neon-project") {
       projectId = resourceId.split(":").pop() ?? "";
@@ -1878,7 +1878,7 @@ export class NeonClient implements PluginClient {
         },
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
-      // Branch metrics are the project's — `fetchMetricSeries` resolves the
+      // Branch metrics are the project's: `fetchMetricSeries` resolves the
       // parent project id from the branch and asks for the same consumption
       // series. Both types declare `supportsMetrics`, so both need the tab.
       metricsCapability: NEON_METRICS,
@@ -1930,7 +1930,7 @@ export class NeonClient implements PluginClient {
         },
       ],
       headerActions: [
-        // Start only from "idle", Suspend only from "active" — transitional
+        // Start only from "idle", Suspend only from "active"; transitional
         // states ("init" and friends) get neither: the API would reject or
         // race the in-flight transition, so wait for Refresh to settle it.
         ...(state === "idle"

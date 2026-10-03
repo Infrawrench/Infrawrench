@@ -30,7 +30,7 @@ import { formatDailyCost } from "./cost-model.js";
  * Cost allocation runs alongside the listings and is folded into each pill's
  * `subtitle`. It is deliberately best-effort: a cluster whose `/api/v1/nodes`
  * is forbidden, or which has no rate for its nodes, still renders the full
- * workload listing — just without money.
+ * workload listing, just without money.
  */
 export async function renderPeerPane(
   context: PeerPaneContext,

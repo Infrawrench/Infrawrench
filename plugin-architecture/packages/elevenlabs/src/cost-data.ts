@@ -4,9 +4,9 @@
  * ElevenLabs exposes the same usage warehouse through two endpoints, and this
  * module builds against the newer one with a fallback to the older:
  *
- * 1. `POST /v1/workspace/analytics/query/usage-by-product-over-time` — the
+ * 1. `POST /v1/workspace/analytics/query/usage-by-product-over-time`: the
  *    successor, and what we prefer.
- * 2. `GET  /v1/usage/character-stats` — **deprecated**, kept only as a
+ * 2. `GET  /v1/usage/character-stats`: **deprecated**, kept only as a
  *    fallback. Its own description now reads "(Deprecated) This endpoint is
  *    deprecated. Use /v1/workspace/analytics/query/usage-by-product-over-time
  *    instead, which exposes the bucket size as `interval_seconds` (an integer
@@ -15,7 +15,7 @@
  * Both shapes were verified against the live OpenAPI document served at
  * https://api.elevenlabs.io/openapi.json (August 2026), which is authoritative
  * here: at time of writing the successor has **no rendered page** in the public
- * API reference — https://elevenlabs.io/docs/api-reference/usage/get documents
+ * API reference; https://elevenlabs.io/docs/api-reference/usage/get documents
  * the deprecated endpoint and names its replacement, but the replacement's own
  * reference page 404s. The spec entry is `operationId: usage_by_product_over_time`,
  * SDK group `workspace.usage`, method `get_usage_by_product_over_time`.
@@ -29,7 +29,7 @@
  *   must be >= 2020-01-01), `interval_seconds` (bucket size in seconds;
  *   whole-day multiples such as 86400 align to local midnight), optional
  *   `group_by`, optional `filters`, optional `time_zone` (IANA, default UTC).
- * - `group_by` is an **array** — unlike the deprecated endpoint's single-valued
+ * - `group_by` is an **array**: unlike the deprecated endpoint's single-valued
  *   `breakdown_type`, the successor can break down by several dimensions at
  *   once. That is what lets us key rows on a real (service, region) tuple.
  *   Enum: product_type, model, voice_id, user_id, fiat_currency,
@@ -37,14 +37,14 @@
  *   resource_id, subresource_id, request_queue_type, voice_multiplier,
  *   hashed_xi_api_key, billing_group_id, surface, actor.
  * - There is **no `metric` parameter**. The response is a generic tabular
- *   result — `columns`, `column_types`, `column_units`, `rows` — so the money
+ *   result (`columns`, `column_types`, `column_units`, `rows`) so the money
  *   column is discovered from `column_units` rather than requested by name.
  *
  * Rows are aggregated per (day, service, region, currency) so that re-fetching
  * a day inside the restatement window reproduces byte-identical dimension keys
  * and the host's dedupe replaces rather than doubles them.
  *
- * Auth is the plugin's existing `apiKey`, sent as `xi-api-key` — no extra
+ * Auth is the plugin's existing `apiKey`, sent as `xi-api-key`: no extra
  * credential field. Workspace-analytics access can be denied to a narrowly
  * scoped personal key, so every failure mode here degrades rather than
  * assuming; see `fetchElevenLabsCostData` for the ladder.
@@ -68,7 +68,7 @@ const API_KEYS_HELP = {
 };
 
 /**
- * Explicit context object so this module stays a pure function of its inputs —
+ * Explicit context object so this module stays a pure function of its inputs:
  * no `ElevenLabsClient` instance, no `HostServices` graph, nothing to stub in
  * tests beyond these three fields.
  */
@@ -90,7 +90,7 @@ export interface ElevenLabsCostContext {
 // Wire shapes
 // ---------------------------------------------------------------------------
 
-/** `WorkspaceAnalyticsQueryResponseModel` — the successor's tabular result. */
+/** `WorkspaceAnalyticsQueryResponseModel`: the successor's tabular result. */
 interface AnalyticsQueryResponse {
   columns?: string[] | null;
   /** ClickHouse-flavoured: String | Float | DateTime | Int | Bool | JSON | Map | Array. */
@@ -106,7 +106,7 @@ interface CharacterStatsResponse {
   usage?: Record<string, Array<number | null>> | null;
 }
 
-/** `SubscriptionResponseModel` — only the field this module reads. */
+/** `SubscriptionResponseModel`, only the field this module reads. */
 interface SubscriptionResponse {
   /** `Currency` enum: usd | eur | inr | pln. */
   currency?: string | null;
@@ -141,7 +141,7 @@ const CURRENCY_UNITS = new Set(["usd", "eur", "inr", "pln"]);
  * USD is the defensible default only because it is the currency ElevenLabs
  * publishes all of its pricing in and the only one a workspace gets without
  * explicitly being billed in a regional currency. It is a *fallback*, not a
- * belief — steps 1-3 mean a EUR/INR/PLN workspace is reported correctly, and
+ * belief: steps 1-3 mean a EUR/INR/PLN workspace is reported correctly, and
  * this line is reached only when the subscription lookup also fails.
  *
  * Note also that `fiat_units_spent` is read as **major units** (dollars, not
@@ -224,7 +224,7 @@ function apiError(res: RawResponse, path: string): Error {
   return new Error(`ElevenLabs API error ${res.status} for ${path}: ${res.body.slice(0, 500)}`);
 }
 
-/** 401/403 — the key exists but is not allowed to read this. */
+/** 401/403: the key exists but is not allowed to read this. */
 function isForbidden(status: number): boolean {
   return status === 401 || status === 403;
 }
@@ -252,7 +252,7 @@ function dayStartMs(isoDate: string): number {
  * Three shapes are in play: the deprecated endpoint's Unix integers, and the
  * successor's ClickHouse `DateTime`, which serializes either as ISO 8601 or as
  * `YYYY-MM-DD HH:MM:SS` (space-separated, no zone). Any string already leading
- * with a calendar date is sliced directly — parsing it would risk a local-time
+ * with a calendar date is sliced directly: parsing it would risk a local-time
  * reinterpretation that shifts the bucket by a day.
  */
 function toIsoDate(value: unknown): string {
@@ -328,7 +328,7 @@ function accumulate(
 function toRows(buckets: Map<string, Bucket>): CostRow[] {
   const rows: CostRow[] = [];
   for (const bucket of buckets.values()) {
-    // A zero bucket is a day with no spend on that tuple — nothing to store,
+    // A zero bucket is a day with no spend on that tuple: nothing to store,
     // and emitting it would make empty windows look like collected data.
     if (bucket.amount === 0) continue;
     rows.push({
@@ -353,7 +353,7 @@ function bucketKeyOf(row: CostRow): string {
 
 /**
  * Workspace billing currency from `GET /v1/user/subscription`. Step 3 of the
- * currency ladder — only consulted when the usage response did not carry one.
+ * currency ladder, only consulted when the usage response did not carry one.
  * Never throws: a key without `user_read` still has usable cost data, so a
  * failure here degrades to {@link FALLBACK_CURRENCY} rather than failing the
  * whole collection.
@@ -370,7 +370,7 @@ async function workspaceCurrency(ctx: ElevenLabsCostContext): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Primary path — POST /v1/workspace/analytics/query/usage-by-product-over-time
+// Primary path: POST /v1/workspace/analytics/query/usage-by-product-over-time
 // ---------------------------------------------------------------------------
 
 /**
@@ -398,9 +398,9 @@ interface ColumnPlan {
  * Locate the columns we need in a tabular response.
  *
  * The successor has no `metric` parameter and the spec does not enumerate the
- * column names it returns, so the money column is found by **unit** first —
+ * column names it returns, so the money column is found by **unit** first:
  * `column_units[i]` being one of the four currency values is a positive
- * statement from the API that column `i` holds money in that currency — and
+ * statement from the API that column `i` holds money in that currency, and
  * only then by name. Returns `null` when there is no usable money column,
  * which the caller treats as schema drift and falls back on.
  */
@@ -452,7 +452,7 @@ function planColumns(body: AnalyticsQueryResponse): ColumnPlan | null {
 }
 
 /**
- * Query the successor. Returns `null` to mean "use the fallback" — either the
+ * Query the successor. Returns `null` to mean "use the fallback": either the
  * route is not there, or it answered with a shape we cannot read. Throws only
  * for failures the fallback would hit too.
  */
@@ -465,8 +465,8 @@ async function fetchViaAnalytics(
   const payload = {
     start_time: dayStartMs(range.fromDate),
     end_time: dayStartMs(range.toDate) + DAY_MS - 1,
-    // Whole-day multiple, which the spec says aligns buckets to local midnight
-    // — pinned to UTC below so "local" is the same UTC day the host asked for.
+    // Whole-day multiple, which the spec says aligns buckets to local midnight:
+    // pinned to UTC below so "local" is the same UTC day the host asked for.
     interval_seconds: DAY_SECONDS,
     // Multi-valued, which the deprecated endpoint could not do. `fiat_currency`
     // is requested purely so each row states its own currency.
@@ -491,7 +491,7 @@ async function fetchViaAnalytics(
   if (!plan) return null;
 
   const rows = body.rows ?? [];
-  // An empty window is a real answer — no spend in the range — not drift.
+  // An empty window is a real answer (no spend in the range) not drift.
   if (rows.length === 0) return [];
 
   let defaultCurrency = plan.unitCurrency;
@@ -521,13 +521,13 @@ async function fetchViaAnalytics(
 }
 
 // ---------------------------------------------------------------------------
-// Fallback path — GET /v1/usage/character-stats (deprecated)
+// Fallback path: GET /v1/usage/character-stats (deprecated)
 // ---------------------------------------------------------------------------
 
 /**
  * Query the deprecated endpoint.
  *
- * `breakdown_type` here is **single-valued** — one dimension per request — so
+ * `breakdown_type` here is **single-valued**: one dimension per request, so
  * unlike the successor this path cannot produce a (service, region) tuple. It
  * deliberately asks for `product_type` **only** and leaves `region` unset,
  * rather than issuing a second `breakdown_type=region` call: the two responses
@@ -561,7 +561,7 @@ async function fetchViaCharacterStats(
   let path = `${CHARACTER_STATS_PATH}?${query(true)}`;
   let res = await request(ctx, path);
   if (isForbidden(res.status)) {
-    // Probe failed — this key is not allowed to see workspace-wide totals.
+    // Probe failed: this key is not allowed to see workspace-wide totals.
     // Retry scoped to the caller: partial numbers beat none.
     path = `${CHARACTER_STATS_PATH}?${query(false)}`;
     res = await request(ctx, path);
@@ -581,7 +581,7 @@ async function fetchViaCharacterStats(
   const usage = body.usage ?? {};
   if (time.length === 0) return [];
 
-  // No currency anywhere in this response — step 3 of the ladder.
+  // No currency anywhere in this response: step 3 of the ladder.
   const currency = await workspaceCurrency(ctx);
 
   const buckets = new Map<string, Bucket>();
@@ -593,7 +593,7 @@ async function fetchViaCharacterStats(
       if (date < range.fromDate || date > range.toDate) continue;
       const amount = toNumber(series[i]);
       if (amount === 0) continue;
-      // Region intentionally "" — see the note above on single-valued breakdowns.
+      // Region intentionally "": see the note above on single-valued breakdowns.
       accumulate(buckets, date, service, "", currency, amount, 0);
     }
   }

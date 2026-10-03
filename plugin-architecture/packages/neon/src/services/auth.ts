@@ -16,8 +16,8 @@ export interface AuthSnapshot {
 }
 
 /**
- * `GET /auth/plugins` returns every sub-config in one payload — oauth providers,
- * email/password, magic link, organization, phone, allow_localhost — so a single
+ * `GET /auth/plugins` returns every sub-config in one payload (oauth providers,
+ * email/password, magic link, organization, phone, allow_localhost) so a single
  * call backs both the auth detail view and the child resource listings.
  */
 export async function fetchAuthSnapshot(

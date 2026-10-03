@@ -40,7 +40,7 @@ export function refId(parent: Record<string, unknown> | undefined, key: string):
 }
 
 /**
- * `rg/vnet/subnet` — the composite `azure-subnet` resources carry as their
+ * `rg/vnet/subnet`: the composite `azure-subnet` resources carry as their
  * external id. Returns "" for anything that isn't a subnet ARM id, so a
  * half-built key never reaches the dependency graph.
  */
@@ -59,7 +59,7 @@ export function extractVaultName(uri: string): string {
 
 /**
  * The registry host in an App Service `linuxFxVersion` (`DOCKER|host/image:tag`).
- * Only hosts that look like a registry (they contain a dot) are returned —
+ * Only hosts that look like a registry (they contain a dot) are returned:
  * `NODE|20-lts` and bare Docker Hub images name no registry resource.
  */
 export function registryHost(fxVersion: string): string {

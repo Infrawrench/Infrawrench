@@ -23,12 +23,12 @@ export interface FieldDefinition {
   /** For "enum" fields */
   enumValues?: string[];
   /**
-   * For "secret" fields — which output keys from other resources can resolve this.
+   * For "secret" fields, which output keys from other resources can resolve this.
    * e.g. ["connectionString"] means any resource that outputs "connectionString" can fill this.
    */
   resolvableOutputKeys?: string[];
   /**
-   * For "association" fields — explicit list of plugin/type/output combos that can provide this.
+   * For "association" fields: explicit list of plugin/type/output combos that can provide this.
    * Also supports literal string input (user pastes a value directly).
    */
   resolvableFrom?: AssociationSource[];
@@ -78,7 +78,7 @@ export interface PeerPluginIntegration {
   /**
    * Optional gate. The tab only renders when the named field on the resource
    * exists and matches one of the conditions. Use `equals` for exact match or
-   * `prefix` for "starts with" — useful for engine-conditional integrations
+   * `prefix` for "starts with": useful for engine-conditional integrations
    * (e.g. only show the PostgreSQL tab when `databaseVersion` starts with
    * `POSTGRES_`).
    */
@@ -87,7 +87,7 @@ export interface PeerPluginIntegration {
    * Additional gate: each listed field must exist and be non-empty for the
    * tab to render. Combined with `showWhen` (AND). Useful when a single
    * `showWhen` can't express both an engine check and a "must have an
-   * endpoint" check — e.g. Cloud SQL postgres only shows when the engine is
+   * endpoint" check, e.g. Cloud SQL postgres only shows when the engine is
    * Postgres AND a public IP is available.
    */
   requiresFields?: string[];
@@ -116,7 +116,7 @@ export interface PeerPluginIntegration {
    * FAILS (the integration's outputs couldn't produce a working credential).
    * Instead of a bare error, the host renders the error text plus this button;
    * clicking it dispatches the action's `command` to the parent resource's
-   * `executeNoSqlCommand`. Use for fixes the user can trigger in-place — e.g.
+   * `executeNoSqlCommand`. Use for fixes the user can trigger in-place, e.g.
    * minting a DB connection user for engines where DO never exposes the
    * built-in user's password.
    */
@@ -125,7 +125,7 @@ export interface PeerPluginIntegration {
    * When true, the host calls the peer plugin's `fetchMetricSeries` (with its
    * resolved credentials) and merges the returned series into the parent
    * resource's Metrics tab. Use for peers whose data points are meaningful
-   * alongside the parent's own metrics — e.g. a SQL peer reporting connection
+   * alongside the parent's own metrics, e.g. a SQL peer reporting connection
    * counts on top of the parent's CPU/memory series. Implies the parent gets
    * a Metrics tab even when its own `supportsMetrics` is false.
    */
@@ -136,7 +136,7 @@ export interface PeerPluginIntegration {
  * Whether the host's Edit form offers this field, and therefore whether the
  * host may submit it through `updateResource`.
  *
- * This predicate *is* the writable surface of a resource type — everything the
+ * This predicate *is* the writable surface of a resource type: everything the
  * host does that writes a field goes through the same edit path, so anything
  * that needs to know "can I set this?" (the inline Edit modal, the detail
  * endpoint's `editableFields`, the change-timeline revert) asks here rather
@@ -145,7 +145,7 @@ export interface PeerPluginIntegration {
  * false` is the plugin declaring an identity/key field the provider won't let
  * you rename.
  *
- * It says nothing about whether the resource type supports updates at all —
+ * It says nothing about whether the resource type supports updates at all:
  * that is `ResourceTypeDefinition.supportsUpdate` plus a plugin client that
  * implements `updateResource`, both of which the caller checks.
  */
@@ -202,7 +202,7 @@ export interface SecretExportTemplate {
 
 /**
  * Declares that a field (or output) on this resource type names another
- * resource — a dependency the host draws on the dependency graph.
+ * resource: a dependency the host draws on the dependency graph.
  *
  * The host can already *guess* these: it indexes every resource by the values
  * that identify it and looks each field value up in that index. Guessing has to
@@ -211,14 +211,14 @@ export interface SecretExportTemplate {
  * which field points where, so `namespace: "default"` resolves to the namespace
  * type instead of being thrown away as ambiguous.
  *
- * Declaring is optional and incremental — a type with no rules still gets the
+ * Declaring is optional and incremental: a type with no rules still gets the
  * inferred edges. Nothing here is provider-specific in the host: it reads the
  * rule and matches values, exactly as it does for the peer-integration and
  * SSH-endpoint declarations.
  *
  * **Don't declare a field whose target you can't name.** A rule takes the field
  * over: the host stops guessing about it, even when the rule matches nothing.
- * That is the point — a match against the wrong type is worse than no edge —
+ * That is the point (a match against the wrong type is worse than no edge)
  * but it cuts both ways. `targetPluginId` defaults to the declaring plugin, so
  * a rule for a field that points *outside* this provider (an SSH target's
  * `host`, which names someone else's server) would both fail to match and
@@ -239,7 +239,7 @@ export interface ResourceDependencyRule {
   targetPluginId?: string;
   /**
    * What the value is matched against on the target: `"externalId"` (default),
-   * or the name of a field/output key on the target — e.g. `"name"` when the
+   * or the name of a field/output key on the target, e.g. `"name"` when the
    * provider references things by name rather than id.
    */
   targetKey?: string;
@@ -251,7 +251,7 @@ export interface ResourceDependencyRule {
    *
    * Placeholders name fields on **this** resource (outputs when
    * `from: "outputs"`). If any placeholder is missing or empty the rule yields
-   * nothing — a half-built key must never be matched. `fieldKey` still names
+   * nothing: a half-built key must never be matched. `fieldKey` still names
    * the field the edge is attributed to and is what the UI captions.
    *
    * One placeholder may hold a comma-joined list: the template is expanded per
@@ -272,7 +272,7 @@ export interface ResourceDependencyRule {
 }
 
 /**
- * What a declared expiry field counts down toward — used by hosts purely for
+ * What a declared expiry field counts down toward: used by hosts purely for
  * grouping, labels and icons on the cross-provider Expiry radar. Pick the
  * closest match; `"other"` is a valid answer.
  */
@@ -285,7 +285,7 @@ export type ExpiryKind =
   | "ssh-key"
   | "secret-version"
   /**
-   * A host-managed resource lease (TTL) — never declared by a plugin's
+   * A host-managed resource lease (TTL), never declared by a plugin's
    * `expiryFields`; the cloud host injects these items into the radar from
    * its own lease rows.
    */
@@ -293,18 +293,18 @@ export type ExpiryKind =
   | "other";
 
 /**
- * Declares that a field this type's lister already stores carries a deadline —
+ * Declares that a field this type's lister already stores carries a deadline:
  * a certificate's notAfter, a domain's registration expiry, a token's
  * expiration, an access key's creation date. Feeds the cross-provider Expiry
  * radar (web/desktop/mobile screens, the `infrawrench expiring` CLI and the
  * poller's expiry alerts).
  *
  * Exactly like `orphanRule` and `dependsOn`, this is evaluated over
- * already-synced `fields` — no plugin client, no credentials, no extra
+ * already-synced `fields`: no plugin client, no credentials, no extra
  * provider API calls, ever. Only declare a field the lister actually
  * populates; a rule over a field that never lands in `fields` simply yields
  * nothing. Values may be ISO 8601 strings, date-only strings, or unix epochs
- * (seconds or milliseconds, number or numeric string) — the host parses all
+ * (seconds or milliseconds, number or numeric string): the host parses all
  * of these; anything unparseable is skipped, never alarmed on.
  */
 export interface ExpiryFieldRule {
@@ -312,9 +312,9 @@ export interface ExpiryFieldRule {
   fieldKey: string;
   /**
    * What the timestamp means:
-   * - `"expiry"` — the field IS the moment the clock runs out (cert
+   * - `"expiry"`: the field IS the moment the clock runs out (cert
    *   notAfter, domain expiry date, token expiration).
-   * - `"created"` — the field is a creation/rotation date and the deadline is
+   * - `"created"`: the field is a creation/rotation date and the deadline is
    *   derived from an age budget: `maxAgeDays` when set, otherwise the host's
    *   per-kind default (e.g. access keys are due for rotation at 90 days).
    */
@@ -337,8 +337,8 @@ export interface ExpiryFieldRule {
 }
 
 /**
- * Marks a resource type as one half of the DNS surface — a zone (the thing a
- * domain's records live in) or a record — and names the fields the host reads
+ * Marks a resource type as one half of the DNS surface: a zone (the thing a
+ * domain's records live in) or a record, and names the fields the host reads
  * to render it. Feeds the cross-provider Domains view and the dangling-DNS
  * posture check.
  *
@@ -363,7 +363,7 @@ export interface DnsZoneRole {
   statusKey?: string;
   /**
    * Field that marks the zone as split-horizon/internal. Private zones are
-   * listed but never analysed for takeover — an internal name resolving to
+   * listed but never analysed for takeover: an internal name resolving to
    * nothing is a broken deploy, not an exposure.
    */
   privateKey?: string;
@@ -385,7 +385,7 @@ export interface DnsRecordRole {
   role: "record";
   /**
    * Field holding the record name. Default `"name"`. May be relative (`"www"`,
-   * `"@"`) or fully qualified with or without a trailing dot — the host
+   * `"@"`) or fully qualified with or without a trailing dot: the host
    * normalises against the owning zone's domain either way.
    */
   nameKey?: string;
@@ -419,8 +419,8 @@ export interface DnsRecordRole {
 export type BackupRoleKind = "snapshot";
 
 /**
- * Marks a resource type as one that **is a backup** — an EBS snapshot, an RDS
- * snapshot, a Droplet backup image, a Neon or PlanetScale backup — and names
+ * Marks a resource type as one that **is a backup**: an EBS snapshot, an RDS
+ * snapshot, a Droplet backup image, a Neon or PlanetScale backup, and names
  * the fields the host reads to join it back to the thing it protects.
  *
  * Same contract as `orphanRule`, `expiryFields`, `postureChecks` and
@@ -432,7 +432,7 @@ export type BackupRoleKind = "snapshot";
  * The one key that carries weight is {@link sourceKey}: without it a snapshot
  * can be counted but never attributed, so the host can tell you "you have 400
  * snapshots" and nothing about your RPO. Declare it whenever the lister
- * genuinely syncs the source id — and **only** then. A `sourceKey` naming a
+ * genuinely syncs the source id, and **only** then. A `sourceKey` naming a
  * field the lister never populates would make every protected volume read as
  * unprotected, which is worse than not declaring the role at all.
  */
@@ -447,26 +447,26 @@ export interface BackupRoleDeclaration {
    * public Ubuntu image would be counted as a backup of nothing.
    *
    * Instances whose value is not in {@link backupTypeValues} are skipped
-   * entirely — not counted, not reported as orphans.
+   * entirely, not counted, not reported as orphans.
    */
   backupTypeKey?: string;
   /**
    * Values of {@link backupTypeKey} (case-insensitive) that mean "this row is
-   * a backup". Required alongside `backupTypeKey` — a key with no value list
+   * a backup". Required alongside `backupTypeKey`: a key with no value list
    * has nothing to test, and a list with no key has nothing to read, which is
    * the `privateValues requires privateKey` stance.
    */
   backupTypeValues?: string[];
   /**
-   * Field holding the **id of the resource this backup protects** — a volume
+   * Field holding the **id of the resource this backup protects**: a volume
    * id, a disk self-link, a DB instance identifier, a branch id. Default
    * `"sourceId"`. Matched against the candidate's external id, its Infrawrench
    * id and its display name (the identity rules the dependency graph already
    * uses), and a slash-path value is also matched on its last segment so a
    * self-link joins to a bare disk name.
    *
-   * A field whose value is empty on some instances is fine and expected —
-   * Hetzner only sets `bound_to` on automatic backups — those rows are
+   * A field whose value is empty on some instances is fine and expected
+   * (Hetzner only sets `bound_to` on automatic backups) those rows are
    * reported as unattributable rather than as orphans.
    *
    * Mutually exclusive with {@link sourceTemplate}.
@@ -474,12 +474,12 @@ export interface BackupRoleDeclaration {
   sourceKey?: string;
   /**
    * A `{field}` template composing the source's identity out of more than one
-   * field, for providers whose backup names its source in two halves —
+   * field, for providers whose backup names its source in two halves:
    * PlanetScale's `{databaseName}/{branchName}`, Spanner's
    * `{instance}/{database}`. The same shape as `dependsOn`'s `matchTemplate`,
    * and the reason it exists is the same: a bare `branchName` of `"main"`
    * matches a branch in every database in the account, and an ambiguous match
-   * is no match — which would make every PlanetScale backup read as an orphan.
+   * is no match, which would make every PlanetScale backup read as an orphan.
    *
    * A template referencing a field that is empty on an instance yields no
    * source for that instance (unattributable), never a partial match.
@@ -493,7 +493,7 @@ export interface BackupRoleDeclaration {
    * tolerance (ISO, date-only, epoch seconds or milliseconds).
    *
    * A backup whose timestamp is missing or unparseable **never satisfies an
-   * RPO** — an undatable backup is not evidence of a recent one — but it still
+   * RPO**: an undatable backup is not evidence of a recent one, but it still
    * counts as a backup, so the resource reads as "backed up, age unknown"
    * rather than unprotected. That is why, unlike `dnsRole`, the default is not
    * required to name a real field: a lister that stores no timestamp yields a
@@ -510,15 +510,15 @@ export interface BackupRoleDeclaration {
   sizeKey?: string;
   /**
    * What {@link sizeKey} is counted in. Default `"gib"`. Set `"bytes"` for
-   * listers that store a raw byte count (Spanner's `sizeBytes`) — the host
+   * listers that store a raw byte count (Spanner's `sizeBytes`): the host
    * converts, so the surface never reports 21 billion GiB.
    */
   sizeUnit?: "gib" | "bytes";
 }
 
 /**
- * Marks a resource type as **stateful and therefore needing protection** — a
- * volume, a disk, a managed database, a database cluster — and names both the
+ * Marks a resource type as **stateful and therefore needing protection**: a
+ * volume, a disk, a managed database, a database cluster, and names both the
  * types that can protect it and any provider-native automated backup the
  * lister already syncs.
  *
@@ -532,7 +532,7 @@ export interface BackupRoleDeclaration {
 export interface BackupPolicyDeclaration {
   /**
    * Resource type ids (within this same plugin) whose instances protect this
-   * type — usually one snapshot type. An instance of one of these types whose
+   * type: usually one snapshot type. An instance of one of these types whose
    * `sourceKey` resolves to this resource counts as a backup of it.
    *
    * May be empty for a type protected only by a provider-native automated
@@ -541,7 +541,7 @@ export interface BackupPolicyDeclaration {
    */
   protectedBy: string[];
   /**
-   * Field that is **truthy when the provider is taking automated backups** —
+   * Field that is **truthy when the provider is taking automated backups**:
    * DO's droplet `backups` flag, Cloud SQL's `backupEnabled`. A resource whose
    * automated backups are on is never reported as unprotected, even with no
    * snapshot in the inventory, because the provider is holding restore points
@@ -555,8 +555,8 @@ export interface BackupPolicyDeclaration {
   automatedBackupFieldKey?: string;
   /**
    * How to read {@link automatedBackupFieldKey}:
-   * - `"truthy"` (default) — a boolean-ish flag.
-   * - `"present"` — **any non-empty value means backups are on**, because the
+   * - `"truthy"` (default): a boolean-ish flag.
+   * - `"present"`: **any non-empty value means backups are on**, because the
    *   field holds a datum rather than a flag. DigitalOcean's droplet
    *   `nextBackupStart` is the case: it carries the next backup window's ISO
    *   timestamp when backups are enabled and `""` when they are not, which is
@@ -569,7 +569,7 @@ export interface BackupPolicyDeclaration {
    */
   automatedBackupWhen?: "truthy" | "present";
   /**
-   * Field holding the provider-native **retention window in days** — RDS's
+   * Field holding the provider-native **retention window in days**: RDS's
    * `backupRetentionPeriod`, Azure's `backupRetentionDays`. A positive value
    * both proves automated backups are on (so this key alone is enough; you
    * need not also declare `automatedBackupFieldKey`) and is what the org's
@@ -580,7 +580,7 @@ export interface BackupPolicyDeclaration {
 }
 
 /**
- * Declares the hostname space instances of this type are served at — the
+ * Declares the hostname space instances of this type are served at: the
  * provider-owned namespace a CNAME points into (`myapp.vercel.app`,
  * `assets.s3.amazonaws.com`). This is what makes dangling-DNS detection
  * possible without a history table: a record pointing into a namespace we
@@ -589,7 +589,7 @@ export interface BackupPolicyDeclaration {
  * Only declare a namespace whose claimant this plugin's lister genuinely
  * syncs. The host will not evaluate a rule unless the org has a synced account
  * for the plugin **and** at least one synced resource of a type declaring the
- * matched pattern — missing data must never alarm, and "you don't have AWS
+ * matched pattern: missing data must never alarm, and "you don't have AWS
  * connected" is missing data, not a finding.
  */
 export interface DnsServiceHostRule {
@@ -598,7 +598,7 @@ export interface DnsServiceHostRule {
   /** Human name of the namespace, e.g. "S3 bucket endpoint". */
   label: string;
   /**
-   * Regex source matched against the whole lowercased hostname — hosts anchor
+   * Regex source matched against the whole lowercased hostname: hosts anchor
    * it themselves, so don't write `^`/`$`. Capture group 1 must be the part
    * that identifies the instance (the bucket name, the app slug); for an
    * opaque provider-minted label capture it anyway and set `labelIs: "opaque"`.
@@ -606,9 +606,9 @@ export interface DnsServiceHostRule {
   hostPattern: string;
   /**
    * How capture group 1 relates to the instance:
-   * - `"name"` (default) — it IS the resource's name/external id, so
+   * - `"name"` (default): it IS the resource's name/external id, so
    *   `myapp.vercel.app` is claimed by a project called `myapp`.
-   * - `"opaque"` — the provider mints it (`d111111abcdef8.cloudfront.net`), so
+   * - `"opaque"`: the provider mints it (`d111111abcdef8.cloudfront.net`), so
    *   only an exact `hostKeys` value can claim the hostname.
    */
   labelIs?: "name" | "opaque";
@@ -628,8 +628,8 @@ export interface DnsServiceHostRule {
  * Declares that a resource type can be powered off and back on through a pair
  * of the plugin's own invoke-actions ("plugin-action" `HostAction`s dispatched
  * via `client.invokeAction`). The generic convention behind sleep/wake
- * schedules: the host discovers eligibility from this hint — it never
- * hard-codes provider names or string-matches action ids — and executes the
+ * schedules: the host discovers eligibility from this hint (it never
+ * hard-codes provider names or string-matches action ids) and executes the
  * named actions server-side when a schedule window opens or closes.
  *
  * Only declare action ids the plugin's `invokeAction` actually accepts for
@@ -655,8 +655,8 @@ export interface LifecycleActionsDeclaration {
 
 /**
  * Points the host at the CPU-utilisation series this type's
- * `fetchMetricSeries` emits. Series identity is the label string — the same
- * key the metrics warehouse stores — so the declaration must match it
+ * `fetchMetricSeries` emits. Series identity is the label string (the same
+ * key the metrics warehouse stores) so the declaration must match it
  * exactly.
  */
 export interface RightsizingCpuMetric {
@@ -664,7 +664,7 @@ export interface RightsizingCpuMetric {
   seriesLabel: string;
   /**
    * How the series encodes utilisation: `"percent"` (0–100, the default) or
-   * `"fraction"` (0–1 — e.g. GCE `instance/cpu/utilization`).
+   * `"fraction"` (0–1, e.g. GCE `instance/cpu/utilization`).
    */
   scale?: "percent" | "fraction";
 }
@@ -672,9 +672,9 @@ export interface RightsizingCpuMetric {
 /**
  * Points the host at the memory series, when the provider reports one.
  * Providers disagree on what the number means, so the declaration says:
- * - `"percent"` — utilisation 0–100 (e.g. DO managed-database `Memory Used`).
- * - `"used-bytes"` — absolute bytes in use.
- * - `"available-bytes"` — absolute bytes free/available (e.g. DO droplet
+ * - `"percent"`: utilisation 0–100 (e.g. DO managed-database `Memory Used`).
+ * - `"used-bytes"`: absolute bytes in use.
+ * - `"available-bytes"`: absolute bytes free/available (e.g. DO droplet
  *   `Memory Available`, Azure `Available Memory Bytes`); the host derives
  *   used% from the current size's total RAM.
  */
@@ -690,13 +690,13 @@ export interface RightsizingMemoryMetric {
  * real catalog of what the resource could be resized to, and the metric series
  * named here measure how much of the current size is actually used.
  *
- * The generic convention behind the "Oversized" savings finder — the same
+ * The generic convention behind the "Oversized" savings finder; the same
  * shape as `orphanRule` and `lifecycle`: the host discovers eligibility from
  * the declaration and never hard-codes provider names. The host reads
  * candidate sizes from `getCreateConfig`'s size-picker for `sizeFieldKey`
  * (hydrating prices through `getCreateSizePricing` where the plugin implements
  * it), computes p95 utilisation from already-stored metrics, and applies a
- * recommended resize through the ordinary `updateResource` path — so only
+ * recommended resize through the ordinary `updateResource` path, so only
  * declare this on types whose `updateResource` actually accepts a new value
  * for `sizeFieldKey`.
  */
@@ -724,7 +724,7 @@ export interface RightsizingDeclaration {
    * Field holding the resource's actual disk size in GB, for providers that
    * bundle disk with size and refuse resizes onto a smaller included disk
    * (Hetzner `primary_disk_size`, DO droplet `disk`). Without it the host
-   * falls back to the current size's own `diskGb` — conservative, since a
+   * falls back to the current size's own `diskGb`: conservative, since a
    * bundled disk never shrinks.
    */
   diskFieldKey?: string;
@@ -739,13 +739,13 @@ export interface RightsizingDeclaration {
   /**
    * Regex applied to size ids to guard cross-family resizes the provider
    * would reject (architecture changes above all). When set, a candidate
-   * qualifies only if every capture group matches the current size's — e.g.
+   * qualifies only if every capture group matches the current size's, e.g.
    * `"^([a-z]+)"` keeps Hetzner `cax` (arm) and `cx` (x86) apart. Must
    * contain at least one capture group.
    */
   sizeFamilyPattern?: string;
   /**
-   * Plugin-authored caveat surfaced in the resize confirm dialog — the place
+   * Plugin-authored caveat surfaced in the resize confirm dialog: the place
    * to say "requires the server to be powered off first" or "the VM restarts
    * during the resize". The plugin is the one that knows.
    */
@@ -771,12 +771,12 @@ export interface ResourceTypeDefinition {
    * `ExpiryFieldRule`. Evaluated over already-synced fields only.
    */
   expiryFields?: ExpiryFieldRule[];
-  /** Set on child resource types — points to the parent type's id */
+  /** Set on child resource types: points to the parent type's id */
   parentTypeId?: string;
   /**
    * When true on a type with `parentTypeId`, instances appear in the account
    * sidebar as their own top-level section (in addition to being grouped
-   * under the parent on the parent's detail page). Default false — child
+   * under the parent on the parent's detail page). Default false; child
    * types are sidebar-hidden, matching DO Droplets-inside-Projects: the
    * project is the navigable parent and droplets only show in its detail
    * page. Set true for child types the user thinks of as first-class
@@ -792,11 +792,11 @@ export interface ResourceTypeDefinition {
    * root's children rather than through a section containing a single pill.
    *
    * Declare this only when the provider genuinely admits one instance per
-   * credential — where a second one is not rare but *impossible*. UploadThing
+   * credential, where a second one is not rare but *impossible*. UploadThing
    * is the shape it exists for: an API key is app-scoped, every endpoint is
    * implicitly scoped to that app, and there is no "list apps" call to make,
    * so an account can never hold two. A provider that merely *usually* has
-   * one (a single Fly org, one Neon project) must not declare it — the page
+   * one (a single Fly org, one Neon project) must not declare it: the page
    * would silently hide every instance but the first.
    *
    * At most one type per plugin may set this, and it must be a top-level type
@@ -812,7 +812,7 @@ export interface ResourceTypeDefinition {
   /** Named icon key within the plugin's icon set, falls back to the plugin logo */
   iconKey?: string;
   /**
-   * Peer plugin integrations — other plugins whose panes are shown as extra tabs
+   * Peer plugin integrations: other plugins whose panes are shown as extra tabs
    * when viewing a resource of this type. The host resolves the listed outputs and
    * passes them as credentials to the peer plugin's client.
    */
@@ -827,7 +827,7 @@ export interface ResourceTypeDefinition {
     /**
      * Optional output key resolving to a private/internal address (e.g.
      * "privateIp"). When present, the host can offer the user a "Private IP"
-     * option — primarily used by the "Connect through jumpbox" flow, where the
+     * option: primarily used by the "Connect through jumpbox" flow, where the
      * jump host typically reaches the target on its private interface.
      */
     privateHostOutputKey?: string;
@@ -883,13 +883,13 @@ export interface ResourceTypeDefinition {
   /** If true, the host will open a built-in SFTP file browser for instances of this type */
   supportsSftpBrowser?: boolean;
   /**
-   * Secret export templates — declares what secrets this resource can produce
+   * Secret export templates: declares what secrets this resource can produce
    * when dragged onto a K8s cluster or SSH target. Each template maps output keys
    * to env-var-style secret keys.
    */
   secretExportTemplates?: SecretExportTemplate[];
   /**
-   * Per-resource SQL driver — when present, the host resolves a connection string
+   * Per-resource SQL driver, when present, the host resolves a connection string
    * from this resource's outputs and enables a SQL editor tab in the detail view.
    * Unlike the manifest-level sqlDriver (which uses account credentials), this
    * resolves the connection per-resource via client.resolveOutput().
@@ -903,7 +903,7 @@ export interface ResourceTypeDefinition {
   /**
    * Instances of this type can be queried through the plugin client's
    * `executeQuery` (a REST-based SQL API rather than a node driver, e.g.
-   * BigQuery datasets, Spanner databases). Purely declarative — the runtime
+   * BigQuery datasets, Spanner databases). Purely declarative: the runtime
    * path is `executeQuery` itself, which is a plugin-wide method; this flag is
    * what lets hosts offer the *right* resources of such a plugin in SQL target
    * pickers (query monitors) without instantiating a client. Types that
@@ -919,20 +919,20 @@ export interface ResourceTypeDefinition {
    */
   credentialFormats?: CredentialFormat[];
   /**
-   * Resource types this resource can be attached onto via drag-drop — e.g. a
+   * Resource types this resource can be attached onto via drag-drop, e.g. a
    * gce-disk declares gce-instance here. Drops are only accepted when the target
    * belongs to the same account; when `matchField` is set, the named field must
    * also match between source and target (e.g. matching zone).
    */
   attachTargets?: AttachTarget[];
   /**
-   * Declarative "this resource is probably wasted" heuristic — e.g. an
+   * Declarative "this resource is probably wasted" heuristic, e.g. an
    * unattached volume or a reserved IP that isn't assigned to anything.
    *
    * The rule matches when ALL conditions hold against the instance's stored
    * `fields`. Hosts evaluate it over already-synced resources via
-   * {@link evaluateOrphanRule} — no plugin client, credentials, or extra API
-   * calls involved — and surface matches on the "Potential savings" page and
+   * {@link evaluateOrphanRule}: no plugin client, credentials, or extra API
+   * calls involved, and surface matches on the "Potential savings" page and
    * the `infrawrench orphans` CLI. Only declare rules over fields the type's
    * lister already populates; a condition on a field the lister never sets
    * simply never matches (empty-string and absent are distinct: `empty`
@@ -940,14 +940,14 @@ export interface ResourceTypeDefinition {
    */
   orphanRule?: OrphanRule;
   /**
-   * Declarative security posture rules — "this resource is probably exposed":
+   * Declarative security posture rules: "this resource is probably exposed":
    * a public bucket, a 0.0.0.0/0 ingress rule, an unencrypted disk, an access
    * key past its rotation budget, missing deletion protection.
    *
    * The security sibling of {@link ResourceTypeDefinition.orphanRule}: each
    * rule flags the resource when ALL its conditions hold against the
    * instance's stored `fields`, evaluated by hosts over already-synced
-   * resources (`evaluatePostureRule`) — no plugin client, credentials, or
+   * resources (`evaluatePostureRule`); no plugin client, credentials, or
    * extra API calls. Only declare rules over fields the type's lister already
    * populates; a condition on a field that never lands in `fields` simply
    * never matches. See `PostureCheckRule` in `posture.ts`.
@@ -990,9 +990,9 @@ export interface ResourceTypeDefinition {
    */
   rightsizing?: RightsizingDeclaration;
   /**
-   * Marks this type as an identity principal inside the customer's cloud — an
+   * Marks this type as an identity principal inside the customer's cloud (an
    * IAM user or role, a service account, an app registration, a role binding,
-   * a long-lived API key — and names the already-synced fields the
+   * a long-lived API key) and names the already-synced fields the
    * cross-cloud access review reads; see {@link PrincipalRoleDeclaration}.
    * Absent = instances never appear on the access review.
    *
@@ -1008,9 +1008,9 @@ export interface OrphanCondition {
   /** Key into the instance's `fields` map. */
   fieldKey: string;
   /**
-   * - `empty` — field is absent, `""`, `0` is NOT empty (a count of zero is a
+   * - `empty`: field is absent, `""`, `0` is NOT empty (a count of zero is a
    *   real value; use `equals` with `"0"` for that).
-   * - `equals` / `notEquals` — string comparison against `value`
+   * - `equals` / `notEquals`: string comparison against `value`
    *   (case-insensitive; numbers/booleans are stringified). An absent field
    *   never matches either.
    */
@@ -1029,7 +1029,7 @@ export interface OrphanRule {
   conditions: OrphanCondition[];
   /**
    * Human-readable explanation shown next to the flagged resource, e.g.
-   * "Volume is not attached to any Droplet". Written by the plugin — the one
+   * "Volume is not attached to any Droplet". Written by the plugin: the one
    * place that knows what the fields mean.
    */
   reason: string;

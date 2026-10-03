@@ -13,7 +13,7 @@ export async function resolveOutput(
   const p = ctx.project;
 
   if (typeId === "gcp-project") {
-    // The token comes from the account's own credentials — this is what lets
+    // The token comes from the account's own credentials: this is what lets
     // an Infrafile authenticate gcloud (CLOUDSDK_AUTH_ACCESS_TOKEN) and
     // Artifact Registry (`docker login -u oauth2accesstoken`) without the
     // operator re-supplying the service-account key.
@@ -176,7 +176,7 @@ export async function resolveOutput(
       );
       if (!res.ok) throw new Error(`IAM API ${res.status}: ${await res.text()}`);
       const data = (await res.json()) as { privateKeyData: string };
-      // privateKeyData is base64-encoded JSON — decode it
+      // privateKeyData is base64-encoded JSON: decode it
       return atob(data.privateKeyData);
     }
   }
@@ -270,7 +270,7 @@ export async function resolveOutput(
 
   if (typeId === "pubsub-topic" && (outputKey === "topicName" || outputKey === "name")) {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
-    // Full resource name (projects/X/topics/Y) — what Eventarc and most APIs expect.
+    // Full resource name (projects/X/topics/Y): what Eventarc and most APIs expect.
     return resource.externalId ?? String(resource.fields["name"] ?? "");
   }
 

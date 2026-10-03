@@ -21,7 +21,7 @@ function b64(s: string): string {
 }
 
 /**
- * Publish a single Pub/Sub message. `externalId` is the topic short name —
+ * Publish a single Pub/Sub message. `externalId` is the topic short name:
  * the same value used for the create handler. The body is base64-encoded
  * per the Pub/Sub REST contract.
  */

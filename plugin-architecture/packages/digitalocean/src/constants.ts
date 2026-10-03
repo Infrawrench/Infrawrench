@@ -4,7 +4,7 @@ export const SPACES_REGIONS: string[] = ["nyc3", "sfo3", "ams3", "fra1", "sgp1",
  * Static lookup for known DO datacenter slugs. Covers DO's 14 currently-listable
  * regions plus the two legacy datacenters (ams2, sfo1) that can still show up
  * for older accounts. Source: https://docs.digitalocean.com/platform/regional-availability/
- * Use `regionDisplay()` rather than indexing this map directly — it falls back
+ * Use `regionDisplay()` rather than indexing this map directly; it falls back
  * on slug-prefix heuristics so brand-new regions DO adds (always slug-prefixed
  * by city: e.g. a future `mad1`) still get a flag without a code change.
  */
@@ -29,7 +29,7 @@ const REGION_INFO: Record<string, { location: string; flag: string }> = {
 
 /**
  * Fallback flags keyed by the three-letter city prefix of a region slug.
- * Used by `regionDisplay()` for slugs that aren't in REGION_INFO yet —
+ * Used by `regionDisplay()` for slugs that aren't in REGION_INFO yet:
  * lets us show a reasonable flag for any new DO datacenter without a
  * blocking code change.
  */
@@ -52,7 +52,7 @@ const REGION_PREFIX_FALLBACK: Record<string, { location: string; flag: string }>
  * entry in REGION_INFO; falls back to the slug's three-letter city prefix
  * so unfamiliar slugs (e.g. a hypothetical `nyc4` or a brand-new city DO
  * spins up) still get a reasonable label. Returns undefined only when the
- * slug doesn't match any known prefix — callers should treat that as
+ * slug doesn't match any known prefix: callers should treat that as
  * "show the raw slug, no flag".
  */
 export function regionDisplay(slug: string): { location: string; flag: string } | undefined {

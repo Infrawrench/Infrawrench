@@ -84,7 +84,7 @@ describe("invokeDropletAction", () => {
         .fn()
         // POST action
         .mockResolvedValueOnce({ action: { id: 5, status: "completed" } })
-        // awaitDropletState GET — first not ready, then ready
+        // awaitDropletState GET: first not ready, then ready
         .mockResolvedValueOnce({ droplet: { features: [], next_backup_window: null } })
         .mockResolvedValueOnce({ droplet: { features: ["backups"] } }),
     });

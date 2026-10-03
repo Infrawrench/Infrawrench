@@ -6,14 +6,14 @@ import type {
 import { fieldBool, fieldNumber, fieldString, tf } from "@infrawrench/plugin-base";
 
 /**
- * Terraform mapping for Cloudflare — provider `cloudflare/cloudflare` v5.
+ * Terraform mapping for Cloudflare: provider `cloudflare/cloudflare` v5.
  * Attribute names verified against the v5 provider docs
  * (registry.terraform.io/providers/cloudflare/cloudflare):
  *   - cloudflare_zone: `account = { id = … }` (nested attribute) + name
  *     required; type / paused optional. v5 renamed the old `account_id`.
  *   - cloudflare_dns_record: name / type / ttl required (ttl 1 = automatic);
  *     zone_id, content, proxied, priority, comment optional.
- * The API token and account ID are emitted as variables — never inlined.
+ * The API token and account ID are emitted as variables, never inlined.
  */
 export const cloudflareTerraformExport: TerraformExportCapability = {
   provider: { name: "cloudflare", source: "cloudflare/cloudflare", version: "~> 5.0" },
@@ -53,7 +53,7 @@ export const cloudflareTerraformExport: TerraformExportCapability = {
       };
     }
     if (resource.resourceTypeId === "dns-record") {
-      // externalId is `${zoneId}/${recordId}` — also the v5 import format.
+      // externalId is `${zoneId}/${recordId}`: also the v5 import format.
       const [zoneId] = (resource.externalId ?? "").split("/");
       const type = fieldString(resource, "type");
       const name = fieldString(resource, "name");

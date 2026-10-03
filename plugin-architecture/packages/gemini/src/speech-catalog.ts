@@ -72,7 +72,7 @@ export const DEFAULT_TTS_MODEL = "gemini-3.1-flash-tts-preview";
  * control: `TranscribeAudioPayload` carries `language`, `SynthesizeSpeechPayload`
  * does not, so a selection here reaches `transcribeAudio` and nothing else.
  * Gemini has no language parameter on `generateContent` either, so the value is
- * honoured by naming it in the transcription instruction — see
+ * honoured by naming it in the transcription instruction: see
  * `transcriptionPrompt` in client.ts. Synthesis infers the language from the
  * input text, which is the usual case anyway.
  *
@@ -110,11 +110,11 @@ export const TTS_LANGUAGES: SpeechPanelOption[] = [
  * The audio MIME types ai.google.dev documents for `inline_data` on
  * `generateContent`.
  *
- * ⚠️ **`audio/webm` and `audio/mp4` are not on this list** — which is exactly
+ * ⚠️ **`audio/webm` and `audio/mp4` are not on this list**, which is exactly
  * what a browser `MediaRecorder` produces (WebM/Opus on Chrome, Edge and
  * Firefox; MP4 on Safari). Firebase AI Logic, a thin wrapper over this same
  * endpoint, does list both, and Google's own Files API examples use
- * `audio/mpeg` which is also absent here — so the published list is
+ * `audio/mpeg` which is also absent here, so the published list is
  * illustrative rather than a hard whitelist, and webm/mp4 probably work.
  *
  * "Probably" is not good enough to steer a file picker with, so the picker is

@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 /**
  * A model served by GroqCloud.
  *
- * Always populated from `GET https://api.groq.com/openai/v1/models` — Groq
+ * Always populated from `GET https://api.groq.com/openai/v1/models`: Groq
  * runs a rolling deprecation schedule (see console.groq.com/docs/deprecations),
  * so a hardcoded catalogue goes stale within weeks.
  */

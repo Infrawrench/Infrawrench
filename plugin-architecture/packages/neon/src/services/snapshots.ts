@@ -13,7 +13,7 @@ import {
  * `@neondatabase/api-client@2.7.3` mistypes both snapshot reads as
  * `OperationsResponse`. The published OpenAPI spec documents the real payloads
  * as `{ snapshots }` and `{ snapshot, operations }`, so we have to look past the
- * generated types — but we validate at runtime rather than assert, so a drifting
+ * generated types, but we validate at runtime rather than assert, so a drifting
  * SDK or API surfaces as a missing snapshot instead of a `TypeError` inside
  * `buildSnapshotResource`. Revisit when the SDK codegen is fixed.
  */

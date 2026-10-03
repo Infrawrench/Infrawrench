@@ -2,16 +2,16 @@
  * Actual-spend collection via DigitalOcean's Billing Insights endpoint.
  *
  * `GET /v2/billing/{account_urn}/insights/{start_date}/{end_date}` returns
- * DAILY usage deltas derived from nightly invoice-item estimates — one data
+ * DAILY usage deltas derived from nightly invoice-item estimates: one data
  * point per (day, sku, description, region) with a USD `total_amount`. The
  * window is capped at 31 days per request, which matches the host's
- * month-aligned chunking, and data only exists from 1 December 2025 onward —
+ * month-aligned chunking, and data only exists from 1 December 2025 onward:
  * earlier windows are rejected outright (400) rather than returning an empty
  * list, which the fetch loop below absorbs. Because the points are nightly
  * estimates, daily sums can drift slightly from the month-end invoice; DO
  * recommends invoices for final amounts.
  *
- * The account URN (`do:team:{uuid}`) is not a credential — it is discovered
+ * The account URN (`do:team:{uuid}`) is not a credential: it is discovered
  * per collection from `/v2/account`, whose `team.uuid` identifies the team
  * context the API token belongs to. Requires the `billing:read` token scope
  * (per the endpoint's security declaration in digitalocean/openapi); the
@@ -66,7 +66,7 @@ export async function fetchDoCostData(
   // Aggregate per (day, service, region) so re-fetching a day reproduces the
   // same dimension keys for the host's dedupe. `service` is the invoice item
   // group when present (collapses e.g. per-node DOKS lines under the cluster
-  // name), else the line description. SKU is intentionally not a dimension —
+  // name), else the line description. SKU is intentionally not a dimension:
   // it's an opaque billing code the user shouldn't have to know.
   const buckets = new Map<
     string,
@@ -83,13 +83,13 @@ export async function fetchDoCostData(
       );
     } catch (err) {
       // Windows entirely before the 2025-12-01 data start don't return an
-      // empty list — treat them as "no data" so the host's historical
+      // empty list: treat them as "no data" so the host's historical
       // backfill doesn't hard-fail. DO rejects them with 400 and an explicit
       // "Start date cannot be before December 1, 2025." message; 404 is
       // matched too because the endpoint has answered that way as well.
       // Other errors (401 missing `billing:read` scope, 429, 5xx) propagate
       // with status + body via jsonRestFetch's error message. Note the 400 is
-      // matched on message, not status alone — an unrelated 400 is a real
+      // matched on message, not status alone: an unrelated 400 is a real
       // failure and must not be swallowed as "no spend".
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes(" 404 ")) return [];

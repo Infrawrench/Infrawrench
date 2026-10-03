@@ -2,7 +2,7 @@
  * Credential preflight + least-privilege custom-role template for GCP.
  *
  * Probe strategy: one call to Cloud Resource Manager v3
- * `projects/{project}:testIamPermissions` with every declared permission —
+ * `projects/{project}:testIamPermissions` with every declared permission;
  * the response is exactly the granted subset, so the checklist is precise
  * without touching any real resource API. (Verified 2026: POST
  * https://cloudresourcemanager.googleapis.com/v3/projects/{id}:testIamPermissions,
@@ -10,7 +10,7 @@
  * are not allowed; no documented per-call cap, chunked at 100 defensively.)
  *
  * Cost reporting additionally needs the Cloud Billing BigQuery export to be
- * configured on the account (`billingExportTable` credential field) — a
+ * configured on the account (`billingExportTable` credential field); a
  * missing table is reported as a `missing` check with setup guidance, the
  * same signal `fetchCostData` raises as a `CostSetupError` later.
  */
@@ -82,7 +82,7 @@ const BILLING_EXPORT_HELP_LINK = {
 
 /**
  * Permissions granted per capability in the generated custom role. Broader
- * than the probed sample for `resources` — it must cover every lister the
+ * than the probed sample for `resources`: it must cover every lister the
  * plugin ships. GCP custom roles don't accept wildcards, so the list is
  * spelled out.
  */
@@ -96,7 +96,7 @@ const TEMPLATE_PERMISSIONS: Record<string, string[]> = {
     "bigquery.datasets.get",
     "bigquery.tables.list",
     "bigtable.instances.list",
-    // ListBuildTriggers checks cloudbuild.builds.list — there is no separate
+    // ListBuildTriggers checks cloudbuild.builds.list: there is no separate
     // triggers.list permission.
     "cloudbuild.builds.list",
     "clouddeploy.deliveryPipelines.list",
@@ -183,7 +183,7 @@ interface TestIamPermissionsResponse {
   permissions?: string[];
 }
 
-/** Defensive chunk size — the docs specify no cap, but keep requests small. */
+/** Defensive chunk size: the docs specify no cap, but keep requests small. */
 const TEST_CHUNK = 100;
 
 async function testIamPermissions(

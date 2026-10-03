@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * `GET /v1/models` — verified 2026-07-29 against the published OpenAI OpenAPI
+ * `GET /v1/models`: verified 2026-07-29 against the published OpenAI OpenAPI
  * description (openapi.yaml v2.3.0, `listModels`). The list is flat: no
  * pagination parameters and no envelope beyond `{ object, data }`.
  *

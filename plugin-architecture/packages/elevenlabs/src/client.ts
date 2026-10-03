@@ -39,7 +39,7 @@ const DEFAULT_TTS_MODEL = "eleven_multilingual_v2";
 
 /**
  * Scribe speech-to-text models. `model_id` is required on
- * `POST /v1/speech-to-text` and the documented enum is exactly these two —
+ * `POST /v1/speech-to-text` and the documented enum is exactly these two:
  * `scribe_v1` is flagged deprecated ("outclassed by v2 models").
  * https://elevenlabs.io/docs/api-reference/speech-to-text/convert
  * https://elevenlabs.io/docs/overview/models
@@ -52,7 +52,7 @@ const SCRIBE_MODELS: SpeechPanelOption[] = [
 const DEFAULT_SCRIBE_MODEL = "scribe_v2";
 
 /**
- * Conservative fallback when the model list is unavailable —
+ * Conservative fallback when the model list is unavailable:
  * `eleven_multilingual_v2`'s real `maximum_text_length_per_request`.
  */
 const FALLBACK_MAX_CHARACTERS = 10_000;
@@ -158,7 +158,7 @@ interface ScribeWord {
   /**
    * "The log of the probability with which this word was predicted." Range is
    * (-∞, 0], so `Math.exp` turns it back into a 0..1 probability. This is the
-   * only per-transcript confidence Scribe exposes — `language_probability` is
+   * only per-transcript confidence Scribe exposes: `language_probability` is
    * a language-ID score and says nothing about transcript quality.
    */
   logprob?: number | null;
@@ -256,7 +256,7 @@ function parseQuotaStash(raw: string | undefined): StashedQuota | null {
 
 /**
  * ElevenLabs plugin client. One instance per account (per API key).
- * Every JSON call authenticates with the raw `xi-api-key` header — ElevenLabs
+ * Every JSON call authenticates with the raw `xi-api-key` header: ElevenLabs
  * does not use `Authorization: Bearer`.
  * https://elevenlabs.io/docs/api-reference/authentication
  */
@@ -313,7 +313,7 @@ export class ElevenLabsClient implements PluginClient {
   }
 
   /**
-   * `GET /v2/voices` — v1 is legacy and breaks past 500 voices. Cursor is
+   * `GET /v2/voices`: v1 is legacy and breaks past 500 voices. Cursor is
    * `next_page_token`; `page_size` caps at 100.
    * https://elevenlabs.io/docs/api-reference/voices/search
    */
@@ -332,7 +332,7 @@ export class ElevenLabsClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/models` — returns a bare JSON array, no envelope.
+   * `GET /v1/models`: returns a bare JSON array, no envelope.
    * https://elevenlabs.io/docs/api-reference/models/list
    */
   private async fetchModels(): Promise<ElevenLabsModel[]> {
@@ -341,7 +341,7 @@ export class ElevenLabsClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/pronunciation-dictionaries` — cursor param is `cursor`, the
+   * `GET /v1/pronunciation-dictionaries`: cursor param is `cursor`, the
    * response cursor is `next_cursor`; `page_size` caps at 100.
    * https://elevenlabs.io/docs/api-reference/pronunciation-dictionaries/list
    */
@@ -361,7 +361,7 @@ export class ElevenLabsClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/history` — list field is `history`; the forward cursor is
+   * `GET /v1/history`: list field is `history`; the forward cursor is
    * `start_after_history_item_id`, fed from the response's
    * `last_history_item_id`. `page_size` caps at 1000.
    * https://elevenlabs.io/docs/api-reference/history/list
@@ -369,7 +369,7 @@ export class ElevenLabsClient implements PluginClient {
   private async fetchHistory(): Promise<ElevenLabsHistoryItem[]> {
     const items: ElevenLabsHistoryItem[] = [];
     let after: string | undefined;
-    // History is unbounded over an account's lifetime — cap at 5 pages (500
+    // History is unbounded over an account's lifetime: cap at 5 pages (500
     // clips), newest first, which is what the sidebar can usefully show.
     for (let page = 0; page < 5; page += 1) {
       const suffix = after ? `&start_after_history_item_id=${encodeURIComponent(after)}` : "";
@@ -382,7 +382,7 @@ export class ElevenLabsClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/user/subscription` — the quota gauge. Also the right endpoint for
+   * `GET /v1/user/subscription`: the quota gauge. Also the right endpoint for
    * validating a key: an unauthenticated `/v1/models` answers 404
    * `workspace_not_found` rather than 401.
    * https://elevenlabs.io/docs/api-reference/user/subscription/get
@@ -396,7 +396,7 @@ export class ElevenLabsClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   /**
-   * Thin delegate — all of the billing logic lives in `cost-data.ts` so it can
+   * Thin delegate: all of the billing logic lives in `cost-data.ts` so it can
    * be exercised without constructing a client. See that module for the
    * endpoint choice and the deprecation fallback.
    */
@@ -572,9 +572,9 @@ export class ElevenLabsClient implements PluginClient {
     const externalId = externalIdOf(resourceId);
 
     if (typeId === "voice") {
-      // `renderDetail` is synchronous, so everything the Speech tab needs — the
+      // `renderDetail` is synchronous, so everything the Speech tab needs: the
       // voice picker, the model picker (with each model's real
-      // `maximum_text_length_per_request`) and the quota gauge — is fetched
+      // `maximum_text_length_per_request`) and the quota gauge; is fetched
       // here and stashed as JSON under `__`-prefixed resolved outputs.
       const [voices, models, subscription] = await Promise.all([
         this.fetchVoices(),
@@ -754,7 +754,7 @@ export class ElevenLabsClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   /**
-   * `POST /v1/text-to-speech/{voice_id}` — the voice is a PATH param, the
+   * `POST /v1/text-to-speech/{voice_id}`: the voice is a PATH param, the
    * output format is a QUERY param, and the response is raw
    * `application/octet-stream` audio.
    * https://elevenlabs.io/docs/api-reference/text-to-speech/convert
@@ -772,7 +772,7 @@ export class ElevenLabsClient implements PluginClient {
     if (!voiceId) throw new Error("ElevenLabs plugin: no voice selected");
 
     // The Speech tab has one shared model picker for both halves, so a Scribe
-    // selection can arrive here — fall back to the TTS default rather than
+    // selection can arrive here: fall back to the TTS default rather than
     // sending a transcription model to the synthesis endpoint.
     const requested = payload.modelId ?? "";
     const modelId = requested && !requested.startsWith("scribe") ? requested : DEFAULT_TTS_MODEL;
@@ -831,7 +831,7 @@ export class ElevenLabsClient implements PluginClient {
       },
       body: JSON.stringify(body),
     });
-    // Branch on status BEFORE touching the body — a failed call returns JSON
+    // Branch on status BEFORE touching the body: a failed call returns JSON
     // where the success path returns audio.
     if (!response.ok) {
       throw new Error(
@@ -849,7 +849,7 @@ export class ElevenLabsClient implements PluginClient {
   }
 
   /**
-   * `POST /v1/speech-to-text` (Scribe) — `multipart/form-data` with the clip in
+   * `POST /v1/speech-to-text` (Scribe): `multipart/form-data` with the clip in
    * the `file` field and a required `model_id`.
    * https://elevenlabs.io/docs/api-reference/speech-to-text/convert
    *
@@ -870,7 +870,7 @@ export class ElevenLabsClient implements PluginClient {
     const requested = payload.modelId ?? "";
     const modelId = requested.startsWith("scribe") ? requested : DEFAULT_SCRIBE_MODEL;
 
-    // `payload.mimeType` is whatever MediaRecorder produced —
+    // `payload.mimeType` is whatever MediaRecorder produced:
     // `audio/webm;codecs=opus` on Chromium, `audio/mp4` on Safari. Scribe
     // accepts both; forward it verbatim rather than assuming or transcoding.
     const bytes = base64ToBytes(payload.audioBase64);
@@ -888,7 +888,7 @@ export class ElevenLabsClient implements PluginClient {
     const started = Date.now();
     const response = await fetch(`${API_BASE}/v1/speech-to-text`, {
       method: "POST",
-      // No Content-Type — `fetch` sets it with the multipart boundary.
+      // No Content-Type: `fetch` sets it with the multipart boundary.
       headers: { "xi-api-key": this.apiKey, Accept: "application/json" },
       body: form,
     });
@@ -912,7 +912,7 @@ export class ElevenLabsClient implements PluginClient {
     }));
 
     // The only honest transcript confidence Scribe offers. `language_probability`
-    // is deliberately not used here — it scores the *language guess*, sits near
+    // is deliberately not used here: it scores the *language guess*, sits near
     // 0.99 for any intelligible audio, and would render as "99% confidence" over
     // a badly mangled transcript. It is still reported in the summary, labelled.
     const confidence = averageWordConfidence(spoken);

@@ -109,7 +109,7 @@ describe("classifyScope", () => {
 
   it("classifies a NAT interface before anything else can reclassify it", () => {
     // NAT charges for processing regardless of destination, and the onward hop
-    // is billed separately — at a different rate.
+    // is billed separately: at a different rate.
     expect(
       classifyScope({
         ...base,
@@ -192,7 +192,7 @@ describe("totalsAreExactFor", () => {
   it("will not call inbound traffic internet-bound without the peer's zone", () => {
     // `traffic-path` is never populated for ingress, so on an inbound record
     // the peer's zone is the only thing separating a local peer from the
-    // internet. Absent it, "no next hop" is a guess, not a verdict — and the
+    // internet. Absent it, "no next hop" is a guess, not a verdict, and the
     // un-itemized tail must not be labelled internet ingress on that basis.
     const fields = parseLogFormat(CUSTOM);
     expect(totalsAreExactFor("internet_ingress", fields)).toBe(false);

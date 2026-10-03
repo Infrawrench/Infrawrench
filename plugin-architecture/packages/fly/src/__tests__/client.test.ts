@@ -747,7 +747,7 @@ describe("fetchMetricSeries", () => {
     router([
       [(u) => u.includes("/machines/m1"), { id: "m1", name: "n", state: "started", region: "iad" }],
     ]);
-    // machine with empty appName field — appName derived from fields["appName"] which mapMachine sets, so force via app type with empty name
+    // machine with empty appName field: appName derived from fields["appName"] which mapMachine sets, so force via app type with empty name
     const res = await client().fetchMetricSeries("machine", "acct-1:machine:/m1", ACCOUNT);
     expect(res).toEqual([]);
   });

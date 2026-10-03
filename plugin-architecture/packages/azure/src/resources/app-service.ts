@@ -27,7 +27,7 @@ export const AppServiceResourceType = rt({
     {
       // `appServicePlan` holds the bare plan name (extractName over
       // `serverFarmId`), and a plan can live in a different resource group than
-      // the app it hosts — so match the plan's `name` rather than its rg/name
+      // the app it hosts, so match the plan's `name` rather than its rg/name
       // external id.
       fieldKey: "appServicePlan",
       targetTypeId: "azure-app-service-plan",

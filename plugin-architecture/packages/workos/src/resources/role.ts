@@ -32,7 +32,7 @@ export const RoleResourceType = rt({
   // `permissions` is the joined slug list; `adminValues: ["*"]` matches the
   // whole stored value, so only a role whose sole permission is the wildcard
   // flags. A substring match would call `widgets:read, *` and `read:*` the
-  // same thing — the `sourceRanges equals "0.0.0.0/0"` stance the posture
+  // same thing: the `sourceRanges equals "0.0.0.0/0"` stance the posture
   // rules already take.
   principalRole: {
     role: "role",

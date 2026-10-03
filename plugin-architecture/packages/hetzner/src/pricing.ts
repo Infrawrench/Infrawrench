@@ -1,5 +1,5 @@
 /**
- * Hetzner Cloud rate card — `GET /v1/pricing`.
+ * Hetzner Cloud rate card: `GET /v1/pricing`.
  *
  * Hetzner Cloud has no billing API. The public spec
  * (https://docs.hetzner.cloud/cloud.spec.json, 151 paths) contains no invoice
@@ -15,8 +15,8 @@
  *    anything downstream that applies tax to a gross figure double-counts it.
  * 2. Parsing those strings as IEEE doubles drifts. `3.79 - 3.744` is
  *    `0.04600000000000026` in float, and that lands in a currency column. So
- *    every price here is parsed into a **scaled bigint** — an integer count of
- *    1e-12 currency units — and all arithmetic stays in that domain until a
+ *    every price here is parsed into a **scaled bigint**: an integer count of
+ *    1e-12 currency units, and all arithmetic stays in that domain until a
  *    single conversion at the very end of the pipeline.
  *
  * The rate card is a per-run constant: prices do not change inside one
@@ -83,7 +83,7 @@ export function parseDecimal(value: string | number, field: string): Scaled {
  * Convert a scaled value to the `number` a {@link CostRow} carries.
  *
  * Goes via the exact decimal string rather than `Number(v) / 1e12` so the
- * result is the double nearest the true decimal — `0.046`, not
+ * result is the double nearest the true decimal: `0.046`, not
  * `0.04600000000000026`. This is the single float conversion in the pipeline
  * and it happens once per emitted row.
  */
@@ -133,7 +133,7 @@ export interface ServerTypeRate extends CappedRate {
 
 /** The parsed rate card: everything `fetchHetznerCostData` needs to price. */
 export interface HetznerRateCard {
-  /** ISO 4217, from the project itself — commonly EUR, not always. */
+  /** ISO 4217, from the project itself: commonly EUR, not always. */
   currency: string;
   /** VAT percentage, scaled. Recorded for documentation; never applied. */
   vatRatePercent: Scaled;
@@ -301,7 +301,7 @@ async function fetchRateCard(fetcher: PricingFetcher): Promise<HetznerRateCard> 
  *
  * The host builds a client per pass and calls `fetchCostData` once per month
  * chunk; sharing one cache across those calls keeps `/pricing` to a single
- * request against a 3600-request hourly budget. Failures are not cached — a
+ * request against a 3600-request hourly budget. Failures are not cached: a
  * rejected promise is dropped so the next chunk retries.
  */
 export interface RateCardCache {
@@ -327,9 +327,9 @@ export function createRateCardCache(): RateCardCache {
  * Cost of a resource from `startMs` to `endMs`, hourly but never above the
  * monthly cap.
  *
- * This is Hetzner's stated rule — "the minimum amount, whether that is the
+ * This is Hetzner's stated rule: "the minimum amount, whether that is the
  * monthly price cap or the hourly price multiplied by the number of hours you
- * used the server" — applied to a window that always starts at the billing
+ * used the server"; applied to a window that always starts at the billing
  * period boundary, because the cap is a *per-period* cap.
  */
 export function cappedCost(rate: CappedRate, startMs: number, endMs: number): Scaled {

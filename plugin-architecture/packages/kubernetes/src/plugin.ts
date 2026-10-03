@@ -68,7 +68,7 @@ const manifest: PluginManifest = {
    * mounts it and each LoadBalancer Service to the workload behind its
    * selector; plus explicit idle, system-reserved, control-plane and
    * unattached-volume buckets for the money that belongs to no tenant. The
-   * real money is invoiced to the cloud account that owns the nodes — summing
+   * real money is invoiced to the cloud account that owns the nodes: summing
    * both accounts double-counts.
    *
    * Egress is absent by design: the Kubernetes API exposes no per-workload
@@ -77,7 +77,7 @@ const manifest: PluginManifest = {
    * `maxHistoryDays: 1` because a cluster cannot be asked what ran last
    * Tuesday: `/api/v1/pods` describes right now and nothing else. Each daily
    * pass appends one honest snapshot rather than backfilling a year of
-   * fiction. `restatementDays: 1` for the same reason — there is nothing to
+   * fiction. `restatementDays: 1` for the same reason: there is nothing to
    * restate.
    */
   costs: {
@@ -90,7 +90,7 @@ const manifest: PluginManifest = {
   //
   // The only provider here whose quota model is native rather than adapted:
   // `status.hard` and `status.used` are already the contract's `limit` and
-  // `used` over the same unit. Not `partial` — this is every ResourceQuota in
+  // `used` over the same unit. Not `partial`: this is every ResourceQuota in
   // the cluster. `label: "Resource quotas"` is the object's own name, which is
   // what the user will `kubectl get`.
   quotas: {

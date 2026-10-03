@@ -376,7 +376,7 @@ export class OvhClient implements PluginClient {
           return users[0]?.username ?? "";
         }
         case "password":
-          // Password must be reset/retrieved separately — cannot be read from the API after creation
+          // Password must be reset/retrieved separately: cannot be read from the API after creation
           return "";
         case "database":
           return svc.description ?? "";
@@ -620,7 +620,7 @@ export class OvhClient implements PluginClient {
           },
           {
             // The full flavor list varies by region/engine/plan and OVH adds
-            // new generations frequently — we keep this as text rather than a
+            // new generations frequently: we keep this as text rather than a
             // curated select to avoid offering a flavor that errors at order
             // time. The capabilities endpoint
             // (/cloud/project/$pid/database/capabilities) returns the
@@ -833,7 +833,7 @@ export class OvhClient implements PluginClient {
             method: "POST",
             body: JSON.stringify({ name: comment, publicKey: sshPub.trim() }),
           }).catch(async () => {
-            // Key may already exist — find it
+            // Key may already exist: find it
             const keys = await this.ovhFetch<Array<{ id: string; publicKey: string }>>(
               this.cloudPath("/sshkey"),
             );
@@ -908,7 +908,7 @@ export class OvhClient implements PluginClient {
         body: JSON.stringify(body),
       });
 
-      // OVH lets us create node pools immediately after the cluster POST —
+      // OVH lets us create node pools immediately after the cluster POST:
       // unlike EKS, the cluster doesn't need to be ACTIVE first.
       const poolName = `${clusterName || "cluster"}-default-pool`
         .toLowerCase()
@@ -929,7 +929,7 @@ export class OvhClient implements PluginClient {
         });
         nodePoolCount = 1;
       } catch (e) {
-        // Surface the failure but keep the cluster — the user can add a pool by hand
+        // Surface the failure but keep the cluster: the user can add a pool by hand
         const msg = e instanceof Error ? e.message : String(e);
         throw new Error(
           `Cluster ${clusterName} created but node pool creation failed: ${msg}. Delete the cluster and retry, or add a node pool via the OVH console.`,
@@ -1221,7 +1221,7 @@ export class OvhClient implements PluginClient {
     if (!externalId) return [];
 
     // The metric routes embed the engine in the path, which the resource id
-    // doesn't carry — resolve it from the service first.
+    // doesn't carry: resolve it from the service first.
     const svc = await this.ovhFetch<OvhDatabaseService>(
       this.cloudPath(`/database/service/${enc(externalId)}`),
     );
@@ -1403,8 +1403,8 @@ export class OvhClient implements PluginClient {
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     // `managed-db` declares `supportsMetrics` and its OVH metric routes
-    // default to `lastHour`. `managed-kube` has no series of its own — all of
-    // its metrics come from the Kubernetes peer — so it takes the capability
+    // default to `lastHour`. `managed-kube` has no series of its own (all of
+    // its metrics come from the Kubernetes peer) so it takes the capability
     // from `exposeMetricsToParent` and no window from us.
     return withMetricsCapability(
       this.renderDetailInner(resource),
@@ -1454,7 +1454,7 @@ export class OvhClient implements PluginClient {
     // inline "Documents" tab via the host's `mongodb-peer` browser. That
     // duplicated the MongoDB peer-pane tab declared by this resource type's
     // peerIntegration with the MongoDB plugin (which now implements
-    // renderPeerPane), so the inline tab is dropped — the peer-pane lists
+    // renderPeerPane), so the inline tab is dropped: the peer-pane lists
     // databases and opens each in the existing MongoDocumentBrowser.
 
     return detail;
@@ -1734,7 +1734,7 @@ export class OvhClient implements PluginClient {
       // Each address carries the id of the network it belongs to. Public
       // addresses point at the shared Ext-Net (which is not a resource we
       // list, so it simply matches nothing); private ones point at the
-      // customer's private network. Deduped — v4 and v6 on one network repeat
+      // customer's private network. Deduped: v4 and v6 on one network repeat
       // the id.
       const networkIds = [
         ...new Set((inst.ipAddresses ?? []).map((ip) => ip.networkId ?? "").filter(Boolean)),
@@ -1773,7 +1773,7 @@ export class OvhClient implements PluginClient {
         try {
           pools = await this.ovhFetch<OvhKubeNodePool[]>(this.cloudPath(`/kube/${id}/nodepool`));
         } catch {
-          // No permission to list node pools — leave fields empty
+          // No permission to list node pools: leave fields empty
         }
         return { cluster, pools };
       }),
@@ -1800,7 +1800,7 @@ export class OvhClient implements PluginClient {
           nodePoolCount: pools.length,
           nodesUrl: c.nodesUrl ?? "",
           // The OpenStack id of the private network the cluster's nodes sit
-          // in — matched against a private network's per-region
+          // in: matched against a private network's per-region
           // `regions[].openstackId`, not its OVH `pn-…` id.
           privateNetworkId: c.privateNetworkId ?? "",
           nodesSubnetId: c.nodesSubnetId ?? "",

@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A DigitalOcean reserved IP (`/v2/reserved_ips`) — the product formerly
+ * A DigitalOcean reserved IP (`/v2/reserved_ips`): the product formerly
  * called "floating IP". The address itself is the identifier: DO's detail,
  * delete and action endpoints are all keyed by `/v2/reserved_ips/{ip}`, so
  * `externalId` is the dotted-quad rather than a uuid.
@@ -14,7 +14,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * Why this type exists at all: DigitalOcean gives away reserved IPs that are
  * assigned to a Droplet and bills $5/month ($0.01/hour) for ones that are
  * merely reserved, which makes an unassigned address the single most common
- * silent line item on a DO invoice — see `orphanRule` below.
+ * silent line item on a DO invoice; see `orphanRule` below.
  */
 export const ReservedIpResourceType = rt({
   name: "Reserved IP",
@@ -40,7 +40,7 @@ export const ReservedIpResourceType = rt({
   ],
   outputs: [o("ip", "IP Address")],
   // The lister records the assigned Droplet's numeric id, which is exactly a
-  // Droplet resource's externalId — one edge per assignment, no translation.
+  // Droplet resource's externalId: one edge per assignment, no translation.
   dependsOn: [{ fieldKey: "dropletId", targetTypeId: "droplet", label: "assigned to" }],
   parentTypeId: "project",
   showInSidebar: true,
@@ -49,13 +49,13 @@ export const ReservedIpResourceType = rt({
   /**
    * An unassigned reserved IPv4 costs $5/month; an assigned one is free. The
    * lister always writes `dropletId` (`""` when `droplet` is null), so the
-   * condition is `equals: ""` rather than `empty` — `equals` never matches an
+   * condition is `equals: ""` rather than `empty`: `equals` never matches an
    * absent field, so a row written by anything that doesn't populate
    * `dropletId` can never be falsely flagged.
    *
    * `locked` is a second guard: a locked address has a queued assign/unassign
    * action, so flagging it would make the savings list flap while DO settles.
-   * Same absent-field reasoning applies — `equals` skips rows without it.
+   * Same absent-field reasoning applies: `equals` skips rows without it.
    */
   orphanRule: {
     conditions: [

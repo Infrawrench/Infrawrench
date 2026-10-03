@@ -3,7 +3,7 @@
  *
  * `node:zlib` does the compression, so this is just the container: signature,
  * IHDR, one IDAT, IEND, and a CRC32. Hand-rolled for the same reason the Rust
- * side's `png.rs` is — a screenshot is not worth an image dependency, and the
+ * side's `png.rs` is: a screenshot is not worth an image dependency, and the
  * consumer is a browser or a model, both of which decode PNG natively.
  */
 

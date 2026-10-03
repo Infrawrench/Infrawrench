@@ -7,7 +7,7 @@
  * label used in error messages and the set of auth headers it sends.
  *
  * `jsonRestFetch` factors that pattern out. Plugins still own their
- * baseUrl and auth scheme — they pass a pre-built headers object in and
+ * baseUrl and auth scheme: they pass a pre-built headers object in and
  * a vendor label for error text.
  *
  * Plugins with response envelopes (e.g. Cloudflare's `{success,result}`)
@@ -96,7 +96,7 @@ export async function jsonRestFetch<T>(opts: JsonRestFetchOptions): Promise<T> {
     }
   }
 
-  // Always prefer the host's HTTP service when present — that's the only path
+  // Always prefer the host's HTTP service when present: that's the only path
   // that picks up bastion routing for accounts that have one attached, and the
   // only path that honors a custom CA. Fall back to direct fetch when there is
   // no host (browser/renderer paths, tests).
@@ -129,7 +129,7 @@ export async function jsonRestFetch<T>(opts: JsonRestFetchOptions): Promise<T> {
 /**
  * Normalise the variety of `BodyInit` types `fetch` accepts down to what
  * `HttpHostServices.request` expects (string | Uint8Array | undefined).
- * Streams and FormData are not supported — control-plane plugins should not
+ * Streams and FormData are not supported: control-plane plugins should not
  * be using them through this helper.
  */
 function bodyForHostHttp(body: BodyInit | null | undefined): string | Uint8Array | undefined {
@@ -139,7 +139,7 @@ function bodyForHostHttp(body: BodyInit | null | undefined): string | Uint8Array
   if (body instanceof ArrayBuffer) return new Uint8Array(body);
   if (ArrayBuffer.isView(body))
     return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
-  // Anything else (Blob, FormData, ReadableStream, URLSearchParams) — coerce
+  // Anything else (Blob, FormData, ReadableStream, URLSearchParams): coerce
   // to string. URLSearchParams.toString() matches form-urlencoded semantics
   // and is the only one of these we realistically see in plugin control planes.
   return String(body);

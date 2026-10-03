@@ -106,7 +106,7 @@ const manifest: PluginManifest = {
     },
   ],
   rateLimit: { capacity: 100, refillPerSecond: 5 },
-  // Static declaration — costs are advertised unconditionally; fetchCostData
+  // Static declaration: costs are advertised unconditionally; fetchCostData
   // throws a user-actionable error when billingExportTable isn't configured,
   // which the host surfaces and backs off on.
   costs: {
@@ -122,8 +122,8 @@ const manifest: PluginManifest = {
   // roles/compute.viewer, which the account already needs to list anything).
   //
   // Not `partial`: this is every quota Compute Engine reports, globally and
-  // per region. It is not every quota *GCP* enforces — BigQuery, Cloud Run and
-  // the rest have their own — but within Compute Engine the list is complete,
+  // per region. It is not every quota *GCP* enforces (BigQuery, Cloud Run and
+  // the rest have their own) but within Compute Engine the list is complete,
   // and claiming otherwise would be as misleading in the other direction.
   quotas: {
     label: "Quotas",

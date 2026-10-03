@@ -16,7 +16,7 @@ import { fetchVercelCostData } from "./cost-data.js";
 interface VercelProject {
   id: string;
   name: string;
-  /** Owner of the project — the team id when the project belongs to a team. */
+  /** Owner of the project: the team id when the project belongs to a team. */
   accountId?: string;
   framework?: string | null;
   nodeVersion?: string;

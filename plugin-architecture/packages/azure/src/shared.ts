@@ -17,7 +17,7 @@ export const ARM = "https://management.azure.com";
  *
  * `http` rides along so modules that talk to something *other* than ARM (the
  * ACR token dance and registry API, for instance) can reach the host's HTTP
- * service the same way the ARM verbs above already do — see `http.ts` for why
+ * service the same way the ARM verbs above already do: see `http.ts` for why
  * every Azure request has to have the option of going through the host.
  */
 export interface AzureHttpContext extends AzureHttpTransport {
@@ -30,7 +30,7 @@ export interface AzureHttpContext extends AzureHttpTransport {
   tenantId: string;
 }
 
-/** ARM resource spec — provider path segment + api-version query parameter. */
+/** ARM resource spec: provider path segment + api-version query parameter. */
 export interface ArmResourceSpec {
   provider: string;
   apiVersion: string;

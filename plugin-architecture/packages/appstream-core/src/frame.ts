@@ -37,7 +37,7 @@ export const FrameKind = {
   ClipboardServer: 0x83,
   /**
    * Mixed session audio, host → client. Only sent when this client's caps
-   * said `audio` — an unknown kind here is a thrown protocol error, so the
+   * said `audio`: an unknown kind here is a thrown protocol error, so the
    * host's gate is what protects an older client.
    */
   Audio: 0x84,
@@ -58,7 +58,7 @@ export const SESSION_WINDOW = 0;
 
 /**
  * Protocol version. The client refuses a session whose `welcome.protocol` it
- * does not recognise rather than negotiating down — a host running an older
+ * does not recognise rather than negotiating down: a host running an older
  * binary is replaced, not accommodated.
  */
 export const PROTOCOL_VERSION = 1;
@@ -83,8 +83,8 @@ export function encodeFrame(kind: FrameKind, windowId: number, payload: Uint8Arr
 /**
  * Incremental frame decoder.
  *
- * Feed it whatever the transport hands over — a WebSocket message, an IPC
- * chunk, a slice of an SSH channel — and pull whole frames out until it
+ * Feed it whatever the transport hands over (a WebSocket message, an IPC
+ * chunk, a slice of an SSH channel) and pull whole frames out until it
  * returns undefined. Chunk boundaries land mid-header routinely.
  */
 export class FrameDecoder {

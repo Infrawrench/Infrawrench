@@ -21,8 +21,8 @@ function isOriginScheme(value: string): value is OriginScheme {
 /**
  * The shape the Hyperdrive PATCH endpoint actually wants for a public-database
  * origin. The SDK splits `ConfigEditParams["origin"]` into four partial
- * variants — connection details (`HyperdriveHyperdriveDatabase`) and network
- * address (`HyperdriveInternetOrigin`) live in different members — so the
+ * variants: connection details (`HyperdriveHyperdriveDatabase`) and network
+ * address (`HyperdriveInternetOrigin`) live in different members, so the
  * complete origin we send is their intersection.
  */
 type HyperdriveOriginPatch = ConfigEditParams.HyperdriveHyperdriveDatabase &
@@ -123,7 +123,7 @@ export async function editHyperdrive(
   // edit is a PATCH that merges per-field, so touching `origin` on a name-only
   // edit is unnecessary. `fields` arrives merged with the current values, so we
   // can build a complete origin. The password is never returned by the API, so
-  // we include it only when the user entered a new one — omitting it keeps the
+  // we include it only when the user entered a new one: omitting it keeps the
   // existing secret.
   const changed = new Set(changedKeys);
   const originScheme = fields["originScheme"] ?? "";

@@ -1,10 +1,10 @@
 /**
  * Groq public status feed (incident.io emulating the Statuspage v2 API,
- * https://groqstatus.com — verified 2026-08).
+ * https://groqstatus.com: verified 2026-08).
  *
  * incident.io hosts 404 on /incidents/unresolved.json, so this fetches
  * /api/v2/incidents.json (full history) and filters to unresolved after
- * parsing. Incident objects carry no components — the parser marks them
+ * parsing. Incident objects carry no components: the parser marks them
  * provider-wide automatically. The component mapper is future-proofing:
  * components on this page are model ids ("openai/gpt-oss-120b") plus
  * "API" and "Website"; "Website" never affects API resources.
@@ -28,7 +28,7 @@ function mapComponent(name: string): StatusComponentMapping | null {
 }
 
 export function parseStatusFeed(body: string): StatusIncident[] {
-  // The feed is full history — keep only active incidents; the host closes
+  // The feed is full history: keep only active incidents; the host closes
   // cached rows that disappear from the parsed set.
   return parseStatuspageIncidents(body, {
     mapComponent,

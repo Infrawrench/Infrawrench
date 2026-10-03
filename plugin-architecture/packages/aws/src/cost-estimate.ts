@@ -7,13 +7,13 @@
  * size picker no longer offers, so it was recorded as known-broken rather
  * than trusted. Everything here now resolves through `pricing:GetProducts`
  * for the region the form has selected, and anything without a resolvable
- * rate is left out of the estimate instead of being approximated — see
+ * rate is left out of the estimate instead of being approximated: see
  * `buildCostEstimate`, which drops unpriced components and returns `null`
  * when nothing at all could be priced.
  *
  * Field keys are the create form's. Most listers store the same spellings
  * (`region`, `instanceType`, `sizeGb`, `volumeType`, `instanceClass`,
- * `allocatedStorage`, `engine`, `multiAZ`); EKS is the exception — the form
+ * `allocatedStorage`, `engine`, `multiAZ`); EKS is the exception: the form
  * writes `instanceType` while the lister stores `instanceTypes` (comma-joined
  * when a cluster has mixed node groups). Both are accepted below.
  */
@@ -31,7 +31,7 @@ import {
   fetchRdsStorageGbMonthPrice,
 } from "./pricing.js";
 
-/** EC2 and EKS node groups both provision a gp3 root volume — see `createResource`. */
+/** EC2 and EKS node groups both provision a gp3 root volume: see `createResource`. */
 const ROOT_VOLUME_TYPE = "gp3";
 /** `CreateDBInstance` defaults allocated storage to General Purpose (gp2). */
 const RDS_DEFAULT_STORAGE_GB = 20;
@@ -131,7 +131,7 @@ export async function estimateAwsCost(
     // The lister stores `multiAZ`; the create form has no such control yet, so
     // an absent value means the single-AZ deployment `CreateDBInstance` makes.
     const multiAz = isTrue(fields["multiAZ"]);
-    // Aurora has no allocated storage — its volume grows with the data and is
+    // Aurora has no allocated storage: its volume grows with the data and is
     // billed per GB consumed, so there is no provisioned figure to multiply
     // and quoting `allocatedStorage` here would invent one.
     const isAurora = engine.startsWith("aurora-");
@@ -167,10 +167,10 @@ export async function estimateAwsCost(
     // The control plane is a flat per-cluster hourly charge that the Price
     // List API publishes under AmazonEKS; the nodes are ordinary EC2. Node
     // count is the replica dimension here, so the estimate has to move when
-    // the count does — that is the whole point of quoting it live.
+    // the count does: that is the whole point of quoting it live.
     //
     // Form field is `instanceType`; the lister stores `instanceTypes` as a
-    // comma-joined set when node groups differ. Price the first type — mixed
+    // comma-joined set when node groups differ. Price the first type: mixed
     // clusters still get a partial estimate rather than none.
     const instanceTypeRaw = fields["instanceType"] || fields["instanceTypes"] || "";
     const instanceType = instanceTypeRaw.split(",")[0]?.trim() ?? "";
@@ -203,8 +203,8 @@ export async function estimateAwsCost(
             },
       ],
       {
-        // The control-plane charge is real and is deliberately not guessed at
-        // — the estimate says so rather than quietly under-quoting.
+        // The control-plane charge is real and is deliberately not guessed at:
+        // the estimate says so rather than quietly under-quoting.
         partial: true,
         notes: [
           "Worker nodes only — the EKS control-plane hourly charge is not included.",

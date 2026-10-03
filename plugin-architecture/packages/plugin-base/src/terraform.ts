@@ -1,18 +1,18 @@
 import type { ResourceInstance } from "./instance.js";
 
 /**
- * Terraform export capability — lets a plugin describe how its stored
+ * Terraform export capability: lets a plugin describe how its stored
  * resources map onto blocks for a well-known Terraform provider ("eject to
  * Terraform"). The capability is declared on the `Plugin` object (not the
  * client) because mapping works purely from a resource's stored inputs and
  * outputs: no credentials and no provider API calls are involved, so hosts
  * (web server, desktop CLI) can run it against persisted state.
  *
- * Plugins return *structured data* — never raw HCL strings. The host owns the
+ * Plugins return *structured data*, never raw HCL strings. The host owns the
  * generic HCL serializer (`renderTerraformBundle` in `terraform-hcl.ts`), so
  * quoting, indentation, and name deduplication behave identically across all
  * providers. Secrets and credentials must be referenced as variables
- * (`{ kind: "ref", expr: "var.xyz" }` + a `TerraformVariable` declaration) —
+ * (`{ kind: "ref", expr: "var.xyz" }` + a `TerraformVariable` declaration):
  * a plugin must never inline a secret value into an attribute.
  */
 
@@ -28,7 +28,7 @@ export interface TerraformProviderRequirement {
 
 /** An input variable the generated config declares (credentials, account ids…). */
 export interface TerraformVariable {
-  /** Variable name, e.g. "hcloud_token" — referenced as `var.hcloud_token`. */
+  /** Variable name, e.g. "hcloud_token": referenced as `var.hcloud_token`. */
   name: string;
   description?: string;
   /** Marks the variable `sensitive = true` (API tokens, passwords). */
@@ -72,7 +72,7 @@ export interface TerraformResourceBlock {
   type: string;
   /**
    * Suggested local name. The host sanitizes it into a valid HCL identifier
-   * and deduplicates across the bundle — plugins just pass the display name.
+   * and deduplicates across the bundle: plugins just pass the display name.
    */
   name: string;
   /** Attribute map. Keys are the provider's exact argument names. */
@@ -112,7 +112,7 @@ export interface TerraformExportCapability {
   supportedResourceTypeIds: string[];
   /**
    * Map one stored resource to a Terraform block. Called with the persisted
-   * `ResourceInstance` (fields + externalId + any cached outputs — no live
+   * `ResourceInstance` (fields + externalId + any cached outputs: no live
    * API access). Return `null` when this particular instance can't be
    * represented (missing required fields, provider-managed defaults, …).
    */

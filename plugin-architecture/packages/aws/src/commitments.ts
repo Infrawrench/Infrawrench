@@ -4,22 +4,22 @@
  *
  * Three provider APIs, three different shapes:
  *
- * - **EC2 RIs** — `DescribeReservedInstances` (EC2 Query API,
+ * - **EC2 RIs**: `DescribeReservedInstances` (EC2 Query API,
  *   `Version=2016-11-15`), regional and unpaginated. The response carries no
- *   ARN, so the bare reservation id is the record id — which is fine,
+ *   ARN, so the bare reservation id is the record id, which is fine,
  *   because it is also what the billing data joins on. `fixedPrice` and
  *   `usagePrice` are **per instance**; every money figure here is multiplied
  *   by `instanceCount` before it is reported, because a record describes the
  *   whole holding.
- * - **RDS RIs** — `DescribeReservedDBInstances` (`Version=2014-10-31`),
+ * - **RDS RIs**: `DescribeReservedDBInstances` (`Version=2014-10-31`),
  *   regional, `Marker`-paginated. Has an ARN (which matches the CUR's
- *   `reservation/ReservationARN`, so the ARN is the id) but **no end time**
- *   — the end is derived as start + provider-reported duration, which is
+ *   `reservation/ReservationARN`, so the ARN is the id) but **no end time**:
+ *   the end is derived as start + provider-reported duration, which is
  *   exact arithmetic, not a guess.
- * - **Savings Plans** — `POST /DescribeSavingsPlans` on the **global**
+ * - **Savings Plans**: `POST /DescribeSavingsPlans` on the **global**
  *   `savingsplans.amazonaws.com` endpoint, signed for us-east-1,
  *   `nextToken`-paginated. Fetched once, not per region. The request omits
- *   `states` deliberately so retired and queued plans come back — the host
+ *   `states` deliberately so retired and queued plans come back: the host
  *   needs expired records to close out utilization history. A Compute plan
  *   gets **no region**: it applies across regions, and stamping one on it
  *   would wrongly narrow it. `recurringPaymentAmount` is deliberately not
@@ -41,7 +41,7 @@ import { ec2Call, ec2QueryCall } from "./client-transport.js";
 import { ensureArray } from "./xml.js";
 import { fetchSigned } from "./signed-request.js";
 
-/** Global Savings Plans endpoint — one service, one host, signed for us-east-1. */
+/** Global Savings Plans endpoint: one service, one host, signed for us-east-1. */
 const SAVINGS_PLANS_URL = "https://savingsplans.amazonaws.com/DescribeSavingsPlans";
 
 /**
@@ -130,8 +130,8 @@ interface DescribeReservedInstancesResponse {
 
 /**
  * Hourly recurring charge per instance: modern RIs report it under
- * `recurringCharges`, pre-2016 offering types under `usagePrice`, never both
- * — so summing the two reads whichever one is populated.
+ * `recurringCharges`, pre-2016 offering types under `usagePrice`, never both,
+ * so summing the two reads whichever one is populated.
  */
 function hourlyPerInstance(
   usagePrice: string | undefined,
@@ -332,7 +332,7 @@ export function mapSavingsPlan(plan: SavingsPlan): CommitmentRecord | null {
   const commitment = num(plan.commitment);
   const upfront = num(plan.upfrontPaymentAmount);
   const type = plan.savingsPlanType ?? "";
-  // A Compute plan applies across regions — absent region is that state, not
+  // A Compute plan applies across regions: absent region is that state, not
   // missing data. Only instance-scoped plan types keep the region AWS stamps.
   const region = type !== "Compute" && plan.region ? plan.region : undefined;
   const label =
@@ -368,7 +368,7 @@ async function fetchSavingsPlans(creds: AwsCredentials): Promise<CommitmentRecor
   const records: CommitmentRecord[] = [];
   let nextToken: string | undefined;
   do {
-    // No `states` filter — retired and queued plans must come back too.
+    // No `states` filter: retired and queued plans must come back too.
     const body = JSON.stringify({ maxResults: 100, ...(nextToken ? { nextToken } : {}) });
     const res = await fetchSigned({
       method: "POST",
@@ -404,7 +404,7 @@ export async function fetchAwsCommitments(
 
   for (let i = 0; i < regions.length; i += REGION_FANOUT_CONCURRENCY) {
     const batch = regions.slice(i, i + REGION_FANOUT_CONCURRENCY);
-    // Promise.all, not allSettled: a region that fails must fail the fetch —
+    // Promise.all, not allSettled: a region that fails must fail the fetch;
     // the host would otherwise read its reservations as having ended.
     const perRegion = await Promise.all(
       batch.map(async (region) => {

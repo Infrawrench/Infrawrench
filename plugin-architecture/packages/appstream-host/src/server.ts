@@ -2,16 +2,16 @@
  * Getting `iwappd` onto a customer's host, running it, and leaving nothing
  * behind.
  *
- * Both apps end up here by different routes — the desktop app has an ssh2
+ * Both apps end up here by different routes: the desktop app has an ssh2
  * client from `electron/ssh-shell.ts`, the web server from
- * `services/ssh-proxy.ts` — but what happens over that connection is identical,
+ * `services/ssh-proxy.ts`, but what happens over that connection is identical,
  * so it lives once. The binaries themselves come from each app's own
  * `getx86_64GzBinary()` / `getArm64GzBinary()`, which is the only part that
  * legitimately differs.
  *
  * **The binary is never installed.** It is written to a RAM-backed directory,
  * opened, unlinked, and executed through the open descriptor, so from the
- * moment it starts there is no file on the customer's machine — nothing to
+ * moment it starts there is no file on the customer's machine: nothing to
  * find, nothing to clean up, nothing left after the session ends or the
  * connection drops. That costs about a megabyte of upload per session, which is
  * the right trade: we are running a binary on someone else's computer, and the
@@ -101,7 +101,7 @@ async function stageBinary(conn: SshExecutor, source: BinarySource): Promise<str
  *
  * `exec 3< "$f"` keeps the inode alive through the `rm`, and Linux will execute
  * an unlinked file through `/proc/self/fd`. The shell then `exec`s so no extra
- * process sits between the SSH channel and the app server — the channel's
+ * process sits between the SSH channel and the app server: the channel's
  * stdin, stdout and signals belong to it directly.
  */
 function runAndUnlinkScript(path: string, args: string): string {
@@ -140,7 +140,7 @@ export interface AppServerSession {
  * has existed for a second, and nothing remains on the host afterwards.
  *
  * The protocol lives on stdin and stdout, which is why staging and running are
- * two channels rather than one — the upload has to finish and close its stdin
+ * two channels rather than one: the upload has to finish and close its stdin
  * before the server's stdin can start carrying frames.
  */
 export async function startAppServer(
@@ -177,7 +177,7 @@ export async function startAppServer(
 
       // A session ends two ways: the command exits, or the connection under it
       // fails. Both have to reach the caller as the same thing, and the second
-      // one arrives as an `error` event on a stream — which, unhandled, ends
+      // one arrives as an `error` event on a stream, which, unhandled, ends
       // the *process* rather than the session. On a server holding other
       // people's sessions that is everyone's problem, not this caller's.
       let closed: ((code: number | null) => void) | undefined;
@@ -204,7 +204,7 @@ export async function startAppServer(
           closed = handler;
         },
         // Writing to a channel whose connection has gone throws from inside
-        // whatever was relaying — a WebSocket's message handler, typically,
+        // whatever was relaying: a WebSocket's message handler, typically,
         // where an exception is again the process rather than the session.
         write: (chunk) => {
           if (finished) return;

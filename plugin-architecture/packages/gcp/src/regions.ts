@@ -190,7 +190,7 @@ export function regionOption(id: string, label?: string): RegionOption {
   };
 }
 
-// Curated public image families — no API call needed, GCP resolves to latest
+// Curated public image families: no API call needed, GCP resolves to latest
 export const PUBLIC_IMAGES: ImageOption[] = [
   {
     id: "projects/debian-cloud/global/images/family/debian-12",

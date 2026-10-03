@@ -14,7 +14,7 @@
  *    on the account there is nothing to collect, so this throws
  *    {@link CostSetupError} rather than reporting a permanent zero.
  * 2. **It returns credits, not money.** Cartesia publishes no USD-per-credit
- *    rate and no overage rate — the only published prices are plan bundles, so
+ *    rate and no overage rate: the only published prices are plan bundles, so
  *    the conversion here is plan price ÷ included credits. See
  *    {@link USD_PER_CREDIT}. That makes every amount an estimate, which is why
  *    the manifest declares `estimated: true`.
@@ -42,12 +42,12 @@ import { CostSetupError, jsonRestFetch } from "@infrawrench/plugin-base";
  *   Enterprise custom
  *
  * The API exposes no plan field, so a single rate has to stand in for all of
- * them. This uses the Scale rate — $299 / 8,000,000 — because it is the lowest
+ * them. This uses the Scale rate ($299 / 8,000,000) because it is the lowest
  * published rate, and under-reporting a small account's spend is the less
  * misleading failure than inflating a large one's. An account on Pro is being
  * modelled ~34 % low; an account on a negotiated Enterprise contract is not
  * modelled at all. Amounts are therefore an estimate of consumption value, not
- * an invoice figure — see the `estimated: true` declaration in plugin.ts.
+ * an invoice figure: see the `estimated: true` declaration in plugin.ts.
  */
 export const USD_PER_CREDIT = 299 / 8_000_000;
 
@@ -68,7 +68,7 @@ export interface CartesiaCostContext {
   baseUrl: string;
   /** PEM trust anchor, when the account carries one. */
   caCert?: string;
-  /** Host HTTP service — required for `caCert` and bastion routing to apply. */
+  /** Host HTTP service: required for `caCert` and bastion routing to apply. */
   http?: HttpHostServices;
 }
 
@@ -137,7 +137,7 @@ function bucketsOf(group: CreditGroup): CreditBucket[] {
  * The one setup failure this plugin can hit: no admin key on the account, so
  * `/usage/credits` can never be called at all. Built here rather than at each
  * call site so the message and the deep link stay identical wherever the guard
- * fires — the host stores this against the account and shows it in place of
+ * fires: the host stores this against the account and shows it in place of
  * the missing spend.
  */
 export function cartesiaCostSetupError(): CostSetupError {
@@ -147,7 +147,7 @@ export function cartesiaCostSetupError(): CostSetupError {
       "this account. Only organization admins can create one.",
     {
       label: "Create an admin key",
-      // Must be https: — the host drops a help link with any other scheme.
+      // Must be https:; the host drops a help link with any other scheme.
       url: "https://play.cartesia.ai/keys/admin",
     },
   );

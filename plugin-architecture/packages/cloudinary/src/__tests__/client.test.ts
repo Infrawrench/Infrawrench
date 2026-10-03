@@ -76,7 +76,7 @@ describe("attachResource", () => {
 
   it("skips the PUT when the preset already carries the named transformation", async () => {
     // Regression: the lister used to JSON-stringify the setting, so the stored
-    // field was `"\"t_thumb\""` and this comparison could never hold — every
+    // field was `"\"t_thumb\""` and this comparison could never hold; every
     // attach re-issued the write against an already-attached preset.
     installFetch((url, init) => {
       if (url.endsWith("/transformations?named=true&max_results=500")) {

@@ -19,7 +19,7 @@ import type { AssociationSource, CreateFieldConfig } from "./create.js";
  * toggle is `transient` and never reaches the plugin.
  */
 export interface DnsContentFieldOptions {
-  /** Submitted field key — e.g. "content" / "data" / "value" / "rrdatas". */
+  /** Submitted field key, e.g. "content" / "data" / "value" / "rrdatas". */
   key: string;
   /** Label for the value field. Defaults to "Value". */
   label?: string;
@@ -36,7 +36,7 @@ export interface DnsContentFieldOptions {
 /** Record types whose value should be pickable from another resource. */
 export const PICKABLE_DNS_TYPES = ["A", "AAAA", "CNAME"] as const;
 
-/** IPv4-producing outputs across providers — for A records. */
+/** IPv4-producing outputs across providers, for A records. */
 export const DNS_IPV4_SOURCES: AssociationSource[] = [
   { pluginId: "aws", resourceTypeId: "ec2-instance", outputKey: "publicIp" },
   { pluginId: "aws", resourceTypeId: "elastic-ip", outputKey: "publicIp" },
@@ -50,14 +50,14 @@ export const DNS_IPV4_SOURCES: AssociationSource[] = [
   { pluginId: "gcp", resourceTypeId: "forwarding-rule", outputKey: "IPAddress" },
 ];
 
-/** IPv6-producing outputs across providers — for AAAA records. */
+/** IPv6-producing outputs across providers, for AAAA records. */
 export const DNS_IPV6_SOURCES: AssociationSource[] = [
   { pluginId: "digitalocean", resourceTypeId: "droplet", outputKey: "ipv6" },
   { pluginId: "hetzner", resourceTypeId: "server", outputKey: "ipv6" },
   { pluginId: "fly", resourceTypeId: "machine", outputKey: "privateIp" },
 ];
 
-/** Hostname-producing outputs across providers — for CNAME records. */
+/** Hostname-producing outputs across providers, for CNAME records. */
 export const DNS_HOSTNAME_SOURCES: AssociationSource[] = [
   { pluginId: "aws", resourceTypeId: "alb", outputKey: "dnsName" },
   { pluginId: "aws", resourceTypeId: "ec2-instance", outputKey: "publicDns" },

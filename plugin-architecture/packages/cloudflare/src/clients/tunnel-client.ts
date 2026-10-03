@@ -72,7 +72,7 @@ export async function getTunnelToken(
 
 /**
  * Set (replace) the tunnel's remotely-managed ingress so `hostname` routes to
- * a local `service` on the machine running cloudflared — e.g.
+ * a local `service` on the machine running cloudflared, e.g.
  * `ssh://localhost:22`, `http://localhost:8080`, `https://localhost:443`,
  * `tcp://localhost:5432`. A catch-all `http_status:404` rule is required by
  * Cloudflare as the last entry.

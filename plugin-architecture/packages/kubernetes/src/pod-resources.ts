@@ -27,7 +27,7 @@
  *    of the running total that later init containers are measured against.
  *
  * Pod-level `spec.resources` (beta and on by default since v1.34) *replaces*
- * the container aggregate for the resources it names — it does not add to it.
+ * the container aggregate for the resources it names: it does not add to it.
  * Overhead is added last, after the max and after any pod-level override.
  *
  * The init-containers concept page still carries the stale pre-KEP-753 text;
@@ -114,7 +114,7 @@ export function effectivePodResources(spec: K8sPodSpec): EffectivePodResources {
     if (podLevelLimits["memory"] != null) limits = { ...limits, memoryBytes: parsed.memoryBytes };
   }
 
-  // Overhead is charged on top of everything — it is the runtime's own cost
+  // Overhead is charged on top of everything: it is the runtime's own cost
   // (VM-based sandboxes especially), and the scheduler reserves it.
   const overhead = parseResourceMap(spec.overhead);
   return {
@@ -128,7 +128,7 @@ export function effectivePodResources(spec: K8sPodSpec): EffectivePodResources {
  * rewritten to the Deployment that made it: `web-7d9f8c` is noise, `web` is
  * the thing a human budgets for. ReplicaSet names are `<deployment>-<hash>`
  * where the hash is the pod-template hash, which is exactly what the pod's
- * `pod-template-hash` label carries — so the suffix can be stripped exactly
+ * `pod-template-hash` label carries, so the suffix can be stripped exactly
  * rather than guessed at.
  */
 export function ownerWorkload(

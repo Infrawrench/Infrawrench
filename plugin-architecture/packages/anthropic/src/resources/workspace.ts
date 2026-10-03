@@ -1,12 +1,12 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A Console workspace — the unit API keys, files, batches and rate limits are
+ * A Console workspace: the unit API keys, files, batches and rate limits are
  * scoped to. Admin-key only.
  *
  * ⚠️ Archiving is destructive and one-way: it immediately revokes every API
  * key in the workspace and there is no unarchive endpoint. That is why this
- * type sets `supportsDelete: false` — the client exposes archiving as an
+ * type sets `supportsDelete: false`: the client exposes archiving as an
  * explicit, confirm-guarded header action instead of a plain delete button.
  * The Default Workspace has no ID and never appears in the list response.
  *

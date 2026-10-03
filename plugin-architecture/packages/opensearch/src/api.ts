@@ -19,7 +19,7 @@ interface OpenSearchAuth {
 }
 
 export interface OpenSearchConfig {
-  /** Base URL — e.g. https://search.example.com:9200. Trailing slash trimmed. */
+  /** Base URL, e.g. https://search.example.com:9200. Trailing slash trimmed. */
   endpoint: string;
   auth: OpenSearchAuth;
   caCertificate?: string;
@@ -37,7 +37,7 @@ export function parseConfig(credentials: Record<string, string>): OpenSearchConf
   if (!rawEndpoint) {
     throw new Error("OpenSearch plugin: missing `endpoint` credential.");
   }
-  // Strip user:pass@ embedded in the URL — DigitalOcean's connection.uri
+  // Strip user:pass@ embedded in the URL: DigitalOcean's connection.uri
   // carries credentials inline. We pull them into the auth object so the
   // request layer can decide what to do with them (sign vs Basic header).
   let url: URL;
@@ -141,7 +141,7 @@ async function signSigv4(
 
 interface RequestOpts {
   method?: "GET" | "POST" | "PUT" | "DELETE" | "HEAD";
-  /** Body — JSON-serialised if an object, sent as-is if a string. */
+  /** Body: JSON-serialised if an object, sent as-is if a string. */
   body?: unknown;
   /** Override Content-Type. Defaults to application/json for bodies. */
   contentType?: string;
@@ -229,7 +229,7 @@ export async function osRequest<T = unknown>(
     return finalize<T>(method, url, result.status, result.body, opts);
   }
 
-  // Renderer fallback. caCertificate + skipTlsVerify can't be honoured here —
+  // Renderer fallback. caCertificate + skipTlsVerify can't be honoured here:
   // the browser/Node fetch lacks per-request trust controls. Plugins should
   // be run via the host's http service for production traffic.
   const init: RequestInit = { method, headers };

@@ -2,7 +2,7 @@ import type { MetricSeries, ResourceInstance } from "@infrawrench/plugin-base";
 import type { MetricsContext } from "./cw-helpers.js";
 
 /**
- * Compute metric handlers — EC2, Auto Scaling, Lambda, EBS, ECS, App Runner.
+ * Compute metric handlers: EC2, Auto Scaling, Lambda, EBS, ECS, App Runner.
  *
  * Each handler returns the per-service series we surface in the dashboard /
  * resource detail. Empty series (no datapoints in the window) are filtered
@@ -15,7 +15,7 @@ export async function ec2InstanceMetrics(
 ): Promise<MetricSeries[]> {
   // Verified against
   // https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/viewing_metrics_with_cloudwatch.html
-  // Note: DiskRead/WriteOps are instance store (ephemeral) — for EBS use
+  // Note: DiskRead/WriteOps are instance store (ephemeral), for EBS use
   // EBSReadOps/EBSWriteOps. CPUCreditBalance is T-class only and silently
   // returns empty for other instance types.
   const instanceId = resource.externalId ?? "";

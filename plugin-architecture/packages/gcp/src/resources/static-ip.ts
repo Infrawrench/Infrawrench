@@ -25,7 +25,7 @@ export const StaticIpResourceType = rt({
   supportsCreate: true,
   // status is the API's own idle signal (RESERVED vs IN_USE). Internal
   // reserved addresses are free, so they're excluded. Don't switch this to
-  // attachedVmName — the lister never populates that field.
+  // attachedVmName: the lister never populates that field.
   orphanRule: {
     conditions: [
       { fieldKey: "status", when: "equals", value: "RESERVED" },

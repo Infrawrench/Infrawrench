@@ -8,7 +8,7 @@ import { renderTerraformBundle } from "./terraform-hcl.js";
  * (possibly spanning several plugins), asks each plugin's declared
  * {@link TerraformExportCapability} to map them, and renders one HCL document.
  * Shared by the web server and the desktop CLI so both produce identical
- * output. Pure and dependency-free — safe to run against persisted state.
+ * output. Pure and dependency-free: safe to run against persisted state.
  */
 
 export interface TerraformExportedResource {
@@ -63,7 +63,7 @@ export function fieldBool(resource: ResourceInstance, key: string): boolean {
 /**
  * Map + render a set of stored resources. `capabilityForPlugin` resolves the
  * plugin's `terraformExport` declaration (return undefined for plugins
- * without one — their resources land in `unsupported`).
+ * without one: their resources land in `unsupported`).
  */
 export function exportResourcesToTerraform(
   resourcesToExport: ResourceInstance[],
@@ -154,7 +154,7 @@ export function exportResourcesToTerraform(
  * management in one `terraform apply` rather than N imperative commands.
  *
  * Only resources whose plugin supplied an `importId` produce a block. Callers
- * building an adoption document must not render the others' stanzas either —
+ * building an adoption document must not render the others' stanzas either:
  * see {@link exportResourcesForAdoption}, which is the safe entry point.
  */
 export function renderTerraformImportBlocks(
@@ -187,7 +187,7 @@ export interface TerraformAdoptionOutcome extends TerraformExportOutcome {
 /**
  * Build a document that both declares a set of resources **and** adopts them:
  * `import` blocks first (so a reader sees what is about to be taken over), then
- * the generated configuration. The payoff surface of IaC reconciliation —
+ * the generated configuration. The payoff surface of IaC reconciliation:
  * "here is the Terraform for the 40 things somebody made by hand".
  *
  * The invariant that makes it safe to run: **a resource is declared only if it
@@ -196,7 +196,7 @@ export interface TerraformAdoptionOutcome extends TerraformExportOutcome {
  * either fails with already-exists or, worse, builds a second copy of a
  * resource they already have. A mapper that produces no `importId` therefore
  * gets its resource dropped from the HCL entirely and reported in
- * `unsupported` with {@link NO_IMPORT_ID_REASON} — the same way an unmappable
+ * `unsupported` with {@link NO_IMPORT_ID_REASON}: the same way an unmappable
  * resource and an underivable type are reported, rather than silently emitted.
  *
  * This is why adoption is its own function rather than a renderer over an

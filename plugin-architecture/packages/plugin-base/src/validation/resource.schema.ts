@@ -106,7 +106,7 @@ const expiryFieldRuleSchema = z
     maxAgeDays: z.number().int().positive().optional(),
     fallbackFieldKey: z.string().min(1).optional(),
   })
-  // A budget on an absolute deadline is dead config — the author almost
+  // A budget on an absolute deadline is dead config: the author almost
   // certainly meant `from: "created"`, so fail the manifest instead of
   // silently ignoring it.
   .refine((r) => r.from === "created" || r.maxAgeDays === undefined, {
@@ -171,7 +171,7 @@ const dnsRoleSchema = z.union([
       privateValues: z.array(z.string().min(1)).min(1).optional(),
       isPrivate: z.boolean().optional(),
     })
-    // A value list with no field to read is dead config — the `maxAgeDays` and
+    // A value list with no field to read is dead config; the `maxAgeDays` and
     // `runningValues` stance: fail the manifest rather than never match.
     .refine((r) => r.privateKey !== undefined || r.privateValues === undefined, {
       message: "privateValues requires privateKey",
@@ -223,7 +223,7 @@ const dnsServiceHostSchema = z
       try {
         return (new RegExp(`${r.hostPattern}|`).exec("")?.length ?? 1) > 1;
       } catch {
-        return false; // invalid regex — already reported above
+        return false; // invalid regex: already reported above
       }
     },
     { message: "hostPattern must contain at least one capture group", path: ["hostPattern"] },
@@ -254,14 +254,14 @@ const backupRoleSchema = z
     message: "backupTypeKey and backupTypeValues must be declared together",
     path: ["backupTypeValues"],
   })
-  // Two answers to "what does this protect?" — which wins is a coin flip the
+  // Two answers to "what does this protect?", which wins is a coin flip the
   // author didn't intend, so fail rather than pick (the `isPrivate` stance).
   .refine((r) => r.sourceKey === undefined || r.sourceTemplate === undefined, {
     message: "sourceKey and sourceTemplate are mutually exclusive",
     path: ["sourceTemplate"],
   })
   // A template with nothing to interpolate is a literal, which would match the
-  // same resource for every backup of the type — silently attributing every
+  // same resource for every backup of the type: silently attributing every
   // snapshot to one volume.
   .refine((r) => r.sourceTemplate === undefined || /\{[^}]+\}/.test(r.sourceTemplate), {
     message: "sourceTemplate must interpolate at least one {field}",
@@ -287,7 +287,7 @@ const backupPolicySchema = z
     path: ["automatedBackupFieldKey"],
   })
   // A policy that names no protector type and no provider-native backup field
-  // can never be judged either way — the type would sit on the surface as a
+  // can never be judged either way: the type would sit on the surface as a
   // permanent "unknown". That is dead config, so fail the manifest (the
   // `maxAgeDays` / `runningValues` stance) rather than ship a row that means
   // nothing.
@@ -311,7 +311,7 @@ const lifecycleActionsSchema = z
     runningValues: z.array(z.string().min(1)).min(1).optional(),
     stoppedValues: z.array(z.string().min(1)).min(1).optional(),
   })
-  // A single action can't both stop and start — an identical pair is a typo
+  // A single action can't both stop and start: an identical pair is a typo
   // that would make every scheduled transition a no-op or a flap.
   .refine((l) => l.startActionId !== l.stopActionId, {
     message: "startActionId and stopActionId must differ",
@@ -345,7 +345,7 @@ const rightsizingSchema = z
     resizeNote: z.string().min(1).optional(),
   })
   // A family guard that doesn't compile, or has nothing to capture, would
-  // silently disable (or worse, never constrain) candidate filtering — fail
+  // silently disable (or worse, never constrain) candidate filtering: fail
   // the manifest instead (the `maxAgeDays` stance).
   .refine(
     (r) => {
@@ -371,7 +371,7 @@ const rightsizingSchema = z
       try {
         return (new RegExp(`${r.sizeFamilyPattern}|`).exec("")?.length ?? 1) > 1;
       } catch {
-        return false; // invalid regex — already reported by the refine above
+        return false; // invalid regex: already reported by the refine above
       }
     },
     {
@@ -391,7 +391,7 @@ const principalRoleSchema = z
     mfaKey: z.string().min(1).optional(),
     revokeActionId: z.string().min(1).optional(),
   })
-  // A value list with no field to read is dead config — the `privateValues` /
+  // A value list with no field to read is dead config; the `privateValues` /
   // `runningValues` / `maxAgeDays` stance: fail the manifest rather than
   // silently never match.
   .refine((p) => p.adminIndicatorKey !== undefined || p.adminValues === undefined, {

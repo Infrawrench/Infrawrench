@@ -56,7 +56,7 @@ export async function* streamOpenAiSseChat(
             yield { kind: "delta", text: delta };
           }
           if (parsed.usage) {
-            // exactOptionalPropertyTypes is on — only assign keys we have.
+            // exactOptionalPropertyTypes is on, only assign keys we have.
             const next: {
               inputTokens?: number;
               outputTokens?: number;
@@ -74,7 +74,7 @@ export async function* streamOpenAiSseChat(
             usage = next;
           }
         } catch {
-          // Malformed SSE chunk — skip rather than abort the whole stream.
+          // Malformed SSE chunk: skip rather than abort the whole stream.
         }
       }
     }

@@ -122,7 +122,7 @@ describe("input", () => {
   });
 
   it("packs a motion event into thirteen bytes", () => {
-    // The same number the Rust encoder produces — a drag at 120 Hz is a
+    // The same number the Rust encoder produces: a drag at 120 Hz is a
     // hundred of these a second.
     expect(encodeInputBatch([{ kind: "pointerMotion", timeMs: 1, x: 2, y: 3 }]).length).toBe(13);
   });

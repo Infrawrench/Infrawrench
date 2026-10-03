@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A batch job — asynchronous inference at half the interactive rate, with a
+ * A batch job: asynchronous inference at half the interactive rate, with a
  * 24-hour target turnaround.
  *
  * Verified: https://ai.google.dev/api/batch-mode
@@ -10,7 +10,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * `GET /v1beta/batches?pageSize=&pageToken=` returns a `ListOperationsResponse`
  * whose top-level key is **`operations[]`**, not `batches[]`. Each entry is an
  * `Operation` (`name`, `done`, `error`, `response`, `metadata`) and the real
- * batch payload — display name, model, state, per-request counts — lives in
+ * batch payload (display name, model, state, per-request counts) lives in
  * `metadata`, typed `GenerateContentBatch`. The fields below are flattened out
  * of that nested shape by the client.
  *

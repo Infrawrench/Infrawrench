@@ -12,7 +12,7 @@ function storageSku(sku: string): { tier: string; replication: string } | null {
 }
 
 /**
- * Terraform mapping for Azure — provider `hashicorp/azurerm`.
+ * Terraform mapping for Azure: provider `hashicorp/azurerm`.
  *
  * VM, AKS, SQL database, Cosmos DB, App Service, and PostgreSQL Flexible
  * Server require nested blocks or credentials that the listers do not
@@ -21,7 +21,7 @@ function storageSku(sku: string): { tier: string; replication: string } | null {
 export const azureTerraformExport: TerraformExportCapability = {
   provider: { name: "azurerm", source: "hashicorp/azurerm", version: "~> 5.0" },
   providerConfig: {
-    // Required empty block — rendered as `features {}` (not `features = {}`).
+    // Required empty block: rendered as `features {}` (not `features = {}`).
     features: tf.block(),
     subscription_id: tf.ref("var.azure_subscription_id"),
     tenant_id: tf.ref("var.azure_tenant_id"),

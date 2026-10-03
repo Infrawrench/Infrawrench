@@ -7,7 +7,7 @@ import type {
 } from "cloudflare/resources/turnstile/widgets";
 
 /**
- * Cloudflare Turnstile widgets (`/accounts/{id}/challenges/widgets`) — the
+ * Cloudflare Turnstile widgets (`/accounts/{id}/challenges/widgets`): the
  * CAPTCHA-alternative sitekey/secret pairs. The widget `sitekey` doubles as the
  * external id (it's what the embed snippet and siteverify calls reference).
  */

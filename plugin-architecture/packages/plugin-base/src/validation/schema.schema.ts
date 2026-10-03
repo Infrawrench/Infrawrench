@@ -67,7 +67,7 @@ const hostActionSchema = z.discriminatedUnion("type", [
     command: z.string(),
     title: z.string().optional(),
     description: z.string().optional(),
-    // Field definitions follow the CreateFieldConfig shape — kept loose here
+    // Field definitions follow the CreateFieldConfig shape: kept loose here
     // since create-form validation lives in the TS type system rather than
     // the runtime schema (and the UI tolerates extra fields gracefully).
     fields: z.array(z.unknown()) as z.ZodType<CreateFieldConfig[]>,
@@ -82,7 +82,7 @@ const statusDotSchema = z.object({
   label: z.string().optional(),
 });
 
-// Recursive schema node — z.lazy needs an explicit annotation to break the
+// Recursive schema node: z.lazy needs an explicit annotation to break the
 // self-referential type-inference cycle. We use ZodTypeAny rather than the
 // authoritative SchemaNode type because the schema intentionally omits the
 // rarely-used TableNode variant and exactOptionalPropertyTypes makes the two
@@ -140,7 +140,7 @@ export const schemaNodeSchema: z.ZodTypeAny = z.lazy(() =>
     // `table` was in the TypeScript SchemaNode union but missing here, so
     // `detailViewSchema.safeParse` rejected any detail view containing one.
     // AWS (DynamoDB), Cloudflare (compute/storage), DigitalOcean (GenAI) and
-    // GCP all emit `kind: "table"` — they pass the contract test only because
+    // GCP all emit `kind: "table"`: they pass the contract test only because
     // their mock fixtures never reach those branches. A new plugin whose
     // fixture does reach one fails with an opaque union error.
     z.object({

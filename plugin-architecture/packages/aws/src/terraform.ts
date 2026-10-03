@@ -13,7 +13,7 @@ const splitIds = (value: string | undefined): TerraformValue[] =>
     .map(tf.str);
 
 /**
- * Terraform mapping for AWS — provider `hashicorp/aws`.
+ * Terraform mapping for AWS: provider `hashicorp/aws`.
  *
  * Attribute names and import IDs were verified against the AWS provider docs.
  * Lambda functions need a deployment package or image URI, DynamoDB tables need

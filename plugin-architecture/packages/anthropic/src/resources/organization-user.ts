@@ -4,7 +4,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * A member of the Console organization. Admin-key only.
  *
  * Roles are readable in full, but only a subset can be *assigned* through the
- * API — `admin`, `owner`, `primary_owner` and `membership_admin` are
+ * API: `admin`, `owner`, `primary_owner` and `membership_admin` are
  * console-only, and members holding them cannot be removed via the API either.
  *
  * Docs: https://platform.claude.com/docs/en/api/admin-api/users/list-users

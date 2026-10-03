@@ -16,7 +16,7 @@
  *    memory by 4.9%, and every derived cost is wrong by the same amount in the
  *    same direction, so it never looks like a bug.
  *  - kilo is lowercase `k` (`1k` = 1000). Uppercase `K` is NOT a valid decimal
- *    suffix — apimachinery rejects it — so we reject it too rather than
+ *    suffix (apimachinery rejects it) so we reject it too rather than
  *    silently guessing.
  *
  * CPU is conventionally written in "millicores" (`100m` = 0.1 CPU) but that is
@@ -56,7 +56,7 @@ const QUANTITY_RE = /^([+-]?(?:\d+\.?\d*|\.\d+))(Ki|Mi|Gi|Ti|Pi|Ei|[eE][+-]?\d+|
 
 /**
  * Parse a Kubernetes quantity into a plain number in base units (cores for
- * CPU, bytes for memory). Returns `null` for anything unparseable — callers
+ * CPU, bytes for memory). Returns `null` for anything unparseable: callers
  * decide whether that means "zero" or "unknown", because those are different
  * things for cost attribution.
  */
@@ -80,7 +80,7 @@ export function parseQuantity(raw: string | number | undefined | null): number |
 
   // decimalExponent: "1e3", "1.5E-2". The length check is load-bearing: a bare
   // "E" is the exa SUFFIX (1e18), not an exponent with an empty operand, and
-  // `Number("")` is 0 — so without it "1E" silently parses as 1 instead of
+  // `Number("")` is 0, so without it "1E" silently parses as 1 instead of
   // 10^18. Lowercase "e" alone never reaches here; the regex rejects it, which
   // is also what apimachinery does.
   if (suffix.length > 1 && (suffix[0] === "e" || suffix[0] === "E")) {

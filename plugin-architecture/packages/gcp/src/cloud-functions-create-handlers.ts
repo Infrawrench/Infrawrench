@@ -275,7 +275,7 @@ export const cloudFunctionsCreateResourceHandlers: Record<
     const userCode = fields[`code_${language}`] ?? "";
 
     // Build the source archive. Cloud Functions Gen 2 hands the upload to
-    // Buildpacks, which require a manifest file per language — without these
+    // Buildpacks, which require a manifest file per language: without these
     // the build fails after the create call returns success.
     let sourceFiles: { name: string; content: string }[];
     if (language === "nodejs") {
@@ -341,9 +341,9 @@ export const cloudFunctionsCreateResourceHandlers: Record<
     const uploadUrl = uploadUrlData.uploadUrl;
 
     // Step 2: Upload the ZIP to the signed URL. The signed URL must NOT carry
-    // an Authorization header — the URL itself is the credential.
+    // an Authorization header: the URL itself is the credential.
     const zipBuffer = buildZipArchive(sourceFiles);
-    // Only Content-Type is required per Google's docs — adding
+    // Only Content-Type is required per Google's docs: adding
     // x-goog-content-length-range is not (and trips CORS preflight on the
     // signed URL bucket from the desktop renderer).
     const uploadRes = await fetch(uploadUrl, {
@@ -356,11 +356,11 @@ export const cloudFunctionsCreateResourceHandlers: Record<
         `Cloud Functions source upload failed: ${uploadRes.status}: ${await uploadRes.text()}`,
       );
 
-    // Step 3: Create the function. No trigger block is needed for HTTP —
+    // Step 3: Create the function. No trigger block is needed for HTTP:
     // Gen 2 auto-creates an https trigger when no eventTrigger is specified.
     // The full resource name is required in the body in addition to the
     // functionId query parameter. We resolve the project number so we can
-    // pin the build SA and runtime SA explicitly — leaving them unset can
+    // pin the build SA and runtime SA explicitly: leaving them unset can
     // cause the Cloud Run service to silently not deploy on newer projects
     // ("CloudRunServiceNotFound" stateMessage), since Google has been
     // tightening default-SA behaviour.

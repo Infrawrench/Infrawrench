@@ -81,7 +81,7 @@ export const GceInstanceResourceType = rt({
     defaultUsername: "ubuntu",
     defaultFields: {
       // The agents flow submits only these defaults, and the create handler
-      // requires a zone — without one the request URL is malformed.
+      // requires a zone: without one the request URL is malformed.
       zone: "us-central1-a",
       image: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64",
       machineType: "e2-standard-2",
@@ -109,7 +109,7 @@ export const GceInstanceResourceType = rt({
     sizeFieldKey: "machineType",
     regionFieldKey: "zone",
     cpuMetric: { seriesLabel: "CPU Utilization", scale: "fraction" },
-    // Family prefix before the first dash (e2, n2, t2a, c3…) — keeps arm
+    // Family prefix before the first dash (e2, n2, t2a, c3…): keeps arm
     // (t2a) and generation jumps out, which setMachineType can't cross.
     sizeFamilyPattern: "^([a-z0-9]+)-",
     resizeNote:

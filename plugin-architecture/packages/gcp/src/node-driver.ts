@@ -1,5 +1,5 @@
 /**
- * GCP Node.js-side driver — runs in the Electron main process.
+ * GCP Node.js-side driver: runs in the Electron main process.
  * Owns all GCS-specific download logic so the host stays provider-agnostic.
  */
 import https from "node:https";

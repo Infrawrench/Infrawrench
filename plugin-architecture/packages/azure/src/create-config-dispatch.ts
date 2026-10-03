@@ -1,5 +1,5 @@
 /**
- * `getCreateConfig` dispatch — maps a plugin type-id to the matching
+ * `getCreateConfig` dispatch: maps a plugin type-id to the matching
  * `get*CreateConfig` helper from `create-handlers.ts`.
  *
  * Kept separate from the per-handler module so adding a new resource type's

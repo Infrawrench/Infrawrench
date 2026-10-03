@@ -12,7 +12,7 @@
  * whether the account is covered and each subscription's billing-cycle
  * anchor. Both matter here: uncovered accounts get a CostSetupError instead
  * of silent emptiness, and the usage query returns **nothing** unless the
- * requested range includes a subscription's billing-cycle anchor day — so
+ * requested range includes a subscription's billing-cycle anchor day, so
  * `from` is widened back to the most recent anchor on or before the chunk
  * start and rows outside the chunk are filtered client-side.
  *
@@ -22,7 +22,7 @@
  * installed SDK has no wrapper for the new path yet, so requests go through
  * the SDK client's generic `get` to keep its auth, retry, and 429 behavior.
  *
- * NOTE: rows keep the exact identity shape of the paygo-era rows — date,
+ * NOTE: rows keep the exact identity shape of the paygo-era rows; date,
  * service, `zone` tag, currency. `ServiceFamilyName` is deliberately NOT
  * emitted as a tag: `tags_hash` is part of the frozen `cost_daily` sort key,
  * so changing the tag set would let re-fetched restatement-window rows land
@@ -61,7 +61,7 @@ interface BillableUsageRecord {
   /** May be empty when the unit is implicit in the service name. */
   ConsumedUnit: string;
   PricingQuantity: number;
-  /** Never empty per spec — falls back to "Count". */
+  /** Never empty per spec: falls back to "Count". */
   PricingUnit?: string | null;
   ZoneId?: string | null;
   ZoneName?: string | null;
@@ -127,7 +127,7 @@ function latestAnchorOnOrBefore(isoDate: string, anchorDay: number): string {
 
 /**
  * Widen the query start so [from, to] contains a billing-cycle anchor day for
- * every subscription that could have usage in the range — the API returns no
+ * every subscription that could have usage in the range: the API returns no
  * data for a subscription whose anchor day the range misses. Rows pulled in
  * by the widening are filtered back out against the original range.
  */

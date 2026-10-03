@@ -14,7 +14,7 @@ export const PubSubSubscriptionResourceType = rt({
   ],
   outputs: [],
   // The lister keeps only the topic's short id, so match the topic's `name`
-  // field — its externalId is the full `projects/<p>/topics/<name>` path.
+  // field: its externalId is the full `projects/<p>/topics/<name>` path.
   dependsOn: [
     { fieldKey: "topic", targetTypeId: "pubsub-topic", targetKey: "name", label: "subscribes to" },
   ],

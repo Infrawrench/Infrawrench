@@ -9,7 +9,7 @@ import { TranscriptResourceType } from "./resources/transcript.js";
  * in their own wordmark asset
  * (https://www.assemblyai.com/_aai/images/logos/assemblyai-logo-full-secondary.svg)
  * and normalised into a 100×100 viewBox. Fills are the brand's own dark-surface
- * variant — #C7C3B2 for the inner stroke, white for the outer — on their
+ * variant (#C7C3B2 for the inner stroke, white for the outer) on their
  * near-black #1D1B16.
  */
 const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">

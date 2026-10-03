@@ -2,7 +2,7 @@
  * Actual-spend collection from Deepgram's billing breakdown.
  *
  * `GET /v1/projects/{project_id}/billing/breakdown` reports what Deepgram
- * actually billed — a `dollars` figure in USD per time bucket per grouping —
+ * actually billed (a `dollars` figure in USD per time bucket per grouping)
  * so nothing here is modelled, estimated or priced off a rate card. Verified
  * against https://developers.deepgram.com/reference/manage/billing/breakdown/get
  * and Deepgram's published OpenAPI spec (deepgram/deepgram-api-specs,
@@ -13,7 +13,7 @@
  * - One request per project. An account is a single API key, and the key's
  *   scope decides which projects `GET /v1/projects` returns, so a key that can
  *   see several projects bills for all of them. The project id rides along as
- *   a tag — the cost contract has no project dimension.
+ *   a tag: the cost contract has no project dimension.
  * - `grouping` is repeated, not comma-joined (`grouping=line_item&grouping=
  *   tags`): the spec types it as a plain array with no `style`/`explode`
  *   override, which is OpenAPI's exploded form.
@@ -22,8 +22,8 @@
  *   item → human label ("Nova - 3 (Stream)"), which is prettier but is
  *   deliberately NOT used: `service` is part of the dimension key the host
  *   dedupes restatement re-fetches on, so it has to be reproducible from the
- *   breakdown response alone. A label that changed — or a `fields` call that
- *   failed on one run and succeeded on the next — would land the same money
+ *   breakdown response alone. A label that changed (or a `fields` call that
+ *   failed on one run and succeeded on the next) would land the same money
  *   twice under two names.
  * - Deepgram's own request tags are a *list* per bucket, not key/value pairs.
  *   The bucket's dollars belong to the combination, so they are recorded as
@@ -40,7 +40,7 @@
  *   back with no results, so the manifest asks for a year and takes what it
  *   gets.
  * - Enterprise-contract accounts are not guaranteed to populate `dollars`. A
- *   missing amount is "not available", never zero — reporting a confident $0
+ *   missing amount is "not available", never zero: reporting a confident $0
  *   for an account that is spending money is a worse failure than reporting
  *   nothing, so a response with rows but no dollar amounts anywhere raises a
  *   {@link CostSetupError} the host shows against the account.
@@ -57,7 +57,7 @@ const CONSOLE_HELP = {
 };
 
 /**
- * Everything the collector needs, without the client — the credential and the
+ * Everything the collector needs, without the client: the credential and the
  * two host services that make requests work from behind a bastion or through
  * a TLS-intercepting proxy.
  */
@@ -66,7 +66,7 @@ export interface DeepgramCostContext {
   apiKey: string;
   /** PEM trust anchor for a custom CA. Only honored together with `http`. */
   caCert?: string;
-  /** Host HTTP service — bastion egress routing and custom-CA support. */
+  /** Host HTTP service: bastion egress routing and custom-CA support. */
   http?: HttpHostServices;
 }
 

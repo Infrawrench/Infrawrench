@@ -78,7 +78,7 @@ const SIDEBAR_STATUS_MAP: Record<string, ResourceStatus> = {
 interface LifecycleActionCopy {
   stopConfirm: string;
   /**
-   * Row-level guard — return false to hide Stop for resources the provider
+   * Row-level guard: return false to hide Stop for resources the provider
    * would reject the call on.
    */
   canStop?: (fields: ResourceInstance["fields"]) => boolean;
@@ -94,7 +94,7 @@ const LIFECYCLE_ACTION_COPY: Record<string, LifecycleActionCopy> = {
       "Stop this RDS instance? Connections drop and instance-hour billing stops; storage keeps billing, and AWS restarts a stopped instance after 7 days.",
     // StopDBInstance is rejected for Aurora/DocumentDB/Neptune cluster
     // members (stop the cluster instead) and for Multi-AZ SQL Server
-    // deployments — don't offer an action the API will refuse. (Read
+    // deployments: don't offer an action the API will refuse. (Read
     // replicas are also unstoppable, but the lister carries no field that
     // identifies them, so that rejection still surfaces as the provider's
     // own error.)
@@ -109,7 +109,7 @@ const LIFECYCLE_ACTION_COPY: Record<string, LifecycleActionCopy> = {
 
 /**
  * Build the Stop/Start header actions from the type's `lifecycle`
- * declaration — action ids and state matching come from the declaration
+ * declaration: action ids and state matching come from the declaration
  * (all declared running/stopped values), never from per-type conditionals.
  */
 function buildLifecycleActions(
@@ -165,7 +165,7 @@ export function renderDetail(
   }
 
   const fields = resource.fields;
-  // SNS topics and SQS queues have no lifecycle state — if they exist, they
+  // SNS topics and SQS queues have no lifecycle state, if they exist, they
   // are active. Treat a missing state as "active" so the dot renders healthy.
   const alwaysHealthyTypes = new Set(["sns-topic", "sqs-queue"]);
   const state = String(

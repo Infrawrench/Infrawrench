@@ -19,7 +19,7 @@ export async function computeGetCreateConfig(
 ): Promise<CreateResourceConfig | null> {
   if (typeId === "droplet") {
     // When the user creates a droplet from a project's detail page we already
-    // know the project via parentResourceId — skip the projects fetch and
+    // know the project via parentResourceId: skip the projects fetch and
     // hide the Project field. From the account base we list projects so the
     // user can pick one (defaults to whichever project DO marks
     // `is_default`).
@@ -83,7 +83,7 @@ export async function computeGetCreateConfig(
       if (!sizesByCategory.has(cat)) sizesByCategory.set(cat, []);
       // DO returns price_monthly: 0 for some sizes (notably the highest-tier
       // CPU-Optimized SKUs like c-96-intel that are quoted-only). Omit
-      // priceMonthly entirely when the value isn't a positive number — the
+      // priceMonthly entirely when the value isn't a positive number: the
       // picker renders "$0/mo" otherwise, which is worse than no chip.
       const price = Number(s.price_monthly);
       sizesByCategory.get(cat)!.push({
@@ -94,7 +94,7 @@ export async function computeGetCreateConfig(
         diskGb: s.disk,
         ...(Number.isFinite(price) && price > 0 ? { priceMonthly: price } : {}),
         category: cat,
-        // Region availability — the right-sizing host drops candidates the
+        // Region availability: the right-sizing host drops candidates the
         // resource's region can't host. The size-picker ignores it unless a
         // filterByFieldKey is set, so the create form is unchanged.
         ...(Array.isArray(s.regions) && s.regions.length > 0 ? { availableFor: s.regions } : {}),
@@ -295,7 +295,7 @@ export async function computeGetCreateConfig(
 export async function computeCreateResource(args: DoCreateArgs): Promise<ResourceInstance | null> {
   const { ctx, typeId, accountId, fields, effectiveParentId, assignToProjectIfNeeded } = args;
   if (typeId === "droplet") {
-    // SSH key: upload to DO account (idempotent — if it already exists DO returns the existing key)
+    // SSH key: upload to DO account (idempotent, if it already exists DO returns the existing key)
     const sshKeyIds: number[] = [];
     const sshPub = fields["sshPublicKey"];
     if (sshPub) {
@@ -310,7 +310,7 @@ export async function computeCreateResource(args: DoCreateArgs): Promise<Resourc
           keyId = created.ssh_key.id;
         } catch (e: unknown) {
           if (!String(e).includes("422")) throw e;
-          // 422 means the key already exists on the account — look up its id.
+          // 422 means the key already exists on the account: look up its id.
           // Keys can span multiple pages, so walk them until we find the
           // match or exhaust the list.
           const perPage = 200;

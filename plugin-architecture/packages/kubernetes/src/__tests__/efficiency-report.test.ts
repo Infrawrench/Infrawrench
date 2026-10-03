@@ -98,7 +98,7 @@ describe("buildEfficiencyReport", () => {
       nodes: [node()],
       pods: [
         pod({ name: "blind-1", workload: "blind" }),
-        // Perfectly efficient, but measured — it still outranks the unknown.
+        // Perfectly efficient, but measured: it still outranks the unknown.
         pod({
           name: "tight-1",
           workload: "tight",
@@ -115,7 +115,7 @@ describe("buildEfficiencyReport", () => {
     const cluster = allocateClusterCost({
       nodes: [node({ name: "priced" }), node({ name: "free", hourlyRate: undefined })],
       pods: [
-        // Huge waste, no node rate — cannot be ranked by money.
+        // Huge waste, no node rate: cannot be ranked by money.
         pod({
           name: "unpriced-1",
           workload: "unpriced",

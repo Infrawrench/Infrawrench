@@ -12,7 +12,7 @@ function ovhStorageRegion(region: string): string {
 }
 
 /**
- * Terraform mapping for OVHcloud — provider `ovh/ovh`.
+ * Terraform mapping for OVHcloud: provider `ovh/ovh`.
  * Attribute names verified against the provider docs
  * (registry.terraform.io/providers/ovh/ovh):
  *   - ovh_cloud_instance: `service_name`, `region`, `name`, `flavor_id`, `image_id`.
@@ -20,7 +20,7 @@ function ovhStorageRegion(region: string): string {
  *   - ovh_cloud_project_network_private: `service_name`, `name`, `regions`.
  *   - ovh_cloud_project_database: `service_name`, `engine`, `version`, `plan`, `nodes`.
  *   - ovh_cloud_project_storage: `service_name`, `region_name`, `name`.
- * Floating IPs are skipped — stored externalId is `{region}/{id}` but the provider
+ * Floating IPs are skipped: stored externalId is `{region}/{id}` but the provider
  * resource expects different wiring and we lack OpenStack subnet/network ids.
  * Instances skip when only human-readable flavor/image names are stored (no ids).
  * Credentials map to the standard OVH API triplet + project service_name.

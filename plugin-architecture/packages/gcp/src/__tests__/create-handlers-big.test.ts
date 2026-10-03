@@ -146,7 +146,7 @@ describe("compute-engine create", () => {
   });
 
   // Regression: instances.insert returns an Operation, not the instance. A
-  // 200 means GCP queued the work — the VM may still never exist. Reporting
+  // 200 means GCP queued the work: the VM may still never exist. Reporting
   // that as a created VM made a zone stockout surface much later as
   // "resource ... not found" against a machine that was never created.
   it("gce-instance create surfaces an async operation failure", async () => {

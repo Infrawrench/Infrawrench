@@ -13,7 +13,7 @@ import {
  * (https://docs.aws.amazon.com/cli/latest/reference/service-quotas/get-service-quota.html).
  * `GetAWSDefaultServiceQuota` returns the identical `ServiceQuota` object, so
  * this fixture stands in for both. Note `Unit: "None"` on a quota measured in
- * vCPUs — that is the norm, not an oddity, and it is why `pickQuotaUnit`
+ * vCPUs: that is the norm, not an oddity, and it is why `pickQuotaUnit`
  * exists.
  */
 const EC2_VCPU_QUOTA = {
@@ -39,7 +39,7 @@ const EC2_VCPU_QUOTA = {
   },
 };
 
-/** Same reference page, `list-service-quotas` — a quota with no usage metric. */
+/** Same reference page, `list-service-quotas`: a quota with no usage metric. */
 const VPC_QUOTA = {
   ServiceCode: "vpc",
   ServiceName: "Amazon Virtual Private Cloud (Amazon VPC)",
@@ -135,7 +135,7 @@ describe("resolveQuotaLimit", () => {
   });
 
   // AWS documents that ListServiceQuotas omits a quota whose applied value is
-  // unavailable — which is every account that has never had an increase
+  // unavailable, which is every account that has never had an increase
   // approved. Reading that empty list as "no such quota" would switch the
   // radar off for exactly those accounts.
   it("falls back to the default quota when the applied list comes back empty", async () => {
@@ -201,7 +201,7 @@ describe("fetchAwsQuotas", () => {
     expect(listServiceQuotas).not.toHaveBeenCalled();
   });
 
-  // Null is "CloudWatch published no datapoint" — the account has never run
+  // Null is "CloudWatch published no datapoint": the account has never run
   // one of these. Same outcome as zero, different reason, neither alertable.
   it("treats an absent CloudWatch datapoint as nothing to report", async () => {
     const { ctx } = makeCtx({ usage: null, addresses: 0, vpcs: 0 });
@@ -214,7 +214,7 @@ describe("fetchAwsQuotas", () => {
   });
 
   // The host replaces its stored readings with what this returns, so a partial
-  // list reads as quotas having disappeared — and a disappeared quota is one
+  // list reads as quotas having disappeared, and a disappeared quota is one
   // nobody is watching any more.
   it("fails the whole fetch when one region fails", async () => {
     const { ctx } = makeCtx({ regions: ["eu-west-1", "us-east-1"] });

@@ -1,5 +1,5 @@
 /**
- * Fly.io public status feed (Atlassian Statuspage, https://status.flyio.net —
+ * Fly.io public status feed (Atlassian Statuspage, https://status.flyio.net:
  * verified 2026-08; status.fly.io 301s there).
  *
  * Region components are named "AMS - Amsterdam, Netherlands" (IATA prefix),
@@ -44,7 +44,7 @@ function mapComponent(name: string): StatusComponentMapping | null {
     return { services: [name], providerWide: true };
   }
   // Deploy tooling, remote builders, dashboard, docs, WireGuard gateways…
-  // real services, but not scoped to any resource — keep for display.
+  // real services, but not scoped to any resource: keep for display.
   return { services: [name] };
 }
 

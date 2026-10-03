@@ -1,5 +1,5 @@
 interface CloudSqlEngineInfo {
-  /** URL scheme without "://" — postgres, mysql, sqlserver */
+  /** URL scheme without "://": postgres, mysql, sqlserver */
   scheme: string;
   /** Default admin username Cloud SQL provisions for the engine */
   username: string;

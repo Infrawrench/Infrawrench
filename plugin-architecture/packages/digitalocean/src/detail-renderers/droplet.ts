@@ -1,5 +1,5 @@
 /**
- * Detail view for DigitalOcean Droplets — the largest renderer in the plugin,
+ * Detail view for DigitalOcean Droplets: the largest renderer in the plugin,
  * covering the resize / rebuild / restore prompts, backup and snapshot pickers,
  * and the metrics + console tabs.
  */
@@ -25,7 +25,7 @@ export function applyDropletDetail(detail: DetailViewSchema, resource: ResourceI
   const isOff = status === "off";
   const features = String(fields["features"] ?? "").split(",");
   // Backups: prefer `nextBackupStart` / `backupPolicyPlan` over the
-  // `features` array — DO sets the policy and the next-window timestamps
+  // `features` array; DO sets the policy and the next-window timestamps
   // synchronously with the enable_backups action, but flips the
   // `features` entry on a separate (sometimes-delayed) tick. Using only
   // `features` meant the Enable Backups button stuck around after a
@@ -34,7 +34,7 @@ export function applyDropletDetail(detail: DetailViewSchema, resource: ResourceI
     features.includes("backups") ||
     !!String(fields["nextBackupStart"] ?? "") ||
     !!String(fields["backupPolicyPlan"] ?? "");
-  // IPv6 is a one-way flip on DO — once enabled, the only signal is the
+  // IPv6 is a one-way flip on DO: once enabled, the only signal is the
   // feature flag (and a public-v6 entry in `networks.v6`, which we surface
   // as the `ipv6` resolved output). We hide the Enable IPv6 button once
   // either is set so it doesn't look like the previous click was ignored.

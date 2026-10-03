@@ -144,7 +144,7 @@ describe("fetchHetznerCostData", () => {
 
   it("bills only up to the monthly cap on the day the cap binds", async () => {
     // By 2026-08-27 the server has existed 624h into the period: 624 × 0.0060
-    // = €3.744, and one more day would reach €3.888 — past the €3.79 cap. Only
+    // = €3.744, and one more day would reach €3.888; past the €3.79 cap. Only
     // the remaining €0.046 is billable.
     const { ctx } = makeContext("2026-08-27T09:00:00Z", { "/servers": [server()] });
 
@@ -200,7 +200,7 @@ describe("fetchHetznerCostData", () => {
 
   it("adds backups as a percentage uplift on the server's own price", async () => {
     // `backup_window` is non-null exactly when backups are enabled, and the
-    // rate card gives 20% — of the server price, not an absolute rate.
+    // rate card gives 20%: of the server price, not an absolute rate.
     const { ctx } = makeContext("2026-08-08T12:00:00Z", {
       "/servers": [server({ backup_window: "22-02" })],
     });
@@ -232,7 +232,7 @@ describe("fetchHetznerCostData", () => {
     const rows = await fetchHetznerCostData(ctx, currentMonthRange("2026-08-08"));
 
     // The counters are cumulative over the billing period and reset with it,
-    // so the row is dated to the period's first day and restated in place —
+    // so the row is dated to the period's first day and restated in place:
     // writing the running total to each day would sum to many times the real
     // overage.
     expect(find(rows, "Traffic")).toMatchObject({
@@ -358,7 +358,7 @@ describe("fetchHetznerCostData", () => {
   it("never fabricates history for a range that predates the run day", async () => {
     // The host chunks its restatement window by month. A chunk holding neither
     // today nor the current period start describes days this collector cannot
-    // honestly price, so it returns nothing — and issues no requests at all.
+    // honestly price, so it returns nothing, and issues no requests at all.
     const { ctx, paths } = makeContext("2026-08-08T12:00:00Z", { "/servers": [server()] });
 
     const rows = await fetchHetznerCostData(ctx, { fromDate: "2026-07-08", toDate: "2026-07-31" });

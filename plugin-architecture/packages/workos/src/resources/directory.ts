@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A Directory Sync directory — the SCIM/HRIS link that streams an
+ * A Directory Sync directory: the SCIM/HRIS link that streams an
  * organization's users and groups into WorkOS.
  * Docs: https://workos.com/docs/reference/directory-sync
  */

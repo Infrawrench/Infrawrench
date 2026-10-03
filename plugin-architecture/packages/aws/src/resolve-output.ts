@@ -3,9 +3,9 @@ import type { AwsCredentials } from "./auth.js";
 import { jsonCall, jsonGetCall } from "./client-transport.js";
 
 interface ResolveOutputContext {
-  /** Home/default creds — used only for global services. */
+  /** Home/default creds: used only for global services. */
   creds: AwsCredentials;
-  /** Build creds scoped to a specific region — use this for regional services. */
+  /** Build creds scoped to a specific region: use this for regional services. */
   credsFor(region: string): AwsCredentials;
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
   exportCredential(
@@ -121,14 +121,14 @@ export async function resolveOutput(
     // password comes from GetAuthorizationToken below.
     if (outputKey === "username") return "AWS";
     const resource = await ctx.getResource(typeId, resourceId, accountId);
-    // The registry host is the repositoryUri minus the per-repo path —
+    // The registry host is the repositoryUri minus the per-repo path:
     // `<accountId>.dkr.ecr.<region>.amazonaws.com`.
     const repositoryUri = String(resource.resolvedOutputs["repositoryUri"] ?? "");
     const serverFromUri = repositoryUri.split("/")[0] ?? "";
     if (outputKey === "serverUrl") return serverFromUri;
     const region = String(resource.fields["region"] ?? ctx.creds.region);
     const creds = ctx.credsFor(region);
-    // Registry-level call — no repository parameters. The token it returns is
+    // Registry-level call: no repository parameters. The token it returns is
     // base64("AWS:<password>") and is valid for 12 hours. Errors propagate:
     // silently returning an empty credential would only surface later as a
     // failed docker login / ImagePullBackOff.
@@ -141,14 +141,14 @@ export async function resolveOutput(
       throw new Error("ECR GetAuthorizationToken returned no authorization data.");
     }
     if (outputKey === "dockerConfigJson") {
-      // The `.dockerconfigjson` auth entry is exactly the raw token — docker
+      // The `.dockerconfigjson` auth entry is exactly the raw token: docker
       // decodes it to `user:pass` itself. Fall back to the proxyEndpoint host
       // when the resource predates the serverUrl output.
       const serverUrl =
         serverFromUri || String(auth?.proxyEndpoint ?? "").replace(/^https?:\/\//, "");
       return JSON.stringify({ auths: { [serverUrl]: { auth: token } } });
     }
-    // password: split on the FIRST colon — only the "AWS" username half is
+    // password: split on the FIRST colon, only the "AWS" username half is
     // guaranteed colon-free.
     const decoded = Buffer.from(token, "base64").toString("utf8");
     const sep = decoded.indexOf(":");

@@ -67,7 +67,7 @@ export function applyGenAiKnowledgeBaseDetail(
   };
 
   // The Spaces source can be picked from the account's actual buckets
-  // (a resource selector — submits the bucket's `bucketRef` output =
+  // (a resource selector: submits the bucket's `bucketRef` output =
   // `name|region`) or typed by hand. A `bucketSource` toggle gates the
   // two; default to "pick" when we discovered buckets during enrich,
   // otherwise "manual" (no Spaces keys → nothing to pick). Both pick and
@@ -93,7 +93,7 @@ export function applyGenAiKnowledgeBaseDetail(
           }),
     },
     {
-      // Resource selector — lists the account's Spaces buckets and submits
+      // Resource selector: lists the account's Spaces buckets and submits
       // the chosen bucket's `bucketRef` output (`name|region`), which the
       // handler splits back apart.
       key: "spacesBucket",
@@ -216,7 +216,7 @@ export function applyGenAiKnowledgeBaseDetail(
     },
   ];
 
-  // Retrieval endpoint — copyable so the user can wire it into their own
+  // Retrieval endpoint: copyable so the user can wire it into their own
   // RAG client without hunting through DO's console.
   const retrieval = String(outputs["retrievalEndpoint"] ?? "");
   if (retrieval) {
@@ -232,7 +232,7 @@ export function applyGenAiKnowledgeBaseDetail(
     });
   }
 
-  // Data sources table — per-row Reindex + Remove actions.
+  // Data sources table: per-row Reindex + Remove actions.
   if (dataSources.length > 0) {
     detail.sections.push({
       kind: "section",
@@ -317,7 +317,7 @@ export function applyGenAiKnowledgeBaseDetail(
     });
   }
 
-  // Indexing jobs history — most-recent first. Includes a Cancel action for
+  // Indexing jobs history: most-recent first. Includes a Cancel action for
   // jobs that are still pending/in-progress.
   if (jobs.length > 0) {
     detail.sections.push({

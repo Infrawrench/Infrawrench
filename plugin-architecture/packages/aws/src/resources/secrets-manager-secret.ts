@@ -19,7 +19,7 @@ export const SecretsManagerSecretResourceType = rt({
     o("secretValue", "Secret Value", { sensitive: true, description: "Current secret value" }),
     o("secretArn", "Secret ARN"),
   ],
-  // Rotation-age budget over LastRotatedDate (not LastChangedDate — any secret
+  // Rotation-age budget over LastRotatedDate (not LastChangedDate: any secret
   // update would otherwise reset the 90-day clock). Never-rotated secrets keep
   // lastRotatedDate empty and age from createdDate via fallbackFieldKey so the
   // listed field stays honest about "never rotated".

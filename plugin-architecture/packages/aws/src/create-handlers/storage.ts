@@ -198,7 +198,7 @@ export async function storageCreateResource(
       resolvedOutputs: {
         repositoryUri,
         repositoryArn: String(repo["repositoryArn"] ?? ""),
-        // Registry host for docker login — the repositoryUri minus the
+        // Registry host for docker login: the repositoryUri minus the
         // per-repo path. The docker credentials themselves (username /
         // password / dockerConfigJson) are minted on demand in resolveOutput.
         serverUrl: repositoryUri.split("/")[0] ?? "",

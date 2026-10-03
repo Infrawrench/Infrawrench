@@ -7,7 +7,7 @@ import { ProviderResourceType } from "./resources/provider.js";
 import { ApiKeyResourceType } from "./resources/api-key.js";
 
 // OpenRouter's own mark, taken from the inline logo on openrouter.ai
-// (viewBox 19.82 17.199 365.556 258.298) and its favicon colours — near-black
+// (viewBox 19.82 17.199 365.556 258.298) and its favicon colours: near-black
 // #070C0E card, off-white glyph.
 const manifest: PluginManifest = {
   id: "openrouter",

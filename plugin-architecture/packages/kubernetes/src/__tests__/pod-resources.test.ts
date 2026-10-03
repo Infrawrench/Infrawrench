@@ -81,7 +81,7 @@ describe("effectivePodResources", () => {
   it("charges a later init container for the sidecars already running", () => {
     // InitContainerUse(i) = Sum(sidecars before i) + InitContainer(i).
     // The 1-core init container runs while the 2-core sidecar is up, so the
-    // init peak is 3 — higher than the 2.5 steady state.
+    // init peak is 3: higher than the 2.5 steady state.
     const spec: K8sPodSpec = {
       initContainers: [container("sidecar", "2", undefined, "Always"), container("migrate", "1")],
       containers: [container("a", "500m")],

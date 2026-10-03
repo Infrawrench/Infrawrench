@@ -18,7 +18,7 @@ describe("buildCostEstimate", () => {
       { label: "A", monthlyAmount: 0.005 },
       { label: "B", monthlyAmount: 0.005 },
     ]);
-    // Both lines display as $0.01, so the total has to be $0.02 — summing the
+    // Both lines display as $0.01, so the total has to be $0.02: summing the
     // raw values first would display two 1-cent lines under a 1-cent total.
     expect(est?.lineItems.map((l) => l.monthlyAmount)).toEqual([0.01, 0.01]);
     expect(est?.monthlyAmount).toBe(0.02);

@@ -21,7 +21,7 @@ const TRANSCRIPT_TYPE = "transcript";
  * The singleton pseudo-resource that stands in for the API key itself.
  *
  * Transcripts only exist once the key has been used, and are purged after 90
- * days, so they cannot be the only place the Speech tab lives — a fresh (or
+ * days, so they cannot be the only place the Speech tab lives: a fresh (or
  * long-idle) account would have nothing to open. `listResources` always returns
  * exactly one of these, whatever else is in the account.
  */
@@ -37,7 +37,7 @@ const HOSTS: Record<string, string> = {
 /**
  * How many transcripts a sync pulls. `limit` is capped at 200 by the API, and
  * the account's history is a rolling 90-day window anyway, so there is no
- * "complete" number to reach for — this is a recent-activity window.
+ * "complete" number to reach for: this is a recent-activity window.
  */
 const LIST_LIMIT = 100;
 
@@ -54,7 +54,7 @@ const POLL_TIMEOUT_MS = 120_000;
  * Largest clip the Speech panel will accept, in bytes.
  *
  * This is deliberately far below the provider's own ceiling. The panel ships
- * audio base64-encoded inside a JSON body, and base64 inflates by 4/3 — with
+ * audio base64-encoded inside a JSON body, and base64 inflates by 4/3: with
  * the web ingress at `proxy-body-size: 36m` the real raw-audio ceiling is
  * ~27 MB, and a clip large enough to matter also blows up `FileReader`
  * (`RangeError: Invalid string length`) before it ever reaches the network.
@@ -91,7 +91,7 @@ interface TranscriptListResponse {
 /** https://www.assemblyai.com/docs/api-reference/transcripts/get */
 interface TranscriptWordWire {
   text?: string;
-  /** Milliseconds from the start of the clip — not seconds. */
+  /** Milliseconds from the start of the clip, not seconds. */
   start?: number;
   end?: number;
   confidence?: number;
@@ -144,7 +144,7 @@ const SPEECH_MODELS: SpeechPanelOption[] = [
 
 const DEFAULT_MODEL = "universal-3-5-pro";
 
-/** Sentinel for "let AssemblyAI detect it" — sent as `language_detection: true`
+/** Sentinel for "let AssemblyAI detect it": sent as `language_detection: true`
  *  rather than a `language_code`, because the two are mutually exclusive. */
 const AUTO_LANGUAGE = "auto";
 
@@ -196,7 +196,7 @@ const LANGUAGES: SpeechPanelOption[] = [
  * AssemblyAI plugin client. One per account (per API key + region).
  *
  * Everything here goes through `authorization: <key>` with **no** `Bearer`
- * prefix — AssemblyAI's async API takes the bare key, and adding `Bearer`
+ * prefix: AssemblyAI's async API takes the bare key, and adding `Bearer`
  * fails auth.
  */
 export class AssemblyAIClient implements PluginClient {
@@ -248,7 +248,7 @@ export class AssemblyAIClient implements PluginClient {
    * with `Content-Type: application/octet-stream` (**not** multipart), and the
    * shared helper's JSON defaults would fight that. It still prefers
    * `services.http` when the host provides one, so bastion egress routing and
-   * a custom CA keep working — that transport accepts a `Uint8Array` body and
+   * a custom CA keep working: that transport accepts a `Uint8Array` body and
    * hands back the (small, JSON) response as a string.
    */
   private async uploadAudio(bytes: Uint8Array): Promise<string> {
@@ -288,7 +288,7 @@ export class AssemblyAIClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    // Exactly one account, always — including on a key that has never
+    // Exactly one account, always, including on a key that has never
     // transcribed anything. That is the point of it.
     if (typeId === ACCOUNT_TYPE) return [await this.buildAccount(accountId)];
     if (typeId !== TRANSCRIPT_TYPE) {
@@ -299,7 +299,7 @@ export class AssemblyAIClient implements PluginClient {
 
     // The list endpoint only returns id/status/created/completed/audio_url/error.
     // Model, duration, language and confidence live on the full record, so
-    // hydrate each one — bounded, and tolerant of individual failures so one
+    // hydrate each one: bounded, and tolerant of individual failures so one
     // purged transcript doesn't blank the whole listing.
     const hydrated = await mapWithConcurrency(items, HYDRATE_CONCURRENCY, async (item) => {
       try {
@@ -431,8 +431,8 @@ export class AssemblyAIClient implements PluginClient {
   }
 
   /**
-   * The account view. Everything here is derived — AssemblyAI exposes no
-   * account, usage, billing or quota endpoint — but it is always renderable,
+   * The account view. Everything here is derived (AssemblyAI exposes no
+   * account, usage, billing or quota endpoint) but it is always renderable,
    * which is what makes it a safe home for the Speech tab.
    */
   private renderAccountDetail(resource: ResourceInstance): DetailViewSchema {
@@ -476,7 +476,7 @@ export class AssemblyAIClient implements PluginClient {
         {
           kind: "section",
           // Named for what it actually is. AssemblyAI has no usage, billing or
-          // quota endpoint, so this counts jobs in the 90-day retention window —
+          // quota endpoint, so this counts jobs in the 90-day retention window:
           // it is not a spend figure and does not include anything already purged.
           title: "Recent activity (90-day retention window)",
           children: [
@@ -571,7 +571,7 @@ export class AssemblyAIClient implements PluginClient {
       sections.push({
         kind: "section",
         // Named for what it actually is. AssemblyAI has no usage, billing or
-        // quota endpoint, so this counts jobs in the 90-day retention window —
+        // quota endpoint, so this counts jobs in the 90-day retention window:
         // it is not a spend figure and does not include anything already purged.
         title: "Recent activity (90-day retention window)",
         children: [
@@ -659,7 +659,7 @@ export class AssemblyAIClient implements PluginClient {
    * - https://www.assemblyai.com/docs/api-reference/transcripts/get
    *
    * `payload.mimeType` is whatever `MediaRecorder` produced (webm/opus on
-   * Chromium, mp4 on Safari) — AssemblyAI sniffs the container itself, so the
+   * Chromium, mp4 on Safari): AssemblyAI sniffs the container itself, so the
    * bytes go up untouched and the type is only used for the summary line.
    */
   async transcribeAudio(
@@ -668,7 +668,7 @@ export class AssemblyAIClient implements PluginClient {
     _accountId: string,
     payload: TranscribeAudioPayload,
   ): Promise<TranscribeAudioResult> {
-    // Both hosts of the Speech tab, and nothing else — the guard stays explicit
+    // Both hosts of the Speech tab, and nothing else: the guard stays explicit
     // about which types are valid rather than accepting anything.
     if (typeId !== ACCOUNT_TYPE && typeId !== TRANSCRIPT_TYPE) {
       throw new Error(`AssemblyAI plugin: transcribeAudio not supported for type "${typeId}"`);
@@ -690,7 +690,7 @@ export class AssemblyAIClient implements PluginClient {
       audio_url: audioUrl,
       // `speech_models` is an array of models in priority order, replacing the
       // deprecated singular `speech_model`. Asking for Universal-3.5 Pro also
-      // lists Universal-2 behind it — matching AssemblyAI's own default — so a
+      // lists Universal-2 behind it (matching AssemblyAI's own default) so a
       // language outside 3.5 Pro's 18 still transcribes instead of erroring.
       speech_models: model === DEFAULT_MODEL ? [DEFAULT_MODEL, "universal-2"] : [model],
       punctuate: true,
@@ -778,12 +778,12 @@ export class AssemblyAIClient implements PluginClient {
    * There is no endpoint that describes an AssemblyAI key, so the only honest
    * content is the same retention-window count `enrichDetail` computes. A
    * listing failure is swallowed on purpose: the account has to stay navigable
-   * — and the Speech tab usable — on a key that has never transcribed anything.
+   * (and the Speech tab usable) on a key that has never transcribed anything.
    */
   private async buildAccount(accountId: string): Promise<ResourceInstance> {
     let items: TranscriptListItem[] = [];
     // Whether the listing succeeded is the only signal this plugin has that the
-    // key works — AssemblyAI exposes no describe-key endpoint. Record it, so a
+    // key works: AssemblyAI exposes no describe-key endpoint. Record it, so a
     // revoked key does not render as a healthy account that merely happens to
     // have transcribed nothing. Note a 403 here is ambiguous: AssemblyAI uses it
     // for both auth failures and rate limiting.
@@ -881,7 +881,7 @@ export class AssemblyAIClient implements PluginClient {
 /**
  * AssemblyAI answers **rate-limit violations with 403, not 429**, and also
  * returns 403 when a key from a different project than the uploader's is used.
- * A bare 403 is therefore ambiguous — say so rather than letting the user
+ * A bare 403 is therefore ambiguous: say so rather than letting the user
  * conclude their key is wrong. Nothing in this plugin retries off 429.
  */
 function annotateError(err: unknown): Error {
@@ -893,7 +893,7 @@ function annotateError(err: unknown): Error {
 }
 
 function transcriptIdOf(resourceId: string): string {
-  // `{accountId}:transcript:{id}` — ids are UUIDs, so the tail is unambiguous.
+  // `{accountId}:transcript:{id}`: ids are UUIDs, so the tail is unambiguous.
   const parts = resourceId.split(":");
   const id = parts.length > 2 ? parts.slice(2).join(":") : resourceId;
   if (!id) throw new Error(`AssemblyAI plugin: cannot parse transcript id from "${resourceId}"`);

@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 /**
  * A team API key, managed through the Management API on
  * https://management-api.x.ai. Requires the optional management key
- * credential — without it this list is empty.
+ * credential: without it this list is empty.
  *
  * Docs: https://docs.x.ai/developers/rest-api-reference/management/auth
  * (GET/POST /auth/teams/{teamId}/api-keys, PUT/DELETE /auth/api-keys/{apiKeyId},
@@ -34,7 +34,7 @@ export const ApiKeyResourceType = rt({
     { fieldKey: "expireTime", from: "expiry", kind: "api-token", label: "Key expires" },
   ],
   // The type's only plugin-action is "rotate", which mints a new secret rather
-  // than withdrawing access, so no `revokeActionId` is declared — the review
+  // than withdrawing access, so no `revokeActionId` is declared: the review
   // must not offer a Revoke button that quietly does something else.
   principalRole: { role: "key", createdKey: "createTime", parentKey: "userId" },
   supportsCreate: true,

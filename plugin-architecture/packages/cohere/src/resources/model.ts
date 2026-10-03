@@ -6,7 +6,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * Verified: https://docs.cohere.com/reference/list-models
  * `GET /v1/models` → `{ models: [...], next_page_token }`.
  *
- * The model detail view carries the Speech tab — Cohere's transcription
+ * The model detail view carries the Speech tab: Cohere's transcription
  * endpoint is addressed by model id, so the model is the natural home for it.
  *
  * ⚠️ `is_deprecated` models stay in the list, so anything that builds a picker

@@ -25,7 +25,7 @@ function parseEnvTargets(raw: string): string[] {
 }
 
 /**
- * Terraform mapping for Vercel — provider `vercel/vercel`.
+ * Terraform mapping for Vercel: provider `vercel/vercel`.
  * Attribute names verified against the provider docs
  * (registry.terraform.io/providers/vercel/vercel):
  *   - vercel_project: `name` required; framework, root_directory, build_command,
@@ -33,7 +33,7 @@ function parseEnvTargets(raw: string): string[] {
  *   - vercel_project_domain: `project_id` + `domain` required (project-scoped only).
  *   - vercel_project_environment_variable: `project_id`, `key`, `sensitive` required;
  *     `value`/`value_wo` for the secret payload; `target` is a set.
- * Account-level domains listed without a project link are not mappable — the
+ * Account-level domains listed without a project link are not mappable: the
  * provider only exposes project domains. The API token is `var.vercel_api_token`.
  */
 export const vercelTerraformExport: TerraformExportCapability = {
@@ -128,7 +128,7 @@ export const vercelTerraformExport: TerraformExportCapability = {
         const attributes: Record<string, TerraformValue> = {
           project_id: tf.str(projectId),
           key: tf.str(key),
-          // Never inline secret values — reference a variable instead.
+          // Never inline secret values: reference a variable instead.
           value: tf.ref("var.vercel_env_value"),
           sensitive: tf.bool(fieldString(resource, "type") === "secret"),
         };

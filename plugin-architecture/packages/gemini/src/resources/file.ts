@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A file uploaded to the Gemini Files API. Files are temporary — the service
+ * A file uploaded to the Gemini Files API. Files are temporary: the service
  * deletes them automatically at `expirationTime`, 48 hours after upload.
  *
  * Verified: https://ai.google.dev/api/files

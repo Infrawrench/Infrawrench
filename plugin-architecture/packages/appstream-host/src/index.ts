@@ -1,5 +1,5 @@
 /**
- * `@infrawrench/appstream-host` — staging and running `iwappd` over an SSH
+ * `@infrawrench/appstream-host`: staging and running `iwappd` over an SSH
  * connection the caller supplies, and driving it headlessly.
  *
  * A plain re-export surface: `server.ts` holds the staging/exec machinery,

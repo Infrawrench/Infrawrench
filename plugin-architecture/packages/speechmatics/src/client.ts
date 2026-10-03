@@ -22,10 +22,10 @@ import { fetchSpeechmaticsCostData } from "./cost-data.js";
 /* Wire shapes                                                                 */
 /* -------------------------------------------------------------------------- */
 
-/** `JobDetails` — https://docs.speechmatics.com/batch.yaml (#/definitions/JobDetails). */
+/** `JobDetails`: https://docs.speechmatics.com/batch.yaml (#/definitions/JobDetails). */
 interface SpeechmaticsJob {
   id: string;
-  /** `running | done | rejected | deleted | expired` — the async lifecycle enum. */
+  /** `running | done | rejected | deleted | expired`: the async lifecycle enum. */
   status: string;
   created_at: string;
   data_name?: string;
@@ -57,7 +57,7 @@ interface RetrieveJobResponse {
 /**
  * `CreateJobResponse`. `status` here is the *sync-mode* enum
  * (`created | done | rejected | deleted`) and is only present when `wait` was
- * set — it is deliberately different from `JobDetails.status`.
+ * set: it is deliberately different from `JobDetails.status`.
  */
 interface CreateJobResponse {
   id: string;
@@ -76,12 +76,12 @@ interface TranscriptJsonV2 {
     type?: string;
     /**
      * The config the job was *submitted* with, echoed back. `language` here is
-     * the request, never a detection — for melia-1 it is always the literal
+     * the request, never a detection, for melia-1 it is always the literal
      * "multi". Never surface it to the user as a detected language.
      */
     transcription_config?: { language?: string; model?: string; operating_point?: string };
     /**
-     * `LanguageIdentificationResult` — the real language-ID output, present
+     * `LanguageIdentificationResult`: the real language-ID output, present
      * when the job ran with `language: "auto"` or a
      * `language_identification_config`. `error` is set instead of `results`
      * when identification failed (LOW_CONFIDENCE, NO_SPEECH, …).
@@ -104,7 +104,7 @@ interface TranscriptJsonV2 {
     alternatives?: Array<{
       content?: string;
       confidence?: number;
-      /** Per-item recognised language — populated by the multilingual packs. */
+      /** Per-item recognised language: populated by the multilingual packs. */
       language?: string;
       speaker?: string;
     }>;
@@ -113,7 +113,7 @@ interface TranscriptJsonV2 {
 
 /**
  * `UsageResponse`. Note the schema names the breakdown key `operating_point`
- * while the documented examples show `model` — both are parsed.
+ * while the documented examples show `model`: both are parsed.
  */
 interface UsageResponse {
   since?: string;
@@ -132,7 +132,7 @@ interface UsageDetails {
   duration_hrs?: number;
 }
 
-/** `GET /v1/discovery/features` — unauthenticated. */
+/** `GET /v1/discovery/features`: unauthenticated. */
 interface DiscoveryFeatures {
   metadata?: {
     language_pack_info?: Record<string, { language_description?: string }>;
@@ -148,7 +148,7 @@ interface DiscoveryFeatures {
   };
 }
 
-/** Management API project — `GET /projects`. */
+/** Management API project: `GET /projects`. */
 interface ManagementProject {
   project_id: number;
   name?: string;
@@ -159,7 +159,7 @@ interface ManagementProject {
   deleted_at?: string;
 }
 
-/** Management API key — `GET /api-keys`. */
+/** Management API key: `GET /api-keys`. */
 interface ManagementApiKey {
   apikey_id: string;
   name?: string;
@@ -178,7 +178,7 @@ interface StashedUsage {
   /**
    * Whether the authenticated /usage call actually succeeded. Discovery is
    * unauthenticated, so this is the only signal the plugin has that the API key
-   * works — without it a revoked key renders a healthy account showing zeroes,
+   * works: without it a revoked key renders a healthy account showing zeroes,
    * indistinguishable from a valid key that has transcribed nothing.
    */
   ok: boolean;
@@ -198,7 +198,7 @@ const MANAGEMENT_BASE_URL = "https://mp.api.speechmatics.com/v1";
 const VALID_REGIONS = ["eu1", "us1", "au1"] as const;
 
 /**
- * Documented batch input formats — "wav, mp3, aac, ogg, mpeg, amr, m4a, mp4,
+ * Documented batch input formats: "wav, mp3, aac, ogg, mpeg, amr, m4a, mp4,
  * flac". Speechmatics sniffs the container rather than trusting the filename,
  * and explicitly rejects raw/headerless audio.
  * https://docs.speechmatics.com/speech-to-text/batch/input
@@ -227,7 +227,7 @@ const ACCEPTED_AUDIO_TYPES = [
  * Largest clip the Speech panel will accept, in bytes.
  *
  * This is deliberately far below the provider's own ceiling. The panel ships
- * audio base64-encoded inside a JSON body, and base64 inflates by 4/3 — with
+ * audio base64-encoded inside a JSON body, and base64 inflates by 4/3: with
  * the web ingress at `proxy-body-size: 36m` the real raw-audio ceiling is
  * ~27 MB, and a clip large enough to matter also blows up `FileReader`
  * (`RangeError: Invalid string length`) before it ever reaches the network.
@@ -236,7 +236,7 @@ const ACCEPTED_AUDIO_TYPES = [
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // Speechmatics accepts 1 GB; our transport does not.
 
 /**
- * `#/definitions/Model` — "Specific model to use in transcription (previously
+ * `#/definitions/Model`: "Specific model to use in transcription (previously
  * called operating point)". Discovery does not enumerate these, so they come
  * from the OpenAPI enum.
  */
@@ -278,7 +278,7 @@ const USAGE_STASH_KEY = "__usage__";
  *
  * Jobs are purged 7 days after they run, and projects and API keys need the
  * optional management token, so none of the other types can be relied on to
- * exist. This one always does — it is what keeps the Speech tab reachable.
+ * exist. This one always does: it is what keeps the Speech tab reachable.
  */
 const ACCOUNT_TYPE = "account";
 const ACCOUNT_ID = "default";
@@ -335,13 +335,13 @@ export class SpeechmaticsClient implements PluginClient {
     return `https://${this.region}.asr.api.speechmatics.com/v2`;
   }
 
-  /** Same host, v1 prefix — where `/discovery/features` lives. */
+  /** Same host, v1 prefix, where `/discovery/features` lives. */
   private get discoveryUrl(): string {
     return `https://${this.region}.asr.api.speechmatics.com/v1/discovery/features`;
   }
 
   /**
-   * Always hand `jsonRestFetch` the host HTTP service when there is one — it
+   * Always hand `jsonRestFetch` the host HTTP service when there is one: it
    * is the only path that picks up bastion egress routing and the custom CA.
    */
   private get transportOptions():
@@ -370,7 +370,7 @@ export class SpeechmaticsClient implements PluginClient {
   }
 
   /**
-   * JSON call against the Management API — different host, different token.
+   * JSON call against the Management API: different host, different token.
    * https://docs.speechmatics.com/api-ref/management/get-all-projects
    */
   private async managementFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -421,7 +421,7 @@ export class SpeechmaticsClient implements PluginClient {
    *
    * `jsonRestFetch`'s `bodyForHostHttp` explicitly does not support `FormData`
    * (it would `String()` it into garbage), but it *does* pass a `Uint8Array`
-   * through untouched — so assembling the multipart bytes ourselves keeps the
+   * through untouched, so assembling the multipart bytes ourselves keeps the
    * upload on the host HTTP service, and therefore keeps bastion egress
    * routing and the custom CA working.
    */
@@ -451,7 +451,7 @@ export class SpeechmaticsClient implements PluginClient {
   }
 
   /**
-   * `POST /v2/jobs` — multipart with exactly two parts, `config` (a JSON
+   * `POST /v2/jobs`: multipart with exactly two parts, `config` (a JSON
    * *string*) and `data_file`. Returns 201 `{"id": "…"}`.
    * https://docs.speechmatics.com/batch.yaml
    */
@@ -502,7 +502,7 @@ export class SpeechmaticsClient implements PluginClient {
   /* ---------------------------------------------------------------------- */
 
   /**
-   * `GET /v1/discovery/features` — unauthenticated, and the only endpoint any
+   * `GET /v1/discovery/features`: unauthenticated, and the only endpoint any
    * of our speech providers exposes that enumerates live language packs. Used
    * to fill the Speech tab's language picker with real ids instead of a list
    * baked into this file.
@@ -518,7 +518,7 @@ export class SpeechmaticsClient implements PluginClient {
     return condenseDiscovery(data);
   }
 
-  /** Discovery is a nicety, never a hard dependency — fall back on failure. */
+  /** Discovery is a nicety, never a hard dependency: fall back on failure. */
   private async fetchDiscoverySafe(): Promise<StashedDiscovery> {
     try {
       return await this.fetchDiscovery();
@@ -532,7 +532,7 @@ export class SpeechmaticsClient implements PluginClient {
    * synchronous renderer.
    *
    * Both bounds are inclusive ISO calendar dates. Like discovery this is a
-   * nicety — a fresh key with no usage answers with empty rows, and a failure
+   * nicety: a fresh key with no usage answers with empty rows, and a failure
    * must not take the account (and with it the Speech tab) away, so the window
    * still comes back with zeroes.
    */
@@ -547,7 +547,7 @@ export class SpeechmaticsClient implements PluginClient {
     }
 
     // The schema names the breakdown key `operating_point` while the documented
-    // examples show `model`, and `summary` is the aggregate of `details` — take
+    // examples show `model`, and `summary` is the aggregate of `details`: take
     // whichever is populated.
     const rows = usage.summary?.length ? usage.summary : (usage.details ?? []);
     const condensed = rows.map((row) => ({
@@ -575,7 +575,7 @@ export class SpeechmaticsClient implements PluginClient {
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
       case ACCOUNT_TYPE:
-        // Exactly one, always — including on an account whose jobs have all
+        // Exactly one, always, including on an account whose jobs have all
         // expired and which has no management token.
         return [await this.buildAccount(accountId)];
       case "job":
@@ -797,7 +797,7 @@ export class SpeechmaticsClient implements PluginClient {
 
     if (typeId === "job") {
       const jobId = this.externalId(resourceId);
-      // `GET /v2/jobs/{jobid}` — https://docs.speechmatics.com/batch.yaml
+      // `GET /v2/jobs/{jobid}`: https://docs.speechmatics.com/batch.yaml
       const [detail, discovery] = await Promise.all([
         this.fetch<RetrieveJobResponse>(`/jobs/${encodeURIComponent(jobId)}`),
         // `renderDetail` is synchronous, so the Speech tab's pickers have to be
@@ -915,7 +915,7 @@ export class SpeechmaticsClient implements PluginClient {
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
     // `/usage` is account-wide, so the series belongs to the account view as
-    // much as to a job — and the account is the one that always exists.
+    // much as to a job, and the account is the one that always exists.
     if (resourceTypeId !== "job" && resourceTypeId !== ACCOUNT_TYPE) return [];
 
     const dayMs = 86_400_000;
@@ -1000,7 +1000,7 @@ export class SpeechmaticsClient implements PluginClient {
 
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
     if (typeId === "job") {
-      // `DELETE /v2/jobs/{jobid}?force=true` — without `force` a still-running
+      // `DELETE /v2/jobs/{jobid}?force=true`: without `force` a still-running
       // job answers HTTP 423 Locked instead of being removed.
       const jobId = this.externalId(resourceId);
       await this.fetch<unknown>(`/jobs/${encodeURIComponent(jobId)}?force=true`, {
@@ -1038,7 +1038,7 @@ export class SpeechmaticsClient implements PluginClient {
     _accountId: string,
     payload: TranscribeAudioPayload,
   ): Promise<TranscribeAudioResult> {
-    // The two types that carry the panel, and nothing else — the account (which
+    // The two types that carry the panel, and nothing else: the account (which
     // always exists) and a job (where it reads as "run this one again"). The
     // guard stays explicit rather than accepting any type.
     if (typeId !== ACCOUNT_TYPE && typeId !== "job") {
@@ -1078,7 +1078,7 @@ export class SpeechmaticsClient implements PluginClient {
     const jobId = created.id;
     if (!jobId) throw new Error("Speechmatics plugin: job submission returned no id");
 
-    // The sync-mode status enum is `created | done | rejected | deleted` — a
+    // The sync-mode status enum is `created | done | rejected | deleted`: a
     // different set to the async lifecycle enum on `GET /jobs/{id}`.
     if (created.status === "rejected") {
       throw new Error(`Speechmatics job ${jobId} was rejected before it could be transcribed`);
@@ -1091,7 +1091,7 @@ export class SpeechmaticsClient implements PluginClient {
 
     if (text === undefined) {
       // Either `wait` elapsed with the job still running, or the transcript
-      // simply was not embedded — both land here.
+      // simply was not embedded: both land here.
       const finalStatus = await this.waitForTerminalStatus(jobId, deadline);
       if (finalStatus === "rejected") {
         throw new Error(`Speechmatics job ${jobId} was rejected by the transcriber`);
@@ -1364,7 +1364,7 @@ export class SpeechmaticsClient implements PluginClient {
   }
 
   /**
-   * The account view — the one detail page that always renders, and therefore
+   * The account view: the one detail page that always renders, and therefore
    * the reliable home of the Speech tab.
    *
    * Both the usage numbers and the language-pack list were fetched in
@@ -1675,8 +1675,8 @@ function parseStashedDiscovery(raw: string | undefined): StashedDiscovery {
 }
 
 /**
- * Read back the stashed usage summary. An account whose `/usage` call failed —
- * or which was rendered from a cached instance predating the stash — still has
+ * Read back the stashed usage summary. An account whose `/usage` call failed
+ * (or which was rendered from a cached instance predating the stash) still has
  * to produce a view, so this degrades to an empty window rather than throwing.
  */
 function parseStashedUsage(raw: string | undefined): StashedUsage {
@@ -1701,7 +1701,7 @@ function parseStashedUsage(raw: string | undefined): StashedUsage {
 
 /**
  * Pull word timings out of a json-v2 transcript. Only `type: "word"` items
- * become rows — punctuation carries no useful timing for the table — and the
+ * become rows (punctuation carries no useful timing for the table) and the
  * mean of their confidences stands in for an overall score, which the API
  * does not report directly.
  */
@@ -1714,11 +1714,11 @@ function parseStashedUsage(raw: string | undefined): StashedUsage {
  * picker was set to.
  *
  * Two genuine sources, in order:
- *  1. `metadata.language_identification` — the language-ID feature's own
+ *  1. `metadata.language_identification`: the language-ID feature's own
  *     output, emitted for `language: "auto"` jobs. It is segmented, so the
  *     per-segment top alternatives are summed by confidence and the highest
  *     total wins.
- *  2. `results[].alternatives[].language` — the per-word language the
+ *  2. `results[].alternatives[].language`: the per-word language the
  *     multilingual packs tag each token with. Only used when every recognised
  *     word agrees; a genuinely code-switched clip has no single language and
  *     is better left blank than reduced to its most common one.

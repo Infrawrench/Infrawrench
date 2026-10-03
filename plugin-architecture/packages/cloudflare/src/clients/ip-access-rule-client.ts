@@ -3,7 +3,7 @@ import type { CloudflareApi } from "./shared.js";
 import { asRecord, collectPerZone, resolveZoneName } from "./shared.js";
 
 /**
- * Cloudflare IP Access Rules (`/zones/{id}/firewall/access_rules/rules`) — the
+ * Cloudflare IP Access Rules (`/zones/{id}/firewall/access_rules/rules`): the
  * classic allow/block/challenge list keyed by IP, CIDR, ASN, or country. Each
  * rule's externalId is `<zoneId>/<ruleId>` so delete can address it directly.
  */

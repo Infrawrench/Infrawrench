@@ -4,7 +4,7 @@ import { queryPostCall } from "../client-transport.js";
 import { ensureArray } from "../xml.js";
 
 /**
- * CloudWatch (`monitoring`) speaks the AWS Query protocol, not JSON-RPC —
+ * CloudWatch (`monitoring`) speaks the AWS Query protocol, not JSON-RPC:
  * sending a JSON-RPC body returns 404 from the endpoint and silently breaks
  * every metric series. Build the `Dimensions.member.N` and `Statistics.member.N`
  * forms the Query API expects.

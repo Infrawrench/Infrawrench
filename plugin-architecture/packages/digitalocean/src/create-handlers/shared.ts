@@ -5,7 +5,7 @@
  * `<domain>GetCreateConfig` and a `<domain>CreateResource`. Both return
  * `null` for a `typeId` they do not own so `../create-handlers.ts` can try the
  * next module; the arms are mutually exclusive, so module order carries no
- * meaning. Leaf module — it must not import from any domain module.
+ * meaning. Leaf module: it must not import from any domain module.
  */
 import type {
   CreateResourceConfig,

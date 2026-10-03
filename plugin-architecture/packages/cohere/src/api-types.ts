@@ -1,20 +1,20 @@
 /**
  * Wire types for the Cohere Platform API.
  *
- * Base URL is `https://api.cohere.com` — *not* `api.cohere.ai`, which only
+ * Base URL is `https://api.cohere.com`, *not* `api.cohere.ai`, which only
  * survives on stale pages. Auth is `Authorization: Bearer <key>`, plus the
  * optional `X-Client-Name` header Cohere asks integrators to set.
  *
  * Note the version split: **management endpoints are still `/v1/`**. Only the
  * inference surface (chat, embed, rerank, transcriptions) and the newer
- * batches API live on `/v2/`. Do not "modernise" the `/v1/` paths below — the
+ * batches API live on `/v2/`. Do not "modernise" the `/v1/` paths below: the
  * `/v2/` equivalents do not exist.
  *
  * Every shape here is transcribed from the OpenAPI fragments Cohere serves by
  * appending `.md` to a reference URL.
  */
 
-/** `POST /v1/check-api-key` — https://docs.cohere.com/reference/check-api-key */
+/** `POST /v1/check-api-key`: https://docs.cohere.com/reference/check-api-key */
 export interface CheckApiKeyResponse {
   valid: boolean;
   organization_id?: string;
@@ -22,12 +22,12 @@ export interface CheckApiKeyResponse {
 }
 
 /**
- * `GET /v1/models` — https://docs.cohere.com/reference/list-models
+ * `GET /v1/models`: https://docs.cohere.com/reference/list-models
  *
  * No property on `GetModelResponse` is marked required.
  *
  * `features` is spec'd as a bare `array of string` with **no enum**, so it is
- * modelled as an open set — do not switch on specific values.
+ * modelled as an open set: do not switch on specific values.
  *
  * `supports_vision` is deliberately absent: it does not appear in the
  * documented schema, so this plugin does not depend on it.
@@ -54,7 +54,7 @@ export interface CohereModel {
 
 /**
  * The complete `CompatibleEndpoint` enum. Note there is **no** `transcribe` or
- * `audio` member despite `/v2/audio/transcriptions` existing — the speech
+ * `audio` member despite `/v2/audio/transcriptions` existing: the speech
  * model is not discoverable through the endpoint filter.
  */
 type CompatibleEndpoint =
@@ -67,7 +67,7 @@ export interface ListModelsResponse {
 }
 
 /**
- * `GET /v1/datasets` — https://docs.cohere.com/reference/list-datasets
+ * `GET /v1/datasets`: https://docs.cohere.com/reference/list-datasets
  *
  * ⚠️ This endpoint's query parameters are camelCase (`datasetType`,
  * `validationStatus`) while its response fields are snake_case.
@@ -112,9 +112,9 @@ export interface ListDatasetsResponse {
 }
 
 /**
- * `GET /v1/datasets/usage` — https://docs.cohere.com/reference/get-dataset-usage
+ * `GET /v1/datasets/usage`: https://docs.cohere.com/reference/get-dataset-usage
  * Total bytes of dataset storage used by the organization, against a 10 GB cap.
- * This is the *only* aggregate usage number Cohere exposes over the API — it
+ * This is the *only* aggregate usage number Cohere exposes over the API: it
  * measures storage, not tokens and not spend.
  */
 export interface DatasetUsageResponse {
@@ -122,7 +122,7 @@ export interface DatasetUsageResponse {
 }
 
 /**
- * `GET /v1/finetuning/finetuned-models` —
+ * `GET /v1/finetuning/finetuned-models`:
  * https://docs.cohere.com/reference/listfinetunedmodels
  *
  * ⚠️ The whole fine-tuning group is filed under "Deprecated" in Cohere's API
@@ -199,8 +199,8 @@ export interface ListTrainingStepMetricsResponse {
 }
 
 /**
- * `GET /v1/embed-jobs` — https://docs.cohere.com/reference/list-embed-jobs
- * ⚠️ This endpoint documents **no** query parameters at all — no pagination.
+ * `GET /v1/embed-jobs` (https://docs.cohere.com/reference/list-embed-jobs
+ * ⚠️ This endpoint documents **no** query parameters at all) no pagination.
  */
 export interface CohereEmbedJob {
   job_id?: string;
@@ -220,7 +220,7 @@ export interface ListEmbedJobsResponse {
   embed_jobs?: CohereEmbedJob[];
 }
 
-/** `GET /v2/batches` — https://docs.cohere.com/reference/list-batches */
+/** `GET /v2/batches`: https://docs.cohere.com/reference/list-batches */
 export interface CohereBatch {
   id?: string;
   name?: string;
@@ -262,11 +262,11 @@ interface ApiMeta {
 }
 
 /**
- * `POST /v2/audio/transcriptions` — https://docs.cohere.com/reference/create-audio-transcription
+ * `POST /v2/audio/transcriptions`: https://docs.cohere.com/reference/create-audio-transcription
  *
  * The documented response body is **exactly** `{ text }`, with `text`
  * required. There is no duration, no detected language, no segments, and no
- * usage block — so the Speech panel leaves `words`, `durationSeconds` and
+ * usage block, so the Speech panel leaves `words`, `durationSeconds` and
  * `confidence` unset rather than fabricating them.
  */
 export interface TranscriptionResponse {

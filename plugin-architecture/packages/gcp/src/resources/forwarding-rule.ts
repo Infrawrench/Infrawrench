@@ -15,7 +15,7 @@ export const ForwardingRuleResourceType = rt({
     f("networkTier", "Network Tier", { required: false }),
   ],
   outputs: [o("IPAddress", "IP Address")],
-  // Only reserved addresses match — an ephemeral IP names no static-ip resource.
+  // Only reserved addresses match: an ephemeral IP names no static-ip resource.
   dependsOn: [
     { fieldKey: "IPAddress", targetTypeId: "static-ip", targetKey: "address", label: "uses ip" },
   ],

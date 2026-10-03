@@ -32,7 +32,7 @@ export interface K8sNode {
   status?: {
     conditions?: Array<{ type: string; status: string }>;
     /**
-     * Total machine size — what the cloud invoice is for. Distinct from
+     * Total machine size: what the cloud invoice is for. Distinct from
      * `allocatable`, which subtracts kube-reserved, system-reserved and
      * eviction headroom and is what the scheduler actually hands out.
      */
@@ -86,7 +86,7 @@ export interface K8sPodSpec {
   resources?: K8sResourceRequirements;
   /** Runtime overhead the scheduler reserves on top of the containers. */
   overhead?: Record<string, string>;
-  /** The node the scheduler placed the pod on — empty while still Pending. */
+  /** The node the scheduler placed the pod on: empty while still Pending. */
   nodeName?: string;
   serviceAccountName?: string;
   imagePullSecrets?: Array<{ name?: string }>;
@@ -96,8 +96,8 @@ export interface K8sPodSpec {
     /**
      * The only link from a pod to a PersistentVolumeClaim, and therefore the
      * only way to attribute a disk to a workload. `claimName` always names a
-     * PVC in the *pod's own namespace* — the API reference is explicit about
-     * that — so no qualification is needed beyond the pod's namespace.
+     * PVC in the *pod's own namespace*: the API reference is explicit about
+     * that, so no qualification is needed beyond the pod's namespace.
      */
     persistentVolumeClaim?: { claimName?: string; readOnly?: boolean };
     projected?: {
@@ -144,7 +144,7 @@ export interface K8sService {
     clusterIP?: string;
     ports?: Array<{ port: number; targetPort: number | string; protocol: string; name?: string }>;
     /**
-     * Services take **equality-based selectors only** — a plain map, never a
+     * Services take **equality-based selectors only**: a plain map, never a
      * `matchExpressions` block. (The labels concept page: "Label selectors for
      * both objects are defined in json or yaml files using maps, and only
      * equality-based requirement selectors are supported".) So matching a
@@ -153,7 +153,7 @@ export interface K8sService {
     selector?: Record<string, string>;
     /**
      * Names a non-default load-balancer implementation. Present means some
-     * controller other than the cloud provider's built-in one provisions it —
+     * controller other than the cloud provider's built-in one provisions it,
      * which may or may not be a billed cloud LB, so it is reported rather than
      * used to decide the price.
      */
@@ -168,7 +168,7 @@ export interface K8sService {
  * provisioned size.
  *
  * `status.phase` is `Pending` | `Bound` | `Lost`. `status.capacity.storage` is
- * what the provisioner really made (which can exceed the request — providers
+ * what the provisioner really made (which can exceed the request: providers
  * round up to their own minimum), so it is the honest thing to price; the
  * request is only a fallback for a claim that has not bound yet.
  */

@@ -27,12 +27,12 @@ import {
 const OPENAI_BASE = "https://api.groq.com/openai/v1";
 
 /**
- * Fine-tuning lives on a *different* base — no `/openai` segment.
+ * Fine-tuning lives on a *different* base: no `/openai` segment.
  * https://console.groq.com/docs/lora
  */
 const ROOT_BASE = "https://api.groq.com/v1";
 
-/** Groq's console — there is no usage or billing API to read instead. */
+/** Groq's console: there is no usage or billing API to read instead. */
 const USAGE_CONSOLE_URL = "https://console.groq.com/dashboard/usage";
 
 /**
@@ -52,7 +52,7 @@ const MAX_TTS_CHARACTERS = 200;
 /**
  * Fallbacks used only when the live model list hasn't been stashed on the
  * resource yet (cold cache, offline render, contract tests). The live list
- * from `GET /openai/v1/models` always wins — Groq deprecates models on a
+ * from `GET /openai/v1/models` always wins: Groq deprecates models on a
  * rolling schedule and a stale constant would offer a model that 404s.
  */
 const FALLBACK_STT_MODELS = ["whisper-large-v3-turbo", "whisper-large-v3"];
@@ -216,7 +216,7 @@ function extensionFor(mimeType: string): string {
  *
  * Covers the model catalogue, batch jobs, uploaded files, registered LoRA
  * adapters, and the Speech playground (Whisper transcription + Orpheus
- * synthesis). Groq publishes no usage, cost, or API-key management API — the
+ * synthesis). Groq publishes no usage, cost, or API-key management API: the
  * console is the only surface for those, and the detail views say so rather
  * than rendering an empty chart.
  */
@@ -239,7 +239,7 @@ export class GroqClient implements PluginClient {
   }
 
   /**
-   * JSON calls against the root base. Only fine-tuning lives here — Groq's
+   * JSON calls against the root base. Only fine-tuning lives here: Groq's
    * LoRA registry is *not* under `/openai`, so a single-base client would
    * silently 404 on every fine-tuning call.
    * https://console.groq.com/docs/lora
@@ -280,7 +280,7 @@ export class GroqClient implements PluginClient {
     }
   }
 
-  /** https://console.groq.com/docs/api-reference — `GET /openai/v1/models` */
+  /** https://console.groq.com/docs/api-reference: `GET /openai/v1/models` */
   private async listModels(accountId: string): Promise<ResourceInstance[]> {
     const data = await this.fetch<{ data?: GroqModel[] }>("/models");
     const now = new Date().toISOString();
@@ -314,7 +314,7 @@ export class GroqClient implements PluginClient {
     };
   }
 
-  /** https://console.groq.com/docs/api-reference — `GET /openai/v1/batches` */
+  /** https://console.groq.com/docs/api-reference: `GET /openai/v1/batches` */
   private async listBatches(accountId: string): Promise<ResourceInstance[]> {
     const data = await this.fetch<{ data?: GroqBatch[] }>("/batches");
     const now = new Date().toISOString();
@@ -354,7 +354,7 @@ export class GroqClient implements PluginClient {
     };
   }
 
-  /** https://console.groq.com/docs/api-reference — `GET /openai/v1/files` */
+  /** https://console.groq.com/docs/api-reference: `GET /openai/v1/files` */
   private async listFiles(accountId: string): Promise<ResourceInstance[]> {
     const data = await this.fetch<{ data?: GroqFile[] }>("/files");
     const now = new Date().toISOString();
@@ -386,7 +386,7 @@ export class GroqClient implements PluginClient {
     };
   }
 
-  /** https://console.groq.com/docs/lora — `GET https://api.groq.com/v1/fine_tunings` */
+  /** https://console.groq.com/docs/lora: `GET https://api.groq.com/v1/fine_tunings` */
   private async listFineTunings(accountId: string): Promise<ResourceInstance[]> {
     const data = await this.rootFetch<{ data?: GroqFineTuning[] }>("/fine_tunings");
     const now = new Date().toISOString();
@@ -436,7 +436,7 @@ export class GroqClient implements PluginClient {
       // `renderDetail` is synchronous but the Speech tab's model pickers have
       // to reflect Groq's live catalogue (models are deprecated on a rolling
       // schedule). Stash the audio subset here and parse it back in the
-      // renderer — same trick the Cloudflare queue plugin uses for
+      // renderer: same trick the Cloudflare queue plugin uses for
       // `__consumers__`.
       const stash: AudioModelStash = { stt: [], tts: [] };
       for (const resource of all) {
@@ -473,7 +473,7 @@ export class GroqClient implements PluginClient {
       throw new Error(`Groq plugin: ${typeId} cannot be created through the API`);
     }
 
-    // Both pickers are populated from live calls — the user never has to know
+    // Both pickers are populated from live calls: the user never has to know
     // a file id or type out a base-model slug.
     const [files, models] = await Promise.all([
       this.fetch<{ data?: GroqFile[] }>("/files").catch(() => ({ data: [] as GroqFile[] })),
@@ -530,7 +530,7 @@ export class GroqClient implements PluginClient {
     };
   }
 
-  /** https://console.groq.com/docs/lora — `POST https://api.groq.com/v1/fine_tunings` */
+  /** https://console.groq.com/docs/lora: `POST https://api.groq.com/v1/fine_tunings` */
   async createResource(
     typeId: string,
     accountId: string,
@@ -569,13 +569,13 @@ export class GroqClient implements PluginClient {
     if (!externalId) throw new Error(`Groq plugin: cannot parse resource id "${resourceId}"`);
 
     switch (typeId) {
-      // https://console.groq.com/docs/api-reference — `DELETE /openai/v1/files/{file_id}`
+      // https://console.groq.com/docs/api-reference: `DELETE /openai/v1/files/{file_id}`
       case "groq-file":
         await this.fetch<unknown>(`/files/${encodeURIComponent(externalId)}`, {
           method: "DELETE",
         });
         return;
-      // https://console.groq.com/docs/lora — `DELETE /v1/fine_tunings/{id}`
+      // https://console.groq.com/docs/lora: `DELETE /v1/fine_tunings/{id}`
       case "groq-fine-tuning":
         await this.rootFetch<unknown>(`/fine_tunings/${encodeURIComponent(externalId)}`, {
           method: "DELETE",
@@ -586,7 +586,7 @@ export class GroqClient implements PluginClient {
     }
   }
 
-  /** https://console.groq.com/docs/api-reference — `POST /openai/v1/batches/{id}/cancel` */
+  /** https://console.groq.com/docs/api-reference: `POST /openai/v1/batches/{id}/cancel` */
   async invokeAction(
     typeId: string,
     resourceId: string,
@@ -607,7 +607,7 @@ export class GroqClient implements PluginClient {
 
   /**
    * Text-to-speech.
-   * https://console.groq.com/docs/text-to-speech — `POST /openai/v1/audio/speech`
+   * https://console.groq.com/docs/text-to-speech: `POST /openai/v1/audio/speech`
    *
    * Returns **raw audio bytes**, not JSON, so this deliberately bypasses
    * `jsonRestFetch` (which would try to `JSON.parse` a WAV file) and with it
@@ -629,7 +629,7 @@ export class GroqClient implements PluginClient {
     }
 
     const voice = payload.voiceId || DEFAULT_VOICE;
-    // The voice implies its checkpoint — an Arabic voice on the English model
+    // The voice implies its checkpoint: an Arabic voice on the English model
     // is a 400. Prefer the voice's own model over whatever the shared model
     // dropdown happened to be showing.
     const voiceModel = ORPHEUS_VOICES.find((v) => v.id === voice)?.model;
@@ -667,7 +667,7 @@ export class GroqClient implements PluginClient {
 
   /**
    * Speech-to-text.
-   * https://console.groq.com/docs/speech-to-text — `POST /openai/v1/audio/transcriptions`
+   * https://console.groq.com/docs/speech-to-text: `POST /openai/v1/audio/transcriptions`
    *
    * Multipart, so this goes through global `fetch` with a real `FormData`:
    * `jsonRestFetch`'s host-http path stringifies `FormData` rather than
@@ -694,7 +694,7 @@ export class GroqClient implements PluginClient {
     }
 
     // Forward whatever MediaRecorder produced (webm/opus on Chromium, mp4 on
-    // Safari) verbatim — Groq accepts both and transcoding here would only
+    // Safari) verbatim: Groq accepts both and transcoding here would only
     // lose fidelity.
     const fileName = payload.fileName || `clip.${extensionFor(payload.mimeType)}`;
     const form = new FormData();

@@ -4,7 +4,7 @@
  * A plugin that can report actual (billed or billable) spend for an account
  * declares a `costs` capability on its manifest and implements
  * `PluginClient.fetchCostData`. The host owns scheduling (a low-frequency
- * background pass — provider billing APIs are rate-limited and sometimes
+ * background pass; provider billing APIs are rate-limited and sometimes
  * billed per request), storage, and rendering; the plugin owns everything
  * provider-specific: which billing API to call, pagination, and normalizing
  * the response into daily {@link CostRow}s.
@@ -14,7 +14,7 @@
 export interface CostCapabilityDeclaration {
   /**
    * Dimensions this provider can break costs down by. `provider` and
-   * `account` always exist — the host derives them from the account row —
+   * `account` always exist (the host derives them from the account row)
    * so only finer-grained dimensions are declared here. Omit `resource` for
    * providers where per-resource rows would explode cardinality.
    */
@@ -37,8 +37,8 @@ export interface CostCapabilityDeclaration {
    */
   periodNative?: boolean;
   /**
-   * True when this provider's rows carry a meaningful {@link CostRow.chargeType}
-   * — that is, the plugin can tell usage apart from a credit, a tax line, a
+   * True when this provider's rows carry a meaningful {@link CostRow.chargeType}:
+   * that is, the plugin can tell usage apart from a credit, a tax line, a
    * refund, or the purchase of a commitment.
    *
    * Declaring it false (the default) is not a claim that the provider only ever
@@ -50,7 +50,7 @@ export interface CostCapabilityDeclaration {
   chargeTypes?: boolean;
   /**
    * True when this provider reports an amortized amount distinct from the cash
-   * amount — the up-front fee of a reservation, savings plan, or committed-use
+   * amount: the up-front fee of a reservation, savings plan, or committed-use
    * discount spread across the term it buys, rather than landed whole on the
    * day it was charged.
    *
@@ -102,9 +102,9 @@ export interface CostCapabilityDeclaration {
  * negative usage, tax inflates every service breakdown. Splitting the rows by
  * what kind of charge they are is what makes each of those visible.
  *
- * - `usage` — consumption billed at whatever rate applied. The default, and
+ * - `usage`: consumption billed at whatever rate applied. The default, and
  *   what every row without a charge type is.
- * - `commitment_covered_usage` — consumption a reservation, savings plan or
+ * - `commitment_covered_usage`: consumption a reservation, savings plan or
  *   committed-use discount covered. Still consumption, which is why it is not
  *   `commitment_discount`; but distinguishable from on-demand consumption,
  *   which is what makes coverage measurable.
@@ -116,14 +116,14 @@ export interface CostCapabilityDeclaration {
  *   filter-only dimensions in Cost Explorer and cannot be grouped by. Azure
  *   can say which (`BenefitId`) but only on EA/MCA agreements. A coverage
  *   ratio that depended on the id would therefore read 0% on AWS forever and
- *   0% on Azure pay-as-you-go — worse than saying "unavailable". Stamping the
+ *   0% on Azure pay-as-you-go: worse than saying "unavailable". Stamping the
  *   charge type costs neither provider an extra call, and the host's coverage
  *   numerator counts a row that carries *either* signal (without
  *   double-counting one that carries both).
  *
  *   Note what this member does **not** claim: nothing about the rate, and
  *   nothing about which holding. A plugin that knows the holding sets
- *   `commitmentId` as well — the two are complementary, not alternatives.
+ *   `commitmentId` as well: the two are complementary, not alternatives.
  *
  *   Set `amortizedAmount` on these rows wherever the provider reports one.
  *   Both AWS and Azure price covered usage at zero on the cash basis (an RI's
@@ -131,24 +131,24 @@ export interface CostCapabilityDeclaration {
  *   zero), because the money left the account when the commitment was bought.
  *   Cash-basis covered spend is therefore structurally zero, and the amortized
  *   amount is the only honest number for these rows.
- * - `commitment_fee` — buying a commitment: a reservation's up-front payment,
+ * - `commitment_fee`: buying a commitment: a reservation's up-front payment,
  *   a savings plan's recurring fee, a committed-use contract. Cash out the door
  *   on one day for capacity spanning months, which is exactly the row
  *   {@link CostRow.amortizedAmount} exists to re-date.
- * - `commitment_discount` — the (negative) line a provider writes when a
+ * - `commitment_discount`: the (negative) line a provider writes when a
  *   commitment covers usage that would otherwise have been billed on demand.
  *   Distinct from `commitment_covered_usage`: the discount is the offsetting
  *   line, the covered usage is the consumption it offsets. A provider that
  *   writes both (AWS Savings Plans) produces one of each; a provider whose
  *   discount is baked into the rate (AWS Reserved Instances) produces only the
  *   covered-usage row.
- * - `credit` — promotional or negotiated credit applied against the bill.
- * - `tax` — VAT, sales tax, and the like, billed separately from the service.
- * - `refund` — money returned for a past charge.
- * - `adjustment` — a billing correction that is none of the above.
- * - `support` — a support plan or contract, usually priced off the rest of the
+ * - `credit`: promotional or negotiated credit applied against the bill.
+ * - `tax`: VAT, sales tax, and the like, billed separately from the service.
+ * - `refund`: money returned for a past charge.
+ * - `adjustment`: a billing correction that is none of the above.
+ * - `support`: a support plan or contract, usually priced off the rest of the
  *   bill rather than off any one service.
- * - `other` — the provider distinguishes a category this union does not. Better
+ * - `other`: the provider distinguishes a category this union does not. Better
  *   than silently filing it under `usage`, which would overstate consumption.
  */
 export type CostChargeType =
@@ -192,7 +192,7 @@ export interface CostRow {
   /** Unit for `usageAmount`, e.g. "GB-Hours". */
   usageUnit?: string;
   /**
-   * What kind of charge this row is. Absent means `"usage"` — every plugin
+   * What kind of charge this row is. Absent means `"usage"`: every plugin
    * written before this field existed keeps reporting consumption, which is
    * what it was reporting.
    *
@@ -209,7 +209,7 @@ export interface CostRow {
    *
    * `amount` is cash: what the provider charged on `date`. For consumption the
    * two agree, and most rows should leave this unset rather than duplicating
-   * the number. They diverge for commitments — a one-year reservation paid up
+   * the number. They diverge for commitments: a one-year reservation paid up
    * front is a single enormous `amount` on the purchase day and 1/365th of it
    * on each of the 365 days it buys. Only the second answers "what did this
    * service cost us in July".
@@ -223,7 +223,7 @@ export interface CostRow {
   amortizedAmount?: number;
   /**
    * Provider-native id of the reservation, savings plan, or committed-use
-   * discount this row is attributable to — the purchase itself, the discount it
+   * discount this row is attributable to: the purchase itself, the discount it
    * produced, and the usage it covered all carry the same id.
    *
    * It is what makes a commitment auditable after the fact: without it the
@@ -232,9 +232,9 @@ export interface CostRow {
    * reservation paid for itself.
    *
    * **Per-commitment utilization needs this; coverage does not.** Most
-   * providers cannot report it — Cost Explorer can filter by
+   * providers cannot report it: Cost Explorer can filter by
    * `SAVINGS_PLAN_ARN` / `RESERVATION_ID` but not group by them, and Azure's
-   * `BenefitId` column only exists on EA/MCA agreements — so the host derives
+   * `BenefitId` column only exists on EA/MCA agreements, so the host derives
    * coverage from `chargeType: "commitment_covered_usage"` instead, and treats
    * this id as the strictly better answer where a provider has it. Omit it
    * rather than inventing a key that joins to nothing.
@@ -248,7 +248,7 @@ export interface CostRow {
  * A commitment is capacity bought ahead of use: an AWS Reserved Instance or
  * Savings Plan, a GCP committed-use discount, an Azure reservation. They are
  * the largest single lever on a big cloud bill, and they are invisible in a
- * spend graph — the purchase is one spike, the discount is a slightly lower
+ * spend graph: the purchase is one spike, the discount is a slightly lower
  * slope, and whether the thing is paying for itself is a question no daily
  * total answers. This contract makes the holdings themselves first-class:
  * a plugin that can list them declares `commitments` on its manifest and
@@ -266,12 +266,12 @@ export interface CostRow {
 /**
  * What was bought.
  *
- * - `reservation` — capacity for a specific resource shape (EC2/RDS RIs,
+ * - `reservation`: capacity for a specific resource shape (EC2/RDS RIs,
  *   Azure reservations). Usually scoped to an instance family and often a
  *   region or zone.
- * - `savings_plan` — a spend commitment ("$X/hour of compute, whatever it
+ * - `savings_plan`: a spend commitment ("$X/hour of compute, whatever it
  *   runs on") rather than a capacity one. AWS Savings Plans.
- * - `committed_use` — GCP's contract form: committed *units* of resource
+ * - `committed_use`: GCP's contract form: committed *units* of resource
  *   (vCPUs, GB of memory) in a region for a term.
  */
 export type CommitmentKind = "reservation" | "savings_plan" | "committed_use";
@@ -297,7 +297,7 @@ export type CommitmentState = "active" | "expired" | "queued";
 /**
  * How the commitment is paid for. `all_upfront` / `partial_upfront` /
  * `no_upfront` are the AWS trichotomy; `monthly` is Azure's billing-plan
- * form (the whole price in monthly installments — distinct from
+ * form (the whole price in monthly installments: distinct from
  * `no_upfront`, which is pay-per-use-hour at the discounted rate).
  */
 export type CommitmentPaymentOption = "all_upfront" | "partial_upfront" | "no_upfront" | "monthly";
@@ -305,7 +305,7 @@ export type CommitmentPaymentOption = "all_upfront" | "partial_upfront" | "no_up
 /**
  * One committed unit quantity for a unit-denominated commitment (GCP CUDs):
  * `{ unit: "VCPU", amount: 32 }`, `{ unit: "MEMORY_GB", amount: 128 }`.
- * The unit string is provider-native and passed through untranslated — the
+ * The unit string is provider-native and passed through untranslated: the
  * reader is going to compare it against the provider's console.
  */
 export interface CommitmentUnitAmount {
@@ -314,7 +314,7 @@ export interface CommitmentUnitAmount {
 }
 
 /**
- * One provider-reported utilization aggregate — Azure is the only provider
+ * One provider-reported utilization aggregate: Azure is the only provider
  * that returns its own utilization on the list response, at 1/7/30-day
  * grains. Passed through verbatim and **never blended with anything the host
  * derives**: the provider's number is computed against the provider's own
@@ -331,63 +331,63 @@ export interface CommitmentProviderUtilization {
 /**
  * One commitment, as the provider reports it.
  *
- * Field register — every field, what it means, and why it is optional when
+ * Field register: every field, what it means, and why it is optional when
  * it is:
  *
- * - `id` — provider-native identifier, and the join key against
+ * - `id`: provider-native identifier, and the join key against
  *   {@link CostRow.commitmentId}. Use whatever the billing data carries:
  *   EC2's `DescribeReservedInstances` returns no ARN, so the bare
  *   reservation id is the key there; RDS RIs and Savings Plans have ARNs in
- *   the billing data, so prefer those. Must be stable across fetches —
+ *   the billing data, so prefer those. Must be stable across fetches:
  *   it is the upsert identity.
- * - `kind` — see {@link CommitmentKind}.
- * - `description` — human-readable summary ("2× m5.xlarge Linux/UNIX",
+ * - `kind`: see {@link CommitmentKind}.
+ * - `description`: human-readable summary ("2× m5.xlarge Linux/UNIX",
  *   "Compute Savings Plan", the reservation's display name). Never empty;
  *   this is the row label.
- * - `scope` — provider scope qualifier when one exists: an AZ for a
+ * - `scope`: provider scope qualifier when one exists: an AZ for a
  *   zonal RI, "Shared"/"Single" for an Azure applied-scope, an EC2 instance
  *   family for an EC2 Instance Savings Plan. Omit when the provider has no
  *   such concept for this record.
- * - `region` — provider region the commitment applies to. **Absent is a real
+ * - `region`: provider region the commitment applies to. **Absent is a real
  *   state, not missing data**: an AWS Compute Savings Plan or a
  *   regionally-unscoped reservation applies across regions, and stamping a
  *   region on it would wrongly narrow it. Renderers say "All regions".
- * - `startDate` / `endDate` — ISO-8601 timestamps of the term. `endDate` may
+ * - `startDate` / `endDate`: ISO-8601 timestamps of the term. `endDate` may
  *   be *derived* as start + provider-reported duration when the provider
- *   reports no end of its own (RDS RIs) — that is exact arithmetic on
+ *   reports no end of its own (RDS RIs): that is exact arithmetic on
  *   provider data, not a substitution. Omit it only when neither an end nor
  *   a duration is reported.
- * - `termDays` — the purchased term length **as the provider reports it**
+ * - `termDays`: the purchased term length **as the provider reports it**
  *   (from `duration`/`termDurationInSeconds`/`plan`/`term`), never derived
  *   from `endDate - startDate`: a split or merged commitment (Azure does
  *   this on exchange) keeps its original term but gets fresh dates, and the
  *   date difference no longer spans the term. Deriving dates from the term
  *   is fine; deriving the term from dates is the bug.
- * - `paymentOption` — see {@link CommitmentPaymentOption}. Omit when the
+ * - `paymentOption`: see {@link CommitmentPaymentOption}. Omit when the
  *   provider does not report one.
- * - `currency` — ISO 4217 code for every money field on this record. Omit
+ * - `currency`: ISO 4217 code for every money field on this record. Omit
  *   when the record carries no money at all (GCP, Azure list responses).
- * - `upfrontAmount` — what was paid up front for the whole holding, in
+ * - `upfrontAmount`: what was paid up front for the whole holding, in
  *   `currency`. Per-record total: providers that quote per-instance prices
  *   (EC2 RIs) must multiply by the instance count before reporting. Omit
- *   when unknown — never 0 unless the provider says 0.
- * - `recurringAmount` / `recurringPeriod` — the recurring charge and the
+ *   when unknown, never 0 unless the provider says 0.
+ * - `recurringAmount` / `recurringPeriod`: the recurring charge and the
  *   period it recurs on. The pair is atomic: an amount without a period is
  *   a 730× ambiguity (hourly vs monthly), so a plugin that cannot state the
  *   period omits both. This is why AWS Savings Plans'
- *   `recurringPaymentAmount` is deliberately not mapped — its period is
+ *   `recurringPaymentAmount` is deliberately not mapped: its period is
  *   documented nowhere.
- * - `hourlyCommitmentAmount` — for spend commitments: the committed spend
+ * - `hourlyCommitmentAmount`: for spend commitments: the committed spend
  *   per hour in `currency` (a Savings Plan's `commitment`). This is the
  *   number utilization is measured against.
- * - `unitCommitments` — for unit-denominated commitments: the committed
+ * - `unitCommitments`: for unit-denominated commitments: the committed
  *   quantities. **`hourlyCommitmentAmount` XOR `unitCommitments` is the
  *   load-bearing split**: a record with the former supports "did we spend
  *   the committed dollars" (answerable from cost rows); a record with only
  *   the latter supports "are we using the committed vCPUs", which cost rows
- *   cannot answer — and the host must say "unknown" there, not 0%.
- * - `state` — see {@link CommitmentState}.
- * - `providerUtilization` — see {@link CommitmentProviderUtilization}.
+ *   cannot answer, and the host must say "unknown" there, not 0%.
+ * - `state`: see {@link CommitmentState}.
+ * - `providerUtilization`: see {@link CommitmentProviderUtilization}.
  */
 export interface CommitmentRecord {
   id: string;
@@ -413,7 +413,7 @@ export interface CommitmentRecord {
 
 /**
  * Declares that this plugin can list purchased commitments for an account
- * via `fetchCommitments`. `kinds` names what the provider sells — it drives
+ * via `fetchCommitments`. `kinds` names what the provider sells: it drives
  * the empty-state copy and the docs, not any fetch behaviour.
  */
 export interface CommitmentsCapabilityDeclaration {
@@ -422,7 +422,7 @@ export interface CommitmentsCapabilityDeclaration {
 
 /**
  * A link the host renders next to a cost-collection failure. Same shape as
- * `CredentialField.helpLink` — opened through the host's external-URL handler
+ * `CredentialField.helpLink`: opened through the host's external-URL handler
  * so it works in the browser, the desktop shell, and the mobile app.
  */
 export interface CostHelpLink {
@@ -432,7 +432,7 @@ export interface CostHelpLink {
 
 /**
  * Thrown by `fetchCostData` when collection can't proceed until the user
- * does something — the provider's billing export isn't enabled, a required
+ * does something: the provider's billing export isn't enabled, a required
  * credential field is blank, the billing role is missing. The host stores the
  * message against the account and surfaces it wherever cost data is shown,
  * rather than silently retrying forever.
@@ -470,15 +470,15 @@ export interface CostFetchRange {
 export interface CostFetchResult {
   rows: CostRow[];
   /**
-   * True when this pass produced rows that are **less attributed than usual** —
+   * True when this pass produced rows that are **less attributed than usual**:
    * a fallback path ran, so the rows are correct in total but coarser than the
    * ones the same plugin normally writes.
    *
    * Both large collectors have such a path: AWS falls back to one unattributed
    * `GetCostAndUsage` when Cost Explorer rejects a `RECORD_TYPE` grouping, and
    * Azure falls back to a single unfiltered Cost Management query when the
-   * two-group attributed shape is refused. Those fallbacks are deliberate —
-   * losing charge types is enormously better than losing the spend — and they
+   * two-group attributed shape is refused. Those fallbacks are deliberate
+   * (losing charge types is enormously better than losing the spend) and they
    * fire not only for accounts that can never attribute but also for a
    * *transient* refusal: a 429 mid-pass, a gateway timeout, a bad minute.
    *
@@ -492,7 +492,7 @@ export interface CostFetchResult {
    * so the flag restores that property rather than inventing a new one.
    *
    * **Absent means "not degraded"**, which is what makes this additive: a
-   * plugin that returns a bare array — every plugin but two — is unaffected,
+   * plugin that returns a bare array (every plugin but two) is unaffected,
    * and so is a plugin whose fallback does not lose anything. Set it only when
    * a *narrower* key space than usual was written; a pass that simply found no
    * spend is not degraded, it is empty, and guard 1 already covers that.
@@ -502,7 +502,7 @@ export interface CostFetchResult {
 
 /**
  * Normalize either `fetchCostData` return shape into the pair the host works
- * with. Absent or bare-array means "not degraded" — see
+ * with. Absent or bare-array means "not degraded": see
  * {@link CostFetchResult.degraded}.
  */
 export function normalizeCostFetchResult(value: CostRow[] | CostFetchResult): {
@@ -517,8 +517,8 @@ export function normalizeCostFetchResult(value: CostRow[] | CostFetchResult): {
  * Forward-looking cost estimation.
  *
  * `fetchCostData` above reports what a provider *has* billed. `estimateCost`
- * answers the other question — what a given configuration *would* cost per
- * month — from the same per-region rate data the plugin already fetches for
+ * answers the other question (what a given configuration *would* cost per
+ * month) from the same per-region rate data the plugin already fetches for
  * its size pickers. One implementation feeds every surface that asks the
  * question: the live figure in the create form, the "+$340/month" delta on an
  * edit, the standing estimate on a resource's detail page, and the projected
@@ -526,7 +526,7 @@ export function normalizeCostFetchResult(value: CostRow[] | CostFetchResult): {
  *
  * Estimates are quotes, not invoices. A plugin that cannot price a
  * configuration returns `null` rather than a plausible number, and one that
- * can price only part of it prices that part and says so — see
+ * can price only part of it prices that part and says so: see
  * {@link CostEstimate.partial}.
  */
 
@@ -556,7 +556,7 @@ export interface CostEstimateLineItem {
 /**
  * A monthly cost estimate for one resource configuration.
  *
- * `monthlyAmount` is always the sum of `lineItems` — hosts render the total
+ * `monthlyAmount` is always the sum of `lineItems`: hosts render the total
  * and the breakdown from the same object, so the two cannot disagree. Build
  * one with {@link buildCostEstimate} rather than by hand and that stays true.
  */
@@ -569,14 +569,14 @@ export interface CostEstimate {
   lineItems: CostEstimateLineItem[];
   /**
    * True when a component of the resource is known to exist but could not be
-   * priced — an unknown SKU, a rate the provider does not publish, a boot disk
+   * priced: an unknown SKU, a rate the provider does not publish, a boot disk
    * whose size is not among the fields the caller passed. The total is then a
    * floor, and hosts label it as one. Omit it (rather than setting `false`)
    * when the estimate covers everything the plugin knows to charge for.
    */
   partial?: boolean;
   /**
-   * Caveats worth showing under the breakdown — "excludes egress",
+   * Caveats worth showing under the breakdown: "excludes egress",
    * "on-demand rate; a reservation would be cheaper", "storage billed
    * separately". Short sentences, not paragraphs.
    */
@@ -593,7 +593,7 @@ function toCents(amount: number): number {
  * priced to nothing, rounds each to cents, sorts largest first, and derives
  * the total from what survived.
  *
- * Returns `null` when nothing could be priced — which is the signal hosts use
+ * Returns `null` when nothing could be priced, which is the signal hosts use
  * to show no estimate at all. That is deliberately different from an estimate
  * of `$0`: "we don't know" and "it's free" are different answers, and quoting
  * the second when you mean the first is the failure this whole capability
@@ -621,7 +621,7 @@ export function buildCostEstimate(
 }
 
 /**
- * The monthly difference between two estimates — what a host quotes as
+ * The monthly difference between two estimates: what a host quotes as
  * "this change adds $340/month".
  *
  * Returns `null` when the comparison would be meaningless rather than zero:

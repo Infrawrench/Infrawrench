@@ -159,7 +159,7 @@ interface NetlifyEnvVar {
 
 // Browser-compatible replacement for the `@netlify/api` SDK. The official SDK
 // is OpenAPI-generated and uses `module.createRequire` at import time, which
-// is Node-only — it cannot be loaded in Electron's renderer. This shim issues
+// is Node-only: it cannot be loaded in Electron's renderer. This shim issues
 // the same REST calls via fetch with the small slice of operations the plugin
 // actually exercises. Each method declares the narrow response shape so
 // callers don't need to widen via `as unknown as`.

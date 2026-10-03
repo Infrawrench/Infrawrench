@@ -23,14 +23,14 @@ export interface CredentialField {
   /**
    * When set, the field is rendered as a picker of existing accounts in the same
    * organization. The stored value is the selected account's id (or empty for
-   * "None"). `pluginId` filters the dropdown to accounts of a single plugin —
+   * "None"). `pluginId` filters the dropdown to accounts of a single plugin,
    * e.g. the SSH plugin's "Connect through" field filters to `ssh`.
    */
   accountReference?: { pluginId: string };
-  /** Field is optional — the modal accepts an empty value and skips validation. */
+  /** Field is optional: the modal accepts an empty value and skips validation. */
   optional?: boolean;
   /**
-   * Optional external link rendered beneath the field — e.g. a deep link to the
+   * Optional external link rendered beneath the field, e.g. a deep link to the
    * provider's "create token" page with the scopes this plugin needs pre-filled.
    * Opened through the host's external-URL handler so it works in both the web
    * app and the desktop shell.
@@ -45,7 +45,7 @@ export interface CredentialField {
  */
 export interface SqlDriverDeclaration {
   /**
-   * Identifier for the SQL engine — the host maps this to concrete Tauri commands
+   * Identifier for the SQL engine: the host maps this to concrete Tauri commands
    * and introspection queries (e.g. "postgres", "mysql", "sqlite").
    */
   driver: string;
@@ -54,7 +54,7 @@ export interface SqlDriverDeclaration {
   /**
    * Optional credential key that holds a PEM-encoded CA certificate to trust
    * for TLS chain verification. Use for managed-DB providers that sign with
-   * their own internal CA (DigitalOcean, AWS RDS with default certs, etc.) —
+   * their own internal CA (DigitalOcean, AWS RDS with default certs, etc.):
    * the host passes the value through to the driver so cert verification
    * stays *on* with the vendor CA explicitly trusted, instead of being
    * disabled outright. When unset or empty, the driver uses the system
@@ -79,7 +79,7 @@ export interface KvDriverDeclaration {
  * The host manages the connection; the plugin issues typed operations via DockerHostServices.
  */
 export interface DockerDriverDeclaration {
-  /** Identifier for the Docker engine — always "docker". */
+  /** Identifier for the Docker engine: always "docker". */
   driver: string;
   /** The key in the account credentials that holds the Docker host URI. */
   credentialKey: string;
@@ -91,7 +91,7 @@ export interface DockerDriverDeclaration {
  * the plugin issues typed operations via KubernetesHostServices.
  */
 interface KubernetesDriverDeclaration {
-  /** Identifier for the K8s driver — always "kubernetes". */
+  /** Identifier for the K8s driver: always "kubernetes". */
   driver: string;
   /** The key in the account credentials that holds the kubeconfig YAML. */
   credentialKey: string;
@@ -105,7 +105,7 @@ export interface PluginManifest {
   version: string;
   displayName: string;
   description?: string;
-  /** Raw SVG string — injected by the host into dashboard cards */
+  /** Raw SVG string: injected by the host into dashboard cards */
   logoSvg: string;
   author: string;
   /** Minimum infrawrench host version required (semver) */
@@ -116,7 +116,7 @@ export interface PluginManifest {
   credentialFields: CredentialField[];
   /**
    * If present, the host will offer a SQL editor for resources from this plugin.
-   * The host is responsible for the actual connection and query execution —
+   * The host is responsible for the actual connection and query execution:
    * plugins only declare intent.
    */
   sqlDriver?: SqlDriverDeclaration;
@@ -176,18 +176,18 @@ export interface PluginManifest {
    *
    * Independent of `costs` and of the metric contract: a quota is a used/limit
    * *pair* from a management API, not spend and not a sampled series. See
-   * `quotas.ts` for why conflating it with either is a mistake — and for why
+   * `quotas.ts` for why conflating it with either is a mistake, and for why
    * absence must render as *nothing* rather than as zero.
    */
   quotas?: QuotaCapabilityDeclaration;
   /**
-   * If present, this plugin can return *aggregated* network flows — priced
-   * source→destination pairs — for an account via `fetchNetworkFlows`, and the
+   * If present, this plugin can return *aggregated* network flows (priced
+   * source→destination pairs) for an account via `fetchNetworkFlows`, and the
    * host schedules a forward-only daily pass for its accounts.
    *
    * Independent of `costs`, and deliberately so: this answers "which two things
    * are talking, across which boundary" and the provider's billing API answers
-   * "how much data transfer cost in total". The rows never meet — see
+   * "how much data transfer cost in total". The rows never meet: see
    * `network-flow.ts` for why merging them would double-count the bill.
    *
    * Absent means the surface shows *nothing* for this plugin's accounts. It
@@ -197,7 +197,7 @@ export interface PluginManifest {
   networkFlows?: NetworkFlowCapabilityDeclaration;
   /**
    * If present, this plugin's provider publishes a public status feed. The
-   * host polls `statusFeed.url` (no credentials — the feed is public) on a
+   * host polls `statusFeed.url` (no credentials: the feed is public) on a
    * low-frequency background pass and hands the raw body to the plugin's
    * `parseStatusFeed`, then correlates the returned incidents against the
    * resources an org holds on this plugin.
@@ -269,12 +269,12 @@ export interface KubernetesHostServices {
  *   - Custom CA certificates the browser/renderer won't trust by default.
  *   - Per-account egress routing through a bastion agent when the account is
  *     bound to one. Plugins that bypass `services.http` and call `fetch`
- *     directly will *not* be tunnelled — even when the user has selected a
+ *     directly will *not* be tunnelled, even when the user has selected a
  *     bastion for that account.
  *
  * `body` accepts a `Uint8Array` for SigV4 / binary payloads. By default the
  * response `body` is a UTF-8 string. Pass `responseEncoding: "binary"` when
- * the endpoint returns arbitrary bytes — then `rawBody` carries them and
+ * the endpoint returns arbitrary bytes, then `rawBody` carries them and
  * `body` is empty. Prefer that over decoding a UTF-8 string, which would
  * corrupt anything that isn't text.
  */
@@ -303,7 +303,7 @@ export interface HttpHostServices {
 /**
  * Host-provided read access to persisted secretStates. Plugins can fetch the
  * decrypted plaintext of a secret they previously stashed (e.g. a password
- * captured at create time). The host owns encryption — plugins never see
+ * captured at create time). The host owns encryption: plugins never see
  * ciphertext or the master key.
  *
  * Returns `null` when no entry exists or decryption fails.
@@ -313,8 +313,8 @@ export interface SecretHostServices {
   /**
    * Persist a plaintext secret against a resource + field, encrypted at rest
    * by the host. Used by plugins that mint a long-lived credential they want
-   * to reuse across sessions and (in the cloud host) across an org's members
-   * — e.g. a single agent endpoint access key shared by everyone's Playground
+   * to reuse across sessions and (in the cloud host) across an org's members,
+   * e.g. a single agent endpoint access key shared by everyone's Playground
    * instead of minting a fresh one per session. The value never leaves the
    * host process; web/desktop clients only ever trigger the server-side read.
    * Optional so older host builds without a write path still satisfy the type.
@@ -335,9 +335,9 @@ export interface HostServices {
    * hand-rolled REST fallback when available.
    */
   k8s?: KubernetesHostServices;
-  /** Always available — proxies HTTP requests through the host for custom CA support */
+  /** Always available: proxies HTTP requests through the host for custom CA support */
   http?: HttpHostServices;
-  /** Always available — read decrypted plaintext for the plugin's own persisted secretStates */
+  /** Always available: read decrypted plaintext for the plugin's own persisted secretStates */
   secrets?: SecretHostServices;
 }
 
@@ -373,7 +373,7 @@ export interface PluginClient {
   releaseSshInstall?(ref: string): Promise<void>;
   /**
    * Probe the provider with this client's credentials and report what each
-   * declared capability can actually do — ok / missing (with which
+   * declared capability can actually do: ok / missing (with which
    * permissions) / unknown. Only called when the manifest declares
    * `preflight`. Run at add-account time and re-runnable from account
    * settings, so implementations must be read-only and side-effect free.
@@ -388,7 +388,7 @@ export interface PluginClient {
    * the caller only cares about one region (e.g. a create-form resource-picker
    * after the user has selected a region). Plugins that fan out across regions
    * should restrict the fan-out to that one region; others can ignore it.
-   * Results from outside the hinted region are still acceptable — the host
+   * Results from outside the hinted region are still acceptable: the host
    * filters at the picker layer when it needs strict scoping.
    */
   listResources(
@@ -398,7 +398,7 @@ export interface PluginClient {
   ): Promise<ResourceInstance[]>;
   /** Fetch a single resource's current state */
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
-  /** Resolve an output value — called by the host's SecretResolver */
+  /** Resolve an output value: called by the host's SecretResolver */
   resolveOutput(
     typeId: string,
     resourceId: string,
@@ -410,21 +410,21 @@ export interface PluginClient {
    * `renderDetail` on the resource detail view. Plugins can make additional
    * API calls here and return an updated `ResourceInstance` (e.g. extra
    * fields/resolvedOutputs). The host passes the returned instance to
-   * `renderDetail`. Failures should throw — the host will fall back to the
+   * `renderDetail`. Failures should throw: the host will fall back to the
    * un-enriched resource.
    */
   enrichDetail?(resource: ResourceInstance): Promise<ResourceInstance>;
   /** Return the component schema for a resource's detail view */
   renderDetail(resource: ResourceInstance): DetailViewSchema;
   /**
-   * Return the component schema for a peer pane — called when this plugin is embedded
+   * Return the component schema for a peer pane: called when this plugin is embedded
    * as a secondary tab inside another plugin's resource detail view.
    * The client's credentials have already been resolved from the parent resource's outputs.
    */
   renderPeerPane?(context: PeerPaneContext): PeerPaneSchema | Promise<PeerPaneSchema>;
   /** Return the sidebar item schema for a resource */
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema;
-  /** Fetch table/column schema for the SQL editor — only when sql services are injected */
+  /** Fetch table/column schema for the SQL editor, only when sql services are injected */
   introspect?(): Promise<SqlTableMeta[]>;
   /** Fetch connection stats (version, size) for SQL/KV/Docker resources. */
   fetchStats?(): Promise<{ version: string; size: string }>;
@@ -445,7 +445,7 @@ export interface PluginClient {
    * Fetch normalized daily cost rows for an account over an inclusive date
    * range. Only called when the manifest declares `costs`. The host invokes
    * this from a low-frequency background pass (roughly daily, plus an initial
-   * history backfill in month-sized chunks) — implementations should stay
+   * history backfill in month-sized chunks): implementations should stay
    * within the provider's billing-API budget and go through `services.http`
    * so bastion routing and custom CAs keep working.
    *
@@ -456,7 +456,7 @@ export interface PluginClient {
    */
   fetchCostData?(accountId: string, range: CostFetchRange): Promise<CostRow[] | CostFetchResult>;
   /**
-   * List every commitment the provider reports for this account — active,
+   * List every commitment the provider reports for this account: active,
    * queued, and expired alike. Only called when the manifest declares
    * `commitments`. No date range: the provider's list APIs return the whole
    * holding, and the host needs expired records to close out utilization
@@ -474,15 +474,15 @@ export interface PluginClient {
    * (roughly daily), so it should be one cheap request; the host derives the
    * burn rate from successive readings rather than asking the plugin for one.
    *
-   * Throw {@link CreditAccessError} when the credential cannot see the balance
-   * — that is a different situation from a failure and the host says so.
+   * Throw {@link CreditAccessError} when the credential cannot see the balance:
+   * that is a different situation from a failure and the host says so.
    */
   fetchCreditBalance?(accountId: string): Promise<CreditBalance[]>;
   /**
    * Read how close this account is to the limits the provider enforces. Only
    * called when the manifest declares `quotas`. Called on a low-frequency
    * background pass (a few times a day), so it should be a bounded, named set
-   * of requests — never a walk of every quota the provider publishes.
+   * of requests, never a walk of every quota the provider publishes.
    *
    * Credentialed, so it lives here and not on the manifest, alongside
    * `fetchMetricSeries` and `fetchCostData`.
@@ -492,7 +492,7 @@ export interface PluginClient {
    * 1. **Both halves come from the provider.** Never fill in a `limit` from
    *    documentation or from the plugin's own memory of the defaults. An
    *    account with an approved increase would then read as exhausted while it
-   *    has headroom — a false alarm about the one thing this feature exists to
+   *    has headroom: a false alarm about the one thing this feature exists to
    *    be trusted about. A quota whose limit the provider will not state is a
    *    quota this method does not return.
    * 2. **Return a bounded subset, and declare it.** `quotas.partial` says the
@@ -501,8 +501,8 @@ export interface PluginClient {
    *    eleven of them.
    * 3. **Throw rather than return a short list.** The host replaces the
    *    account's stored readings with what this returns, so a partial answer
-   *    (one region refused, the rest fine) reads as quotas having disappeared
-   *    — and a disappeared quota is one nobody is watching any more.
+   *    (one region refused, the rest fine) reads as quotas having disappeared,
+   *    and a disappeared quota is one nobody is watching any more.
    *
    * Throw {@link QuotaAccessError} when the credential or the account is
    * missing what this needs (an unattached policy, a disabled API) so the host
@@ -519,7 +519,7 @@ export interface PluginClient {
    *
    * 1. **Aggregate at the provider, not here.** Do the `GROUP BY` in the
    *    provider's own query engine (Logs Insights, BigQuery, KQL) and return
-   *    the grouped rows. Never stream raw flow records back — a busy VPC emits
+   *    the grouped rows. Never stream raw flow records back: a busy VPC emits
    *    gigabytes a day and the host has nowhere to put them.
    * 2. **Bound the pair count.** Return at most
    *    `networkFlows.maxPairsPerDay` pairs, taking the largest by bytes, and
@@ -561,7 +561,7 @@ export interface PluginClient {
   /**
    * List keys inside a provider KV namespace. Called by the host's "Keys" tab
    * when the detail view declares a `kvBrowser` capability. Implementations
-   * should use cursor-based pagination — callers pass back the previous
+   * should use cursor-based pagination: callers pass back the previous
    * response's `nextCursor` to fetch subsequent pages.
    *
    * `resourceTypeId` and `resourceId` identify the namespace; the plugin can
@@ -595,7 +595,7 @@ export interface PluginClient {
     accountId: string,
     key: string,
   ): Promise<void>;
-  /** Return SSH connection details for terminal access — only when the resource type declares supportsTerminal */
+  /** Return SSH connection details for terminal access, only when the resource type declares supportsTerminal */
   getSshConfig?(): { host: string; port: number; username: string; privateKey: string };
   /** Fetch a fully-populated create form config for a resource type (regions, sizes, etc. from live API).
    * When creating a child resource from its parent's detail page, `parentResourceId` is the full
@@ -614,7 +614,7 @@ export interface PluginClient {
    * line items that make it up. See {@link CostEstimate}.
    *
    * `fields` is a bag of field values keyed the way the *create form* keys
-   * them — that is the one spelling every caller can produce, and it is what
+   * them: that is the one spelling every caller can produce, and it is what
    * the create form has in hand while the user is still typing. Hosts asking
    * about an existing resource pass its stored fields instead, so a plugin
    * whose lister spells a key differently from its create form (Azure's
@@ -631,8 +631,8 @@ export interface PluginClient {
   estimateCost?(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null>;
   /**
    * Execute an in-form field action (declared via `CreateFieldConfig.actions`).
-   * Plugins typically use this to mint a dependency mid-form — e.g. generate
-   * a fresh IAM role for a Lambda function — and return its identifier so
+   * Plugins typically use this to mint a dependency mid-form, e.g. generate
+   * a fresh IAM role for a Lambda function, and return its identifier so
    * the host can fill the field with the new value.
    */
   executeFieldAction?(
@@ -667,7 +667,7 @@ export interface PluginClient {
     plaintext: string,
   ): Promise<void>;
   /**
-   * Reissue an output value upstream — e.g. reset the role password backing
+   * Reissue an output value upstream, e.g. reset the role password backing
    * the `connectionString` output. Called by the host when a peer plugin's
    * Reroll action delegates back to the resource that supplied the credential
    * (the child has no secretState of its own; the value flows from this
@@ -675,7 +675,7 @@ export interface PluginClient {
    *
    * The plugin is responsible for the upstream mutation; the host then
    * re-resolves the output to pick up the new value. Plugins with no concept
-   * of reissue omit this — the host hides the reroll affordance in that case.
+   * of reissue omit this: the host hides the reroll affordance in that case.
    */
   rerollOutput?(
     typeId: string,
@@ -684,7 +684,7 @@ export interface PluginClient {
     accountId: string,
   ): Promise<void>;
   /**
-   * Invoke a plugin-defined action against a resource — e.g. restart VMs in an
+   * Invoke a plugin-defined action against a resource, e.g. restart VMs in an
    * instance group. `actionId` is plugin-specific. The host calls this in
    * response to an `ActionNode` whose `action` is `{ type: "plugin-action" }`.
    */
@@ -734,7 +734,7 @@ export interface PluginClient {
     options?: { model?: string },
   ): AsyncIterable<ChatStreamEvent>;
   /**
-   * Publish one message to a pub/sub resource — Cloudflare Queue, AWS SQS/SNS/
+   * Publish one message to a pub/sub resource: Cloudflare Queue, AWS SQS/SNS/
    * Kinesis/EventBridge, GCP Pub/Sub topic, GCP Cloud Tasks, Azure Service
    * Bus / Event Hub, Kafka topic, etc. Called by the host's Publish tab when
    * the user clicks Send. The plugin parses `payload.body` according to the
@@ -750,7 +750,7 @@ export interface PluginClient {
   ): Promise<PublishMessageResult>;
   /**
    * Synthesise one clip of speech for the Speech tab's TTS half. Called when
-   * the user clicks Synthesize. Return audio the browser can play directly —
+   * the user clicks Synthesize. Return audio the browser can play directly:
    * mp3 wherever the provider offers a choice of container.
    *
    * Only called when `renderDetail` set `speechPanel.modes` to include "tts".
@@ -776,7 +776,7 @@ export interface PluginClient {
     payload: TranscribeAudioPayload,
   ): Promise<TranscribeAudioResult>;
   /**
-   * Attach a resource of `sourceTypeId` onto a resource of `targetTypeId` — e.g. a
+   * Attach a resource of `sourceTypeId` onto a resource of `targetTypeId`, e.g. a
    * persistent disk onto a VM. Only called when both resources live in the same
    * account and the source type declares the target in its `attachTargets`.
    */
@@ -860,19 +860,19 @@ export interface PluginClient {
    */
   applyManifest?(resourceId: string, accountId: string, manifest: string): Promise<void>;
   /**
-   * Apply arbitrary (possibly multi-document) YAML to this account's target —
+   * Apply arbitrary (possibly multi-document) YAML to this account's target:
    * `kubectl apply -f` equivalent. Used for bulk import of resources by pasting
    * YAML. Returns the number of documents applied.
    */
   importYaml?(accountId: string, yaml: string): Promise<{ applied: number }>;
   /**
-   * Return a plain-text "describe" summary for a resource — in the spirit of
+   * Return a plain-text "describe" summary for a resource; in the spirit of
    * `kubectl describe`: object status, events, related objects, etc. Called
    * when the user opens the Describe tab.
    */
   describeResource?(typeId: string, resourceId: string, accountId: string): Promise<string>;
   /**
-   * Fetch the last N lines of log output for a resource — in the spirit of
+   * Fetch the last N lines of log output for a resource; in the spirit of
    * `kubectl logs`: stdout + stderr of a pod/container. The host polls this
    * periodically when follow mode is on. Plugins should return the list of
    * available containers on the first call so the UI can populate a dropdown.
@@ -949,7 +949,7 @@ export interface PluginClient {
   ): Promise<SecretVersion>;
 }
 
-/** A single field in a credential export — e.g. "Access Key ID" and "Secret Access Key". */
+/** A single field in a credential export, e.g. "Access Key ID" and "Secret Access Key". */
 export interface CredentialExportField {
   label: string;
   value: string;
@@ -973,7 +973,7 @@ export interface CredentialExport {
   mimeType: string;
   /** Optional structured fields displayed as a key/value table. */
   fields?: CredentialExportField[];
-  /** Short warning shown prominently, e.g. "Save this now — it cannot be retrieved later." */
+  /** Short warning shown prominently, e.g. "Save this now: it cannot be retrieved later." */
   warning?: string;
 }
 
@@ -981,7 +981,7 @@ export interface CredentialExport {
 export interface LogsFetchParams {
   /** Max lines to return from the tail. */
   tailLines?: number;
-  /** Container name to fetch — required when the resource has more than one. */
+  /** Container name to fetch: required when the resource has more than one. */
   container?: string;
   /** If true, fetch logs from the previous container instance (pre-restart). */
   previous?: boolean;
@@ -1000,19 +1000,19 @@ export interface LogsFetchResult {
 export interface Plugin {
   manifest: PluginManifest;
   resourceTypes: ResourceTypeDefinition[];
-  /** Create a scoped client for a set of credentials — host never exposes raw credentials */
+  /** Create a scoped client for a set of credentials: host never exposes raw credentials */
   createClient(credentials: Record<string, string>, services?: HostServices): PluginClient;
   /**
    * Optional "eject to Terraform" capability. Declared on the plugin (not the
-   * client) because mapping works purely from stored resource state — no
-   * credentials or provider API calls — so hosts can export from persisted
+   * client) because mapping works purely from stored resource state (no
+   * credentials or provider API calls) so hosts can export from persisted
    * inventory. Secrets must be referenced as `var.*`, never inlined.
    */
   terraformExport?: TerraformExportCapability;
   /**
    * Parse the raw body fetched from `manifest.statusFeed.url` into normalized
    * incidents. Required when the manifest declares `statusFeed`. Lives on the
-   * Plugin (not the client) because it needs no credentials — the feed is
+   * Plugin (not the client) because it needs no credentials: the feed is
    * public. Malformed bodies should throw; the host logs the failure against
    * the feed rather than silently treating it as "no incidents".
    */
@@ -1022,12 +1022,12 @@ export interface Plugin {
    * given capability ids (a subset of `manifest.preflight.capabilities`).
    * Required when `manifest.preflight.templateFormat` is set. Lives on the
    * Plugin (not the client) because generating a template needs no
-   * credentials — the host offers it even before the user has working keys.
+   * credentials: the host offers it even before the user has working keys.
    */
   policyTemplate?(capabilityIds: string[]): PolicyTemplate;
 }
 
-// Forward declarations — defined in their own modules but used here
+// Forward declarations: defined in their own modules but used here
 import type {
   CommitmentRecord,
   CommitmentsCapabilityDeclaration,

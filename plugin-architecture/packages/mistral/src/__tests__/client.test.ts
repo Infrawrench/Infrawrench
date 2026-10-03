@@ -122,8 +122,8 @@ describe("period-native cost dating", () => {
   it("keeps an in-progress month on one key as it is re-collected day after day", async () => {
     // `/admin/usage` returns the *running* total of the month, so the same
     // month is fetched again every day. Dating those re-fetches to anything
-    // that moves — the month end clamped into the requested range, as this
-    // collector once did — files month-to-date-through-15 on the 15th and
+    // that moves (the month end clamped into the requested range, as this
+    // collector once did) files month-to-date-through-15 on the 15th and
     // month-to-date-through-16 on the 16th. Nothing rewrites the earlier days,
     // so the month sums to the sum of its own prefixes: 12.5 + 40 + 61 here
     // instead of 61. One stable key is what makes the host's
@@ -156,8 +156,8 @@ describe("period-native cost dating", () => {
 
   it("reports a month only from the chunk that contains its first day", async () => {
     // Month-aligned chunks mean the oldest chunk of a backfill can start
-    // mid-month. That month belongs to no chunk in this pass — claiming it here
-    // would land the same month on two dates — so nothing is fetched at all.
+    // mid-month. That month belongs to no chunk in this pass (claiming it here
+    // would land the same month on two dates) so nothing is fetched at all.
     installFetch(() => jsonResponse({ currency: "USD", chat: { cost: 99 } }));
 
     const rows = await client("admin-key").fetchCostData(ACCOUNT, {
@@ -173,8 +173,8 @@ describe("period-native cost dating", () => {
     // The dating fix has a manifest half: rows only exist for a month whose 1st
     // the chunk contains, and the host asks for `[today − restatementDays,
     // today]`. The default of 3 days contains the 1st on three days of the
-    // month and no others, so for the rest of the month the running total —
-    // which Mistral restates continuously — would never be re-collected at all.
+    // month and no others, so for the rest of the month the running total
+    // (which Mistral restates continuously) would never be re-collected at all.
     const { restatementDays } = plugin.manifest.costs!;
     expect(restatementDays).toBe(62);
 

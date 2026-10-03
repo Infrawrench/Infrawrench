@@ -74,7 +74,7 @@ const manifest: PluginManifest = {
   // `account:read`, `droplet:read` and `reserved_ip:read` token scopes.
   //
   // `partial` because DigitalOcean publishes exactly two limits in its API and
-  // enforces more than two — there is no volume limit and no Spaces limit in
+  // enforces more than two: there is no volume limit and no Spaces limit in
   // /v2/account, so the radar's silence about them is ignorance, not headroom.
   quotas: {
     label: "Limits",

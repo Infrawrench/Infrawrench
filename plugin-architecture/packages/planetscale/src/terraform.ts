@@ -6,14 +6,14 @@ import type {
 import { fieldBool, fieldString, tf } from "@infrawrench/plugin-base";
 
 /**
- * Terraform mapping for PlanetScale — provider `planetscale/planetscale` v1.
+ * Terraform mapping for PlanetScale: provider `planetscale/planetscale` v1.
  * Attribute names verified against PlanetScale docs + registry
  * (registry.terraform.io/providers/planetscale/planetscale,
  *  planetscale.com/docs/terraform):
  *   - planetscale_vitess_branch: `organization`, `database`, `name` required.
  *   - planetscale_vitess_branch_password: `organization`, `database`, `branch`,
  *     `role` required; `name` optional.
- * There is no managed `planetscale_*_database` resource in v1 — databases are
+ * There is no managed `planetscale_*_database` resource in v1: databases are
  * created outside Terraform or via the API; ps-database is intentionally skipped.
  * Service token credentials map to provider service_token_id / secret.
  */
@@ -92,7 +92,7 @@ export const planetscaleTerraformExport: TerraformExportCapability = {
           role: tf.str(role),
         };
         if (name) attributes["name"] = tf.str(name);
-        // externalId is `{database}/{branch}/{passwordId}` — import uses password id.
+        // externalId is `{database}/{branch}/{passwordId}`: import uses password id.
         const parts = (resource.externalId ?? "").split("/");
         const passwordId = parts.length >= 3 ? parts.slice(2).join("/") : resource.externalId;
         return {

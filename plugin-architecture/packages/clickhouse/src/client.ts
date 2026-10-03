@@ -433,7 +433,7 @@ export class ClickHouseClient implements PluginClient {
     };
 
     // Stop/Start header actions for the lifecycle pair (see the type's
-    // `lifecycle` declaration). "idle" still counts as running — the service
+    // `lifecycle` declaration). "idle" still counts as running: the service
     // is auto-idled and wakes on demand.
     if (state === "running" || state === "idle") {
       detail.headerActions = [

@@ -135,7 +135,7 @@ export {
   isFieldEditable,
 } from "./resource.js";
 
-// Posture checks — declarative security-exposure rules over already-synced
+// Posture checks: declarative security-exposure rules over already-synced
 // fields, the security sibling of `orphanRule`. The workspace-wide aggregation
 // lives in `@infrawrench/client-core` (`computePostureFindings`).
 export { evaluatePostureRule, evaluatePostureCondition, parsePostureInstant } from "./posture.js";
@@ -146,7 +146,7 @@ export type {
   PostureCategory,
 } from "./posture.js";
 
-// Principals — the identities inside the *customer's* clouds (IAM users and
+// Principals: the identities inside the *customer's* clouds (IAM users and
 // roles, service accounts, app registrations, bindings, long-lived keys). The
 // workspace-wide review lives in `@infrawrench/client-core`
 // (`computeAccessReview`); this is only the declaration and its defaults.
@@ -161,7 +161,7 @@ export type {
   ResolvedPrincipalKeys,
 } from "./principal.js";
 
-// Orphan aggregation — the host-side scan over already-stored resources, plus
+// Orphan aggregation: the host-side scan over already-stored resources, plus
 // the shape every surface renders. Shared so the web server, the desktop app
 // and the CLI classify a workspace identically.
 export { collectOrphanGroups, countOrphans, countUnownedOrphans } from "./orphans.js";

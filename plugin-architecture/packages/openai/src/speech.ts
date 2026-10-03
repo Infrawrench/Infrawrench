@@ -3,7 +3,7 @@ import type { SpeechPanelOption } from "@infrawrench/plugin-base";
 /**
  * Speech-tab catalogues.
  *
- * OpenAI has no "list voices" endpoint — the built-in voice set is part of the
+ * OpenAI has no "list voices" endpoint: the built-in voice set is part of the
  * request schema, so it has to be a literal here. The list below is exactly
  * `VoiceIdsShared` from the published OpenAPI description (openapi.yaml v2.3.0,
  * verified 2026-07-29); `fable`, `onyx` and `nova` still resolve for backwards
@@ -56,7 +56,7 @@ export const DIARIZE_MODEL = "gpt-4o-transcribe-diarize";
 
 /**
  * Timestamps require `verbose_json`, and `verbose_json` is only accepted by
- * `whisper-1` — the gpt-4o transcribe family is `json`-only (plus `text`,
+ * `whisper-1`: the gpt-4o transcribe family is `json`-only (plus `text`,
  * `srt`, `vtt`). Asking any of them for `verbose_json` is a 400, so the word
  * table only ever appears for whisper-1 and for the diarize model's segments.
  */
@@ -173,7 +173,7 @@ export function isSttModel(modelId: string): boolean {
 /**
  * `MediaRecorder` hands us `audio/webm;codecs=opus` on Chromium and
  * `audio/mp4` on Safari. The API keys off the filename extension as well as
- * the part's content type, so the two have to agree — this maps the browser's
+ * the part's content type, so the two have to agree: this maps the browser's
  * MIME type onto an extension the endpoint recognises. The MIME type itself is
  * always forwarded verbatim; nothing is transcoded.
  */

@@ -1,10 +1,10 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A text-to-speech voice — either one of Mistral's presets or a clone the
+ * A text-to-speech voice: either one of Mistral's presets or a clone the
  * workspace created from an audio sample.
  *
- * `GET https://api.mistral.ai/v1/audio/voices` — paginated with
+ * `GET https://api.mistral.ai/v1/audio/voices`: paginated with
  * `limit`/`offset`, and the response envelope reports `page`/`page_size`/
  * `total`/`total_pages`. Neither scheme matches `/models` (none) or the admin
  * API, which is why this plugin has no single shared paginator.

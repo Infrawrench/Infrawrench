@@ -1,7 +1,7 @@
 /**
  * What a host needs before it can run applications, and putting it there.
  *
- * `iwappd` is a static binary, so the list is short — but every item on it
+ * `iwappd` is a static binary, so the list is short, but every item on it
  * fails in a way that does not say what is wrong. No `gunzip` and the upload
  * cannot be unpacked. No `xkeyboard-config` and the keyboard silently does
  * nothing, because xkbcommon compiles its keymap from data files even when the
@@ -126,7 +126,7 @@ export const REQUIREMENTS: readonly RequirementSpec[] = [
  * Packages per requirement per manager.
  *
  * Several entries are lists rather than single names, and the installer
- * tolerates one of them being unknown — distributions disagree about how this
+ * tolerates one of them being unknown: distributions disagree about how this
  * is split, and the cost of guessing wrong should be a package that did not
  * install rather than an install that did nothing.
  *
@@ -262,7 +262,7 @@ function probeScript(): string {
     `done`,
     `printf 'mesa=%s\\n' "$mesa"`,
 
-    // An icon theme with an index — a directory with no index.theme is one a
+    // An icon theme with an index: a directory with no index.theme is one a
     // resolver walks and finds nothing in.
     `icons=0`,
     `for d in /usr/share/icons /usr/local/share/icons "\${HOME:-/root}/.local/share/icons"; do`,
@@ -293,7 +293,7 @@ function probeScript(): string {
   ].join("\n");
 }
 
-/** Parse `key=value` lines, ignoring anything else — a login banner, typically. */
+/** Parse `key=value` lines, ignoring anything else: a login banner, typically. */
 function parseFields(stdout: string): Map<string, string> {
   const fields = new Map<string, string>();
   for (const line of stdout.split("\n")) {
@@ -405,7 +405,7 @@ function privilegePrefix(privilege: HostPrivilege): string {
  * What it would take to fix this host.
  *
  * Returns null only when there is nothing to do. A host we cannot install on
- * still gets a plan — with `canInstall` false and the commands filled in — so
+ * still gets a plan (with `canInstall` false and the commands filled in) so
  * the user can run them themselves rather than being told "unsupported".
  */
 export function planInstall(
@@ -468,7 +468,7 @@ export function planInstall(
 }
 
 /**
- * Probe and plan in one call — what every caller of `probeHost` actually wants.
+ * Probe and plan in one call: what every caller of `probeHost` actually wants.
  *
  * Both apps expose exactly this over their own transport, so having it here
  * means neither can forget to send the plan alongside the preflight.

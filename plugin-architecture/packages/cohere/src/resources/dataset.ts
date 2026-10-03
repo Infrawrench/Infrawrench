@@ -1,14 +1,14 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * An uploaded dataset — training data for fine-tuning, or the input/output of
+ * An uploaded dataset: training data for fine-tuning, or the input/output of
  * an embed or batch job. Cohere deletes datasets automatically after 30 days.
  *
  * Verified: https://docs.cohere.com/reference/list-datasets
  * `GET /v1/datasets` → `{ datasets: [...] }`, paginated with `limit`/`offset`.
  *
  * ⚠️ Row counts and byte sizes are per-`dataset_parts` entry rather than
- * top-level, and the row field is `num_rows` — so `numRows` and `sizeBytes`
+ * top-level, and the row field is `num_rows`, so `numRows` and `sizeBytes`
  * below are sums this plugin computes.
  */
 export const DatasetResourceType = rt({

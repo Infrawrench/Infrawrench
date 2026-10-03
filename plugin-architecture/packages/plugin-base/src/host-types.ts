@@ -5,7 +5,7 @@
  *
  * They live in plugin-base because it is the only package that is a
  * dependency of every host process (electron main, web server, renderer)
- * AND has zero runtime dependencies — making it safe to import from any
+ * AND has zero runtime dependencies: making it safe to import from any
  * Node.js or browser context.
  */
 
@@ -71,7 +71,7 @@ export interface K9sConfig {
  *
  * Rewriters live in host-side packages (`@infrawrench/server-core` on the web
  * server, the desktop renderer's own registry) but the shape they receive is
- * identical across hosts — both web and desktop want to inject the same
+ * identical across hosts: both web and desktop want to inject the same
  * account/resource metadata. Keeping the contract in plugin-base lets both
  * hosts share a single declaration without dragging in DB or filesystem deps.
  */
@@ -82,7 +82,7 @@ export interface RewriterContext {
   accountId: string;
   /**
    * The resource the credentials will be used against. Set for rewriters
-   * that need resource-level context — e.g. Cloud SQL Auth Proxy needs the
+   * that need resource-level context, e.g. Cloud SQL Auth Proxy needs the
    * cloudsql-instance's `databaseVersion` field and `connectionName` output.
    *
    * Callers that have the parent resource on hand (peer-pane render, resource

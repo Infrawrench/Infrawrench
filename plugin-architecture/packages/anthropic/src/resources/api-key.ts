@@ -4,7 +4,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * An organization API key. Admin-key only.
  *
  * ⚠️ Keys can be **listed and updated but never created or deleted** through
- * the API — "new API keys can only be created through the Claude Console for
+ * the API: "new API keys can only be created through the Claude Console for
  * security reasons." Revoking a key is therefore modelled as an *update*:
  * `POST /v1/organizations/api_keys/{id}` with `{"status":"inactive"}`. That is
  * why this type sets `supportsCreate: false` and `supportsDelete: false`.

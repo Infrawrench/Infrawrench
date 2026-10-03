@@ -1,13 +1,13 @@
 /**
- * AWS quota readings — Service Quotas for the limit, CloudWatch and the EC2
+ * AWS quota readings: Service Quotas for the limit, CloudWatch and the EC2
  * describe calls for the usage.
  *
  * AWS is the awkward one, and the reason is structural: **Service Quotas does
  * not report usage.** `ListServiceQuotas` returns the applied ceiling and, for
  * some quotas, a `UsageMetric` *pointer* into the CloudWatch `AWS/Usage`
  * namespace; the number itself has to be fetched from a different service. For
- * the quotas that carry no pointer at all — Elastic IPs and VPCs per region
- * are both in this group — the only source of truth is counting the resources.
+ * the quotas that carry no pointer at all (Elastic IPs and VPCs per region
+ * are both in this group) the only source of truth is counting the resources.
  *
  * So every reading here is assembled from two calls, and both halves come from
  * the provider. Nothing is filled in from documentation: a limit we cannot
@@ -16,13 +16,13 @@
  * while it has headroom.
  *
  * **Wire shapes verified against live AWS documentation, August 2026:**
- * - `ListServiceQuotas` / `GetAWSDefaultServiceQuota` —
+ * - `ListServiceQuotas` / `GetAWSDefaultServiceQuota`:
  *   https://docs.aws.amazon.com/servicequotas/2019-06-24/apireference/API_ListServiceQuotas.html
  *   JSON 1.1 over `POST https://servicequotas.<region>.amazonaws.com/` with
  *   `X-Amz-Target: ServiceQuotasV20190624.<Op>`, SigV4 service `servicequotas`.
  *   Response `Quotas[]` carries PascalCase `QuotaCode`, `QuotaName`, `Value`,
  *   `Unit`, `Adjustable`, `GlobalQuota`, `UsageMetric`.
- * - `AWS/Usage` / `ResourceCount` —
+ * - `AWS/Usage` / `ResourceCount`:
  *   https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/viewing_metrics_with_cloudwatch.html
  *   Dimensions `Service=EC2`, `Type=Resource`, `Resource=vCPU`,
  *   `Class=Standard/OnDemand | G/OnDemand | …`; the documented statistic is
@@ -30,7 +30,7 @@
  *
  * **The `ListServiceQuotas` caveat that shapes the fallback**: AWS documents
  * that "if the applied quota value is not available for a quota, the quota is
- * not retrieved" — an account that has never had an increase approved for a
+ * not retrieved"; an account that has never had an increase approved for a
  * given code simply gets an empty list back. That is not an error and not an
  * absent quota; it means the *default* is the applied value, which is what
  * `GetAWSDefaultServiceQuota` is for. Treating the empty list as "no such
@@ -65,12 +65,12 @@ interface QuotaTarget {
  *
  * AWS publishes thousands of quotas across hundreds of services. Walking them
  * would be both unaffordable (a `ListServiceQuotas` page per service per
- * region) and useless — most are ceilings nobody is within an order of
+ * region) and useless: most are ceilings nobody is within an order of
  * magnitude of. This is the set that actually stops deploys, which is why the
  * manifest declares `partial: true`: the surface must not imply "you are
  * within all your limits" when what it knows is "you are within these five".
  *
- * `L-1216C47A` and `L-34B43A08` are the two vCPU families worth watching — the
+ * `L-1216C47A` and `L-34B43A08` are the two vCPU families worth watching: the
  * standard on-demand pool that every workload draws from, and the GPU pool
  * that is small, contended, and the one people are most often refused on.
  * Both are measured in **vCPUs, not instances**, which is the single most
@@ -97,7 +97,7 @@ const QUOTA_TARGETS: QuotaTarget[] = [
   {
     // Lives under `ec2`, not `vpc`, despite the name. Getting the service code
     // wrong returns an empty list rather than an error, which reads as "you
-    // have no Elastic IP quota" — so this is pinned by test.
+    // have no Elastic IP quota", so this is pinned by test.
     serviceCode: "ec2",
     quotaCode: "L-0263D0A3",
     label: "EC2-VPC Elastic IPs",
@@ -165,7 +165,7 @@ export interface AwsQuotaContext {
   countVpcs(region: string): Promise<number>;
 }
 
-/** Regions read in parallel — the fan-out bound the resource listers use. */
+/** Regions read in parallel: the fan-out bound the resource listers use. */
 const REGION_CONCURRENCY = 8;
 
 /**
@@ -178,7 +178,7 @@ const REGION_CONCURRENCY = 8;
  * 1,920-vCPU account as having 32.
  *
  * Returns null when neither call names a usable ceiling. Null is dropped, not
- * defaulted — see the module header.
+ * defaulted: see the module header.
  */
 export async function resolveQuotaLimit(
   ctx: AwsQuotaContext,
@@ -199,7 +199,7 @@ export async function resolveQuotaLimit(
  * `Unit: "None"` is AWS's way of saying "a bare count", and it appears on
  * essentially every quota including the ones measured in vCPUs. Printing it
  * verbatim would put "1,920 None" on the screen, so the target's own word wins
- * over an uninformative provider unit — but a provider unit that says
+ * over an uninformative provider unit, but a provider unit that says
  * something real (`Bytes`, `Requests per second`) is kept.
  */
 export function pickQuotaUnit(providerUnit: string | undefined, fallback: string): string {
@@ -217,7 +217,7 @@ export function pickQuotaUnit(providerUnit: string | undefined, fallback: string
  * quota at zero usage is also the one case where the ceiling cannot be a
  * problem, so nothing actionable is lost.
  *
- * A usage read that *fails* is not a usage of zero — it throws, and the whole
+ * A usage read that *fails* is not a usage of zero: it throws, and the whole
  * fetch fails with it, per the contract's "throw rather than return a short
  * list" rule.
  */
@@ -236,7 +236,7 @@ async function readRegion(ctx: AwsQuotaContext, region: string): Promise<QuotaUs
         used = await ctx.countVpcs(region);
         break;
     }
-    // Null means CloudWatch published no datapoint for that class — the
+    // Null means CloudWatch published no datapoint for that class: the
     // account has never run one. Distinct from zero only in that we did not
     // measure it; either way there is nothing to warn about.
     if (used === null || used <= 0) continue;
@@ -265,7 +265,7 @@ async function readRegion(ctx: AwsQuotaContext, region: string): Promise<QuotaUs
 /**
  * Read the account's quotas across every enabled region.
  *
- * Any region's failure fails the whole fetch — the host replaces its stored
+ * Any region's failure fails the whole fetch: the host replaces its stored
  * readings with what this returns, so a partial list would read as quotas
  * having disappeared, and a disappeared quota is one nobody is watching any
  * more. That is the same rule `fetchAwsCommitments` follows next door.

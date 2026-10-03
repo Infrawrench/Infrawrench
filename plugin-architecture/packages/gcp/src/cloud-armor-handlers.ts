@@ -25,7 +25,7 @@ interface CloudArmorPolicyFullResult {
 interface CloudArmorTargetSummary {
   /** Backend service short name. */
   name: string;
-  /** Region — empty string for global backend services. */
+  /** Region: empty string for global backend services. */
   region: string;
 }
 
@@ -36,7 +36,7 @@ interface CloudArmorTargetsResult {
 
 function policyName(resource: ResourceInstance): string {
   const ext = resource.externalId ?? "";
-  // externalId is "{project}/{name}" — fall back to fields.name.
+  // externalId is "{project}/{name}": fall back to fields.name.
   const slash = ext.indexOf("/");
   if (slash >= 0) return ext.slice(slash + 1);
   return String(resource.fields["name"] ?? resource.displayName);
@@ -61,7 +61,7 @@ interface RawRule {
 }
 
 function ruleResponseCode(action: string): string {
-  // v1 returns action strings like "deny(403)", "deny(404)", "deny(502)" — the
+  // v1 returns action strings like "deny(403)", "deny(404)", "deny(502)": the
   // status code lives inside parentheses. Allow / redirect / etc. don't have one.
   const m = /^deny\((\d+)\)$/.exec(action);
   return m ? (m[1] ?? "") : "";
@@ -111,7 +111,7 @@ export async function listCloudArmorTargets(
 ): Promise<CloudArmorTargetsResult> {
   const name = policyName(resource);
   // Cloud Armor policies attach to backend services via the backend service's
-  // securityPolicy field — there's no reverse-lookup endpoint, so we scan
+  // securityPolicy field: there's no reverse-lookup endpoint, so we scan
   // aggregated/backendServices and filter by suffix match.
   const res = await gcpFetch(
     ctx,

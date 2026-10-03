@@ -32,8 +32,8 @@ describe("normalizeQuotaUsage", () => {
     expect(normalizeQuotaUsage([reading({ used: -3 })])[0]?.used).toBe(0);
   });
 
-  // Over-quota is a real state — a limit lowered under existing usage, a soft
-  // limit the provider let through — and clamping it to 100% would hide the
+  // Over-quota is a real state (a limit lowered under existing usage, a soft
+  // limit the provider let through) and clamping it to 100% would hide the
   // one reading nobody should miss.
   it("keeps used > limit as-is", () => {
     expect(normalizeQuotaUsage([reading({ used: 140 })])[0]?.used).toBe(140);

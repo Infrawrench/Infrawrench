@@ -3,7 +3,7 @@ import type { ListerContext } from "../resource-listers.js";
 import { ensureArray } from "../xml.js";
 
 /**
- * Route 53 is a REST-**XML** API — every response here is XML, so these
+ * Route 53 is a REST-**XML** API: every response here is XML, so these
  * listers must use `xmlGet`. They used `jsonGet` (`res.json()`), which threw a
  * SyntaxError on the `<?xml` prefix every poll, meaning hosted zones, record
  * sets and health checks never listed at all. Same bug CloudFront had.
@@ -11,7 +11,7 @@ import { ensureArray } from "../xml.js";
  * `parseXml` strips the single root element (`ListHostedZonesResponse` and
  * friends), so the shape that arrives here is the response *body*: a
  * `<HostedZones>` container wrapping repeated `<HostedZone>` entries, which
- * collapse to a bare object when there is only one — hence `ensureArray`.
+ * collapse to a bare object when there is only one, hence `ensureArray`.
  */
 export async function listRoute53HostedZones(
   ctx: ListerContext,
@@ -71,7 +71,7 @@ export async function listRoute53RecordSets(
         const name = String(record["Name"] ?? "");
         const type = String(record["Type"] ?? "");
         const recordId = `${zoneId}:${name}:${type}`;
-        // `<ResourceRecords><ResourceRecord><Value>…` — one more container to
+        // `<ResourceRecords><ResourceRecord><Value>…`: one more container to
         // unwrap, and a single record parses as a bare object.
         const resourceRecords = ensureArray(
           (record["ResourceRecords"] as Record<string, unknown> | undefined)?.["ResourceRecord"] as

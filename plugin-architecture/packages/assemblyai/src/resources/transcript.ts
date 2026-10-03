@@ -5,7 +5,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  *
  * AssemblyAI's v2 API is async-only: every transcription is a job you submit
  * and then poll. `GET /v2/transcript` is the only listing endpoint the API
- * exposes — there is no REST surface for API keys, usage, billing, or team
+ * exposes: there is no REST surface for API keys, usage, billing, or team
  * members, so transcripts are the whole of this plugin's resource inventory.
  *
  * https://www.assemblyai.com/docs/api-reference/transcripts/list

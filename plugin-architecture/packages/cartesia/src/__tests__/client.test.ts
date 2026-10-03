@@ -241,7 +241,7 @@ describe("renderDetail", () => {
       "sonic-latest",
     ]);
     expect(detail.speechPanel?.defaultModel).toBe("sonic-3.5");
-    // Cartesia documents no transcript ceiling — we must not invent one.
+    // Cartesia documents no transcript ceiling: we must not invent one.
     expect(detail.speechPanel?.maxCharacters).toBeUndefined();
     expect(detail.speechPanel?.voices?.[0]?.id).toBe(VOICE.id);
   });
@@ -268,7 +268,7 @@ describe("synthesizeSpeech", () => {
     expect(body["text"]).toBeUndefined();
     expect(body["voice"]).toEqual({ mode: "id", id: VOICE.id });
     expect(body["model_id"]).toBe("sonic-3.5");
-    // mp3 takes container/sample_rate/bit_rate only — an `encoding` key is a 400.
+    // mp3 takes container/sample_rate/bit_rate only: an `encoding` key is a 400.
     expect(body["output_format"]).toEqual({
       container: "mp3",
       sample_rate: 44100,

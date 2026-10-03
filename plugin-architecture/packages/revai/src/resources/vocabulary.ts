@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A custom vocabulary — a saved phrase list a job can reference by
+ * A custom vocabulary: a saved phrase list a job can reference by
  * `custom_vocabulary_id`.
  *
  * Note the status enum uses `complete`, not `completed`. Custom vocabularies

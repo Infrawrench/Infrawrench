@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 /**
  * A file stored in UploadThing.
  *
- * `name` is the only editable field — `POST /v6/renameFiles` is the sole
+ * `name` is the only editable field: `POST /v6/renameFiles` is the sole
  * mutation the API offers over an existing file's metadata. The key, size and
  * upload time are assigned at upload and never change, and the ACL is moved by
  * its own action rather than the edit form (it is a separate endpoint, and it
@@ -52,8 +52,8 @@ export const UtFileResourceType = rt({
   parentTypeId: "ut-app",
   // No `showInSidebar`, but that does not keep it out of the sidebar: `ut-app`
   // is the account root, and `getListableResourceTypes` promotes a root's
-  // direct children into the top level the root vacates. That is deliberate —
-  // an account expanding to a single "Apps" pill would be useless — and it is
+  // direct children into the top level the root vacates. That is deliberate
+  // (an account expanding to a single "Apps" pill would be useless) and it is
   // why this flag is absent rather than false: setting it would be redundant,
   // and reading it here would suggest a choice that isn't being made.
   //

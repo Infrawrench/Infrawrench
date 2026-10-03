@@ -60,7 +60,7 @@ describe("expiryFields validation", () => {
     expect(parsed.success).toBe(false);
   });
 
-  // maxAgeDays on an absolute deadline is dead config — the author almost
+  // maxAgeDays on an absolute deadline is dead config: the author almost
   // certainly meant `from: "created"`, so the manifest must fail loudly.
   it("rejects maxAgeDays on a from:'expiry' rule", () => {
     const parsed = resourceTypeDefinitionSchema.safeParse(

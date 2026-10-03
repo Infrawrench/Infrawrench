@@ -20,7 +20,7 @@ export async function containerRegistryGetCreateConfig(
   _parentResourceId?: string,
 ): Promise<CreateResourceConfig | null> {
   if (typeId === "container-registry") {
-    // No project field — DOCR is an account-level singleton, not
+    // No project field: DOCR is an account-level singleton, not
     // project-scoped, and DO refuses a second registry with a 409.
     const regionOptions = REGISTRY_REGIONS.map((slug) => {
       const info = regionDisplay(slug);
@@ -66,7 +66,7 @@ export async function containerRegistryGetCreateConfig(
 /**
  * Create one of the types this module owns. Returns `null` when `typeId`
  * belongs to another module. DO returns 409 when the account already has a
- * registry or the name is taken globally — that error propagates as-is.
+ * registry or the name is taken globally: that error propagates as-is.
  */
 export async function containerRegistryCreateResource(
   args: DoCreateArgs,

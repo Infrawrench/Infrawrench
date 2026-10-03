@@ -5,13 +5,13 @@
  * returns daily, per-entity (data warehouse / service / ClickPipe) cost
  * records broken down by metric (compute, storage, backup, data transfer,
  * …). Both dates are inclusive and `to_date` may be at most 30 days after
- * `from_date` — the host's month-aligned ≤31-day chunks fit that exactly.
+ * `from_date`: the host's month-aligned ≤31-day chunks fit that exactly.
  *
  * Amounts are ClickHouse Credits (CHC) converted at the $1-per-CHC list
  * price. Organizations on committed-spend contracts buy credits at a
  * discount, so reported USD is list price, not the negotiated rate.
  *
- * Uses the same Cloud API key (HTTP Basic auth) as service listing — no
+ * Uses the same Cloud API key (HTTP Basic auth) as service listing: no
  * extra permissions beyond organization billing read access.
  */
 
@@ -79,7 +79,7 @@ export async function fetchClickHouseCostData(
   for (const record of data.result?.costs ?? []) {
     const date = record.date;
     if (!date) continue;
-    // entityId (a stable UUID) keys the resource dimension — entityName is
+    // entityId (a stable UUID) keys the resource dimension: entityName is
     // user-renamable and would break same-day dedup on rename.
     const resourceId = record.entityId ?? "";
     for (const [key, value] of Object.entries(record.metrics ?? {})) {

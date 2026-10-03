@@ -1,8 +1,8 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A WorkOS User Management user. Users are environment-level in WorkOS — one
- * user can hold memberships in many organizations — so this is a top-level
+ * A WorkOS User Management user. Users are environment-level in WorkOS (one
+ * user can hold memberships in many organizations) so this is a top-level
  * type rather than a child of `organization`.
  * Docs: https://workos.com/docs/reference/user-management/user
  */

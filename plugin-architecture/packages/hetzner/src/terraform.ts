@@ -6,12 +6,12 @@ import type {
 import { fieldNumber, fieldString, tf } from "@infrawrench/plugin-base";
 
 /**
- * Terraform mapping for Hetzner Cloud — provider `hetznercloud/hcloud`.
+ * Terraform mapping for Hetzner Cloud: provider `hetznercloud/hcloud`.
  * Attribute names verified against the provider docs
  * (registry.terraform.io/providers/hetznercloud/hcloud):
  *   - hcloud_server: name / server_type / image required; location optional.
  *   - hcloud_volume: name / size required; location conflicts with server_id.
- * The API token is always emitted as `var.hcloud_token` — never inlined.
+ * The API token is always emitted as `var.hcloud_token`, never inlined.
  */
 export const hetznerTerraformExport: TerraformExportCapability = {
   provider: { name: "hcloud", source: "hetznercloud/hcloud", version: "~> 1.45" },

@@ -1,5 +1,5 @@
 /**
- * DynamoDB-specific detail renderer pieces — the "Schema & indexes" tab
+ * DynamoDB-specific detail renderer pieces: the "Schema & indexes" tab
  * and the `_indexesJson` payload decoder shared with the lister.
  *
  * Kept separate from the catch-all render-resource.ts so the GSI/LSI logic
@@ -191,7 +191,7 @@ export function buildDynamoSchemaTab(payload: DynamoIndexesPayload): DetailViewT
       resourceTypeId: "dynamodb-lsi",
       resourceId: name,
       displayName: name,
-      // LSIs are creation-only in DynamoDB — they have no lifecycle state and
+      // LSIs are creation-only in DynamoDB: they have no lifecycle state and
       // can't be deleted, so they render as static informational chips.
       status: { kind: "status-dot", status: "info", label: "Read-only" },
       stats: [

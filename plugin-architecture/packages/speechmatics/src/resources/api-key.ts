@@ -5,7 +5,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  *
  * Verified against the Management API reference
  * (https://docs.speechmatics.com/api-ref/management/get-all-api-keys and
- * .../delete-an-api-key) — `GET /api-keys?project_id=` and
+ * .../delete-an-api-key): `GET /api-keys?project_id=` and
  * `DELETE /api-keys/{apikey_id}` on server `https://mp.api.speechmatics.com/v1`,
  * returning an array of `{apikey_id, name, created_at, client_ref}`.
  *

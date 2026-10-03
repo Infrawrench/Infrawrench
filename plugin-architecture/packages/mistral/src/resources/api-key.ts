@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 /**
  * An organization API key.
  *
- * Admin-only: `GET https://api.mistral.ai/v1/admin/api-keys` — a different
+ * Admin-only: `GET https://api.mistral.ai/v1/admin/api-keys`; a different
  * base *and* a different auth header (`x-api-key`) from the data plane, and
  * gated to Enterprise plans. Without an admin key the listing is empty rather
  * than an error.

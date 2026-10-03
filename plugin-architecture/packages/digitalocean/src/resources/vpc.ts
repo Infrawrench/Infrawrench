@@ -3,7 +3,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
 /**
  * A DigitalOcean VPC network (`/v2/vpcs`). Every Droplet, NFS share and
  * Dedicated Inference endpoint already records the VPC uuid it lives in, so
- * listing VPCs is what turns those recorded uuids into real graph edges — the
+ * listing VPCs is what turns those recorded uuids into real graph edges: the
  * `externalId` here is the VPC uuid those fields hold.
  *
  * The list payload carries no member count (DO exposes members on a separate

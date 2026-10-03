@@ -1,10 +1,10 @@
 /**
- * ARM "manifest" support — read the raw ARM JSON for a resource and write it
+ * ARM "manifest" support: read the raw ARM JSON for a resource and write it
  * back (PUT). Used by the manifest editor UI.
  *
  * The mapping in `AZURE_ARM_SPECS` is shared with `delete-handlers.ts` for
  * everything except SQL database (which has a different URL shape between
- * read-by-name and the delete operation — both are handled here directly).
+ * read-by-name and the delete operation: both are handled here directly).
  */
 import { ARM, AZURE_ARM_SPECS, type AzureHttpContext } from "./shared.js";
 

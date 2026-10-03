@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A Message Batches job — up to 100,000 requests processed asynchronously at
+ * A Message Batches job: up to 100,000 requests processed asynchronously at
  * a 50% discount, expiring 24 hours after creation.
  *
  * Batches can be cancelled while `processing_status` is `in_progress`, and

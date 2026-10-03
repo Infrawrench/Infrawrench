@@ -2,11 +2,11 @@
  * Actual-spend collection from Turso invoices.
  *
  * Turso's Platform API exposes billing only as issued monthly invoices
- * (`GET /v1/organizations/{slug}/invoices?type=issued`) — an org-level
+ * (`GET /v1/organizations/{slug}/invoices?type=issued`): an org-level
  * `amount_due` in dollars with no line items, no service/database breakdown,
  * and no explicit period fields (just `due_date`, verified against
  * docs.turso.tech, July 2026). Rows are therefore a monthly org lump sum,
- * dated to the invoice's due date — the billing-cycle boundary — and the
+ * dated to the invoice's due date (the billing-cycle boundary) and the
  * manifest declares `periodNative` so charts label the series accordingly.
  */
 

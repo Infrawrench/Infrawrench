@@ -12,7 +12,7 @@ import { SecretResourceType } from "./resources/secret.js";
 import { QuotaResourceType } from "./resources/quota.js";
 
 // Mark taken verbatim from Fireworks AI's own app icon, served at
-// https://fireworks.ai/icon0.svg — a chevron over two mirrored brackets, drawn
+// https://fireworks.ai/icon0.svg: a chevron over two mirrored brackets, drawn
 // as three paths on a 32×32 canvas in the brand violet #6720FF (the same value
 // the site uses as `rgba(103, 32, 255, α)` throughout). The 32×32 artwork is
 // scaled ×2 and centred on the 100×100 plugin canvas, knocked out in white on

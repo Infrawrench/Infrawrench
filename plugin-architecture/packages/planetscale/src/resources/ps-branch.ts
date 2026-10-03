@@ -22,7 +22,7 @@ export const PsBranchResourceType = rt({
   ],
   // `parentBranch` holds a bare branch name while a branch's external id is
   // `{database}/{branch}`. A branch can only fork inside its own database, so
-  // composing the qualified id is exact — matching the bare name would collide
+  // composing the qualified id is exact: matching the bare name would collide
   // with every other database's `main`.
   dependsOn: [
     { fieldKey: "databaseName", targetTypeId: "ps-database", label: "in database" },

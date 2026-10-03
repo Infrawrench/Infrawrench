@@ -1,11 +1,11 @@
 /**
  * DigitalOcean public status feed (Atlassian Statuspage,
- * https://status.digitalocean.com — verified 2026-08).
+ * https://status.digitalocean.com: verified 2026-08).
  *
  * Component naming on this page is product-group → region children:
  * "Droplets" has children "AMS3", "NYC1", … so a region component's name is
  * the uppercase region slug. Region components repeat across product groups,
- * which is fine here — "AMS3" means the ams3 region regardless of which
+ * which is fine here: "AMS3" means the ams3 region regardless of which
  * product group it sits under. App Platform children use city names instead
  * of slugs, so those are mapped explicitly.
  */
@@ -62,7 +62,7 @@ function mapComponent(name: string): StatusComponentMapping | null {
     return { services: [name], providerWide: true };
   }
   // "Global" children and components like "Billing"/"Support Center" don't
-  // scope to infrastructure — keep the incident but let other components
+  // scope to infrastructure: keep the incident but let other components
   // (or provider-wide fallback) decide the blast radius.
   if (name === "Global") return { services: [] };
   if (name === "Billing" || name === "Support Center" || name === "Community") return null;

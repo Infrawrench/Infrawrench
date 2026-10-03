@@ -42,8 +42,8 @@ function formatZoneOperationError(op: GcpZoneOperation): string {
  * failed.
  *
  * Without this, an `instances.insert` that GCP accepts and then fails
- * asynchronously — `ZONE_RESOURCE_POOL_EXHAUSTED`, a quota denial, an
- * unreadable image — was reported to the user as a successfully created VM.
+ * asynchronously (`ZONE_RESOURCE_POOL_EXHAUSTED`, a quota denial, an
+ * unreadable image) was reported to the user as a successfully created VM.
  * The session then failed much later with "resource … not found" against a
  * machine that never existed, blaming the wrong layer entirely.
  *
@@ -671,7 +671,7 @@ export const computeEngineCreateResourceHandlers: Record<
         );
         firewallTags = fw.targetTags ?? [];
       } catch {
-        /* firewall fetch failed — skip silently; user's manual tags still apply */
+        /* firewall fetch failed: skip silently; user's manual tags still apply */
       }
     }
     const tagItems = Array.from(new Set([...manualTags, ...firewallTags]));

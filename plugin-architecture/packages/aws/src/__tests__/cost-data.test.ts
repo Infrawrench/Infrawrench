@@ -19,7 +19,7 @@ interface GroupSpec {
   unblended?: string;
   amortized?: string;
   unit?: string;
-  /** Omit the `AmortizedCost` metric entirely — "CE had no opinion". */
+  /** Omit the `AmortizedCost` metric entirely: "CE had no opinion". */
   noAmortized?: boolean;
 }
 
@@ -65,8 +65,8 @@ const RANGE = { fromDate: "2026-07-01", toDate: "2026-07-02" };
 
 describe("mapAwsRecordType", () => {
   it("separates covered consumption from on-demand consumption", () => {
-    // All three are consumption — the commitment shows up in the rate, not in
-    // the row's nature — but "was this hour covered" is the only thing Cost
+    // All three are consumption (the commitment shows up in the rate, not in
+    // the row's nature) but "was this hour covered" is the only thing Cost
     // Explorer will ever say about coverage (SAVINGS_PLAN_ARN and
     // RESERVATION_ID cannot be grouped by), so the two covered record types
     // must stay distinguishable from on-demand usage.
@@ -94,8 +94,8 @@ describe("mapAwsRecordType", () => {
 
   it("maps only the savings-plan negation line to commitment_discount", () => {
     // AWS writes an explicit negative offset for Savings Plans. Reserved
-    // Instances have no equivalent line — their discount is inside
-    // DiscountedUsage's rate — so nothing else lands here.
+    // Instances have no equivalent line (their discount is inside
+    // DiscountedUsage's rate) so nothing else lands here.
     expect(mapAwsRecordType("SavingsPlanNegation")).toBe("commitment_discount");
   });
 
@@ -147,7 +147,7 @@ describe("fetchAwsCostData request shape", () => {
     expect(spy).toHaveBeenCalledTimes(3);
     const [onDemand, covered, pass2] = sentBodies(spy);
 
-    // Both metrics ride on one request — CE bills per request, not per metric.
+    // Both metrics ride on one request: CE bills per request, not per metric.
     expect(onDemand!["Metrics"]).toEqual(["UnblendedCost", "AmortizedCost"]);
     // Both consumption passes keep the region; only their filters differ,
     // which is the whole reason they are two requests rather than one.
@@ -168,7 +168,7 @@ describe("fetchAwsCostData request shape", () => {
       { Type: "DIMENSION", Key: "SERVICE" },
       { Type: "DIMENSION", Key: "RECORD_TYPE" },
     ]);
-    // The exact complement of the two consumption passes taken together —
+    // The exact complement of the two consumption passes taken together:
     // nothing is dropped, nothing doubles.
     expect(pass2!["Filter"]).toEqual({
       Not: { Dimensions: { Key: "RECORD_TYPE", Values: AWS_USAGE_RECORD_TYPES } },
@@ -196,7 +196,7 @@ describe("fetchAwsCostData request shape", () => {
           { date: "2026-07-01", groups: [{ keys: ["AmazonS3", "us-east-1"], unblended: "2" }] },
         ]),
       )
-      // Pass 1b — covered usage, one page, nothing in it.
+      // Pass 1b: covered usage, one page, nothing in it.
       .mockResolvedValueOnce(ceResponse([{ date: "2026-07-01", groups: [] }]))
       // Pass 2, page 1 of 2.
       .mockResolvedValueOnce(
@@ -275,14 +275,14 @@ describe("fetchAwsCostData rows", () => {
   it("keeps RI-covered usage, whose unblended cost is zero by design", async () => {
     // AWS: "For Amazon EC2 and Amazon RDS line items that have an RI discount
     // applied to them, the UnblendedRate is zero." Asking for UnblendedCost
-    // alone and skipping zeroes dropped these rows entirely — and a coverage
+    // alone and skipping zeroes dropped these rows entirely, and a coverage
     // ratio built on the cash figure would read 0% for a fully reserved fleet.
     // The amortized amount is what the hour is actually worth, and the charge
     // type is what makes it countable as covered without a commitment id.
     vi.spyOn(globalThis, "fetch")
-      // Pass 1a — no on-demand consumption at all; the fleet is fully covered.
+      // Pass 1a: no on-demand consumption at all; the fleet is fully covered.
       .mockResolvedValueOnce(ceResponse([{ date: "2026-07-01", groups: [] }]))
-      // Pass 1b — the covered hours.
+      // Pass 1b: the covered hours.
       .mockResolvedValueOnce(
         ceResponse([
           {
@@ -341,7 +341,7 @@ describe("fetchAwsCostData rows", () => {
       amount: 0,
       amortizedAmount: 6,
     });
-    // Amortized coverage of this cell is 6/10 — a number cash cannot produce.
+    // Amortized coverage of this cell is 6/10: a number cash cannot produce.
     expect(ec2.reduce((sum, r) => sum + (r.amortizedAmount ?? 0), 0)).toBe(10);
   });
 
@@ -359,7 +359,7 @@ describe("fetchAwsCostData rows", () => {
           },
         ]),
       )
-      // Pass 1b — no commitment-covered usage in this account.
+      // Pass 1b: no commitment-covered usage in this account.
       .mockResolvedValueOnce(ceResponse([{ date: "2026-07-01", groups: [] }]))
       .mockResolvedValueOnce(
         ceResponse([
@@ -393,7 +393,7 @@ describe("fetchAwsCostData rows", () => {
   it("routes an unmappable record type to other instead of inflating usage", async () => {
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(ceResponse([{ date: "2026-07-01", groups: [] }]))
-      // Pass 1b — no commitment-covered usage in this account.
+      // Pass 1b: no commitment-covered usage in this account.
       .mockResolvedValueOnce(ceResponse([{ date: "2026-07-01", groups: [] }]))
       .mockResolvedValueOnce(
         ceResponse([
@@ -429,7 +429,7 @@ describe("fetchAwsCostData rows", () => {
           },
         ]),
       )
-      // Pass 1b — no commitment-covered usage in this account.
+      // Pass 1b: no commitment-covered usage in this account.
       .mockResolvedValueOnce(ceResponse([{ date: "2026-07-01", groups: [] }]))
       .mockResolvedValueOnce(
         ceResponse([
@@ -459,7 +459,7 @@ describe("fetchAwsCostData rows", () => {
       }),
     );
     // Every no-region cell that now holds only non-usage gets one, including
-    // EC2's — a pre-attribution collection filed EC2's no-region tax as a
+    // EC2's: a pre-attribution collection filed EC2's no-region tax as a
     // usage row at exactly that key.
     expect(zeroed.map((r) => r.service).sort()).toEqual([
       "AmazonEC2",
@@ -470,7 +470,7 @@ describe("fetchAwsCostData rows", () => {
   });
 
   it("does not zero a service that has usage at no region", async () => {
-    // Pass 1 already produced (day, service, "") for this one — overwriting it
+    // Pass 1 already produced (day, service, "") for this one: overwriting it
     // with a zero would delete real spend.
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
@@ -481,7 +481,7 @@ describe("fetchAwsCostData rows", () => {
           },
         ]),
       )
-      // Pass 1b — no commitment-covered usage in this account.
+      // Pass 1b: no commitment-covered usage in this account.
       .mockResolvedValueOnce(ceResponse([{ date: "2026-07-01", groups: [] }]))
       .mockResolvedValueOnce(
         ceResponse([
@@ -529,7 +529,7 @@ describe("fetchAwsCostData amortized reporting", () => {
   it("omits it on the unattributed fallback too, whose groups mix every record type", async () => {
     // The fallback aggregates all record types into one group, so a response
     // without an amortized figure there would zero out a service's whole spend
-    // on the amortized basis — the widest possible version of the same bug.
+    // on the amortized basis: the widest possible version of the same bug.
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ __type: "ValidationException", message: "bad dimension" }), {
@@ -605,7 +605,7 @@ describe("fetchAwsCostData degradation", () => {
       { Type: "DIMENSION", Key: "REGION" },
     ]);
 
-    // Spend still reported, just unattributed — `usage` hashes identically to
+    // Spend still reported, just unattributed: `usage` hashes identically to
     // no charge type at all, so these rows replace their predecessors.
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
@@ -621,7 +621,7 @@ describe("fetchAwsCostData degradation", () => {
     // RECORD_TYPE and for a transient rejection. Either way the pass writes a
     // coarser key space than the collection before it, and the host's
     // superseded-row reconciliation would read that as "the attribution rows
-    // are gone" and zero all of them — unrepairable once the day ages past the
+    // are gone" and zero all of them: unrepairable once the day ages past the
     // restatement window.
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(

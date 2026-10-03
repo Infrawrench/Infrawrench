@@ -25,7 +25,7 @@ export const SupervisedFineTuningJobResourceType = rt({
   ],
   outputs: [o("jobName", "Job Resource Name"), o("outputModel", "Output Model Name")],
   // All three hold full resource names, matched against the target's name
-  // output. `outputModel` is left out — it names what the job produces.
+  // output. `outputModel` is left out: it names what the job produces.
   dependsOn: [
     { fieldKey: "baseModel", targetTypeId: "model", targetKey: "modelName", label: "trained from" },
     { fieldKey: "dataset", targetTypeId: "dataset", targetKey: "datasetName", label: "trains on" },

@@ -409,7 +409,7 @@ describe("cloud-nat renderer", () => {
 });
 
 describe("backend-service renderer", () => {
-  // The Metrics tab is no longer decided here — `backend-service` declares
+  // The Metrics tab is no longer decided here: `backend-service` declares
   // `supportsMetrics`, and the client attaches the capability from that
   // declaration (see `withMetricsCapability`). This renderer used to attach it
   // only for HTTPS-family schemes, which made the tab come and go with the

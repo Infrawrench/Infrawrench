@@ -64,7 +64,7 @@ export const CloudSqlInstanceResourceType = rt({
     // (engine-specific scheme, embedded password, IPv4 endpoint).
     //
     // `unreachableWhen` short-circuits the tab when the instance has no public
-    // IP — a private-only Cloud SQL is only reachable from inside its VPC,
+    // IP: a private-only Cloud SQL is only reachable from inside its VPC,
     // and a desktop / web Infrawrench process almost never is. The host
     // renders a static guidance pane instead of attempting a doomed connect.
     const unreachableWhen = {

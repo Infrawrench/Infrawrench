@@ -2,11 +2,11 @@
  * Credential preflight + least-privilege policy template for AWS.
  *
  * Probe strategy (all read-only):
- *   1. `sts:GetCallerIdentity` — resolves the caller ARN; needs no permission
+ *   1. `sts:GetCallerIdentity`: resolves the caller ARN; needs no permission
  *      at all (verified: even an explicit deny doesn't block it), so a failure
  *      here means the keys themselves are bad.
  *   2. `iam:SimulatePrincipalPolicy` with the caller ARN and every declared
- *      action — gives an exact allowed / denied verdict per permission.
+ *      action: gives an exact allowed / denied verdict per permission.
  *   3. When the credential can't call the simulator (it's an IAM action many
  *      minimal policies omit), fall back to one cheap dry-run probe per
  *      capability and report at probe granularity instead.
@@ -290,7 +290,7 @@ async function probeCapability(creds: AwsCredentials, capabilityId: string): Pro
     });
     return;
   }
-  // costs — the smallest possible GetCostAndUsage (CE bills ~$0.01/request,
+  // costs: the smallest possible GetCostAndUsage (CE bills ~$0.01/request,
   // only paid on this fallback path).
   const now = new Date();
   const end = now.toISOString().slice(0, 10);
@@ -345,7 +345,7 @@ export async function runAwsPreflight(creds: AwsCredentials): Promise<PreflightR
     identity = await getCallerIdentity(creds);
   } catch (e) {
     // GetCallerIdentity needs no permissions, so failure means the keys are
-    // wrong (or AWS is unreachable) — nothing else can be verified.
+    // wrong (or AWS is unreachable): nothing else can be verified.
     const invalid =
       isAccessDenied(e) || /InvalidClientTokenId|SignatureDoesNotMatch/i.test(String(e));
     return {
@@ -391,7 +391,7 @@ export async function runAwsPreflight(creds: AwsCredentials): Promise<PreflightR
     }
   }
 
-  // Fallback path: the credential can't call the simulator — dry-run one
+  // Fallback path: the credential can't call the simulator; dry-run one
   // representative read per capability instead.
   const checks: PreflightCapabilityCheck[] = [];
   for (const c of capabilities) {

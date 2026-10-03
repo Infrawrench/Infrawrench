@@ -64,7 +64,7 @@ export const RDSInstanceResourceType = rt({
     }),
   ],
   // A cluster member reports the cluster id under `DBClusterIdentifier`, which
-  // is exactly the external id of the Aurora / DocumentDB / Neptune cluster —
+  // is exactly the external id of the Aurora / DocumentDB / Neptune cluster:
   // the same DescribeDBInstances call serves all three engines, so all three
   // are named here and only the matching one resolves.
   dependsOn: [

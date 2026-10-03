@@ -71,7 +71,7 @@ function gibText(gib: number): string {
   return gib >= 10 ? `${Math.round(gib)}Gi` : `${Number(gib.toFixed(2))}Gi`;
 }
 
-/** `120Gi · 2 LB` — the non-compute footprint, in one narrow column. */
+/** `120Gi · 2 LB`: the non-compute footprint, in one narrow column. */
 function extrasText(storageGib: number, loadBalancerCount: number): string {
   const parts: string[] = [];
   if (storageGib > 0) parts.push(gibText(storageGib));
@@ -130,7 +130,7 @@ function costSection(
  *
  * Ordered by cost so the first row is the one worth looking at. Workloads with
  * no cost (unpriced nodes, unscheduled pods) sort last rather than being
- * dropped — a workload that exists but cannot be priced is a fact, and hiding
+ * dropped: a workload that exists but cannot be priced is a fact, and hiding
  * it would make the namespace look cheaper than it is.
  */
 function namespaceCostTable(namespace: string, costs: CostIndex | undefined): SectionNode[] {
@@ -169,7 +169,7 @@ function namespaceCostTable(namespace: string, costs: CostIndex | undefined): Se
 }
 
 /**
- * Cost broken down by namespace, for the whole cluster — including the idle
+ * Cost broken down by namespace, for the whole cluster, including the idle
  * and system-reserved buckets.
  *
  * Those two rows are the point of the table. Spreading unallocated capacity
@@ -298,7 +298,7 @@ function clusterComponentSection(costs: CostIndex): SectionNode[] {
     ...line("Total", cluster.dailyTotalCost),
   ];
 
-  // Facts worth stating even when there is no price behind them — a count of
+  // Facts worth stating even when there is no price behind them: a count of
   // disks with no money is more useful than silence, and it explains the gap.
   if (cluster.storage.dailyAttributedCost == null && cluster.storage.gib > 0) {
     items.push({
@@ -431,7 +431,7 @@ function typeIdForWorkloadKind(kind: string): string | null {
   }
 }
 
-/** One efficiency table — namespaces or workloads, same columns. */
+/** One efficiency table: namespaces or workloads, same columns. */
 function efficiencyTable(
   rows: EfficiencyRow[],
   currency: string,
@@ -492,7 +492,7 @@ function efficiencyTable(
  * workload, worst offenders first.
  *
  * The percentage is the diagnosis and the money is the argument, so both
- * columns are always present and the ordering is by money — nobody schedules
+ * columns are always present and the ordering is by money: nobody schedules
  * work off a ratio. Where a row was never measured every cell that would be
  * derived from usage reads `unknown`; a workload with no metrics-server behind
  * it is not 0% efficient, and rendering it as 0% would make the cluster look

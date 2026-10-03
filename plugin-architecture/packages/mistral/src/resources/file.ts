@@ -1,7 +1,7 @@
 import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
- * A file uploaded to the workspace — fine-tuning datasets, batch request
+ * A file uploaded to the workspace: fine-tuning datasets, batch request
  * JSONL, and OCR inputs all live here.
  *
  * `GET https://api.mistral.ai/v1/files`

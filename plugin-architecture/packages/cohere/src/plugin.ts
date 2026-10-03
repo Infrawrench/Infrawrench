@@ -9,8 +9,8 @@ import { BatchResourceType } from "./resources/batch.js";
 
 /**
  * Mark taken verbatim from Cohere's own `https://cohere.com/logo_mobile.svg`
- * (32×32). The three shapes and their fills — deep green `#355146`, lavender
- * `#D18EE2`, coral `#FF7759` — are the real brand asset, not a redraw; the
+ * (32×32). The three shapes and their fills (deep green `#355146`, lavender
+ * `#D18EE2`, coral `#FF7759`) are the real brand asset, not a redraw; the
  * source viewBox is preserved via an inner `<svg>` so the geometry is
  * untouched, and the outer 100×100 canvas carries the usual rounded-rect
  * background. The clipPath is kept because the first path overflows the

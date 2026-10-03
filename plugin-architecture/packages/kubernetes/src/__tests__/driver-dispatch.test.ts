@@ -5,7 +5,7 @@ import { KubernetesClient } from "../client.js";
 
 // A representative kubeconfig the hand-rolled parser handles. The point of
 // the test is that when the driver is wired in, the client routes through
-// `services.k8s.command(...)` instead of issuing direct HTTP — so even an
+// `services.k8s.command(...)` instead of issuing direct HTTP, so even an
 // otherwise-broken kubeconfig (e.g. one using exec credentials) would
 // still work via the driver path.
 const KUBECONFIG = `apiVersion: v1

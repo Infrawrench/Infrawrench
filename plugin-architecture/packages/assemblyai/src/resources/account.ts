@@ -6,7 +6,7 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * AssemblyAI has no account, usage, billing or quota endpoint, so there is
  * nothing to fetch that describes the key directly. What this resource carries
  * is therefore derived from the transcript list plus the credential's own
- * region — and, more importantly, it is the one resource that exists on a
+ * region, and, more importantly, it is the one resource that exists on a
  * freshly added account. Transcripts only appear once the key has been used,
  * so hanging the Speech tab off them alone would gate the plugin's only feature
  * behind already having used it.

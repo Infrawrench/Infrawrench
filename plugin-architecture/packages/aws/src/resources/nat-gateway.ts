@@ -25,7 +25,7 @@ export const NATGatewayResourceType = rt({
     { fieldKey: "subnetId", targetTypeId: "subnet", label: "in subnet" },
     { fieldKey: "vpcId", targetTypeId: "vpc", label: "in VPC" },
     // The gateway's address is an allocated Elastic IP, but an EIP's external
-    // id is its allocation id — match the address itself instead.
+    // id is its allocation id: match the address itself instead.
     { fieldKey: "publicIp", targetTypeId: "elastic-ip", targetKey: "publicIp", label: "uses IP" },
   ],
   iconKey: "network",

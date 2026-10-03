@@ -3,13 +3,13 @@
  * attribution.
  *
  * Cost Explorer is a global service served from us-east-1 only, and AWS
- * charges $0.01 per paginated request — the host's collection cadence
+ * charges $0.01 per paginated request: the host's collection cadence
  * (once daily + a chunked one-time backfill) keeps that bounded. Per-resource
  * granularity is deliberately not requested (CE only retains it for 14 days
  * and it explodes row counts).
  *
  * Requires the `ce:GetCostAndUsage` IAM action, which is NOT part of typical
- * read-only infra policies — surfaced in the plugin docs. **Charge-type
+ * read-only infra policies: surfaced in the plugin docs. **Charge-type
  * attribution needs no additional IAM action**: `RECORD_TYPE` is a grouping
  * and filter dimension of the same call, not a separate operation.
  *
@@ -24,7 +24,7 @@
  * version of this collector).
  * https://docs.aws.amazon.com/aws-cost-management/latest/APIReference/API_GetCostAndUsage.html
  *
- * We want three dimensions — SERVICE, REGION, RECORD_TYPE — and have two
+ * We want three dimensions (SERVICE, REGION, RECORD_TYPE) and have two
  * slots. The split below spends them where each one is worth most:
  *
  *   Pass 1a  Filter RECORD_TYPE ∈ {Usage}         GroupBy SERVICE + REGION
@@ -33,12 +33,12 @@
  *   Pass 2   Filter NOT(1a ∪ 1b)                  GroupBy SERVICE + RECORD_TYPE
  *
  * All three of 1a's and 1b's record types are consumption billed at some rate
- * — on demand, an RI's rate, or a Savings Plan's — so all three keep their
+ * (on demand, an RI's rate, or a Savings Plan's) so all three keep their
  * region, which is what a reader breaks consumption down by. But they do not
  * share a charge type: on-demand consumption is `usage`, and the other two are
  * `commitment_covered_usage`, because "was this hour covered" is the only thing
  * this API will ever say about commitment coverage (see below). That is the
- * whole reason 1a and 1b are separate requests rather than one — a single
+ * whole reason 1a and 1b are separate requests rather than one: a single
  * filtered request cannot report which of its record types each row came from
  * without spending the second grouping slot on RECORD_TYPE and losing REGION.
  *
@@ -51,8 +51,8 @@
  * commitment fees are read per service ("what did the Savings Plan cost", "how
  * much support"), and CE reports most of them under no region at all.
  *
- * The filters remain exact complements — pass 2 is the literal `Not` of
- * {@link AWS_USAGE_RECORD_TYPES}, which is exactly 1a's set plus 1b's — so
+ * The filters remain exact complements (pass 2 is the literal `Not` of
+ * {@link AWS_USAGE_RECORD_TYPES}, which is exactly 1a's set plus 1b's) so
  * total spend is conserved no matter what CE's real `RECORD_TYPE` tokens turn
  * out to be. A token we guessed wrong simply falls into pass 2, where it loses
  * its region and gets charge-typed from the same table; it is never dropped and
@@ -68,8 +68,8 @@
  *   day, about $0.30 → $0.90–$1.80 a month per account.
  *
  * The third request buys coverage measurement for an org's entire AWS estate,
- * for well under a dollar a month. The considered alternative — one filtered
- * request per record type, which would keep REGION on every row — costs 1 + K
+ * for well under a dollar a month. The considered alternative (one filtered
+ * request per record type, which would keep REGION on every row) costs 1 + K
  * requests per chunk for the K record types an account uses (4–10 in practice),
  * i.e. 5–11× rather than 3×, for a region on tax and credit lines that CE
  * mostly reports as `NoRegion` anyway. Still rejected.
@@ -83,14 +83,14 @@
  * that yields "this service, this region, this savings plan".
  * https://docs.aws.amazon.com/aws-cost-management/latest/APIReference/API_GetDimensionValues.html
  *
- * Attribution by filtering — one request per held commitment — is the only
+ * Attribution by filtering (one request per held commitment) is the only
  * remaining route, and its cost grows with the size of the holding, which is
  * exactly backwards. It would also be partial: Savings Plans could be
  * attributed that way (there are usually few), Reserved Instances could not
  * (there are usually many), so coverage would be systematically understated
  * while *looking* complete. Left plainly unattributed instead.
  *
- * That is survivable because coverage does not need the id — it needs to know
+ * That is survivable because coverage does not need the id: it needs to know
  * *that* an hour was covered, which `RECORD_TYPE` says exactly, and what the
  * hour was worth, which `AmortizedCost` says exactly. Only per-commitment
  * utilization ("did savings plan #3 pay for itself") genuinely needs the id,
@@ -101,15 +101,15 @@
  * Both `UnblendedCost` and `AmortizedCost` are requested. Metrics are per
  * request, not per metric, so the second one is free.
  *
- * - `UnblendedCost` — "the cost of the usage", cash as billed on the day.
- * - `AmortizedCost` — "the effective cost of the upfront and monthly
+ * - `UnblendedCost`: "the cost of the usage", cash as billed on the day.
+ * - `AmortizedCost`: "the effective cost of the upfront and monthly
  *   reservation fees spread across the billing period".
  *   https://docs.aws.amazon.com/cost-management/latest/userguide/ce-advanced.html
  *
  * This is not a nicety: for RI-covered usage the unblended *rate* is zero
  * ("For Amazon EC2 and Amazon RDS line items that have an RI discount applied
- * to them, the `UnblendedRate` is zero"), so the previous collector — which
- * asked for `UnblendedCost` only and skipped zero-amount groups — dropped
+ * to them, the `UnblendedRate` is zero"), so the previous collector (which
+ * asked for `UnblendedCost` only and skipped zero-amount groups) dropped
  * every `DiscountedUsage` row on the floor. Amortized cost is what those rows
  * are actually worth.
  * https://docs.aws.amazon.com/cur/latest/userguide/Lineitem-columns.html
@@ -136,9 +136,9 @@
  * the stale row and replaces it with nothing. On a dataset that never had one
  * it is an inert empty row.
  *
- * The remainder — a *regional* cell whose only spend was non-usage or
+ * The remainder; a *regional* cell whose only spend was non-usage or
  * commitment-covered: an RI recurring fee in a region where nothing ran, a
- * fully-reserved fleet whose unblended cost is zero — is handled by the host,
+ * fully-reserved fleet whose unblended cost is zero; is handled by the host,
  * generically, in `server-core/src/clickhouse/cost-reconcile.ts`: any key
  * stored for a day this collection restated and not rewritten by it is zeroed
  * in the same insert, so this file's upgrade needs no operator step. The
@@ -166,17 +166,17 @@ const CE_URL = "https://ce.us-east-1.amazonaws.com/";
 const CE_METRICS = ["UnblendedCost", "AmortizedCost"];
 
 /**
- * Consumption billed on demand — pass 1a's filter.
+ * Consumption billed on demand: pass 1a's filter.
  *
  * Spelled as the Cost and Usage Report's `lineItem/LineItemType` tokens, which
  * is what `RECORD_TYPE` carries. `Dimensions` filters match `EQUALS` and
- * `CASE_SENSITIVE` by default, so the casing matters — and a miss is harmless
+ * `CASE_SENSITIVE` by default, so the casing matters, and a miss is harmless
  * by construction (the value lands in pass 2 instead).
  */
 export const AWS_ON_DEMAND_RECORD_TYPES = ["Usage"];
 
 /**
- * Consumption a commitment covered — pass 1b's filter. Both tokens map to
+ * Consumption a commitment covered: pass 1b's filter. Both tokens map to
  * `commitment_covered_usage`, so CE may sum them together within the pass.
  */
 export const AWS_COVERED_RECORD_TYPES = ["DiscountedUsage", "SavingsPlanCoveredUsage"];
@@ -202,7 +202,7 @@ function recordTypeKey(raw: string): string {
 }
 
 /**
- * The mapping table, built only from record types AWS actually documents —
+ * The mapping table, built only from record types AWS actually documents:
  * the CUR's `lineItem/LineItemType` values
  * (https://docs.aws.amazon.com/cur/latest/userguide/Lineitem-columns.html)
  * and Cost Explorer's "Charge type" filter values
@@ -222,15 +222,15 @@ function recordTypeKey(raw: string): string {
  * | `Credit`                   | Credit                    | `credit`              |
  * | `Refund`                   | Refund                    | `refund`              |
  * | `Tax`                      | Tax                       | `tax`                 |
- * | —                          | Support fee               | `support`             |
+ * | -                          | Support fee               | `support`             |
  * | `Discount`, `BundledDiscount`, `FlatRateSubscription`, "Other out-of-cycle charges", anything new | | `other` |
  *
  * Three notes on the awkward entries:
  *
  * - **`DiscountedUsage` and `SavingsPlanCoveredUsage` are
  *   `commitment_covered_usage`, not `commitment_discount` and not plain
- *   `usage`.** They are consumption that happens to be covered — the
- *   commitment's effect is in the rate, not in the row's nature — so calling
+ *   `usage`.** They are consumption that happens to be covered (the
+ *   commitment's effect is in the rate, not in the row's nature) so calling
  *   them discounts would empty the consumption series of everything a
  *   commitment touches. But they are not indistinguishable from on-demand
  *   consumption either, and collapsing them into `usage` is what made coverage
@@ -243,15 +243,15 @@ function recordTypeKey(raw: string): string {
  *   region and pass 2 keeps its exact complement. What changed is the charge
  *   type they are stamped with, not which pass they arrive in.
  *
- *   `SavingsPlanNegation` — the separate negative offset line AWS writes
- *   against covered usage — is the actual `commitment_discount`. RIs have no
+ *   `SavingsPlanNegation` (the separate negative offset line AWS writes
+ *   against covered usage) is the actual `commitment_discount`. RIs have no
  *   equivalent line; their discount is baked into `DiscountedUsage`'s rate.
  * - **`Fee` is `commitment_fee` despite covering more than commitments.** AWS
  *   documents it as "Any upfront annual fee that you paid for subscriptions.
  *   For example, the upfront fee that you paid for an All Upfront RI or a
  *   Partial Upfront RI", and the console's label for it is "Upfront
- *   reservation fee". Filing an RI purchase — the single largest one-day
- *   charge most accounts ever see — under `other` to protect against the
+ *   reservation fee". Filing an RI purchase (the single largest one-day
+ *   charge most accounts ever see) under `other` to protect against the
  *   occasional non-RI subscription is the worse trade.
  * - **The discount families go to `other`.** `Discount` (Enterprise Discount
  *   Program, private rate, solution-provider), `BundledDiscount` and
@@ -265,7 +265,7 @@ function recordTypeKey(raw: string): string {
 const RECORD_TYPE_CHARGE_TYPES: Record<string, CostChargeType> = {
   // Consumption billed on demand.
   usage: "usage",
-  // Consumption a commitment covered — still consumption, but identifiable as
+  // Consumption a commitment covered: still consumption, but identifiable as
   // covered, which is what makes coverage measurable without a commitment id.
   discountedusage: "commitment_covered_usage",
   reservationappliedusage: "commitment_covered_usage",
@@ -290,8 +290,8 @@ const RECORD_TYPE_CHARGE_TYPES: Record<string, CostChargeType> = {
 /**
  * Normalize one Cost Explorer `RECORD_TYPE` value onto our union.
  *
- * Unrecognised values — AWS's discount families, flat-rate subscriptions,
- * out-of-cycle charges, and whatever AWS adds next — become `other` rather
+ * Unrecognised values (AWS's discount families, flat-rate subscriptions,
+ * out-of-cycle charges, and whatever AWS adds next) become `other` rather
  * than being folded into the nearest member. `usage` is the wrong default for
  * an unknown charge: it would quietly overstate consumption, which is the one
  * number every other reading is built on.
@@ -327,7 +327,7 @@ interface CeGroupVisit {
    * opposed to {@link amount} defaulting it to 0. The host stores "reported"
    * separately from the value precisely so a reported 0 (a purchase, which
    * amortizes to nothing on its purchase day) stays distinguishable from an
-   * absent one (fall back to cash) — so this collector must not claim the
+   * absent one (fall back to cash), so this collector must not claim the
    * first when it has the second.
    */
   amortizedReported: boolean;
@@ -347,7 +347,7 @@ function amount(metric: { Amount?: string } | undefined): number {
 
 /**
  * True only when CE returned a parseable figure for this metric. `undefined`
- * and an unparseable string both mean "no opinion" — {@link amount} floors
+ * and an unparseable string both mean "no opinion": {@link amount} floors
  * them to 0, and a 0 that is really an absence must not be stamped as a
  * reported amortized amount.
  */
@@ -357,7 +357,7 @@ function reported(metric: { Amount?: string } | undefined): boolean {
 
 /**
  * Run one `GetCostAndUsage` query to exhaustion, handing every group to
- * `visit`. The filter and grouping stay byte-identical across pages — CE
+ * `visit`. The filter and grouping stay byte-identical across pages: CE
  * rejects a paginated request whose parameters changed (`RequestChangedException`).
  */
 async function eachCeGroup(
@@ -387,7 +387,7 @@ async function eachCeGroup(
       },
       body,
       service: "ce",
-      // Cost Explorer only exists in us-east-1 — sign for that region
+      // Cost Explorer only exists in us-east-1: sign for that region
       // regardless of where the account's resources live.
       credentials: { ...creds, region: "us-east-1" },
     });
@@ -425,7 +425,7 @@ interface Bucket {
   amortizedAmount: number;
   /**
    * Whether any CE group folded into this bucket reported an amortized figure.
-   * A bucket nothing reported one for emits **no** `amortizedAmount` at all —
+   * A bucket nothing reported one for emits **no** `amortizedAmount` at all:
    * see {@link Buckets.rows}.
    */
   amortizedReported: boolean;
@@ -444,7 +444,7 @@ function bucketKey(b: Omit<Bucket, "amount" | "amortizedAmount" | "amortizedRepo
  * upfront fee on the same service and day produces two CE groups that are one
  * `commitment_fee` row here. Emitting them separately would hand the host two
  * rows identical in every column it keys on, and its ReplacingMergeTree would
- * keep whichever arrived last — silently losing one of the two fees.
+ * keep whichever arrived last: silently losing one of the two fees.
  */
 class Buckets {
   private readonly map = new Map<string, Bucket>();
@@ -470,8 +470,8 @@ class Buckets {
    * because absent and zero are different answers and the host keeps them
    * apart (`amortized_reported` in `server-core/src/clickhouse/migrate.ts`).
    * Emitting it unconditionally would stamp `amortized_reported = 1` on every
-   * row this file produces — including {@link fetchUnattributed}'s, whose
-   * groups aggregate all record types — so a response that carried
+   * row this file produces (including {@link fetchUnattributed}'s, whose
+   * groups aggregate all record types) so a response that carried
    * `UnblendedCost` but no `AmortizedCost` would read as *zero* in every
    * amortized view instead of falling back to the cash figure it has.
    */
@@ -531,7 +531,7 @@ async function fetchUnattributed(
     },
   );
   // `usage` is what these rows already were, and the host hashes a `usage`
-  // row exactly as it hashes one with no charge type at all — so falling
+  // row exactly as it hashes one with no charge type at all, so falling
   // back here replaces prior rows rather than shadowing them.
   return buckets.rows();
 }
@@ -548,7 +548,7 @@ async function fetchUnattributed(
  *
  * The host reconciles by zeroing stored keys a collection did not rewrite, so
  * unflagged, one bad request would tombstone every attribution row for the days
- * in the chunk — and since a backfilled account only re-fetches
+ * in the chunk, and since a backfilled account only re-fetches
  * `restatementDays` (3), a flap that ages past that window would never be
  * repaired. Flagged, the host skips tombstoning for the pass and the stored
  * rows survive, which is what happened before reconciliation existed. See
@@ -578,7 +578,7 @@ export async function fetchAwsCostData(
 
   const buckets = new Buckets();
   // Services pass 2 saw, so a service whose whole spend is non-usage can be
-  // zeroed at region "" — see the module header on stale rows.
+  // zeroed at region "": see the module header on stale rows.
   const nonUsageServices = new Map<string, { date: string; service: string; currency: string }>();
 
   /**
@@ -589,8 +589,8 @@ export async function fetchAwsCostData(
    * only returns a group when the filter matched something there, so a zero
    * here means "this cell's consumption is now nothing", and writing it is what
    * replaces a stored row that used to hold this cell's tax or fees. It matters
-   * doubly for 1b, whose unblended amounts are zero *by definition* — an RI's
-   * `UnblendedRate` is zero — and whose whole value is in `AmortizedCost`.
+   * doubly for 1b, whose unblended amounts are zero *by definition*: an RI's
+   * `UnblendedRate` is zero, and whose whole value is in `AmortizedCost`.
    */
   const consumptionPass = (recordTypes: string[], chargeType: CostChargeType): Promise<void> =>
     eachCeGroup(
@@ -613,15 +613,15 @@ export async function fetchAwsCostData(
     );
 
   try {
-    // Pass 1a — consumption billed on demand, with its region.
+    // Pass 1a: consumption billed on demand, with its region.
     await consumptionPass(AWS_ON_DEMAND_RECORD_TYPES, "usage");
 
-    // Pass 1b — consumption an RI or Savings Plan covered, with its region.
+    // Pass 1b: consumption an RI or Savings Plan covered, with its region.
     // Separated from 1a only so the two can carry different charge types;
     // together they are exactly pass 2's complement.
     await consumptionPass(AWS_COVERED_RECORD_TYPES, "commitment_covered_usage");
 
-    // Pass 2 — everything else, split by what kind of charge it is. The `Not`
+    // Pass 2: everything else, split by what kind of charge it is. The `Not`
     // makes this the exact complement of 1a ∪ 1b, so no line is dropped and
     // none is counted twice.
     await eachCeGroup(
@@ -654,7 +654,7 @@ export async function fetchAwsCostData(
     );
   } catch (err) {
     if (!isValidationError(err)) throw err;
-    // CE will not attribute for this account — report spend unattributed
+    // CE will not attribute for this account: report spend unattributed
     // rather than reporting nothing, and say so, so the host does not read a
     // coarser pass as evidence that the finer rows are gone.
     return { rows: await fetchUnattributed(creds, timePeriod), degraded: true };
@@ -662,7 +662,7 @@ export async function fetchAwsCostData(
 
   // Zero out the `(day, service, "")` usage row a previous, unattributed
   // collection left behind wherever that cell turns out to hold no on-demand
-  // usage —
+  // usage:
   // the whole of a Savings Plan fee service, or just the no-region tax of a
   // service whose usage is all regional. Same key, so this replaces rather
   // than adds; on a dataset that never had one it is an inert empty row.

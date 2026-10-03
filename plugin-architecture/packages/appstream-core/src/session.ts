@@ -2,8 +2,8 @@
  * The client's half of a session: handshake, window bookkeeping, and the acks
  * that keep frames flowing.
  *
- * Transport-free by design — Electron's main process relays over IPC, the web
- * app over a WebSocket, and a test over an array — so everything here is about
+ * Transport-free by design (Electron's main process relays over IPC, the web
+ * app over a WebSocket, and a test over an array) so everything here is about
  * protocol state and nothing about how bytes travel.
  */
 
@@ -53,14 +53,14 @@ export interface WindowInfo {
  * The host's answer to one `launch`.
  *
  * A failure is not a session failure: the compositor is still there and every
- * other application still starts. It arrives two ways — `launchResult` for an
+ * other application still starts. It arrives two ways: `launchResult` for an
  * entry the host refused outright, and an `error` frame carrying `unknownApp`
- * or `launchFailed` for one that was spawned and died — and both mean the same
+ * or `launchFailed` for one that was spawned and died, and both mean the same
  * thing to whoever asked, so the session normalises them into this.
  */
 export interface LaunchResult {
   ok: boolean;
-  /** Why it failed, from the host — usually the child's own stderr. */
+  /** Why it failed, from the host: usually the child's own stderr. */
   message?: string;
   appId?: string;
 }
@@ -68,7 +68,7 @@ export interface LaunchResult {
 /**
  * A painter of frames.
  *
- * Returning a promise delays the ack until it settles — which is how a viewer
+ * Returning a promise delays the ack until it settles, which is how a viewer
  * that hands a JPEG to the browser keeps "acked" meaning "painted". The return
  * type is `unknown` rather than `void | Promise<void>` so that a listener whose
  * body happens to be an expression (`(id) => seen.push(id)`, most tests) still
@@ -86,7 +86,7 @@ export interface AppSessionEvents {
   onWindowMeta?(window: WindowInfo): void;
   onWindowClose?(windowId: number, reason: string): void;
   /**
-   * New pixels for a window. The session acks once this returns — or once the
+   * New pixels for a window. The session acks once this returns, or once the
    * promise it returns settles, which is how a viewer that has to wait for the
    * browser to decode a JPEG keeps the ack honest.
    */
@@ -98,7 +98,7 @@ export interface AppSessionEvents {
   onLaunchResult?(ok: boolean, message: string | undefined, appId: string | undefined): void;
   /**
    * Fatal, session-wide errors only. A launch that failed goes to
-   * `onLaunchResult` and the launch listeners instead — see `LaunchResult`.
+   * `onLaunchResult` and the launch listeners instead: see `LaunchResult`.
    */
   onError?(message: string, code?: string): void;
   onClose?(): void;
@@ -114,7 +114,7 @@ export interface AppSessionOptions {
 /** A resolved accessibility tree, with the host's caveat when it has one. */
 export interface A11yTreeResult {
   tree: A11yNode;
-  /** e.g. "tree truncated at 1500 nodes" — the tree is real but incomplete. */
+  /** e.g. "tree truncated at 1500 nodes": the tree is real but incomplete. */
   caveat?: string;
 }
 
@@ -139,7 +139,7 @@ export class AppSession {
   /**
    * Per-window subscribers, on top of the single `events` object the session's
    * owner passes in. A viewer component mounts and unmounts independently of
-   * the session, and there may be several — one per open window tab.
+   * the session, and there may be several: one per open window tab.
    */
   #frameListeners = new Set<FrameListener>();
   #cursorListeners = new Set<(windowId: number, shape: string | undefined) => void>();
@@ -259,7 +259,7 @@ export class AppSession {
 
   /**
    * Subscribe to mixed session audio. Nothing arrives unless the session's
-   * caps declared `audio` — the host never sends the frame kind otherwise.
+   * caps declared `audio`: the host never sends the frame kind otherwise.
    */
   addAudioListener(listener: AudioListener): void {
     this.#audioListeners.add(listener);
@@ -332,7 +332,7 @@ export class AppSession {
   /**
    * Ask for a window's accessibility tree, as its application reports it over
    * AT-SPI. Resolves with the tree (and possibly a caveat, e.g. truncation);
-   * rejects when the host cannot produce one — an app whose toolkit has no
+   * rejects when the host cannot produce one: an app whose toolkit has no
    * accessibility support, a host without the capability, a timeout.
    */
   requestA11yTree(windowId: number, options: { timeoutMs?: number } = {}): Promise<A11yTreeResult> {
@@ -360,7 +360,7 @@ export class AppSession {
     this.#send({ type: "killSession" });
   }
 
-  /** Stop reading. Does not end the remote session — the apps keep running. */
+  /** Stop reading. Does not end the remote session: the apps keep running. */
   close(): void {
     this.#closed = true;
     this.#failA11yRequests("session closed");
@@ -421,7 +421,7 @@ export class AppSession {
     const pending: Array<Promise<unknown>> = [];
     const run = (listener: FrameListener) => {
       // One viewer throwing must not stop the others painting, and must not
-      // stop the ack — a session that stops acking stops receiving.
+      // stop the ack: a session that stops acking stops receiving.
       try {
         const result = listener(windowId, decoded);
         // A lossy frame is decoded by the browser, which only offers that
@@ -454,7 +454,7 @@ export class AppSession {
   #onAudio(chunk: AudioChunk): void {
     this.#events.onAudio?.(chunk);
     for (const listener of this.#audioListeners) {
-      // One player throwing must not stop the others — or the next chunk.
+      // One player throwing must not stop the others, or the next chunk.
       try {
         listener(chunk);
       } catch {
@@ -552,7 +552,7 @@ export class AppSession {
         });
         break;
       case "error":
-        // `unknownApp` and `launchFailed` answer one launch attempt — the
+        // `unknownApp` and `launchFailed` answer one launch attempt: the
         // session behind them is healthy and the next application will start
         // fine. Reporting them as session errors would leave the launcher
         // permanently red over a single bad entry, so they go where the
@@ -565,7 +565,7 @@ export class AppSession {
         break;
       case "clipboardOffer": {
         // An application took the host's clipboard. Fetching it now rather
-        // than when the user pastes is what makes the paste instant — and the
+        // than when the user pastes is what makes the paste instant, and the
         // host only ever offers, so nothing has crossed the wire yet.
         const wanted = message.mimeTypes.find((type) => TEXT_MIME.test(type));
         if (wanted) this.requestClipboard(wanted);

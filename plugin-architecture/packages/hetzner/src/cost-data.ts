@@ -13,12 +13,12 @@
  *
  * The manifest declares `estimated: true` for exactly this reason.
  *
- * ## Why there is no backfill — read this before comparing to an invoice
+ * ## Why there is no backfill: read this before comparing to an invoice
  *
  * A past day reconstructed from *today's* inventory is not a measurement of
  * that day, it is a guess that systematically under-reports. Anything created
  * and destroyed inside the period has vanished from the listing, and its cost
- * vanishes with it — a server that ran for three weeks and was deleted on the
+ * vanishes with it: a server that ran for three weeks and was deleted on the
  * 22nd contributes nothing. Traffic counters compound the problem: they cover
  * the current billing period only and reset with no history at all.
  *
@@ -43,13 +43,13 @@
  * | Snapshot       | compressed size × price per GB-month, prorated            |
  * | Traffic        | outgoing beyond the allowance × price per TB              |
  *
- * Every amount is **net of VAT** — the rate card's `gross` is simply
+ * Every amount is **net of VAT**: the rate card's `gross` is simply
  * `net × (1 + vat_rate/100)`, and applying tax downstream to a gross figure
  * would double-count it.
  *
  * Not priced, because the rate card does not price them: networks, firewalls,
  * placement groups, SSH keys (all free), and anything that is not a cloud
- * resource at all — credits, refunds, tax lines, and one-off charges have no
+ * resource at all; credits, refunds, tax lines, and one-off charges have no
  * inventory to hang off and can never appear here.
  */
 
@@ -71,7 +71,7 @@ import {
   type ServerTypeRate,
 } from "./pricing.js";
 
-/** Service names used as the `service` dimension. Stable — they are row keys. */
+/** Service names used as the `service` dimension. Stable: they are row keys. */
 const SERVICE = {
   server: "Server",
   backup: "Server Backup",
@@ -146,7 +146,7 @@ interface HetznerImage {
   id: number;
   type?: string;
   created?: string;
-  /** Compressed size in GB — null while the snapshot is still being written. */
+  /** Compressed size in GB: null while the snapshot is still being written. */
   image_size?: number | null;
 }
 
@@ -159,7 +159,7 @@ function startOfDayMs(day: string): number {
   return Date.parse(`${day}T00:00:00.000Z`);
 }
 
-/** First day of `day`'s calendar month — Hetzner's billing period boundary. */
+/** First day of `day`'s calendar month: Hetzner's billing period boundary. */
 function periodStartDay(day: string): string {
   return `${day.slice(0, 7)}-01`;
 }
@@ -243,7 +243,7 @@ function coveredMsInDay(resourceCreatedMs: number, dayStartMs: number, dayEndMs:
 /**
  * Outgoing traffic beyond the included allowance, priced per TB.
  *
- * `included_traffic` is in bytes and a "TB" here is 2^40 bytes — a 20 TB
+ * `included_traffic` is in bytes and a "TB" here is 2^40 bytes: a 20 TB
  * allowance arrives as 21990232555520. Hetzner bills overage in 100 MB blocks,
  * rounding partial blocks up; that rounding is deliberately not modelled, since
  * it moves the figure by well under a cent and the unit it rounds in is not
@@ -309,7 +309,7 @@ class RowAccumulator {
 /**
  * Estimate the project's spend for the day this runs.
  *
- * Returns `[]` — without issuing a single request — when the requested range
+ * Returns `[]` (without issuing a single request) when the requested range
  * covers neither the run day nor the current billing period's first day, which
  * is what makes the host's month-chunked restatement re-fetches cheap and
  * exactly-once.

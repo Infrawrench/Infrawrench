@@ -297,8 +297,8 @@ describe("start-up failures", () => {
 
   it("answers with what the host said, not just that it closed", async () => {
     // The channel closing is all the handshake sees, and on its own it names
-    // nothing. Losing the line above it turns every start-up failure —
-    // a bound socket, a missing library — into the same unactionable sentence.
+    // nothing. Losing the line above it turns every start-up failure
+    // (a bound socket, a missing library) into the same unactionable sentence.
     const ssh = readyHost();
     const session = startHeadlessAppSession(ssh, { ...source, sessionId: "s" });
     await vi.waitFor(() => expect(ssh.open).toHaveLength(1));
