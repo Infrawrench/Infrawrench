@@ -497,6 +497,90 @@ describe("managed endpoint analytics", () => {
   });
 });
 
+describe("managed endpoint events", () => {
+  it("renders the event feed oldest first as the Logs tab", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/whoami")) return jsonResponse({ project_id: "proj-1" });
+      if (url.includes("/events")) {
+        return jsonResponse({
+          object: "list",
+          data: [
+            {
+              id: "ev2",
+              createdAt: "2026-06-01T00:05:00Z",
+              level: "LEVEL_WARN",
+              type: "pod.oom",
+              source: "worker",
+              sourceKind: "SOURCE_KIND_DEPLOYMENT",
+              endpointId: "e1",
+              deploymentId: "d1",
+              message: "Replica ran out of memory",
+              logExcerpt: "CUDA out of memory\nretrying",
+            },
+            {
+              id: "ev1",
+              createdAt: "2026-06-01T00:00:00Z",
+              level: "LEVEL_INFO",
+              type: "deployment.scaled",
+              source: "autoscaler",
+              sourceKind: "SOURCE_KIND_DEPLOYMENT",
+              endpointId: "e1",
+              deploymentId: "d1",
+              oldReplicas: 1,
+              newReplicas: 2,
+            },
+          ],
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const result = await client().getLogs(
+      "managed-endpoint",
+      `${ACCOUNT}:managed-endpoint:e1`,
+      ACCOUNT,
+      { tailLines: 100 },
+    );
+    const url = new URL(calls[1]!.url);
+    expect(url.pathname).toBe("/v2/projects/proj-1/endpoints/e1/events");
+    expect(url.searchParams.get("limit")).toBe("100");
+    expect(result.text).toBe(
+      "2026-06-01T00:00:00Z INFO  deployment.scaled [autoscaler] (deployment=d1, replicas=1->2)\n" +
+        "2026-06-01T00:05:00Z WARN  pod.oom [worker] Replica ran out of memory (deployment=d1)\n" +
+        "    CUDA out of memory\n    retrying\n",
+    );
+  });
+
+  it("advertises a Logs tab on managed endpoints only", () => {
+    const c = client();
+    const base = {
+      pluginId: "together",
+      accountId: ACCOUNT,
+      status: "healthy" as const,
+      fields: {},
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: "",
+      updatedAt: "",
+    };
+    expect(
+      c.renderDetail({
+        ...base,
+        id: `${ACCOUNT}:managed-endpoint:e1`,
+        resourceTypeId: "managed-endpoint",
+        displayName: "e1",
+      }).logs,
+    ).toEqual({ defaultTailLines: 500 });
+    expect(
+      c.renderDetail({
+        ...base,
+        id: `${ACCOUNT}:endpoint:x`,
+        resourceTypeId: "endpoint",
+        displayName: "x",
+      }).logs,
+    ).toBeUndefined();
+  });
+});
+
 describe("GPU clusters", () => {
   const cluster = {
     cluster_id: "c-1",

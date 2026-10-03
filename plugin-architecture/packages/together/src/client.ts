@@ -6,6 +6,8 @@ import type {
   DashboardStat,
   DetailViewSchema,
   HostServices,
+  LogsFetchParams,
+  LogsFetchResult,
   MetricSeries,
   PluginClient,
   ResourceInstance,
@@ -418,6 +420,30 @@ interface DmiAnalytics {
   timeSeries?: Array<{ timestamp?: string; values?: Record<string, number> }>;
 }
 
+/**
+ * `DE.EndpointEvent`, from `GET /v2/projects/{projectId}/endpoints/{id}/events`:
+ * endpoint and deployment lifecycle events, newest first.
+ * https://docs.together.ai/reference/dmi/endpoints-list-events
+ */
+interface DmiEndpointEvent {
+  id?: string;
+  createdAt?: string;
+  level?: string;
+  type?: string;
+  message?: string;
+  source?: string;
+  sourceKind?: string;
+  deploymentId?: string;
+  subjectId?: string;
+  name?: string;
+  oldReplicas?: number;
+  newReplicas?: number;
+  status?: string;
+  reason?: string;
+  containerName?: string;
+  logExcerpt?: string;
+}
+
 /** `GPUClusterInfo`, from `/v1/compute/clusters`. */
 interface GpuCluster {
   cluster_id?: string;
@@ -762,6 +788,42 @@ function analyticsSeriesMeta(key: string): { label: string; unit?: string } {
   if (/Ms$/.test(key)) return { label: label.replace(/ Ms$/, ""), unit: "ms" };
   if (/(Utilization|Rate)$/.test(key)) return { label, unit: "%" };
   return { label };
+}
+
+/**
+ * One event as a log line: time, level, type, source, then the message and
+ * whichever typed detail the event type populates.
+ */
+function formatEndpointEvent(event: DmiEndpointEvent): string {
+  const level = (event.level ?? "").replace(/^LEVEL_/, "") || "INFO";
+  const details: string[] = [];
+  if (event.deploymentId) details.push(`deployment=${event.deploymentId}`);
+  if (event.name) details.push(`name=${event.name}`);
+  if (event.oldReplicas != null || event.newReplicas != null) {
+    details.push(`replicas=${event.oldReplicas ?? "?"}->${event.newReplicas ?? "?"}`);
+  }
+  if (event.subjectId) details.push(`subject=${event.subjectId}`);
+  if (event.status) details.push(`status=${event.status}`);
+  if (event.reason) details.push(`reason=${event.reason}`);
+  if (event.containerName) details.push(`container=${event.containerName}`);
+  const head = [
+    event.createdAt ?? "",
+    level.padEnd(5),
+    event.type ?? "",
+    event.source ? `[${event.source}]` : "",
+    event.message ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const line = details.length ? `${head} (${details.join(", ")})` : head;
+  // A pod event can carry a short crash or OOM excerpt; indent it under the line.
+  const excerpt = event.logExcerpt?.trim();
+  return excerpt
+    ? `${line}\n${excerpt
+        .split("\n")
+        .map((l) => `    ${l}`)
+        .join("\n")}`
+    : line;
 }
 
 function formatMs(value: number | undefined): string {
@@ -2306,6 +2368,39 @@ export class TogetherClient implements PluginClient {
     return [...byKey.values()];
   }
 
+  /**
+   * The endpoint's event feed as a Logs tab: endpoint changes merged with
+   * provisioning, scaling, readiness and rollout events from every deployment
+   * under it. `GET /v2/projects/{projectId}/endpoints/{id}/events` answers
+   * newest first, so the page is reversed into reading order.
+   * https://docs.together.ai/reference/dmi/endpoints-list-events
+   */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: LogsFetchParams,
+  ): Promise<LogsFetchResult> {
+    if (typeId !== "managed-endpoint") {
+      throw new Error(`Together plugin: logs not supported for type "${typeId}"`);
+    }
+    const { project_id: projectId } = await this.whoami();
+    if (!projectId) {
+      throw new Error("Together plugin: could not resolve project id from /v1/whoami");
+    }
+    // The API caps a page at 10000 events and defaults to 50.
+    const limit = Math.min(Math.max(params.tailLines ?? 500, 1), 10000);
+    const page = await this.request<DmiListResponse<DmiEndpointEvent>>(
+      `${API_BASE_V2}/projects/${encodeURIComponent(projectId)}/endpoints/${encodeURIComponent(externalIdOf(resourceId))}/events?limit=${limit}`,
+    );
+    const lines = (page.data ?? []).map(formatEndpointEvent).reverse();
+    return {
+      text: lines.map((line) => `${line}\n`).join(""),
+      containers: [],
+      activeContainer: "",
+    };
+  }
+
   /** `GET /v2/projects/{projectId}/endpoints/{id}/analytics`. */
   private async fetchAnalytics(
     endpointId: string,
@@ -3147,6 +3242,8 @@ export class TogetherClient implements PluginClient {
     const fields = resource.fields;
     const deployments = Number(fields["deploymentCount"] ?? 0);
     return {
+      // The endpoint's lifecycle event feed; see `getLogs`.
+      logs: { defaultTailLines: 500 },
       title: resource.displayName,
       subtitle: "Dedicated Managed Inference endpoint (v2)",
       status: {

@@ -9,7 +9,7 @@ Together AI runs open models as serverless inference, as dedicated GPU endpoints
 ## What you can manage
 
 - **Dedicated endpoints** — create, start, stop, rescale and delete a model pinned to reserved GPU hardware
-- **Managed endpoints**: the newer Dedicated Managed Inference (v2) endpoints, with their deployments, the last 24 hours of traffic, latency, utilization and token totals, and a Metrics tab
+- **Managed endpoints**: the newer Dedicated Managed Inference (v2) endpoints, with their deployments, the last 24 hours of traffic, latency, utilization and token totals, a Metrics tab, and a Logs tab of lifecycle events
 - **Models** — the serverless catalogue, with context length and Together's list pricing
 - **Fine-tunes**: job status, hyperparameters, tokens processed, the model each one produced, its checkpoints and its event log
 - **Files** — uploaded JSONL datasets, with line counts and validation errors
@@ -52,13 +52,17 @@ The billing usage API is in beta and Together enables it per organization. Until
 
 <insert [The Costs page filtered to a Together AI account, broken down by service] here>
 
-## Managed endpoint metrics
+## Managed endpoint metrics and events
 
 A managed endpoint's detail page summarizes the last 24 hours: requests, error rate, requests and tokens per second, time to first token, end-to-end and inter-token latency at p50, p90 and p99, GPU, GPU memory, CPU and memory utilization, and input and output token totals.
 
 The **Metrics** tab charts the same measurements over any time range, at one-minute buckets for ranges up to six hours, hourly up to two weeks, and daily beyond that.
 
 <insert [The Metrics tab of a Together managed endpoint showing latency percentiles and GPU utilization] here>
+
+The **Logs** tab reads the endpoint's event feed: endpoint changes merged with provisioning, scaling, readiness and rollout events from every deployment under it, oldest at the top, each line with its time, severity, event type and source. Scaling events show the replica transition (`replicas=1->2`), and when a replica crashes, runs out of memory or fails to pull its image, the short diagnostic excerpt Together captured is indented under the event. These are lifecycle events, not the model server's own output; Together keeps no streaming log API for managed endpoints.
+
+<insert [The Logs tab of a Together managed endpoint showing deployment scaling and readiness events] here>
 
 ## GPU clusters
 
