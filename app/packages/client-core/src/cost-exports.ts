@@ -70,6 +70,8 @@ export interface CostExportS3Destination {
    * Endpoint origin. Empty means AWS S3 proper (`https://s3.<region>.amazonaws.com`).
    * Anything else is the provider's S3 API origin, e.g.
    * `https://<accountid>.r2.cloudflarestorage.com` or `https://fra1.digitaloceanspaces.com`.
+   * A bare host or an `https://` origin; the server refuses plain `http` and
+   * private or reserved addresses.
    */
   endpoint: string;
   /**

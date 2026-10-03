@@ -37,6 +37,11 @@ export interface SignedS3FetchOptions {
    * exact payload hash; `undefined` is signed as an empty body.
    */
   body?: string | Uint8Array;
+  /**
+   * Transport for the signed request. Defaults to the global `fetch`; a server
+   * caller sending to a user-supplied endpoint passes a guarded one.
+   */
+  fetch?: (url: string, init: RequestInit) => Promise<Response>;
 }
 
 /**
@@ -86,5 +91,5 @@ export async function signedS3Fetch(opts: SignedS3FetchOptions): Promise<Respons
     init.body = body as BodyInit;
   }
 
-  return fetch(url, init);
+  return (opts.fetch ?? fetch)(url, init);
 }

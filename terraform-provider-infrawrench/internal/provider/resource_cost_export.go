@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
@@ -27,6 +28,15 @@ var (
 	_ resource.ResourceWithConfigure   = (*costExportResource)(nil)
 	_ resource.ResourceWithImportState = (*costExportResource)(nil)
 )
+
+// costExportRegionPattern mirrors the server's region check: the region becomes
+// a hostname label, so it is held to the characters a real region uses.
+var costExportRegionPattern = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
+
+// costExportEndpointPattern is a first-pass check of the server's endpoint rule:
+// a bare host or an https:// origin with an optional port, no credentials, no
+// path. The server additionally refuses private and reserved addresses.
+var costExportEndpointPattern = regexp.MustCompile(`^(https://)?[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$`)
 
 // costExportQueryVersion is the query document version this provider writes.
 //
@@ -191,7 +201,9 @@ func (r *costExportResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Optional:  true,
 				Sensitive: true,
 				MarkdownDescription: "Full webhook URL for an `http` destination, including any secret in " +
-					"its path or query. It travels as a top-level credential rather than inside the " +
+					"its path or query. It must be `https`, carry no username or password, and not point " +
+					"at a private, loopback, link-local or otherwise reserved address; redirects are not " +
+					"followed. It travels as a top-level credential rather than inside the " +
 					"`destination` block precisely because it is secret material. Write-only: no " +
 					"drift detection, and omission means keep. Supplying a new one recomputes " +
 					"`destination.url_hint`.",
@@ -272,13 +284,25 @@ func (r *costExportResource) Schema(_ context.Context, _ resource.SchemaRequest,
 						MarkdownDescription: "Key prefix objects are written under. `s3` only.",
 					},
 					"region": schema.StringAttribute{
-						Optional:            true,
-						MarkdownDescription: "Bucket region, e.g. `eu-west-2`. `s3` only.",
+						Optional: true,
+						MarkdownDescription: "Bucket region, e.g. `eu-west-2`; 1 to 32 lowercase letters, " +
+							"digits or hyphens. `s3` only.",
+						Validators: []validator.String{
+							stringvalidator.RegexMatches(costExportRegionPattern,
+								"must be 1 to 32 lowercase letters, digits or hyphens"),
+						},
 					},
 					"endpoint": schema.StringAttribute{
 						Optional: true,
 						MarkdownDescription: "Custom S3 endpoint for a non-AWS implementation such as R2, " +
-							"MinIO or Spaces. `s3` only; leave unset for AWS.",
+							"MinIO or Spaces: a bare host or an `https://` origin, with an optional port " +
+							"and no path. Plain `http` is refused, as is any host that is or resolves to a " +
+							"private, loopback, link-local or otherwise reserved address. `s3` only; leave " +
+							"unset for AWS.",
+						Validators: []validator.String{
+							stringvalidator.RegexMatches(costExportEndpointPattern,
+								"must be a host or an https:// origin, with an optional port and no path"),
+						},
 					},
 					"force_path_style": schema.BoolAttribute{
 						Optional: true,

@@ -73,7 +73,7 @@ One setting covers **AWS S3, Cloudflare R2, DigitalOcean Spaces, Scaleway Object
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Bucket                 | The bucket name.                                                                                                                                      |
 | Key prefix             | Everything the export writes lives under it. Leave blank for the bucket root.                                                                         |
-| Region                 | `eu-central-1`, `nyc3`, `fr-par`… Cloudflare R2 wants `auto`.                                                                                         |
+| Region                 | `eu-central-1`, `nyc3`, `fr-par`… Cloudflare R2 wants `auto`. Lowercase letters, digits and hyphens, up to 32 characters.                             |
 | Endpoint               | Blank for AWS S3. Otherwise the provider's S3 API origin, e.g. `https://<account>.r2.cloudflarestorage.com` or `https://fra1.digitaloceanspaces.com`. |
 | Path-style addressing  | Needed by MinIO and most self-hosted gateways. AWS, R2 and Spaces do not want it.                                                                     |
 | Access key id / secret | A key pair with permission to write under the prefix, and nothing else.                                                                               |
@@ -85,9 +85,17 @@ The object is sent as the request body of a `POST` (or `PUT`) to a URL you suppl
 - `Content-Type: text/csv; charset=utf-8` or `application/x-ndjson`
 - `X-Infrawrench-Object-Key` — the key the object would have had
 - `X-Infrawrench-Period-Start`, `-Period-From`, `-Period-To`, `-Exported-At`, `-Collection-Watermark`
-- a `key` query parameter carrying the same key, for endpoints that route on the URL
+  The URL is sent exactly as you entered it; nothing is appended to its query string, so a pre-signed URL keeps its signature.
 
 The URL must be `https`. It is treated as a credential in its own right — a pre-signed URL carries its own signature — so it is encrypted at rest and never shown again.
+
+### Destination address rules
+
+Both destination types are reached from Infrawrench's servers, so both follow the same rules:
+
+- **`https` only.** A plain `http://` endpoint or URL is refused, and so is one with a username or password in it.
+- **Public addresses only.** A host that is, or resolves to, a private, loopback, link-local or otherwise reserved address (`10.x`, `192.168.x`, `127.0.0.1`, `169.254.169.254` and their IPv6 counterparts) is refused when you save the export and again on every run. A MinIO or other gateway on a private network has to be reachable at a public `https` address to receive exports.
+- **No redirects.** A `3xx` response fails the run instead of being followed, so point the export at the final URL.
 
 ## Where the objects land
 
@@ -120,10 +128,12 @@ Destination credentials are encrypted at rest with the same mechanism as every o
 
 A nightly export that stopped working three weeks ago is worse than never having had one, so failures are recorded and shown rather than retried in silence — the same way [cost collection failures](./cloud-costs.md#when-collection-fails) surface on the Costs panel.
 
-Each export shows the outcome of its last run: how many objects and rows it wrote, or the destination's own error message. Common ones:
+Each export shows the outcome of its last run: how many objects and rows it wrote, or the HTTP status the destination answered with. For S3-compatible destinations the S3 error code is included when it is a standard one; the rest of the destination's response is not shown. Common ones:
 
-- `S3 PUT failed (403): Access Denied` — the key pair cannot write under that prefix.
-- `S3 CreateMultipartUpload failed (404)` — the bucket does not exist in that region, or the endpoint is wrong.
+- `S3 PUT failed (403): AccessDenied`: the key pair cannot write under that prefix.
+- `S3 CreateMultipartUpload failed (404): NoSuchBucket`: the bucket does not exist in that region, or the endpoint is wrong.
+- `HTTP POST failed (302): redirects are not followed`: the URL redirects somewhere else; use the final URL.
+- `S3 PUT refused: destination resolves to a private or reserved address`: see [destination address rules](#destination-address-rules).
 - `No destination credentials are stored` — the credential could not be decrypted; re-enter it.
 
 A failed run reschedules on the normal cadence rather than backing off. The cadence is already at least a day, the failure is already visible, and an extra backoff only delays recovery once somebody has fixed the credential.
