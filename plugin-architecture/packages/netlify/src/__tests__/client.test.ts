@@ -67,6 +67,7 @@ const SITE = {
   force_ssl: true,
   managed_dns: true,
   account_name: "Acme",
+  account_id: "acc1",
   created_at: "2024-01-01",
   updated_at: "2024-01-02",
   build_settings: {
@@ -120,16 +121,18 @@ describe("constructor", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("routes legacy env calls through host http", async () => {
-    const request = vi.fn(async () => ({ status: 200, body: JSON.stringify([{ key: "K" }]) }));
+  it("routes env calls through host http", async () => {
+    const request = vi.fn(async (req: { url: string }) => ({
+      status: 200,
+      body: JSON.stringify(req.url.includes("/env") ? [{ key: "K" }] : SITE),
+    }));
     await client({ accessToken: "tok" }, { http: { request } }).createResource(
       "netlify-env-var",
       ACCOUNT,
       { siteId: "site1", key: "K", value: "V" },
     );
-    expect(request).toHaveBeenCalled();
-    const [requestArg] = (request.mock.calls as unknown as Array<[{ url: string }]>)[0]!;
-    expect(requestArg.url).toContain("/sites/site1/env");
+    const urls = (request.mock.calls as unknown as Array<[{ url: string }]>).map(([r]) => r.url);
+    expect(urls.some((u) => u.includes("/accounts/acc1/env?site_id=site1"))).toBe(true);
   });
 });
 
@@ -464,18 +467,16 @@ describe("resolveOutput", () => {
   it("deploy outputs", async () => {
     const setup = () =>
       router([
-        [(u) => u.includes("/sites") && !u.includes("/deploys"), [SITE]],
         [
-          (u) => u.includes("/deploys"),
-          [
-            {
-              id: "dep1",
-              state: "ready",
-              deploy_ssl_url: "https://d",
-              created_at: "x",
-              updated_at: "y",
-            },
-          ],
+          (u) => u.endsWith("/deploys/dep1"),
+          {
+            id: "dep1",
+            site_id: "site1",
+            state: "ready",
+            deploy_ssl_url: "https://d",
+            created_at: "x",
+            updated_at: "y",
+          },
         ],
       ]);
     setup();
@@ -804,17 +805,15 @@ describe("attachResource", () => {
     router([
       [(u) => u.includes("/sites?"), [SITE]],
       [
-        (u, i) => u.includes("/sites/site1/deploys") && method(i) === "GET",
-        [
-          {
-            id: "dep1",
-            site_id: "site1",
-            state: "ready",
-            deploy_ssl_url: "https://dep1.netlify.app",
-            created_at: "x",
-            updated_at: "y",
-          },
-        ],
+        (u, i) => u.endsWith("/deploys/dep1") && method(i) === "GET",
+        {
+          id: "dep1",
+          site_id: "site1",
+          state: "ready",
+          deploy_ssl_url: "https://dep1.netlify.app",
+          created_at: "x",
+          updated_at: "y",
+        },
       ],
       [(u, i) => u.includes("/sites/site1") && method(i) === "GET", SITE],
       [
@@ -850,7 +849,7 @@ describe("attachResource", () => {
         [{ id: "hook1", title: "CMS", url: "https://hooks.netlify.com/hook" }],
       ],
       [(u, i) => u.includes("/sites/site1") && method(i) === "GET", SITE],
-      [(u, i) => u.includes("/sites/site1/env") && method(i) === "POST", [{ key: "K" }]],
+      [(u, i) => u.includes("/accounts/acc1/env") && method(i) === "POST", [{ key: "K" }]],
     ]);
     await client().attachResource(
       "netlify-build-hook",
@@ -860,7 +859,7 @@ describe("attachResource", () => {
       ACCOUNT,
     );
     const envCall = calls.find(
-      (c) => c.url.includes("/sites/site1/env") && method(c.init) === "POST",
+      (c) => c.url.includes("/accounts/acc1/env?site_id=site1") && method(c.init) === "POST",
     );
     expect(envCall).toBeTruthy();
     expect(JSON.parse(envCall!.init!.body as string)).toEqual([
@@ -958,7 +957,7 @@ describe("renderDetail", () => {
 
   it("deploy detail minimal", () => {
     const view = client().renderDetail(res("netlify-deploy", { state: "error" }));
-    expect((view.headerActions ?? []).map((a) => a.label)).toEqual(["Refresh"]);
+    expect((view.headerActions ?? []).map((a) => a.label)).toEqual(["Lock Publishing", "Refresh"]);
   });
 
   it("form detail", () => {
@@ -1249,8 +1248,14 @@ describe("createResource", () => {
     ).rejects.toThrow(/siteId is required/);
   });
 
-  it("creates an env var (legacy POST)", async () => {
-    router([[(u, i) => method(i) === "POST" && u.includes("/sites/site1/env"), [{ key: "K" }]]]);
+  it("creates an env var through the account-level API", async () => {
+    router([
+      [(u, i) => method(i) === "GET" && u.endsWith("/sites/site1"), SITE],
+      [
+        (u, i) => method(i) === "POST" && u.includes("/accounts/acc1/env?site_id=site1"),
+        [{ key: "K" }],
+      ],
+    ]);
     const r = await client().createResource("netlify-env-var", ACCOUNT, {
       siteId: "site1",
       key: "K",
@@ -1259,14 +1264,17 @@ describe("createResource", () => {
     });
     expect(r.id).toBe("acct-1:netlify-env-var:site1/K");
     expect(r.fields["contexts"]).toBe("production");
-    const body = JSON.parse(calls[0]!.init?.body as string);
+    const body = JSON.parse(calls[1]!.init?.body as string);
     expect((body as unknown[])[0]).toEqual(
       expect.objectContaining({ values: [{ context: "production", value: "V" }] }),
     );
   });
 
   it("creates env var with default context from parent", async () => {
-    router([[(u, i) => method(i) === "POST" && u.includes("/env"), [{ key: "K" }]]]);
+    router([
+      [(u, i) => method(i) === "GET" && u.endsWith("/sites/siteP"), { ...SITE, id: "siteP" }],
+      [(u, i) => method(i) === "POST" && u.includes("/env"), [{ key: "K" }]],
+    ]);
     const r = await client().createResource(
       "netlify-env-var",
       ACCOUNT,
@@ -1356,14 +1364,17 @@ describe("deleteResource", () => {
     ).rejects.toThrow(/parse build hook ID/);
   });
 
-  it("deletes env var (legacy)", async () => {
-    ok();
+  it("deletes env var through the account-level API", async () => {
+    router([
+      [(u, i) => method(i) === "GET" && u.endsWith("/sites/site1"), SITE],
+      [(_u, i) => method(i) === "DELETE", null, 204],
+    ]);
     await client().deleteResource(
       "netlify-env-var",
       "acct-1:netlify-env-var:site1/MY KEY",
       ACCOUNT,
     );
-    expect(calls[0]!.url).toContain("/sites/site1/env/MY%20KEY");
+    expect(calls[1]!.url).toContain("/accounts/acc1/env/MY%20KEY?site_id=site1");
   });
 
   it("throws on bad env var id", async () => {
@@ -1385,5 +1396,399 @@ describe("error handling", () => {
     await expect(client().listResources("netlify-site", ACCOUNT)).rejects.toThrow(
       /Netlify API error 500/,
     );
+  });
+});
+
+describe("site editing and actions", () => {
+  it("PATCHes name, force SSL, and build settings", async () => {
+    router([[(_u, i) => method(i) === "PATCH", SITE]]);
+    await client().updateResource("netlify-site", "acct-1:netlify-site:site1", ACCOUNT, {
+      name: "renamed",
+      forceSsl: "false",
+      buildCommand: "npm run build",
+      publishDir: "out",
+      stopBuilds: "true",
+    });
+    expect(calls[0]!.url).toContain("/sites/site1");
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({
+      name: "renamed",
+      force_ssl: false,
+      build_settings: { cmd: "npm run build", dir: "out", stop_builds: true },
+    });
+  });
+
+  it.each([
+    ["build", "POST", "/sites/site1/builds"],
+    ["build-clear-cache", "POST", "/sites/site1/builds?clear_cache=true"],
+    ["rollback", "PUT", "/sites/site1/rollback"],
+    ["provision-ssl", "POST", "/sites/site1/ssl"],
+    ["purge-cache", "POST", "/purge"],
+  ])("site action %s → %s %s", async (action, verb, path) => {
+    router([[() => true, {}]]);
+    await client().invokeAction("netlify-site", "acct-1:netlify-site:site1", action, ACCOUNT);
+    expect(method(calls[0]!.init)).toBe(verb);
+    expect(calls[0]!.url).toContain(path);
+    if (action === "purge-cache") {
+      expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({ site_id: "site1" });
+    }
+  });
+
+  it("shows TLS certificate state after enrichment", async () => {
+    router([
+      [
+        (u) => u.endsWith("/sites/site1/ssl"),
+        { state: "issued", domains: ["example.com"], expires_at: "2027-01-01" },
+      ],
+    ]);
+    const base = {
+      id: "acct-1:netlify-site:site1",
+      resourceTypeId: "netlify-site",
+      displayName: "my-site",
+      fields: { name: "my-site", state: "current" },
+      resolvedOutputs: {},
+    } as never;
+    const json = JSON.stringify(client().renderDetail(await client().enrichDetail(base)));
+    expect(json).toContain("Certificate Expires");
+    expect(json).toContain("2027-01-01");
+  });
+});
+
+describe("deploy actions", () => {
+  it.each([
+    ["cancel", "/deploys/dep1/cancel"],
+    ["lock", "/deploys/dep1/lock"],
+    ["unlock", "/deploys/dep1/unlock"],
+  ])("%s", async (action, path) => {
+    router([[() => true, {}]]);
+    await client().invokeAction("netlify-deploy", "acct-1:netlify-deploy:dep1", action, ACCOUNT);
+    expect(calls[0]!.url).toContain(path);
+    expect(method(calls[0]!.init)).toBe("POST");
+  });
+
+  it("publishes by restoring onto the deploy's site", async () => {
+    router([
+      [
+        (u, i) => method(i) === "GET" && u.endsWith("/deploys/dep1"),
+        { id: "dep1", site_id: "site1" },
+      ],
+      [(_u, i) => method(i) === "POST", {}],
+    ]);
+    await client().invokeAction("netlify-deploy", "acct-1:netlify-deploy:dep1", "publish", ACCOUNT);
+    expect(calls[1]!.url).toContain("/sites/site1/deploys/dep1/restore");
+  });
+
+  it("offers cancel while building and publish when ready", () => {
+    const mk = (fields: Record<string, unknown>) =>
+      client().renderDetail({
+        id: "x",
+        resourceTypeId: "netlify-deploy",
+        displayName: "d",
+        fields,
+        resolvedOutputs: {},
+      } as never);
+    expect((mk({ state: "building" }).headerActions ?? []).map((a) => a.label)).toContain("Cancel");
+    const ready = (mk({ state: "ready", locked: true }).headerActions ?? []).map((a) => a.label);
+    expect(ready).toEqual(expect.arrayContaining(["Publish", "Unlock Publishing"]));
+  });
+});
+
+describe("env var editing", () => {
+  it("sets a value for one context with PATCH", async () => {
+    router([
+      [(u, i) => method(i) === "GET" && u.endsWith("/sites/site1"), SITE],
+      [(_u, i) => method(i) === "PATCH", { key: "API" }],
+      [(u) => u.includes("/sites?"), [SITE]],
+      [(u) => u.includes("/accounts/acc1/env"), [{ key: "API", values: [] }]],
+    ]);
+    await client().updateResource("netlify-env-var", "acct-1:netlify-env-var:site1/API", ACCOUNT, {
+      newValue: "v2",
+      valueContext: "production",
+    });
+    const patch = calls.find((c) => method(c.init) === "PATCH")!;
+    expect(patch.url).toContain("/accounts/acc1/env/API?site_id=site1");
+    expect(JSON.parse(String(patch.init?.body))).toEqual({ context: "production", value: "v2" });
+  });
+
+  it("creates a secret env var with chosen scopes", async () => {
+    router([
+      [(u, i) => method(i) === "GET" && u.endsWith("/sites/site1"), SITE],
+      [(_u, i) => method(i) === "POST", [{ key: "K" }]],
+    ]);
+    const r = await client().createResource("netlify-env-var", ACCOUNT, {
+      siteId: "site1",
+      key: "K",
+      value: "V",
+      context: "production",
+      isSecret: "true",
+      scopes: JSON.stringify(["functions"]),
+    });
+    expect(JSON.parse(String(calls[1]!.init?.body))).toEqual([
+      {
+        key: "K",
+        scopes: ["functions"],
+        values: [{ context: "production", value: "V" }],
+        is_secret: true,
+      },
+    ]);
+    expect(r.fields["isSecret"]).toBe(true);
+  });
+});
+
+describe("build hook editing", () => {
+  it("PUTs the new title and branch", async () => {
+    router([
+      [(_u, i) => method(i) === "PUT", null, 204],
+      [(u) => u.includes("/sites?"), [SITE]],
+      [(u) => u.includes("/build_hooks"), [{ id: "h1", title: "New", branch: "dev" }]],
+    ]);
+    await client().updateResource(
+      "netlify-build-hook",
+      "acct-1:netlify-build-hook:site1/h1",
+      ACCOUNT,
+      {
+        title: "New",
+        branch: "dev",
+      },
+    );
+    const put = calls.find((c) => method(c.init) === "PUT")!;
+    expect(put.url).toContain("/sites/site1/build_hooks/h1");
+    expect(JSON.parse(String(put.init?.body))).toEqual({ title: "New", branch: "dev" });
+  });
+});
+
+describe("deploy notifications", () => {
+  it("lists hooks per site", async () => {
+    router([
+      [(u) => u.includes("/sites?"), [SITE]],
+      [
+        (u) => u.includes("/hooks?site_id=site1"),
+        [{ id: "hk1", type: "email", event: "deploy_failed", data: { email: "ops@example.com" } }],
+      ],
+    ]);
+    const res = await client().listResources("netlify-notification-hook", ACCOUNT);
+    expect(res[0]!.id).toBe("acct-1:netlify-notification-hook:site1/hk1");
+    expect(res[0]!.fields).toMatchObject({ target: "ops@example.com", event: "deploy_failed" });
+    expect(res[0]!.displayName).toContain("Deploy failed");
+  });
+
+  it("builds the event picker from /hooks/types", async () => {
+    router([
+      [
+        (u) => u.endsWith("/hooks/types"),
+        [{ name: "url", events: ["deploy_created", "deploy_failed"] }],
+      ],
+    ]);
+    const cfg = await client().getCreateConfig(
+      "netlify-notification-hook",
+      "acct-1:netlify-site:site1",
+    );
+    expect(cfg.fields.find((f) => f.key === "event")?.options?.map((o) => o.id)).toEqual([
+      "deploy_created",
+      "deploy_failed",
+    ]);
+  });
+
+  it("creates email and URL hooks with the right data key", async () => {
+    router([
+      [(_u, i) => method(i) === "POST", { id: "hk2", type: "url", event: "deploy_created" }],
+    ]);
+    await client().createResource(
+      "netlify-notification-hook",
+      ACCOUNT,
+      { type: "email", event: "deploy_failed", target: "ops@example.com" },
+      "acct-1:netlify-site:site1",
+    );
+    await client().createResource(
+      "netlify-notification-hook",
+      ACCOUNT,
+      { type: "url", event: "deploy_created", target: "https://x.dev" },
+      "acct-1:netlify-site:site1",
+    );
+    expect(calls[0]!.url).toContain("/hooks?site_id=site1");
+    expect(JSON.parse(String(calls[0]!.init?.body))).toEqual({
+      type: "email",
+      event: "deploy_failed",
+      data: { email: "ops@example.com" },
+    });
+    expect(JSON.parse(String(calls[1]!.init?.body)).data).toEqual({ url: "https://x.dev" });
+  });
+
+  it("re-enables and deletes", async () => {
+    router([[() => true, {}]]);
+    await client().invokeAction(
+      "netlify-notification-hook",
+      "acct-1:netlify-notification-hook:site1/hk1",
+      "enable",
+      ACCOUNT,
+    );
+    await client().deleteResource(
+      "netlify-notification-hook",
+      "acct-1:netlify-notification-hook:site1/hk1",
+      ACCOUNT,
+    );
+    expect(calls[0]!.url).toContain("/hooks/hk1/enable");
+    expect(method(calls[1]!.init)).toBe("DELETE");
+  });
+});
+
+describe("snippets", () => {
+  it("lists, creates, updates, and deletes", async () => {
+    router([
+      [(u) => u.includes("/sites?"), [SITE]],
+      [
+        (_u, i) => method(i) === "POST",
+        { id: 7, title: "GA", general: "<script/>", general_position: "head" },
+      ],
+      [(_u, i) => method(i) === "PUT" || method(i) === "DELETE", null, 204],
+      [(u) => u.endsWith("/sites/site1/snippets"), [{ id: 7, title: "GA", general: "<script/>" }]],
+    ]);
+    const listed = await client().listResources("netlify-snippet", ACCOUNT);
+    expect(listed[0]!.id).toBe("acct-1:netlify-snippet:site1/7");
+    expect(listed[0]!.fields["position"]).toBe("head");
+
+    await client().createResource(
+      "netlify-snippet",
+      ACCOUNT,
+      { title: "GA", position: "footer", code: "<script/>" },
+      "acct-1:netlify-site:site1",
+    );
+    const post = calls.find((c) => method(c.init) === "POST")!;
+    expect(JSON.parse(String(post.init?.body))).toEqual({
+      title: "GA",
+      general: "<script/>",
+      general_position: "footer",
+    });
+
+    await client().updateResource("netlify-snippet", "acct-1:netlify-snippet:site1/7", ACCOUNT, {
+      code: "<b/>",
+    });
+    const put = calls.find((c) => method(c.init) === "PUT")!;
+    expect(put.url).toContain("/sites/site1/snippets/7");
+    expect(JSON.parse(String(put.init?.body))).toEqual({
+      title: "GA",
+      general: "<b/>",
+      general_position: "head",
+    });
+
+    await client().deleteResource("netlify-snippet", "acct-1:netlify-snippet:site1/7", ACCOUNT);
+    expect(
+      calls.some((c) => method(c.init) === "DELETE" && c.url.endsWith("/sites/site1/snippets/7")),
+    ).toBe(true);
+  });
+});
+
+describe("Netlify DB", () => {
+  const BRANCHES = {
+    branches: [
+      {
+        branch_id: "b1",
+        name: "production",
+        state: "ready",
+        logical_size_bytes: 2048,
+        created_at: "2026-01-01",
+        compute: {
+          current_state: "idle",
+          autoscaling_limit_min_cu: 0.25,
+          autoscaling_limit_max_cu: 2,
+        },
+      },
+      { branch_id: "b2", name: "deploy-preview-4", state: "ready", created_at: "2026-02-01" },
+    ],
+  };
+
+  it("lists one database per site that has one", async () => {
+    router([
+      [(u) => u.includes("/sites?"), [SITE, { ...SITE, id: "site2", name: "no-db" }]],
+      [(u) => u.includes("/sites/site1/database/branches"), BRANCHES],
+      [(u) => u.includes("/sites/site2/database/branches"), "not found", 404],
+    ]);
+    const res = await client().listResources("netlify-database", ACCOUNT);
+    expect(res).toHaveLength(1);
+    expect(res[0]!.id).toBe("acct-1:netlify-database:site1");
+    expect(res[0]!.fields).toMatchObject({
+      branchCount: 2,
+      state: "ready",
+      computeState: "idle",
+      sizeBytes: 2048,
+      maxCu: 2,
+    });
+  });
+
+  it("resolves the connection string output", async () => {
+    router([[(u) => u.endsWith("/sites/site1/database"), { connection_string: "postgres://x" }]]);
+    expect(
+      await client().resolveOutput(
+        "netlify-database",
+        "acct-1:netlify-database:site1",
+        "connectionString",
+        ACCOUNT,
+      ),
+    ).toBe("postgres://x");
+  });
+
+  it("creates, snapshots, and deletes", async () => {
+    router([
+      [
+        (u, i) => method(i) === "POST" && u.endsWith("/sites/site1/database"),
+        { connection_string: "x" },
+      ],
+      [(u, i) => method(i) === "POST" && u.endsWith("/database/snapshot"), {}],
+      [(_u, i) => method(i) === "DELETE", null, 204],
+      [(u) => u.endsWith("/sites/site1"), SITE],
+      [(u) => u.includes("/database/branches"), BRANCHES],
+    ]);
+    const created = await client().createResource(
+      "netlify-database",
+      ACCOUNT,
+      {},
+      "acct-1:netlify-site:site1",
+    );
+    expect(created.id).toBe("acct-1:netlify-database:site1");
+    await client().invokeAction("netlify-database", created.id, "snapshot", ACCOUNT);
+    await client().deleteResource("netlify-database", created.id, ACCOUNT);
+    expect(calls.some((c) => c.url.endsWith("/database/snapshot"))).toBe(true);
+    expect(
+      calls.some((c) => method(c.init) === "DELETE" && c.url.endsWith("/sites/site1/database")),
+    ).toBe(true);
+  });
+
+  it("renders branches and snapshots after enrichment", async () => {
+    router([
+      [(u) => u.includes("/database/branches"), BRANCHES],
+      [(u) => u.includes("/database/snapshots"), { snapshots: [{ id: "snap1", manual: true }] }],
+    ]);
+    const base = {
+      id: "acct-1:netlify-database:site1",
+      resourceTypeId: "netlify-database",
+      displayName: "db",
+      fields: { siteName: "my-site", state: "ready" },
+      resolvedOutputs: {},
+    } as never;
+    const titles = client()
+      .renderDetail(await client().enrichDetail(base))
+      .sections.map((sec) => sec.title);
+    expect(titles).toEqual(["Production Branch", "Branches", "Snapshots"]);
+  });
+});
+
+describe("form submissions", () => {
+  it("shows recent submissions after enrichment", async () => {
+    router([
+      [
+        (u) => u.includes("/forms/form1/submissions?per_page=20"),
+        [{ id: "s1", number: 3, name: "Ada", email: "ada@example.com", summary: "Hi" }],
+      ],
+    ]);
+    const base = {
+      id: "acct-1:netlify-form:site1/form1",
+      resourceTypeId: "netlify-form",
+      displayName: "Contact",
+      externalId: "form1",
+      fields: { name: "Contact" },
+      resolvedOutputs: {},
+    } as never;
+    const json = JSON.stringify(client().renderDetail(await client().enrichDetail(base)));
+    expect(json).toContain("Recent Submissions");
+    expect(json).toContain("ada@example.com");
   });
 });

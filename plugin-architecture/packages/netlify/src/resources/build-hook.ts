@@ -8,14 +8,15 @@ export const NetlifyBuildHookResourceType = rt({
   fields: [
     f("title", "Title"),
     f("branch", "Branch", { required: false }),
-    f("url", "Hook URL", { required: false }),
-    f("createdAt", "Created At", { required: false }),
-    f("siteId", "Site", { required: false }),
+    f("url", "Hook URL", { required: false, editable: false }),
+    f("createdAt", "Created At", { required: false, editable: false }),
+    f("siteId", "Site", { required: false, editable: false }),
   ],
   outputs: [o("hookId", "Hook ID"), o("hookUrl", "Hook URL", { sensitive: true })],
   dependsOn: [{ fieldKey: "siteId", targetTypeId: "netlify-site", label: "builds site" }],
   parentTypeId: "netlify-site",
   supportsCreate: true,
+  supportsUpdate: true,
   iconKey: "hook",
   attachTargets: [
     {

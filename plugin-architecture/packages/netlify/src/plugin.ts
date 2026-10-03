@@ -9,6 +9,9 @@ import { NetlifyDnsZoneResourceType } from "./resources/dns-zone.js";
 import { NetlifyDnsRecordResourceType } from "./resources/dns-record.js";
 import { NetlifyBuildHookResourceType } from "./resources/build-hook.js";
 import { NetlifyEnvVarResourceType } from "./resources/env-var.js";
+import { NetlifyNotificationHookResourceType } from "./resources/notification-hook.js";
+import { NetlifySnippetResourceType } from "./resources/snippet.js";
+import { NetlifyDatabaseResourceType } from "./resources/database.js";
 import { netlifyTerraformExport } from "./terraform.js";
 
 const manifest: PluginManifest = {
@@ -46,6 +49,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   NetlifyDnsRecordResourceType,
   NetlifyBuildHookResourceType,
   NetlifyEnvVarResourceType,
+  NetlifyNotificationHookResourceType,
+  NetlifySnippetResourceType,
+  NetlifyDatabaseResourceType,
 ];
 
 export const plugin: Plugin = {
